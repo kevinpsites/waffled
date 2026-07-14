@@ -14,10 +14,13 @@ const goal = {
   habitPeriod: null,
   habitTargetPerPeriod: null,
   trackingMode: 'shared_total',
+  participantMode: 'split',
+  targetBasis: 'family',
   logMethod: 'quick_log',
   autoFromCalendar: false,
   deadline: null,
   isFeatured: true,
+  isSpotlight: false,
   hasRewards: false,
   target: 1000,
   totalProgress: 100,
@@ -81,5 +84,38 @@ describe('LogModal capability gating', () => {
     mockApi([])
     render(<LogModal goal={goal} canDelete={true} selfPersonId="p1" onClose={vi.fn()} onSaved={vi.fn()} />)
     expect(await screen.findByText('Delete goal')).toBeInTheDocument()
+  })
+})
+
+describe('LogModal time goals (hours + minutes)', () => {
+  it('logs a time goal as hours + minutes and lets the server convert (no decimal)', async () => {
+    const logged: unknown[] = []
+    mockApi(logged)
+    render(<LogModal goal={goal} canLogOthers={false} selfPersonId="p1" onClose={vi.fn()} onSaved={vi.fn()} />)
+    fireEvent.change(await screen.findByLabelText('hours'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('minutes'), { target: { value: '10' } })
+    // The button shows a duration, never a raw decimal like 2.1666…
+    expect(screen.getByRole('button', { name: 'Log 2h 10m' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Log / }))
+    await waitFor(() => expect(logged).toHaveLength(1))
+    expect(logged[0]).toMatchObject({ hours: 2, minutes: 10, personIds: ['p1'] })
+    expect(logged[0]).not.toHaveProperty('amount')
+  })
+})
+
+describe('LogModal shared-count attendance (count_once)', () => {
+  const parksGoal = { ...goal, goalType: 'count', unit: 'parks', participantMode: 'count_once', title: 'State parks' }
+
+  it('offers a multi-select "Who was there?" and logs everyone tapped in one call', async () => {
+    const logged: unknown[] = []
+    mockApi(logged)
+    render(<LogModal goal={parksGoal} canLogOthers={true} selfPersonId="p1" onClose={vi.fn()} onSaved={vi.fn()} />)
+    expect(await screen.findByText('Who was there?')).toBeInTheDocument()
+    // Tap both attendees — multi-select, not the old single-select.
+    fireEvent.click(screen.getByText('Wally'))
+    fireEvent.click(screen.getByText('Lottie'))
+    fireEvent.click(screen.getByRole('button', { name: /^Log \d/ }))
+    await waitFor(() => expect(logged).toHaveLength(1))
+    expect((logged[0] as { personIds: string[] }).personIds.sort()).toEqual(['p1', 'p2'])
   })
 })

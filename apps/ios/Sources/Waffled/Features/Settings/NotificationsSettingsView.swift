@@ -136,9 +136,8 @@ struct NotificationsSettingsView: View {
 
     private func hourLabel(_ h: Int) -> String {
         var c = DateComponents(); c.hour = h
-        let cal = Calendar.current
-        guard let date = cal.date(from: c) else { return "\(h):00" }
-        let f = DateFormatter(); f.dateFormat = "h a"
-        return f.string(from: date)
+        guard let date = Cal.current.date(from: c) else { return "\(h):00" }
+        // Device-locale so AM/PM follows the device language (e.g. "9 a. m." on es).
+        return DateFmt.localizedString(date, "h a", TimeZone.current)
     }
 }

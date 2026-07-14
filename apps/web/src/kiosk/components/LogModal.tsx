@@ -60,15 +60,30 @@ export function LogModal({
   const [amount, setAmount] = useState<number>(oneTap ? 1 : isCount ? 1 : chips[1]?.value ?? 1)
   const isShared = goal.trackingMode === 'shared_total'
   const divisible = goal.goalType === 'total'
+  // A time goal (total measured in hours) is logged as hours + minutes; the server
+  // folds them into decimal hours, so "10 min" never has to become 0.1666… here.
+  const isTime = divisible && !!goal.unit && HOURS.has(goal.unit.toLowerCase())
+  const [hours, setHours] = useState<number>(isTime ? 1 : 0)
+  const [minutes, setMinutes] = useState<number>(0)
+  const setTimeChip = (v: number) => { setHours(Math.floor(v)); setMinutes(Math.round((v - Math.floor(v)) * 60)) }
+  // The four participant types (see GoalCreate.PARTICIPANT_TYPES), decoded for the
+  // "who" copy + preview:
+  //   • eachAdds  (each_tracks: "individually"/"we all chip in") — every person tapped
+  //     gets the FULL amount and the total sums (+amount × people).
+  //   • isSplit   (shared_total + split) — the amount is divided evenly across them.
+  //   • count-once (shared_total + count_once) — counts once; the people are attendance
+  //     (the implicit else branch of the two flags below).
+  const eachAdds = goal.trackingMode === 'each_tracks'
+  const isSplit = isShared && (goal.participantMode ?? 'count_once') === 'split'
 
   // Habit display: completions in the current period vs the cadence target.
   const period = goal.habitPeriod ?? 'week'
   const periodLabel = period === 'day' ? 'today' : period === 'month' ? 'this month' : 'this week'
   const habitTarget = goal.habitTargetPerPeriod ?? goal.target ?? 0
-  // Multi-select only makes sense when tapping several people changes the math
-  // in a way we can represent cleanly: a divisible shared pool (split) or
-  // each-tracks (full amount each). Whole-unit goals credit a single party.
-  const multi = divisible || !isShared
+  // Tapping several people is now meaningful for every shared goal — the goal's
+  // participant mode decides what it means (attendance / full-each / split), so
+  // the "who" picker is multi-select throughout (checklists return early above).
+  const multi = true
   // Restricted users (no goal.manage) can only attribute progress to themselves
   // or a family/shared log — never to another person. Show only self in the
   // picker and default the selection to self.
@@ -99,12 +114,32 @@ export function LogModal({
   const toggleWho = (id: string) =>
     setWho((w) => (multi ? (w.includes(id) ? w.filter((x) => x !== id) : [...w, id]) : [id]))
 
-  // Divisible shared pool, more than one person tapped → preview the even split.
-  const splitN = isShared && divisible ? who.length : 0
-  const perEach = splitN > 1 ? Math.round((amount / splitN) * 100) / 100 : null
+  // One-tap (habit / check-off) = 1; count = whole units; time = hours + minutes
+  // folded to decimal hours; total = entered amount.
+  const timeAmount = Math.round((hours + minutes / 60) * 1e6) / 1e6
+  const logAmount = oneTap ? 1 : isCount ? Math.max(1, Math.round(amount)) : isTime ? timeAmount : Number(amount)
 
-  // One-tap (habit / check-off) = 1; count = whole units; total = entered amount.
-  const logAmount = oneTap ? 1 : isCount ? Math.max(1, Math.round(amount)) : Number(amount)
+  // Divisible shared pool in SPLIT mode, more than one tapped → preview the even split.
+  const splitN = isSplit && divisible ? who.filter((id) => id !== FAMILY).length : 0
+  const perEach = splitN > 1 ? Math.round((logAmount / splitN) * 100) / 100 : null
+
+  // "Who?" copy + preview adapt to the goal's participant type.
+  const nSel = who.filter((id) => id !== FAMILY).length
+  const whoLabel = eachAdds ? 'Who took part?' : isSplit ? 'Split between' : 'Who was there?'
+  const unitSuffix = goal.unit ? ` ${goal.unit}` : ''
+  const fmtDuration = (h: number) => {
+    const hh = Math.floor(h + 1e-9)
+    const mm = Math.round((h - hh) * 60)
+    return hh && mm ? `${hh}h ${mm}m` : hh ? `${hh}h` : `${mm}m`
+  }
+  // Human amount for previews + the log button: a duration for time goals, else "<n> <unit>".
+  const qty = (n: number) => (isTime ? fmtDuration(n) : `${Math.round(n * 100) / 100}${unitSuffix}`)
+  const amountLabel = qty(logAmount)
+  const modeHint =
+    nSel === 0 ? null
+      : eachAdds ? `Each of the ${nSel} gets the full ${qty(logAmount)} · total +${qty(logAmount * nSel)}.`
+        : isSplit ? (perEach != null ? `Shared together → ${qty(perEach)} each, ${qty(logAmount)} total.` : null)
+          : `Counts once for the family · records who was there${nSel > 0 ? ` (${nSel})` : ''}.`
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -113,7 +148,11 @@ export function LogModal({
     try {
       // "Family" is a shared (no-person) log; strip the sentinel before sending.
       const personIds = who.filter((id) => id !== FAMILY)
-      await api.logGoal(goal.id, { amount: logAmount, personIds, note: note.trim() || null, loggedOn: loggedOn !== today ? loggedOn : null })
+      const when = loggedOn !== today ? loggedOn : null
+      // Time goals send hours + minutes and let the server convert; others send amount.
+      await api.logGoal(goal.id, isTime
+        ? { hours, minutes, personIds, note: note.trim() || null, loggedOn: when }
+        : { amount: logAmount, personIds, note: note.trim() || null, loggedOn: when })
       onSaved()
       onClose()
     } catch {
@@ -215,10 +254,29 @@ export function LogModal({
                 <button type="button" className="log-step" aria-label="More" onClick={() => setAmount((a) => Math.round(a) + 1)}>＋</button>
               </div>
             </>
+          ) : isTime ? (
+            // Time goal: quick chips + separate hours/minutes entry — no decimal math.
+            <>
+              <div className="flabel">How long?</div>
+              <div className="log-quick">
+                {chips.map((c) => (
+                  <button key={c.label} type="button" className={`log-chip ${Math.abs(timeAmount - c.value) < 1e-6 ? 'on' : ''}`} onClick={() => setTimeChip(c.value)}>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+              <div className="log-custom">
+                <span className="tiny muted" style={{ fontWeight: 600 }}>or</span>
+                <input type="number" step={1} min={0} value={hours} onChange={(e) => setHours(Math.max(0, Math.floor(Number(e.target.value) || 0)))} aria-label="hours" />
+                <span className="tiny muted" style={{ fontWeight: 600 }}>hr</span>
+                <input type="number" step={1} min={0} max={59} value={minutes} onChange={(e) => setMinutes(Math.min(59, Math.max(0, Math.floor(Number(e.target.value) || 0))))} aria-label="minutes" />
+                <span className="tiny muted" style={{ fontWeight: 600 }}>min</span>
+              </div>
+            </>
           ) : (
             // Total amount: quick chips + free entry (fractions allowed).
             <>
-              <div className="flabel">How {goal.unit && HOURS.has(goal.unit.toLowerCase()) ? 'long' : 'much'}?</div>
+              <div className="flabel">How much?</div>
               <div className="log-quick">
                 {chips.map((c) => (
                   <button key={c.label} type="button" className={`log-chip ${amount === c.value ? 'on' : ''}`} onClick={() => setAmount(c.value)}>
@@ -236,7 +294,7 @@ export function LogModal({
 
           {showWho && (
             <>
-              <div className="flabel" style={{ marginTop: 16 }}>Who?{!multi && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600, color: 'var(--ink-3)' }}> · one</span>}</div>
+              <div className="flabel" style={{ marginTop: 16 }}>{whoLabel}</div>
               <div className="log-who">
                 {!multi && (
                   <button type="button" className={`log-person ${who.includes(FAMILY) ? 'on' : ''}`} onClick={() => toggleWho(FAMILY)}>
@@ -260,10 +318,8 @@ export function LogModal({
                   )
                 })}
               </div>
-              {perEach != null && (
-                <div className="tiny muted" style={{ fontWeight: 600, marginTop: 8 }}>
-                  Shared together → {perEach}{goal.unit ? ` ${goal.unit}` : ''} each, {amount}{goal.unit ? ` ${goal.unit}` : ''} total.
-                </div>
+              {modeHint && (
+                <div className="tiny muted" style={{ fontWeight: 600, marginTop: 8 }}>{modeHint}</div>
               )}
             </>
           )}
@@ -291,7 +347,7 @@ export function LogModal({
               ? 'Saving…'
               : isHabit
                 ? blocked ? 'Done for today ✓' : loggedOn !== today ? '✓ Mark done' : '✓ Mark done for today'
-                : `Log ${logAmount}${goal.unit ? ` ${goal.unit}` : ''}`}
+                : `Log ${amountLabel}`}
           </button>
         </form>
         {canDelete && (

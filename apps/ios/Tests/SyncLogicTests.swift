@@ -86,6 +86,34 @@ private func event(_ id: String, _ raw: String?, allDay: Bool = false) -> Synced
         #expect(groups[0].items.map(\.id) == ["d1b", "d1a"])
         #expect(groups[1].items.map(\.id) == ["d2"])
     }
+
+    // Fading already-ended events — mirrors the web's isPastEvent + the calendar's
+    // EventCard.isPast. All-day events fade only once their day is before today.
+    @Test func isPastUsesEndTimeForTimedEvents() {
+        let now = EventTime.parse("2026-06-16T18:00:00Z")!
+        var ended = event("ended", "2026-06-16T15:00:00Z")
+        ended.endsAt = EventTime.parse("2026-06-16T16:00:00Z")
+        var ongoing = event("ongoing", "2026-06-16T17:30:00Z")
+        ongoing.endsAt = EventTime.parse("2026-06-16T19:00:00Z")
+        #expect(Agenda.isPast(ended, utc, now: now) == true)
+        #expect(Agenda.isPast(ongoing, utc, now: now) == false)
+    }
+
+    @Test func isPastFallsBackToStartWhenOpenEnded() {
+        let now = EventTime.parse("2026-06-16T18:00:00Z")!
+        let started = event("started", "2026-06-16T15:00:00Z")   // no endsAt
+        let upcoming = event("upcoming", "2026-06-16T20:00:00Z")  // no endsAt
+        #expect(Agenda.isPast(started, utc, now: now) == true)
+        #expect(Agenda.isPast(upcoming, utc, now: now) == false)
+    }
+
+    @Test func isPastForAllDayComparesTheDayNotTheClock() {
+        let now = EventTime.parse("2026-06-16T18:00:00Z")!
+        let yesterday = event("yst", "2026-06-15", allDay: true)
+        let today = event("tdy", "2026-06-16", allDay: true)
+        #expect(Agenda.isPast(yesterday, utc, now: now) == true)
+        #expect(Agenda.isPast(today, utc, now: now) == false)
+    }
 }
 
 @Suite struct EncodingTests {
@@ -353,5 +381,45 @@ private final class Counter { var n = 0 }
         #expect(throws: (any Error).self) {
             try decode(#"{"kind":"spaceship"}"#)
         }
+    }
+}
+
+// The `Cal` cache underpins the kiosk perf sweep: hot paths look up a shared
+// gregorian calendar instead of allocating one per render/row/tick. Because it's
+// handed out by value (Calendar is a value type), the contract that matters is
+// that a caller mutating its copy can't poison the shared entry — otherwise one
+// screen tweaking `firstWeekday` would corrupt everyone else's day math.
+@Suite struct CalTests {
+    @Test func gregorianCarriesTheRequestedTimeZone() {
+        #expect(Cal.gregorian(denver).timeZone == denver)
+        #expect(Cal.gregorian(utc).timeZone == utc)
+        #expect(Cal.gregorian(denver).identifier == .gregorian)
+    }
+
+    @Test func mutatingACopyDoesNotPoisonTheCache() {
+        var copy = Cal.gregorian(utc)
+        copy.firstWeekday = copy.firstWeekday == 1 ? 2 : 1   // scribble on the copy
+        copy.timeZone = denver
+        // A fresh fetch for the same zone must be pristine, not the mutated copy.
+        let fresh = Cal.gregorian(utc)
+        #expect(fresh.timeZone == utc)
+        #expect(fresh.firstWeekday != copy.firstWeekday)
+    }
+
+    @Test func sameZoneReturnsAnEqualCachedCalendar() {
+        #expect(Cal.gregorian(denver) == Cal.gregorian(denver))
+    }
+
+    // weekStart must land on a midnight boundary and bracket the input within one week —
+    // asserted locale-agnostically (the exact start day depends on the runner's region).
+    @Test func weekStartBracketsTheDateOnADayBoundary() {
+        let date = EventTime.parse("2026-06-17T15:30:00Z")!   // a Wednesday
+        let start = Cal.weekStart(date, utc)
+        var probe = Cal.gregorian(utc)
+        probe.firstWeekday = Calendar.current.firstWeekday
+        #expect(probe.startOfDay(for: start) == start)        // midnight
+        #expect(start <= date)                                // at or before the date
+        let weekLater = probe.date(byAdding: .day, value: 7, to: start)!
+        #expect(date < weekLater)                             // within the 7-day window
     }
 }

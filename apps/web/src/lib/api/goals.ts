@@ -41,10 +41,16 @@ export interface Goal {
   habitPeriod: string | null
   habitTargetPerPeriod: number | null
   trackingMode: string
+  // Shared-goal counting rule: count_once | split (see GoalCreate PARTICIPANT_TYPES).
+  participantMode: string
+  // For each_tracks goals: 'family' (flat shared target) | 'per_person' (ring = target × members).
+  targetBasis: string
   logMethod: string
   autoFromCalendar: boolean
   deadline: string | null
   isFeatured: boolean
+  // The one hero goal per list. Tier is derived spotlight > featured > normal.
+  isSpotlight: boolean
   hasRewards: boolean
   target: number | null
   totalProgress: number
@@ -56,6 +62,41 @@ export interface Goal {
   streakDays: number
   loggedTodayBy: string[]
   participants: GoalParticipant[]
+}
+
+// ── Display helpers (shared by the goals list, goal detail, and the Today card) ──
+// A goal is shown on its TYPE's axis: a habit shows completions THIS PERIOD vs its
+// cadence (not a lifetime total), a checklist shows steps done, everything else the
+// cumulative amount. Keeping these in one place stops the Today card from drifting
+// from the list/detail.
+export function goalDisplayProgress(g: Goal): number {
+  if (g.goalType === 'habit') return g.periodDone
+  if (g.goalType === 'checklist') return g.stepDone
+  return g.totalProgress
+}
+// The target the progress is measured against. For an each_tracks / per_person goal
+// the ring target is the per-person number × household size (read 12 EACH → 48 for
+// four), so it grows as people join — matching the goals list and detail.
+export function goalDisplayTarget(g: Goal): number | null {
+  if (g.goalType === 'habit') return g.habitTargetPerPeriod ?? g.target
+  if (g.goalType === 'checklist') return g.stepTotal || null
+  if (g.targetBasis === 'per_person' && g.target != null) return g.target * Math.max(1, g.participants.length)
+  return g.target
+}
+// 0..1 completion, clamped. 0 when there's no positive target (e.g. an empty checklist).
+export function goalFraction(g: Goal): number {
+  const t = goalDisplayTarget(g)
+  const p = goalDisplayProgress(g)
+  return t != null && t > 0 ? Math.min(p / t, 1) : 0
+}
+// The one place goal amounts get formatted for display: at most 2 decimals, trailing
+// zeros dropped, with thousands grouping (2.5833… → "2.58", 1.5 → "1.5", 6.16667 →
+// "6.17", 1000 → "1,000"). Amounts are stored exact — an hours+minutes log is 1h5m =
+// 1.0833… hours — so every amount/progress the UI shows MUST route through here rather
+// than render the raw repeating decimal. (Shared so the list, detail, Today card, and
+// person profile can't drift.)
+export function fmtGoalNum(n: number | null | undefined): string {
+  return n == null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 2 })
 }
 
 export interface GoalMilestone {
@@ -110,11 +151,16 @@ export const goalsApi = {
   goal: (id: string) => apiGet<{ goal: GoalDetail }>(`/api/goals/${id}`),
   createGoal: (input: Record<string, unknown>) => apiSend<{ goal: { id: string } }>('POST', '/api/goals', input).then(tap('goals')),
   updateGoal: (id: string, patch: Record<string, unknown>) => apiSend<{ goal: GoalDetail }>('PATCH', `/api/goals/${id}`, patch).then(tap('goals')),
-  logGoal: (id: string, body: { amount: number; personIds?: string[]; personId?: string | null; note?: string | null; loggedOn?: string | null }) =>
+  logGoal: (id: string, body: { amount?: number; hours?: number; minutes?: number; personIds?: string[]; personId?: string | null; note?: string | null; loggedOn?: string | null }) =>
     apiSend<{ ok: boolean }>('POST', `/api/goals/${id}/log`, body).then(tap('goals')),
   toggleStep: (goalId: string, stepId: string, done: boolean) =>
     apiSend<{ ok: boolean }>('PATCH', `/api/goals/${goalId}/steps/${stepId}`, { done }).then(tap('goals')),
   deleteGoal: (id: string) => apiDelete(`/api/goals/${id}`).then(tap('goals')),
+  // Edit or remove a single logged entry (keyed on the grouped id in recent activity).
+  editGoalLog: (goalId: string, logId: string, patch: { amount?: number; note?: string | null; loggedOn?: string | null; personIds?: string[] }) =>
+    apiSend<{ goal: GoalDetail }>('PATCH', `/api/goals/${goalId}/logs/${logId}`, patch).then(tap('goals')),
+  deleteGoalLog: (goalId: string, logId: string) =>
+    apiSend<{ goal: GoalDetail }>('DELETE', `/api/goals/${goalId}/logs/${logId}`).then(tap('goals')),
 }
 
 export interface GoalListsState {

@@ -22,6 +22,8 @@ struct EventRow: View {
                 Avatar(colorHex: event.colorHex, emoji: emoji, size: 30)
             }
         }
+        // Fade events that have already ended — matches the calendar's EventCard.
+        .opacity(Agenda.isPast(event, tz) ? 0.5 : 1)
     }
 
     private var timeText: String {

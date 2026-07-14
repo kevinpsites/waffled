@@ -67,20 +67,20 @@ Migrations normally auto-run on `up` via the one-shot `migrate` service; run
 **Symptom:** **every** client (iOS + kiosk web) shows an **Offline** banner; logs
 show `PSYNC_S2101` signature failures.
 
-**Diagnose (this is almost always it):** `POWERSYNC_JWT_PRIVATE_KEY` is empty in
-`infra/compose/.env`. When it's empty, the api generates a fresh signing key **on
-every restart** — PowerSync then rejects the api-issued JWTs (`PSYNC_S2101`) and all
-clients drop offline. Check `./waffled logs powersync` for the signature error and
-grep the env for an empty key.
+**Diagnose:** on an older or manually managed install, `POWERSYNC_JWT_PRIVATE_KEY`
+may be empty in `infra/compose/.env`. Older api versions generated a fresh signing key
+on every restart, causing PowerSync to reject api-issued JWTs (`PSYNC_S2101`). Check
+`./waffled logs powersync` for the signature error.
 
-**Fix:** set a **stable** value:
+**Fix:** run the installer again; it fills a missing key without rotating an existing one:
 
 ```bash
-# in infra/compose/.env — set once, never rotate
-POWERSYNC_JWT_PRIVATE_KEY=<stable base64 key>
+./waffled up
 ```
 
-Then restart PowerSync to pick it up and re-validate:
+If you manage Compose without `./waffled`, generate a stable RSA-2048 private key and
+set its base64-encoded PEM as `POWERSYNC_JWT_PRIVATE_KEY`. Do not rotate it casually.
+Then restart PowerSync to re-validate:
 
 ```bash
 ./waffled restart powersync     # unstick waffled-powersync

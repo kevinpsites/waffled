@@ -1896,7 +1896,7 @@ struct WaffledAPI: Sendable {
             var asGoal: Goal2 {
                 Goal2(id: id, goalListId: nil, title: title, emoji: emoji, category: category,
                       goalType: goalType ?? "total", unit: unit, habitPeriod: nil, habitTargetPerPeriod: nil,
-                      trackingMode: "shared_total", deadline: nil, isFeatured: false, target: target,
+                      trackingMode: "shared_total", participantMode: nil, targetBasis: nil, deadline: nil, isFeatured: false, isSpotlight: nil, target: target,
                       totalProgress: progress ?? 0, milestoneTotal: 0, milestoneReached: 0,
                       streakDays: streakDays, autoFromCalendar: false, healthMetric: nil, createdAt: nil, participants: [])
             }
@@ -1962,7 +1962,7 @@ struct WaffledAPI: Sendable {
 
     // MARK: Family hub tile counts (non-synced domains, fetched over REST)
 
-    struct GoalDTO: Decodable { let id: String; let isFeatured: Bool }
+    struct GoalDTO: Decodable { let id: String; let isFeatured: Bool; let isSpotlight: Bool? }
     struct ListRefDTO: Decodable { let id: String }
     struct FamilyStarsDTO: Decodable, Sendable { let name: String?; let stars: Int }
 
@@ -2236,8 +2236,16 @@ struct WaffledAPI: Sendable {
         let habitPeriod: String?
         let habitTargetPerPeriod: Int?
         let trackingMode: String
+        /// How a SHARED goal counts a multi-person entry: count_once | split. Optional so an
+        /// older/cached response still decodes; default to "count_once" at read.
+        let participantMode: String?
+        /// For each_tracks goals: family (flat target) | per_person (ring = target × members).
+        let targetBasis: String?
         let deadline: String?
         let isFeatured: Bool
+        /// The one hero goal per list ("Spotlight"). Optional so an older response still
+        /// decodes; default false at read. `isFeatured` is the "Pinned" tier.
+        let isSpotlight: Bool?
         let target: Double?
         let totalProgress: Double
         let milestoneTotal: Int
@@ -2273,9 +2281,12 @@ struct WaffledAPI: Sendable {
         let unit: String?
         let target: Double?
         let trackingMode: String
+        let participantMode: String?
+        let targetBasis: String?
         let habitPeriod: String?
         let habitTargetPerPeriod: Int?
         let isFeatured: Bool
+        let isSpotlight: Bool?
         let hasRewards: Bool
         let totalProgress: Double
         let streakDays: Int
@@ -2360,12 +2371,45 @@ struct WaffledAPI: Sendable {
     /// to `personIds` (one log per person; empty = unattributed pool).
     /// Log progress. `loggedOn` (YYYY-MM-DD) backdates the entry to catch up a missed
     /// day and keep a streak alive; nil logs against today.
-    func logGoalProgress(goalId: String, amount: Double, personIds: [String], note: String?, loggedOn: String? = nil) async throws {
-        var body: [String: JSONValue] = ["amount": .double(amount)]
+    func logGoalProgress(goalId: String, amount: Double, personIds: [String], note: String?, loggedOn: String? = nil,
+                         hours: Int? = nil, minutes: Int? = nil) async throws {
+        // A time goal sends hours + minutes and lets the server fold them to decimal
+        // hours; everything else sends the amount. The two are mutually exclusive (the
+        // server 400s if both are present).
+        var body: [String: JSONValue] = [:]
+        if hours != nil || minutes != nil {
+            body["hours"] = .int(hours ?? 0)
+            body["minutes"] = .int(minutes ?? 0)
+        } else {
+            body["amount"] = .double(amount)
+        }
         if !personIds.isEmpty { body["personIds"] = .array(personIds.map(JSONValue.string)) }
         if let note, !note.isEmpty { body["note"] = .string(note) }
         if let loggedOn, !loggedOn.isEmpty { body["loggedOn"] = .string(loggedOn) }
         try await send("POST", "/api/goals/\(goalId)/log", body: body)
+    }
+
+    /// Tick / untick a checklist step. Server recomputes the goal's done/total.
+    func tickGoalStep(goalId: String, stepId: String, done: Bool) async throws {
+        try await send("PATCH", "/api/goals/\(goalId)/steps/\(stepId)", body: ["done": .bool(done)])
+    }
+
+    /// Edit a logged entry. Any field omitted is left unchanged; `personIds` re-plans who
+    /// took part (a split re-divides, a count-once re-records attendance).
+    func editGoalLog(goalId: String, logId: String,
+                     amount: Double? = nil, personIds: [String]? = nil,
+                     note: String? = nil, loggedOn: String? = nil) async throws {
+        var body: [String: JSONValue] = [:]
+        if let amount { body["amount"] = .double(amount) }
+        if let personIds { body["personIds"] = .array(personIds.map(JSONValue.string)) }
+        if let note { body["note"] = note.isEmpty ? .null : .string(note) }
+        if let loggedOn, !loggedOn.isEmpty { body["loggedOn"] = .string(loggedOn) }
+        try await send("PATCH", "/api/goals/\(goalId)/logs/\(logId)", body: body)
+    }
+
+    /// Delete a logged entry (the whole batch if it was split/attributed).
+    func deleteGoalLog(goalId: String, logId: String) async throws {
+        try await delete("/api/goals/\(goalId)/logs/\(logId)")
     }
 
     /// Push today's Apple Health total for a linked goal. Idempotent server-side: one

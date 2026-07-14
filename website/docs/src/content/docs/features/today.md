@@ -13,10 +13,17 @@ always there, whatever modules you've turned on.
 ## Highlights
 - **The cards** — agenda · tonight's meal · this week · chores rings · grocery, plus
   **module cards** ([Pantry](/administration/modules/), Family Night,
-  [Countdowns](/features/countdowns/)) that appear only when their module is on.
+  [Countdowns](/features/countdowns/), [Goals](/features/goals/)) that appear only when
+  their module is on.
+- 🎯 **Goals card** — shows one goal's progress; pick **My spotlight**, **Family
+  spotlight**, or a **specific goal** from a grouped picker. See [Goals](/features/goals/).
 - 🎛️ **Customize mode** (web / iPhone):
-  - **drag** to reorder or hide cards
-  - save the layout **"for me"** (per-user) or **"for everyone"** (family default)
+  - **drag** a card by its bar to reorder; each card also has an **× to hide it** —
+    hidden cards drop into a tray below the board where a tap adds them back
+  - save the layout **"for me"** (per-user) or **"for everyone"** (family default);
+    both your arrangement **and** which cards you've hidden save per person
+  - a hidden card **stays hidden** — including module cards (Chores, Meals, Grocery,
+    Pantry, Goals, Family Night) that would otherwise reappear when their module is on
   - iPhone keeps a separate mobile `{order, hidden}` config
 - 📐 **iPad layout presets** — Balanced / Agenda / Meals / **Goal-focused**; the iPad
   layout is **device-local**.

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { Icon } from './icons'
 import { LogModal } from './components/LogModal'
 import { ListModal } from './components/ListModal'
-import { useGoalLists, useGoals, useHousehold, can, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
+import { api, useGoalLists, useGoals, useHousehold, can, goalDisplayProgress as dispProgress, goalDisplayTarget as dispTarget, fmtGoalNum, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
 import { CATEGORIES } from './categories'
 import '../styles/goals.css'
 
@@ -12,22 +12,10 @@ const TYPE_LABEL: Record<string, string> = { count: 'Count', total: 'Total', hab
 function frac(progress: number, target: number | null): number {
   return target ? Math.min(progress / target, 1) : 0
 }
-// What a goal shows depends on its type: habits show completions THIS PERIOD vs
-// the cadence (not a lifetime total), milestones show steps done, everything
-// else shows the cumulative amount.
-function dispProgress(g: Goal): number {
-  if (g.goalType === 'habit') return g.periodDone
-  if (g.goalType === 'checklist') return g.stepDone
-  return g.totalProgress
-}
-function dispTarget(g: Goal): number | null {
-  if (g.goalType === 'habit') return g.habitTargetPerPeriod ?? g.target
-  if (g.goalType === 'checklist') return g.stepTotal || null
-  return g.target
-}
-function fmtNum(n: number | null): string {
-  return n == null ? '—' : n.toLocaleString('en-US')
-}
+// `dispProgress` / `dispTarget` (the type-aware, per-person-aware progress + target)
+// are imported from lib/api so the goals list, goal detail, and the Today card all
+// agree — see goalDisplayProgress / goalDisplayTarget there.
+const fmtNum = fmtGoalNum
 // Shrink the ring's hero number so long/fractional values (e.g. a split-backfill
 // "295.99" or "1,234") stay inside the inner circle instead of clipping the ring
 // stroke. `base` is the CSS font-size for a short value.
@@ -101,7 +89,7 @@ function ContribRow({ p, max, unit }: { p: GoalParticipant; max: number; unit: s
         <div style={{ width: `${w}%` }} />
       </div>
       <div className="cv" style={{ whiteSpace: 'nowrap', width: 'auto', minWidth: 56, paddingLeft: 8 }}>
-        {p.progress}
+        {fmtNum(p.progress)}
         {unit ? ` ${unit}` : ''}
       </div>
     </div>
@@ -123,7 +111,7 @@ function SharedHero({ goal, onLog, onOpen }: { goal: Goal; onLog: (g: Goal) => v
           </div>
         </Ring>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <span className="cat-pill hero-pill">⭐ Featured · shared total</span>
+          <span className="cat-pill hero-pill">🌟 Spotlight · shared total</span>
           <div className="wf-serif hero-title">{goal.title}</div>
           <div className="hero-sub">Everyone contributes to one pool{goal.deadline ? ` · by ${fmtDeadline(goal.deadline)}` : ''}</div>
           {goal.participants.length > 0 && (
@@ -158,7 +146,7 @@ function EachHero({ goal, onOpen }: { goal: Goal; onOpen: () => void }) {
   const sub = [
     goal.target ? `${fmtNum(goal.target)} ${goal.unit ?? ''} each`.trim() : null,
     goal.deadline ? `by ${fmtDeadline(goal.deadline)}` : null,
-    ...goal.participants.map((p) => `${firstName(p.name)} ${p.progress}`),
+    ...goal.participants.map((p) => `${firstName(p.name)} ${fmtNum(p.progress)}`),
   ]
     .filter(Boolean)
     .join(' · ')
@@ -167,7 +155,7 @@ function EachHero({ goal, onOpen }: { goal: Goal; onOpen: () => void }) {
       <div className="ch-row">
         <div className="hero-emoji">{goal.emoji ?? '🎯'}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <span className="cat-pill hero-pill">⭐ Featured · each tracks their own</span>
+          <span className="cat-pill hero-pill">🌟 Spotlight · each tracks their own</span>
           <div className="wf-serif hero-title">{goal.title}</div>
           <div className="hero-sub">{sub}</div>
         </div>
@@ -188,7 +176,21 @@ function Hero({ goal, onLog, onOpen }: { goal: Goal; onLog: (g: Goal) => void; o
   return <SharedHero goal={goal} onLog={onLog} onOpen={onOpen} />
 }
 
-function MoreGoalCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
+// A small pin/unpin corner button, stopping propagation so it doesn't open the goal.
+function PinButton({ goal, onPin }: { goal: Goal; onPin: () => void }) {
+  const pinned = goal.isFeatured
+  return (
+    <button
+      type="button"
+      className={`goal-pin ${pinned ? 'on' : ''}`}
+      title={pinned ? 'Unpin from top' : 'Pin to top'}
+      aria-label={pinned ? 'Unpin from top' : 'Pin to top'}
+      onClick={(e) => { e.stopPropagation(); onPin() }}
+    >📌</button>
+  )
+}
+
+function MoreGoalCard({ goal, onClick, onPin, canPin }: { goal: Goal; onClick: () => void; onPin?: () => void; canPin?: boolean }) {
   const c = goal.category ? CATEGORIES[goal.category] : null
   return (
     <div className="goal-card clickable more-goal" onClick={onClick}>
@@ -202,6 +204,32 @@ function MoreGoalCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
           <span className="num">{fmtNum(dispProgress(goal))}</span>
           <span className="tiny muted">/{fmtNum(dispTarget(goal))}</span>
         </div>
+        {canPin && onPin && <PinButton goal={goal} onPin={onPin} />}
+      </div>
+      <div className="gc-bar">
+        <div style={{ width: `${(frac(dispProgress(goal), dispTarget(goal)) * 100).toFixed(0)}%`, background: barColor(goal) }} />
+      </div>
+    </div>
+  )
+}
+
+// A Pinned card — a touch more prominent than a "More" row, with a Pinned tag. (Internally
+// still the `is_featured` flag; "Pinned" is just the clearer user-facing name.)
+function PinnedCard({ goal, onClick, onPin, canPin }: { goal: Goal; onClick: () => void; onPin?: () => void; canPin?: boolean }) {
+  const c = goal.category ? CATEGORIES[goal.category] : null
+  return (
+    <div className="goal-card clickable more-goal featured-goal" onClick={onClick}>
+      <div className="gc-top">
+        <div className="goal-emoji">{goal.emoji ?? c?.emoji ?? '🎯'}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="gc-t">{goal.title} <span className="feat-tag">📌 Pinned</span></div>
+          <div className="tiny muted goal-desc">{descriptor(goal)}</div>
+        </div>
+        <div className="goal-num">
+          <span className="num">{fmtNum(dispProgress(goal))}</span>
+          <span className="tiny muted">/{fmtNum(dispTarget(goal))}</span>
+        </div>
+        {canPin && onPin && <PinButton goal={goal} onPin={onPin} />}
       </div>
       <div className="gc-bar">
         <div style={{ width: `${(frac(dispProgress(goal), dispTarget(goal)) * 100).toFixed(0)}%`, background: barColor(goal) }} />
@@ -247,12 +275,24 @@ export function Goals() {
   const { goals, loading: goalsLoading, refetch } = useGoals(selected?.id ?? null)
 
 
+  // Pinning a goal is a lightweight edit — allowed for goal.manage holders, or the owner of
+  // a solo goal. Quick toggle of the Pinned tier (isFeatured) straight from the card.
+  const canEditGoal = (g: Goal) => canManageGoals || (g.participants.length === 1 && g.participants[0].personId === person?.id)
+  const togglePin = async (g: Goal) => {
+    try { await api.updateGoal(g.id, { isFeatured: !g.isFeatured }); refetch() } catch { /* leave as-is on failure */ }
+  }
+
   const isIndividual = (selected?.members.length ?? 0) === 1
   const visible = goals.filter(
     (g) => isIndividual || filter === 'all' || (filter === 'shared' ? g.trackingMode === 'shared_total' : g.trackingMode === 'each_tracks')
   )
-  const featured = visible.find((g) => g.isFeatured) ?? null
-  const more = visible.filter((g) => g !== featured)
+  // Three tiers (mirrors the API's derivation): the one Spotlight hero, the Pinned band,
+  // then everything else as compact "More" rows. The API already returns goals A–Z, so the
+  // Pinned and More bands are alphabetical (manual Pinned drag order is a roadmap item).
+  // `isFeatured` is the internal flag behind the user-facing "Pinned" tier.
+  const spotlight = visible.find((g) => g.isSpotlight) ?? null
+  const pinned = visible.filter((g) => g.isFeatured && !g.isSpotlight)
+  const more = visible.filter((g) => !g.isSpotlight && !g.isFeatured)
   // For an individual list, the visible goals ARE that person's, so the best
   // single-goal streak is a free at-a-glance "on a roll" cue. (Distinct from the
   // whole-person chore+goal streak on their profile — labeled as a goal streak.)
@@ -345,14 +385,30 @@ export function Goals() {
           </div>
         </div>
 
-        {featured && <Hero goal={featured} onLog={setLogging} onOpen={() => navigate(`/goals/${featured.id}`)} />}
+        {spotlight && (
+          <>
+            <div className="flabel more-label">SPOTLIGHT</div>
+            <Hero goal={spotlight} onLog={setLogging} onOpen={() => navigate(`/goals/${spotlight.id}`)} />
+          </>
+        )}
+
+        {pinned.length > 0 && (
+          <>
+            <div className="flabel more-label">PINNED</div>
+            <div className="more-grid">
+              {pinned.map((g) => (
+                <PinnedCard key={g.id} goal={g} onClick={() => navigate(`/goals/${g.id}`)} onPin={() => togglePin(g)} canPin={canEditGoal(g)} />
+              ))}
+            </div>
+          </>
+        )}
 
         {more.length > 0 && (
           <>
-            <div className="flabel more-label">MORE {(selected?.name ?? '').toUpperCase()} GOALS</div>
+            <div className="flabel more-label">MORE {(selected?.name ?? '').toUpperCase()} GOALS <span className="tiny muted" style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· A–Z</span></div>
             <div className="more-grid">
               {more.map((g) => (
-                <MoreGoalCard key={g.id} goal={g} onClick={() => navigate(`/goals/${g.id}`)} />
+                <MoreGoalCard key={g.id} goal={g} onClick={() => navigate(`/goals/${g.id}`)} onPin={() => togglePin(g)} canPin={canEditGoal(g)} />
               ))}
             </div>
           </>

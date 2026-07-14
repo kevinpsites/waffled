@@ -74,10 +74,189 @@ afterAll(async () => {
   await pg?.stop()
 })
 
+// Shuffle fallback: when NO AI provider is configured, the household default is
+// 'heuristic', so POST /api/meals/plan-week no longer 501s — it fills the empty
+// slots with random *library* recipes, skipping anything already planned this week
+// or cooked in the last ~14 days. These run BEFORE the provider is switched to
+// 'openai' further down, so heuristic (no provider) is the active selection.
+describe('shuffle week (no AI provider)', () => {
+  async function makeRecipe(title: string, extra: Record<string, unknown> = {}) {
+    const res = await call('POST', '/api/recipes', kevin, { title, ...extra })
+    expect(res.statusCode).toBe(201)
+    return JSON.parse(res.body).recipe as { id: string; title: string }
+  }
+
+  // Covers "skips a recipe cooked in the last 14 days; an un-cooked one is eligible".
+  // Runs first, so the library is exactly {cooked, fresh}: excluding the cooked one
+  // leaves a single eligible recipe, making the pick deterministic.
+  it('skips a recipe cooked in the last 14 days but keeps an un-cooked one', async () => {
+    const cooked = await makeRecipe('Sh Recently Cooked')
+    const fresh = await makeRecipe('Sh Never Cooked') // last_cooked_at stays null
+    expect((await call('POST', `/api/recipes/${cooked.id}/cooked`, kevin)).statusCode).toBe(200)
+    const res = await call('POST', '/api/meals/plan-week', kevin, { start: '2026-09-06' })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.via).toBe('shuffle')
+    // Only the never-cooked recipe is eligible → it (and only it) is suggested.
+    const ids = body.suggestions.map((s: { recipeId: string }) => s.recipeId)
+    expect(ids.every((id: string) => id === fresh.id)).toBe(true)
+    expect(ids).not.toContain(cooked.id)
+  })
+
+  // Covers "graceful when eligible pool < empty slots (fills what it can)".
+  it('fills what it can when the eligible pool is smaller than the empty slots', async () => {
+    // Library so far: {cooked (excluded), fresh}. Add one → 2 eligible for a 7-day week.
+    const extra = await makeRecipe('Sh Small Pool Extra')
+    const res = await call('POST', '/api/meals/plan-week', kevin, { start: '2026-09-13' })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.via).toBe('shuffle')
+    // Two eligible recipes, seven empty slots → fills two, no crash, no repeat.
+    expect(body.suggestions.length).toBe(2)
+    const ids = body.suggestions.map((s: { recipeId: string }) => s.recipeId)
+    expect(new Set(ids).size).toBe(2)
+    for (const s of body.suggestions) {
+      expect(s).toMatchObject({ mealType: 'dinner', note: 'Shuffled' })
+      expect(typeof s.recipeId).toBe('string') // always a real library recipe
+    }
+    void extra
+  })
+
+  // Covers "fills every empty target date from the library".
+  it('fills every empty target date from the library', async () => {
+    for (const t of ['Sh Curry', 'Sh Chili', 'Sh Pasta', 'Sh Roast', 'Sh Stir Fry', 'Sh Pie']) await makeRecipe(t)
+    const res = await call('POST', '/api/meals/plan-week', kevin, { start: '2026-09-20' })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.via).toBe('shuffle')
+    const days = ['2026-09-20', '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25', '2026-09-26']
+    expect(new Set(body.suggestions.map((s: { date: string }) => s.date))).toEqual(new Set(days))
+    const ids = body.suggestions.map((s: { recipeId: string }) => s.recipeId)
+    for (const id of ids) expect(typeof id).toBe('string') // every card links a real recipe
+    expect(new Set(ids).size).toBe(ids.length) // no recipe used twice
+  })
+
+  // Covers "skips a recipe already planned this week".
+  it('skips a recipe already planned this week', async () => {
+    const planned = await makeRecipe('Sh Already Planned')
+    const pre = await call('POST', '/api/meals/plan', kevin, { date: '2026-09-28', mealType: 'dinner', recipeId: planned.id })
+    expect(pre.statusCode).toBeLessThan(300)
+    const res = await call('POST', '/api/meals/plan-week', kevin, { start: '2026-09-27' })
+    const body = JSON.parse(res.body)
+    expect(body.via).toBe('shuffle')
+    // The already-planned recipe is not re-suggested, and its filled day is not a target.
+    expect(body.suggestions.some((s: { recipeId: string }) => s.recipeId === planned.id)).toBe(false)
+    expect(body.suggestions.some((s: { date: string }) => s.date === '2026-09-28')).toBe(false)
+  })
+
+  // Covers "leaves already-filled slots untouched".
+  it('leaves already-filled slots untouched', async () => {
+    const pre = await call('POST', '/api/meals/plan', kevin, { date: '2026-10-06', mealType: 'dinner', title: 'Eating out' })
+    expect(pre.statusCode).toBeLessThan(300)
+    const res = await call('POST', '/api/meals/plan-week', kevin, { start: '2026-10-04' })
+    const body = JSON.parse(res.body)
+    expect(body.via).toBe('shuffle')
+    expect(body.suggestions.some((s: { date: string }) => s.date === '2026-10-06')).toBe(false) // untouched
+    expect(body.suggestions.length).toBeGreaterThan(0)
+  })
+})
+
+// Month parity: with no AI provider, POST /api/meals/plan-month also shuffles the
+// month's empty dinner nights from the library instead of 501ing — same rules as the
+// week (skip planned-this-window / recently-cooked, leave filled nights untouched,
+// degrade gracefully). Runs before the 'openai' switch below, so heuristic is active.
+// (Uses November 2026 + 'Mo …' recipe titles to stay clear of the week tests above.)
+describe('shuffle month (no AI provider)', () => {
+  async function makeRecipe(title: string, extra: Record<string, unknown> = {}) {
+    const res = await call('POST', '/api/recipes', kevin, { title, ...extra })
+    expect(res.statusCode).toBe(201)
+    return JSON.parse(res.body).recipe as { id: string; title: string }
+  }
+  // Every day of November 2026 — used to deal the whole eligible pool at once.
+  const NOV_ALL = Array.from({ length: 30 }, (_, i) => `2026-11-${String(i + 1).padStart(2, '0')}`)
+
+  // Covers "fills every empty target date from the library".
+  it('fills every empty target dinner night from the library', async () => {
+    await makeRecipe('Mo Alpha')
+    await makeRecipe('Mo Beta')
+    await makeRecipe('Mo Gamma')
+    const dates = ['2026-11-02', '2026-11-03', '2026-11-04'] // three explicit weekday nights
+    const res = await call('POST', '/api/meals/plan-month', kevin, { start: '2026-11-01', dates })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.via).toBe('shuffle')
+    expect(body.mealType).toBe('dinner')
+    expect(Array.isArray(body.existing)).toBe(true) // planMonth-shaped result
+    expect(new Set(body.suggestions.map((s: { date: string }) => s.date))).toEqual(new Set(dates))
+    const ids = body.suggestions.map((s: { recipeId: string }) => s.recipeId)
+    for (const id of ids) expect(typeof id).toBe('string') // real library recipe each
+    expect(new Set(ids).size).toBe(ids.length) // no recipe twice
+    for (const s of body.suggestions) expect(s).toMatchObject({ mealType: 'dinner', note: 'Shuffled' })
+  })
+
+  // Covers "skips a recipe already planned in the window".
+  it('skips a recipe already planned this month', async () => {
+    const planned = await makeRecipe('Mo Already Planned')
+    // Plan it on a November weekday (Monday) — the default weekday planner targets it.
+    const pre = await call('POST', '/api/meals/plan', kevin, { date: '2026-11-09', mealType: 'dinner', recipeId: planned.id })
+    expect(pre.statusCode).toBeLessThan(300)
+    const res = await call('POST', '/api/meals/plan-month', kevin, { start: '2026-11-01' })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.via).toBe('shuffle')
+    expect(body.suggestions.some((s: { recipeId: string }) => s.recipeId === planned.id)).toBe(false) // not re-suggested
+    expect(body.suggestions.some((s: { date: string }) => s.date === '2026-11-09')).toBe(false) // filled night not targeted
+    expect(body.existing.some((s: { date: string }) => s.date === '2026-11-09')).toBe(true) // surfaced as existing
+  })
+
+  // Covers "skips a recipe cooked in the last 14 days; an un-cooked one is eligible".
+  // Dealing the whole month (every day > eligible pool) uses each eligible recipe once,
+  // so exclusion of the cooked one and inclusion of the fresh one are both deterministic.
+  it('skips a recipe cooked in the last 14 days but keeps an un-cooked one', async () => {
+    const cooked = await makeRecipe('Mo Recently Cooked')
+    const fresh = await makeRecipe('Mo Never Cooked') // last_cooked_at stays null
+    expect((await call('POST', `/api/recipes/${cooked.id}/cooked`, kevin)).statusCode).toBe(200)
+    const res = await call('POST', '/api/meals/plan-month', kevin, { start: '2026-11-01', dates: NOV_ALL })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.via).toBe('shuffle')
+    const ids = new Set(body.suggestions.map((s: { recipeId: string }) => s.recipeId))
+    expect(ids.has(cooked.id)).toBe(false) // recently cooked → excluded
+    expect(ids.has(fresh.id)).toBe(true) // never cooked → eligible, and every eligible dish is dealt
+  })
+
+  // Covers "leaves already-filled slots untouched".
+  it('leaves already-filled dinner nights untouched', async () => {
+    const pre = await call('POST', '/api/meals/plan', kevin, { date: '2026-11-11', mealType: 'dinner', title: 'Eating out' })
+    expect(pre.statusCode).toBeLessThan(300)
+    const res = await call('POST', '/api/meals/plan-month', kevin, { start: '2026-11-01' })
+    const body = JSON.parse(res.body)
+    expect(body.via).toBe('shuffle')
+    expect(body.suggestions.some((s: { date: string }) => s.date === '2026-11-11')).toBe(false) // untouched
+    expect(body.existing.some((s: { date: string }) => s.date === '2026-11-11')).toBe(true)
+  })
+
+  // Covers "graceful when eligible pool < empty slots (fills what it can)".
+  it('degrades gracefully when the eligible pool is smaller than the nights', async () => {
+    // The library is far smaller than a 30-night month → it fills what it can, no crash.
+    const res = await call('POST', '/api/meals/plan-month', kevin, { start: '2026-11-01', dates: NOV_ALL })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.via).toBe('shuffle')
+    expect(body.suggestions.length).toBeGreaterThan(0)
+    expect(body.suggestions.length).toBeLessThan(NOV_ALL.length) // did not (and could not) fill all 30
+    const ids = body.suggestions.map((s: { recipeId: string }) => s.recipeId)
+    expect(new Set(ids).size).toBe(ids.length) // one distinct recipe per filled night
+  })
+})
+
 describe('plan my week', () => {
-  it('501s when no AI provider is selected', async () => {
+  // With no provider configured (heuristic default) plan-week now shuffles the empty
+  // slots from the library instead of 501ing. (Previously asserted a 501.)
+  it('shuffles the week when no AI provider is selected', async () => {
     const res = await call('POST', '/api/meals/plan-week', kevin, { start: '2026-07-01' })
-    expect(res.statusCode).toBe(501)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).via).toBe('shuffle')
   })
 
   it('returns validated dinner suggestions for empty days', async () => {

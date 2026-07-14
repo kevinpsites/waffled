@@ -8,6 +8,10 @@ import SwiftUI
 /// open as sheets. See `apps/ios/IPAD_ROADMAP.md`.
 struct KioskDashboard: View {
     @Environment(SyncManager.self) private var sync
+    /// Cook Mode is presented app-level (from `RootView`) off this store. Because this
+    /// page opens the recipe as a `.fullScreenCover`, that root cover would otherwise
+    /// queue behind it — so we dismiss the recipe cover the moment a cook starts.
+    @Environment(CookSessionStore.self) private var cook
 
     /// Switch the shell's nav rail to another page (injected by `KioskShell`).
     var navigate: (KioskNav) -> Void = { _ in }
@@ -45,7 +49,7 @@ struct KioskDashboard: View {
     /// the featured goal, else a whole-family goal, else the first goal.
     private var kioskGoal: WaffledAPI.Goal? {
         if !kioskGoalId.isEmpty, let g = model.goals.first(where: { $0.id == kioskGoalId }) { return g }
-        if let f = model.goals.first(where: { $0.isFeatured }) { return f }
+        if let f = model.goals.first(where: { $0.isSpotlight ?? false }) ?? model.goals.first(where: { $0.isFeatured }) { return f }
         let everyone = Set(sync.members.map(\.id))
         if everyone.count > 1,
            let fam = model.goals.first(where: { everyone.isSubset(of: Set($0.participants.map(\.personId))) }) {
@@ -105,9 +109,9 @@ struct KioskDashboard: View {
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
         .sheet(item: $logGoal) { g in
-            GoalLogSheet(goal: g) { amount, ids, note, loggedOn in
+            GoalLogSheet(goal: g) { amount, hours, minutes, ids, note, loggedOn in
                 Task {
-                    try? await WaffledAPI().logGoalProgress(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn)
+                    try? await WaffledAPI().logGoalProgress(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn, hours: hours, minutes: minutes)
                     await model.loadGoals()
                     sync.touchGoals()
                 }
@@ -126,6 +130,12 @@ struct KioskDashboard: View {
                         }
                     }
             }
+        }
+        // Starting a cook (Cook button / auto-cook) closes this recipe cover so the
+        // app-root Cook Mode cover presents immediately instead of queueing behind it.
+        // Cook Mode is durable (survives backgrounding); closing it lands back on Today.
+        .onChange(of: cook.isActive) { _, active in
+            if active { recipeTarget = nil }
         }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
@@ -971,9 +981,8 @@ struct KioskDashboard: View {
     // MARK: date helpers
 
     static func dateFromKey(_ key: String, _ tz: TimeZone) -> Date? {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = tz
-        f.dateFormat = "yyyy-MM-dd"
-        return f.date(from: key)
+        // Called per meal-plan row — route through the cached formatter (POSIX + gregorian).
+        DateFmt.date(key, "yyyy-MM-dd", tz)
     }
 
     static func dayShort(_ key: String, _ tz: TimeZone) -> String {

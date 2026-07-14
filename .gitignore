@@ -20,6 +20,9 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+
+# astro generated cache/types (website/.astro) — regenerated on dev/build
+.astro/
 *.log
 .DS_Store
 

@@ -41,17 +41,27 @@ Waffled runs as a small Docker Compose stack (Postgres · PowerSync · api · Ca
 is **built in** — no Auth0 or external identity provider required. You can optionally
 attach your own SSO later (see below).
 
+Before starting, install **Docker Desktop** (or Docker Engine with Compose v2), open it,
+and wait until Docker reports that it is running. Use Terminal on macOS/Linux or Git Bash/WSL
+on Windows; the `waffled` helper is a Bash script.
+
 ```bash
-git clone <this-repo> waffled && cd waffled
+git clone https://github.com/kevinpsites/waffled.git
+cd waffled
 ./waffled setup  # optional: pick how devices reach the server (skip for localhost-only)
 ./waffled up     # creates .env (generated secrets), pulls prebuilt images, migrates, starts
 ```
+
+You do **not** need to create an `.env` file or obtain API keys for the core app. A successful
+start ends with all five services healthy and prints the exact browser address to open. If it
+does not, run `./waffled doctor` for a plain-language diagnosis.
 
 That single command is the whole install — no host toolchain, no separate migrate
 step. On first run `./waffled up`:
 
 1. creates `infra/compose/.env` from `.env.example`, generating `LOCAL_JWT_SECRET`,
-   `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you (existing `.env` left alone),
+   `TOKEN_ENCRYPTION_KEY`, `POWERSYNC_JWT_PRIVATE_KEY`, and `POSTGRES_PASSWORD` for you
+   (missing secrets are also filled during upgrades),
 2. pulls the prebuilt `api` / `caddy` / `backup` images from GHCR (plus Postgres +
    PowerSync); use `./waffled up --build` to build from source instead,
 3. runs the one-shot **migrate** service to apply the database schema (so PowerSync's
@@ -73,7 +83,7 @@ your **admin account** (name, email, password). That's it — you're in.
 
 `./waffled up` writes a working `infra/compose/.env` for you; you only edit it to enable
 optional integrations or to run somewhere other than `localhost`. The required values
-are the three generated secrets plus the `POSTGRES_*` settings. Optional (leave blank
+are the four generated secrets and the remaining `POSTGRES_*` settings. Optional (leave blank
 to skip): `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OLLAMA_HOST` for the AI capture
 bar, and `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALENDAR_REDIRECT_URI`
 for 2-way Google Calendar sync. See the comments in `.env.example` for the full list
@@ -158,7 +168,7 @@ password). Email-only members can sign in via SSO once OIDC is configured.
 Waffled supports backend-mediated OIDC (auth-code + PKCE) against any OpenID-Connect
 provider (Authentik, Keycloak, Google, …). It's **invite-gated**: a person can only
 sign in via SSO if the provider's *verified email* already matches a family member's
-login email. Configure it in **Settings → Login & security** (admin only):
+login email. Configure it in **Settings → Login & security** (installation owner only):
 
 1. Ensure `TOKEN_ENCRYPTION_KEY` is set (the client secret is encrypted at rest).
 2. **Issuer URL** — your provider's discovery base, e.g.
@@ -215,6 +225,7 @@ and credential→identity wiring the API uses, so there's one source of truth.
 | `list-accounts` | List each human (account) and every household they belong to, with an owner/admin/member marker. |
 | `make-admin (--email <e> \| --person <uuid>)` | Grant admin. |
 | `revoke-admin (--email <e> \| --person <uuid>)` | Revoke admin (the household owner can't be demoted). |
+| `set-installation-owner --email <e>` | Transfer or recover ownership of installation-wide login and SSO settings. This is a host-level break-glass action. |
 | `password-login <on\|off>` | Enable/disable email+password login (the DB toggle mirrored in Settings → Login & security). |
 | `clear-calendar-error (--email <e> \| --all)` | Clear a stuck Google account's "sync failing" flag. (The token itself is fixed by **Reconnect** in Settings → Calendars — a browser OAuth step the CLI can't do.) |
 | `prune-sessions [--email <e>]` | Revoke refresh tokens for one member (**across all of their households**), or everyone — forces re-login. |

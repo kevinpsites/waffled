@@ -6,6 +6,11 @@ import SwiftUI
 /// phone is just a convenient remote for them. The per-device "use this as the
 /// display" toggle and the live Preview are web-display-only, so they're omitted here.
 struct DisplayKioskSettingsView: View {
+    // RelativeDateTimeFormatter is expensive; reuse one for the per-device "Last seen" label.
+    private static let relative: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter(); f.unitsStyle = .short; return f
+    }()
+
     @Environment(SyncManager.self) private var sync
     @Environment(KioskMode.self) private var kiosk
     @Environment(Session.self) private var session
@@ -263,8 +268,7 @@ struct DisplayKioskSettingsView: View {
 
     private func lastSeen(_ iso: String?) -> String {
         guard let iso, let d = EventTime.parse(iso) else { return "Never connected" }
-        let f = RelativeDateTimeFormatter(); f.unitsStyle = .short
-        return "Last seen \(f.localizedString(for: d, relativeTo: Date()))"
+        return "Last seen \(Self.relative.localizedString(for: d, relativeTo: Date()))"
     }
 
     private var readOnlyNotice: some View {
@@ -494,11 +498,11 @@ struct DisplayKioskSettingsView: View {
         var c = DateComponents()
         c.hour = Int(parts.first ?? "0") ?? 0
         c.minute = parts.count > 1 ? (Int(parts[1]) ?? 0) : 0
-        return Calendar.current.date(from: c) ?? Date(timeIntervalSinceReferenceDate: 0)
+        return Cal.current.date(from: c) ?? Date(timeIntervalSinceReferenceDate: 0)
     }
 
     private static func formatTime(_ date: Date) -> String {
-        let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+        let c = Cal.current.dateComponents([.hour, .minute], from: date)
         return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
     }
 

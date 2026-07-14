@@ -6,10 +6,18 @@ import { apiGet, apiSend, apiDelete } from './client'
 
 export type LayoutScope = 'user' | 'family'
 
+// A normalized layout: the 3-column grid + the cards the user explicitly hid from
+// Today. `hidden` is what lets a removed card (esp. a module card that would
+// otherwise auto-reappear) stay gone until the user shows it again.
+export interface StoredLayout {
+  cols: string[][]
+  hidden: string[]
+}
+
 export interface TodayLayoutResponse {
-  resolved: string[][]
-  family: string[][] | null
-  user: string[][] | null
+  resolved: StoredLayout
+  family: unknown
+  user: unknown
   source: LayoutScope | 'default'
   cards: string[]
   canEditFamily: boolean
@@ -17,25 +25,23 @@ export interface TodayLayoutResponse {
 
 export const todayLayoutApi = {
   get: () => apiGet<TodayLayoutResponse>('/api/today-layout'),
-  save: (scope: LayoutScope, layout: string[][]) =>
-    apiSend<{ ok: boolean; layout: string[][] }>('PUT', '/api/today-layout', { scope, layout }),
+  save: (scope: LayoutScope, layout: StoredLayout) =>
+    apiSend<{ ok: boolean; layout: StoredLayout }>('PUT', '/api/today-layout', { scope, layout }),
   reset: (scope: LayoutScope) => apiDelete(`/api/today-layout?scope=${scope}`),
 }
 
 export interface TodayLayoutState {
-  resolved: string[][]
-  family: string[][] | null
-  user: string[][] | null
+  resolved: StoredLayout
   source: LayoutScope | 'default'
   canEditFamily: boolean
   loading: boolean
   error: boolean
-  save: (scope: LayoutScope, layout: string[][]) => Promise<void>
+  save: (scope: LayoutScope, layout: StoredLayout) => Promise<void>
   reset: (scope: LayoutScope) => Promise<void>
   refetch: () => void
 }
 
-const FALLBACK: string[][] = [['agenda'], ['tonight', 'week'], ['chores', 'grocery']]
+const FALLBACK: StoredLayout = { cols: [['agenda'], ['tonight', 'week'], ['chores', 'grocery']], hidden: [] }
 
 export function useTodayLayout(): TodayLayoutState {
   const [data, setData] = useState<TodayLayoutResponse | null>(null)
@@ -56,7 +62,7 @@ export function useTodayLayout(): TodayLayoutState {
 
   const refetch = () => setNonce((n) => n + 1)
 
-  async function save(scope: LayoutScope, layout: string[][]): Promise<void> {
+  async function save(scope: LayoutScope, layout: StoredLayout): Promise<void> {
     const r = await todayLayoutApi.save(scope, layout)
     // Reflect the saved (server-reconciled) layout immediately.
     setData((d) =>
@@ -74,8 +80,6 @@ export function useTodayLayout(): TodayLayoutState {
 
   return {
     resolved: data?.resolved ?? FALLBACK,
-    family: data?.family ?? null,
-    user: data?.user ?? null,
     source: data?.source ?? 'default',
     canEditFamily: data?.canEditFamily ?? false,
     loading,
