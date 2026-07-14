@@ -174,6 +174,48 @@ status() {
   return "$any_fail"
 }
 
+services_ready() {
+  local targets=("$@")
+  [ "${#targets[@]}" -gt 0 ] || targets=("${SERVICES[@]}")
+  for s in "${targets[@]}"; do
+    local cid state health
+    cid="$("${DC[@]}" ps -q "$s" 2>/dev/null || true)"
+    [ -n "$cid" ] || return 1
+    state="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo unknown)"
+    health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}—{{end}}' "$cid" 2>/dev/null || echo unknown)"
+    [ "$state" = "running" ] && { [ "$health" = "healthy" ] || [ "$health" = "—" ]; } || return 1
+  done
+}
+
+# Compose returns as soon as containers start, several seconds before their health
+# checks pass. Wait briefly so first-run users see the settled state, not a false alarm.
+wait_for_services() {
+  local remaining="${WAFFLED_HEALTH_ATTEMPTS:-30}"
+  local requested=("$@") targets=() service arg
+  for service in "${SERVICES[@]}"; do
+    for arg in "${requested[@]}"; do
+      if [ "$arg" = "$service" ]; then
+        targets+=("$service")
+        break
+      fi
+    done
+  done
+  [ "${#targets[@]}" -gt 0 ] || targets=("${SERVICES[@]}")
+  printf '%s' "${c_dim}Waiting for services to become healthy"
+  while [ "$remaining" -gt 0 ]; do
+    if services_ready "${targets[@]}"; then
+      echo "${c_grn} ready.${c_reset}"
+      return 0
+    fi
+    remaining=$((remaining - 1))
+    printf '.'
+    sleep 2
+  done
+  echo
+  echo "${c_ylw}Services are taking longer than expected; showing their current state.${c_reset}"
+  return 1
+}
+
 # Best-effort primary LAN IPv4 (for "reach it from a tablet"). Empty if undetectable.
 detect_lan_ip() {
   local ip=""
@@ -261,6 +303,7 @@ case "$cmd" in
       "${DC[@]}" pull "$@" || echo "${c_ylw}⚠ Couldn't pull some images — using local/cached copies. Run './waffled up --build' to build from source.${c_reset}"
       "${DC[@]}" up -d "$@"
     fi
+    wait_for_services "$@" || true
     echo; status || true
     next_steps
     ;;
@@ -305,11 +348,12 @@ case "$cmd" in
     echo "${c_dim}Pulling images + restarting stack (applying migrations)…${c_reset}"
     "${DC[@]}" pull || echo "${c_ylw}⚠ Couldn't pull some images — confirm the tag exists on GHCR, or run './waffled up --build' to build from source.${c_reset}"
     "${DC[@]}" up -d
+    wait_for_services || true
     echo; status || true
     ;;
   down)    "${DC[@]}" down "$@" ;;
-  restart) "${DC[@]}" restart "$@"; echo; status || true ;;
-  rebuild) preflight || exit 1; ensure_env; ensure_powersync_proxy_env; ensure_google_callback_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; echo; status || true ;;
+  restart) "${DC[@]}" restart "$@"; wait_for_services "$@" || true; echo; status || true ;;
+  rebuild) preflight || exit 1; ensure_env; ensure_powersync_proxy_env; ensure_google_callback_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; wait_for_services "$@" || true; echo; status || true ;;
   logs)    "${DC[@]}" logs -f --tail=120 "$@" ;;
   status|st|ps) status || true ;;
   migrate)
@@ -357,6 +401,7 @@ case "$cmd" in
       "gunzip -c /backups/$file | psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 --single-transaction"
     echo "${c_dim}Restarting the stack (migrations re-run to catch up an older dump)…${c_reset}"
     export_build_meta; "${DC[@]}" up -d
+    wait_for_services || true
     echo; status || true
     echo "${c_grn}Restore complete.${c_reset}"
     ;;

@@ -213,6 +213,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The iOS photo grid now reuses decoded images while scrolling.** Photo tiles no longer
   refetch and decode the same image whenever SwiftUI recreates a grid cell.
 
+- **`./waffled up` now waits for health checks before showing its final status.** Normal startup
+  no longer looks like a failure just because API, PowerSync, or Caddy is still warming up.
+
 - **Per-step timers now carry into the recipe editor when parsing.** Building a recipe
   from a photo, a description, or pasted Markdown correctly detected each step's timer but
   dropped it when filling the form, so every step showed "Add timer" even when the recipe
