@@ -51,7 +51,9 @@ async function addPerson(hh: string, p: {
   return row.id
 }
 
-// A timed event at local wall-clock `HH:MM` on current_date + dayOffset (household TZ).
+// A timed event at local wall-clock `HH:MM`, `day` days after the Sunday of the
+// current week (day 0 = this Sunday; negative = earlier). Anchored to the week —
+// not the seed day — so the calendar always fills the same weeks. Household TZ.
 async function timedEvent(hh: string, o: {
   title: string; emoji?: string; day: number; time: string; durMin?: number; person: string | null
 }) {
@@ -59,8 +61,8 @@ async function timedEvent(hh: string, o: {
     `insert into events (household_id, title, starts_at, ends_at, all_day, timezone, person_id,
        origin, sync_state, status)
      values ($1,$2,
-       ((current_date + $3::int)::timestamp + $4::time) at time zone $5,
-       ((current_date + $3::int)::timestamp + $4::time + ($6 || ' minutes')::interval) at time zone $5,
+       ((current_date - extract(dow from current_date)::int + $3::int)::timestamp + $4::time) at time zone $5,
+       ((current_date - extract(dow from current_date)::int + $3::int)::timestamp + $4::time + ($6 || ' minutes')::interval) at time zone $5,
        false,$5,$7,'manual','local_only','confirmed')`,
     [hh, o.emoji ? `${o.emoji} ${o.title}` : o.title, o.day, o.time, TZ, String(o.durMin ?? 60), o.person]
   )
@@ -72,7 +74,7 @@ async function allDayEvent(hh: string, o: {
   await query(
     `insert into events (household_id, title, starts_at, all_day, timezone, person_id,
        origin, sync_state, status, is_countdown)
-     values ($1,$2,(current_date + $3::int)::timestamp at time zone $4,true,$4,$5,
+     values ($1,$2,(current_date - extract(dow from current_date)::int + $3::int)::timestamp at time zone $4,true,$4,$5,
        'manual','local_only','confirmed',$6)`,
     [hh, o.emoji ? `${o.emoji} ${o.title}` : o.title, o.day, TZ, o.person, o.countdown ?? false]
   )
@@ -326,22 +328,33 @@ async function seedBase() {
        values ($1,$2,$3,$4,$5, now() - ($6 || ' days')::interval, $7::jsonb, $8, $8)`,
       [hh, cap, emoji, color, memory, String(days), JSON.stringify({ heart: hearts }), jerry])
 
-  // ── Calendar: a full week + countdowns ───────────────────────────────────────
-  await timedEvent(hh, { title: "Dinner at Monk's Café", emoji: '🍽️', day: 0, time: '18:30', durMin: 90, person: jerry })
-  await timedEvent(hh, { title: 'Dentist', emoji: '🦷', day: 0, time: '09:00', durMin: 45, person: jerry })
-  await timedEvent(hh, { title: 'Stand-up set at the Comedy Cellar', emoji: '🎤', day: 1, time: '20:00', durMin: 60, person: jerry })
-  await timedEvent(hh, { title: 'Ballet class', emoji: '🩰', day: 1, time: '16:00', durMin: 60, person: elaine })
-  await timedEvent(hh, { title: 'Kramerica Industries meeting', emoji: '💼', day: 2, time: '10:00', durMin: 60, person: kramer })
-  await timedEvent(hh, { title: 'Little League practice', emoji: '⚾', day: 2, time: '15:30', durMin: 90, person: george })
-  await timedEvent(hh, { title: 'Piano lesson', emoji: '🎹', day: 3, time: '08:00', durMin: 45, person: elaine })
-  await timedEvent(hh, { title: 'Coffee with Newman', emoji: '☕', day: 3, time: '12:30', durMin: 60, person: kramer })
-  await allDayEvent(hh, { title: 'Field trip to the museum', emoji: '🏛️', day: 4, person: george })
-  await timedEvent(hh, { title: 'Family movie night', emoji: '🎬', day: 4, time: '19:30', durMin: 120, person: jerry })
-  await allDayEvent(hh, { title: 'Farmers market', emoji: '🥕', day: 5, person: kramer })
-  await timedEvent(hh, { title: 'Brunch with the gang', emoji: '🥞', day: 6, time: '11:00', durMin: 90, person: jerry })
+  // ── Calendar: a lived-in month + countdowns ──────────────────────────────────
+  // `day` counts from the Sunday of the current week (0=Sun … 6=Sat). We fill five
+  // weeks — last week (-1) through three weeks out (+3) — so the whole month view is
+  // populated no matter which day the seed runs. Weekly rhythms repeat every week;
+  // one-offs are sprinkled through for variety.
+  const calWeeks = [-1, 0, 1, 2, 3]
+  for (const w of calWeeks) {
+    const b = w * 7
+    await timedEvent(hh, { title: 'Ballet class', emoji: '🩰', day: b + 1, time: '16:00', durMin: 60, person: elaine }) // Mondays
+    await timedEvent(hh, { title: 'Kramerica Industries meeting', emoji: '💼', day: b + 2, time: '10:00', durMin: 60, person: kramer }) // Tuesdays
+    await timedEvent(hh, { title: 'Little League practice', emoji: '⚾', day: b + 2, time: '15:30', durMin: 90, person: george }) // Tuesdays
+    await timedEvent(hh, { title: 'Piano lesson', emoji: '🎹', day: b + 3, time: '08:00', durMin: 45, person: elaine }) // Wednesdays
+    await timedEvent(hh, { title: 'Family movie night', emoji: '🎬', day: b + 5, time: '19:30', durMin: 120, person: jerry }) // Fridays
+    await allDayEvent(hh, { title: 'Farmers market', emoji: '🥕', day: b + 6, person: kramer }) // Saturdays
+  }
+  // One-offs across the month
+  await timedEvent(hh, { title: 'Coffee with Newman', emoji: '☕', day: -4, time: '12:30', durMin: 60, person: kramer }) // last Wed
+  await allDayEvent(hh, { title: 'Field trip to the museum', emoji: '🏛️', day: -3, person: george }) // last Thu
+  await timedEvent(hh, { title: 'Dentist', emoji: '🦷', day: 1, time: '09:00', durMin: 45, person: jerry }) // this Mon
+  await timedEvent(hh, { title: "Dinner at Monk's Café", emoji: '🍽️', day: 4, time: '18:30', durMin: 90, person: jerry }) // this Thu
+  await timedEvent(hh, { title: 'Stand-up set at the Comedy Cellar', emoji: '🎤', day: 6, time: '20:00', durMin: 60, person: jerry }) // this Sat
+  await timedEvent(hh, { title: 'Brunch with the gang', emoji: '🥞', day: 7, time: '11:00', durMin: 90, person: jerry }) // next Sun
+  await timedEvent(hh, { title: 'Parent-teacher conference', emoji: '🏫', day: 11, time: '17:00', durMin: 30, person: george }) // next Thu
+  await timedEvent(hh, { title: 'Poker night', emoji: '🃏', day: 19, time: '20:30', durMin: 150, person: jerry }) // +2 Fri
   // Countdowns
-  await allDayEvent(hh, { title: 'Trip to the Hamptons', emoji: '🏖️', day: 21, person: jerry, countdown: true })
-  await allDayEvent(hh, { title: 'First day of school', emoji: '🎒', day: 44, person: george, countdown: true })
+  await allDayEvent(hh, { title: 'Trip to the Hamptons', emoji: '🏖️', day: 20, person: jerry, countdown: true }) // +2 Sat, still in-month
+  await allDayEvent(hh, { title: 'First day of school', emoji: '🎒', day: 44, person: george, countdown: true }) // beyond the month
   await query(
     `insert into countdowns (household_id, title, date, emoji, color, created_by)
      values ($1,'Jerry''s comedy special taping', current_date + 30, '🎬','#4F7FE0',$2)`, [hh, jerry])
