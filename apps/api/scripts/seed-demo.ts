@@ -1,10 +1,18 @@
 // Seed a rich demo household ("The Seinfelds") for screenshots / docs / app-store.
-// DEV / SEED TOOL ONLY. Runs on the host against a stack's DATABASE_URL (like
-// import-recipes.ts). Two phases so recipes can be copied in between:
+// DEV / SEED TOOL ONLY. Two phases so recipes can be copied in between.
+//
+// This file is an esbuild entrypoint (see esbuild.config.mjs), so it also ships in
+// the runtime image as `dist/seed-demo.js`. Prefer running it IN the api container —
+// no host Node/tsx, no node_modules, and DATABASE_URL is already the stack's DB:
+//
+//   docker compose exec api node dist/seed-demo.js base
+//   # …copy recipes into the DB (see ./scripts, or the pg_dump|sed|psql step)…
+//   docker compose exec api node dist/seed-demo.js meals
+//
+// Or run it on the host against any stack's DATABASE_URL (like import-recipes.ts):
 //
 //   cd apps/api
 //   DATABASE_URL=postgres://waffled:<pw>@localhost:5532/waffled npx tsx scripts/seed-demo.ts base
-//   # …copy recipes into the DB (see ./scripts, or the pg_dump|sed|psql step)…
 //   DATABASE_URL=… npx tsx scripts/seed-demo.ts meals
 //
 // `base`  — household, 4 people (Jerry+Kramer adults, George+Elaine kids), modules,
@@ -397,7 +405,7 @@ async function main() {
     console.log('✅ goals reseeded — 1 family group (2 shared goals) + 4 individual lists')
   }
   else {
-    console.error('usage: tsx scripts/seed-demo.ts <base|meals|goals>')
+    console.error('usage: seed-demo <base|meals|goals>  (e.g. `node dist/seed-demo.js base` in-container, or `npx tsx scripts/seed-demo.ts base` on the host)')
     process.exit(1)
   }
   await closePool()
