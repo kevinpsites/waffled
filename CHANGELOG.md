@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   target (20 books), or an accumulating total, and letting you fine-tune the type, target,
   unit, and deadline in the confirm-and-edit preview before it's created (on web, iPhone, and
   iPad). If a household has turned the Goals module off, quick-add says so instead of failing.
+- **Quick-add can stock the pantry.** Type something like "add milk to the pantry", "put 2 cans
+  of beans in the pantry", or "we have milk in the fridge" into the "Add anything" bar and Waffled
+  logs it as an item you already have on hand — pulling out the amount, unit, and where it's stored
+  (Pantry, Fridge, or Freezer), all editable (along with an expiry date and low-stock threshold) in
+  the confirm-and-edit preview before it's saved (on web, iPhone, and iPad). This is kept separate
+  from groceries: something to buy ("add milk", "add milk to the shopping list") still goes on the
+  shopping list, and only an explicit pantry/fridge/freezer destination stocks the pantry. Because
+  the Pantry module is off by default, quick-add offers this only when a household has turned it on.
 
 ### Changed
 

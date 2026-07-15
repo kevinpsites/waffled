@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../icons'
-import { usePersons, useHousehold, api, countdownsApi, localToday, type Person, type ListSummary } from '../../lib/api'
+import { usePersons, useHousehold, api, countdownsApi, pantryApi, localToday, type Person, type ListSummary } from '../../lib/api'
 import { parseCapture, intentSummary, looksConfident, memberTypeLabel, MEMBER_TYPES, goalTypeLabel, GOAL_TYPES, type ParsedIntent } from '../../lib/capture/parse'
 import { moduleEnabled } from '../../lib/modules'
 import { describeRrule } from './recurrence'
@@ -31,6 +31,7 @@ const KINDS: Array<{ k: ParsedIntent['kind']; label: string }> = [
   { k: 'countdown', label: '⏳ Countdown' },
   { k: 'person', label: '👤 Family member' },
   { k: 'goal', label: '🎯 Goal' },
+  { k: 'pantry', label: '🥫 Pantry' },
 ]
 
 const kindLabel = (k: ParsedIntent['kind']) => KINDS.find((x) => x.k === k)?.label ?? 'item'
@@ -71,6 +72,8 @@ function primaryOf(i: ParsedIntent): string {
       return i.name
     case 'person':
       return i.name
+    case 'pantry':
+      return i.name
     case 'list':
       return i.itemName
     case 'unsupported':
@@ -88,6 +91,8 @@ function withPrimary(i: ParsedIntent, v: string): ParsedIntent {
     case 'grocery':
       return { ...i, name: v }
     case 'person':
+      return { ...i, name: v }
+    case 'pantry':
       return { ...i, name: v }
     case 'list':
       return { ...i, itemName: v }
@@ -133,6 +138,16 @@ function rerouteKind(i: ParsedIntent, kind: ParsedIntent['kind'], today: string)
         unit: i.kind === 'goal' ? i.unit : null,
         deadline: i.kind === 'goal' ? i.deadline : null,
         trackingMode: i.kind === 'goal' ? i.trackingMode : 'shared_total',
+      }
+    case 'pantry':
+      return {
+        kind: 'pantry',
+        name: primary,
+        amount: i.kind === 'pantry' ? i.amount : quantity,
+        unit: i.kind === 'pantry' ? i.unit : null,
+        location: i.kind === 'pantry' ? i.location : 'Pantry',
+        expiresOn: i.kind === 'pantry' ? i.expiresOn : null,
+        lowAt: i.kind === 'pantry' ? i.lowAt : null,
       }
     default:
       return i
@@ -298,6 +313,31 @@ function DraftFields({ intent, persons, lists, set, today }: { intent: ParsedInt
       </>
     )
   }
+  if (intent.kind === 'pantry') {
+    // Keep the current location selectable even if it's a household-custom one.
+    const locations = Array.from(new Set(['Pantry', 'Fridge', 'Freezer', intent.location]))
+    return (
+      <>
+        <div className="cap-edit-row">
+          <input className="cap-edit-mini" value={intent.amount ?? ''} placeholder="amount" aria-label="Amount" style={{ maxWidth: 96 }} onChange={(e) => set({ ...intent, amount: e.target.value || null })} />
+          <input className="cap-edit-mini" value={intent.unit ?? ''} placeholder="unit (e.g. cans)" aria-label="Unit" onChange={(e) => set({ ...intent, unit: e.target.value || null })} />
+        </div>
+        <div className="cap-people">
+          {locations.map((loc) => (
+            <button key={loc} type="button" className={`cap-person ${intent.location === loc ? 'on' : ''}`} onClick={() => set({ ...intent, location: loc })}>{loc}</button>
+          ))}
+        </div>
+        <div className="cap-edit-row">
+          <label className="cap-stars" style={{ gap: 6 }}>Expires
+            <input type="date" className="cap-edit-mini" value={intent.expiresOn ?? ''} aria-label="Expires on" onChange={(e) => set({ ...intent, expiresOn: e.target.value || null })} />
+          </label>
+          <label className="cap-stars" style={{ gap: 6 }}>Low at
+            <input type="number" min={0} className="cap-edit-mini" style={{ maxWidth: 72 }} value={intent.lowAt ?? ''} aria-label="Low at" onChange={(e) => set({ ...intent, lowAt: e.target.value === '' ? null : Number(e.target.value) })} />
+          </label>
+        </div>
+      </>
+    )
+  }
   return null
 }
 
@@ -310,6 +350,9 @@ export function CaptureBar() {
   const { person: viewer, household } = useHousehold()
   const isAdmin = !!viewer?.isAdmin
   const goalsOn = moduleEnabled(household, 'goals')
+  // Pantry defaults OFF, so its intent is SUPPRESSED unless the module is enabled —
+  // a parse that yields `pantry` degrades to an "unsupported" preview before any POST.
+  const pantryOn = moduleEnabled(household, 'pantry')
   const [text, setText] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -380,15 +423,18 @@ export function CaptureBar() {
   // grocery fallback, don't assert it — show a thinking row instead.
   const thinkingPlaceholder = !usingServer && thinking && !looksConfident(localIntent, text)
   const rawIntent = draft ?? (thinkingPlaceholder ? null : parsed)
-  // Gates: only admins can add a household member (adminRoute), and goals can be
-  // created only when the Goals module is on. Either blocked case degrades gracefully
-  // to an unsupported preview (with a reason) rather than POSTing and eating a 4xx.
+  // Gates: only admins can add a household member (adminRoute); goals can be created
+  // only when the Goals module is on; and pantry (default OFF) is suppressed entirely
+  // unless the Pantry module is on. Each blocked case degrades gracefully to an
+  // unsupported preview (with a reason) rather than POSTing and eating a 4xx.
   const intent: ParsedIntent | null =
     rawIntent?.kind === 'person' && !isAdmin
       ? { kind: 'unsupported', reason: 'Only an adult can add family members.' }
       : rawIntent?.kind === 'goal' && !goalsOn
         ? { kind: 'unsupported', reason: 'Goals is turned off. Turn it on in Settings → Modules to add goals.' }
-        : rawIntent
+        : rawIntent?.kind === 'pantry' && !pantryOn
+          ? { kind: 'unsupported', reason: 'The Pantry module is turned off. Turn it on in Settings → Modules to add pantry items.' }
+          : rawIntent
   const editing = draft !== null && intent?.kind !== 'unsupported'
 
   function open() {
@@ -470,6 +516,17 @@ export function CaptureBar() {
         deadline: i.deadline ?? undefined,
       }) // apps/web/src/lib/api/goals.ts → POST /api/goals
       return `Added the “${i.title}” goal`
+    }
+    if (i.kind === 'pantry') {
+      await pantryApi.create({
+        name: i.name,
+        amount: i.amount ?? undefined,
+        unit: i.unit ?? undefined,
+        location: i.location,
+        expiresOn: i.expiresOn ?? undefined,
+        lowAt: i.lowAt ?? undefined,
+      }) // apps/web/src/lib/api/pantry.ts → POST /api/pantry
+      return `Added “${i.name}” to the pantry`
     }
     if (i.kind === 'unsupported') return ''
     await api.createChore({ title: i.title, personId: personId(i.personName), rewardAmount: i.stars ?? undefined, rrule: i.rrule ?? undefined })

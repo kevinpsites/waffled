@@ -451,6 +451,19 @@ final class SyncManager {
         }
     }
 
+    /// Commit a captured pantry item via REST (`POST /api/pantry`). The caller gates on
+    /// the Pantry module being enabled first (it defaults OFF), so a disabled module never
+    /// reaches here. The Pantry screen reloads on next appearance (fetch-on-view).
+    func commitPantry(name: String, amount: String?, unit: String?, location: String, expiresOn: String?) async -> Bool {
+        await restCommit {
+            var body: [String: JSONValue] = ["name": .string(name), "location": .string(location)]
+            if let amount, !amount.isEmpty { body["amount"] = .string(amount) }
+            if let unit, !unit.isEmpty { body["unit"] = .string(unit) }
+            if let expiresOn, !expiresOn.isEmpty { body["expiresOn"] = .string(expiresOn) }
+            _ = try await api.pantryCreate(body)
+        }
+    }
+
     /// Plan (upsert) a meal slot from the weekly planner; bumps `mealsRev` so the
     /// Today card and any open week reload.
     func setMealPlan(date: String, mealType: String, recipeId: String?, title: String?, cookPersonId: String? = nil) async -> Bool {

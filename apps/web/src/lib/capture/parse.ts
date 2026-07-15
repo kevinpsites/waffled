@@ -24,6 +24,7 @@ export type ParsedIntent =
   | { kind: 'countdown'; title: string; date: string; emoji: string | null; whenLabel: string }
   | { kind: 'person'; name: string; memberType: string; avatarEmoji: string | null; birthday: string | null; isAdmin: boolean }
   | { kind: 'goal'; title: string; goalType: string; targetValue: number | null; unit: string | null; deadline: string | null; trackingMode: string }
+  | { kind: 'pantry'; name: string; amount: string | null; unit: string | null; location: string; expiresOn: string | null; lowAt: number | null }
   | { kind: 'unsupported'; reason: string }
 
 // Member types for the `person` intent, and a human label for the preview.
@@ -503,6 +504,45 @@ function detectGoal(text: string): Extract<ParsedIntent, { kind: 'goal' }> | nul
   return { kind: 'goal', title, goalType: 'habit', targetValue: null, unit: null, deadline: null, trackingMode: 'shared_total' }
 }
 
+// PANTRY — an item you ALREADY HAVE on hand, named with an explicit pantry/fridge/
+// freezer destination: "add X to (the) pantry", "put X in the fridge/freezer",
+// "we have X in the pantry". This is what distinguishes it from `grocery` (something
+// to BUY — the shopping list): a bare "add milk" or "add milk to the shopping list"
+// stays grocery; only an explicit pantry/fridge/freezer target routes here. FULL
+// heuristic (plan §5). Mirrors `detectPantry` in CaptureHeuristic.swift.
+const PANTRY_TARGET = /\b(?:to|in|into|inside)\s+(?:the\s+|my\s+|our\s+)?(pantry|fridge|freezer|refrigerator)\b/i
+const PANTRY_LEAD = /^\s*(?:please\s+|kindly\s+|can you\s+)?(?:we\s+have\s+|i\s+have\s+|there(?:'s|\s+is|\s+are)\s+|add|put|throw|toss|drop|stock|store|stick|need|get|grab)?\s*(.+?)\s+(?:to|in|into|inside)\s+(?:the\s+|my\s+|our\s+)?(?:pantry|fridge|freezer|refrigerator)\b/i
+
+function pantryLocation(word: string): string {
+  const w = word.toLowerCase()
+  if (w === 'fridge' || w === 'refrigerator') return 'Fridge'
+  if (w === 'freezer') return 'Freezer'
+  return 'Pantry'
+}
+
+// Split a leading quantity into a numeric amount + its unit ("2 cans of beans" →
+// {amount:"2", unit:"cans", name:"beans"}). Reuses the grocery splitQuantity, then
+// separates the number from the unit — pantry keeps them in distinct fields.
+function splitAmountUnit(s: string): { amount: string | null; unit: string | null; name: string } {
+  const { quantity, name } = splitQuantity(s)
+  if (!quantity) return { amount: null, unit: null, name }
+  const qm = /^(\d+(?:\.\d+)?)\s*(.*)$/.exec(quantity)
+  if (qm) return { amount: qm[1], unit: qm[2].trim() || null, name }
+  return { amount: quantity, unit: null, name }
+}
+
+function detectPantry(text: string): Extract<ParsedIntent, { kind: 'pantry' }> | null {
+  const loc = PANTRY_TARGET.exec(text)
+  if (!loc) return null
+  const location = pantryLocation(loc[1])
+  const im = PANTRY_LEAD.exec(text)
+  const basis = tidy(im ? im[1] : text)
+  const { amount, unit, name } = splitAmountUnit(basis)
+  const itemName = titleCase(name)
+  if (!itemName) return null
+  return { kind: 'pantry', name: itemName, amount, unit, location, expiresOn: null, lowAt: null }
+}
+
 export function parseCapture(raw: string, persons: string[] = [], now: Date = new Date(), lists: string[] = []): ParsedIntent | null {
   const text = raw.trim()
   if (!text) return null
@@ -653,6 +693,12 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
     return { kind: 'event', title, startsAt: target.toISOString(), allDay, personName: person?.name ?? null, rrule: rec.rrule, recurrenceEndAt: null, scheduleLabel, whenLabel }
   }
 
+  // PANTRY — an item on hand with an explicit pantry/fridge/freezer destination
+  // ("add 2 cans of beans to the pantry"). Before the grocery fallback so it isn't
+  // mis-routed to the shopping list; a bare "add milk" (no destination) stays grocery.
+  const pantryIntent = detectPantry(text)
+  if (pantryIntent) return pantryIntent
+
   // GROCERY — verbs, "to the list", units, or the bare-noun fallback.
   const groceryVerb = GROCERY_VERB.test(text)
   const groceryHint = groceryVerb || GROCERY_TO_LIST.test(text) || GROCERY_UNIT.test(text)
@@ -716,6 +762,16 @@ export function intentSummary(intent: ParsedIntent): { icon: string; kind: strin
           goalTypeLabel(intent.goalType),
           intent.targetValue != null ? [intent.targetValue, intent.unit].filter(Boolean).join(' ') : '',
           intent.deadline ? `by ${intent.deadline}` : '',
+        ].filter(Boolean).join(' · '),
+      }
+    case 'pantry':
+      return {
+        icon: '🥫',
+        kind: 'Pantry',
+        primary: [intent.amount, intent.unit, intent.name].filter(Boolean).join(' '),
+        detail: [
+          `Adds to ${intent.location}`,
+          intent.expiresOn ? `expires ${intent.expiresOn}` : '',
         ].filter(Boolean).join(' · '),
       }
     case 'unsupported':

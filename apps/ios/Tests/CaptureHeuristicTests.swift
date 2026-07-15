@@ -47,6 +47,14 @@ private func asGoal(_ i: CaptureIntent?) -> (title: String, goalType: String, ta
     if case let .goal(t, gt, tv, u, d, tm) = i { return (t, gt, tv, u, d, tm) }
     return nil
 }
+private func asPantry(_ i: CaptureIntent?) -> (name: String, amount: String?, unit: String?, location: String, expiresOn: String?, lowAt: Double?)? {
+    if case let .pantry(n, a, u, l, e, low) = i { return (n, a, u, l, e, low) }
+    return nil
+}
+private func asGrocery(_ i: CaptureIntent?) -> (name: String, quantity: String?)? {
+    if case let .grocery(n, q) = i { return (n, q) }
+    return nil
+}
 
 private func iso(_ s: String) -> Date {
     let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -353,6 +361,43 @@ private func dowOfDate(_ s: String) -> Int {
         #expect(s.icon == "🎯")
         #expect(s.kind == "Goal")
         #expect(s.primary == "Read 20 books")
+    }
+}
+
+@Suite struct CaptureHeuristicPantryTests {
+    @Test func addMilkToThePantry() {
+        let i = asPantry(p("add milk to the pantry"))!
+        #expect(i.name == "Milk")
+        #expect(i.location == "Pantry")
+        #expect(i.amount == nil)
+        #expect(i.unit == nil)
+    }
+    @Test func putCansOfBeansInThePantry() {
+        let i = asPantry(p("put 2 cans of beans in the pantry"))!
+        #expect(i.name == "Beans")
+        #expect(i.amount == "2")
+        #expect(i.unit == "cans")
+        #expect(i.location == "Pantry")
+    }
+    @Test func weHaveMilkInTheFridge() {
+        let i = asPantry(p("we have milk in the fridge"))!
+        #expect(i.name == "Milk")
+        #expect(i.location == "Fridge")
+    }
+    // Regression: pantry must NOT steal groceries — only an explicit pantry/fridge/
+    // freezer destination routes here; a bare item or a shopping-list target stays grocery.
+    @Test func bareAddMilkStaysGrocery() {
+        #expect(asGrocery(p("add milk")) != nil)
+    }
+    @Test func addMilkToShoppingListStaysGrocery() {
+        #expect(asGrocery(p("add milk to the shopping list")) != nil)
+    }
+    @Test func summarizesPantry() {
+        let s = CaptureSummary(p("put 2 cans of beans in the pantry")!)
+        #expect(s.icon == "🥫")
+        #expect(s.kind == "Pantry")
+        #expect(s.primary == "2 cans Beans")
+        #expect(s.detail.contains("Pantry"))
     }
 }
 

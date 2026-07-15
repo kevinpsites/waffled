@@ -432,6 +432,55 @@ describe('parseCapture — goal', () => {
   })
 })
 
+describe('parseCapture — pantry (and grocery vs pantry)', () => {
+  it('"add milk to the pantry" → a pantry item on hand', () => {
+    const i = p('add milk to the pantry')
+    expect(i?.kind).toBe('pantry')
+    if (i?.kind !== 'pantry') throw new Error('expected pantry')
+    expect(i.name).toBe('Milk')
+    expect(i.location).toBe('Pantry')
+    expect(i.amount).toBeNull()
+    expect(i.unit).toBeNull()
+  })
+
+  it('"put 2 cans of beans in the pantry" → pantry with amount + unit', () => {
+    const i = p('put 2 cans of beans in the pantry')
+    if (i?.kind !== 'pantry') throw new Error('expected pantry')
+    expect(i.name).toBe('Beans')
+    expect(i.amount).toBe('2')
+    expect(i.unit).toBe('cans')
+    expect(i.location).toBe('Pantry')
+  })
+
+  it('"we have milk in the fridge" → pantry stored in the Fridge', () => {
+    const i = p('we have milk in the fridge')
+    if (i?.kind !== 'pantry') throw new Error('expected pantry')
+    expect(i.name).toBe('Milk')
+    expect(i.location).toBe('Fridge')
+  })
+
+  // Regression: pantry must NOT steal groceries. A bare "add milk" and an explicit
+  // shopping-list target both stay grocery — only an explicit pantry/fridge/freezer
+  // destination routes to pantry.
+  it('"add milk" (no destination) stays grocery', () => {
+    expect(p('add milk')?.kind).toBe('grocery')
+  })
+
+  it('"add milk to the shopping list" stays grocery', () => {
+    expect(p('add milk to the shopping list')?.kind).toBe('grocery')
+  })
+
+  it('summarizes a pantry item for the preview chip', () => {
+    const i = p('put 2 cans of beans in the pantry')
+    if (i?.kind !== 'pantry') throw new Error('expected pantry')
+    const s = intentSummary(i)
+    expect(s.icon).toBe('🥫')
+    expect(s.kind).toBe('Pantry')
+    expect(s.primary).toBe('2 cans Beans')
+    expect(s.detail).toContain('Pantry')
+  })
+})
+
 describe('intentSummary + edge cases', () => {
   it('returns null for empty input', () => {
     expect(p('')).toBeNull()

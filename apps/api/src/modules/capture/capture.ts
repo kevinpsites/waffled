@@ -24,7 +24,7 @@ type Api = ReturnType<typeof createAPI>
 // What the model is asked to emit. Mirrors the kiosk's ParsedIntent so the client
 // treats a server parse and a local heuristic parse identically.
 export interface CaptureIntent {
-  kind: 'event' | 'task' | 'grocery' | 'meal' | 'list' | 'countdown' | 'person' | 'goal' | 'unsupported'
+  kind: 'event' | 'task' | 'grocery' | 'meal' | 'list' | 'countdown' | 'person' | 'goal' | 'pantry' | 'unsupported'
   title?: string
   name?: string | null
   quantity?: string | null
@@ -48,6 +48,11 @@ export interface CaptureIntent {
   targetValue?: number | null
   unit?: string | null
   deadline?: string | null
+  // pantry intent: an item already on hand (module `pantry`, default off)
+  amount?: string | null
+  location?: string | null
+  expiresOn?: string | null
+  lowAt?: number | null
   // list intent: add itemName to the named (non-grocery) list
   listName?: string | null
   itemName?: string | null
@@ -74,9 +79,9 @@ const INTENT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    kind: { type: 'string', enum: ['event', 'task', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'unsupported'] },
+    kind: { type: 'string', enum: ['event', 'task', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'pantry', 'unsupported'] },
     title: { type: ['string', 'null'], description: 'Clean title for event/task; the dish for a meal; the goal for a goal' },
-    name: { type: ['string', 'null'], description: 'Grocery item name, or (kind=person) the new family member\'s name' },
+    name: { type: ['string', 'null'], description: 'Grocery item name, (kind=person) the new family member\'s name, or (kind=pantry) the on-hand item\'s name' },
     quantity: { type: ['string', 'null'], description: 'Grocery/list amount, e.g. "2 lbs"' },
     listName: { type: ['string', 'null'], description: 'For kind=list: the target custom list (match one of the household lists when possible)' },
     itemName: { type: ['string', 'null'], description: 'For kind=list: the item to add to that list' },
@@ -96,8 +101,12 @@ const INTENT_SCHEMA = {
     goalType: { type: ['string', 'null'], enum: ['count', 'total', 'habit', 'checklist', null], description: 'For kind=goal: count (a countable target), total (an accumulating amount), habit (a recurring habit with no number), or checklist (a list of steps). Default habit.' },
     trackingMode: { type: ['string', 'null'], enum: ['shared_total', 'each_tracks', null], description: 'For kind=goal: shared_total (one shared progress bar) or each_tracks (everyone tracks their own). Default shared_total.' },
     targetValue: { type: ['number', 'null'], description: 'For kind=goal (count/total): the numeric target, e.g. 20 for "read 20 books". Null when there is no number.' },
-    unit: { type: ['string', 'null'], description: 'For kind=goal (count/total): the unit of the target, e.g. "books", "miles", "dollars". Else null.' },
+    unit: { type: ['string', 'null'], description: 'For kind=goal (count/total): the unit of the target, e.g. "books", "miles", "dollars"; for kind=pantry: the amount\'s unit, e.g. "cans", "lbs". Else null.' },
     deadline: { type: ['string', 'null'], description: 'For kind=goal: a YYYY-MM-DD deadline if a date is given ("this year" → the Dec 31 of the current year), else null' },
+    amount: { type: ['string', 'null'], description: 'For kind=pantry: how much is on hand, e.g. "2" (pair with unit) or "2 lbs". Else null.' },
+    location: { type: ['string', 'null'], description: 'For kind=pantry: where it is stored (e.g. Pantry, Fridge, Freezer). Default Pantry.' },
+    expiresOn: { type: ['string', 'null'], description: 'For kind=pantry: an expiry date YYYY-MM-DD if one is given, else null.' },
+    lowAt: { type: ['number', 'null'], description: 'For kind=pantry: the "running low" threshold number if mentioned, else null.' },
   },
   required: ['kind'],
 }
@@ -111,14 +120,15 @@ function systemPrompt(ctx: CaptureContext): string {
     `Family members: ${fam}.`,
     `Custom lists: ${ctx.lists && ctx.lists.length ? ctx.lists.join(', ') : '(none yet)'}.`,
     '',
-    'Kinds: "event" = happens at a date/time; "task" = a chore someone does, maybe recurring; "grocery" = an item to buy (the grocery/shopping list); "meal" = a dish for the weekly meal plan; "list" = add an item to a named custom list (packing list, Costco, Target run, etc. — NOT groceries); "countdown" = a future day to count down to (no clock time); "person" = add a new family/household member; "goal" = a personal or shared goal to work toward; "unsupported" = anything else.',
+    'Kinds: "event" = happens at a date/time; "task" = a chore someone does, maybe recurring; "grocery" = an item to buy (the grocery/shopping list); "pantry" = an item you ALREADY HAVE on hand, stored in the pantry/fridge/freezer (NOT the shopping list); "meal" = a dish for the weekly meal plan; "list" = add an item to a named custom list (packing list, Costco, Target run, etc. — NOT groceries); "countdown" = a future day to count down to (no clock time); "person" = add a new family/household member; "goal" = a personal or shared goal to work toward; "unsupported" = anything else.',
     'Always follow these rules:',
     '- ALWAYS extract a concise "title" (for grocery use "name") — strip command words like "please add", "make a chore to", "to X\'s list".',
     '- If a quoted phrase is present, use it verbatim as the title.',
     '- personName MUST be exactly one of the family members if the note refers to one (case-insensitive, ignore possessives like "Kelly\'s" → "Kelly"); otherwise null.',
     '- event: compute startsAt as a LOCAL date-time with NO timezone suffix (e.g. 2026-06-16T16:00:00) — the server applies the household timezone. Resolve relative dates (today/tomorrow/"Tue") against the current date above; allDay=true only when no clock time is given. If it REPEATS ("every Tuesday", "weekly", "every day", "monthly"), ALSO set rrule (FREQ=WEEKLY;BYDAY=TU / FREQ=DAILY / FREQ=MONTHLY / FREQ=YEARLY) with startsAt = the FIRST occurrence; otherwise rrule null.',
     '- task: recurring → rrule with two-letter weekday codes (FREQ=WEEKLY;BYDAY=MO,WE,SA) or FREQ=DAILY; one-off → rrule null.',
-    '- grocery: ONLY the grocery/shopping list or bare food/household-shopping items. "quantity" is just the amount (e.g. "2 lbs"), or null. Never prefix it with a label.',
+    '- grocery: something to BUY — the grocery/shopping list, or a bare food/household-shopping item ("add milk", "add milk to the shopping list"). "quantity" is just the amount (e.g. "2 lbs"), or null. Never prefix it with a label. NOTE: "add X to the pantry/fridge/freezer" is a PANTRY item (already on hand), not grocery.',
+    '- pantry: an item you ALREADY HAVE, named with an explicit pantry/fridge/freezer destination — "add X to (the) pantry", "put X in the fridge/freezer", "we have X in the pantry". Set "name" (the item); optional "amount"+"unit" (e.g. "2"+"cans"), "location" (Pantry/Fridge/Freezer, default Pantry), "expiresOn" (YYYY-MM-DD), "lowAt". This is DIFFERENT from grocery: grocery = to buy (shopping list); pantry = already on hand. Route to pantry ONLY when the note explicitly stores it in the pantry/fridge/freezer.',
     '- list: "add X to (the) <list>" / "put X on my <list>" where <list> is a NAMED non-grocery list → kind "list" with itemName=X and listName=the list. Match listName to one of the Custom lists above when it clearly refers to one (e.g. "the lake packing trip" → "Lake trip packing"); otherwise keep the user\'s name. Optional "quantity".',
     '- "eating out" / "order in" / "takeout" / "delivery" (no clock time) → kind "meal" with title "Eating out".',
     '- meal: "meal plan", "on the menu", or "<dish> for dinner/lunch/breakfast" → kind "meal". Put the dish in "title" and set "mealType" (default "dinner"). For "date", RESOLVE any relative day (today/tomorrow/"Friday"/"next Thursday") against the current date above into YYYY-MM-DD — exactly like events do — and ONLY default to today when no day is mentioned. A specific clock time means it is an EVENT, not a meal.',
@@ -136,6 +146,9 @@ function systemPrompt(ctx: CaptureContext): string {
     '"Please add laundry for Monday and Saturday to Kelly\'s chore list" -> {"kind":"task","title":"Laundry","personName":"Kelly","rrule":"FREQ=WEEKLY;BYDAY=MO,SA","stars":null}',
     '"\\"Take Out the Trash\\" for Lottie on Tuesday and Thursday" -> {"kind":"task","title":"Take Out the Trash","personName":"Lottie","rrule":"FREQ=WEEKLY;BYDAY=TU,TH"}',
     '"grab 2 lbs of chicken thighs" -> {"kind":"grocery","name":"chicken thighs","quantity":"2 lbs"}',
+    '"add milk to the shopping list" -> {"kind":"grocery","name":"milk","quantity":null}',
+    '"add 2 cans of beans to the pantry" -> {"kind":"pantry","name":"Beans","amount":"2","unit":"cans","location":"Pantry"}',
+    '"we have a gallon of milk in the fridge" -> {"kind":"pantry","name":"Milk","amount":"1","unit":"gallon","location":"Fridge"}',
     '"add towels to the lake packing trip" -> {"kind":"list","itemName":"Towels","listName":"Lake trip packing"}',
     '"put sunscreen and goggles on the beach list" -> {"kind":"list","itemName":"Sunscreen and goggles","listName":"Beach"}',
     '"lets put shawarma on the meal plan" -> {"kind":"meal","title":"Shawarma","mealType":"dinner"}',
@@ -157,7 +170,7 @@ function systemPrompt(ctx: CaptureContext): string {
 export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent {
   const r = (raw ?? {}) as Record<string, unknown>
   const kindRaw = String(r.kind ?? '').toLowerCase()
-  const kind: CaptureIntent['kind'] = (['event', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'unsupported'] as const).find((k) => k === kindRaw) ?? 'task'
+  const kind: CaptureIntent['kind'] = (['event', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'pantry', 'unsupported'] as const).find((k) => k === kindRaw) ?? 'task'
 
   // Only accept a person that's actually in the family (case-insensitive).
   const pn = r.personName == null ? null : String(r.personName)
@@ -178,6 +191,19 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
     const name = String(r.name ?? r.title ?? '').trim()
     if (!name) throw new Error('grocery: no item')
     return { kind, name, quantity: r.quantity ? String(r.quantity) : null }
+  }
+  if (kind === 'pantry') {
+    const name = String(r.name ?? r.title ?? '').trim()
+    if (!name) throw new Error('pantry: no item')
+    // amount/unit are free-text (the route stores them as strings); location defaults
+    // to 'Pantry'; expiresOn is kept only if a real ISO day; lowAt only if a number ≥ 0.
+    const amount = r.amount != null && String(r.amount).trim() ? String(r.amount).trim() : null
+    const unit = r.unit != null && String(r.unit).trim() ? String(r.unit).trim() : null
+    const location = r.location != null && String(r.location).trim() ? String(r.location).trim() : 'Pantry'
+    const expiresOn = typeof r.expiresOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.expiresOn) ? r.expiresOn : null
+    const rawLow = typeof r.lowAt === 'number' ? r.lowAt : Number(r.lowAt)
+    const lowAt = Number.isFinite(rawLow) && rawLow >= 0 ? rawLow : null
+    return { kind, name, amount, unit, location, expiresOn, lowAt }
   }
   if (kind === 'meal') {
     const title = String(r.title ?? r.name ?? '').trim()

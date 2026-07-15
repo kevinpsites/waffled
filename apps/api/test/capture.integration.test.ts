@@ -238,6 +238,33 @@ describe('finalizeIntent — model JSON → finished intent', () => {
   it('rejects a goal with no title', () => {
     expect(() => finalizeIntent({ kind: 'goal', goalType: 'habit' }, ctx)).toThrow()
   })
+
+  it('maps a pantry item with amount + unit, defaulting location to Pantry', () => {
+    expect(finalizeIntent({ kind: 'pantry', name: 'Beans', amount: '2', unit: 'cans' }, ctx)).toEqual({
+      kind: 'pantry', name: 'Beans', amount: '2', unit: 'cans', location: 'Pantry', expiresOn: null, lowAt: null,
+    })
+  })
+
+  it('keeps an explicit pantry location and a low-stock threshold', () => {
+    const i = finalizeIntent({ kind: 'pantry', name: 'Milk', location: 'Fridge', lowAt: 1 }, ctx)
+    expect(i).toMatchObject({ kind: 'pantry', name: 'Milk', location: 'Fridge', lowAt: 1 })
+  })
+
+  it('keeps a valid pantry expiresOn but drops a non-ISO one', () => {
+    expect(finalizeIntent({ kind: 'pantry', name: 'Milk', expiresOn: '2026-08-01' }, ctx).expiresOn).toBe('2026-08-01')
+    expect(finalizeIntent({ kind: 'pantry', name: 'Milk', expiresOn: 'next week' }, ctx).expiresOn).toBeNull()
+  })
+
+  it('rejects a pantry item with no name', () => {
+    expect(() => finalizeIntent({ kind: 'pantry', amount: '2' }, ctx)).toThrow()
+  })
+
+  // Grocery vs pantry stay distinct kinds — an item to BUY is grocery; an item ON
+  // HAND (explicit pantry target) is pantry. finalizeIntent honors the kind it's given.
+  it('keeps grocery and pantry as separate kinds (no conflation)', () => {
+    expect(finalizeIntent({ kind: 'grocery', name: 'Milk' }, ctx).kind).toBe('grocery')
+    expect(finalizeIntent({ kind: 'pantry', name: 'Milk' }, ctx).kind).toBe('pantry')
+  })
 })
 
 describe('resolveDayFromText — deterministic meal day (model-independent)', () => {

@@ -13,6 +13,7 @@ enum CaptureIntent: Sendable, Equatable {
     case countdown(title: String, date: String, emoji: String?, whenLabel: String)
     case person(name: String, memberType: String, avatarEmoji: String?, birthday: String?, isAdmin: Bool)
     case goal(title: String, goalType: String, targetValue: Double?, unit: String?, deadline: String?, trackingMode: String)
+    case pantry(name: String, amount: String?, unit: String?, location: String, expiresOn: String?, lowAt: Double?)
 }
 
 extension CaptureIntent: Decodable {
@@ -22,6 +23,7 @@ extension CaptureIntent: Decodable {
         case itemName, listName, emoji
         case memberType, avatarEmoji, birthday, isAdmin
         case goalType, targetValue, unit, deadline, trackingMode
+        case amount, location, expiresOn, lowAt
     }
 
     init(from decoder: Decoder) throws {
@@ -87,6 +89,15 @@ extension CaptureIntent: Decodable {
                 deadline: try c.decodeIfPresent(String.self, forKey: .deadline),
                 trackingMode: (try? c.decode(String.self, forKey: .trackingMode)) ?? "shared_total"
             )
+        case "pantry":
+            self = .pantry(
+                name: try c.decode(String.self, forKey: .name),
+                amount: try c.decodeIfPresent(String.self, forKey: .amount),
+                unit: try c.decodeIfPresent(String.self, forKey: .unit),
+                location: (try? c.decode(String.self, forKey: .location)) ?? "Pantry",
+                expiresOn: try c.decodeIfPresent(String.self, forKey: .expiresOn),
+                lowAt: try? c.decode(Double.self, forKey: .lowAt)
+            )
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c,
                 debugDescription: "Unknown intent kind: \(other)")
@@ -134,6 +145,11 @@ struct CaptureSummary {
                 return unit.map { "\(n) \($0)" } ?? n
             }
             detail = [typeLabel, target, deadline.map { "by \($0)" }]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        case let .pantry(name, amount, unit, location, expiresOn, _):
+            icon = "🥫"; kind = "Pantry"
+            primary = [amount, unit, name].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+            detail = ["Adds to \(location)", expiresOn.map { "expires \($0)" }]
                 .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         }
     }

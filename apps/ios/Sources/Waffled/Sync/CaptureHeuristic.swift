@@ -507,6 +507,45 @@ enum CaptureHeuristic {
         return .goal(title: title, goalType: "habit", targetValue: nil, unit: nil, deadline: nil, trackingMode: "shared_total")
     }
 
+    // MARK: pantry
+
+    // An item you ALREADY HAVE on hand, named with an explicit pantry/fridge/freezer
+    // destination: "add X to (the) pantry", "put X in the fridge/freezer", "we have X
+    // in the pantry". Distinguished from grocery (something to BUY — the shopping list)
+    // by that explicit destination: a bare "add milk" or "add milk to the shopping
+    // list" stays grocery. FULL heuristic (plan §5). Mirrors `detectPantry` in parse.ts.
+    private static let pantryTarget = #"\b(?:to|in|into|inside)\s+(?:the\s+|my\s+|our\s+)?(pantry|fridge|freezer|refrigerator)\b"#
+    private static let pantryLead = #"^\s*(?:please\s+|kindly\s+|can you\s+)?(?:we\s+have\s+|i\s+have\s+|there(?:'s|\s+is|\s+are)\s+|add|put|throw|toss|drop|stock|store|stick|need|get|grab)?\s*(.+?)\s+(?:to|in|into|inside)\s+(?:the\s+|my\s+|our\s+)?(?:pantry|fridge|freezer|refrigerator)\b"#
+
+    private static func pantryLocation(_ word: String) -> String {
+        let w = word.lowercased()
+        if w == "fridge" || w == "refrigerator" { return "Fridge" }
+        if w == "freezer" { return "Freezer" }
+        return "Pantry"
+    }
+    // Split a leading quantity into a numeric amount + its unit ("2 cans of beans" →
+    // amount "2", unit "cans", name "beans"). Reuses splitQuantity, then separates the
+    // number from the unit — pantry keeps them in distinct fields. Mirrors parse.ts.
+    private static func splitAmountUnit(_ s: String) -> (amount: String?, unit: String?, name: String) {
+        let (quantity, name) = splitQuantity(s)
+        guard let q = quantity else { return (nil, nil, name) }
+        if let m = firstMatch(#"^(\d+(?:\.\d+)?)\s*(.*)$"#, q as NSString) {
+            let unit = (m.groups[2] ?? "").trimmingCharacters(in: .whitespaces)
+            return (m.groups[1], unit.isEmpty ? nil : unit, name)
+        }
+        return (q, nil, name)
+    }
+    private static func detectPantry(_ text: NSString) -> CaptureIntent? {
+        guard let loc = firstMatch(pantryTarget, text) else { return nil }
+        let location = pantryLocation(loc.groups[1] ?? "")
+        let im = firstMatch(pantryLead, text)
+        let basis = tidy((im?.groups[1] ?? (text as String)) as NSString)
+        let (amount, unit, name) = splitAmountUnit(basis)
+        let itemName = titleCase(name)
+        if itemName.isEmpty { return nil }
+        return .pantry(name: itemName, amount: amount, unit: unit, location: location, expiresOn: nil, lowAt: nil)
+    }
+
     // MARK: parse
 
     static func parse(_ raw: String, persons: [String] = [], now: Date = Date(),
@@ -663,6 +702,11 @@ enum CaptureHeuristic {
             return .event(title: title.isEmpty ? "Event" : title, startsAt: isoUTC(target), allDay: allDay,
                           personName: person?.name, rrule: rec.rrule, scheduleLabel: scheduleLabel, whenLabel: whenLabel)
         }
+
+        // PANTRY — an item on hand with an explicit pantry/fridge/freezer destination
+        // ("add 2 cans of beans to the pantry"). Before the grocery fallback so it isn't
+        // mis-routed to the shopping list; a bare "add milk" (no destination) stays grocery.
+        if let pantryIntent = detectPantry(text) { return pantryIntent }
 
         // GROCERY — verbs, "to the list", units, or the bare-noun fallback.
         var stripped = cut(text, person.map { [$0.span] } ?? [])
