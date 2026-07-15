@@ -12,14 +12,15 @@
 # (ephemeral Postgres + wiremock, and api.e2e.test.ts builds the Dockerfile),
 # which needs Docker — available out of the box on ubuntu-latest.
 #
-# Scope: this workflow ONLY covers apps/api + apps/web, and each app is fully
-# self-contained (no root package.json / tsconfig / lockfile — see the note
-# above), so we run it ONLY when those apps or this file change. Docs-only,
-# iOS-only (apps/ios is built by Xcode Cloud, not here), and website-only PRs
-# skip CI entirely. Because CI's coverage *is* api+web, an allowlist can't
-# silently skip something it was actually testing. (Safe today because `main`
-# has no required-status-check branch protection — a path-skipped run reports
-# nothing, which would otherwise block a PR waiting on a required check.)
+# Scope: this workflow covers apps/api + apps/web (each fully self-contained —
+# no root package.json / tsconfig / lockfile, see the note above) plus the
+# ./waffled operator CLI (plain-bash tests in tests/waffled.test.sh), so we run
+# it ONLY when those paths or this file change. Docs-only, iOS-only (apps/ios is
+# built by Xcode Cloud, not here), and website-only PRs skip CI entirely.
+# Because CI's coverage *is* api+web+cli, an allowlist can't silently skip
+# something it was actually testing. (Safe today because `main` has no
+# required-status-check branch protection — a path-skipped run reports nothing,
+# which would otherwise block a PR waiting on a required check.)
 name: CI
 
 on:
@@ -27,12 +28,16 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
+      - 'waffled'
+      - 'tests/**'
       - '.github/workflows/ci.yml'
   push:
     branches: [main]
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
+      - 'waffled'
+      - 'tests/**'
       - '.github/workflows/ci.yml'
 
 # Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch).
@@ -62,6 +67,21 @@ jobs:
       - name: Check migration numbering
         working-directory: apps/api
         run: npm run check:migrations
+
+  cli-tests:
+    name: CLI script tests (./waffled, plain bash)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # ubuntu's bash is modern (>= 5), so the bash-3.2 empty-array regression these
+    # tests were written for only *reproduces* on macOS /bin/bash — but the suite
+    # still guards the script's parseability, arg filtering, the upgrade re-exec
+    # handoff, and ensure_env secret backfill on every change to ./waffled.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run waffled CLI tests
+        run: bash tests/waffled.test.sh
 
   typecheck:
     name: Typecheck (api + web)
