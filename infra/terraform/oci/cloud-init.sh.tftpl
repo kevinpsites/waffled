@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# Rendered by Terraform (templatefile) and run as root on first boot by cloud-init.
+# Brings up the full Waffled Docker Compose stack. Log: /var/log/waffled-bootstrap.log
+#
+# Design: cloud-specific customization lives in UNTRACKED files — an
+# infra/compose/docker-compose.oci.yml (published ports + a Caddy front for
+# PowerSync) and a caddy/Caddyfile.oci — so `git pull --ff-only` stays clean on
+# upgrade. It's applied via `./waffled --override infra/compose/docker-compose.oci.yml`
+# (explicit opt-in; nothing auto-loads), so normal installs are never affected.
+set -euxo pipefail
+exec > /var/log/waffled-bootstrap.log 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+
+# 1) Docker Engine + Compose v2 plugin (the get.docker.com script bundles both).
+if ! command -v docker >/dev/null 2>&1; then
+  curl -fsSL https://get.docker.com | sh
+fi
+usermod -aG docker ubuntu || true
+systemctl enable --now docker
+
+# 2) Host firewall. OCI's Ubuntu image ships restrictive iptables INPUT rules that
+#    drop everything except SSH, so opening the cloud Security List is not enough —
+#    we must also punch through the OS firewall. Insert ACCEPTs at the top of INPUT.
+iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT
+%{ if domain != "" ~}
+iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT
+%{ if ps_extra_port != "" ~}
+iptables -I INPUT 1 -p tcp --dport ${ps_extra_port} -j ACCEPT
+%{ endif ~}
+%{ else ~}
+iptables -I INPUT 1 -p tcp --dport 8090 -j ACCEPT
+%{ endif ~}
+if ! netfilter-persistent save; then
+  apt-get update && apt-get install -y iptables-persistent && netfilter-persistent save || true
+fi
+
+# 3) Fetch the app.
+rm -rf /opt/waffled
+git clone "${repo_url}" /opt/waffled
+cd /opt/waffled
+git checkout "${ref}"
+
+# 4) Let ./waffled generate infra/compose/.env with ALL required secrets and do the
+#    first bring-up. Delegating to the app's own ensure_env is the source of truth —
+#    it fills any required secret a release adds, so this can't drift (a hand-rolled
+#    copy once missed POWERSYNC_JWT_PRIVATE_KEY and the stack failed to start). Export
+#    the pinned WAFFLED_VERSION first so this pull grabs the pinned tag (shell env wins
+#    over .env for compose interpolation). Step 7 re-runs `up` with the override.
+%{ if waffled_version != "" ~}
+export WAFFLED_VERSION="${waffled_version}"
+%{ endif ~}
+./waffled up
+
+# 5) Patch the cloud/networking vars + write the override. `set_env` upserts (removes
+#    any existing line, appends), so values with /, +, = (base64/secrets) are safe.
+#    NB: do NOT recreate .env — that would wipe the secrets ./waffled generated above.
+cd infra/compose
+set_env() {
+  key="$1"; shift; val="$*"
+  grep -v -E "^$${key}=" .env > .env.tmp 2>/dev/null || true
+  mv .env.tmp .env
+  printf '%s=%s\n' "$${key}" "$${val}" >> .env
+}
+set_env HTTP_PORT "80"
+%{ if waffled_version != "" ~}
+set_env WAFFLED_VERSION "${waffled_version}"
+%{ endif ~}
+
+%{ if domain != "" ~}
+# ── HTTPS mode: Caddy auto-TLS for the app + a TLS front for PowerSync (the stock
+#    Caddyfile doesn't front it, so we add a block via an untracked Caddyfile.oci that
+#    imports the repo's Caddyfile as .base). The override publishes the ports and mounts
+#    the two Caddy files; PowerSync's own plaintext port is no longer exposed. ──
+set_env CADDY_SITE_ADDRESS   "${domain}"
+set_env PUBLIC_BASE_URL      "https://${domain}"
+set_env POWERSYNC_PUBLIC_URL "${powersync_public_url}"
+
+cat > caddy/Caddyfile.oci <<'CADDY_EOF'
+import /etc/caddy/Caddyfile.base
+
+${powersync_site} {
+	encode gzip
+	reverse_proxy powersync:8080
+}
+CADDY_EOF
+
+cat > docker-compose.oci.yml <<'COMPOSE_EOF'
+services:
+  caddy:
+    ports: !override
+${caddy_ports_yaml}
+    volumes: !override
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile.base:ro
+      - ./caddy/Caddyfile.oci:/etc/caddy/Caddyfile:ro
+      - waffled_media:/data/media:ro
+      - caddy_data:/data
+      - caddy_config:/config
+  powersync:
+    ports: !override []
+COMPOSE_EOF
+%{ else ~}
+# ── HTTP-only mode: no TLS. Point clients at the raw public IP; the stock stack
+#    already publishes PowerSync directly on :8090. ──
+PUBIP="$(curl -fsS https://ifconfig.me || curl -fsS https://icanhazip.com || true)"
+if [ -z "$${PUBIP}" ]; then
+  echo "ERROR: could not determine the public IP (both ifconfig.me and icanhazip.com failed)." >&2
+  echo "       Set PUBLIC_BASE_URL and POWERSYNC_PUBLIC_URL by hand in infra/compose/.env, or set a domain." >&2
+  exit 1
+fi
+set_env PUBLIC_BASE_URL      "http://$${PUBIP}"
+set_env POWERSYNC_PUBLIC_URL "http://$${PUBIP}:8090"
+%{ endif ~}
+
+# 6) User-supplied app config (API keys, OAuth, overrides). Applied LAST so these
+#    win over the derived values above. Delivered base64-encoded via Terraform.
+%{ if app_env_b64 != "" ~}
+while IFS= read -r __line; do
+  [ -z "$${__line}" ] && continue
+  __key="$(printf '%s' "$${__line}" | cut -d= -f1)"
+  __val="$(printf '%s' "$${__line}" | cut -d= -f2-)"
+  set_env "$${__key}" "$${__val}"
+done < <(printf '%s' "${app_env_b64}" | base64 -d)
+%{ endif ~}
+
+# 7) Re-run `up` WITH the override (explicit --override; nothing auto-loads). This
+#    publishes 443 (+ the PowerSync port) and mounts the Caddy front. Images are cached
+#    from step 4, so it only reconciles the changed containers.
+#    Day-2 on this box, always pass the same flag, e.g.:
+#      cd /opt/waffled && sudo ./waffled --override infra/compose/docker-compose.oci.yml upgrade
+cd /opt/waffled
+%{ if domain != "" ~}
+./waffled --override infra/compose/docker-compose.oci.yml up
+%{ else ~}
+./waffled up
+%{ endif ~}
+
+echo "waffled bootstrap complete"

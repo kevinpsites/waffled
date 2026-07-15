@@ -15,6 +15,10 @@ secrets/
 *.tfstate.*
 .terraform.lock.hcl
 
+# local compose overrides (e.g. the OCI cloud deploy) — deployment-local, not committed
+infra/compose/docker-compose.oci.yml
+infra/compose/caddy/Caddyfile.oci
+
 # node
 # No trailing slash: also ignore a `node_modules` *symlink* (worktrees symlink
 # deps in), so it can never be committed as a tracked link again — see PR #51.

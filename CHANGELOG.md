@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **One-command cloud deploy to Oracle Cloud's Always Free tier via Terraform.** A new
+  `infra/terraform/oci` module stands up the whole stack (Postgres, PowerSync, api, Caddy,
+  backup) on a free Arm Ampere A1 instance and, when you give it a domain, fronts it with
+  automatic HTTPS — including a TLS front for offline-sync (a `powersync.` subdomain by default,
+  or a same-domain port / dedicated hostname). Pass your API keys and other config through named
+  variables. `terraform apply` prints the public IP, the DNS records to create, and the URL to
+  open. See the module's `README.md` and the "Deploy to Oracle Cloud" guide.
+- **`./waffled` accepts a `--override <file>` flag** to layer an extra Compose file on top of the
+  base one, so a deployment can add published ports or mounts without editing tracked files. It's
+  explicit opt-in only (nothing auto-loads), and is used by the Oracle Cloud deploy.
 
 ### Changed
 
