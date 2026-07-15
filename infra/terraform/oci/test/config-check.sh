@@ -37,9 +37,12 @@ CDIR="$WORK/infra/compose"
 # 2) Recreate the override + Caddyfile the bootstrap writes, by extracting the real
 #    heredoc bodies from the template and applying default-mode substitutions
 #    (powersync.<domain> subdomain) — so this stays faithful to cloud-init.sh.tftpl.
-PORTS_YAML='      - "80:80"\n      - "443:443"'
+# The template puts ${caddy_ports_yaml} on its own line; swap in the default-mode port
+# list (80/443). Use awk to replace that whole line — portable, unlike `sed s/…\n…/`,
+# whose `\n` BSD/macOS sed treats literally.
+PORTS="$(printf '      - "80:80"\n      - "443:443"')"
 awk "/cat > docker-compose.override.yml <<'COMPOSE_EOF'/{f=1;next} /^COMPOSE_EOF/{f=0} f" "$TPL" \
-  | sed "s|\${caddy_ports_yaml}|$PORTS_YAML|" > "$CDIR/docker-compose.override.yml"
+  | awk -v ports="$PORTS" '$0=="${caddy_ports_yaml}"{print ports; next} {print}' > "$CDIR/docker-compose.override.yml"
 awk "/cat > caddy\/Caddyfile.oci <<'CADDY_EOF'/{f=1;next} /^CADDY_EOF/{f=0} f" "$TPL" \
   | sed "s|\${powersync_site}|powersync.demo.waffled.app|" > "$CDIR/caddy/Caddyfile.oci"
 grep -q 'ports: !override' "$CDIR/docker-compose.override.yml" || fail "override extraction failed — template shape changed?"
@@ -50,7 +53,10 @@ grep -q 'ports: !override' "$CDIR/docker-compose.override.yml" || fail "override
 cd "$CDIR"
 cp .env.example .env
 set_env() { local k="$1"; shift; grep -v -E "^$k=" .env > .env.t 2>/dev/null || true; mv .env.t .env; printf '%s=%s\n' "$k" "$*" >> .env; }
-mapfile -t REQ < <(grep -oE '\$\{[A-Z_]+:\?[^}]*\}' docker-compose.yml | sed -E 's/\$\{([A-Z_]+):\?.*/\1/' | sort -u)
+# Discover required (:?) vars. Portable read loop (macOS ships bash 3.2, no `mapfile`).
+REQ=()
+while IFS= read -r v; do [ -n "$v" ] && REQ+=("$v"); done \
+  < <(grep -oE '\$\{[A-Z_]+:\?[^}]*\}' docker-compose.yml | sed -E 's/\$\{([A-Z_]+):\?.*/\1/' | sort -u)
 [ "${#REQ[@]}" -gt 0 ] || fail "no required (:?) vars found — grep/logic broke"
 for v in "${REQ[@]}"; do
   case "$v" in

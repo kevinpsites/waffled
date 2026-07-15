@@ -17,8 +17,8 @@ output "dns_records_needed" {
   description = "DNS records to create (HTTPS mode) so auto-TLS can succeed."
   # Port mode reuses the single domain record (PowerSync rides <domain>:<port>).
   # Subdomain (default) and custom-host modes need a second record for PowerSync.
-  value = var.domain == "" ? [] : (
-    local.ps_port_mode ? [
+  value = local.powersync_mode == "http" ? [] : (
+    local.powersync_mode == "port" ? [
       "${var.domain}  A  ${oci_core_instance.waffled.public_ip}",
       ] : [
       "${var.domain}          A  ${oci_core_instance.waffled.public_ip}",

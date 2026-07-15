@@ -19,24 +19,32 @@ locals {
 
   # ── How PowerSync is served over HTTPS (only when domain is set) ──
   # The stock Caddyfile doesn't front PowerSync, so the bootstrap adds a Caddy block
-  # (via an untracked Caddyfile.oci) that reverse-proxies it under `powersync_site`:
-  #   default    → powersync.<domain>   (dedicated subdomain, TLS on 443; 2nd DNS record)
-  #   port mode  → <domain>:<port>      (same domain, a different port; one DNS record)
-  #   host mode  → <custom hostname>    (TLS on 443; its own DNS record)
-  ps_host_mode = var.domain != "" && var.powersync_host != ""
-  ps_port_mode = var.domain != "" && var.powersync_port > 0
+  # (via an untracked Caddyfile.oci) that reverse-proxies it under `powersync_site`.
+  # A SINGLE mode drives every derived value below, so host precedence (host wins over
+  # port) is enforced consistently — the DNS records, published ports, and URL can't
+  # disagree.
+  #   http       → (domain unset)       plaintext on :8090
+  #   host       → <custom hostname>    (TLS on 443; its own DNS record)   [wins over port]
+  #   port       → <domain>:<port>      (same domain, a different port; one DNS record)
+  #   subdomain  → powersync.<domain>   (dedicated subdomain, TLS on 443; 2nd DNS record)
+  powersync_mode = (
+    var.domain == "" ? "http" :
+    var.powersync_host != "" ? "host" :
+    var.powersync_port > 0 ? "port" :
+    "subdomain"
+  )
 
   powersync_site = (
-    var.domain == "" ? "" :
-    local.ps_host_mode ? var.powersync_host :
-    local.ps_port_mode ? "${var.domain}:${var.powersync_port}" :
-    "powersync.${var.domain}"
+    local.powersync_mode == "host" ? var.powersync_host :
+    local.powersync_mode == "port" ? "${var.domain}:${var.powersync_port}" :
+    local.powersync_mode == "subdomain" ? "powersync.${var.domain}" :
+    "" # http
   )
-  powersync_public_url = var.domain == "" ? "" : "https://${local.powersync_site}"
+  powersync_public_url = local.powersync_mode == "http" ? "" : "https://${local.powersync_site}"
 
   # Extra Caddy port to publish + open, beyond 80/443. Only port mode uses one;
   # subdomain/host modes ride on 443.
-  ps_extra_port = (var.domain != "" && local.ps_port_mode) ? tostring(var.powersync_port) : ""
+  ps_extra_port = local.powersync_mode == "port" ? tostring(var.powersync_port) : ""
 
   # Caddy port publishes for the HTTPS override file: 80, 443, + the extra PS port.
   caddy_ports_yaml = join("\n", concat(

@@ -103,6 +103,11 @@ COMPOSE_EOF
 # ── HTTP-only mode: no TLS. Point clients at the raw public IP; the stock stack
 #    already publishes PowerSync directly on :8090. ──
 PUBIP="$(curl -fsS https://ifconfig.me || curl -fsS https://icanhazip.com || true)"
+if [ -z "$${PUBIP}" ]; then
+  echo "ERROR: could not determine the public IP (both ifconfig.me and icanhazip.com failed)." >&2
+  echo "       Set PUBLIC_BASE_URL and POWERSYNC_PUBLIC_URL by hand in infra/compose/.env, or set a domain." >&2
+  exit 1
+fi
 set_env PUBLIC_BASE_URL      "http://$${PUBIP}"
 set_env POWERSYNC_PUBLIC_URL "http://$${PUBIP}:8090"
 %{ endif ~}
