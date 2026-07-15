@@ -182,7 +182,7 @@ struct TodayView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                Avatar(person: .kelly, emoji: "🦊", size: 46)
+                Avatar(person: .person2, emoji: "🦊", size: 46)
             }
         }
     }
@@ -276,7 +276,7 @@ struct TodayView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("TONIGHT · DINNER")
                         .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                        .foregroundStyle(FamilyColor.lottie.solid)
+                        .foregroundStyle(FamilyColor.person4.solid)
                     Text(meal.title)
                         .font(WF.serif(18)).foregroundStyle(WF.ink)
                     if let sub = mealSubtitle(meal) {
@@ -356,7 +356,7 @@ struct TodayView: View {
         return goals.first(where: spot) ?? goals.first { $0.isFeatured } ?? goals.first
     }
 
-    private static let goalGreen = Color(hex: 0x2BA45F)
+    private static let goalGreen = WF.success
 
     /// A full-width card showing the featured goal's progress (taps into that goal),
     /// with a "See all" shortcut to the goals hub.
@@ -548,7 +548,7 @@ struct TodayView: View {
                         Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 30)
                     }
                     if dash.chores.isEmpty {
-                        Avatar(person: .lottie, emoji: "🦄", size: 30).opacity(0.35)
+                        Avatar(person: .person4, emoji: "🦄", size: 30).opacity(0.35)
                     }
                     Spacer(minLength: 0)
                 }

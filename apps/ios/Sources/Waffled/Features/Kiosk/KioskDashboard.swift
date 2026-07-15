@@ -424,9 +424,9 @@ struct KioskDashboard: View {
             Spacer(minLength: 8)
             if pantry.isSoon(item), let d = pantry.days(item) {
                 Text(d < 0 ? "Expired" : d == 0 ? "Today" : "\(d) day\(d == 1 ? "" : "s")")
-                    .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(hex: 0xB8860B))
+                    .font(.system(size: 14, weight: .bold)).foregroundStyle(WF.warn)
                     .padding(.horizontal, 9).padding(.vertical, 3)
-                    .background(Color(hex: 0xFBF0D5)).clipShape(Capsule())
+                    .background(WF.warnT).clipShape(Capsule())
             } else {
                 Text("Low").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.primaryD)
                     .padding(.horizontal, 9).padding(.vertical, 3)

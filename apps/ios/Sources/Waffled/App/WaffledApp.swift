@@ -10,6 +10,8 @@ struct WaffledApp: App {
     @State private var session = Session()
     @State private var notifications = NotificationManager()
     @State private var kiosk = KioskMode()
+    /// The light/dark/system choice, persisted. Drives `.preferredColorScheme` below.
+    @State private var theme = ThemeStore()
     /// The active Cook Mode session, hoisted app-level so Cook Mode + its running timers
     /// survive the app backgrounding (and a tapped timer notification can re-open it).
     @State private var cook = CookSessionStore()
@@ -44,8 +46,9 @@ struct WaffledApp: App {
             .environment(notifications)
             .environment(kiosk)
             .environment(cook)
+            .environment(theme)
             .tint(WF.primary)
-            .preferredColorScheme(.light)          // warm-white canvas is a light theme
+            .preferredColorScheme(theme.colorScheme)   // light / dark / follow-device (Settings → Appearance)
             .task { await session.bootstrap() }    // read the Keychain / probe auth status
         }
     }

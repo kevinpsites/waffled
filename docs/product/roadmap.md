@@ -17,11 +17,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
-- **Dark mode (web/kiosk)** — a warm dark theme alongside light, chosen from **Settings →
-  Appearance** (Light / Dark / Match system), saved per device and applied instantly. Built on a
-  consolidated design-token layer (one canonical `:root` + a `[data-theme="dark"]` override; new
-  semantic success/danger/warn/info tokens). **iPhone/iPad parity is the remaining piece** — the
-  palette + plan are captured in `apps/ios/DARK_MODE.md`.
+- **Dark mode (web/kiosk + iPhone/iPad)** — a warm dark theme alongside light, chosen from
+  **Settings → Appearance** (Light / Dark / Match system), saved per device and applied instantly,
+  on every surface. Built on a consolidated design-token layer (web: one canonical `:root` + a
+  `[data-theme="dark"]` override; iOS: dark-aware `Color(light:dark:)` tokens re-resolved by UIKit
+  on the appearance change), with a shared palette and semantic success/danger/warn/info tokens so
+  the two platforms read identically with the lights off.
 - **Self-host packaging** — one-command `./waffled up` (pulls multi-arch GHCR images by
   default; `--build` for source), in-container migrations, and one-command `./waffled
   upgrade` (repo fast-forward + version bump + DB snapshot + pull + migrate).
@@ -262,11 +263,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   API-key follow-ups: per-user (non-admin) issuance, an OpenAPI/published contract, and a CORS
   posture for cross-origin integrations.
 - **Conversational recipe AI** — **photo → recipe and describe-it (speech/free-form → recipe)
-  SHIPPED (web)** in the "New recipe" editor: photos of a physical recipe are read by a
+  SHIPPED (web + iOS)** in the "New recipe" editor: photos of a physical recipe are read by a
   vision model, and a rambly spoken/typed description is organized into ingredients + steps;
   both prefill the editor for review before saving, and source photos auto-delete after a
-  short window. Still planned: **instruction-driven edits** ("make it vegetarian", "double
-  it") and **iOS parity** (native camera + Apple-Speech dictation → the same endpoints).
+  short window. iOS reached parity using the native camera / photo library and on-device
+  Apple-Speech dictation against the same `/api/recipes/ingest/*` endpoints, with the two
+  import buttons gated on the household's provider. Still planned: **instruction-driven edits**
+  ("make it vegetarian", "double it").
 - **Shared album import** for Photos (Google Photos / iCloud).
 - **Server-side fuzzy person resolution** for capture (nicknames/aliases).
 - **Milestone reward payouts** — deferred by design (needs idempotency + attribution rules).

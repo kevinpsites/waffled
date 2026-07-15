@@ -579,6 +579,31 @@ struct WaffledAPI: Sendable {
         try await sendReturning("POST", "/api/recipes/parse-markdown", body: ["markdown": .string(markdown)], as: ParsedRecipe.self)
     }
 
+    /// Which AI recipe-import paths this household can use right now (mirrors web
+    /// `ingestConfig`): `text` (speech/free-form → recipe) needs any non-heuristic
+    /// provider; `vision` (photo → recipe) needs a vision-capable model. The editor
+    /// uses this to show/hide the "Describe it" / "From a photo" import buttons.
+    struct RecipeIngestConfig: Decodable, Sendable { let text: Bool; let vision: Bool }
+    func recipeIngestConfig() async throws -> RecipeIngestConfig {
+        try await getJSON("/api/recipes/ingest/config", as: RecipeIngestConfig.self)
+    }
+
+    /// Speech/free-form text → recipe draft (mirrors web `ingestVoice`). The text is
+    /// dictated (SFSpeechRecognizer) or typed client-side; the server's LLM turns it
+    /// into our markdown → structured draft. Does NOT save — the editor hydrates from
+    /// this, the user reviews, then saves. The response's extra `via` key is ignored.
+    func ingestRecipeVoice(text: String) async throws -> ParsedRecipe {
+        try await sendReturning("POST", "/api/recipes/ingest/voice", body: ["text": .string(text)], as: ParsedRecipe.self)
+    }
+
+    /// Photo(s) → recipe draft (mirrors web `ingestPhoto`). One or more base64 JPEGs of a
+    /// physical/printed recipe → vision LLM → our markdown → structured draft. Does NOT
+    /// save. The response's extra `via`/`photoKeys` keys are ignored.
+    func ingestRecipePhotos(images: [(data: String, contentType: String)]) async throws -> ParsedRecipe {
+        let imgs = images.map { JSONValue.object(["data": .string($0.data), "contentType": .string($0.contentType)]) }
+        return try await sendReturning("POST", "/api/recipes/ingest/photo", body: ["images": .array(imgs)], as: ParsedRecipe.self)
+    }
+
     // MARK: Today dashboard reads (non-synced domains, fetched over REST)
 
     /// One dinner/lunch/etc. slot in the planned week (mirrors web `WeekEntry`).

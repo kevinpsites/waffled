@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **One-command cloud deploy to Oracle Cloud's Always Free tier via Terraform.** A new
+  `infra/terraform/oci` module stands up the whole stack (Postgres, PowerSync, api, Caddy,
+  backup) on a free Arm Ampere A1 instance and, when you give it a domain, fronts it with
+  automatic HTTPS — including a TLS front for offline-sync (a `powersync.` subdomain by default,
+  or a same-domain port / dedicated hostname). Pass your API keys and other config through named
+  variables. `terraform apply` prints the public IP, the DNS records to create, and the URL to
+  open. See the module's `README.md` and the "Deploy to Oracle Cloud" guide.
+- **`./waffled` can layer an extra Compose override.** A `--override <file>` flag and an
+  auto-loaded `infra/compose/docker-compose.override.yml` let a deployment add published ports or
+  mounts without editing tracked files — used by the Oracle Cloud deploy so plain `./waffled
+  up`/`upgrade` keep its HTTPS front across upgrades.
+
+### Changed
+
+### Fixed
+
+## [0.8.0] - 2026-07-14
+
 ### Security
 
 - **Member logins now respect account ownership.** An administrator can update the login
@@ -47,23 +66,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cooked in the last couple of weeks, and leaves slots you've already set alone. No AI required,
   and the app doesn't change — the same "Plan my week" / "Plan my month" buttons just always
   return a plan.
-- **Dark mode.** Waffled now has a warm dark theme alongside the original light one, chosen from
-  **Settings → Appearance**: pick Light, Dark, or **Match system** to follow your device
-  automatically. It's a warm dark — surfaces and text move to soft charcoals rather than cold
-  black-and-blue, and every brand, accent, and per-person color stays exactly the same, so the app
-  still reads as Waffled with the lights off. The choice is saved per device and applies instantly,
-  including on the kitchen kiosk display.
-- **One-command cloud deploy to Oracle Cloud's Always Free tier via Terraform.** A new
-  `infra/terraform/oci` module stands up the whole stack (Postgres, PowerSync, api, Caddy,
-  backup) on a free Arm Ampere A1 instance and, when you give it a domain, fronts it with
-  automatic HTTPS — including a TLS front for offline-sync (a `powersync.` subdomain by default,
-  or a same-domain port / dedicated hostname). Pass your API keys and other config through named
-  variables. `terraform apply` prints the public IP, the DNS records to create, and the URL to
-  open. See the module's `README.md` and the "Deploy to Oracle Cloud" guide.
-- **`./waffled` can layer an extra Compose override.** A `--override <file>` flag and an
-  auto-loaded `infra/compose/docker-compose.override.yml` let a deployment add published ports or
-  mounts without editing tracked files — used by the Oracle Cloud deploy so plain `./waffled
-  up`/`upgrade` keep its HTTPS front across upgrades.
+- **Dark mode, everywhere.** Waffled now has a warm dark theme alongside the original light one,
+  chosen from **Settings → Appearance** on the web, the kitchen kiosk display, **and the
+  iPhone/iPad app**: pick Light, Dark, or **Match system** to follow your device automatically.
+  It's a warm dark — surfaces and text move to soft charcoals rather than cold black-and-blue, and
+  every brand, accent, and per-person color stays exactly the same, so the app still reads as
+  Waffled with the lights off. The choice is saved per device and applies instantly. The two
+  platforms share one palette, so a screen looks the same with the lights off on your phone as it
+  does on the wall.
+- **Add a recipe from a photo or by describing it — now on iPhone and iPad, not just the web.**
+  The recipe editor's "start from…" options now include **From a photo** (snap or choose up to six
+  pictures of a recipe card, cookbook page, or handwritten note and let the AI read them) and
+  **Describe it** (say or type the ingredients and steps in any order — with on-device voice
+  dictation — and the AI organizes it into a recipe). Both prefill the editor for you to review and
+  save, exactly like the web app, and appear only when your household's AI provider supports them.
 
 ### Changed
 - **New chores now default to a one-off on the day you're viewing, and each day's list is sorted sensibly.** On iPhone/iPad, adding a chore from the Chores tab now starts as "Just once" due on the day currently shown — instead of a recurring daily chore always due today. A day's chores are also ordered unfinished-first, then by due time (earliest first, untimed last), then A–Z.
@@ -909,7 +925,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/kevinpsites/waffled/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kevinpsites/waffled/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/kevinpsites/waffled/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/kevinpsites/waffled/compare/v0.5.0...v0.6.0

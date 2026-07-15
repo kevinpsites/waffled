@@ -33,7 +33,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
 | First-run **setup wizard** (create household + admin) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — **web/server-only by design**, not planned for mobile (mobile shows a "finish setup on the web" notice) |
-| **Dark mode** + Settings → Appearance (Light / Dark / Match system) | ✅ | 🔜 | 🔜 | 🟡 Web/kiosk done; iOS parity planned (`apps/ios/DARK_MODE.md`) |
+| **Dark mode** + Settings → Appearance (Light / Dark / Match system) | ✅ | ✅ | ✅ | ✅ Done — web/kiosk **and** iPhone/iPad share one warm-dark palette (`apps/ios/DARK_MODE.md`) |
 | **Email/password** login (built-in) | ✅ | ✅ | ✅ | ✅ Done |
 | Rotating refresh tokens + transparent 401-refresh | ✅ | ✅ | ✅ | ✅ Done (Keychain token store) |
 | **OIDC SSO** (backend-mediated, invite-gated) | ✅ | ✅ | ✅ | ✅ Done (`ASWebAuthenticationSession`) |
@@ -202,7 +202,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Shuffle my week / month** — no-AI fallback for Plan my week & month | ✅ | ✅ | ✅ | ✅ Done — when no LLM provider is configured, `Plan my week` and `Plan my month` fill the empty dinner slots with random library recipes instead of erroring: skip recipes already planned in that window or cooked in the last ~14 days, leave filled slots untouched, degrade gracefully when the library is small, and return `via:"shuffle"`. Transparent to every client |
 | **Try New Recipe** — nudge the AI week toward novelty / list specific dishes to try | ✅ | ✅ | ✅ | ✅ Done — mobile: "Try something new" toggle + "Dishes to try" chips in the Plan-my-week sheet (sent on the initial full draft) |
 | AI **metadata auto-fill** (cuisine, protein, vegetables, tags) | ✅ | ✅ | ✅ | ✅ Done (debounced "✨ Thinking…" in the editor; fills empty fields / suggestion chips) |
-| **AI recipe import** — **photo → recipe** and **describe-it** (speech/free-form → recipe) | ✅ | 🚧 | 🚧 | ✅ Done (web) — in "New recipe": read photos of a physical recipe with a vision model, or dictate/type a loose description; both prefill the editor for review before saving. Source photos auto-delete after a short window. Photo needs a vision provider (Claude / OpenAI / vision Ollama); describe works with any. iOS parity (camera + Apple-Speech) planned |
+| **AI recipe import** — **photo → recipe** and **describe-it** (speech/free-form → recipe) | ✅ | ✅ | ✅ | ✅ Done (web + iOS) — in "New recipe": read photos of a physical recipe with a vision model, or dictate/type a loose description; both prefill the editor for review before saving. Source photos auto-delete after a short window. Photo needs a vision provider (Claude / OpenAI / vision Ollama); describe works with any. iOS uses the device camera / photo library and on-device Apple Speech dictation; the two import buttons appear only when the household's provider supports them |
 | **Conversational recipe edits** ("make it gluten-free", "double it") | 🚧 | 🚧 | 🚧 | 🚧 Planned |
 
 ## Photos & memories
