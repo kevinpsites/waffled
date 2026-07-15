@@ -130,7 +130,8 @@ values don't show in `terraform` output either. The only caveat is the ordinary 
 the local **state file holds them in plaintext**, so keep that file private; if you ever adopt a
 remote state backend, enable its encryption. Values must be single-line (base64-encode multi-line
 secrets like PEM keys). Prefer to keep a key out of Terraform entirely? SSH in, edit
-`/opt/waffled/infra/compose/.env`, and run `sudo ./waffled up`.
+`/opt/waffled/infra/compose/.env`, and run
+`sudo ./waffled --override infra/compose/docker-compose.oci.yml up`.
 
 Tip: pin `LOCAL_JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` in `app_env` if you
 want them to survive an instance rebuild — otherwise they regenerate on each fresh boot, which
@@ -139,18 +140,26 @@ signs everyone out and makes stored OAuth tokens unreadable.
 ## Upgrading
 
 Upgrades happen **on the server**, not through Terraform — cloud-init only runs once, so
-re-`apply`ing won't upgrade the app (and changing the version could try to *replace* the
-instance and wipe your data). Just use the stock CLI:
+re-`apply`ing won't upgrade the app. Use the stock CLI, **passing the deploy's override** so the
+HTTPS front is kept:
 
 ```bash
 ssh ubuntu@<public_ip>
-cd /opt/waffled && sudo ./waffled upgrade   # git pull + pre-upgrade backup + pull images + migrate
+cd /opt/waffled
+sudo ./waffled --override infra/compose/docker-compose.oci.yml upgrade
 ```
 
-The bootstrap writes its HTTPS config to `infra/compose/docker-compose.override.yml`, and
-`./waffled` **auto-loads that override**, so `./waffled up`/`upgrade` keep the published ports and
-the PowerSync front across upgrades — no separate wrapper. (For an ad-hoc extra override, there's
-also a `./waffled --override <file> up`.)
+The override (published ports + the PowerSync Caddy front) is applied **only** via that explicit
+`--override` flag — nothing auto-loads, so normal Waffled installs are never affected. **You must
+include the flag** on `up`/`upgrade`/`restart`; without it, those recreate Caddy from the base
+compose and drop port 443. Commands that don't recreate containers (`status`, `logs`, `backup`,
+`doctor`, …) don't need it.
+
+> **Tip:** to avoid typing the flag, define a shell function once (e.g. in `~/.bashrc`):
+> ```bash
+> waffled() { sudo /opt/waffled/waffled --override /opt/waffled/infra/compose/docker-compose.oci.yml "$@"; }
+> ```
+> then just run `waffled upgrade`, `waffled status`, etc.
 
 Two upgrade nuances:
 

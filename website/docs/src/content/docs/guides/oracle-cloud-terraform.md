@@ -205,8 +205,8 @@ sudo ./waffled status                          # container health
 sudo ./waffled logs caddy                      # TLS / ACME progress
 ```
 
-(`./waffled` auto-loads the deployment's `docker-compose.override.yml`, so it always includes the
-HTTPS front — you don't need `docker compose` directly or any special wrapper.)
+(`status` and `logs` are read-only, so they don't need the override flag. Commands that
+**recreate** containers — `up`, `upgrade`, `restart` — do; see [Upgrading](#upgrading).)
 
 - **"Server is down" from Cloudflare** — your DNS records are *Proxied* (orange cloud). Set them to
   **DNS only** (grey cloud) so Caddy can issue and serve certificates directly. See the callout in
@@ -256,27 +256,36 @@ tokens readable), set those three in `app_env` so they stay constant.
 
 See the full list of settings in the [Environment variables](/install/environment-variables/)
 reference. Prefer not to put a particular key in Terraform at all? You can always SSH in, edit
-`/opt/waffled/infra/compose/.env`, and run `sudo ./waffled up`.
+`/opt/waffled/infra/compose/.env`, and run
+`sudo ./waffled --override infra/compose/docker-compose.oci.yml up`.
 
 ## Upgrading
 
 Upgrades happen **on the server, not through Terraform.** Cloud-init only runs once, so
-re-running `terraform apply` won't upgrade the app — and bumping the version in Terraform can
-make it try to *replace* the instance, which would wipe your data. Think of it as two tools,
-two jobs: **Terraform owns the box; the app version is a day-2, on-box concern.**
+re-running `terraform apply` won't upgrade the app. Think of it as two tools, two jobs:
+**Terraform owns the box; the app version is a day-2, on-box concern.**
 
-Just use the stock CLI:
+Use the stock CLI, passing the deploy's override so the HTTPS front is kept:
 
 ```bash
 ssh ubuntu@<public_ip>
-cd /opt/waffled && sudo ./waffled upgrade
+cd /opt/waffled
+sudo ./waffled --override infra/compose/docker-compose.oci.yml upgrade
 ```
 
 `./waffled upgrade` does a `git pull`, a pre-upgrade database backup, pulls the new images, and
-runs migrations. The bootstrap wrote its HTTPS config to `infra/compose/docker-compose.override.yml`,
-and **`./waffled` auto-loads that override**, so the published ports and PowerSync front survive
-every upgrade — no special wrapper needed. (There's also a `./waffled --override <file> up` for
-ad-hoc use.)
+runs migrations. The override (published ports + PowerSync front) is applied **only** via that
+explicit `--override` flag — nothing auto-loads, so ordinary Waffled installs are untouched. **You
+must include the flag** on `up`/`upgrade`/`restart`, or Caddy gets recreated from the base compose
+and loses port 443.
+
+:::tip[Don't want to type the flag every time?]
+Define a shell function once on the box (e.g. in `~/.bashrc`):
+```bash
+waffled() { sudo /opt/waffled/waffled --override /opt/waffled/infra/compose/docker-compose.oci.yml "$@"; }
+```
+Then `waffled upgrade`, `waffled status`, etc. just work.
+:::
 
 Two things to know: `upgrade` moves you to the **latest** release (to stay on a pinned
 `waffled_version`, re-run `terraform apply` instead of `upgrade`), and if you deployed on a **tag

@@ -21,10 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or a same-domain port / dedicated hostname). Pass your API keys and other config through named
   variables. `terraform apply` prints the public IP, the DNS records to create, and the URL to
   open. See the module's `README.md` and the "Deploy to Oracle Cloud" guide.
-- **`./waffled` can layer an extra Compose override.** A `--override <file>` flag and an
-  auto-loaded `infra/compose/docker-compose.override.yml` let a deployment add published ports or
-  mounts without editing tracked files — used by the Oracle Cloud deploy so plain `./waffled
-  up`/`upgrade` keep its HTTPS front across upgrades.
+- **`./waffled` accepts a `--override <file>` flag** to layer an extra Compose file on top of the
+  base one, so a deployment can add published ports or mounts without editing tracked files. It's
+  explicit opt-in only (nothing auto-loads), and is used by the Oracle Cloud deploy.
 
 ### Changed
 

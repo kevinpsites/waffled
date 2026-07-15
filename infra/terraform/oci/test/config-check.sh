@@ -2,7 +2,7 @@
 # Verify the OCI bootstrap produces a VALID, COMPLETE compose stack — without
 # provisioning anything in the cloud and without pulling images. It reproduces what
 # the bootstrap assembles on the server (the deployed ref's compose files + the
-# `docker-compose.override.yml` override the bootstrap writes + a complete .env) and runs
+# `docker-compose.oci.yml` override the bootstrap writes + a complete .env) and runs
 # `docker compose config`, which:
 #   • merges base + override and fails if the override is malformed, and
 #   • fails if any REQUIRED (`:?`) variable is missing — the exact check that would
@@ -41,11 +41,11 @@ CDIR="$WORK/infra/compose"
 # list (80/443). Use awk to replace that whole line — portable, unlike `sed s/…\n…/`,
 # whose `\n` BSD/macOS sed treats literally.
 PORTS="$(printf '      - "80:80"\n      - "443:443"')"
-awk "/cat > docker-compose.override.yml <<'COMPOSE_EOF'/{f=1;next} /^COMPOSE_EOF/{f=0} f" "$TPL" \
-  | awk -v ports="$PORTS" '$0=="${caddy_ports_yaml}"{print ports; next} {print}' > "$CDIR/docker-compose.override.yml"
+awk "/cat > docker-compose.oci.yml <<'COMPOSE_EOF'/{f=1;next} /^COMPOSE_EOF/{f=0} f" "$TPL" \
+  | awk -v ports="$PORTS" '$0=="${caddy_ports_yaml}"{print ports; next} {print}' > "$CDIR/docker-compose.oci.yml"
 awk "/cat > caddy\/Caddyfile.oci <<'CADDY_EOF'/{f=1;next} /^CADDY_EOF/{f=0} f" "$TPL" \
   | sed "s|\${powersync_site}|powersync.demo.waffled.app|" > "$CDIR/caddy/Caddyfile.oci"
-grep -q 'ports: !override' "$CDIR/docker-compose.override.yml" || fail "override extraction failed — template shape changed?"
+grep -q 'ports: !override' "$CDIR/docker-compose.oci.yml" || fail "override extraction failed — template shape changed?"
 
 # 3) Build a COMPLETE .env: .env.example defaults + every required (:?) secret + the
 #    cloud/networking vars + a sample app_env key. Required secrets are discovered
@@ -69,7 +69,7 @@ set_env PUBLIC_BASE_URL "https://demo.waffled.app"
 set_env POWERSYNC_PUBLIC_URL "https://powersync.demo.waffled.app"
 set_env ANTHROPIC_API_KEY "sk-ant-config-check"   # stands in for an app_env value
 
-DC=(docker compose -f docker-compose.yml -f docker-compose.override.yml --env-file .env)
+DC=(docker compose -f docker-compose.yml -f docker-compose.oci.yml --env-file .env)
 
 # 4) Positive: the full config must be valid.
 "${DC[@]}" config -q 2>"$WORK/err" || { cat "$WORK/err"; fail "compose config rejected a complete stack"; }
@@ -85,7 +85,7 @@ pass "HTTPS override applied (443 published, PowerSync's 8090 closed), app_env i
 # 6) Negative: every required secret must be enforced. Drop each and expect failure.
 for v in "${REQ[@]}"; do
   grep -v -E "^$v=" .env > .env.bad
-  if docker compose -f docker-compose.yml -f docker-compose.override.yml --env-file .env.bad config -q 2>/dev/null; then
+  if docker compose -f docker-compose.yml -f docker-compose.oci.yml --env-file .env.bad config -q 2>/dev/null; then
     fail "compose accepted a stack missing required $v"
   fi
 done

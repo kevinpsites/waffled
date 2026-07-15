@@ -7,7 +7,7 @@ The bootstrap (`../cloud-init.sh.tftpl`) runs unattended on first boot, so a bug
 ## `config-check.sh` — fast, offline, no image pulls
 
 Reproduces what the bootstrap assembles on the server — the **deployed ref's** compose
-files, the `docker-compose.override.yml` the bootstrap writes, and a complete `.env` —
+files, the `docker-compose.oci.yml` the bootstrap writes, and a complete `.env` —
 and runs `docker compose config`. That merge:
 
 - fails if the override is malformed, and
@@ -38,7 +38,7 @@ access (not a locked-down CI sandbox). Two options:
    override, then bring it up under a unique project name:
    ```bash
    docker compose -p waffled-deploytest \
-     -f docker-compose.yml -f docker-compose.override.yml --env-file .env up -d
+     -f docker-compose.yml -f docker-compose.oci.yml --env-file .env up -d
    docker compose -p waffled-deploytest ps        # wait for healthy
    docker compose -p waffled-deploytest down -v   # clean up (deletes its volumes)
    ```

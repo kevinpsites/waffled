@@ -177,10 +177,22 @@ resource "oci_core_instance" "waffled" {
     }))
   }
 
-  # Catch the common footgun: most OCI regions (free-tier home regions especially)
-  # have exactly ONE availability domain, so availability_domain_number > 1 would
-  # index past the list and fail apply with an opaque "index out of range".
   lifecycle {
+    # Don't let a re-apply DESTROY a running box over cosmetic drift:
+    #  • source_id: the image data source tracks the *latest* Ubuntu, so Canonical
+    #    publishing a newer image would otherwise force-replace the instance.
+    #  • metadata: user_data (cloud-init) only runs at first boot — changing the
+    #    bootstrap later can't take effect on a live box anyway, so it must not
+    #    trigger a replace. (To roll out bootstrap changes, redeploy deliberately:
+    #    back up, `terraform destroy`, `apply`, restore — see the README.)
+    ignore_changes = [
+      source_details[0].source_id,
+      metadata,
+    ]
+
+    # Catch the common footgun: most OCI regions (free-tier home regions especially)
+    # have exactly ONE availability domain, so availability_domain_number > 1 would
+    # index past the list and fail apply with an opaque "index out of range".
     precondition {
       condition     = var.availability_domain_number >= 1 && var.availability_domain_number <= length(data.oci_identity_availability_domains.ads.availability_domains)
       error_message = "availability_domain_number is ${var.availability_domain_number}, but ${var.region} has ${length(data.oci_identity_availability_domains.ads.availability_domains)} availability domain(s). Most regions have only 1; ADs 2/3 exist solely in multi-AD regions. If you hit 'Out of host capacity', try a different region instead."

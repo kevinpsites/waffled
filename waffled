@@ -35,10 +35,9 @@ ENV_FILE="$ROOT/infra/compose/.env"
 
 # Optional compose overrides, layered on top of the base file so a deployment can add
 # published ports / mounts without editing tracked files (e.g. the OCI cloud deploy).
-# Additive, in order: the conventional docker-compose.override.yml if present, then any
-# --override <file> flags parsed from the command line (handled just below).
+# Opt-in ONLY via explicit `--override <file>` flags (parsed just below) — nothing is
+# auto-loaded, so normal installs are never affected.
 COMPOSE_OVERRIDES=()
-[ -f "$ROOT/infra/compose/docker-compose.override.yml" ] && COMPOSE_OVERRIDES+=("$ROOT/infra/compose/docker-compose.override.yml")
 
 # Services we expect to be running, in startup order.
 SERVICES=(postgres api powersync caddy backup)

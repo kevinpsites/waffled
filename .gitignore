@@ -16,7 +16,7 @@ secrets/
 .terraform.lock.hcl
 
 # local compose overrides (e.g. the OCI cloud deploy) — deployment-local, not committed
-infra/compose/docker-compose.override.yml
+infra/compose/docker-compose.oci.yml
 infra/compose/caddy/Caddyfile.oci
 
 # node

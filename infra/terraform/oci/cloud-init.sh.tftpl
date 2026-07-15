@@ -3,10 +3,10 @@
 # Brings up the full Waffled Docker Compose stack. Log: /var/log/waffled-bootstrap.log
 #
 # Design: cloud-specific customization lives in UNTRACKED files — an
-# infra/compose/docker-compose.override.yml (published ports + a Caddy front for
+# infra/compose/docker-compose.oci.yml (published ports + a Caddy front for
 # PowerSync) and a caddy/Caddyfile.oci — so `git pull --ff-only` stays clean on
-# upgrade. `./waffled` auto-loads docker-compose.override.yml, so plain
-# `./waffled up`/`upgrade` keep the HTTPS front (no separate wrapper needed).
+# upgrade. It's applied via `./waffled --override infra/compose/docker-compose.oci.yml`
+# (explicit opt-in; nothing auto-loads), so normal installs are never affected.
 set -euxo pipefail
 exec > /var/log/waffled-bootstrap.log 2>&1
 
@@ -85,7 +85,7 @@ ${powersync_site} {
 }
 CADDY_EOF
 
-cat > docker-compose.override.yml <<'COMPOSE_EOF'
+cat > docker-compose.oci.yml <<'COMPOSE_EOF'
 services:
   caddy:
     ports: !override
@@ -123,10 +123,16 @@ while IFS= read -r __line; do
 done < <(printf '%s' "${app_env_b64}" | base64 -d)
 %{ endif ~}
 
-# 7) Re-run `up`. ./waffled auto-loads docker-compose.override.yml, so this publishes
-#    443 (+ the PowerSync port) and mounts the Caddy front. Images are cached from step
-#    4, so it only reconciles the changed containers. Day-2: `./waffled up|upgrade|...`.
+# 7) Re-run `up` WITH the override (explicit --override; nothing auto-loads). This
+#    publishes 443 (+ the PowerSync port) and mounts the Caddy front. Images are cached
+#    from step 4, so it only reconciles the changed containers.
+#    Day-2 on this box, always pass the same flag, e.g.:
+#      cd /opt/waffled && sudo ./waffled --override infra/compose/docker-compose.oci.yml upgrade
 cd /opt/waffled
+%{ if domain != "" ~}
+./waffled --override infra/compose/docker-compose.oci.yml up
+%{ else ~}
 ./waffled up
+%{ endif ~}
 
 echo "waffled bootstrap complete"
