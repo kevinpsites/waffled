@@ -142,9 +142,12 @@ services_ready() {
 # checks pass. Wait briefly so first-run users see the settled state, not a false alarm.
 wait_for_services() {
   local remaining="${WAFFLED_HEALTH_ATTEMPTS:-30}"
-  local requested=("$@") targets=() service arg
+  local targets=() service arg
+  # Keep only args that name services (compose flags like --build fall through).
+  # Iterate "$@" directly: copying it into a named array and expanding that crashes
+  # bash < 4.4 (macOS /bin/bash is 3.2) under set -u when no services were named.
   for service in "${SERVICES[@]}"; do
-    for arg in "${requested[@]}"; do
+    for arg in "$@"; do
       if [ "$arg" = "$service" ]; then
         targets+=("$service")
         break
@@ -185,6 +188,22 @@ update_repo_for_upgrade() {
     echo "Resolve the repository state, then re-run './waffled upgrade'. No images were changed."
     return 1
   fi
+}
+
+# The upgrade's fast-forward can replace ./waffled while bash is still executing the
+# OLD copy — which then drives the NEW tree/compose with old logic. That is exactly
+# how upgrading 0.7.0 → 0.8.0 broke: the old ensure_env couldn't backfill the newly
+# required secrets, so compose died on "required variable" mid-upgrade. If the script
+# changed on disk, hand the rest of the upgrade to the new copy exactly once
+# (WAFFLED_UPGRADE_REEXEC breaks the recursion).
+script_checksum() { cksum < "$ROOT/waffled"; }
+maybe_reexec_upgrade() {
+  local before="$1"; shift
+  if [ -n "${WAFFLED_UPGRADE_REEXEC:-}" ] || [ "$(script_checksum)" = "$before" ]; then
+    return 0
+  fi
+  echo "${c_dim}./waffled was updated — restarting the upgrade with the new version…${c_reset}"
+  WAFFLED_UPGRADE_REEXEC=1 exec "$ROOT/waffled" upgrade "$@"
 }
 
 run_pre_upgrade_backup() {
@@ -315,7 +334,11 @@ case "$cmd" in
     done
     preflight || exit 1
     ensure_env
+    script_before="$(script_checksum)"
     update_repo_for_upgrade || exit 1
+    # If the update replaced this script, restart the upgrade under the new copy NOW —
+    # before the backup/pin/pull — so ensure_env and compose logic match the new tree.
+    maybe_reexec_upgrade "$script_before" "$@"
     # Snapshot the DB BEFORE changing the version pin or swapping images.
     # Migrations are forward-only, so a missing rollback point is fatal unless
     # the operator explicitly accepts it.

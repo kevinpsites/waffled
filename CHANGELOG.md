@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **`./waffled upgrade` no longer trips over its own update.** Upgrading from an older
+  release could fail mid-way with a cryptic `required variable … is missing a value`
+  error, because the still-running old script drove the freshly downloaded configuration
+  before learning about newly required settings. The upgrade now restarts itself under
+  the new version of the script as soon as the update lands, so missing secrets are
+  generated into `.env` before anything else runs — one command, no manual `.env` edits.
+- **`./waffled up` and `upgrade` no longer crash with "unbound variable" on macOS.** The
+  health wait added in 0.8.0 aborted at the very end of every start/upgrade on the stock
+  macOS shell (bash 3.2) — after the stack was already up, hiding the final status
+  report. The wait now runs (and reports service health) on every supported shell.
 
 ## [0.8.0] - 2026-07-14
 
