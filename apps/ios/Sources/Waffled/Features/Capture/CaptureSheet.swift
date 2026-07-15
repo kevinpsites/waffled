@@ -40,6 +40,12 @@ struct CaptureSheet: View {
     @State private var personEmoji: String?                   // LLM-picked avatar emoji (carried through)
     @State private var personBirthday: String?               // LLM-picked birthday YYYY-MM-DD (carried through)
     @State private var personIsAdmin = false                 // LLM-picked admin flag (carried through)
+    @State private var goalType = "habit"                     // goal type (count|total|habit|checklist)
+    @State private var goalTarget = ""                        // numeric target (count/total), as text
+    @State private var goalUnit = ""                          // target unit (count/total)
+    @State private var goalDeadlineOn = false                 // whether the goal has a deadline
+    @State private var goalDeadline = Date()                  // the deadline day
+    @State private var goalTrackingMode = "shared_total"      // LLM-picked tracking mode (carried through)
     @State private var lists: [WaffledAPI.ListSummary] = []   // for the list picker
     @State private var editing = false                     // glance → full field editor
     @FocusState private var focused: Bool
@@ -48,7 +54,7 @@ struct CaptureSheet: View {
     private static let kinds: [(key: String, icon: String, label: String)] = [
         ("event", "📅", "Event"), ("list", "📝", "List"), ("grocery", "🛒", "Grocery"),
         ("task", "✅", "Task"), ("meal", "🍽️", "Meal"), ("countdown", "⏳", "Countdown"),
-        ("person", "👤", "Family member"),
+        ("person", "👤", "Family member"), ("goal", "🎯", "Goal"),
     ]
 
     // ISO8601DateFormatter is expensive to allocate; hoist the two distinct configs
@@ -111,6 +117,7 @@ struct CaptureSheet: View {
         evRepeat = .none; evUntilOn = false; evPerson = nil
         taskStars = 0; taskRrule = nil
         personType = "adult"; personEmoji = nil; personBirthday = nil; personIsAdmin = false
+        goalType = "habit"; goalTarget = ""; goalUnit = ""; goalDeadlineOn = false; goalTrackingMode = "shared_total"
         detent = .large
     }
 
@@ -282,6 +289,7 @@ struct CaptureSheet: View {
         case let .list(item, _, _): return ("List", item)
         case let .countdown(t, _, _, _): return ("Countdown", t)
         case let .person(n, _, _, _, _): return ("Family member", n)
+        case let .goal(t, _, _, _, _, _): return ("Goal", t)
         }
     }
 
@@ -322,6 +330,12 @@ struct CaptureSheet: View {
             return DateFmt.string(cdDate, "EEE, MMM d", sync.householdTz)
         case "person":
             return personType == "kid" ? "Kid" : (personType == "teen" ? "Teen" : "Adult")
+        case "goal":
+            let typeLabel = goalType == "count" ? "Count" : (goalType == "total" ? "Total" : (goalType == "checklist" ? "Checklist" : "Habit"))
+            let measured = goalType == "count" || goalType == "total"
+            let target = measured && !goalTarget.isEmpty ? [goalTarget, goalUnit].filter { !$0.isEmpty }.joined(separator: " ") : ""
+            let by = goalDeadlineOn ? "by " + DateFmt.string(goalDeadline, "MMM d", sync.householdTz) : ""
+            return [typeLabel, target, by].filter { !$0.isEmpty }.joined(separator: " · ")
         default: return ""
         }
     }
@@ -394,6 +408,35 @@ struct CaptureSheet: View {
                 Text("Only an adult can add family members.")
                     .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.primaryD)
             }
+        case "goal":
+            ChipFlow(spacing: 8, lineSpacing: 8) {
+                ForEach([("count", "Count"), ("total", "Total"), ("habit", "Habit"), ("checklist", "Checklist")], id: \.0) { key, label in
+                    selectChip(label, on: goalType == key) { goalType = key }
+                }
+            }
+            if goalType == "count" || goalType == "total" {
+                HStack(spacing: 8) {
+                    TextField("target", text: $goalTarget)
+                        .keyboardType(.numberPad)
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(maxWidth: 96)
+                        .padding(.horizontal, 12).padding(.vertical, 10).innerInput()
+                    TextField("unit (e.g. books)", text: $goalUnit)
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 10).innerInput()
+                }
+            }
+            HStack(spacing: 8) {
+                toggleChip("By a date", on: goalDeadlineOn) { goalDeadlineOn.toggle() }
+                if goalDeadlineOn {
+                    DatePicker("", selection: $goalDeadline, displayedComponents: .date).labelsHidden()
+                }
+                Spacer(minLength: 0)
+            }
+            if goalBlocked {
+                Text("Goals is turned off. Turn it on in Settings → Modules.")
+                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.primaryD)
+            }
         default: EmptyView()
         }
     }
@@ -401,6 +444,10 @@ struct CaptureSheet: View {
     /// The `person` create is admin-only (adminRoute). A non-admin sees a reason and
     /// can't commit — the graceful analogue of the web's "unsupported" degrade.
     private var personBlocked: Bool { editKind == "person" && sync.currentPerson?.isAdmin != true }
+
+    /// The `goal` create is gated on the Goals module (default on). When off, the viewer
+    /// sees a reason and can't commit — the graceful analogue of the web's degrade.
+    private var goalBlocked: Bool { editKind == "goal" && !sync.module(.goals) }
 
     // MARK: field pieces
 
@@ -564,6 +611,7 @@ struct CaptureSheet: View {
         case "meal": return "Meal"
         case "countdown": return "Countdown title"
         case "person": return "Name"
+        case "goal": return "Goal"
         default: return "Item"
         }
     }
@@ -577,13 +625,14 @@ struct CaptureSheet: View {
         case "meal": return "Add meal"
         case "countdown": return "Add countdown"
         case "person": return "Add family member"
+        case "goal": return "Add goal"
         default: return "Add"
         }
     }
     private var canCommit: Bool {
         !editName.trimmingCharacters(in: .whitespaces).isEmpty
             && (editKind != "list" || !editListName.trimmingCharacters(in: .whitespaces).isEmpty)
-            && !personBlocked
+            && !personBlocked && !goalBlocked
     }
     private var viaLabel: String {
         switch via {
@@ -655,7 +704,7 @@ struct CaptureSheet: View {
         switch i {
         case .event: return "event"; case .grocery: return "grocery"; case .task: return "task"
         case .meal: return "meal"; case .list: return "list"; case .countdown: return "countdown"
-        case .person: return "person"
+        case .person: return "person"; case .goal: return "goal"
         }
     }
 
@@ -702,6 +751,17 @@ struct CaptureSheet: View {
         case let .person(name, memberType, avatarEmoji, birthday, isAdmin):
             editKind = "person"; editName = name; personType = memberType
             personEmoji = avatarEmoji; personBirthday = birthday; personIsAdmin = isAdmin
+        case let .goal(title, gType, targetValue, unit, deadline, trackingMode):
+            editKind = "goal"; editName = title; goalType = gType
+            goalTrackingMode = trackingMode
+            goalUnit = unit ?? ""
+            goalTarget = targetValue.map { $0 == $0.rounded() ? String(Int($0)) : String($0) } ?? ""
+            let parts = (deadline ?? "").split(separator: "-").compactMap { Int($0) }
+            if parts.count == 3, let d = Cal.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) {
+                goalDeadlineOn = true; goalDeadline = d
+            } else {
+                goalDeadlineOn = false
+            }
         }
     }
 
@@ -744,6 +804,21 @@ struct CaptureSheet: View {
                 }
                 ok = await sync.commitPerson(name: name, memberType: personType,
                                              avatarEmoji: personEmoji, birthday: personBirthday, isAdmin: personIsAdmin)
+            case "goal":
+                // Module-gated — refuse gracefully rather than POSTing when Goals is off.
+                guard sync.module(.goals) else {
+                    error = "Goals is turned off. Turn it on in Settings → Modules."; phase = .preview; return
+                }
+                // count/total carry a numeric target + unit; habit/checklist don't. Downgrade
+                // a count/total with no real number to a habit (mirrors the server).
+                let measured = goalType == "count" || goalType == "total"
+                let target = measured ? Double(goalTarget.trimmingCharacters(in: .whitespaces)) : nil
+                let type = measured && target == nil ? "habit" : goalType
+                let unit = (measured && !goalUnit.trimmingCharacters(in: .whitespaces).isEmpty) ? goalUnit.trimmingCharacters(in: .whitespaces) : nil
+                let deadline = goalDeadlineOn ? DateFmt.string(goalDeadline, "yyyy-MM-dd", sync.householdTz) : nil
+                ok = await sync.commitGoal(title: name, goalType: type, trackingMode: goalTrackingMode,
+                                           targetValue: type == "habit" || type == "checklist" ? nil : target,
+                                           unit: type == "habit" || type == "checklist" ? nil : unit, deadline: deadline)
             default:
                 ok = false
             }

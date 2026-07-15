@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confirm-and-edit preview before it's created (on web, iPhone, and iPad). Adding members is
   an adult-only action, so a kid or teen sees a friendly "Only an adult can add family members"
   note instead.
+- **Quick-add can set a goal.** Type something like "set a goal to read 20 books this year",
+  "I want to get in shape", or "my goal is to save $500" into the "Add anything" bar and
+  Waffled starts the goal for you — figuring out whether it's a simple habit, a countable
+  target (20 books), or an accumulating total, and letting you fine-tune the type, target,
+  unit, and deadline in the confirm-and-edit preview before it's created (on web, iPhone, and
+  iPad). If a household has turned the Goals module off, quick-add says so instead of failing.
 
 ### Changed
 

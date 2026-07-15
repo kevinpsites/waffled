@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { createPortal } from 'react-dom'
 import { Icon } from '../icons'
 import { usePersons, useHousehold, api, countdownsApi, localToday, type Person, type ListSummary } from '../../lib/api'
-import { parseCapture, intentSummary, looksConfident, memberTypeLabel, MEMBER_TYPES, type ParsedIntent } from '../../lib/capture/parse'
+import { parseCapture, intentSummary, looksConfident, memberTypeLabel, MEMBER_TYPES, goalTypeLabel, GOAL_TYPES, type ParsedIntent } from '../../lib/capture/parse'
+import { moduleEnabled } from '../../lib/modules'
 import { describeRrule } from './recurrence'
 
 const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
@@ -29,6 +30,7 @@ const KINDS: Array<{ k: ParsedIntent['kind']; label: string }> = [
   { k: 'meal', label: '🍽️ Meal' },
   { k: 'countdown', label: '⏳ Countdown' },
   { k: 'person', label: '👤 Family member' },
+  { k: 'goal', label: '🎯 Goal' },
 ]
 
 const kindLabel = (k: ParsedIntent['kind']) => KINDS.find((x) => x.k === k)?.label ?? 'item'
@@ -63,6 +65,7 @@ function primaryOf(i: ParsedIntent): string {
     case 'task':
     case 'meal':
     case 'countdown':
+    case 'goal':
       return i.title
     case 'grocery':
       return i.name
@@ -80,6 +83,7 @@ function withPrimary(i: ParsedIntent, v: string): ParsedIntent {
     case 'task':
     case 'meal':
     case 'countdown':
+    case 'goal':
       return { ...i, title: v }
     case 'grocery':
       return { ...i, name: v }
@@ -119,6 +123,16 @@ function rerouteKind(i: ParsedIntent, kind: ParsedIntent['kind'], today: string)
         avatarEmoji: i.kind === 'person' ? i.avatarEmoji : null,
         birthday: i.kind === 'person' ? i.birthday : null,
         isAdmin: i.kind === 'person' ? i.isAdmin : false,
+      }
+    case 'goal':
+      return {
+        kind: 'goal',
+        title: primary,
+        goalType: i.kind === 'goal' ? i.goalType : 'habit',
+        targetValue: i.kind === 'goal' ? i.targetValue : null,
+        unit: i.kind === 'goal' ? i.unit : null,
+        deadline: i.kind === 'goal' ? i.deadline : null,
+        trackingMode: i.kind === 'goal' ? i.trackingMode : 'shared_total',
       }
     default:
       return i
@@ -259,6 +273,31 @@ function DraftFields({ intent, persons, lists, set, today }: { intent: ParsedInt
       </>
     )
   }
+  if (intent.kind === 'goal') {
+    // Count/total carry a numeric target + unit; habit/checklist don't. Clearing the
+    // target when switching to a habit keeps the commit body honest.
+    const measured = intent.goalType === 'count' || intent.goalType === 'total'
+    return (
+      <>
+        <div className="cap-people">
+          {GOAL_TYPES.map((gt) => (
+            <button key={gt} type="button" className={`cap-person ${intent.goalType === gt ? 'on' : ''}`} onClick={() => set({ ...intent, goalType: gt, ...(gt === 'count' || gt === 'total' ? {} : { targetValue: null, unit: null }) })}>{goalTypeLabel(gt)}</button>
+          ))}
+        </div>
+        {measured && (
+          <div className="cap-edit-row">
+            <input type="number" min={0} className="cap-edit-mini" value={intent.targetValue ?? ''} placeholder="target" aria-label="Target" style={{ maxWidth: 96 }} onChange={(e) => set({ ...intent, targetValue: e.target.value === '' ? null : Number(e.target.value) })} />
+            <input className="cap-edit-mini" value={intent.unit ?? ''} placeholder="unit (e.g. books)" aria-label="Unit" onChange={(e) => set({ ...intent, unit: e.target.value || null })} />
+          </div>
+        )}
+        <div className="cap-edit-row">
+          <label className="cap-stars" style={{ gap: 6 }}>By
+            <input type="date" className="cap-edit-mini" value={intent.deadline ?? ''} aria-label="Deadline" onChange={(e) => set({ ...intent, deadline: e.target.value || null })} />
+          </label>
+        </div>
+      </>
+    )
+  }
   return null
 }
 
@@ -266,9 +305,11 @@ export function CaptureBar() {
   const { persons } = usePersons()
   // The current viewer's admin state gates the `person` (add-a-member) commit —
   // creating a household member is an adminRoute, so non-admins get a graceful
-  // "unsupported" preview instead of a 403 on POST.
-  const { person: viewer } = useHousehold()
+  // "unsupported" preview instead of a 403 on POST. The household drives the `goal`
+  // module gate (Goals is default-on but a household can turn it off).
+  const { person: viewer, household } = useHousehold()
   const isAdmin = !!viewer?.isAdmin
+  const goalsOn = moduleEnabled(household, 'goals')
   const [text, setText] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -339,12 +380,15 @@ export function CaptureBar() {
   // grocery fallback, don't assert it — show a thinking row instead.
   const thinkingPlaceholder = !usingServer && thinking && !looksConfident(localIntent, text)
   const rawIntent = draft ?? (thinkingPlaceholder ? null : parsed)
-  // Permission gate: only admins can add a household member. Degrade gracefully to an
-  // unsupported preview (with a reason) rather than POSTing and eating a 403.
+  // Gates: only admins can add a household member (adminRoute), and goals can be
+  // created only when the Goals module is on. Either blocked case degrades gracefully
+  // to an unsupported preview (with a reason) rather than POSTing and eating a 4xx.
   const intent: ParsedIntent | null =
     rawIntent?.kind === 'person' && !isAdmin
       ? { kind: 'unsupported', reason: 'Only an adult can add family members.' }
-      : rawIntent
+      : rawIntent?.kind === 'goal' && !goalsOn
+        ? { kind: 'unsupported', reason: 'Goals is turned off. Turn it on in Settings → Modules to add goals.' }
+        : rawIntent
   const editing = draft !== null && intent?.kind !== 'unsupported'
 
   function open() {
@@ -415,6 +459,17 @@ export function CaptureBar() {
         isAdmin: i.isAdmin,
       })
       return `Added ${i.name} to the family`
+    }
+    if (i.kind === 'goal') {
+      await api.createGoal({
+        title: i.title,
+        goalType: i.goalType,
+        trackingMode: i.trackingMode,
+        targetValue: i.targetValue ?? undefined,
+        unit: i.unit ?? undefined,
+        deadline: i.deadline ?? undefined,
+      }) // apps/web/src/lib/api/goals.ts → POST /api/goals
+      return `Added the “${i.title}” goal`
     }
     if (i.kind === 'unsupported') return ''
     await api.createChore({ title: i.title, personId: personId(i.personName), rewardAmount: i.stars ?? undefined, rrule: i.rrule ?? undefined })

@@ -200,6 +200,44 @@ describe('finalizeIntent — model JSON → finished intent', () => {
   it('rejects a person with no name', () => {
     expect(() => finalizeIntent({ kind: 'person', memberType: 'kid' }, ctx)).toThrow()
   })
+
+  it('maps a count goal with an explicit numeric target + unit', () => {
+    expect(finalizeIntent(
+      { kind: 'goal', title: 'Read 20 books', goalType: 'count', targetValue: 20, unit: 'books' }, ctx
+    )).toEqual({
+      kind: 'goal', title: 'Read 20 books', goalType: 'count',
+      trackingMode: 'shared_total', targetValue: 20, unit: 'books', deadline: null,
+    })
+  })
+
+  it('maps an accumulating total goal, keeping the target', () => {
+    const i = finalizeIntent({ kind: 'goal', title: 'Save $500', goalType: 'total', targetValue: 500, unit: 'dollars' }, ctx)
+    expect(i).toMatchObject({ kind: 'goal', title: 'Save $500', goalType: 'total', trackingMode: 'shared_total', targetValue: 500, unit: 'dollars' })
+  })
+
+  it('defaults a bare goal ("get in shape") to a habit with no target', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Get in shape' }, ctx)).toMatchObject({
+      kind: 'goal', title: 'Get in shape', goalType: 'habit', trackingMode: 'shared_total',
+    })
+  })
+
+  it('downgrades a count goal with no number to a habit', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Drink water', goalType: 'count' }, ctx))
+      .toMatchObject({ goalType: 'habit' })
+  })
+
+  it('keeps a valid goal deadline but drops a non-ISO one', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Read 20 books', goalType: 'count', targetValue: 20, deadline: '2026-12-31' }, ctx).deadline).toBe('2026-12-31')
+    expect(finalizeIntent({ kind: 'goal', title: 'Read 20 books', goalType: 'count', targetValue: 20, deadline: 'this year' }, ctx).deadline).toBeNull()
+  })
+
+  it('coerces a bogus goalType to habit', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Be kind', goalType: 'nonsense' }, ctx).goalType).toBe('habit')
+  })
+
+  it('rejects a goal with no title', () => {
+    expect(() => finalizeIntent({ kind: 'goal', goalType: 'habit' }, ctx)).toThrow()
+  })
 })
 
 describe('resolveDayFromText — deterministic meal day (model-independent)', () => {

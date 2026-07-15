@@ -43,6 +43,10 @@ private func asPerson(_ i: CaptureIntent?) -> (name: String, memberType: String,
     if case let .person(n, mt, e, b, a) = i { return (n, mt, e, b, a) }
     return nil
 }
+private func asGoal(_ i: CaptureIntent?) -> (title: String, goalType: String, targetValue: Double?, unit: String?, deadline: String?, trackingMode: String)? {
+    if case let .goal(t, gt, tv, u, d, tm) = i { return (t, gt, tv, u, d, tm) }
+    return nil
+}
 
 private func iso(_ s: String) -> Date {
     let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -315,6 +319,40 @@ private func dowOfDate(_ s: String) -> Int {
         let m = asPerson(p("add my son Max, age 8"))!
         #expect(m.name == "Max")
         #expect(m.birthday == nil)
+    }
+}
+
+@Suite struct CaptureHeuristicGoalTests {
+    @Test func setAGoalToRead() {
+        let g = asGoal(p("set a goal to read 20 books this year"))!
+        #expect(g.title == "Read 20 books this year")
+        // The offline heuristic is deliberately minimal — the LLM upgrades goalType/target.
+        #expect(g.goalType == "habit")
+        #expect(g.trackingMode == "shared_total")
+        #expect(g.targetValue == nil)
+    }
+    @Test func iWantToGetInShape() {
+        let g = asGoal(p("I want to get in shape"))!
+        #expect(g.title == "Get in shape")
+        #expect(g.goalType == "habit")
+    }
+    @Test func myGoalIsToSave() {
+        let g = asGoal(p("my goal is to save $500"))!
+        #expect(g.title == "Save $500")
+    }
+    @Test func newGoalColon() {
+        let g = asGoal(p("new goal: meditate every day"))!
+        #expect(g.title == "Meditate every day")
+    }
+    @Test func iWantFishForDinnerIsMeal() {
+        // "I want to…" is the trigger, not "I want <noun>" — this stays a meal.
+        #expect(asMeal(p("I want fish for dinner")) != nil)
+    }
+    @Test func summarizesGoal() {
+        let s = CaptureSummary(p("set a goal to read 20 books")!)
+        #expect(s.icon == "🎯")
+        #expect(s.kind == "Goal")
+        #expect(s.primary == "Read 20 books")
     }
 }
 

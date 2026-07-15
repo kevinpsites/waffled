@@ -12,6 +12,7 @@ enum CaptureIntent: Sendable, Equatable {
     case list(itemName: String, listName: String?, quantity: String?)
     case countdown(title: String, date: String, emoji: String?, whenLabel: String)
     case person(name: String, memberType: String, avatarEmoji: String?, birthday: String?, isAdmin: Bool)
+    case goal(title: String, goalType: String, targetValue: Double?, unit: String?, deadline: String?, trackingMode: String)
 }
 
 extension CaptureIntent: Decodable {
@@ -20,6 +21,7 @@ extension CaptureIntent: Decodable {
         case name, quantity, stars, rrule, scheduleLabel, date, mealType
         case itemName, listName, emoji
         case memberType, avatarEmoji, birthday, isAdmin
+        case goalType, targetValue, unit, deadline, trackingMode
     }
 
     init(from decoder: Decoder) throws {
@@ -76,6 +78,15 @@ extension CaptureIntent: Decodable {
                 birthday: try c.decodeIfPresent(String.self, forKey: .birthday),
                 isAdmin: (try? c.decode(Bool.self, forKey: .isAdmin)) ?? false
             )
+        case "goal":
+            self = .goal(
+                title: try c.decode(String.self, forKey: .title),
+                goalType: (try? c.decode(String.self, forKey: .goalType)) ?? "habit",
+                targetValue: try? c.decode(Double.self, forKey: .targetValue),
+                unit: try c.decodeIfPresent(String.self, forKey: .unit),
+                deadline: try c.decodeIfPresent(String.self, forKey: .deadline),
+                trackingMode: (try? c.decode(String.self, forKey: .trackingMode)) ?? "shared_total"
+            )
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c,
                 debugDescription: "Unknown intent kind: \(other)")
@@ -115,6 +126,15 @@ struct CaptureSummary {
         case let .person(name, memberType, avatarEmoji, _, _):
             icon = avatarEmoji ?? "👤"; kind = "Family member"; primary = name
             detail = memberType == "kid" ? "Kid" : (memberType == "teen" ? "Teen" : "Adult")
+        case let .goal(title, goalType, targetValue, unit, deadline, _):
+            icon = "🎯"; kind = "Goal"; primary = title
+            let typeLabel = goalType == "count" ? "Count" : (goalType == "total" ? "Total" : (goalType == "checklist" ? "Checklist" : "Habit"))
+            let target = targetValue.map { tv -> String in
+                let n = tv == tv.rounded() ? String(Int(tv)) : String(tv)
+                return unit.map { "\(n) \($0)" } ?? n
+            }
+            detail = [typeLabel, target, deadline.map { "by \($0)" }]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         }
     }
 }

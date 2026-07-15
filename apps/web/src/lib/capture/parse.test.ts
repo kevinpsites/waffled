@@ -386,6 +386,52 @@ describe('parseCapture — person', () => {
   })
 })
 
+describe('parseCapture — goal', () => {
+  it('"set a goal to read 20 books this year" → a goal (minimal habit default offline)', () => {
+    const i = p('set a goal to read 20 books this year')
+    expect(i?.kind).toBe('goal')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    expect(i.title).toBe('Read 20 books this year')
+    // The offline heuristic is deliberately minimal — the LLM upgrades goalType/target.
+    expect(i.goalType).toBe('habit')
+    expect(i.trackingMode).toBe('shared_total')
+    expect(i.targetValue).toBeNull()
+  })
+
+  it('"I want to get in shape" → a goal', () => {
+    const i = p('I want to get in shape')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    expect(i.title).toBe('Get in shape')
+    expect(i.goalType).toBe('habit')
+  })
+
+  it('"my goal is to save $500" → a goal', () => {
+    const i = p('my goal is to save $500')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    expect(i.title).toBe('Save $500')
+  })
+
+  it('"new goal: meditate every day" → a goal', () => {
+    const i = p('new goal: meditate every day')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    expect(i.title).toBe('Meditate every day')
+  })
+
+  it('does not mistake "I want fish for dinner" for a goal', () => {
+    // "I want to…" is the trigger, not "I want <noun>" — this is a meal.
+    expect(p('I want fish for dinner')?.kind).toBe('meal')
+  })
+
+  it('summarizes a goal for the preview chip', () => {
+    const i = p('set a goal to read 20 books')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    const s = intentSummary(i)
+    expect(s.icon).toBe('🎯')
+    expect(s.kind).toBe('Goal')
+    expect(s.primary).toBe('Read 20 books')
+  })
+})
+
 describe('intentSummary + edge cases', () => {
   it('returns null for empty input', () => {
     expect(p('')).toBeNull()

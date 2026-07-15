@@ -2713,6 +2713,19 @@ struct WaffledAPI: Sendable {
         try await send("POST", "/api/persons", body: body)
     }
 
+    /// Create a goal (`POST /api/goals`). Mirrors the web `createGoal`; the capture bar
+    /// gates on the Goals module being enabled before calling. A count target is sent as
+    /// a whole number, a total as-is.
+    func createGoal(title: String, goalType: String, trackingMode: String, targetValue: Double?, unit: String?, deadline: String?) async throws {
+        var body: [String: JSONValue] = ["title": .string(title), "goalType": .string(goalType), "trackingMode": .string(trackingMode)]
+        if let t = targetValue {
+            body["targetValue"] = goalType == "count" ? .int(Int(t.rounded())) : .double(t)
+        }
+        if let u = unit, !u.isEmpty { body["unit"] = .string(u) }
+        if let d = deadline, !d.isEmpty { body["deadline"] = .string(d) }
+        try await send("POST", "/api/goals", body: body)
+    }
+
     /// Patch a standalone countdown (any subset of title/date/emoji/color).
     func updateCountdown(id: String, title: String? = nil, date: String? = nil, emoji: String? = nil, color: String? = nil) async throws {
         var body: [String: JSONValue] = [:]

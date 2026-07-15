@@ -493,6 +493,20 @@ enum CaptureHeuristic {
         return nil
     }
 
+    // MARK: goal
+
+    // A personal/shared goal. Triggers: "set a goal to…", "I want to…", "my goal is…",
+    // "new goal: …". MINIMAL heuristic (plan §5): title + safe defaults (habit /
+    // shared_total); the LLM upgrade fills goalType/targetValue/unit/deadline the offline
+    // path can't reliably infer. Mirrors `detectGoal` in parse.ts.
+    private static let goalTrigger = "^\\s*(?:set(?:ting)?\\s+(?:a\\s+|myself\\s+a\\s+|us\\s+a\\s+)?goal\\s+(?:to|of|:)\\s+|add\\s+a\\s+goal\\s+(?:to\\s+|of\\s+)?|(?:i|we)\\s+want\\s+to\\s+|(?:i|we)['\u{2019}]d\\s+like\\s+to\\s+|my\\s+goal\\s+is\\s+(?:to\\s+)?|our\\s+goal\\s+is\\s+(?:to\\s+)?|new\\s+goal\\s*[:-]\\s*)(.+)$"
+    private static func detectGoal(_ text: NSString) -> CaptureIntent? {
+        guard let m = firstMatch(goalTrigger, text) else { return nil }
+        let title = titleCase(tidy((m.groups[1] ?? "") as NSString))
+        if title.isEmpty { return nil }
+        return .goal(title: title, goalType: "habit", targetValue: nil, unit: nil, deadline: nil, trackingMode: "shared_total")
+    }
+
     // MARK: parse
 
     static func parse(_ raw: String, persons: [String] = [], now: Date = Date(),
@@ -506,6 +520,10 @@ enum CaptureHeuristic {
         // PERSON — "add my son Max" / "add a family member Jane". A specific create phrase,
         // so it wins over the generic grocery/event fallbacks. Minimal: name + memberType.
         if let personIntent = detectPerson(text) { return personIntent }
+
+        // GOAL — "set a goal to read 20 books" / "I want to get in shape". An explicit goal
+        // phrase, so it wins over the grocery/task fallbacks. Minimal: title + habit default.
+        if let goalIntent = detectGoal(text) { return goalIntent }
 
         // TASK / CHORE — an explicit keyword wins over the date heuristics.
         if test(taskSignal, text) || test(choreWord, text) {

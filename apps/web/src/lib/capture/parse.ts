@@ -23,12 +23,19 @@ export type ParsedIntent =
   | { kind: 'list'; listName: string | null; itemName: string; quantity: string | null }
   | { kind: 'countdown'; title: string; date: string; emoji: string | null; whenLabel: string }
   | { kind: 'person'; name: string; memberType: string; avatarEmoji: string | null; birthday: string | null; isAdmin: boolean }
+  | { kind: 'goal'; title: string; goalType: string; targetValue: number | null; unit: string | null; deadline: string | null; trackingMode: string }
   | { kind: 'unsupported'; reason: string }
 
 // Member types for the `person` intent, and a human label for the preview.
 export const MEMBER_TYPES = ['adult', 'teen', 'kid'] as const
 export function memberTypeLabel(t: string): string {
   return t === 'kid' ? 'Kid' : t === 'teen' ? 'Teen' : 'Adult'
+}
+
+// Goal types for the `goal` intent, and a human label for the preview.
+export const GOAL_TYPES = ['count', 'total', 'habit', 'checklist'] as const
+export function goalTypeLabel(t: string): string {
+  return t === 'count' ? 'Count' : t === 'total' ? 'Total' : t === 'checklist' ? 'Checklist' : 'Habit'
 }
 
 const MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack'])
@@ -481,6 +488,21 @@ function detectPerson(text: string): Extract<ParsedIntent, { kind: 'person' }> |
   return null
 }
 
+// GOAL — a personal/shared goal. Triggers: "set a goal to…", "I want to…",
+// "my goal is (to)…", "new goal: …". MINIMAL heuristic (plan §5): title + safe
+// defaults (habit / shared_total); the LLM upgrade fills goalType/targetValue/
+// unit/deadline offline can't reliably infer. Mirrors `detectGoal` in
+// CaptureHeuristic.swift.
+const GOAL_TRIGGER = /^\s*(?:set(?:ting)?\s+(?:a\s+|myself\s+a\s+|us\s+a\s+)?goal\s+(?:to|of|:)\s+|add\s+a\s+goal\s+(?:to\s+|of\s+)?|(?:i|we)\s+want\s+to\s+|(?:i|we)['’]d\s+like\s+to\s+|my\s+goal\s+is\s+(?:to\s+)?|our\s+goal\s+is\s+(?:to\s+)?|new\s+goal\s*[:-]\s*)(.+)$/i
+
+function detectGoal(text: string): Extract<ParsedIntent, { kind: 'goal' }> | null {
+  const m = GOAL_TRIGGER.exec(text)
+  if (!m) return null
+  const title = titleCase(tidy(m[1]))
+  if (!title) return null
+  return { kind: 'goal', title, goalType: 'habit', targetValue: null, unit: null, deadline: null, trackingMode: 'shared_total' }
+}
+
 export function parseCapture(raw: string, persons: string[] = [], now: Date = new Date(), lists: string[] = []): ParsedIntent | null {
   const text = raw.trim()
   if (!text) return null
@@ -491,6 +513,11 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
   // so it wins over the generic grocery/event fallbacks. Minimal: name + memberType.
   const personIntent = detectPerson(text)
   if (personIntent) return personIntent
+
+  // GOAL — "set a goal to read 20 books" / "I want to get in shape". An explicit goal
+  // phrase, so it wins over the grocery/task fallbacks. Minimal: title + habit default.
+  const goalIntent = detectGoal(text)
+  if (goalIntent) return goalIntent
 
   // TASK / CHORE — an explicit "chore"/"task"/"remind" word wins over the date
   // heuristics, because a chore can carry a *recurring* schedule (weekday names
@@ -680,6 +707,17 @@ export function intentSummary(intent: ParsedIntent): { icon: string; kind: strin
       return { icon: '⏳', kind: 'Countdown', primary: intent.title, detail: intent.whenLabel }
     case 'person':
       return { icon: intent.avatarEmoji ?? '👤', kind: 'Family member', primary: intent.name, detail: memberTypeLabel(intent.memberType) }
+    case 'goal':
+      return {
+        icon: '🎯',
+        kind: 'Goal',
+        primary: intent.title,
+        detail: [
+          goalTypeLabel(intent.goalType),
+          intent.targetValue != null ? [intent.targetValue, intent.unit].filter(Boolean).join(' ') : '',
+          intent.deadline ? `by ${intent.deadline}` : '',
+        ].filter(Boolean).join(' · '),
+      }
     case 'unsupported':
       return { icon: '🤔', kind: 'Not supported yet', primary: intent.reason, detail: '' }
   }

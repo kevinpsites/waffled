@@ -24,7 +24,7 @@ type Api = ReturnType<typeof createAPI>
 // What the model is asked to emit. Mirrors the kiosk's ParsedIntent so the client
 // treats a server parse and a local heuristic parse identically.
 export interface CaptureIntent {
-  kind: 'event' | 'task' | 'grocery' | 'meal' | 'list' | 'countdown' | 'person' | 'unsupported'
+  kind: 'event' | 'task' | 'grocery' | 'meal' | 'list' | 'countdown' | 'person' | 'goal' | 'unsupported'
   title?: string
   name?: string | null
   quantity?: string | null
@@ -42,6 +42,12 @@ export interface CaptureIntent {
   avatarEmoji?: string | null
   birthday?: string | null
   isAdmin?: boolean | null
+  // goal intent: a personal/shared goal (count/total/habit/checklist)
+  goalType?: string | null
+  trackingMode?: string | null
+  targetValue?: number | null
+  unit?: string | null
+  deadline?: string | null
   // list intent: add itemName to the named (non-grocery) list
   listName?: string | null
   itemName?: string | null
@@ -68,8 +74,8 @@ const INTENT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    kind: { type: 'string', enum: ['event', 'task', 'grocery', 'meal', 'list', 'countdown', 'person', 'unsupported'] },
-    title: { type: ['string', 'null'], description: 'Clean title for event/task; the dish for a meal' },
+    kind: { type: 'string', enum: ['event', 'task', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'unsupported'] },
+    title: { type: ['string', 'null'], description: 'Clean title for event/task; the dish for a meal; the goal for a goal' },
     name: { type: ['string', 'null'], description: 'Grocery item name, or (kind=person) the new family member\'s name' },
     quantity: { type: ['string', 'null'], description: 'Grocery/list amount, e.g. "2 lbs"' },
     listName: { type: ['string', 'null'], description: 'For kind=list: the target custom list (match one of the household lists when possible)' },
@@ -87,6 +93,11 @@ const INTENT_SCHEMA = {
     avatarEmoji: { type: ['string', 'null'], description: 'For kind=person: a single fitting face emoji, or null' },
     birthday: { type: ['string', 'null'], description: 'For kind=person: their birthday as YYYY-MM-DD if given (NEVER inferred from an age), else null' },
     isAdmin: { type: ['boolean', 'null'], description: 'For kind=person: true only if they are clearly a parent/guardian' },
+    goalType: { type: ['string', 'null'], enum: ['count', 'total', 'habit', 'checklist', null], description: 'For kind=goal: count (a countable target), total (an accumulating amount), habit (a recurring habit with no number), or checklist (a list of steps). Default habit.' },
+    trackingMode: { type: ['string', 'null'], enum: ['shared_total', 'each_tracks', null], description: 'For kind=goal: shared_total (one shared progress bar) or each_tracks (everyone tracks their own). Default shared_total.' },
+    targetValue: { type: ['number', 'null'], description: 'For kind=goal (count/total): the numeric target, e.g. 20 for "read 20 books". Null when there is no number.' },
+    unit: { type: ['string', 'null'], description: 'For kind=goal (count/total): the unit of the target, e.g. "books", "miles", "dollars". Else null.' },
+    deadline: { type: ['string', 'null'], description: 'For kind=goal: a YYYY-MM-DD deadline if a date is given ("this year" → the Dec 31 of the current year), else null' },
   },
   required: ['kind'],
 }
@@ -100,7 +111,7 @@ function systemPrompt(ctx: CaptureContext): string {
     `Family members: ${fam}.`,
     `Custom lists: ${ctx.lists && ctx.lists.length ? ctx.lists.join(', ') : '(none yet)'}.`,
     '',
-    'Kinds: "event" = happens at a date/time; "task" = a chore someone does, maybe recurring; "grocery" = an item to buy (the grocery/shopping list); "meal" = a dish for the weekly meal plan; "list" = add an item to a named custom list (packing list, Costco, Target run, etc. — NOT groceries); "countdown" = a future day to count down to (no clock time); "person" = add a new family/household member; "unsupported" = anything else.',
+    'Kinds: "event" = happens at a date/time; "task" = a chore someone does, maybe recurring; "grocery" = an item to buy (the grocery/shopping list); "meal" = a dish for the weekly meal plan; "list" = add an item to a named custom list (packing list, Costco, Target run, etc. — NOT groceries); "countdown" = a future day to count down to (no clock time); "person" = add a new family/household member; "goal" = a personal or shared goal to work toward; "unsupported" = anything else.',
     'Always follow these rules:',
     '- ALWAYS extract a concise "title" (for grocery use "name") — strip command words like "please add", "make a chore to", "to X\'s list".',
     '- If a quoted phrase is present, use it verbatim as the title.',
@@ -113,7 +124,8 @@ function systemPrompt(ctx: CaptureContext): string {
     '- meal: "meal plan", "on the menu", or "<dish> for dinner/lunch/breakfast" → kind "meal". Put the dish in "title" and set "mealType" (default "dinner"). For "date", RESOLVE any relative day (today/tomorrow/"Friday"/"next Thursday") against the current date above into YYYY-MM-DD — exactly like events do — and ONLY default to today when no day is mentioned. A specific clock time means it is an EVENT, not a meal.',
     '- countdown: a future DAY to count down to with NO clock time — a day marker, not a scheduled event. "N days until X", "X in N days", "countdown to X [on <date>]", "N sleeps until X". Set "title"=X and RESOLVE the target day into "date" (YYYY-MM-DD) exactly like meals/events (handle "in N days", explicit dates, and weekdays). Optionally set a fitting "emoji". If a clock time is given, it is an EVENT instead.',
     '- person: "add my son/daughter/husband/wife/mom/dad/… <name>", "add a family member <name>", "create a profile for <name>" → kind "person". Set "name" (just the person\'s name). Infer "memberType": son/daughter/kid/child → "kid", teen/teenager → "teen", spouse/husband/wife/partner/mom/dad/parent/adult → "adult"; default "adult" for a bare name. Optionally set "avatarEmoji" (a fitting face), "birthday" (YYYY-MM-DD) ONLY if an actual date is given, and "isAdmin" true only for a clear parent/guardian. NEVER invent a birthday from an age ("age 8" → leave birthday null).',
-    '- unsupported: if the note is a GOAL ("set a goal to…", "I want to read 5 books"), a reminder/notification, or anything that is not an event, task/chore, grocery item, meal, or list item, return kind "unsupported" with a short friendly "reason" (e.g. "Quick-add doesn\'t create goals yet — add it from the Goals screen."). Do NOT force it into another kind.',
+    '- goal: "set a goal to…", "I want to…", "my goal is…" → kind "goal". Set "title" (the goal itself). Infer "goalType": a countable target ("read 20 books") → "count" with "targetValue" (20) + "unit" ("books"); an accumulating amount ("save $500", "run 100 miles") → "total" with targetValue + unit; a recurring habit with NO number ("drink water", "get in shape", "meditate every day") → "habit"; an explicit list of steps → "checklist"; when unsure → "habit". A count/total with no number is really a habit — leave targetValue null and use "habit". Default "trackingMode" "shared_total". Optionally set "deadline" (YYYY-MM-DD) when a date is given ("this year" → Dec 31 of this year).',
+    '- unsupported: if the note is a reminder/notification, or anything that is not an event, task/chore, grocery item, meal, list item, countdown, family member, or goal, return kind "unsupported" with a short friendly "reason". Do NOT force it into another kind.',
     '- stars = the integer reward if mentioned, else null.',
     '',
     'Examples below ASSUME today is Thursday June 11 2026. Always recompute dates from the ACTUAL current date stated above, not from this example date:',
@@ -135,7 +147,9 @@ function systemPrompt(ctx: CaptureContext): string {
     '"countdown for november 20th" -> {"kind":"countdown","title":"Countdown","date":"2026-11-20","emoji":"⏳"}',
     '"add my son Max" -> {"kind":"person","name":"Max","memberType":"kid","avatarEmoji":"👦"}',
     '"add a family member named Jane" -> {"kind":"person","name":"Jane","memberType":"adult"}',
-    '"set a goal to read 20 books this year" -> {"kind":"unsupported","reason":"Quick-add doesn\'t create goals yet — add it from the Goals screen."}',
+    '"set a goal to read 20 books this year" -> {"kind":"goal","title":"Read 20 books","goalType":"count","targetValue":20,"unit":"books","trackingMode":"shared_total","deadline":"2026-12-31"}',
+    '"I want to get in shape" -> {"kind":"goal","title":"Get in shape","goalType":"habit","trackingMode":"shared_total"}',
+    '"my goal is to save $500" -> {"kind":"goal","title":"Save $500","goalType":"total","targetValue":500,"unit":"dollars","trackingMode":"shared_total"}',
   ].join('\n')
 }
 
@@ -143,7 +157,7 @@ function systemPrompt(ctx: CaptureContext): string {
 export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent {
   const r = (raw ?? {}) as Record<string, unknown>
   const kindRaw = String(r.kind ?? '').toLowerCase()
-  const kind: CaptureIntent['kind'] = (['event', 'grocery', 'meal', 'list', 'countdown', 'person', 'unsupported'] as const).find((k) => k === kindRaw) ?? 'task'
+  const kind: CaptureIntent['kind'] = (['event', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'unsupported'] as const).find((k) => k === kindRaw) ?? 'task'
 
   // Only accept a person that's actually in the family (case-insensitive).
   const pn = r.personName == null ? null : String(r.personName)
@@ -197,6 +211,23 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
     const birthday = typeof r.birthday === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.birthday) ? r.birthday : null
     const isAdmin = r.isAdmin == null ? false : !!r.isAdmin
     return { kind, name, memberType, avatarEmoji, birthday, isAdmin }
+  }
+  if (kind === 'goal') {
+    const title = String(r.title ?? r.name ?? '').trim()
+    if (!title) throw new Error('goal: no title')
+    // A real numeric target (finite number); count/total need one — else it's a habit.
+    const rawTarget = typeof r.targetValue === 'number' ? r.targetValue : Number(r.targetValue)
+    const targetValue = Number.isFinite(rawTarget) && rawTarget > 0 ? rawTarget : null
+    // Mirror the route's shape rule (goals.service GOAL_TYPES + goalShapeError): coerce
+    // to the enum, and downgrade a count/total with no real number to a plain habit.
+    let goalType = (['count', 'total', 'habit', 'checklist'] as const).find((t) => t === String(r.goalType ?? '').toLowerCase()) ?? 'habit'
+    if ((goalType === 'count' || goalType === 'total') && targetValue == null) goalType = 'habit'
+    // A count target must be a whole number (the route rejects a fractional one).
+    const cleanTarget = goalType === 'count' && targetValue != null ? Math.round(targetValue) : targetValue
+    const trackingMode = (['shared_total', 'each_tracks'] as const).find((m) => m === String(r.trackingMode ?? '').toLowerCase()) ?? 'shared_total'
+    const unit = r.unit && (goalType === 'count' || goalType === 'total') ? String(r.unit).trim() || null : null
+    const deadline = typeof r.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.deadline) ? r.deadline : null
+    return { kind, title, goalType, trackingMode, targetValue: cleanTarget, unit, deadline }
   }
   if (kind === 'event') {
     const raw0 = r.startsAt ? String(r.startsAt) : null
