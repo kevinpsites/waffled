@@ -304,7 +304,85 @@ function matchKnownList(text: string, lists: string[]): string | null {
 // A clock time means it's a scheduled event, not a day marker, so we bail then.
 const CD_UNTIL = /^\s*(\d{1,3})\s+(?:days?|sleeps?)\s+(?:until|til|till|to|before)\s+(.+)$/i
 const CD_IN = /^(.+?)\s+in\s+(\d{1,3})\s+(?:days?|sleeps?)\s*$/i
-const CD_TO = /\bcountdown\s+(?:to|until|til|till)\s+(.+)$/i
+const CD_TO = /\bcountdown\s+(?:to|until|til|till|for)\s+(.+)$/i
+
+// ── Holidays ──────────────────────────────────────────────────────────────────
+// Resolve a known holiday name to its NEXT occurrence on/after startOfDay(now).
+// KEEP IN SYNC with the Swift `findHoliday` and the server `resolveDayFromText`.
+interface HolidayHit { date: Date; label: string; span: Span }
+
+function nthWeekdayOfMonth(year: number, month0: number, weekday: number, n: number): Date {
+  const first = new Date(year, month0, 1)
+  const offset = (weekday - first.getDay() + 7) % 7
+  return new Date(year, month0, 1 + offset + (n - 1) * 7)
+}
+function lastWeekdayOfMonth(year: number, month0: number, weekday: number): Date {
+  const last = new Date(year, month0 + 1, 0) // day 0 of next month = last day of this one
+  const offset = (last.getDay() - weekday + 7) % 7
+  return new Date(year, month0, last.getDate() - offset)
+}
+function easterSunday(year: number): Date {
+  // Anonymous Gregorian algorithm (Computus).
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const mth = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * mth + 114) / 31) // 3=Mar, 4=Apr
+  const day = ((h + l - 7 * mth + 114) % 31) + 1
+  return new Date(year, month - 1, day)
+}
+function shiftDays(d: Date, n: number): Date {
+  const r = new Date(d)
+  r.setDate(r.getDate() + n)
+  return r
+}
+
+const HOLIDAYS: { re: RegExp; label: string; calc: (y: number) => Date }[] = [
+  { re: /\bnew\s+year'?s?\s+eve\b/i, label: "New Year's Eve", calc: (y) => new Date(y, 11, 31) },
+  { re: /\bnew\s+year'?s?(?:\s+day)?\b/i, label: "New Year's Day", calc: (y) => new Date(y, 0, 1) },
+  { re: /\bvalentine'?s?(?:\s+day)?\b/i, label: "Valentine's Day", calc: (y) => new Date(y, 1, 14) },
+  { re: /\bst\.?\s+patrick'?s?(?:\s+day)?\b/i, label: "St. Patrick's Day", calc: (y) => new Date(y, 2, 17) },
+  { re: /\bcinco\s+de\s+mayo\b/i, label: 'Cinco de Mayo', calc: (y) => new Date(y, 4, 5) },
+  { re: /\bjuneteenth\b/i, label: 'Juneteenth', calc: (y) => new Date(y, 5, 19) },
+  { re: /\b(?:independence\s+day|july\s+4th|july\s+4|4th\s+of\s+july|fourth\s+of\s+july)\b/i, label: 'Independence Day', calc: (y) => new Date(y, 6, 4) },
+  { re: /\bhalloween\b/i, label: 'Halloween', calc: (y) => new Date(y, 9, 31) },
+  { re: /\bveterans'?\s+day\b/i, label: 'Veterans Day', calc: (y) => new Date(y, 10, 11) },
+  { re: /\bchristmas\s+eve\b/i, label: 'Christmas Eve', calc: (y) => new Date(y, 11, 24) },
+  { re: /\b(?:christmas|xmas)\b/i, label: 'Christmas', calc: (y) => new Date(y, 11, 25) },
+  { re: /\bmlk(?:\s+day)?\b|\bmartin\s+luther\s+king(?:\s+jr\.?)?(?:\s+day)?\b/i, label: 'MLK Day', calc: (y) => nthWeekdayOfMonth(y, 0, 1, 3) },
+  { re: /\bpresidents'?\s+day\b/i, label: "Presidents' Day", calc: (y) => nthWeekdayOfMonth(y, 1, 1, 3) },
+  { re: /\bmother'?s?\s+day\b/i, label: "Mother's Day", calc: (y) => nthWeekdayOfMonth(y, 4, 0, 2) },
+  { re: /\bmemorial\s+day\b/i, label: 'Memorial Day', calc: (y) => lastWeekdayOfMonth(y, 4, 1) },
+  { re: /\bfather'?s?\s+day\b/i, label: "Father's Day", calc: (y) => nthWeekdayOfMonth(y, 5, 0, 3) },
+  { re: /\blabor\s+day\b/i, label: 'Labor Day', calc: (y) => nthWeekdayOfMonth(y, 8, 1, 1) },
+  { re: /\bthanksgiving\b/i, label: 'Thanksgiving', calc: (y) => nthWeekdayOfMonth(y, 10, 4, 4) },
+  { re: /\bgood\s+friday\b/i, label: 'Good Friday', calc: (y) => shiftDays(easterSunday(y), -2) },
+  { re: /\beaster\b/i, label: 'Easter', calc: (y) => easterSunday(y) },
+]
+
+function findHoliday(text: string, now: Date): HolidayHit | null {
+  const base = startOfDay(now)
+  let best: HolidayHit | null = null
+  for (const h of HOLIDAYS) {
+    const m = h.re.exec(text)
+    if (!m) continue
+    let date = h.calc(now.getFullYear())
+    if (startOfDay(date).getTime() < base.getTime()) date = h.calc(now.getFullYear() + 1)
+    const span = { start: m.index, end: m.index + m[0].length }
+    // Prefer the earliest match in the text (so a preceding word wins), which also
+    // makes "Christmas Eve" beat "Christmas" when both start at the same index.
+    if (!best || span.start < best.span.start) best = { date, label: h.label, span }
+  }
+  return best
+}
 
 function ymdLocal(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -340,6 +418,14 @@ function detectCountdown(text: string, now: Date): Extract<ParsedIntent, { kind:
       if (dh) {
         target = new Date(dh.y, dh.mo, dh.d)
         titleRaw = cut(titleRaw, [dh.span]).replace(/\b(?:on|to)\s*$/i, '')
+      } else {
+        // No explicit day — try a holiday name ("countdown for thanksgiving").
+        const hh = findHoliday(titleRaw, now)
+        if (hh) {
+          target = hh.date
+          const remaining = tidy(cut(titleRaw, [hh.span]))
+          titleRaw = remaining || hh.label
+        }
       }
     }
   }

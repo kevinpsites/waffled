@@ -259,6 +259,70 @@ describe('parseCapture — countdown', () => {
     expect(p('countdown to New Year at 6pm')?.kind).toBe('event')
   })
 
+  // Compute the nth <weekday> of a month from `now` so assertions stay correct
+  // as the clock moves (0=Sun … 6=Sat).
+  function nthWeekday(year: number, month0: number, weekday: number, n: number): Date {
+    const first = new Date(year, month0, 1)
+    const offset = (weekday - first.getDay() + 7) % 7
+    return new Date(year, month0, 1 + offset + (n - 1) * 7)
+  }
+  function easter(year: number): Date {
+    const a = year % 19
+    const b = Math.floor(year / 100)
+    const c = year % 100
+    const d = Math.floor(b / 4)
+    const e = b % 4
+    const f = Math.floor((b + 8) / 25)
+    const g = Math.floor((b - f + 1) / 3)
+    const h = (19 * a + b - d - g + 15) % 30
+    const i = Math.floor(c / 4)
+    const k = c % 4
+    const l = (32 + 2 * e + 2 * i - h - k) % 7
+    const mm = Math.floor((a + 11 * h + 22 * l) / 451)
+    const month = Math.floor((h + l - 7 * mm + 114) / 31)
+    const day = ((h + l - 7 * mm + 114) % 31) + 1
+    return new Date(year, month - 1, day)
+  }
+  const ymd = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+
+  it('"add a countdown for thanksgiving" resolves the holiday to its next date', () => {
+    const i = p('add a countdown for thanksgiving')
+    expect(i?.kind).toBe('countdown')
+    if (i?.kind !== 'countdown') throw new Error('expected countdown')
+    expect(i.title).toBe('Thanksgiving')
+    // 4th Thursday of November 2026 (in the future relative to NOW = Jun 11 2026).
+    expect(i.date).toBe(ymd(nthWeekday(2026, 10, 4, 4)))
+  })
+
+  it('"add a countdown for november 20th" accepts the "for" connector + explicit date', () => {
+    const i = p('add a countdown for november 20th')
+    expect(i?.kind).toBe('countdown')
+    if (i?.kind !== 'countdown') throw new Error('expected countdown')
+    expect(i.title).toBe('Countdown')
+    expect(i.date).toBe('2026-11-20')
+  })
+
+  it('"countdown to Christmas" resolves to the next Dec 25', () => {
+    const i = p('countdown to Christmas')
+    expect(i?.kind).toBe('countdown')
+    if (i?.kind !== 'countdown') throw new Error('expected countdown')
+    expect(i.title).toBe('Christmas')
+    expect(i.date).toBe('2026-12-25')
+  })
+
+  it('"countdown to Easter" resolves via Computus (rolls past Easter to next year)', () => {
+    const i = p('countdown to Easter')
+    expect(i?.kind).toBe('countdown')
+    if (i?.kind !== 'countdown') throw new Error('expected countdown')
+    expect(i.title).toBe('Easter')
+    // Easter 2026 (Apr 5) is already past NOW (Jun 11) → next is Easter 2027.
+    expect(i.date).toBe(ymd(easter(2027)))
+  })
+
+  it('"dentist Tuesday 3pm" is an event, not a countdown (clock time bails)', () => {
+    expect(p('dentist Tuesday 3pm')?.kind).toBe('event')
+  })
+
   it('summarizes a countdown for the preview chip', () => {
     const i = p('12 days until Disney')
     if (i?.kind !== 'countdown') throw new Error('expected countdown')

@@ -245,6 +245,40 @@ private func dowOfDate(_ s: String) -> Int {
     @Test func clockTimeIsEvent() {
         #expect(asEvent(p("countdown to New Year at 6pm")) != nil)
     }
+
+    // The nth <weekday0> (0=Sun) of a month, as a "YYYY-MM-DD" string in the pinned tz.
+    private func nthWeekday(_ year: Int, _ month: Int, _ weekday0: Int, _ n: Int) -> String {
+        let first = pinnedCal.date(from: DateComponents(year: year, month: month, day: 1))!
+        let firstDow = pinnedCal.component(.weekday, from: first) - 1
+        let offset = (weekday0 - firstDow + 7) % 7
+        return String(format: "%04d-%02d-%02d", year, month, 1 + offset + (n - 1) * 7)
+    }
+
+    @Test func holidayForConnector() {
+        let c = asCountdown(p("add a countdown for thanksgiving"))!
+        #expect(c.title == "Thanksgiving")
+        // 4th Thursday of November 2026 (future relative to NOW = Jun 11 2026).
+        #expect(c.date == nthWeekday(2026, 11, 4, 4))
+    }
+    @Test func forConnectorExplicitDate() {
+        let c = asCountdown(p("add a countdown for november 20th"))!
+        #expect(c.title == "Countdown")
+        #expect(c.date == "2026-11-20")
+    }
+    @Test func holidayChristmas() {
+        let c = asCountdown(p("countdown to Christmas"))!
+        #expect(c.title == "Christmas")
+        #expect(c.date == "2026-12-25")
+    }
+    @Test func holidayEaster() {
+        let c = asCountdown(p("countdown to Easter"))!
+        #expect(c.title == "Easter")
+        // Easter 2026 (Apr 5) is past NOW → rolls to Easter 2027 (Mar 28, via Computus).
+        #expect(c.date == "2027-03-28")
+    }
+    @Test func clockTimeStillEvent() {
+        #expect(asEvent(p("dentist Tuesday 3pm")) != nil)
+    }
 }
 
 @Suite struct CaptureHeuristicEdgeTests {

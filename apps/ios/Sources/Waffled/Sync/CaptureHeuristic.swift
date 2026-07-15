@@ -340,6 +340,87 @@ enum CaptureHeuristic {
         let rel = days <= 0 ? "Today" : (days == 1 ? "Tomorrow" : "\(days) days")
         return "\(fmt(target, "EEE, MMM d", cal)) · \(rel)"
     }
+
+    // MARK: holidays
+
+    // Resolve a known holiday name to its NEXT occurrence on/after startOfDay(now).
+    // KEEP IN SYNC with the web `findHoliday` and the server `resolveDayFromText`.
+    private struct HolidayHit { var date: Date; var label: String; var span: Span }
+
+    private static func nthWeekdayOfMonth(_ year: Int, _ month: Int, _ targetDow: Int, _ n: Int, _ cal: Calendar) -> Date {
+        let first = ymd(year, month - 1, 1, cal)
+        let firstDow = weekday0(first, cal)
+        let offset = (targetDow - firstDow + 7) % 7
+        return ymd(year, month - 1, 1 + offset + (n - 1) * 7, cal)
+    }
+    private static func lastWeekdayOfMonth(_ year: Int, _ month: Int, _ targetDow: Int, _ cal: Calendar) -> Date {
+        // Day 0 of the next month = the last day of this one.
+        let last = ymd(year, month, 0, cal)
+        let lastDow = weekday0(last, cal)
+        let lastDay = cal.component(.day, from: last)
+        let offset = (lastDow - targetDow + 7) % 7
+        return ymd(year, month - 1, lastDay - offset, cal)
+    }
+    private static func easterSunday(_ year: Int, _ cal: Calendar) -> Date {
+        // Anonymous Gregorian algorithm (Computus).
+        let a = year % 19
+        let b = year / 100
+        let c = year % 100
+        let d = b / 4
+        let e = b % 4
+        let f = (b + 8) / 25
+        let g = (b - f + 1) / 3
+        let h = (19 * a + b - d - g + 15) % 30
+        let i = c / 4
+        let k = c % 4
+        let l = (32 + 2 * e + 2 * i - h - k) % 7
+        let m = (a + 11 * h + 22 * l) / 451
+        let month = (h + l - 7 * m + 114) / 31 // 3=Mar, 4=Apr
+        let day = ((h + l - 7 * m + 114) % 31) + 1
+        return ymd(year, month - 1, day, cal)
+    }
+
+    private struct HolidayDef { let re: String; let label: String; let calc: (Int, Calendar) -> Date }
+    private static let holidays: [HolidayDef] = [
+        HolidayDef(re: #"\bnew\s+year'?s?\s+eve\b"#, label: "New Year's Eve") { y, c in ymd(y, 11, 31, c) },
+        HolidayDef(re: #"\bnew\s+year'?s?(?:\s+day)?\b"#, label: "New Year's Day") { y, c in ymd(y, 0, 1, c) },
+        HolidayDef(re: #"\bvalentine'?s?(?:\s+day)?\b"#, label: "Valentine's Day") { y, c in ymd(y, 1, 14, c) },
+        HolidayDef(re: #"\bst\.?\s+patrick'?s?(?:\s+day)?\b"#, label: "St. Patrick's Day") { y, c in ymd(y, 2, 17, c) },
+        HolidayDef(re: #"\bcinco\s+de\s+mayo\b"#, label: "Cinco de Mayo") { y, c in ymd(y, 4, 5, c) },
+        HolidayDef(re: #"\bjuneteenth\b"#, label: "Juneteenth") { y, c in ymd(y, 5, 19, c) },
+        HolidayDef(re: #"\b(?:independence\s+day|july\s+4th|july\s+4|4th\s+of\s+july|fourth\s+of\s+july)\b"#, label: "Independence Day") { y, c in ymd(y, 6, 4, c) },
+        HolidayDef(re: #"\bhalloween\b"#, label: "Halloween") { y, c in ymd(y, 9, 31, c) },
+        HolidayDef(re: #"\bveterans'?\s+day\b"#, label: "Veterans Day") { y, c in ymd(y, 10, 11, c) },
+        HolidayDef(re: #"\bchristmas\s+eve\b"#, label: "Christmas Eve") { y, c in ymd(y, 11, 24, c) },
+        HolidayDef(re: #"\b(?:christmas|xmas)\b"#, label: "Christmas") { y, c in ymd(y, 11, 25, c) },
+        HolidayDef(re: #"\bmlk(?:\s+day)?\b|\bmartin\s+luther\s+king(?:\s+jr\.?)?(?:\s+day)?\b"#, label: "MLK Day") { y, c in nthWeekdayOfMonth(y, 1, 1, 3, c) },
+        HolidayDef(re: #"\bpresidents'?\s+day\b"#, label: "Presidents' Day") { y, c in nthWeekdayOfMonth(y, 2, 1, 3, c) },
+        HolidayDef(re: #"\bmother'?s?\s+day\b"#, label: "Mother's Day") { y, c in nthWeekdayOfMonth(y, 5, 0, 2, c) },
+        HolidayDef(re: #"\bmemorial\s+day\b"#, label: "Memorial Day") { y, c in lastWeekdayOfMonth(y, 5, 1, c) },
+        HolidayDef(re: #"\bfather'?s?\s+day\b"#, label: "Father's Day") { y, c in nthWeekdayOfMonth(y, 6, 0, 3, c) },
+        HolidayDef(re: #"\blabor\s+day\b"#, label: "Labor Day") { y, c in nthWeekdayOfMonth(y, 9, 1, 1, c) },
+        HolidayDef(re: #"\bthanksgiving\b"#, label: "Thanksgiving") { y, c in nthWeekdayOfMonth(y, 11, 4, 4, c) },
+        HolidayDef(re: #"\bgood\s+friday\b"#, label: "Good Friday") { y, c in addDays(easterSunday(y, c), -2, c) },
+        HolidayDef(re: #"\beaster\b"#, label: "Easter") { y, c in easterSunday(y, c) },
+    ]
+
+    private static func findHoliday(_ text: NSString, _ now: Date, _ cal: Calendar) -> HolidayHit? {
+        let base = startOfDay(now, cal)
+        let nowYear = cal.component(.year, from: now)
+        var best: HolidayHit?
+        for h in holidays {
+            guard let m = firstMatch(h.re, text) else { continue }
+            var date = h.calc(nowYear, cal)
+            if startOfDay(date, cal) < base { date = h.calc(nowYear + 1, cal) }
+            let sp = span(m)
+            // Earliest match in the text wins (and, at equal starts, the earlier
+            // list entry — so "Christmas Eve" beats "Christmas").
+            if best == nil || sp.start < best!.span.start {
+                best = HolidayHit(date: date, label: h.label, span: sp)
+            }
+        }
+        return best
+    }
     private static func detectCountdown(_ text: NSString, _ now: Date, _ cal: Calendar) -> CaptureIntent? {
         if findTime(text) != nil { return nil }   // a clock time → schedule an event instead
         var titleRaw: String?
@@ -351,13 +432,18 @@ enum CaptureHeuristic {
         if titleRaw == nil, let m = firstMatch(#"^(.+?)\s+in\s+(\d{1,3})\s+(?:days?|sleeps?)\s*$"#, text) {
             target = addDays(startOfDay(now, cal), Int(m.groups[2] ?? "") ?? 0, cal); titleRaw = m.groups[1]
         }
-        if titleRaw == nil, let m = firstMatch(#"\bcountdown\s+(?:to|until|til|till)\s+(.+)$"#, text) {
+        if titleRaw == nil, let m = firstMatch(#"\bcountdown\s+(?:to|until|til|till|for)\s+(.+)$"#, text) {
             titleRaw = m.groups[1]
             // "countdown to X on <date>" — pull an explicit day out of the tail.
             if let raw = titleRaw, let dh = findDay(raw as NSString, now, cal) {
                 target = ymd(dh.y, dh.mo, dh.d, cal)
                 let stripped = cut(raw as NSString, [dh.span])
                 titleRaw = replaceFirst(#"\b(?:on|to)\s*$"#, stripped, "") as String
+            } else if let raw = titleRaw, let hh = findHoliday(raw as NSString, now, cal) {
+                // No explicit day — try a holiday name ("countdown for thanksgiving").
+                target = hh.date
+                let remaining = tidy(cut(raw as NSString, [hh.span]))
+                titleRaw = remaining.isEmpty ? hh.label : remaining
             }
         }
         guard let tRaw = titleRaw, let t = target else { return nil }

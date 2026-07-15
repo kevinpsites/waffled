@@ -152,6 +152,19 @@ describe('finalizeIntent — model JSON → finished intent', () => {
     expect(i.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })
 
+  it('resolves a holiday-name countdown date ("thanksgiving") to the next Thanksgiving', () => {
+    const i = finalizeIntent({ kind: 'countdown', title: 'Thanksgiving', date: 'thanksgiving' }, ctx)
+    expect(i.kind).toBe('countdown')
+    expect(i.title).toBe('Thanksgiving')
+    // Deterministic holiday resolution — the 4th Thursday of November, on/after today.
+    expect(i.date).toBe(resolveDayFromText('thanksgiving', ctx.timezone))
+    const d = new Date(`${i.date}T00:00:00Z`)
+    expect(d.getUTCDay()).toBe(4) // Thursday
+    expect(d.getUTCMonth()).toBe(10) // November
+    expect(d.getUTCDate()).toBeGreaterThanOrEqual(22) // 4th Thursday is always the 22nd–28th
+    expect(d.getUTCDate()).toBeLessThanOrEqual(28)
+  })
+
   it('rejects a countdown with no usable date', () => {
     expect(() => finalizeIntent({ kind: 'countdown', title: 'Someday' }, ctx)).toThrow()
   })
@@ -180,5 +193,17 @@ describe('resolveDayFromText — deterministic meal day (model-independent)', ()
     const d = days(resolveDayFromText('today', tz)!, resolveDayFromText('next thursday', tz)!)
     expect(d).toBeGreaterThanOrEqual(7)
     expect(d).toBeLessThanOrEqual(13)
+  })
+  it('resolves a fixed-date holiday name ("christmas") to Dec 25', () => {
+    const c = resolveDayFromText('christmas', tz)!
+    expect(c).toMatch(/-12-25$/)
+    // Never in the past relative to today.
+    expect(days(resolveDayFromText('today', tz)!, c)).toBeGreaterThanOrEqual(0)
+  })
+  it('resolves a computed holiday name ("thanksgiving") to the 4th Thursday of November', () => {
+    const t = resolveDayFromText('thanksgiving', tz)!
+    const d = new Date(`${t}T00:00:00Z`)
+    expect(d.getUTCDay()).toBe(4)
+    expect(d.getUTCMonth()).toBe(10)
   })
 })

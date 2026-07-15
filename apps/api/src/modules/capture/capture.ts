@@ -121,6 +121,8 @@ function systemPrompt(ctx: CaptureContext): string {
     '"I want fish for dinner next Thursday" -> {"kind":"meal","title":"Fish","mealType":"dinner","date":"2026-06-18"}',
     '"we\'re eating out Friday" -> {"kind":"meal","title":"Eating out","mealType":"dinner","date":"2026-06-12"}',
     '"12 days until Disney" -> {"kind":"countdown","title":"Disney","date":"2026-06-23","emoji":"🏰"}',
+    '"add a countdown for thanksgiving" -> {"kind":"countdown","title":"Thanksgiving","date":"2026-11-26","emoji":"🦃"}',
+    '"countdown for november 20th" -> {"kind":"countdown","title":"Countdown","date":"2026-11-20","emoji":"⏳"}',
     '"set a goal to read 20 books this year" -> {"kind":"unsupported","reason":"Quick-add doesn\'t create goals yet — add it from the Goals screen."}',
   ].join('\n')
 }
@@ -276,9 +278,63 @@ const MO: Record<string, number> = {
   jul: 6, july: 6, aug: 7, august: 7, sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11,
 }
 
+// Holiday resolution — a known holiday name → its NEXT occurrence on/after today
+// (UTC math, mirroring the rest of this function). KEEP IN SYNC with the web/Swift
+// `findHoliday` heuristics.
+function nthWeekdayUTC(year: number, month0: number, weekday: number, n: number): Date {
+  const first = new Date(Date.UTC(year, month0, 1))
+  const offset = (weekday - first.getUTCDay() + 7) % 7
+  return new Date(Date.UTC(year, month0, 1 + offset + (n - 1) * 7))
+}
+function lastWeekdayUTC(year: number, month0: number, weekday: number): Date {
+  const last = new Date(Date.UTC(year, month0 + 1, 0)) // day 0 of next month = last day of this
+  const offset = (last.getUTCDay() - weekday + 7) % 7
+  return new Date(Date.UTC(year, month0, last.getUTCDate() - offset))
+}
+function easterSundayUTC(year: number): Date {
+  // Anonymous Gregorian algorithm (Computus).
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const mth = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * mth + 114) / 31) // 3=Mar, 4=Apr
+  const day = ((h + l - 7 * mth + 114) % 31) + 1
+  return new Date(Date.UTC(year, month - 1, day))
+}
+const HOLIDAYS: { re: RegExp; calc: (y: number) => Date }[] = [
+  { re: /\bnew\s+year'?s?\s+eve\b/, calc: (y) => new Date(Date.UTC(y, 11, 31)) },
+  { re: /\bnew\s+year'?s?(?:\s+day)?\b/, calc: (y) => new Date(Date.UTC(y, 0, 1)) },
+  { re: /\bvalentine'?s?(?:\s+day)?\b/, calc: (y) => new Date(Date.UTC(y, 1, 14)) },
+  { re: /\bst\.?\s+patrick'?s?(?:\s+day)?\b/, calc: (y) => new Date(Date.UTC(y, 2, 17)) },
+  { re: /\bcinco\s+de\s+mayo\b/, calc: (y) => new Date(Date.UTC(y, 4, 5)) },
+  { re: /\bjuneteenth\b/, calc: (y) => new Date(Date.UTC(y, 5, 19)) },
+  { re: /\b(?:independence\s+day|july\s+4th|july\s+4|4th\s+of\s+july|fourth\s+of\s+july)\b/, calc: (y) => new Date(Date.UTC(y, 6, 4)) },
+  { re: /\bhalloween\b/, calc: (y) => new Date(Date.UTC(y, 9, 31)) },
+  { re: /\bveterans'?\s+day\b/, calc: (y) => new Date(Date.UTC(y, 10, 11)) },
+  { re: /\bchristmas\s+eve\b/, calc: (y) => new Date(Date.UTC(y, 11, 24)) },
+  { re: /\b(?:christmas|xmas)\b/, calc: (y) => new Date(Date.UTC(y, 11, 25)) },
+  { re: /\bmlk(?:\s+day)?\b|\bmartin\s+luther\s+king(?:\s+jr\.?)?(?:\s+day)?\b/, calc: (y) => nthWeekdayUTC(y, 0, 1, 3) },
+  { re: /\bpresidents'?\s+day\b/, calc: (y) => nthWeekdayUTC(y, 1, 1, 3) },
+  { re: /\bmother'?s?\s+day\b/, calc: (y) => nthWeekdayUTC(y, 4, 0, 2) },
+  { re: /\bmemorial\s+day\b/, calc: (y) => lastWeekdayUTC(y, 4, 1) },
+  { re: /\bfather'?s?\s+day\b/, calc: (y) => nthWeekdayUTC(y, 5, 0, 3) },
+  { re: /\blabor\s+day\b/, calc: (y) => nthWeekdayUTC(y, 8, 1, 1) },
+  { re: /\bthanksgiving\b/, calc: (y) => nthWeekdayUTC(y, 10, 4, 4) },
+  { re: /\bgood\s+friday\b/, calc: (y) => new Date(easterSundayUTC(y).getTime() - 2 * 86_400_000) },
+  { re: /\beaster\b/, calc: (y) => easterSundayUTC(y) },
+]
+
 // Deterministically resolve a calendar day from free text (today/tomorrow,
-// a weekday optionally with "next", "in N days", a month+day, or m/d) → the
-// model is unreliable at date math, so we do it ourselves. null = no day stated.
+// a weekday optionally with "next", "in N days", a holiday name, a month+day, or
+// m/d) → the model is unreliable at date math, so we do it ourselves. null = no day.
 export function resolveDayFromText(text: string, tz: string): string | null {
   const today = todayInTz(tz)
   const base = new Date(`${today}T00:00:00Z`)
@@ -301,6 +357,13 @@ export function resolveDayFromText(text: string, tz: string): string | null {
   }
   const inDays = /\bin\s+(\d{1,2})\s+days?\b/.exec(t)
   if (inDays) return add(parseInt(inDays[1], 10))
+
+  for (const h of HOLIDAYS) {
+    if (!h.re.test(t)) continue
+    let d = h.calc(base.getUTCFullYear())
+    if (d.getTime() < base.getTime()) d = h.calc(base.getUTCFullYear() + 1)
+    return iso(d)
+  }
 
   const md = /\b(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\.?\s+(\d{1,2})\b/.exec(t)
   if (md) {

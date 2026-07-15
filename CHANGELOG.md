@@ -16,10 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Quick-add now understands countdowns.** Type something like "12 days until Disney",
-  "Disney in 12 days", or "countdown to the beach party on August 25" into the "Add
-  anything" bar and Waffled creates a countdown to that day — always on, with the target
-  date (and an optional emoji) editable in the confirm-and-edit preview, on web, iPhone,
-  and iPad.
+  "Disney in 12 days", "countdown for the beach party on August 25", or even
+  "countdown for Thanksgiving" into the "Add anything" bar and Waffled creates a countdown
+  to that day — it recognizes holidays by name (Thanksgiving, Christmas, Easter, the Fourth
+  of July, and more) and resolves them to their next date. Always on, with the target date
+  (and an optional emoji) editable in the confirm-and-edit preview, on web, iPhone, and iPad.
 
 ### Changed
 
