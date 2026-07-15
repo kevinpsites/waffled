@@ -481,6 +481,46 @@ describe('parseCapture — pantry (and grocery vs pantry)', () => {
   })
 })
 
+describe('parseCapture — reward', () => {
+  it('"add a reward: ice cream night for 50 stars" → a reward with cost', () => {
+    const i = p('add a reward: ice cream night for 50 stars')
+    expect(i?.kind).toBe('reward')
+    if (i?.kind !== 'reward') throw new Error('expected reward')
+    expect(i.title).toBe('Ice cream night')
+    expect(i.cost).toBe(50)
+    expect(i.requiresApproval).toBeNull()
+  })
+
+  it('"new reward extra screen time costs 100 points" → cost 100', () => {
+    const i = p('new reward extra screen time costs 100 points')
+    if (i?.kind !== 'reward') throw new Error('expected reward')
+    expect(i.title).toBe('Extra screen time')
+    expect(i.cost).toBe(100)
+  })
+
+  it('"reward: movie night" → a reward with no cost', () => {
+    const i = p('reward: movie night')
+    if (i?.kind !== 'reward') throw new Error('expected reward')
+    expect(i.title).toBe('Movie night')
+    expect(i.cost).toBeNull()
+  })
+
+  // Regression: the explicit word "reward" triggers this — a bare grocery/chore doesn't.
+  it('"add ice cream" (no "reward") stays grocery', () => {
+    expect(p('add ice cream')?.kind).toBe('grocery')
+  })
+
+  it('summarizes a reward for the preview chip', () => {
+    const i = p('add a reward: ice cream night for 50 stars')
+    if (i?.kind !== 'reward') throw new Error('expected reward')
+    const s = intentSummary(i)
+    expect(s.icon).toBe('🎁')
+    expect(s.kind).toBe('Reward')
+    expect(s.primary).toBe('Ice cream night')
+    expect(s.detail).toContain('50★')
+  })
+})
+
 describe('intentSummary + edge cases', () => {
   it('returns null for empty input', () => {
     expect(p('')).toBeNull()

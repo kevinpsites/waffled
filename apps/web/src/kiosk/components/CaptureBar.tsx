@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../icons'
-import { usePersons, useHousehold, api, countdownsApi, pantryApi, localToday, type Person, type ListSummary } from '../../lib/api'
+import { usePersons, useHousehold, api, countdownsApi, pantryApi, can, localToday, type Person, type ListSummary } from '../../lib/api'
 import { parseCapture, intentSummary, looksConfident, memberTypeLabel, MEMBER_TYPES, goalTypeLabel, GOAL_TYPES, type ParsedIntent } from '../../lib/capture/parse'
-import { moduleEnabled } from '../../lib/modules'
+import { moduleEnabled, rewardsEnabled } from '../../lib/modules'
 import { describeRrule } from './recurrence'
 
 const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
@@ -32,6 +32,7 @@ const KINDS: Array<{ k: ParsedIntent['kind']; label: string }> = [
   { k: 'person', label: '👤 Family member' },
   { k: 'goal', label: '🎯 Goal' },
   { k: 'pantry', label: '🥫 Pantry' },
+  { k: 'reward', label: '🎁 Reward' },
 ]
 
 const kindLabel = (k: ParsedIntent['kind']) => KINDS.find((x) => x.k === k)?.label ?? 'item'
@@ -67,6 +68,7 @@ function primaryOf(i: ParsedIntent): string {
     case 'meal':
     case 'countdown':
     case 'goal':
+    case 'reward':
       return i.title
     case 'grocery':
       return i.name
@@ -87,6 +89,7 @@ function withPrimary(i: ParsedIntent, v: string): ParsedIntent {
     case 'meal':
     case 'countdown':
     case 'goal':
+    case 'reward':
       return { ...i, title: v }
     case 'grocery':
       return { ...i, name: v }
@@ -148,6 +151,17 @@ function rerouteKind(i: ParsedIntent, kind: ParsedIntent['kind'], today: string)
         location: i.kind === 'pantry' ? i.location : 'Pantry',
         expiresOn: i.kind === 'pantry' ? i.expiresOn : null,
         lowAt: i.kind === 'pantry' ? i.lowAt : null,
+      }
+    case 'reward':
+      return {
+        kind: 'reward',
+        title: primary,
+        emoji: i.kind === 'reward' ? i.emoji : null,
+        // Re-routing a chore's stars → the reward's cost is a natural carry-over.
+        cost: i.kind === 'reward' ? i.cost : i.kind === 'task' ? i.stars : null,
+        currency: i.kind === 'reward' ? i.currency : null,
+        category: i.kind === 'reward' ? i.category : null,
+        requiresApproval: i.kind === 'reward' ? i.requiresApproval : null,
       }
     default:
       return i
@@ -338,6 +352,20 @@ function DraftFields({ intent, persons, lists, set, today }: { intent: ParsedInt
       </>
     )
   }
+  if (intent.kind === 'reward') {
+    return (
+      <>
+        <div className="cap-edit-row">
+          <input className="cap-edit-mini" value={intent.emoji ?? ''} placeholder="emoji" aria-label="Emoji" style={{ maxWidth: 72 }} onChange={(e) => set({ ...intent, emoji: e.target.value || null })} />
+          {/* Reuse the star-cost control (same as a task's Stars) for the reward price. */}
+          <label className="cap-stars">Cost <input type="number" min={0} value={intent.cost ?? 0} aria-label="Cost" onChange={(e) => set({ ...intent, cost: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value))) })} /></label>
+        </div>
+        <div className="cap-people">
+          <button type="button" className={`cap-person ${intent.requiresApproval ? 'on' : ''}`} onClick={() => set({ ...intent, requiresApproval: intent.requiresApproval === true ? false : true })}>Needs approval</button>
+        </div>
+      </>
+    )
+  }
   return null
 }
 
@@ -353,6 +381,11 @@ export function CaptureBar() {
   // Pantry defaults OFF, so its intent is SUPPRESSED unless the module is enabled —
   // a parse that yields `pantry` degrades to an "unsupported" preview before any POST.
   const pantryOn = moduleEnabled(household, 'pantry')
+  // Reward has TWO gates that must BOTH hold to offer the commit: rewards must be on
+  // (chores module + the settings.chores.rewards sub-toggle) AND the viewer must hold
+  // the `reward.manage` capability (kids don't). Either failing → an unsupported preview.
+  const rewardsOn = rewardsEnabled(household)
+  const canManageRewards = can(viewer, 'reward.manage')
   const [text, setText] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -434,7 +467,9 @@ export function CaptureBar() {
         ? { kind: 'unsupported', reason: 'Goals is turned off. Turn it on in Settings → Modules to add goals.' }
         : rawIntent?.kind === 'pantry' && !pantryOn
           ? { kind: 'unsupported', reason: 'The Pantry module is turned off. Turn it on in Settings → Modules to add pantry items.' }
-          : rawIntent
+          : rawIntent?.kind === 'reward' && (!rewardsOn || !canManageRewards)
+            ? { kind: 'unsupported', reason: !rewardsOn ? 'Rewards are turned off.' : 'Ask a parent to add a reward.' }
+            : rawIntent
   const editing = draft !== null && intent?.kind !== 'unsupported'
 
   function open() {
@@ -527,6 +562,17 @@ export function CaptureBar() {
         lowAt: i.lowAt ?? undefined,
       }) // apps/web/src/lib/api/pantry.ts → POST /api/pantry
       return `Added “${i.name}” to the pantry`
+    }
+    if (i.kind === 'reward') {
+      await api.createReward({
+        title: i.title,
+        emoji: i.emoji ?? undefined,
+        cost: i.cost ?? 0,
+        currency: i.currency ?? undefined,
+        category: i.category ?? undefined,
+        requiresApproval: i.requiresApproval ?? undefined,
+      }) // apps/web/src/lib/api/rewards.ts → POST /api/rewards
+      return `Added “${i.title}” to the reward shop`
     }
     if (i.kind === 'unsupported') return ''
     await api.createChore({ title: i.title, personId: personId(i.personName), rewardAmount: i.stars ?? undefined, rrule: i.rrule ?? undefined })

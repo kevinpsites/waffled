@@ -25,6 +25,7 @@ export type ParsedIntent =
   | { kind: 'person'; name: string; memberType: string; avatarEmoji: string | null; birthday: string | null; isAdmin: boolean }
   | { kind: 'goal'; title: string; goalType: string; targetValue: number | null; unit: string | null; deadline: string | null; trackingMode: string }
   | { kind: 'pantry'; name: string; amount: string | null; unit: string | null; location: string; expiresOn: string | null; lowAt: number | null }
+  | { kind: 'reward'; title: string; emoji: string | null; cost: number | null; currency: string | null; category: string | null; requiresApproval: boolean | null }
   | { kind: 'unsupported'; reason: string }
 
 // Member types for the `person` intent, and a human label for the preview.
@@ -543,6 +544,35 @@ function detectPantry(text: string): Extract<ParsedIntent, { kind: 'pantry' }> |
   return { kind: 'pantry', name: itemName, amount, unit, location, expiresOn: null, lowAt: null }
 }
 
+// REWARD — a reward-shop item kids can spend stars/points on. Triggers on the explicit
+// word "reward": "add a reward: <title> for N stars", "new reward <title> costs N points",
+// "reward: <title>". Pulls the numeric star/point cost. FULL heuristic (plan §5). Mirrors
+// `detectReward` in CaptureHeuristic.swift. The offline path can't know the household's
+// currency/category/approval default, so those stay null (the LLM/route fill them).
+const REWARD_WORD = /\breward\b/i
+const REWARD_LEAD = /^\s*(?:please\s+|kindly\s+|can you\s+)?(?:add|create|make|set\s*up|new|give)?\s*(?:a\s+|an\s+|the\s+)?(?:new\s+)?reward\b[\s:—-]*(?:called\s+|named\s+|for\s+|entitled\s+)?(.*)$/i
+// A star/point price, either introduced ("for/costs/worth/at 50 stars") or trailing
+// ("50 points"). Group 1 or 2 holds the number.
+const REWARD_COST = /\b(?:for|costs?|worth|priced\s+at|at|=)\s+(\d{1,6})\s*(?:stars?|points?|pts?|coins?)?\b|\b(\d{1,6})\s*(?:stars?|points?|pts?|coins?)\b/i
+
+function detectReward(text: string): Extract<ParsedIntent, { kind: 'reward' }> | null {
+  if (!REWARD_WORD.test(text)) return null
+  const lead = REWARD_LEAD.exec(text)
+  let basis = lead ? lead[1] : text
+  // Pull the cost out of the title basis (it may trail the name).
+  let cost: number | null = null
+  const cm = REWARD_COST.exec(basis)
+  if (cm) {
+    cost = parseInt(cm[1] ?? cm[2], 10)
+    basis = `${basis.slice(0, cm.index)} ${basis.slice(cm.index + cm[0].length)}`
+  }
+  // Drop a dangling price lead-in left behind ("… for", "… costs").
+  basis = basis.replace(/\b(?:for|costs?|worth|priced\s+at|at)\s*$/i, '')
+  const title = titleCase(tidy(basis))
+  if (!title) return null
+  return { kind: 'reward', title, emoji: null, cost, currency: null, category: null, requiresApproval: null }
+}
+
 export function parseCapture(raw: string, persons: string[] = [], now: Date = new Date(), lists: string[] = []): ParsedIntent | null {
   const text = raw.trim()
   if (!text) return null
@@ -558,6 +588,11 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
   // phrase, so it wins over the grocery/task fallbacks. Minimal: title + habit default.
   const goalIntent = detectGoal(text)
   if (goalIntent) return goalIntent
+
+  // REWARD — "add a reward: ice cream night for 50 stars". The explicit word "reward"
+  // is a specific create phrase, so it wins over the grocery/task fallbacks.
+  const rewardIntent = detectReward(text)
+  if (rewardIntent) return rewardIntent
 
   // TASK / CHORE — an explicit "chore"/"task"/"remind" word wins over the date
   // heuristics, because a chore can carry a *recurring* schedule (weekday names
@@ -772,6 +807,17 @@ export function intentSummary(intent: ParsedIntent): { icon: string; kind: strin
         detail: [
           `Adds to ${intent.location}`,
           intent.expiresOn ? `expires ${intent.expiresOn}` : '',
+        ].filter(Boolean).join(' · '),
+      }
+    case 'reward':
+      return {
+        icon: intent.emoji ?? '🎁',
+        kind: 'Reward',
+        primary: intent.title,
+        detail: [
+          'Adds to the reward shop',
+          intent.cost != null ? `${intent.cost}★` : '',
+          intent.requiresApproval ? 'needs approval' : '',
         ].filter(Boolean).join(' · '),
       }
     case 'unsupported':

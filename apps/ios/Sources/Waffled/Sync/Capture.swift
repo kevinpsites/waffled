@@ -14,6 +14,7 @@ enum CaptureIntent: Sendable, Equatable {
     case person(name: String, memberType: String, avatarEmoji: String?, birthday: String?, isAdmin: Bool)
     case goal(title: String, goalType: String, targetValue: Double?, unit: String?, deadline: String?, trackingMode: String)
     case pantry(name: String, amount: String?, unit: String?, location: String, expiresOn: String?, lowAt: Double?)
+    case reward(title: String, emoji: String?, cost: Int?, currency: String?, category: String?, requiresApproval: Bool?)
 }
 
 extension CaptureIntent: Decodable {
@@ -24,6 +25,7 @@ extension CaptureIntent: Decodable {
         case memberType, avatarEmoji, birthday, isAdmin
         case goalType, targetValue, unit, deadline, trackingMode
         case amount, location, expiresOn, lowAt
+        case cost, currency, category, requiresApproval
     }
 
     init(from decoder: Decoder) throws {
@@ -98,6 +100,15 @@ extension CaptureIntent: Decodable {
                 expiresOn: try c.decodeIfPresent(String.self, forKey: .expiresOn),
                 lowAt: try? c.decode(Double.self, forKey: .lowAt)
             )
+        case "reward":
+            self = .reward(
+                title: try c.decode(String.self, forKey: .title),
+                emoji: try c.decodeIfPresent(String.self, forKey: .emoji),
+                cost: try? c.decode(Int.self, forKey: .cost),
+                currency: try c.decodeIfPresent(String.self, forKey: .currency),
+                category: try c.decodeIfPresent(String.self, forKey: .category),
+                requiresApproval: try? c.decode(Bool.self, forKey: .requiresApproval)
+            )
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c,
                 debugDescription: "Unknown intent kind: \(other)")
@@ -150,6 +161,10 @@ struct CaptureSummary {
             icon = "🥫"; kind = "Pantry"
             primary = [amount, unit, name].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
             detail = ["Adds to \(location)", expiresOn.map { "expires \($0)" }]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        case let .reward(title, emoji, cost, _, _, requiresApproval):
+            icon = emoji ?? "🎁"; kind = "Reward"; primary = title
+            detail = ["Adds to the reward shop", cost.map { "\($0)★" }, requiresApproval == true ? "needs approval" : nil]
                 .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         }
     }

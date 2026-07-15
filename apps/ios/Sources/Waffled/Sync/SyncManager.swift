@@ -464,6 +464,23 @@ final class SyncManager {
         }
     }
 
+    /// Commit a captured reward via REST (`POST /api/rewards`). The caller gates on BOTH
+    /// rewards being on (`rewardsOn`) and the viewer holding `reward.manage` first, so a
+    /// blocked case never reaches here. Omits `requiresApproval` when nil so the route
+    /// inherits the household default; bumps `rewardsRev` so the reward shop refreshes.
+    @discardableResult
+    func commitReward(title: String, emoji: String?, cost: Int?, requiresApproval: Bool?) async -> Bool {
+        let ok = await restCommit {
+            var body: [String: JSONValue] = ["title": .string(title)]
+            if let cost { body["cost"] = .int(cost) }
+            if let emoji, !emoji.isEmpty { body["emoji"] = .string(emoji) }
+            if let requiresApproval { body["requiresApproval"] = .bool(requiresApproval) }
+            try await api.rewardCreate(body)
+        }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
     /// Plan (upsert) a meal slot from the weekly planner; bumps `mealsRev` so the
     /// Today card and any open week reload.
     func setMealPlan(date: String, mealType: String, recipeId: String?, title: String?, cookPersonId: String? = nil) async -> Bool {

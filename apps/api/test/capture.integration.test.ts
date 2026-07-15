@@ -265,6 +265,33 @@ describe('finalizeIntent — model JSON → finished intent', () => {
     expect(finalizeIntent({ kind: 'grocery', name: 'Milk' }, ctx).kind).toBe('grocery')
     expect(finalizeIntent({ kind: 'pantry', name: 'Milk' }, ctx).kind).toBe('pantry')
   })
+
+  it('maps a reward with emoji + cost, defaulting the rest to null', () => {
+    expect(finalizeIntent({ kind: 'reward', title: 'Ice cream night', emoji: '🍦', cost: 50 }, ctx)).toEqual({
+      kind: 'reward', title: 'Ice cream night', emoji: '🍦', cost: 50, currency: null, category: null, requiresApproval: null,
+    })
+  })
+
+  it('coerces a reward cost to a non-negative integer (rounds floats, clamps negatives to 0)', () => {
+    expect(finalizeIntent({ kind: 'reward', title: 'X', cost: 49.6 }, ctx).cost).toBe(50)
+    expect(finalizeIntent({ kind: 'reward', title: 'X', cost: -5 }, ctx).cost).toBe(0)
+    // "50" (string) still coerces to the integer 50.
+    expect(finalizeIntent({ kind: 'reward', title: 'X', cost: '50' }, ctx).cost).toBe(50)
+  })
+
+  it('leaves a reward cost null when none is given', () => {
+    expect(finalizeIntent({ kind: 'reward', title: 'Movie night' }, ctx).cost).toBeNull()
+  })
+
+  it('passes requiresApproval through, else leaves it null (inherit household default)', () => {
+    expect(finalizeIntent({ kind: 'reward', title: 'X', requiresApproval: true }, ctx).requiresApproval).toBe(true)
+    expect(finalizeIntent({ kind: 'reward', title: 'X', requiresApproval: false }, ctx).requiresApproval).toBe(false)
+    expect(finalizeIntent({ kind: 'reward', title: 'X' }, ctx).requiresApproval).toBeNull()
+  })
+
+  it('rejects a reward with no title', () => {
+    expect(() => finalizeIntent({ kind: 'reward', cost: 50 }, ctx)).toThrow()
+  })
 })
 
 describe('resolveDayFromText — deterministic meal day (model-independent)', () => {

@@ -24,7 +24,7 @@ type Api = ReturnType<typeof createAPI>
 // What the model is asked to emit. Mirrors the kiosk's ParsedIntent so the client
 // treats a server parse and a local heuristic parse identically.
 export interface CaptureIntent {
-  kind: 'event' | 'task' | 'grocery' | 'meal' | 'list' | 'countdown' | 'person' | 'goal' | 'pantry' | 'unsupported'
+  kind: 'event' | 'task' | 'grocery' | 'meal' | 'list' | 'countdown' | 'person' | 'goal' | 'pantry' | 'reward' | 'unsupported'
   title?: string
   name?: string | null
   quantity?: string | null
@@ -53,6 +53,11 @@ export interface CaptureIntent {
   location?: string | null
   expiresOn?: string | null
   lowAt?: number | null
+  // reward intent: a reward-shop item (gated on rewards + reward.manage)
+  cost?: number | null
+  currency?: string | null
+  category?: string | null
+  requiresApproval?: boolean | null
   // list intent: add itemName to the named (non-grocery) list
   listName?: string | null
   itemName?: string | null
@@ -79,8 +84,8 @@ const INTENT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    kind: { type: 'string', enum: ['event', 'task', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'pantry', 'unsupported'] },
-    title: { type: ['string', 'null'], description: 'Clean title for event/task; the dish for a meal; the goal for a goal' },
+    kind: { type: 'string', enum: ['event', 'task', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'pantry', 'reward', 'unsupported'] },
+    title: { type: ['string', 'null'], description: 'Clean title for event/task; the dish for a meal; the goal for a goal; the reward name for a reward' },
     name: { type: ['string', 'null'], description: 'Grocery item name, (kind=person) the new family member\'s name, or (kind=pantry) the on-hand item\'s name' },
     quantity: { type: ['string', 'null'], description: 'Grocery/list amount, e.g. "2 lbs"' },
     listName: { type: ['string', 'null'], description: 'For kind=list: the target custom list (match one of the household lists when possible)' },
@@ -93,7 +98,7 @@ const INTENT_SCHEMA = {
     stars: { type: ['integer', 'null'] },
     date: { type: ['string', 'null'], description: 'Date as YYYY-MM-DD for a meal or countdown: the resolved day the user said (today/tomorrow/Friday/next Thursday/in 12 days); only today if none was said' },
     mealType: { type: ['string', 'null'], enum: ['breakfast', 'lunch', 'dinner', 'snack', null], description: 'Meal slot (default dinner)' },
-    emoji: { type: ['string', 'null'], description: 'For kind=countdown: a single fitting emoji, or null' },
+    emoji: { type: ['string', 'null'], description: 'For kind=countdown or kind=reward: a single fitting emoji, or null' },
     memberType: { type: ['string', 'null'], enum: ['adult', 'teen', 'kid', null], description: 'For kind=person: adult | teen | kid (default adult)' },
     avatarEmoji: { type: ['string', 'null'], description: 'For kind=person: a single fitting face emoji, or null' },
     birthday: { type: ['string', 'null'], description: 'For kind=person: their birthday as YYYY-MM-DD if given (NEVER inferred from an age), else null' },
@@ -107,6 +112,10 @@ const INTENT_SCHEMA = {
     location: { type: ['string', 'null'], description: 'For kind=pantry: where it is stored (e.g. Pantry, Fridge, Freezer). Default Pantry.' },
     expiresOn: { type: ['string', 'null'], description: 'For kind=pantry: an expiry date YYYY-MM-DD if one is given, else null.' },
     lowAt: { type: ['number', 'null'], description: 'For kind=pantry: the "running low" threshold number if mentioned, else null.' },
+    cost: { type: ['integer', 'null'], description: 'For kind=reward: the star/point price as a non-negative whole number (e.g. 50 for "for 50 stars"), else null.' },
+    currency: { type: ['string', 'null'], description: 'For kind=reward: the star/point currency name if a non-default one is named, else null.' },
+    category: { type: ['string', 'null'], description: 'For kind=reward: a shop category (e.g. treats, screen time) if one is clear, else null.' },
+    requiresApproval: { type: ['boolean', 'null'], description: 'For kind=reward: true/false ONLY if the note says whether a parent must approve; else null to inherit the household default.' },
   },
   required: ['kind'],
 }
@@ -120,7 +129,7 @@ function systemPrompt(ctx: CaptureContext): string {
     `Family members: ${fam}.`,
     `Custom lists: ${ctx.lists && ctx.lists.length ? ctx.lists.join(', ') : '(none yet)'}.`,
     '',
-    'Kinds: "event" = happens at a date/time; "task" = a chore someone does, maybe recurring; "grocery" = an item to buy (the grocery/shopping list); "pantry" = an item you ALREADY HAVE on hand, stored in the pantry/fridge/freezer (NOT the shopping list); "meal" = a dish for the weekly meal plan; "list" = add an item to a named custom list (packing list, Costco, Target run, etc. — NOT groceries); "countdown" = a future day to count down to (no clock time); "person" = add a new family/household member; "goal" = a personal or shared goal to work toward; "unsupported" = anything else.',
+    'Kinds: "event" = happens at a date/time; "task" = a chore someone does, maybe recurring; "grocery" = an item to buy (the grocery/shopping list); "pantry" = an item you ALREADY HAVE on hand, stored in the pantry/fridge/freezer (NOT the shopping list); "meal" = a dish for the weekly meal plan; "list" = add an item to a named custom list (packing list, Costco, Target run, etc. — NOT groceries); "countdown" = a future day to count down to (no clock time); "person" = add a new family/household member; "goal" = a personal or shared goal to work toward; "reward" = a reward-shop item kids can spend their stars/points on; "unsupported" = anything else.',
     'Always follow these rules:',
     '- ALWAYS extract a concise "title" (for grocery use "name") — strip command words like "please add", "make a chore to", "to X\'s list".',
     '- If a quoted phrase is present, use it verbatim as the title.',
@@ -135,7 +144,8 @@ function systemPrompt(ctx: CaptureContext): string {
     '- countdown: a future DAY to count down to with NO clock time — a day marker, not a scheduled event. "N days until X", "X in N days", "countdown to X [on <date>]", "N sleeps until X". Set "title"=X and RESOLVE the target day into "date" (YYYY-MM-DD) exactly like meals/events (handle "in N days", explicit dates, and weekdays). Optionally set a fitting "emoji". If a clock time is given, it is an EVENT instead.',
     '- person: "add my son/daughter/husband/wife/mom/dad/… <name>", "add a family member <name>", "create a profile for <name>" → kind "person". Set "name" (just the person\'s name). Infer "memberType": son/daughter/kid/child → "kid", teen/teenager → "teen", spouse/husband/wife/partner/mom/dad/parent/adult → "adult"; default "adult" for a bare name. Optionally set "avatarEmoji" (a fitting face), "birthday" (YYYY-MM-DD) ONLY if an actual date is given, and "isAdmin" true only for a clear parent/guardian. NEVER invent a birthday from an age ("age 8" → leave birthday null).',
     '- goal: "set a goal to…", "I want to…", "my goal is…" → kind "goal". Set "title" (the goal itself). Infer "goalType": a countable target ("read 20 books") → "count" with "targetValue" (20) + "unit" ("books"); an accumulating amount ("save $500", "run 100 miles") → "total" with targetValue + unit; a recurring habit with NO number ("drink water", "get in shape", "meditate every day") → "habit"; an explicit list of steps → "checklist"; when unsure → "habit". A count/total with no number is really a habit — leave targetValue null and use "habit". Default "trackingMode" "shared_total". Optionally set "deadline" (YYYY-MM-DD) when a date is given ("this year" → Dec 31 of this year).',
-    '- unsupported: if the note is a reminder/notification, or anything that is not an event, task/chore, grocery item, meal, list item, countdown, family member, or goal, return kind "unsupported" with a short friendly "reason". Do NOT force it into another kind.',
+    '- reward: "add a reward: <name> for N stars", "new reward <name> costs N points", "reward: <name>" → kind "reward". Set "title" (the reward name) and, when a star/point price is given, "cost" (the whole number N). Trigger only on the explicit word "reward". Optionally set "emoji". This is the reward SHOP catalog, NOT awarding stars for a chore.',
+    '- unsupported: if the note is a reminder/notification, or anything that is not an event, task/chore, grocery item, meal, list item, countdown, family member, goal, or reward, return kind "unsupported" with a short friendly "reason". Do NOT force it into another kind.',
     '- stars = the integer reward if mentioned, else null.',
     '',
     'Examples below ASSUME today is Thursday June 11 2026. Always recompute dates from the ACTUAL current date stated above, not from this example date:',
@@ -163,6 +173,8 @@ function systemPrompt(ctx: CaptureContext): string {
     '"set a goal to read 20 books this year" -> {"kind":"goal","title":"Read 20 books","goalType":"count","targetValue":20,"unit":"books","trackingMode":"shared_total","deadline":"2026-12-31"}',
     '"I want to get in shape" -> {"kind":"goal","title":"Get in shape","goalType":"habit","trackingMode":"shared_total"}',
     '"my goal is to save $500" -> {"kind":"goal","title":"Save $500","goalType":"total","targetValue":500,"unit":"dollars","trackingMode":"shared_total"}',
+    '"add a reward: ice cream night for 50 stars" -> {"kind":"reward","title":"Ice cream night","cost":50,"emoji":"🍦"}',
+    '"new reward extra screen time costs 100 points" -> {"kind":"reward","title":"Extra screen time","cost":100}',
   ].join('\n')
 }
 
@@ -170,7 +182,7 @@ function systemPrompt(ctx: CaptureContext): string {
 export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent {
   const r = (raw ?? {}) as Record<string, unknown>
   const kindRaw = String(r.kind ?? '').toLowerCase()
-  const kind: CaptureIntent['kind'] = (['event', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'pantry', 'unsupported'] as const).find((k) => k === kindRaw) ?? 'task'
+  const kind: CaptureIntent['kind'] = (['event', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'pantry', 'reward', 'unsupported'] as const).find((k) => k === kindRaw) ?? 'task'
 
   // Only accept a person that's actually in the family (case-insensitive).
   const pn = r.personName == null ? null : String(r.personName)
@@ -204,6 +216,21 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
     const rawLow = typeof r.lowAt === 'number' ? r.lowAt : Number(r.lowAt)
     const lowAt = Number.isFinite(rawLow) && rawLow >= 0 ? rawLow : null
     return { kind, name, amount, unit, location, expiresOn, lowAt }
+  }
+  if (kind === 'reward') {
+    const title = String(r.title ?? r.name ?? '').trim()
+    if (!title) throw new Error('reward: no title')
+    const emoji = r.emoji ? String(r.emoji).trim() || null : null
+    // cost: a non-negative whole number (round floats, clamp negatives to 0), mirroring
+    // the route's `Math.max(0, Math.round(...))`; null when no price is given.
+    const rawCost = typeof r.cost === 'number' ? r.cost : Number(r.cost)
+    const cost = r.cost != null && Number.isFinite(rawCost) ? Math.max(0, Math.round(rawCost)) : null
+    const currency = r.currency != null && String(r.currency).trim() ? String(r.currency).trim() : null
+    const category = r.category != null && String(r.category).trim() ? String(r.category).trim() : null
+    // Passthrough: keep an explicit boolean; else null so the route inherits the
+    // household's reward-approval default.
+    const requiresApproval = typeof r.requiresApproval === 'boolean' ? r.requiresApproval : null
+    return { kind, title, emoji, cost, currency, category, requiresApproval }
   }
   if (kind === 'meal') {
     const title = String(r.title ?? r.name ?? '').trim()

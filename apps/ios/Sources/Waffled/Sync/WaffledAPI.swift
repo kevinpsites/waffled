@@ -1797,6 +1797,11 @@ struct WaffledAPI: Sendable {
     // MARK: rewards catalog admin
 
     /// Create a reward (admins). Returns the new reward.
+    /// Create a reward from a raw body (`POST /api/rewards`, `reward.manage`) — used by the
+    /// capture bar, which omits fields (currency/category/requiresApproval) so the route
+    /// applies the household defaults. Mirrors the typed `createReward` for the full form.
+    func rewardCreate(_ body: [String: JSONValue]) async throws { try await send("POST", "/api/rewards", body: body) }
+
     func createReward(title: String, emoji: String?, cost: Int, currency: String, category: String?, requiresApproval: Bool) async throws -> Reward {
         struct Resp: Decodable { let reward: Reward }
         var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency), "requiresApproval": .bool(requiresApproval)]

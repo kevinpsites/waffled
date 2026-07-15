@@ -41,6 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from groceries: something to buy ("add milk", "add milk to the shopping list") still goes on the
   shopping list, and only an explicit pantry/fridge/freezer destination stocks the pantry. Because
   the Pantry module is off by default, quick-add offers this only when a household has turned it on.
+- **Quick-add can add a reward.** Type something like "add a reward: ice cream night for 50 stars"
+  or "new reward extra screen time costs 100 points" into the "Add anything" bar and Waffled adds it
+  to the reward shop — pulling out the star/point cost, with the name, cost, emoji, and whether it
+  needs a parent's approval all editable in the confirm-and-edit preview before it's saved (on web,
+  iPhone, and iPad). Because rewards are the "spend" side of the chores economy, quick-add offers this
+  only when rewards are turned on and to grown-ups who manage rewards — otherwise it says so (a kid
+  sees "Ask a parent to add a reward") instead of failing.
 
 ### Changed
 

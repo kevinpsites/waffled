@@ -55,6 +55,10 @@ private func asGrocery(_ i: CaptureIntent?) -> (name: String, quantity: String?)
     if case let .grocery(n, q) = i { return (n, q) }
     return nil
 }
+private func asReward(_ i: CaptureIntent?) -> (title: String, emoji: String?, cost: Int?, currency: String?, category: String?, requiresApproval: Bool?)? {
+    if case let .reward(t, e, c, cur, cat, ra) = i { return (t, e, c, cur, cat, ra) }
+    return nil
+}
 
 private func iso(_ s: String) -> Date {
     let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -398,6 +402,36 @@ private func dowOfDate(_ s: String) -> Int {
         #expect(s.kind == "Pantry")
         #expect(s.primary == "2 cans Beans")
         #expect(s.detail.contains("Pantry"))
+    }
+}
+
+@Suite struct CaptureHeuristicRewardTests {
+    @Test func rewardWithCost() {
+        let r = asReward(p("add a reward: ice cream night for 50 stars"))!
+        #expect(r.title == "Ice cream night")
+        #expect(r.cost == 50)
+        #expect(r.requiresApproval == nil)
+    }
+    @Test func rewardCostsPoints() {
+        let r = asReward(p("new reward extra screen time costs 100 points"))!
+        #expect(r.title == "Extra screen time")
+        #expect(r.cost == 100)
+    }
+    @Test func rewardNoCost() {
+        let r = asReward(p("reward: movie night"))!
+        #expect(r.title == "Movie night")
+        #expect(r.cost == nil)
+    }
+    // Regression: the explicit word "reward" triggers this — a bare grocery doesn't.
+    @Test func bareItemStaysGrocery() {
+        #expect(asGrocery(p("add ice cream")) != nil)
+    }
+    @Test func summarizesReward() {
+        let s = CaptureSummary(p("add a reward: ice cream night for 50 stars")!)
+        #expect(s.icon == "🎁")
+        #expect(s.kind == "Reward")
+        #expect(s.primary == "Ice cream night")
+        #expect(s.detail.contains("50★"))
     }
 }
 

@@ -51,6 +51,9 @@ struct CaptureSheet: View {
     @State private var pantryLocation = "Pantry"              // where it's stored (Pantry/Fridge/Freezer)
     @State private var pantryExpiresOn = false                // whether an expiry date is set
     @State private var pantryExpires = Date()                 // the expiry day
+    @State private var rewardEmoji = ""                       // reward avatar emoji
+    @State private var rewardCost = ""                        // reward star/point cost (as text)
+    @State private var rewardRequiresApproval: Bool?          // nil = inherit household default
     @State private var lists: [WaffledAPI.ListSummary] = []   // for the list picker
     @State private var editing = false                     // glance → full field editor
     @FocusState private var focused: Bool
@@ -60,6 +63,7 @@ struct CaptureSheet: View {
         ("event", "📅", "Event"), ("list", "📝", "List"), ("grocery", "🛒", "Grocery"),
         ("task", "✅", "Task"), ("meal", "🍽️", "Meal"), ("countdown", "⏳", "Countdown"),
         ("person", "👤", "Family member"), ("goal", "🎯", "Goal"), ("pantry", "🥫", "Pantry"),
+        ("reward", "🎁", "Reward"),
     ]
 
     // ISO8601DateFormatter is expensive to allocate; hoist the two distinct configs
@@ -124,6 +128,7 @@ struct CaptureSheet: View {
         personType = "adult"; personEmoji = nil; personBirthday = nil; personIsAdmin = false
         goalType = "habit"; goalTarget = ""; goalUnit = ""; goalDeadlineOn = false; goalTrackingMode = "shared_total"
         pantryAmount = ""; pantryUnit = ""; pantryLocation = "Pantry"; pantryExpiresOn = false
+        rewardEmoji = ""; rewardCost = ""; rewardRequiresApproval = nil
         detent = .large
     }
 
@@ -297,6 +302,7 @@ struct CaptureSheet: View {
         case let .person(n, _, _, _, _): return ("Family member", n)
         case let .goal(t, _, _, _, _, _): return ("Goal", t)
         case let .pantry(n, _, _, _, _, _): return ("Pantry", n)
+        case let .reward(t, _, _, _, _, _): return ("Reward", t)
         }
     }
 
@@ -346,6 +352,10 @@ struct CaptureSheet: View {
         case "pantry":
             let expires = pantryExpiresOn ? "expires " + DateFmt.string(pantryExpires, "MMM d", sync.householdTz) : ""
             return ["Adds to \(pantryLocation)", expires].filter { !$0.isEmpty }.joined(separator: " · ")
+        case "reward":
+            let cost = rewardCost.trimmingCharacters(in: .whitespaces)
+            let approval = rewardRequiresApproval == true ? "needs approval" : ""
+            return ["Adds to the reward shop", cost.isEmpty ? "" : "\(cost)★", approval].filter { !$0.isEmpty }.joined(separator: " · ")
         default: return ""
         }
     }
@@ -473,6 +483,26 @@ struct CaptureSheet: View {
                 Text("The Pantry module is turned off. Turn it on in Settings → Modules.")
                     .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.primaryD)
             }
+        case "reward":
+            HStack(spacing: 8) {
+                TextField("emoji", text: $rewardEmoji)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(maxWidth: 72)
+                    .padding(.horizontal, 12).padding(.vertical, 10).innerInput()
+                TextField("cost (stars)", text: $rewardCost)
+                    .keyboardType(.numberPad)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(maxWidth: 120)
+                    .padding(.horizontal, 12).padding(.vertical, 10).innerInput()
+                Spacer(minLength: 0)
+            }
+            toggleChip("Needs approval", on: rewardRequiresApproval == true) {
+                rewardRequiresApproval = (rewardRequiresApproval == true) ? false : true
+            }
+            if rewardBlocked {
+                Text(rewardBlockedReason)
+                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.primaryD)
+            }
         default: EmptyView()
         }
     }
@@ -497,6 +527,15 @@ struct CaptureSheet: View {
     /// module is enabled — the viewer sees a reason and can't commit (the graceful
     /// analogue of the web's suppress-when-off degrade), and we never POST.
     private var pantryBlocked: Bool { editKind == "pantry" && !sync.module(.pantry) }
+
+    /// The `reward` create has TWO gates, both of which must hold: rewards must be on
+    /// (chores module + the rewards sub-toggle) AND the viewer must hold `reward.manage`
+    /// (kids don't). Either failing suppresses the commit — the graceful analogue of the
+    /// web's degrade — and we never POST.
+    private var rewardBlocked: Bool { editKind == "reward" && (!sync.rewardsOn || !sync.can("reward.manage")) }
+    private var rewardBlockedReason: String {
+        !sync.rewardsOn ? "Rewards are turned off." : "Ask a parent to add a reward."
+    }
 
     // MARK: field pieces
 
@@ -662,6 +701,7 @@ struct CaptureSheet: View {
         case "person": return "Name"
         case "goal": return "Goal"
         case "pantry": return "Item"
+        case "reward": return "Reward"
         default: return "Item"
         }
     }
@@ -677,13 +717,14 @@ struct CaptureSheet: View {
         case "person": return "Add family member"
         case "goal": return "Add goal"
         case "pantry": return "Add to pantry"
+        case "reward": return "Add reward"
         default: return "Add"
         }
     }
     private var canCommit: Bool {
         !editName.trimmingCharacters(in: .whitespaces).isEmpty
             && (editKind != "list" || !editListName.trimmingCharacters(in: .whitespaces).isEmpty)
-            && !personBlocked && !goalBlocked && !pantryBlocked
+            && !personBlocked && !goalBlocked && !pantryBlocked && !rewardBlocked
     }
     private var viaLabel: String {
         switch via {
@@ -756,6 +797,7 @@ struct CaptureSheet: View {
         case .event: return "event"; case .grocery: return "grocery"; case .task: return "task"
         case .meal: return "meal"; case .list: return "list"; case .countdown: return "countdown"
         case .person: return "person"; case .goal: return "goal"; case .pantry: return "pantry"
+        case .reward: return "reward"
         }
     }
 
@@ -823,6 +865,11 @@ struct CaptureSheet: View {
             } else {
                 pantryExpiresOn = false
             }
+        case let .reward(title, emoji, cost, _, _, requiresApproval):
+            editKind = "reward"; editName = title
+            rewardEmoji = emoji ?? ""
+            rewardCost = cost.map(String.init) ?? ""
+            rewardRequiresApproval = requiresApproval
         }
     }
 
@@ -893,6 +940,16 @@ struct CaptureSheet: View {
                                              unit: unit.isEmpty ? nil : unit,
                                              location: pantryLocation.isEmpty ? "Pantry" : pantryLocation,
                                              expiresOn: expiresOn)
+            case "reward":
+                // TWO gates — refuse gracefully rather than POSTing when rewards are off or
+                // the viewer can't manage rewards (mirrors the web suppress-when-blocked gate).
+                guard sync.rewardsOn, sync.can("reward.manage") else {
+                    error = rewardBlockedReason; phase = .preview; return
+                }
+                let emoji = rewardEmoji.trimmingCharacters(in: .whitespaces)
+                let cost = Int(rewardCost.trimmingCharacters(in: .whitespaces))
+                ok = await sync.commitReward(title: name, emoji: emoji.isEmpty ? nil : emoji,
+                                             cost: cost.map { max(0, $0) }, requiresApproval: rewardRequiresApproval)
             default:
                 ok = false
             }

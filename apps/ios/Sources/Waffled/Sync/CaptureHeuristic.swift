@@ -546,6 +546,36 @@ enum CaptureHeuristic {
         return .pantry(name: itemName, amount: amount, unit: unit, location: location, expiresOn: nil, lowAt: nil)
     }
 
+    // MARK: reward
+
+    // A reward-shop item kids spend stars/points on. Triggers on the explicit word
+    // "reward": "add a reward: <title> for N stars", "new reward <title> costs N points",
+    // "reward: <title>". Pulls the numeric star/point cost. FULL heuristic (plan §5).
+    // Mirrors `detectReward` in parse.ts — the offline path can't know the household's
+    // currency/category/approval default, so those stay nil.
+    private static let rewardWord = #"\breward\b"#
+    private static let rewardLead = #"^\s*(?:please\s+|kindly\s+|can you\s+)?(?:add|create|make|set\s*up|new|give)?\s*(?:a\s+|an\s+|the\s+)?(?:new\s+)?reward\b[\s:—-]*(?:called\s+|named\s+|for\s+|entitled\s+)?(.*)$"#
+    private static let rewardCost = #"\b(?:for|costs?|worth|priced\s+at|at|=)\s+(\d{1,6})\s*(?:stars?|points?|pts?|coins?)?\b|\b(\d{1,6})\s*(?:stars?|points?|pts?|coins?)\b"#
+
+    private static func detectReward(_ text: NSString) -> CaptureIntent? {
+        guard test(rewardWord, text) else { return nil }
+        let lead = firstMatch(rewardLead, text)
+        var basis = (lead?.groups[1] ?? (text as String)) as NSString
+        // Pull the cost out of the title basis (it may trail the name).
+        var cost: Int?
+        if let cm = firstMatch(rewardCost, basis) {
+            cost = Int(cm.groups[1] ?? cm.groups[2] ?? "")
+            let before = basis.substring(to: cm.range.location)
+            let after = basis.substring(from: min(cm.range.location + cm.range.length, basis.length))
+            basis = (before + " " + after) as NSString
+        }
+        // Drop a dangling price lead-in left behind ("… for", "… costs").
+        basis = replaceFirst(#"\b(?:for|costs?|worth|priced\s+at|at)\s*$"#, basis, "")
+        let title = titleCase(tidy(basis))
+        if title.isEmpty { return nil }
+        return .reward(title: title, emoji: nil, cost: cost, currency: nil, category: nil, requiresApproval: nil)
+    }
+
     // MARK: parse
 
     static func parse(_ raw: String, persons: [String] = [], now: Date = Date(),
@@ -563,6 +593,10 @@ enum CaptureHeuristic {
         // GOAL — "set a goal to read 20 books" / "I want to get in shape". An explicit goal
         // phrase, so it wins over the grocery/task fallbacks. Minimal: title + habit default.
         if let goalIntent = detectGoal(text) { return goalIntent }
+
+        // REWARD — "add a reward: ice cream night for 50 stars". The explicit word "reward"
+        // is a specific create phrase, so it wins over the grocery/task fallbacks.
+        if let rewardIntent = detectReward(text) { return rewardIntent }
 
         // TASK / CHORE — an explicit keyword wins over the date heuristics.
         if test(taskSignal, text) || test(choreWord, text) {
