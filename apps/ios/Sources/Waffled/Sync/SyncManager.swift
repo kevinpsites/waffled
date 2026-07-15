@@ -444,10 +444,11 @@ final class SyncManager {
     /// Commit a captured goal via REST (`POST /api/goals`). The caller gates on the Goals
     /// module being enabled first; a disabled module never reaches here. The Goals screen
     /// reloads on next appearance (no reactive rev — the list is fetch-on-view).
-    func commitGoal(title: String, goalType: String, trackingMode: String, targetValue: Double?, unit: String?, deadline: String?) async -> Bool {
+    func commitGoal(title: String, goalType: String, trackingMode: String, targetValue: Double?, unit: String?, deadline: String?, participantIds: [String] = []) async -> Bool {
         await restCommit {
             try await api.createGoal(title: title, goalType: goalType, trackingMode: trackingMode,
-                                     targetValue: targetValue, unit: unit, deadline: deadline)
+                                     targetValue: targetValue, unit: unit, deadline: deadline,
+                                     participantIds: participantIds)
         }
     }
 

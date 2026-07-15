@@ -45,9 +45,12 @@ export interface CaptureIntent {
   // goal intent: a personal/shared goal (count/total/habit/checklist)
   goalType?: string | null
   trackingMode?: string | null
+  participantMode?: string | null
+  targetBasis?: string | null
   targetValue?: number | null
   unit?: string | null
   deadline?: string | null
+  audience?: string | null
   // pantry intent: an item already on hand (module `pantry`, default off)
   amount?: string | null
   location?: string | null
@@ -105,9 +108,12 @@ const INTENT_SCHEMA = {
     isAdmin: { type: ['boolean', 'null'], description: 'For kind=person: true only if they are clearly a parent/guardian' },
     goalType: { type: ['string', 'null'], enum: ['count', 'total', 'habit', 'checklist', null], description: 'For kind=goal: count (a countable target), total (an accumulating amount), habit (a recurring habit with no number), or checklist (a list of steps). Default habit.' },
     trackingMode: { type: ['string', 'null'], enum: ['shared_total', 'each_tracks', null], description: 'For kind=goal: shared_total (one shared progress bar) or each_tracks (everyone tracks their own). Default shared_total.' },
+    participantMode: { type: ['string', 'null'], enum: ['count_once', 'split', null], description: 'For kind=goal: how a shared group entry counts — count_once (default) or split.' },
+    targetBasis: { type: ['string', 'null'], enum: ['family', 'per_person', null], description: 'For kind=goal: family (one flat target, default) or per_person (ring = target × members).' },
     targetValue: { type: ['number', 'null'], description: 'For kind=goal (count/total): the numeric target, e.g. 20 for "read 20 books". Null when there is no number.' },
     unit: { type: ['string', 'null'], description: 'For kind=goal (count/total): the unit of the target, e.g. "books", "miles", "dollars"; for kind=pantry: the amount\'s unit, e.g. "cans", "lbs". Else null.' },
     deadline: { type: ['string', 'null'], description: 'For kind=goal: a YYYY-MM-DD deadline if a date is given ("this year" → the Dec 31 of the current year), else null' },
+    audience: { type: ['string', 'null'], enum: ['me', 'everyone', null], description: 'For kind=goal: who the goal is for, inferred from the phrasing — "everyone" for a family/shared/together goal ("set a family goal", "our goal", "we want to"), "me" for a personal one ("personal goal", "my own", "I want to"), else null.' },
     amount: { type: ['string', 'null'], description: 'For kind=pantry: how much is on hand, e.g. "2" (pair with unit) or "2 lbs". Else null.' },
     location: { type: ['string', 'null'], description: 'For kind=pantry: where it is stored (e.g. Pantry, Fridge, Freezer). Default Pantry.' },
     expiresOn: { type: ['string', 'null'], description: 'For kind=pantry: an expiry date YYYY-MM-DD if one is given, else null.' },
@@ -143,7 +149,7 @@ function systemPrompt(ctx: CaptureContext): string {
     '- meal: "meal plan", "on the menu", or "<dish> for dinner/lunch/breakfast" → kind "meal". Put the dish in "title" and set "mealType" (default "dinner"). For "date", RESOLVE any relative day (today/tomorrow/"Friday"/"next Thursday") against the current date above into YYYY-MM-DD — exactly like events do — and ONLY default to today when no day is mentioned. A specific clock time means it is an EVENT, not a meal.',
     '- countdown: a future DAY to count down to with NO clock time — a day marker, not a scheduled event. "N days until X", "X in N days", "countdown to X [on <date>]", "N sleeps until X". Set "title"=X and RESOLVE the target day into "date" (YYYY-MM-DD) exactly like meals/events (handle "in N days", explicit dates, and weekdays). Optionally set a fitting "emoji". If a clock time is given, it is an EVENT instead.',
     '- person: "add my son/daughter/husband/wife/mom/dad/… <name>", "add a family member <name>", "create a profile for <name>" → kind "person". Set "name" (just the person\'s name). Infer "memberType": son/daughter/kid/child → "kid", teen/teenager → "teen", spouse/husband/wife/partner/mom/dad/parent/adult → "adult"; default "adult" for a bare name. Optionally set "avatarEmoji" (a fitting face), "birthday" (YYYY-MM-DD) ONLY if an actual date is given, and "isAdmin" true only for a clear parent/guardian. NEVER invent a birthday from an age ("age 8" → leave birthday null).',
-    '- goal: "set a goal to…", "I want to…", "my goal is…" → kind "goal". Set "title" (the goal itself). Infer "goalType": a countable target ("read 20 books") → "count" with "targetValue" (20) + "unit" ("books"); an accumulating amount ("save $500", "run 100 miles") → "total" with targetValue + unit; a recurring habit with NO number ("drink water", "get in shape", "meditate every day") → "habit"; an explicit list of steps → "checklist"; when unsure → "habit". A count/total with no number is really a habit — leave targetValue null and use "habit". Default "trackingMode" "shared_total". Optionally set "deadline" (YYYY-MM-DD) when a date is given ("this year" → Dec 31 of this year).',
+    '- goal: "set a goal to…", "set a personal/new/weekly goal to…", "set myself a goal to…", "I want to…", "my goal is…" → kind "goal" (an adjective like personal/new/big/weekly/family between the article and "goal" is fine). Set "title" (the goal itself). Infer "goalType": a countable target ("read 20 books") → "count" with "targetValue" (20) + "unit" ("books"); an accumulating amount ("save $500", "run 100 miles") → "total" with targetValue + unit; a recurring habit with NO number ("drink water", "get in shape", "meditate every day") → "habit"; an explicit list of steps → "checklist"; when unsure → "habit". A count/total with no number is really a habit — leave targetValue null and use "habit". Default "trackingMode" "shared_total". Optionally set "deadline" (YYYY-MM-DD) when a date is given ("this year" → Dec 31 of this year; "by september" → the last day of the next September). Set "audience" from the phrasing: "everyone" for a family/shared/together goal ("set a family goal", "our goal", "we want to…"), "me" for a personal one ("personal goal", "my own", "I want to…"), else null.',
     '- reward: "add a reward: <name> for N stars", "new reward <name> costs N points", "reward: <name>" → kind "reward". Set "title" (the reward name) and, when a star/point price is given, "cost" (the whole number N). Trigger only on the explicit word "reward". Optionally set "emoji". This is the reward SHOP catalog, NOT awarding stars for a chore.',
     '- unsupported: if the note is a reminder/notification, or anything that is not an event, task/chore, grocery item, meal, list item, countdown, family member, goal, or reward, return kind "unsupported" with a short friendly "reason". Do NOT force it into another kind.',
     '- stars = the integer reward if mentioned, else null.',
@@ -171,6 +177,7 @@ function systemPrompt(ctx: CaptureContext): string {
     '"add my son Max" -> {"kind":"person","name":"Max","memberType":"kid","avatarEmoji":"👦"}',
     '"add a family member named Jane" -> {"kind":"person","name":"Jane","memberType":"adult"}',
     '"set a goal to read 20 books this year" -> {"kind":"goal","title":"Read 20 books","goalType":"count","targetValue":20,"unit":"books","trackingMode":"shared_total","deadline":"2026-12-31"}',
+    '"set a personal goal to run 10 miles by september" -> {"kind":"goal","title":"Run 10 miles","goalType":"total","targetValue":10,"unit":"miles","trackingMode":"shared_total","deadline":"2026-09-30"}',
     '"I want to get in shape" -> {"kind":"goal","title":"Get in shape","goalType":"habit","trackingMode":"shared_total"}',
     '"my goal is to save $500" -> {"kind":"goal","title":"Save $500","goalType":"total","targetValue":500,"unit":"dollars","trackingMode":"shared_total"}',
     '"add a reward: ice cream night for 50 stars" -> {"kind":"reward","title":"Ice cream night","cost":50,"emoji":"🍦"}',
@@ -278,9 +285,16 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
     // A count target must be a whole number (the route rejects a fractional one).
     const cleanTarget = goalType === 'count' && targetValue != null ? Math.round(targetValue) : targetValue
     const trackingMode = (['shared_total', 'each_tracks'] as const).find((m) => m === String(r.trackingMode ?? '').toLowerCase()) ?? 'shared_total'
+    // Assignment shape (mirrors GoalCreate's create payload): participantMode + targetBasis,
+    // carried through so the client's "who's it for" choice round-trips, coerced to the enum
+    // with the same defaults the route uses (count_once / family).
+    const participantMode = (['count_once', 'split'] as const).find((m) => m === String(r.participantMode ?? '').toLowerCase()) ?? 'count_once'
+    const targetBasis = (['family', 'per_person'] as const).find((b) => b === String(r.targetBasis ?? '').toLowerCase()) ?? 'family'
     const unit = r.unit && (goalType === 'count' || goalType === 'total') ? String(r.unit).trim() || null : null
     const deadline = typeof r.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.deadline) ? r.deadline : null
-    return { kind, title, goalType, trackingMode, targetValue: cleanTarget, unit, deadline }
+    // Inferred who-hint that seeds the client's "who's it for" control; coerce to the enum.
+    const audience = (['me', 'everyone'] as const).find((a) => a === String(r.audience ?? '').toLowerCase()) ?? null
+    return { kind, title, goalType, trackingMode, participantMode, targetBasis, targetValue: cleanTarget, unit, deadline, audience }
   }
   if (kind === 'event') {
     const raw0 = r.startsAt ? String(r.startsAt) : null

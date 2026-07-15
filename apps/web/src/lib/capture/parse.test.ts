@@ -387,39 +387,113 @@ describe('parseCapture — person', () => {
 })
 
 describe('parseCapture — goal', () => {
-  it('"set a goal to read 20 books this year" → a goal (minimal habit default offline)', () => {
-    const i = p('set a goal to read 20 books this year')
+  // Last day of the next occurrence of a given month (0-based), computed from NOW so
+  // the assertion tracks the clock instead of a hardcoded year.
+  const endOfNextMonth = (mo0: number): string => {
+    let year = NOW.getFullYear()
+    if (mo0 < NOW.getMonth()) year += 1
+    const d = new Date(year, mo0 + 1, 0) // day 0 of the next month = the last day of this one
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  it('loosened trigger: "set a personal goal to run 10 miles by september" is a goal (not grocery)', () => {
+    const i = p('set a personal goal to run 10 miles by september')
     expect(i?.kind).toBe('goal')
     if (i?.kind !== 'goal') throw new Error('expected goal')
-    expect(i.title).toBe('Read 20 books this year')
-    // The offline heuristic is deliberately minimal — the LLM upgrades goalType/target.
-    expect(i.goalType).toBe('habit')
-    expect(i.trackingMode).toBe('shared_total')
-    expect(i.targetValue).toBeNull()
+    // The offline heuristic now infers the total, the unit, and the deadline, and strips
+    // them out of the title.
+    expect(i.title).toBe('Run')
+    expect(i.goalType).toBe('total')
+    expect(i.targetValue).toBe(10)
+    expect(i.unit).toBe('miles')
+    expect(i.deadline).toBe(endOfNextMonth(8)) // end of the next September
   })
 
-  it('"I want to get in shape" → a goal', () => {
+  it('"set a personal goal to run 10 miles" (no deadline) still routes to goal, not grocery', () => {
+    const i = p('set a personal goal to run 10 miles')
+    expect(i?.kind).toBe('goal')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    expect(i.title).toBe('Run')
+    expect(i.goalType).toBe('total')
+    expect(i.targetValue).toBe(10)
+    expect(i.unit).toBe('miles')
+    expect(i.deadline).toBeNull()
+  })
+
+  it('"set a new goal to read 20 books" → a count goal with a whole-number target', () => {
+    const i = p('set a new goal to read 20 books')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    expect(i.title).toBe('Read')
+    expect(i.goalType).toBe('count')
+    expect(i.targetValue).toBe(20)
+    expect(i.unit).toBe('books')
+    expect(i.deadline).toBeNull()
+  })
+
+  it('"this year" resolves to a Dec 31 deadline', () => {
+    const i = p('set a goal to read 20 books this year')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    expect(i.goalType).toBe('count')
+    expect(i.targetValue).toBe(20)
+    expect(i.unit).toBe('books')
+    expect(i.deadline).toBe(`${NOW.getFullYear()}-12-31`)
+  })
+
+  it('infers a money total from "$": "my goal is to save $500" → total/500/dollars', () => {
+    const i = p('my goal is to save $500')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    expect(i.title).toBe('Save')
+    expect(i.goalType).toBe('total')
+    expect(i.targetValue).toBe(500)
+    expect(i.unit).toBe('dollars')
+  })
+
+  it('"I want to get in shape" → a habit with no target', () => {
     const i = p('I want to get in shape')
     if (i?.kind !== 'goal') throw new Error('expected goal')
     expect(i.title).toBe('Get in shape')
     expect(i.goalType).toBe('habit')
+    expect(i.targetValue).toBeNull()
+    expect(i.unit).toBeNull()
   })
 
-  it('"my goal is to save $500" → a goal', () => {
-    const i = p('my goal is to save $500')
-    if (i?.kind !== 'goal') throw new Error('expected goal')
-    expect(i.title).toBe('Save $500')
-  })
-
-  it('"new goal: meditate every day" → a goal', () => {
+  it('"new goal: meditate every day" → a habit', () => {
     const i = p('new goal: meditate every day')
     if (i?.kind !== 'goal') throw new Error('expected goal')
     expect(i.title).toBe('Meditate every day')
+    expect(i.goalType).toBe('habit')
   })
 
   it('does not mistake "I want fish for dinner" for a goal', () => {
     // "I want to…" is the trigger, not "I want <noun>" — this is a meal.
     expect(p('I want fish for dinner')?.kind).toBe('meal')
+  })
+
+  it('defaults the assignment to a just-me shared total (empty participant list)', () => {
+    const i = p('set a goal to run 10 miles')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    expect(i.trackingMode).toBe('shared_total')
+    expect(i.participantMode).toBe('count_once')
+    expect(i.targetBasis).toBe('family')
+    expect(i.participantIds).toEqual([])
+  })
+
+  it('infers an "everyone" audience from a family phrase', () => {
+    const i = p('set a family goal to walk 30 min per day')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    expect(i.audience).toBe('everyone')
+  })
+
+  it('infers a "me" audience from a personal phrase', () => {
+    const i = p('set a personal goal to run 10 miles')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    expect(i.audience).toBe('me')
+  })
+
+  it('leaves audience null when the phrase gives no who-hint (defaults to Just me)', () => {
+    const i = p('set a goal to read 20 books')
+    if (i?.kind !== 'goal') throw new Error('expected goal')
+    expect(i.audience).toBeNull()
   })
 
   it('summarizes a goal for the preview chip', () => {
@@ -428,7 +502,8 @@ describe('parseCapture — goal', () => {
     const s = intentSummary(i)
     expect(s.icon).toBe('🎯')
     expect(s.kind).toBe('Goal')
-    expect(s.primary).toBe('Read 20 books')
+    expect(s.primary).toBe('Read')
+    expect(s.detail).toContain('20 books')
   })
 })
 

@@ -141,6 +141,10 @@ function rerouteKind(i: ParsedIntent, kind: ParsedIntent['kind'], today: string)
         unit: i.kind === 'goal' ? i.unit : null,
         deadline: i.kind === 'goal' ? i.deadline : null,
         trackingMode: i.kind === 'goal' ? i.trackingMode : 'shared_total',
+        participantMode: i.kind === 'goal' ? i.participantMode : 'count_once',
+        targetBasis: i.kind === 'goal' ? i.targetBasis : 'family',
+        participantIds: i.kind === 'goal' ? i.participantIds : [],
+        audience: i.kind === 'goal' ? i.audience : null,
       }
     case 'pantry':
       return {
@@ -186,8 +190,69 @@ function PersonChips({ persons, value, onChange, noneLabel }: { persons: Person[
   )
 }
 
+// Seed the "who's it for" SET from the inferred audience: 'everyone' → all members;
+// 'me'/null → just the viewer (empty when the viewer id hasn't loaded yet, so the preview
+// still renders). Pure so it's unit-testable.
+export function seedGoalParticipants(audience: 'me' | 'everyone' | null, viewerId: string | null, allIds: string[]): string[] {
+  if (audience === 'everyone' && allIds.length) return allIds
+  return viewerId ? [viewerId] : []
+}
+
+// Which preset chip is lit, derived from the participant SET (not a separate mode flag):
+// "Just me" ⇔ the set is exactly {viewer}; "Everyone" ⇔ the set is every member. Pure so
+// it's unit-testable and shared with GoalWho.
+export function goalWhoHighlights(ids: string[], viewerId: string | null, allIds: string[]): { isJustMe: boolean; isEveryone: boolean } {
+  const isEveryone = allIds.length > 0 && ids.length === allIds.length && allIds.every((id) => ids.includes(id))
+  const isJustMe = !!viewerId && ids.length === 1 && ids[0] === viewerId
+  return { isJustMe, isEveryone }
+}
+
+// "Who's it for?" for a goal — mirrors GoalCreate's assignment payload but keeps the
+// quick-add control simple: Just me (personal), Everyone (shared across the household), or
+// a hand-picked subset. All three send trackingMode 'shared_total' / participantMode
+// 'count_once' / targetBasis 'family' (set on the intent); only participantIds vary.
+//
+// The selection is modeled as a SET of participantIds: "Just me" = {viewer}, "Everyone" =
+// all member ids, and each person tile toggles membership. The set drives EVERY highlight —
+// so clicking "Just me" also lights the viewer's own tile (they're the same person) and
+// clicking only your own tile is equivalent to Just me. The set is seeded once from the
+// inferred `audience` so "family"/"personal" phrasing lands on the right preset.
+// Reuses the .cap-people person chips.
+function GoalWho({ intent, persons, viewer, set }: { intent: Extract<ParsedIntent, { kind: 'goal' }>; persons: Person[]; viewer: Person | null; set: (i: ParsedIntent) => void }) {
+  const ids = intent.participantIds
+  const allIds = useMemo(() => persons.map((p) => p.id), [persons])
+  // Seed the set from the inferred audience while it's still empty (nothing picked yet).
+  useEffect(() => {
+    if (ids.length === 0) {
+      const seed = seedGoalParticipants(intent.audience, viewer?.id ?? null, allIds)
+      if (seed.length) set({ ...intent, participantIds: seed })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent.audience, viewer?.id, allIds.length])
+  const { isJustMe, isEveryone } = goalWhoHighlights(ids, viewer?.id ?? null, allIds)
+  const toggle = (id: string) => {
+    const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
+    set({ ...intent, participantIds: next })
+  }
+  return (
+    <div className="cap-people">
+      <button type="button" className={`cap-person ${isJustMe ? 'on' : ''}`} onClick={() => set({ ...intent, participantIds: viewer ? [viewer.id] : [] })}>🙋 Just me</button>
+      <button type="button" className={`cap-person ${isEveryone ? 'on' : ''}`} onClick={() => set({ ...intent, participantIds: allIds })}>👨‍👩‍👧 Everyone</button>
+      {persons.map((p) => {
+        const on = ids.includes(p.id)
+        const color = p.colorHex ?? '#6B6B70'
+        return (
+          <button key={p.id} type="button" className={`cap-person ${on ? 'on' : ''}`} style={on ? { borderColor: color, color, background: `${color}18` } : undefined} onClick={() => toggle(p.id)}>
+            {p.avatarEmoji ?? '🙂'} {p.name}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // Per-kind "basics" — extends the inline edit beyond just the title.
-function DraftFields({ intent, persons, lists, set, today }: { intent: ParsedIntent; persons: Person[]; lists: ListSummary[]; set: (i: ParsedIntent) => void; today: string }) {
+function DraftFields({ intent, persons, lists, set, today, viewer }: { intent: ParsedIntent; persons: Person[]; lists: ListSummary[]; set: (i: ParsedIntent) => void; today: string; viewer: Person | null }) {
   if (intent.kind === 'grocery') {
     return (
       <input className="cap-edit-sub" value={intent.quantity ?? ''} placeholder="quantity (optional, e.g. 2 lbs)" aria-label="Quantity" onChange={(e) => set({ ...intent, quantity: e.target.value || null })} />
@@ -324,6 +389,7 @@ function DraftFields({ intent, persons, lists, set, today }: { intent: ParsedInt
             <input type="date" className="cap-edit-mini" value={intent.deadline ?? ''} aria-label="Deadline" onChange={(e) => set({ ...intent, deadline: e.target.value || null })} />
           </label>
         </div>
+        <GoalWho intent={intent} persons={persons} viewer={viewer} set={set} />
       </>
     )
   }
@@ -542,13 +608,23 @@ export function CaptureBar() {
       return `Added ${i.name} to the family`
     }
     if (i.kind === 'goal') {
+      // An empty list means the picker was never touched — resolve it here from the
+      // inferred audience so a "family goal" committed straight from the glance still
+      // assigns everyone, while anything else falls back to the current viewer (assigning
+      // only yourself never needs goal.manage). A picked subset / Everyone is sent as-is.
+      const participantIds = i.participantIds.length
+        ? i.participantIds
+        : seedGoalParticipants(i.audience, viewer?.id ?? null, persons.map((p) => p.id))
       await api.createGoal({
         title: i.title,
         goalType: i.goalType,
         trackingMode: i.trackingMode,
+        participantMode: i.participantMode,
+        targetBasis: i.targetBasis,
         targetValue: i.targetValue ?? undefined,
         unit: i.unit ?? undefined,
         deadline: i.deadline ?? undefined,
+        participantIds,
       }) // apps/web/src/lib/api/goals.ts → POST /api/goals
       return `Added the “${i.title}” goal`
     }
@@ -683,7 +759,7 @@ export function CaptureBar() {
                     ) : editing ? (
                       <div className="cap-edit">
                         <input className="cap-edit-input" value={primaryOf(intent)} onChange={(e) => setDraft(withPrimary(intent, e.target.value))} aria-label="Edit" autoFocus />
-                        <DraftFields intent={intent} persons={persons} lists={customLists} set={setDraft} today={localToday()} />
+                        <DraftFields intent={intent} persons={persons} lists={customLists} set={setDraft} today={localToday()} viewer={viewer ?? null} />
                         <div className="cap-kind-chips">
                           {KINDS.map(({ k, label }) => (
                             <button key={k} type="button" className={`cap-kind-chip ${intent.kind === k ? 'on' : ''}`} onClick={() => setDraft(rerouteKind(intent, k, localToday()))}>

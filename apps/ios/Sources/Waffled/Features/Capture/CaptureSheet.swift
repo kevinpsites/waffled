@@ -46,6 +46,7 @@ struct CaptureSheet: View {
     @State private var goalDeadlineOn = false                 // whether the goal has a deadline
     @State private var goalDeadline = Date()                  // the deadline day
     @State private var goalTrackingMode = "shared_total"      // LLM-picked tracking mode (carried through)
+    @State private var goalAssignEveryone = false             // who's it for: false = just me, true = everyone
     @State private var pantryAmount = ""                      // pantry amount on hand (as text)
     @State private var pantryUnit = ""                        // pantry amount's unit
     @State private var pantryLocation = "Pantry"              // where it's stored (Pantry/Fridge/Freezer)
@@ -126,7 +127,7 @@ struct CaptureSheet: View {
         evRepeat = .none; evUntilOn = false; evPerson = nil
         taskStars = 0; taskRrule = nil
         personType = "adult"; personEmoji = nil; personBirthday = nil; personIsAdmin = false
-        goalType = "habit"; goalTarget = ""; goalUnit = ""; goalDeadlineOn = false; goalTrackingMode = "shared_total"
+        goalType = "habit"; goalTarget = ""; goalUnit = ""; goalDeadlineOn = false; goalTrackingMode = "shared_total"; goalAssignEveryone = false
         pantryAmount = ""; pantryUnit = ""; pantryLocation = "Pantry"; pantryExpiresOn = false
         rewardEmoji = ""; rewardCost = ""; rewardRequiresApproval = nil
         detent = .large
@@ -300,7 +301,7 @@ struct CaptureSheet: View {
         case let .list(item, _, _): return ("List", item)
         case let .countdown(t, _, _, _): return ("Countdown", t)
         case let .person(n, _, _, _, _): return ("Family member", n)
-        case let .goal(t, _, _, _, _, _): return ("Goal", t)
+        case let .goal(t, _, _, _, _, _, _): return ("Goal", t)
         case let .pantry(n, _, _, _, _, _): return ("Pantry", n)
         case let .reward(t, _, _, _, _, _): return ("Reward", t)
         }
@@ -452,6 +453,12 @@ struct CaptureSheet: View {
                     DatePicker("", selection: $goalDeadline, displayedComponents: .date).labelsHidden()
                 }
                 Spacer(minLength: 0)
+            }
+            // Who's it for — a simple Just me (personal) vs Everyone (shared) choice,
+            // resolved to participantIds on commit (web offers the richer per-person picker).
+            ChipFlow(spacing: 8, lineSpacing: 8) {
+                selectChip("🙋 Just me", on: !goalAssignEveryone) { goalAssignEveryone = false }
+                selectChip("👨‍👩‍👧 Everyone", on: goalAssignEveryone) { goalAssignEveryone = true }
             }
             if goalBlocked {
                 Text("Goals is turned off. Turn it on in Settings → Modules.")
@@ -844,9 +851,12 @@ struct CaptureSheet: View {
         case let .person(name, memberType, avatarEmoji, birthday, isAdmin):
             editKind = "person"; editName = name; personType = memberType
             personEmoji = avatarEmoji; personBirthday = birthday; personIsAdmin = isAdmin
-        case let .goal(title, gType, targetValue, unit, deadline, trackingMode):
+        case let .goal(title, gType, targetValue, unit, deadline, trackingMode, audience):
             editKind = "goal"; editName = title; goalType = gType
             goalTrackingMode = trackingMode
+            // Seed the who's-it-for toggle from the inferred audience: everyone → shared,
+            // me/nil → just me (mirrors the web GoalWho seeding).
+            goalAssignEveryone = audience == "everyone"
             goalUnit = unit ?? ""
             goalTarget = targetValue.map { $0 == $0.rounded() ? String(Int($0)) : String($0) } ?? ""
             let parts = (deadline ?? "").split(separator: "-").compactMap { Int($0) }
@@ -924,9 +934,15 @@ struct CaptureSheet: View {
                 let type = measured && target == nil ? "habit" : goalType
                 let unit = (measured && !goalUnit.trimmingCharacters(in: .whitespaces).isEmpty) ? goalUnit.trimmingCharacters(in: .whitespaces) : nil
                 let deadline = goalDeadlineOn ? DateFmt.string(goalDeadline, "yyyy-MM-dd", sync.householdTz) : nil
+                // Just me → the current viewer; Everyone → all household members. Empty (no
+                // viewer id) lets the route scope it to the caller.
+                let participantIds = goalAssignEveryone
+                    ? sync.members.map(\.id)
+                    : (sync.currentPersonId.map { [$0] } ?? [])
                 ok = await sync.commitGoal(title: name, goalType: type, trackingMode: goalTrackingMode,
                                            targetValue: type == "habit" || type == "checklist" ? nil : target,
-                                           unit: type == "habit" || type == "checklist" ? nil : unit, deadline: deadline)
+                                           unit: type == "habit" || type == "checklist" ? nil : unit, deadline: deadline,
+                                           participantIds: participantIds)
             case "pantry":
                 // Pantry defaults OFF — suppress the commit entirely rather than POSTing
                 // when the module is disabled (mirrors the web suppress-when-off gate).

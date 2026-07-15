@@ -23,7 +23,7 @@ export type ParsedIntent =
   | { kind: 'list'; listName: string | null; itemName: string; quantity: string | null }
   | { kind: 'countdown'; title: string; date: string; emoji: string | null; whenLabel: string }
   | { kind: 'person'; name: string; memberType: string; avatarEmoji: string | null; birthday: string | null; isAdmin: boolean }
-  | { kind: 'goal'; title: string; goalType: string; targetValue: number | null; unit: string | null; deadline: string | null; trackingMode: string }
+  | { kind: 'goal'; title: string; goalType: string; targetValue: number | null; unit: string | null; deadline: string | null; trackingMode: string; participantMode: string; targetBasis: string; participantIds: string[]; audience: 'me' | 'everyone' | null }
   | { kind: 'pantry'; name: string; amount: string | null; unit: string | null; location: string; expiresOn: string | null; lowAt: number | null }
   | { kind: 'reward'; title: string; emoji: string | null; cost: number | null; currency: string | null; category: string | null; requiresApproval: boolean | null }
   | { kind: 'unsupported'; reason: string }
@@ -491,18 +491,94 @@ function detectPerson(text: string): Extract<ParsedIntent, { kind: 'person' }> |
 }
 
 // GOAL — a personal/shared goal. Triggers: "set a goal to…", "I want to…",
-// "my goal is (to)…", "new goal: …". MINIMAL heuristic (plan §5): title + safe
-// defaults (habit / shared_total); the LLM upgrade fills goalType/targetValue/
-// unit/deadline offline can't reliably infer. Mirrors `detectGoal` in
-// CaptureHeuristic.swift.
-const GOAL_TRIGGER = /^\s*(?:set(?:ting)?\s+(?:a\s+|myself\s+a\s+|us\s+a\s+)?goal\s+(?:to|of|:)\s+|add\s+a\s+goal\s+(?:to\s+|of\s+)?|(?:i|we)\s+want\s+to\s+|(?:i|we)['’]d\s+like\s+to\s+|my\s+goal\s+is\s+(?:to\s+)?|our\s+goal\s+is\s+(?:to\s+)?|new\s+goal\s*[:-]\s*)(.+)$/i
+// "my goal is (to)…", "new goal: …". An optional adjective (or two) can sit between
+// the article/pronoun and "goal" — "set a personal goal", "set a new goal", "set
+// myself a big goal", "set our family goal", "set a weekly goal" — so the anchor is
+// "goal", not "a goal". The offline heuristic then infers the target/unit/deadline
+// (below). Mirrors `detectGoal` in CaptureHeuristic.swift.
+const GOAL_TRIGGER = /^\s*(?:set(?:ting)?\s+(?:a\s+|an\s+|the\s+|our\s+|my\s+|myself\s+a\s+|myself\s+|us\s+a\s+|us\s+)?(?:[a-z]+\s+){0,3}?goal\s+(?:to|of|:)\s+|add\s+(?:a\s+|an\s+|the\s+|our\s+|my\s+)?(?:[a-z]+\s+){0,3}?goal\s+(?:to\s+|of\s+)?|(?:i|we)\s+want\s+to\s+|(?:i|we)['’]d\s+like\s+to\s+|my\s+goal\s+is\s+(?:to\s+)?|our\s+goal\s+is\s+(?:to\s+)?|new\s+goal\s*[:-]\s*)(.+)$/i
 
-function detectGoal(text: string): Extract<ParsedIntent, { kind: 'goal' }> | null {
+// Units that ACCUMULATE (a measured/split amount) → a `total` goal; anything else
+// countable ("books", "workouts", "glasses") → a `count` goal. Mirrors the Swift set.
+const GOAL_TOTAL_UNIT = /^(?:miles?|mi|kilometers?|km|meters?|m|lbs?|pounds?|kgs?|kilograms?|kilos?|ounces?|oz|grams?|g|hours?|hrs?|hr|minutes?|mins?|min|seconds?|secs?|days?|weeks?|dollars?|usd|bucks?|cents?|gallons?|gal|liters?|litres?|l|calories?|cals?|cal|steps?|reps?|points?|pts?)$/i
+
+// Pull a numeric target + its unit out of a goal phrase. A currency symbol before the
+// number ("$500") → dollars/total; otherwise "<number> <word>" where the word decides
+// count vs total. Returns the span to strip from the title. Mirrors the Swift helper.
+function goalMeasure(text: string): { targetValue: number; unit: string; goalType: string; span: Span } | null {
+  const cur = /(\$)\s?(\d+(?:\.\d+)?)/.exec(text)
+  if (cur) return { targetValue: parseFloat(cur[2]), unit: 'dollars', goalType: 'total', span: { start: cur.index, end: cur.index + cur[0].length } }
+  const m = /(\d+(?:\.\d+)?)\s+([A-Za-z]+)/.exec(text)
+  if (m) {
+    const unit = m[2].toLowerCase()
+    const goalType = GOAL_TOTAL_UNIT.test(unit) ? 'total' : 'count'
+    return { targetValue: parseFloat(m[1]), unit, goalType, span: { start: m.index, end: m.index + m[0].length } }
+  }
+  return null
+}
+
+// Resolve a goal deadline from "by <when>" / "this year|month". "by september" (a bare
+// month) → the last day of that month's next occurrence; "by Friday" / "by Dec 1" /
+// "by 12/1" → the resolved day (via findDay). Returns the span to strip. Mirrors Swift.
+function goalDeadline(text: string, now: Date): { date: string; start: number; end: number } | null {
+  const ty = /\b(?:by\s+|before\s+)?(?:the\s+end\s+of\s+)?this\s+(year|month)\b/i.exec(text)
+  if (ty) {
+    const d = ty[1].toLowerCase() === 'year' ? new Date(now.getFullYear(), 11, 31) : new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    return { date: ymdLocal(d), start: ty.index, end: ty.index + ty[0].length }
+  }
+  const bm = /\bby\s+(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\b/i.exec(text)
+  if (bm && !/^\s*\d/.test(text.slice(bm.index + bm[0].length))) {
+    const mo = MONTHS[bm[1].toLowerCase()]
+    let year = now.getFullYear()
+    if (mo < now.getMonth()) year += 1
+    const d = new Date(year, mo + 1, 0) // day 0 of the next month = the last day of this one
+    return { date: ymdLocal(d), start: bm.index, end: bm.index + bm[0].length }
+  }
+  const by = /\bby\s+/i.exec(text)
+  if (by) {
+    const afterStart = by.index + by[0].length
+    const dh = findDay(text.slice(afterStart), now)
+    if (dh) return { date: ymdLocal(new Date(dh.y, dh.mo, dh.d)), start: by.index, end: afterStart + dh.span.end }
+  }
+  return null
+}
+
+// Infer who the goal is for from the phrasing — the same word-driven inference the rest
+// of the bar does. "family"/"our"/"together"/"we want"/… → the whole household ('everyone');
+// "personal"/"my own"/"i want to"/… → just the author ('me'); no hint → null (defaults to
+// Just me in the picker). The 'everyone' cues win when both are present. Mirrors the Swift
+// `goalAudience`.
+function goalAudience(text: string): 'me' | 'everyone' | null {
+  if (/\b(family|our|everyone|shared|as a family|together|us|we want)\b/i.test(text)) return 'everyone'
+  if (/\b(personal|my own|for myself|my goal|i want to|i['’]d like to)\b/i.test(text)) return 'me'
+  return null
+}
+
+function detectGoal(text: string, now: Date): Extract<ParsedIntent, { kind: 'goal' }> | null {
   const m = GOAL_TRIGGER.exec(text)
   if (!m) return null
-  const title = titleCase(tidy(m[1]))
+  let body = m[1]
+  // Deadline first (so a trailing "by september" doesn't get read as a target unit),
+  // then the number + unit — stripping each phrase out of the title as we go.
+  let deadline: string | null = null
+  const dl = goalDeadline(body, now)
+  if (dl) { deadline = dl.date; body = `${body.slice(0, dl.start)} ${body.slice(dl.end)}` }
+  let goalType = 'habit'
+  let targetValue: number | null = null
+  let unit: string | null = null
+  const meas = goalMeasure(body)
+  if (meas) {
+    goalType = meas.goalType
+    targetValue = meas.targetValue
+    unit = meas.unit
+    body = `${body.slice(0, meas.span.start)} ${body.slice(meas.span.end)}`
+  }
+  const title = titleCase(tidy(body))
   if (!title) return null
-  return { kind: 'goal', title, goalType: 'habit', targetValue: null, unit: null, deadline: null, trackingMode: 'shared_total' }
+  // Assignment defaults to a just-me shared total; the preview's "who's it for" control
+  // fills participantIds (empty = the current viewer, resolved at commit). `audience` is
+  // the inferred who-hint that seeds that control (everyone vs just me).
+  return { kind: 'goal', title, goalType, targetValue, unit, deadline, trackingMode: 'shared_total', participantMode: 'count_once', targetBasis: 'family', participantIds: [], audience: goalAudience(text) }
 }
 
 // PANTRY — an item you ALREADY HAVE on hand, named with an explicit pantry/fridge/
@@ -586,7 +662,7 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
 
   // GOAL — "set a goal to read 20 books" / "I want to get in shape". An explicit goal
   // phrase, so it wins over the grocery/task fallbacks. Minimal: title + habit default.
-  const goalIntent = detectGoal(text)
+  const goalIntent = detectGoal(text, now)
   if (goalIntent) return goalIntent
 
   // REWARD — "add a reward: ice cream night for 50 stars". The explicit word "reward"

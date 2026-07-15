@@ -206,8 +206,35 @@ describe('finalizeIntent — model JSON → finished intent', () => {
       { kind: 'goal', title: 'Read 20 books', goalType: 'count', targetValue: 20, unit: 'books' }, ctx
     )).toEqual({
       kind: 'goal', title: 'Read 20 books', goalType: 'count',
-      trackingMode: 'shared_total', targetValue: 20, unit: 'books', deadline: null,
+      trackingMode: 'shared_total', participantMode: 'count_once', targetBasis: 'family',
+      targetValue: 20, unit: 'books', deadline: null, audience: null,
     })
+  })
+
+  it('carries the goal audience through (defaulting null, coercing bogus)', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Family walk', audience: 'everyone' }, ctx).audience).toBe('everyone')
+    expect(finalizeIntent({ kind: 'goal', title: 'My run', audience: 'me' }, ctx).audience).toBe('me')
+    expect(finalizeIntent({ kind: 'goal', title: 'Read', goalType: 'count', targetValue: 5 }, ctx).audience).toBeNull()
+    expect(finalizeIntent({ kind: 'goal', title: 'X', audience: 'nonsense' }, ctx).audience).toBeNull()
+  })
+
+  it('carries explicit goal assignment fields (trackingMode/participantMode/targetBasis) through', () => {
+    const i = finalizeIntent(
+      { kind: 'goal', title: 'Family miles', goalType: 'total', targetValue: 100, unit: 'miles', trackingMode: 'each_tracks', participantMode: 'split', targetBasis: 'per_person' },
+      ctx
+    )
+    expect(i).toMatchObject({ trackingMode: 'each_tracks', participantMode: 'split', targetBasis: 'per_person', unit: 'miles' })
+  })
+
+  it('defaults the goal assignment fields sensibly when absent', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Get in shape' }, ctx)).toMatchObject({
+      trackingMode: 'shared_total', participantMode: 'count_once', targetBasis: 'family',
+    })
+  })
+
+  it('coerces bogus goal assignment fields to their defaults', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'X', goalType: 'count', targetValue: 3, participantMode: 'nope', targetBasis: 'bogus' }, ctx))
+      .toMatchObject({ participantMode: 'count_once', targetBasis: 'family' })
   })
 
   it('maps an accumulating total goal, keeping the target', () => {

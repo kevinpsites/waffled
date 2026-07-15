@@ -43,8 +43,8 @@ private func asPerson(_ i: CaptureIntent?) -> (name: String, memberType: String,
     if case let .person(n, mt, e, b, a) = i { return (n, mt, e, b, a) }
     return nil
 }
-private func asGoal(_ i: CaptureIntent?) -> (title: String, goalType: String, targetValue: Double?, unit: String?, deadline: String?, trackingMode: String)? {
-    if case let .goal(t, gt, tv, u, d, tm) = i { return (t, gt, tv, u, d, tm) }
+private func asGoal(_ i: CaptureIntent?) -> (title: String, goalType: String, targetValue: Double?, unit: String?, deadline: String?, trackingMode: String, audience: String?)? {
+    if case let .goal(t, gt, tv, u, d, tm, au) = i { return (t, gt, tv, u, d, tm, au) }
     return nil
 }
 private func asPantry(_ i: CaptureIntent?) -> (name: String, amount: String?, unit: String?, location: String, expiresOn: String?, lowAt: Double?)? {
@@ -335,36 +335,94 @@ private func dowOfDate(_ s: String) -> Int {
 }
 
 @Suite struct CaptureHeuristicGoalTests {
-    @Test func setAGoalToRead() {
+    // Last day of the next occurrence of a 0-based month, computed from pinnedNow so the
+    // assertion tracks the clock (mirrors the web endOfNextMonth helper).
+    private func endOfNextMonth(_ mo0: Int) -> String {
+        var year = pinnedCal.component(.year, from: pinnedNow)
+        let nowMo0 = pinnedCal.component(.month, from: pinnedNow) - 1
+        if mo0 < nowMo0 { year += 1 }
+        // Day 0 of the following month = the last day of the target month.
+        let d = pinnedCal.date(from: DateComponents(year: year, month: mo0 + 2, day: 0))!
+        return String(format: "%04d-%02d-%02d", pinnedCal.component(.year, from: d),
+                      pinnedCal.component(.month, from: d), pinnedCal.component(.day, from: d))
+    }
+
+    @Test func personalGoalRunMilesBySeptember() {
+        let g = asGoal(p("set a personal goal to run 10 miles by september"))!
+        #expect(g.title == "Run")
+        #expect(g.goalType == "total")
+        #expect(g.targetValue == 10)
+        #expect(g.unit == "miles")
+        #expect(g.deadline == endOfNextMonth(8)) // end of the next September
+    }
+    @Test func personalGoalRunMilesNoDeadline() {
+        let g = asGoal(p("set a personal goal to run 10 miles"))!
+        #expect(g.title == "Run")
+        #expect(g.goalType == "total")
+        #expect(g.targetValue == 10)
+        #expect(g.unit == "miles")
+        #expect(g.deadline == nil)
+    }
+    @Test func newGoalReadBooks() {
+        let g = asGoal(p("set a new goal to read 20 books"))!
+        #expect(g.title == "Read")
+        #expect(g.goalType == "count")
+        #expect(g.targetValue == 20)
+        #expect(g.unit == "books")
+        #expect(g.deadline == nil)
+    }
+    @Test func thisYearDeadline() {
         let g = asGoal(p("set a goal to read 20 books this year"))!
-        #expect(g.title == "Read 20 books this year")
-        // The offline heuristic is deliberately minimal — the LLM upgrades goalType/target.
-        #expect(g.goalType == "habit")
-        #expect(g.trackingMode == "shared_total")
-        #expect(g.targetValue == nil)
+        #expect(g.goalType == "count")
+        #expect(g.targetValue == 20)
+        #expect(g.unit == "books")
+        #expect(g.deadline == "\(pinnedCal.component(.year, from: pinnedNow))-12-31")
+    }
+    @Test func moneyTotal() {
+        let g = asGoal(p("my goal is to save $500"))!
+        #expect(g.title == "Save")
+        #expect(g.goalType == "total")
+        #expect(g.targetValue == 500)
+        #expect(g.unit == "dollars")
     }
     @Test func iWantToGetInShape() {
         let g = asGoal(p("I want to get in shape"))!
         #expect(g.title == "Get in shape")
         #expect(g.goalType == "habit")
-    }
-    @Test func myGoalIsToSave() {
-        let g = asGoal(p("my goal is to save $500"))!
-        #expect(g.title == "Save $500")
+        #expect(g.targetValue == nil)
+        #expect(g.unit == nil)
     }
     @Test func newGoalColon() {
         let g = asGoal(p("new goal: meditate every day"))!
         #expect(g.title == "Meditate every day")
+        #expect(g.goalType == "habit")
     }
     @Test func iWantFishForDinnerIsMeal() {
         // "I want to…" is the trigger, not "I want <noun>" — this stays a meal.
         #expect(asMeal(p("I want fish for dinner")) != nil)
     }
+    @Test func defaultsAssignment() {
+        let g = asGoal(p("set a goal to run 10 miles"))!
+        #expect(g.trackingMode == "shared_total")
+    }
+    @Test func audienceEveryoneFromFamilyPhrase() {
+        let g = asGoal(p("set a family goal to walk 30 min per day"))!
+        #expect(g.audience == "everyone")
+    }
+    @Test func audienceMeFromPersonalPhrase() {
+        let g = asGoal(p("set a personal goal to run 10 miles"))!
+        #expect(g.audience == "me")
+    }
+    @Test func audienceNilWithoutHint() {
+        let g = asGoal(p("set a goal to read 20 books"))!
+        #expect(g.audience == nil)
+    }
     @Test func summarizesGoal() {
         let s = CaptureSummary(p("set a goal to read 20 books")!)
         #expect(s.icon == "🎯")
         #expect(s.kind == "Goal")
-        #expect(s.primary == "Read 20 books")
+        #expect(s.primary == "Read")
+        #expect(s.detail.contains("20 books"))
     }
 }
 

@@ -27,12 +27,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confirm-and-edit preview before it's created (on web, iPhone, and iPad). Adding members is
   an adult-only action, so a kid or teen sees a friendly "Only an adult can add family members"
   note instead.
-- **Quick-add can set a goal.** Type something like "set a goal to read 20 books this year",
-  "I want to get in shape", or "my goal is to save $500" into the "Add anything" bar and
-  Waffled starts the goal for you — figuring out whether it's a simple habit, a countable
-  target (20 books), or an accumulating total, and letting you fine-tune the type, target,
-  unit, and deadline in the confirm-and-edit preview before it's created (on web, iPhone, and
-  iPad). If a household has turned the Goals module off, quick-add says so instead of failing.
+- **Quick-add can set a goal.** Type something like "set a personal goal to run 10 miles by
+  september", "set a new goal to read 20 books", "I want to get in shape", or "my goal is to
+  save $500" into the "Add anything" bar and Waffled starts the goal for you — it understands
+  everyday phrasings (a "personal"/"new"/"weekly" goal reads the same as a plain one) and, even
+  with no AI configured, pulls out the number, the unit, and a deadline ("10 miles" by the end
+  of September) on its own. It figures out whether the goal is a simple habit, a countable
+  target (20 books), or an accumulating total, and lets you fine-tune the type, target, unit,
+  deadline, and who it's for — just you, everyone, or specific people — in the confirm-and-edit
+  preview before it's created (on web, iPhone, and iPad). It even reads the wording to preselect
+  who the goal is for — a "family" or "shared" goal starts for everyone, a "personal" one just
+  for you — and on the web, "Just me" and your own name now stay in sync as the same person. If
+  a household has turned the Goals module off, quick-add says so instead of failing.
 - **Quick-add can stock the pantry.** Type something like "add milk to the pantry", "put 2 cans
   of beans in the pantry", or "we have milk in the fridge" into the "Add anything" bar and Waffled
   logs it as an item you already have on hand — pulling out the amount, unit, and where it's stored

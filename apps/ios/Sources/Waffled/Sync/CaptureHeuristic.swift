@@ -495,16 +495,90 @@ enum CaptureHeuristic {
 
     // MARK: goal
 
-    // A personal/shared goal. Triggers: "set a goal to…", "I want to…", "my goal is…",
-    // "new goal: …". MINIMAL heuristic (plan §5): title + safe defaults (habit /
-    // shared_total); the LLM upgrade fills goalType/targetValue/unit/deadline the offline
-    // path can't reliably infer. Mirrors `detectGoal` in parse.ts.
-    private static let goalTrigger = "^\\s*(?:set(?:ting)?\\s+(?:a\\s+|myself\\s+a\\s+|us\\s+a\\s+)?goal\\s+(?:to|of|:)\\s+|add\\s+a\\s+goal\\s+(?:to\\s+|of\\s+)?|(?:i|we)\\s+want\\s+to\\s+|(?:i|we)['\u{2019}]d\\s+like\\s+to\\s+|my\\s+goal\\s+is\\s+(?:to\\s+)?|our\\s+goal\\s+is\\s+(?:to\\s+)?|new\\s+goal\\s*[:-]\\s*)(.+)$"
-    private static func detectGoal(_ text: NSString) -> CaptureIntent? {
+    // A personal/shared goal. Triggers: "set a goal to…", "set a personal/new/weekly goal
+    // to…", "I want to…", "my goal is…", "new goal: …". An optional adjective (or two) can
+    // sit between the article/pronoun and "goal", so the anchor is "goal", not "a goal".
+    // The offline heuristic then infers the target/unit/deadline (below). Mirrors
+    // `detectGoal` (+ GOAL_TOTAL_UNIT / goalMeasure / goalDeadline) in parse.ts.
+    private static let goalTrigger = "^\\s*(?:set(?:ting)?\\s+(?:a\\s+|an\\s+|the\\s+|our\\s+|my\\s+|myself\\s+a\\s+|myself\\s+|us\\s+a\\s+|us\\s+)?(?:[a-z]+\\s+){0,3}?goal\\s+(?:to|of|:)\\s+|add\\s+(?:a\\s+|an\\s+|the\\s+|our\\s+|my\\s+)?(?:[a-z]+\\s+){0,3}?goal\\s+(?:to\\s+|of\\s+)?|(?:i|we)\\s+want\\s+to\\s+|(?:i|we)['\u{2019}]d\\s+like\\s+to\\s+|my\\s+goal\\s+is\\s+(?:to\\s+)?|our\\s+goal\\s+is\\s+(?:to\\s+)?|new\\s+goal\\s*[:-]\\s*)(.+)$"
+
+    // Units that ACCUMULATE → a `total` goal; anything else countable → a `count` goal.
+    private static let goalTotalUnit = "^(?:miles?|mi|kilometers?|km|meters?|m|lbs?|pounds?|kgs?|kilograms?|kilos?|ounces?|oz|grams?|g|hours?|hrs?|hr|minutes?|mins?|min|seconds?|secs?|days?|weeks?|dollars?|usd|bucks?|cents?|gallons?|gal|liters?|litres?|l|calories?|cals?|cal|steps?|reps?|points?|pts?)$"
+
+    // Number + unit → (targetValue, unit, goalType, span). "$500" → dollars/total; else
+    // "<number> <word>" where the word decides count vs total. Mirrors parse.ts goalMeasure.
+    private static func goalMeasure(_ text: NSString) -> (targetValue: Double, unit: String, goalType: String, span: Span)? {
+        if let cur = firstMatch(#"(\$)\s?(\d+(?:\.\d+)?)"#, text) {
+            return (Double(cur.groups[2] ?? "") ?? 0, "dollars", "total", span(cur))
+        }
+        if let m = firstMatch(#"(\d+(?:\.\d+)?)\s+([A-Za-z]+)"#, text) {
+            let unit = (m.groups[2] ?? "").lowercased()
+            let goalType = test(goalTotalUnit, unit as NSString) ? "total" : "count"
+            return (Double(m.groups[1] ?? "") ?? 0, unit, goalType, span(m))
+        }
+        return nil
+    }
+
+    // Resolve a goal deadline from "by <when>" / "this year|month". Mirrors parse.ts goalDeadline.
+    private static func goalDeadline(_ text: NSString, _ now: Date, _ cal: Calendar) -> (date: String, start: Int, end: Int)? {
+        if let ty = firstMatch(#"\b(?:by\s+|before\s+)?(?:the\s+end\s+of\s+)?this\s+(year|month)\b"#, text) {
+            let kind = (ty.groups[1] ?? "").lowercased()
+            let y = cal.component(.year, from: now)
+            let d: Date = kind == "year" ? ymd(y, 11, 31, cal) : ymd(y, cal.component(.month, from: now), 0, cal)
+            return (ymdLocal(d, cal), ty.range.location, ty.range.location + ty.range.length)
+        }
+        if let bm = firstMatch(#"\bby\s+(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\b"#, text) {
+            let afterIdx = min(bm.range.location + bm.range.length, text.length)
+            if !test(#"^\s*\d"#, text.substring(from: afterIdx) as NSString) {
+                let mo = months[(bm.groups[1] ?? "").lowercased()] ?? 0
+                var year = cal.component(.year, from: now)
+                if mo < cal.component(.month, from: now) - 1 { year += 1 }
+                let d = ymd(year, mo + 1, 0, cal) // day 0 of the next month = last day of the target month
+                return (ymdLocal(d, cal), bm.range.location, bm.range.location + bm.range.length)
+            }
+        }
+        if let by = firstMatch(#"\bby\s+"#, text) {
+            let afterStart = by.range.location + by.range.length
+            let after = text.substring(from: min(afterStart, text.length)) as NSString
+            if let dh = findDay(after, now, cal) {
+                let d = ymd(dh.y, dh.mo, dh.d, cal)
+                return (ymdLocal(d, cal), by.range.location, afterStart + dh.span.end)
+            }
+        }
+        return nil
+    }
+
+    // Infer who the goal is for from the phrasing (the same word-driven inference the rest
+    // of the bar does): "family"/"our"/"together"/"we want"/… → 'everyone'; "personal"/
+    // "my own"/"i want to"/… → 'me'; no hint → nil. Mirrors parse.ts `goalAudience`.
+    private static func goalAudience(_ text: NSString) -> String? {
+        if test(#"\b(family|our|everyone|shared|as a family|together|us|we want)\b"#, text) { return "everyone" }
+        // NOTE: literal ' and ’ in the char class — a raw string doesn't interpret \u{…}.
+        if test(#"\b(personal|my own|for myself|my goal|i want to|i['’]d like to)\b"#, text) { return "me" }
+        return nil
+    }
+
+    private static func detectGoal(_ text: NSString, _ now: Date, _ cal: Calendar) -> CaptureIntent? {
         guard let m = firstMatch(goalTrigger, text) else { return nil }
-        let title = titleCase(tidy((m.groups[1] ?? "") as NSString))
+        var body = (m.groups[1] ?? "") as NSString
+        // Deadline first (so a trailing "by september" isn't read as a target unit), then
+        // the number + unit — stripping each phrase out of the title as we go.
+        var deadline: String?
+        if let dl = goalDeadline(body, now, cal) {
+            deadline = dl.date
+            body = (body.substring(to: min(dl.start, body.length)) + " " + body.substring(from: min(dl.end, body.length))) as NSString
+        }
+        var goalType = "habit"
+        var targetValue: Double?
+        var unit: String?
+        if let meas = goalMeasure(body) {
+            goalType = meas.goalType; targetValue = meas.targetValue; unit = meas.unit
+            body = (body.substring(to: min(meas.span.start, body.length)) + " " + body.substring(from: min(meas.span.end, body.length))) as NSString
+        }
+        let title = titleCase(tidy(body))
         if title.isEmpty { return nil }
-        return .goal(title: title, goalType: "habit", targetValue: nil, unit: nil, deadline: nil, trackingMode: "shared_total")
+        return .goal(title: title, goalType: goalType, targetValue: targetValue, unit: unit,
+                     deadline: deadline, trackingMode: "shared_total", audience: goalAudience(text))
     }
 
     // MARK: pantry
@@ -592,7 +666,7 @@ enum CaptureHeuristic {
 
         // GOAL — "set a goal to read 20 books" / "I want to get in shape". An explicit goal
         // phrase, so it wins over the grocery/task fallbacks. Minimal: title + habit default.
-        if let goalIntent = detectGoal(text) { return goalIntent }
+        if let goalIntent = detectGoal(text, now, cal) { return goalIntent }
 
         // REWARD — "add a reward: ice cream night for 50 stars". The explicit word "reward"
         // is a specific create phrase, so it wins over the grocery/task fallbacks.
