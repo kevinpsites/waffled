@@ -11,6 +11,7 @@ enum CaptureIntent: Sendable, Equatable {
     case meal(title: String, date: String?, mealType: String, whenLabel: String)
     case list(itemName: String, listName: String?, quantity: String?)
     case countdown(title: String, date: String, emoji: String?, whenLabel: String)
+    case person(name: String, memberType: String, avatarEmoji: String?, birthday: String?, isAdmin: Bool)
 }
 
 extension CaptureIntent: Decodable {
@@ -18,6 +19,7 @@ extension CaptureIntent: Decodable {
         case kind, title, startsAt, allDay, personName, whenLabel
         case name, quantity, stars, rrule, scheduleLabel, date, mealType
         case itemName, listName, emoji
+        case memberType, avatarEmoji, birthday, isAdmin
     }
 
     init(from decoder: Decoder) throws {
@@ -66,6 +68,14 @@ extension CaptureIntent: Decodable {
                 emoji: try c.decodeIfPresent(String.self, forKey: .emoji),
                 whenLabel: (try? c.decode(String.self, forKey: .whenLabel)) ?? ""
             )
+        case "person":
+            self = .person(
+                name: try c.decode(String.self, forKey: .name),
+                memberType: (try? c.decode(String.self, forKey: .memberType)) ?? "adult",
+                avatarEmoji: try c.decodeIfPresent(String.self, forKey: .avatarEmoji),
+                birthday: try c.decodeIfPresent(String.self, forKey: .birthday),
+                isAdmin: (try? c.decode(Bool.self, forKey: .isAdmin)) ?? false
+            )
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c,
                 debugDescription: "Unknown intent kind: \(other)")
@@ -102,6 +112,9 @@ struct CaptureSummary {
             detail = listName.map { "Adds to \($0)" } ?? "Adds to a list"
         case let .countdown(title, _, _, whenLabel):
             icon = "⏳"; kind = "Countdown"; primary = title; detail = whenLabel
+        case let .person(name, memberType, avatarEmoji, _, _):
+            icon = avatarEmoji ?? "👤"; kind = "Family member"; primary = name
+            detail = memberType == "kid" ? "Kid" : (memberType == "teen" ? "Teen" : "Adult")
         }
     }
 }

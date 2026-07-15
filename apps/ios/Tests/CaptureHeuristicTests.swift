@@ -39,6 +39,10 @@ private func asCountdown(_ i: CaptureIntent?) -> (title: String, date: String, e
     if case let .countdown(t, d, e, w) = i { return (t, d, e, w) }
     return nil
 }
+private func asPerson(_ i: CaptureIntent?) -> (name: String, memberType: String, avatarEmoji: String?, birthday: String?, isAdmin: Bool)? {
+    if case let .person(n, mt, e, b, a) = i { return (n, mt, e, b, a) }
+    return nil
+}
 
 private func iso(_ s: String) -> Date {
     let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -278,6 +282,39 @@ private func dowOfDate(_ s: String) -> Int {
     }
     @Test func clockTimeStillEvent() {
         #expect(asEvent(p("dentist Tuesday 3pm")) != nil)
+    }
+}
+
+@Suite struct CaptureHeuristicPersonTests {
+    @Test func sonIsKid() {
+        let m = asPerson(p("add my son Max"))!
+        #expect(m.name == "Max")
+        #expect(m.memberType == "kid")
+        #expect(m.isAdmin == false)
+    }
+    @Test func daughterIsKid() {
+        let m = asPerson(p("add my daughter Jane"))!
+        #expect(m.name == "Jane")
+        #expect(m.memberType == "kid")
+    }
+    @Test func wifeIsAdult() {
+        let m = asPerson(p("add my wife Sara"))!
+        #expect(m.name == "Sara")
+        #expect(m.memberType == "adult")
+    }
+    @Test func familyMemberDefaultsAdult() {
+        let m = asPerson(p("add a family member named Robin"))!
+        #expect(m.name == "Robin")
+        #expect(m.memberType == "adult")
+    }
+    @Test func profileForName() {
+        let m = asPerson(p("create a profile for Max"))!
+        #expect(m.name == "Max")
+    }
+    @Test func dropsTrailingAge() {
+        let m = asPerson(p("add my son Max, age 8"))!
+        #expect(m.name == "Max")
+        #expect(m.birthday == nil)
     }
 }
 

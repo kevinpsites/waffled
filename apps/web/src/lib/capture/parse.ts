@@ -22,7 +22,14 @@ export type ParsedIntent =
   | { kind: 'meal'; title: string; date: string | null; mealType: string; whenLabel: string }
   | { kind: 'list'; listName: string | null; itemName: string; quantity: string | null }
   | { kind: 'countdown'; title: string; date: string; emoji: string | null; whenLabel: string }
+  | { kind: 'person'; name: string; memberType: string; avatarEmoji: string | null; birthday: string | null; isAdmin: boolean }
   | { kind: 'unsupported'; reason: string }
+
+// Member types for the `person` intent, and a human label for the preview.
+export const MEMBER_TYPES = ['adult', 'teen', 'kid'] as const
+export function memberTypeLabel(t: string): string {
+  return t === 'kid' ? 'Kid' : t === 'teen' ? 'Teen' : 'Adult'
+}
 
 const MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack'])
 function mealTypeFrom(word?: string): string {
@@ -434,11 +441,56 @@ function detectCountdown(text: string, now: Date): Extract<ParsedIntent, { kind:
   return { kind: 'countdown', title, date: ymdLocal(target), emoji: null, whenLabel: countdownWhen(target, now) }
 }
 
+// PERSON — add a new household member. Triggers: "add my son/daughter/husband/…
+// <name>", "add a family member <name>", "create a profile for <name>". MINIMAL
+// heuristic (plan §5): name + memberType + safe defaults; the LLM upgrade fills
+// avatarEmoji/birthday/isAdmin. Relationship word → memberType.
+const REL_KID = 'son|daughter|kid|child|boy|girl|baby'
+const REL_TEEN = 'teenager|teen'
+const REL_ADULT = 'husband|wife|spouse|partner|mom|mum|mommy|mother|dad|daddy|father|parent|adult|grandma|grandpa|grandmother|grandfather'
+const PERSON_REL = new RegExp(`\\b(?:add|create|make|register)\\s+(?:my|our|a|an|the)?\\s*(?:new\\s+)?(${REL_KID}|${REL_TEEN}|${REL_ADULT})\\b[\\s,:-]*(?:named\\s+|called\\s+)?(.+)$`, 'i')
+const PERSON_MEMBER = /\b(?:add|create|make|register)\s+(?:a\s+|an\s+|the\s+|my\s+|our\s+)?(?:new\s+)?(?:family\s+member|household\s+member|family\s+profile|profile|person|member)\b\s*(?:for\s+|named\s+|called\s+|[:-]\s*)?(.+)$/i
+
+function memberTypeForRel(word: string): string {
+  const w = word.toLowerCase()
+  if (new RegExp(`^(?:${REL_KID})$`, 'i').test(w)) return 'kid'
+  if (new RegExp(`^(?:${REL_TEEN})$`, 'i').test(w)) return 'teen'
+  return 'adult'
+}
+
+// Strip a trailing ", age 8" / "aged 8" (age maps to nothing today — no birthday),
+// then clean to a bare name.
+function cleanPersonName(raw: string): string {
+  const noAge = raw.replace(/[\s,]+(?:who\s+is\s+|aged?\s+)\d{1,3}\b.*$/i, '')
+  return titleCase(tidy(noAge))
+}
+
+function detectPerson(text: string): Extract<ParsedIntent, { kind: 'person' }> | null {
+  // A clock time or an explicit date signals scheduling, not a profile.
+  if (findTime(text)) return null
+  const rel = PERSON_REL.exec(text)
+  if (rel) {
+    const name = cleanPersonName(rel[2])
+    if (name) return { kind: 'person', name, memberType: memberTypeForRel(rel[1]), avatarEmoji: null, birthday: null, isAdmin: false }
+  }
+  const mem = PERSON_MEMBER.exec(text)
+  if (mem) {
+    const name = cleanPersonName(mem[1])
+    if (name) return { kind: 'person', name, memberType: 'adult', avatarEmoji: null, birthday: null, isAdmin: false }
+  }
+  return null
+}
+
 export function parseCapture(raw: string, persons: string[] = [], now: Date = new Date(), lists: string[] = []): ParsedIntent | null {
   const text = raw.trim()
   if (!text) return null
 
   const person = findPerson(text, persons)
+
+  // PERSON — "add my son Max" / "add a family member Jane". A specific create phrase,
+  // so it wins over the generic grocery/event fallbacks. Minimal: name + memberType.
+  const personIntent = detectPerson(text)
+  if (personIntent) return personIntent
 
   // TASK / CHORE — an explicit "chore"/"task"/"remind" word wins over the date
   // heuristics, because a chore can carry a *recurring* schedule (weekday names
@@ -626,6 +678,8 @@ export function intentSummary(intent: ParsedIntent): { icon: string; kind: strin
       }
     case 'countdown':
       return { icon: '⏳', kind: 'Countdown', primary: intent.title, detail: intent.whenLabel }
+    case 'person':
+      return { icon: intent.avatarEmoji ?? '👤', kind: 'Family member', primary: intent.name, detail: memberTypeLabel(intent.memberType) }
     case 'unsupported':
       return { icon: '🤔', kind: 'Not supported yet', primary: intent.reason, detail: '' }
   }

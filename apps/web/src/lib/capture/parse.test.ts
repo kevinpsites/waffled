@@ -332,6 +332,60 @@ describe('parseCapture — countdown', () => {
   })
 })
 
+describe('parseCapture — person', () => {
+  it('"add my son Max" → a kid family member', () => {
+    const i = p('add my son Max')
+    expect(i?.kind).toBe('person')
+    if (i?.kind !== 'person') throw new Error('expected person')
+    expect(i.name).toBe('Max')
+    expect(i.memberType).toBe('kid')
+    expect(i.isAdmin).toBe(false)
+  })
+
+  it('"add my daughter Jane" → a kid', () => {
+    const i = p('add my daughter Jane')
+    if (i?.kind !== 'person') throw new Error('expected person')
+    expect(i.name).toBe('Jane')
+    expect(i.memberType).toBe('kid')
+  })
+
+  it('"add my wife Sara" → an adult', () => {
+    const i = p('add my wife Sara')
+    if (i?.kind !== 'person') throw new Error('expected person')
+    expect(i.name).toBe('Sara')
+    expect(i.memberType).toBe('adult')
+  })
+
+  it('"add a family member named Robin" → an adult by default', () => {
+    const i = p('add a family member named Robin')
+    if (i?.kind !== 'person') throw new Error('expected person')
+    expect(i.name).toBe('Robin')
+    expect(i.memberType).toBe('adult')
+  })
+
+  it('"create a profile for Max" → a person', () => {
+    const i = p('create a profile for Max')
+    if (i?.kind !== 'person') throw new Error('expected person')
+    expect(i.name).toBe('Max')
+  })
+
+  it('drops a trailing age (no birthday is invented)', () => {
+    const i = p('add my son Max, age 8')
+    if (i?.kind !== 'person') throw new Error('expected person')
+    expect(i.name).toBe('Max')
+    expect(i.birthday).toBeNull()
+  })
+
+  it('summarizes a person for the preview chip', () => {
+    const i = p('add my son Max')
+    if (i?.kind !== 'person') throw new Error('expected person')
+    const s = intentSummary(i)
+    expect(s.kind).toBe('Family member')
+    expect(s.primary).toBe('Max')
+    expect(s.detail).toBe('Kid')
+  })
+})
+
 describe('intentSummary + edge cases', () => {
   it('returns null for empty input', () => {
     expect(p('')).toBeNull()

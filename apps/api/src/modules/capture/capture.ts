@@ -24,7 +24,7 @@ type Api = ReturnType<typeof createAPI>
 // What the model is asked to emit. Mirrors the kiosk's ParsedIntent so the client
 // treats a server parse and a local heuristic parse identically.
 export interface CaptureIntent {
-  kind: 'event' | 'task' | 'grocery' | 'meal' | 'list' | 'countdown' | 'unsupported'
+  kind: 'event' | 'task' | 'grocery' | 'meal' | 'list' | 'countdown' | 'person' | 'unsupported'
   title?: string
   name?: string | null
   quantity?: string | null
@@ -37,6 +37,11 @@ export interface CaptureIntent {
   mealType?: string | null
   // countdown intent: a future day to count down to
   emoji?: string | null
+  // person intent: a new household member
+  memberType?: string | null
+  avatarEmoji?: string | null
+  birthday?: string | null
+  isAdmin?: boolean | null
   // list intent: add itemName to the named (non-grocery) list
   listName?: string | null
   itemName?: string | null
@@ -63,9 +68,9 @@ const INTENT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    kind: { type: 'string', enum: ['event', 'task', 'grocery', 'meal', 'list', 'countdown', 'unsupported'] },
+    kind: { type: 'string', enum: ['event', 'task', 'grocery', 'meal', 'list', 'countdown', 'person', 'unsupported'] },
     title: { type: ['string', 'null'], description: 'Clean title for event/task; the dish for a meal' },
-    name: { type: ['string', 'null'], description: 'Grocery item name' },
+    name: { type: ['string', 'null'], description: 'Grocery item name, or (kind=person) the new family member\'s name' },
     quantity: { type: ['string', 'null'], description: 'Grocery/list amount, e.g. "2 lbs"' },
     listName: { type: ['string', 'null'], description: 'For kind=list: the target custom list (match one of the household lists when possible)' },
     itemName: { type: ['string', 'null'], description: 'For kind=list: the item to add to that list' },
@@ -78,6 +83,10 @@ const INTENT_SCHEMA = {
     date: { type: ['string', 'null'], description: 'Date as YYYY-MM-DD for a meal or countdown: the resolved day the user said (today/tomorrow/Friday/next Thursday/in 12 days); only today if none was said' },
     mealType: { type: ['string', 'null'], enum: ['breakfast', 'lunch', 'dinner', 'snack', null], description: 'Meal slot (default dinner)' },
     emoji: { type: ['string', 'null'], description: 'For kind=countdown: a single fitting emoji, or null' },
+    memberType: { type: ['string', 'null'], enum: ['adult', 'teen', 'kid', null], description: 'For kind=person: adult | teen | kid (default adult)' },
+    avatarEmoji: { type: ['string', 'null'], description: 'For kind=person: a single fitting face emoji, or null' },
+    birthday: { type: ['string', 'null'], description: 'For kind=person: their birthday as YYYY-MM-DD if given (NEVER inferred from an age), else null' },
+    isAdmin: { type: ['boolean', 'null'], description: 'For kind=person: true only if they are clearly a parent/guardian' },
   },
   required: ['kind'],
 }
@@ -91,7 +100,7 @@ function systemPrompt(ctx: CaptureContext): string {
     `Family members: ${fam}.`,
     `Custom lists: ${ctx.lists && ctx.lists.length ? ctx.lists.join(', ') : '(none yet)'}.`,
     '',
-    'Kinds: "event" = happens at a date/time; "task" = a chore someone does, maybe recurring; "grocery" = an item to buy (the grocery/shopping list); "meal" = a dish for the weekly meal plan; "list" = add an item to a named custom list (packing list, Costco, Target run, etc. — NOT groceries); "countdown" = a future day to count down to (no clock time); "unsupported" = anything else.',
+    'Kinds: "event" = happens at a date/time; "task" = a chore someone does, maybe recurring; "grocery" = an item to buy (the grocery/shopping list); "meal" = a dish for the weekly meal plan; "list" = add an item to a named custom list (packing list, Costco, Target run, etc. — NOT groceries); "countdown" = a future day to count down to (no clock time); "person" = add a new family/household member; "unsupported" = anything else.',
     'Always follow these rules:',
     '- ALWAYS extract a concise "title" (for grocery use "name") — strip command words like "please add", "make a chore to", "to X\'s list".',
     '- If a quoted phrase is present, use it verbatim as the title.',
@@ -103,6 +112,7 @@ function systemPrompt(ctx: CaptureContext): string {
     '- "eating out" / "order in" / "takeout" / "delivery" (no clock time) → kind "meal" with title "Eating out".',
     '- meal: "meal plan", "on the menu", or "<dish> for dinner/lunch/breakfast" → kind "meal". Put the dish in "title" and set "mealType" (default "dinner"). For "date", RESOLVE any relative day (today/tomorrow/"Friday"/"next Thursday") against the current date above into YYYY-MM-DD — exactly like events do — and ONLY default to today when no day is mentioned. A specific clock time means it is an EVENT, not a meal.',
     '- countdown: a future DAY to count down to with NO clock time — a day marker, not a scheduled event. "N days until X", "X in N days", "countdown to X [on <date>]", "N sleeps until X". Set "title"=X and RESOLVE the target day into "date" (YYYY-MM-DD) exactly like meals/events (handle "in N days", explicit dates, and weekdays). Optionally set a fitting "emoji". If a clock time is given, it is an EVENT instead.',
+    '- person: "add my son/daughter/husband/wife/mom/dad/… <name>", "add a family member <name>", "create a profile for <name>" → kind "person". Set "name" (just the person\'s name). Infer "memberType": son/daughter/kid/child → "kid", teen/teenager → "teen", spouse/husband/wife/partner/mom/dad/parent/adult → "adult"; default "adult" for a bare name. Optionally set "avatarEmoji" (a fitting face), "birthday" (YYYY-MM-DD) ONLY if an actual date is given, and "isAdmin" true only for a clear parent/guardian. NEVER invent a birthday from an age ("age 8" → leave birthday null).',
     '- unsupported: if the note is a GOAL ("set a goal to…", "I want to read 5 books"), a reminder/notification, or anything that is not an event, task/chore, grocery item, meal, or list item, return kind "unsupported" with a short friendly "reason" (e.g. "Quick-add doesn\'t create goals yet — add it from the Goals screen."). Do NOT force it into another kind.',
     '- stars = the integer reward if mentioned, else null.',
     '',
@@ -123,6 +133,8 @@ function systemPrompt(ctx: CaptureContext): string {
     '"12 days until Disney" -> {"kind":"countdown","title":"Disney","date":"2026-06-23","emoji":"🏰"}',
     '"add a countdown for thanksgiving" -> {"kind":"countdown","title":"Thanksgiving","date":"2026-11-26","emoji":"🦃"}',
     '"countdown for november 20th" -> {"kind":"countdown","title":"Countdown","date":"2026-11-20","emoji":"⏳"}',
+    '"add my son Max" -> {"kind":"person","name":"Max","memberType":"kid","avatarEmoji":"👦"}',
+    '"add a family member named Jane" -> {"kind":"person","name":"Jane","memberType":"adult"}',
     '"set a goal to read 20 books this year" -> {"kind":"unsupported","reason":"Quick-add doesn\'t create goals yet — add it from the Goals screen."}',
   ].join('\n')
 }
@@ -131,7 +143,7 @@ function systemPrompt(ctx: CaptureContext): string {
 export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent {
   const r = (raw ?? {}) as Record<string, unknown>
   const kindRaw = String(r.kind ?? '').toLowerCase()
-  const kind: CaptureIntent['kind'] = (['event', 'grocery', 'meal', 'list', 'countdown', 'unsupported'] as const).find((k) => k === kindRaw) ?? 'task'
+  const kind: CaptureIntent['kind'] = (['event', 'grocery', 'meal', 'list', 'countdown', 'person', 'unsupported'] as const).find((k) => k === kindRaw) ?? 'task'
 
   // Only accept a person that's actually in the family (case-insensitive).
   const pn = r.personName == null ? null : String(r.personName)
@@ -174,6 +186,17 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
     if (!date) throw new Error('countdown: no date')
     const emoji = r.emoji ? String(r.emoji).trim() || null : null
     return { kind, title, date, emoji, whenLabel: countdownWhenLabel(date, ctx.timezone) }
+  }
+  if (kind === 'person') {
+    const name = String(r.name ?? r.title ?? '').trim()
+    if (!name) throw new Error('person: no name')
+    const mt = String(r.memberType ?? '').toLowerCase()
+    const memberType = (['adult', 'teen', 'kid'] as const).find((t) => t === mt) ?? 'adult'
+    const avatarEmoji = r.avatarEmoji ? String(r.avatarEmoji).trim() || null : null
+    // Only a real ISO day — never an age. The prompt is told not to invent one either.
+    const birthday = typeof r.birthday === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.birthday) ? r.birthday : null
+    const isAdmin = r.isAdmin == null ? false : !!r.isAdmin
+    return { kind, name, memberType, avatarEmoji, birthday, isAdmin }
   }
   if (kind === 'event') {
     const raw0 = r.startsAt ? String(r.startsAt) : null

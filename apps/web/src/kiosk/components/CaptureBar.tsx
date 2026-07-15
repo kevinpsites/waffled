@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../icons'
-import { usePersons, api, countdownsApi, localToday, type Person, type ListSummary } from '../../lib/api'
-import { parseCapture, intentSummary, looksConfident, type ParsedIntent } from '../../lib/capture/parse'
+import { usePersons, useHousehold, api, countdownsApi, localToday, type Person, type ListSummary } from '../../lib/api'
+import { parseCapture, intentSummary, looksConfident, memberTypeLabel, MEMBER_TYPES, type ParsedIntent } from '../../lib/capture/parse'
 import { describeRrule } from './recurrence'
 
 const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
@@ -28,6 +28,7 @@ const KINDS: Array<{ k: ParsedIntent['kind']; label: string }> = [
   { k: 'task', label: '✅ Task' },
   { k: 'meal', label: '🍽️ Meal' },
   { k: 'countdown', label: '⏳ Countdown' },
+  { k: 'person', label: '👤 Family member' },
 ]
 
 const kindLabel = (k: ParsedIntent['kind']) => KINDS.find((x) => x.k === k)?.label ?? 'item'
@@ -65,6 +66,8 @@ function primaryOf(i: ParsedIntent): string {
       return i.title
     case 'grocery':
       return i.name
+    case 'person':
+      return i.name
     case 'list':
       return i.itemName
     case 'unsupported':
@@ -79,6 +82,8 @@ function withPrimary(i: ParsedIntent, v: string): ParsedIntent {
     case 'countdown':
       return { ...i, title: v }
     case 'grocery':
+      return { ...i, name: v }
+    case 'person':
       return { ...i, name: v }
     case 'list':
       return { ...i, itemName: v }
@@ -106,6 +111,15 @@ function rerouteKind(i: ParsedIntent, kind: ParsedIntent['kind'], today: string)
       return { kind: 'meal', title: primary, date: today, mealType: 'dinner', whenLabel: mealWhen(today, 'dinner') }
     case 'countdown':
       return { kind: 'countdown', title: primary, date: today, emoji: i.kind === 'countdown' ? i.emoji : null, whenLabel: countdownWhen(today) }
+    case 'person':
+      return {
+        kind: 'person',
+        name: primary,
+        memberType: i.kind === 'person' ? i.memberType : 'adult',
+        avatarEmoji: i.kind === 'person' ? i.avatarEmoji : null,
+        birthday: i.kind === 'person' ? i.birthday : null,
+        isAdmin: i.kind === 'person' ? i.isAdmin : false,
+      }
     default:
       return i
   }
@@ -230,11 +244,31 @@ function DraftFields({ intent, persons, lists, set, today }: { intent: ParsedInt
       </div>
     )
   }
+  if (intent.kind === 'person') {
+    return (
+      <>
+        <div className="cap-people">
+          {MEMBER_TYPES.map((mt) => (
+            <button key={mt} type="button" className={`cap-person ${intent.memberType === mt ? 'on' : ''}`} onClick={() => set({ ...intent, memberType: mt })}>{memberTypeLabel(mt)}</button>
+          ))}
+        </div>
+        <div className="cap-edit-row">
+          <input className="cap-edit-mini" value={intent.avatarEmoji ?? ''} placeholder="emoji" aria-label="Avatar emoji" style={{ maxWidth: 72 }} onChange={(e) => set({ ...intent, avatarEmoji: e.target.value || null })} />
+          <input type="date" className="cap-edit-mini" value={intent.birthday ?? ''} aria-label="Birthday" onChange={(e) => set({ ...intent, birthday: e.target.value || null })} />
+        </div>
+      </>
+    )
+  }
   return null
 }
 
 export function CaptureBar() {
   const { persons } = usePersons()
+  // The current viewer's admin state gates the `person` (add-a-member) commit —
+  // creating a household member is an adminRoute, so non-admins get a graceful
+  // "unsupported" preview instead of a 403 on POST.
+  const { person: viewer } = useHousehold()
+  const isAdmin = !!viewer?.isAdmin
   const [text, setText] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -304,8 +338,14 @@ export function CaptureBar() {
   // While the model is still thinking and the on-device guess is just a weak
   // grocery fallback, don't assert it — show a thinking row instead.
   const thinkingPlaceholder = !usingServer && thinking && !looksConfident(localIntent, text)
-  const intent = draft ?? (thinkingPlaceholder ? null : parsed)
-  const editing = draft !== null
+  const rawIntent = draft ?? (thinkingPlaceholder ? null : parsed)
+  // Permission gate: only admins can add a household member. Degrade gracefully to an
+  // unsupported preview (with a reason) rather than POSTing and eating a 403.
+  const intent: ParsedIntent | null =
+    rawIntent?.kind === 'person' && !isAdmin
+      ? { kind: 'unsupported', reason: 'Only an adult can add family members.' }
+      : rawIntent
+  const editing = draft !== null && intent?.kind !== 'unsupported'
 
   function open() {
     setExpanded(true)
@@ -365,6 +405,16 @@ export function CaptureBar() {
     if (i.kind === 'countdown') {
       await countdownsApi.create({ title: i.title, date: i.date, emoji: i.emoji ?? undefined })
       return `Added the “${i.title}” countdown`
+    }
+    if (i.kind === 'person') {
+      await api.createPerson({
+        name: i.name,
+        memberType: i.memberType,
+        avatarEmoji: i.avatarEmoji ?? undefined,
+        birthday: i.birthday ?? undefined,
+        isAdmin: i.isAdmin,
+      })
+      return `Added ${i.name} to the family`
     }
     if (i.kind === 'unsupported') return ''
     await api.createChore({ title: i.title, personId: personId(i.personName), rewardAmount: i.stars ?? undefined, rrule: i.rrule ?? undefined })

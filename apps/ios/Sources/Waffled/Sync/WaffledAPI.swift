@@ -2704,6 +2704,15 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/countdowns", body: body, as: Resp.self).id
     }
 
+    /// Create a household member (`POST /api/persons`, admin-only). Mirrors the web
+    /// `createPerson`; the capture bar gates on the viewer's admin state before calling.
+    func createPerson(name: String, memberType: String, avatarEmoji: String?, birthday: String?, isAdmin: Bool) async throws {
+        var body: [String: JSONValue] = ["name": .string(name), "memberType": .string(memberType), "isAdmin": .bool(isAdmin)]
+        if let e = avatarEmoji, !e.isEmpty { body["avatarEmoji"] = .string(e) }
+        if let b = birthday, !b.isEmpty { body["birthday"] = .string(b) }
+        try await send("POST", "/api/persons", body: body)
+    }
+
     /// Patch a standalone countdown (any subset of title/date/emoji/color).
     func updateCountdown(id: String, title: String? = nil, date: String? = nil, emoji: String? = nil, color: String? = nil) async throws {
         var body: [String: JSONValue] = [:]

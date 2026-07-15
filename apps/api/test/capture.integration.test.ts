@@ -172,6 +172,34 @@ describe('finalizeIntent — model JSON → finished intent', () => {
   it('rejects a countdown with no title', () => {
     expect(() => finalizeIntent({ kind: 'countdown', date: '2026-08-25' }, ctx)).toThrow()
   })
+
+  it('maps a person with an explicit memberType', () => {
+    const i = finalizeIntent({ kind: 'person', name: 'Max', memberType: 'kid', avatarEmoji: '👦' }, ctx)
+    expect(i.kind).toBe('person')
+    expect(i.name).toBe('Max')
+    expect(i.memberType).toBe('kid')
+    expect(i.avatarEmoji).toBe('👦')
+    expect(i.isAdmin).toBe(false)
+  })
+
+  it('defaults a person memberType to adult when missing', () => {
+    const i = finalizeIntent({ kind: 'person', name: 'Jane' }, ctx)
+    expect(i.kind).toBe('person')
+    expect(i.memberType).toBe('adult')
+  })
+
+  it('coerces a bogus person memberType to adult', () => {
+    expect(finalizeIntent({ kind: 'person', name: 'Sam', memberType: 'grandpa' }, ctx).memberType).toBe('adult')
+  })
+
+  it('keeps a valid person birthday but drops a non-ISO one (never invents from an age)', () => {
+    expect(finalizeIntent({ kind: 'person', name: 'Max', memberType: 'kid', birthday: '2018-06-05' }, ctx).birthday).toBe('2018-06-05')
+    expect(finalizeIntent({ kind: 'person', name: 'Max', memberType: 'kid', birthday: 'age 8' }, ctx).birthday).toBeNull()
+  })
+
+  it('rejects a person with no name', () => {
+    expect(() => finalizeIntent({ kind: 'person', memberType: 'kid' }, ctx)).toThrow()
+  })
 })
 
 describe('resolveDayFromText — deterministic meal day (model-independent)', () => {

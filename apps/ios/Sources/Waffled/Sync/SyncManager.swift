@@ -433,6 +433,14 @@ final class SyncManager {
         await restCommit { _ = try await api.createCountdown(title: title, date: date, emoji: emoji) }
     }
 
+    /// Commit a captured family member via REST (`POST /api/persons`, admin-only). The
+    /// caller gates on `currentPerson?.isAdmin` first; a non-admin never reaches here.
+    func commitPerson(name: String, memberType: String, avatarEmoji: String?, birthday: String?, isAdmin: Bool) async -> Bool {
+        await restCommit {
+            try await api.createPerson(name: name, memberType: memberType, avatarEmoji: avatarEmoji, birthday: birthday, isAdmin: isAdmin)
+        }
+    }
+
     /// Plan (upsert) a meal slot from the weekly planner; bumps `mealsRev` so the
     /// Today card and any open week reload.
     func setMealPlan(date: String, mealType: String, recipeId: String?, title: String?, cookPersonId: String? = nil) async -> Bool {

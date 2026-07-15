@@ -452,6 +452,47 @@ enum CaptureHeuristic {
                           emoji: nil, whenLabel: countdownWhen(t, now, cal))
     }
 
+    // MARK: person
+
+    // Add a new household member. Triggers: "add my son/daughter/… <name>", "add a
+    // family member <name>", "create a profile for <name>". MINIMAL heuristic (plan §5):
+    // name + memberType + safe defaults; the LLM upgrade fills avatarEmoji/birthday/isAdmin.
+    // Mirrors `detectPerson` in parse.ts.
+    private static let relKid = "son|daughter|kid|child|boy|girl|baby"
+    private static let relTeen = "teenager|teen"
+    private static let relAdult = "husband|wife|spouse|partner|mom|mum|mommy|mother|dad|daddy|father|parent|adult|grandma|grandpa|grandmother|grandfather"
+
+    private static func memberTypeForRel(_ word: String) -> String {
+        let w = word.lowercased() as NSString
+        if test("^(?:\(relKid))$", w) { return "kid" }
+        if test("^(?:\(relTeen))$", w) { return "teen" }
+        return "adult"
+    }
+    // Drop a trailing ", age 8" / "aged 8" (age maps to nothing today — no birthday).
+    private static func cleanPersonName(_ raw: String) -> String {
+        let noAge = replaceFirst(#"[\s,]+(?:who\s+is\s+|aged?\s+)\d{1,3}\b.*$"#, raw as NSString, "")
+        return titleCase(tidy(noAge))
+    }
+    private static func detectPerson(_ text: NSString) -> CaptureIntent? {
+        if findTime(text) != nil { return nil }   // a clock time → scheduling, not a profile
+        let relPat = "\\b(?:add|create|make|register)\\s+(?:my|our|a|an|the)?\\s*(?:new\\s+)?(\(relKid)|\(relTeen)|\(relAdult))\\b[\\s,:-]*(?:named\\s+|called\\s+)?(.+)$"
+        if let m = firstMatch(relPat, text) {
+            let name = cleanPersonName(m.groups[2] ?? "")
+            if !name.isEmpty {
+                return .person(name: name, memberType: memberTypeForRel(m.groups[1] ?? ""),
+                               avatarEmoji: nil, birthday: nil, isAdmin: false)
+            }
+        }
+        let memPat = "\\b(?:add|create|make|register)\\s+(?:a\\s+|an\\s+|the\\s+|my\\s+|our\\s+)?(?:new\\s+)?(?:family\\s+member|household\\s+member|family\\s+profile|profile|person|member)\\b\\s*(?:for\\s+|named\\s+|called\\s+|[:-]\\s*)?(.+)$"
+        if let m = firstMatch(memPat, text) {
+            let name = cleanPersonName(m.groups[1] ?? "")
+            if !name.isEmpty {
+                return .person(name: name, memberType: "adult", avatarEmoji: nil, birthday: nil, isAdmin: false)
+            }
+        }
+        return nil
+    }
+
     // MARK: parse
 
     static func parse(_ raw: String, persons: [String] = [], now: Date = Date(),
@@ -461,6 +502,10 @@ enum CaptureHeuristic {
         let text = trimmed as NSString
 
         let person = findPerson(text, persons)
+
+        // PERSON — "add my son Max" / "add a family member Jane". A specific create phrase,
+        // so it wins over the generic grocery/event fallbacks. Minimal: name + memberType.
+        if let personIntent = detectPerson(text) { return personIntent }
 
         // TASK / CHORE — an explicit keyword wins over the date heuristics.
         if test(taskSignal, text) || test(choreWord, text) {
