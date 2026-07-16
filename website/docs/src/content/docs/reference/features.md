@@ -161,7 +161,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Smart "might count toward a goal" suggestions + learning | ✅ | ✅ | ✅ | ✅ Done (Phase B) |
 | Recurring-event goal counting | ✅ | ✅ | ✅ | ✅ Done |
 | **Capability gating** — `goal.manage` for others' / shared goals; own progress stays open | ✅ | ✅ | ✅ | ✅ Done |
-| **Apple Health → goals** auto-fill (steps / flights / exercise / energy / walk + run distance / mindful / rings / mood), habit daily thresholds, "set a goal from your Health data" picker, gap catch-up | ❌ N/A | ✅ | ❌ N/A | ✅ Done (iPhone; iPad/web display the synced number). Distance is fractional and shown in mi/km per your device region |
+| **Apple Health → goals** auto-fill (steps / flights / exercise / energy / distance — walk + run, cycling, swimming, wheelchair / **workouts by type** — running, cycling, swimming, yoga, strength or any / mindful / rings / mood), habit daily thresholds, grouped + searchable "Track from Apple Health" picker, gap catch-up | ❌ N/A | ✅ | ❌ N/A | ✅ Done (iPhone; iPad/web display the synced number). Distance is fractional in mi/km per device region; workout metrics count minutes on a total, sessions on a count, and any-workout or N-minute days on a habit |
 
 ## Lists & groceries
 

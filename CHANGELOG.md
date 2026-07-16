@@ -14,6 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Track one activity from Apple Health: workout-type goal metrics.** A goal can now follow a
+  specific kind of workout — running, cycling, swimming, yoga, strength training, or *any*
+  workout — instead of Apple's combined totals, so a bike ride, treadmill run, and elliptical
+  session are no longer one big number. The measure fits the goal: a **total** adds up the
+  minutes ("300 minutes of yoga this year"), a **count** counts the sessions ("swim 12 times
+  this month"), and a **habit** counts qualifying days — any workout that day, or only past a
+  minutes bar you set ("at least 30 min, 5 days a week"). iPhone-only, like all Health links.
+- **More Apple Health distance metrics: cycling, swimming, and wheelchair.** Each is its own
+  linkable metric alongside walking + running, tracked to a decimal in miles or kilometers per
+  your device's region — so "cycle 500 miles this year" or a daily swim-distance habit fill
+  themselves.
+- **A clearer "Track from Apple Health" picker.** Picking a metric now opens a searchable list
+  grouped around what your goal shape needs — metrics that *add up* (Everyday, Distance,
+  Workouts, Mindfulness) for amount goals, and *qualifying days* (Apple Watch rings, logged-each-day,
+  workout days, daily targets) for habits — with your live value beside each metric and the
+  selected one shown as a "Counting" card in the goal editor.
 - **Walking & running distance is now an Apple Health goal metric.** Alongside steps, flights,
   exercise minutes and the rest, an iPhone user can link a goal to their walking + running
   distance (which also includes hikes) so a "run 100 miles this year" or "walk 3 miles a day"
