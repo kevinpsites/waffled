@@ -1,13 +1,13 @@
 ---
 title: Apple Health → goals
-description: Link a goal to Apple Health on iPhone and let steps, flights, exercise minutes, or active energy fill your progress automatically.
+description: Link a goal to Apple Health on iPhone and let steps, flights, exercise minutes, walking & running distance, or active energy fill your progress automatically.
 ---
 
 Link a [goal](/features/goals/) to an Apple Health metric on your iPhone and it fills itself in — no more tapping "+1" after every walk. Steps, exercise, mindful minutes, your Apple Watch rings, even your mood flow from your iPhone and Apple Watch straight into the goal's progress, and opening the app catches up any days you missed. ❤️
 
 ## Highlights
 
-- 🏃 **Lots of metrics** — **steps**, **flights climbed**, **exercise minutes**, **active energy** (calories), **mindful minutes**, your **activity rings** (Move / Exercise / Stand, or all three), and **your mood** (iOS 17+). Apple Watch data counts automatically, because it already syncs into your iPhone's Health.
+- 🏃 **Lots of metrics** — **steps**, **flights climbed**, **exercise minutes**, **active energy** (calories), **walking & running distance** (miles or kilometers, hikes included), **mindful minutes**, your **activity rings** (Move / Exercise / Stand, or all three), and **your mood** (iOS 17+). Apple Watch data counts automatically, because it already syncs into your iPhone's Health.
 - 🔁 **Fills itself** — numeric goals accumulate each day's total; a **habit** counts a day whenever it clears a daily threshold you set ("2,000 steps a day, 5 days a week"); rings and mood count a day when the ring closes or you log a mood.
 - 🔎 **Set a goal from your Health data** — not sure what to track? Tap **See your Health data** to see your live value for each metric and build a goal around it in one tap.
 - 📆 **Catches up missed days** — open the app after a two-week trip and it back-fills all fourteen days at once. It never pulls data from before the goal existed.
@@ -28,7 +28,7 @@ Apple's **HealthKit framework exists only on iPhone** — there's no Health data
 
 1. On your **iPhone**, create or edit a goal — e.g. a **total** goal "10,000 steps" or a **habit** "Daily steps."
 2. Open the **Extras** section and turn on **Auto-fill from Apple Health**.
-3. Pick the metric. Numeric goals offer **Steps**, **Flights**, **Exercise**, **Energy**, and **Mindful**; **habit** and **count** goals also offer the boolean metrics — **Mood**, then your rings (**Move ring / Exercise ring / Stand ring / All rings**), grouped at the end. (On a **count** goal a ring or mood counts *met days* toward a target — "close it 15×"; on a **habit** it keeps a streak.) A short explanation of what each one tracks appears under the picker, and a sensible target is pre-filled.
+3. Pick the metric. Numeric goals offer **Steps**, **Flights**, **Exercise**, **Energy**, **Walk + run** (distance), and **Mindful**; **habit** and **count** goals also offer the boolean metrics — **Mood**, then your rings (**Move ring / Exercise ring / Stand ring / All rings**), grouped at the end. (On a **count** goal a ring or mood counts *met days* toward a target — "close it 15×"; on a **habit** it keeps a streak.) A short explanation of what each one tracks appears under the picker, and a sensible target is pre-filled.
 4. For a numeric **habit** (e.g. steps), set the daily threshold ("Reach **2,000** steps a day"); ring and mood habits skip this — they're simply met or not. Then set the weekly cadence (the goal's "how many days a week" target).
 5. Save. The first time, iOS shows Apple's **Health access** sheet — allow the metric you picked. (Apple only asks **once**, ever; see [Managing access](#managing-access) to change it later.)
 
@@ -73,4 +73,5 @@ If you deny access, the goal simply stops receiving Health data — you can stil
 - 🛜 **Needs a connection** — goals are online-only (not offline PowerSync), so syncing a day's total requires a live link to your server.
 - 🔐 **Your data stays yours** — only the aggregated number (e.g. "7,340 steps") is synced to your self-hosted server; raw Health records never leave your phone.
 - ⏳ **Mood needs iOS 17+** — mood uses Apple's *State of Mind*, which only exists on iOS 17 and later.
-- 🧭 **What's still coming** — graduated ring goals (e.g. "hit 75% of my Move ring," using the ring's underlying percentage rather than a plain closed/not-closed), background sync (to keep the family iPad fresh on days you never open your phone), and a rewards tie-in are on the [roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md); everything above works today.
+- 📏 **Distance uses your region's units** — walking & running distance reads in **miles** or **kilometers** to match your iPhone's region setting, and is tracked to a decimal (e.g. "3.2 mi today") rather than rounded. It covers all your walking and running, hikes included.
+- 🧭 **What's still coming** — **workout-type-specific metrics** (distinguishing a bike ride, treadmill run, or elliptical session rather than the combined totals), graduated ring goals (e.g. "hit 75% of my Move ring," using the ring's underlying percentage rather than a plain closed/not-closed), background sync (to keep the family iPad fresh on days you never open your phone), and a rewards tie-in are on the [roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md); everything above works today.

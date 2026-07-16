@@ -25,7 +25,7 @@ final class HealthKitBridge {
     enum Metric: CaseIterable {
         // Declaration order drives the editor's chip order — keep the boolean rings
         // grouped together at the end, after the numeric metrics + mindful + mood.
-        case steps, flights, exerciseMinutes, activeEnergy
+        case steps, flights, exerciseMinutes, activeEnergy, walkRunDistance
         case mindfulMinutes, mood
         case moveRing, exerciseRing, standRing, ringsAll
 
@@ -37,6 +37,7 @@ final class HealthKitBridge {
             case .flights:         return "flights"
             case .exerciseMinutes: return "exercise_minutes"
             case .activeEnergy:    return "active_energy"
+            case .walkRunDistance: return "walk_run_distance"
             case .moveRing:        return "move_ring"
             case .exerciseRing:    return "exercise_ring"
             case .standRing:       return "stand_ring"
@@ -60,6 +61,8 @@ final class HealthKitBridge {
             case "flight", "flights", "floor", "floors":         return .flights
             case "min", "mins", "minute", "minutes":             return .exerciseMinutes
             case "cal", "cals", "calorie", "calories", "kcal":   return .activeEnergy
+            case "mi", "mile", "miles", "km", "kilometer",
+                 "kilometers", "kilometre", "kilometres":        return .walkRunDistance
             default:                                             return nil
             }
         }
@@ -90,7 +93,7 @@ final class HealthKitBridge {
         /// map 1:1; rings read the daily activity summary; mood reads State of Mind (iOS 17+).
         var readTypes: Set<HKObjectType> {
             switch self {
-            case .steps, .flights, .exerciseMinutes, .activeEnergy:
+            case .steps, .flights, .exerciseMinutes, .activeEnergy, .walkRunDistance:
                 return quantityType.map { [$0] } ?? []
             case .mindfulMinutes:
                 return [HKCategoryType(.mindfulSession)]
@@ -102,7 +105,7 @@ final class HealthKitBridge {
             }
         }
 
-        /// HKQuantityType for the four cumulative-sum metrics; nil for rings/mood/mindful
+        /// HKQuantityType for the cumulative-sum metrics; nil for rings/mood/mindful
         /// (which use their own query shapes).
         var quantityType: HKQuantityType? {
             switch self {
@@ -110,19 +113,34 @@ final class HealthKitBridge {
             case .flights:         return HKQuantityType(.flightsClimbed)
             case .exerciseMinutes: return HKQuantityType(.appleExerciseTime)
             case .activeEnergy:    return HKQuantityType(.activeEnergyBurned)
+            case .walkRunDistance: return HKQuantityType(.distanceWalkingRunning)
             default:               return nil
             }
         }
 
-        /// The unit its cumulative sum is read in (quantity metrics only).
+        /// The unit its cumulative sum is read in (quantity metrics only). Distance is read
+        /// in the device's system (km for metric locales, miles otherwise) so the number we
+        /// store matches the `label` shown next to it.
         var quantityUnit: HKUnit? {
             switch self {
             case .steps, .flights: return .count()
             case .exerciseMinutes: return .minute()
             case .activeEnergy:    return .kilocalorie()
+            case .walkRunDistance: return Self.usesMetricDistance ? .meterUnit(with: .kilo) : .mile()
             default:               return nil
             }
         }
+
+        /// Whether distance should be read & labelled in kilometers (metric locales) vs miles.
+        /// A device setting, read once per query — HealthKit stores meters, so we just pick
+        /// the display unit. `distanceLabel` is factored out pure so both branches are testable.
+        static var usesMetricDistance: Bool {
+            if #available(iOS 16.0, *) { return Locale.current.measurementSystem == .metric }
+            return Locale.current.usesMetricSystem
+        }
+        static func distanceLabel(usesMetric: Bool) -> String { usesMetric ? "km" : "mi" }
+        /// A gentle starting target for a daily walk/run goal (~5 km ≈ 3 mi).
+        static func distanceTarget(usesMetric: Bool) -> Int { usesMetric ? 5 : 3 }
 
         /// The goal `unit` stored when a numeric metric is picked, and the word shown next
         /// to a value ("7,340 steps"). Booleans are habits (unit is null server-side).
@@ -132,6 +150,7 @@ final class HealthKitBridge {
             case .flights:         return "flights"
             case .exerciseMinutes: return "min"
             case .activeEnergy:    return "cal"
+            case .walkRunDistance: return Self.distanceLabel(usesMetric: Self.usesMetricDistance)
             case .mindfulMinutes:  return "min"
             case .moveRing:        return "move ring"
             case .exerciseRing:    return "exercise ring"
@@ -148,6 +167,7 @@ final class HealthKitBridge {
             case .flights:         return "Flights"
             case .exerciseMinutes: return "Exercise"
             case .activeEnergy:    return "Energy"
+            case .walkRunDistance: return "Walk + run"
             case .mindfulMinutes:  return "Mindful"
             case .moveRing:        return "Move ring"
             case .exerciseRing:    return "Exercise ring"
@@ -165,6 +185,7 @@ final class HealthKitBridge {
             case .flights:         return 10
             case .exerciseMinutes: return 30
             case .activeEnergy:    return 500
+            case .walkRunDistance: return Self.distanceTarget(usesMetric: Self.usesMetricDistance)
             case .mindfulMinutes:  return 10
             case .moveRing, .exerciseRing, .standRing, .ringsAll, .mood: return 1
             }
@@ -178,6 +199,7 @@ final class HealthKitBridge {
             case .flights:         return "Flights of stairs climbed, tracked by your iPhone."
             case .exerciseMinutes: return "Apple Watch exercise minutes — the green ring."
             case .activeEnergy:    return "Active calories burned — the Apple Watch move ring."
+            case .walkRunDistance: return "Walking & running distance from your iPhone and Apple Watch — includes hikes."
             case .mindfulMinutes:  return "Mindful minutes logged in Health or the Mindfulness app."
             case .moveRing:        return "Counts a day when you close your Apple Watch Move ring."
             case .exerciseRing:    return "Counts a day when you close your Apple Watch Exercise ring."
@@ -195,6 +217,8 @@ final class HealthKitBridge {
             case .steps, .flights:                   return "\(Int(v)) \(label) today"
             case .exerciseMinutes, .mindfulMinutes:  return "\(Int(v)) min today"
             case .activeEnergy:                      return "\(Int(v)) cal today"
+            // Distance is fractional — one decimal ("3.2 mi today"), never an Int cast.
+            case .walkRunDistance:                   return String(format: "%.1f %@ today", v, label)
             default:                                 return "\(Int(v)) today"
             }
         }
@@ -280,7 +304,7 @@ final class HealthKitBridge {
     func total(for metric: Metric, on day: Date) async -> Double? {
         guard isAvailable else { return nil }
         switch metric {
-        case .steps, .flights, .exerciseMinutes, .activeEnergy:
+        case .steps, .flights, .exerciseMinutes, .activeEnergy, .walkRunDistance:
             return await quantitySum(metric, on: day)
         case .mindfulMinutes:
             return await mindfulMinutes(on: day)
@@ -291,7 +315,7 @@ final class HealthKitBridge {
         }
     }
 
-    /// The four cumulative-sum quantity metrics, summed over one local day.
+    /// The cumulative-sum quantity metrics, summed over one local day.
     private func quantitySum(_ metric: Metric, on day: Date) async -> Double? {
         guard let qty = metric.quantityType, let unit = metric.quantityUnit else { return nil }
         let (start, end) = Self.dayBounds(day)
