@@ -90,6 +90,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **The iOS Today screen stays fresh and no longer flashes empty cards.** Tonight's dinner,
+  chores, grocery, and goals now refetch when the app returns to the foreground, so a meal
+  plan changed on the web (or another phone) shows up without leaving the screen and coming
+  back. And while the page is still loading, the goals and grocery cards show a "Loading…"
+  placeholder instead of briefly claiming "Set a family goal" or "0 items to buy" before the
+  data arrives — on both the iPhone dashboard and the iPad family display.
 - **`./waffled upgrade` no longer trips over its own update.** Upgrading from an older
   release could fail mid-way with a cryptic `required variable … is missing a value`
   error, because the still-running old script drove the freshly downloaded configuration

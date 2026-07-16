@@ -509,7 +509,7 @@ struct KioskDashboard: View {
             KioskCard {
                 VStack(alignment: .leading, spacing: 18) {
                     cardHeader("Family Goal", chevron: true) { navigate(.goals) }
-                    Text(model.loaded ? "No goals yet — add one on the Goals page." : "Loading…")
+                    Text(model.goalsLoaded ? "No goals yet — add one on the Goals page." : "Loading…")
                         .font(.system(size: 17)).foregroundStyle(WF.ink3).padding(.vertical, 12)
                 }
             }
@@ -772,7 +772,7 @@ struct KioskDashboard: View {
                         }
                     }
                 } else {
-                    Text(model.loaded ? "No dinner planned" : "Loading…")
+                    Text(model.mealsLoaded ? "No dinner planned" : "Loading…")
                         .font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink3).padding(.vertical, 14)
                 }
             }
@@ -828,7 +828,7 @@ struct KioskDashboard: View {
             VStack(alignment: .leading, spacing: 14) {
                 cardHeader("Family Chores", trailing: "Today", chevron: true) { navigate(.tasks) }
                 if model.chores.isEmpty {
-                    Text(model.loaded ? "No chores today" : "Loading…")
+                    Text(model.choresLoaded ? "No chores today" : "Loading…")
                         .font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 8)
                 } else {
                     VStack(spacing: 16) {
@@ -872,7 +872,7 @@ struct KioskDashboard: View {
             VStack(alignment: .leading, spacing: 12) {
                 cardHeader("Grocery", trailing: "\(model.groceryActive.count) to buy", chevron: true) { navigate(.lists) }
                 if model.groceryActive.isEmpty {
-                    Text(model.loaded ? "All bought ✓" : "Loading…")
+                    Text(model.groceryLoaded ? "All bought ✓" : "Loading…")
                         .font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 8)
                     Spacer(minLength: 0)
                 } else {
@@ -1010,7 +1010,13 @@ final class KioskTodayModel {
     var grocery: [WaffledAPI.ListItemDTO] = []
     var weather: WaffledAPI.Weather?
     var goals: [WaffledAPI.Goal] = []
-    var loaded = false
+    /// Per-domain "has this fetch completed at least once" flags — each card keys
+    /// its empty state off its own domain so a fast fetch (chores is one call)
+    /// can't flash the slower cards' empty states while they're still loading.
+    var choresLoaded = false
+    var mealsLoaded = false
+    var groceryLoaded = false
+    var goalsLoaded = false
 
     private let api = WaffledAPI()
 
@@ -1032,26 +1038,28 @@ final class KioskTodayModel {
         async let d: () = loadWeather()
         async let e: () = loadGoals()
         _ = await (a, b, c, d, e)
-        loaded = true
     }
 
     func loadGoals() async {
         goals = (try? await api.goalsIn(listId: nil)) ?? []
+        goalsLoaded = true
     }
 
     func loadChores() async {
         chores = ((try? await api.choresToday()) ?? []).filter { $0.total > 0 }
-        loaded = true
+        choresLoaded = true
     }
 
     func loadMeals(todayKey: String) async {
         let dinners = ((try? await api.mealsWeek(start: todayKey)) ?? []).filter { $0.mealType == "dinner" }
         tonight = dinners.first(where: { $0.date == todayKey }).map { TonightMeal($0) }
         weekDinners = dinners.sorted { $0.date < $1.date }
+        mealsLoaded = true
     }
 
     func loadGrocery() async {
         grocery = (try? await api.groceryBoard())?.items ?? []
+        groceryLoaded = true
     }
 
     func loadWeather() async {
