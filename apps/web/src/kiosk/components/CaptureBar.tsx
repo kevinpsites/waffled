@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../icons'
-import { usePersons, useHousehold, api, countdownsApi, pantryApi, can, localToday, type Person, type ListSummary, type Candidate } from '../../lib/api'
+import { usePersons, useHousehold, api, countdownsApi, pantryApi, can, localToday, emit, emitHouseholdChanged, type Topic, type Person, type ListSummary, type Candidate } from '../../lib/api'
 import { parseCapture, intentSummary, looksConfident, memberTypeLabel, MEMBER_TYPES, goalTypeLabel, GOAL_TYPES, mutateTargetLabel, type ParsedIntent } from '../../lib/capture/parse'
 import { moduleEnabled, rewardsEnabled } from '../../lib/modules'
 import { describeRrule } from './recurrence'
@@ -776,11 +776,24 @@ export function CaptureBar() {
     return `Added the “${i.title}” chore${i.personName ? ` for ${i.personName}` : ''}`
   }
 
+  // After a successful commit, ping the event bus so any open view of that data refetches
+  // (the capture bar mutates via REST, so a chore/goal/etc. screen would otherwise stay stale
+  // until a manual refresh — the bug that motivated this). Events/pantry ride PowerSync/their
+  // own refresh and have no bus topic yet.
+  function emitAfterCommit(i: ParsedIntent): void {
+    const CREATE_TOPIC: Partial<Record<ParsedIntent['kind'], Topic>> = { grocery: 'grocery', meal: 'meals', countdown: 'countdowns', goal: 'goals', reward: 'rewards' }
+    const MUTATE_TOPIC: Partial<Record<string, Topic>> = { chore: 'chores', goal: 'goals', listItem: 'grocery', reward: 'rewards' }
+    if (i.kind === 'person') { emitHouseholdChanged(); return }
+    const topic = i.kind === 'mutate' ? MUTATE_TOPIC[i.targetKind ?? ''] : CREATE_TOPIC[i.kind]
+    if (topic) emit(topic)
+  }
+
   async function performCommit(toCommit: ParsedIntent) {
     if (busy) return
     setBusy(true)
     try {
       const msg = await commit(toCommit)
+      emitAfterCommit(toCommit)
       setText('')
       setServer(null)
       setDraft(null)

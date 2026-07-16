@@ -64,6 +64,10 @@ describe('CaptureBar — Tier 2 mutate picker', () => {
     })
     commitMutate.mockResolvedValue({ ok: true, message: 'Marked “Take out the trash” done' })
 
+    // An open chores view refetches off the 'chores' bus topic — assert the commit fires it.
+    const choresRefreshed = vi.fn()
+    window.addEventListener('waffled:chores', choresRefreshed)
+
     render(<CaptureBar />)
     openAndType('mark the trash chore done')
 
@@ -74,6 +78,8 @@ describe('CaptureBar — Tier 2 mutate picker', () => {
     fireEvent.click(confirm)
 
     await waitFor(() => expect(commitMutate).toHaveBeenCalled())
+    await waitFor(() => expect(choresRefreshed).toHaveBeenCalled())
+    window.removeEventListener('waffled:chores', choresRefreshed)
     expect(commitMutate).toHaveBeenCalledWith(
       expect.objectContaining({ verb: 'complete', targetKind: 'chore', targetId: 'ci1' }),
     )
