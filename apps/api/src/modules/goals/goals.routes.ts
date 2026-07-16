@@ -30,6 +30,7 @@ import {
   TARGET_BASES,
   HABIT_PERIODS,
   HEALTH_METRICS,
+  healthMetricFitsGoalType,
   personsInHousehold,
 } from './goals.service'
 
@@ -129,6 +130,9 @@ export function registerGoalRoutes(api: Api): void {
     if (body.healthMetric != null && !HEALTH_METRICS.has(String(body.healthMetric))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid healthMetric' })
     }
+    if (body.healthMetric != null && !healthMetricFitsGoalType(String(body.healthMetric), body.goalType)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'healthMetric does not fit this goalType' })
+    }
     if (body.healthDailyTarget != null && !(Number(body.healthDailyTarget) >= 0)) {
       return res.status(400).json({ error: 'BadRequest', message: 'healthDailyTarget must be a non-negative number' })
     }
@@ -183,6 +187,10 @@ export function registerGoalRoutes(api: Api): void {
     if ((req.body as { deadline?: unknown })?.deadline === '') (req.body as { deadline?: unknown }).deadline = null
     if (body.healthMetric != null && !HEALTH_METRICS.has(String(body.healthMetric))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid healthMetric' })
+    }
+    // Pairing rides the same effective type as the shape check above.
+    if (body.healthMetric != null && effectiveType && !healthMetricFitsGoalType(String(body.healthMetric), effectiveType)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'healthMetric does not fit this goalType' })
     }
     if (body.healthDailyTarget != null && !(Number(body.healthDailyTarget) >= 0)) {
       return res.status(400).json({ error: 'BadRequest', message: 'healthDailyTarget must be a non-negative number' })

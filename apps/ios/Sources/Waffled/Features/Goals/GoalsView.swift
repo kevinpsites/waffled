@@ -675,7 +675,12 @@ struct GoalLogSheet: View {
     /// metric, pre-fetch today's total once. Denied/empty reads just leave it nil.
     private func loadHealthSuggestion() async {
         let hk = HealthKitBridge.shared
-        guard hk.isAvailable, let metric = HealthKitBridge.Metric.matching(unit: goal.unit) else { return }
+        // The goal's stored link decides the metric; the unit heuristic is only the
+        // fallback for unlinked goals. (A cycling-distance goal's unit is "mi" too —
+        // matching(unit:) alone would suggest walk+run miles for it.)
+        guard hk.isAvailable,
+              let metric = HealthKitBridge.Metric(key: goal.healthMetric)
+                ?? HealthKitBridge.Metric.matching(unit: goal.unit) else { return }
         try? await hk.requestReadAuthorization()
         if let value = await hk.todayTotal(for: metric), value > 0 {
             healthSuggestion = (metric, value)
@@ -1023,54 +1028,104 @@ struct GoalLogSheet: View {
     }
 }
 
-/// **Tier 2, Piece 1 — "set a goal from your Health data."** Lists every supported Apple
-/// Health metric with the user's *current* value beside it (read live on appear), so they
-/// pick a goal around something real instead of guessing a number. Tapping one hands the
-/// metric back to the editor, which configures type/unit/target. iPhone-only.
+/// **Tier 2 — "track from Apple Health" picker.** The metric list is grouped by the goal
+/// type's shape (mock design): total/count get an "adds up automatically" grouping
+/// (Everyday / Distance / Workouts / …) while a habit gets a "counts qualifying days" one
+/// (rings first, then logged-each-day and workout days). Searchable; each row carries the
+/// user's *current* value (read live on appear) so they pick a goal around something real
+/// instead of guessing a number. Tapping one hands the metric back to the editor, which
+/// configures type/unit/target. iPhone-only.
 private struct HealthDataPickerSheet: View {
+    let goalType: String
+    var selected: HealthKitBridge.Metric? = nil
     let onPick: (HealthKitBridge.Metric) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var values: [String: Double?] = [:]
-    @State private var loading = true
+    @State private var search = ""
+
+    private var isHabit: Bool { goalType == "habit" }
+
+    /// The goal-type sections, filtered down by the search text (on the visible names).
+    private var sections: [(title: String, metrics: [HealthKitBridge.Metric])] {
+        let base = HealthKitBridge.Metric.sections(forGoalType: goalType)
+        let q = search.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return base }
+        return base
+            .map { (title: $0.title, metrics: $0.metrics.filter {
+                $0.chipLabel.lowercased().contains(q) || $0.label.lowercased().contains(q)
+            }) }
+            .filter { !$0.metrics.isEmpty }
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    ForEach(HealthKitBridge.Metric.allCases, id: \.self) { m in
-                        Button { onPick(m) } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(m.chipLabel).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
-                                    Text(loading ? "Reading…" : m.formatCurrent(values[m.key] ?? nil))
-                                        .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
-                            }
+                // The mock's under-title caption: what picking here *means* per goal shape.
+                Section {} footer: {
+                    Text(isHabit ? "Counts qualifying days — pick one habit." : "Adds up automatically — pick one metric.")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2)
+                }
+                ForEach(sections, id: \.title) { section in
+                    Section {
+                        ForEach(section.metrics, id: \.self) { m in row(m) }
+                    } header: {
+                        Text(section.title)
+                    } footer: {
+                        // Discoverability: on a total, workouts can only sum minutes — point
+                        // at the Count goal type, where the same activities count sessions.
+                        if section.title == "Workouts" && goalType == "total" {
+                            Text("Counting workouts instead? Make the goal a **Count** and these track sessions — “swim 12 times this month”.")
                         }
                     }
-                } header: {
-                    Text("Your Health data today")
-                } footer: {
-                    Text("Pick a metric to build a goal around it. Values come from your iPhone and Apple Watch — rings and mood become a daily habit.")
                 }
             }
-            .navigationTitle("From Apple Health")
+            .searchable(text: $search, prompt: "Search metrics")
+            .navigationTitle("Track from Apple Health")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
         .task { await load() }
     }
 
+    private func row(_ m: HealthKitBridge.Metric) -> some View {
+        // A habit lists the sessions measure, but the goal may be linked to the minutes
+        // sibling ("at least 45 min of yoga") — the activity's row is still "its" row.
+        let on = m == selected || (selected != nil && m.workoutSibling == selected)
+        return Button { onPick(m) } label: {
+            HStack(spacing: 12) {
+                WaffledEmojiTile(emoji: m.emoji, size: 17, frame: 34, cornerRadius: 10)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(m.chipLabel).font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(on ? WF.ai : WF.ink)
+                    // "Fills in miles" until THIS row's live read lands (reads fan out
+                    // and publish per-metric), then "3.2 mi today".
+                    Text(values[m.key].map { m.formatCurrent($0) } ?? "Fills in \(isHabit ? "days" : m.label)")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
+                }
+                Spacer()
+                Image(systemName: on ? "checkmark" : "chevron.right")
+                    .font(.system(size: 12, weight: .bold)).foregroundStyle(on ? WF.ai : WF.ink3)
+            }
+        }
+    }
+
     private func load() async {
         _ = try? await HealthKitBridge.shared.requestReadAuthorization()
-        var out: [String: Double?] = [:]
-        for m in HealthKitBridge.Metric.allCases {
-            out[m.key] = await HealthKitBridge.shared.total(for: m, on: Date())
+        let metrics = HealthKitBridge.Metric.sections(forGoalType: goalType).flatMap(\.metrics)
+        // Fan the reads out (rows appear as each lands — total wait is the slowest
+        // query, not the sum) and fetch the day's workouts ONCE: every workout row is
+        // derived from that single list in pure code instead of its own HKSampleQuery.
+        async let workoutDay = HealthKitBridge.shared.workoutsOfDay(Date())
+        await withTaskGroup(of: (String, Double?).self) { group in
+            for m in metrics where !m.isWorkout {
+                group.addTask { (m.key, await HealthKitBridge.shared.total(for: m, on: Date())) }
+            }
+            for await (key, value) in group { values[key] = value }
         }
-        values = out
-        loading = false
+        let day = await workoutDay
+        for m in metrics where m.isWorkout {
+            values[m.key] = day.flatMap { m.workoutValue(fromDay: $0) }
+        }
     }
 }
 
@@ -1459,35 +1514,24 @@ struct GoalCreateSheet: View {
         }
     }
 
-    /// Metric chooser revealed when "Auto-fill from Apple Health" is on (Extras). No
-    /// "Manual" chip — off = manual. Each choice fills the unit + a suggested target and
-    /// explains what Apple Health tracks for it.
+    /// The "Counting" card + picker revealed when "Auto-fill from Apple Health" is on
+    /// (Extras). No "Manual" choice — the toggle off = manual. The selected metric shows
+    /// as a tappable row (mock design) that opens the grouped "Track from Apple Health"
+    /// sheet; picking fills the unit + a suggested target automatically.
     private var healthMetricChips: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Only metrics that fit this goal type: rings/mood are habit-only (met/not),
-            // steps/flights/exercise/energy/mindful accumulate on numeric goals too.
-            ChipFlow(spacing: 8, lineSpacing: 8) {
-                ForEach(HealthKitBridge.Metric.allCases.filter { $0.applies(toGoalType: goalType) }, id: \.self) { m in
-                    healthChip(m, m.chipLabel)
-                }
-            }
+            Text(isHabit ? "Waffled fills qualifying days in the background — pick what counts a day."
+                         : "Waffled fills progress in the background — pick what to count.")
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+            countingRow
             if let m = healthMetric {
                 Text(m.explanation)
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
-                // A *quantity* habit counts a day when it clears a daily threshold ("2,000
-                // steps a day"), paired with the "N× a week" cadence above. Boolean metrics
-                // (rings/mood) are inherently met/not-met — nothing to set, so no field.
-                if isHabit && !m.isBoolean {
-                    HStack(spacing: 8) {
-                        Text("Reach").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
-                        numField($healthDailyTarget, width: 90)
-                        Text("\(m.label) a day").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
-                    }
-                    .padding(.top, 2)
-                }
+                if isHabit { habitQualification(m) }
             }
-            // Piece 1 — "set a goal from your Health data": show the live value per metric.
+            // "Set a goal from your Health data": the same sheet, framed as discovery.
             Button { showHealthPicker = true } label: {
                 Text("See your Health data →")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ai)
@@ -1502,19 +1546,74 @@ struct GoalCreateSheet: View {
             }
             .buttonStyle(.plain)
         }
-        // A goal-type switch can strand the selected metric (e.g. a ring on a total goal) —
-        // fall back to steps, which fits every numeric/habit goal.
+        // A goal-type switch can strand the selected metric. A workout pick swaps to its
+        // sibling measure (swim-minutes total → swim-sessions count); anything else falls
+        // back to steps, which fits every numeric/habit goal.
         .onChange(of: goalType) { _, newType in
-            if let m = healthMetric, !m.applies(toGoalType: newType) { selectHealthMetric(.steps) }
+            if let m = healthMetric, !m.applies(toGoalType: newType) {
+                if let sib = m.workoutSibling, sib.applies(toGoalType: newType) { selectHealthMetric(sib) }
+                else { selectHealthMetric(.steps) }
+            }
         }
         .sheet(isPresented: $showHealthPicker) {
-            HealthDataPickerSheet(onPick: pickFromHealth)
+            HealthDataPickerSheet(goalType: goalType, selected: healthMetric, onPick: pickFromHealth)
         }
     }
 
-    private func healthChip(_ m: HealthKitBridge.Metric, _ label: String) -> some View {
-        let on = healthMetric == m
-        return Button { selectHealthMetric(m) } label: {
+    /// The selected-metric card (mock): emoji tile, COUNTING overline, name, what it
+    /// fills in. Tapping opens the picker.
+    private var countingRow: some View {
+        let m = healthMetric ?? .steps
+        return Button { showHealthPicker = true } label: {
+            HStack(spacing: 12) {
+                WaffledEmojiTile(emoji: m.emoji, size: 20, frame: 44, cornerRadius: 12)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("COUNTING").font(.system(size: 10.5, weight: .heavy)).tracking(0.8).foregroundStyle(WF.ink3)
+                    Text(m.chipLabel).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                    Text(isHabit ? "Counts qualifying days" : "Fills in \(m.label) · unit set automatically")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+            }
+            .padding(12)
+            .wfField()
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// How a habit day qualifies. Boolean metrics (rings/mood) are met/not-met — nothing
+    /// to set. A workout picks between its two measures via the sibling keys: any session
+    /// counts the day, or a daily-minutes threshold. Other quantities keep the
+    /// daily-amount field ("2,000 steps a day"), paired with the "N× a week" cadence.
+    @ViewBuilder private func habitQualification(_ m: HealthKitBridge.Metric) -> some View {
+        if m.isWorkout {
+            HStack(spacing: 8) {
+                measurePill("Any workout counts", on: m.workoutMeasure == .sessions) {
+                    if m.workoutMeasure != .sessions, let sib = m.workoutSibling { selectHealthMetric(sib) }
+                }
+                measurePill("At least N minutes", on: m.workoutMeasure == .minutes) {
+                    if m.workoutMeasure != .minutes, let sib = m.workoutSibling { selectHealthMetric(sib) }
+                }
+            }
+            .padding(.top, 2)
+            if m.workoutMeasure == .minutes { reachRow(unitWord: "min") }
+        } else if !m.isBoolean {
+            reachRow(unitWord: m.label)
+        }
+    }
+
+    private func reachRow(unitWord: String) -> some View {
+        HStack(spacing: 8) {
+            Text("Reach").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+            numField($healthDailyTarget, width: 90)
+            Text("\(unitWord) a day").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+        }
+        .padding(.top, 2)
+    }
+
+    private func measurePill(_ label: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             Text(label).font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(on ? .white : WF.ink2)
                 .padding(.horizontal, 12).padding(.vertical, 7)
@@ -1530,12 +1629,25 @@ struct GoalCreateSheet: View {
     /// Boolean metrics (rings/mood) carry an implicit threshold of 1 (met/not).
     private func selectHealthMetric(_ m: HealthKitBridge.Metric) {
         let changed = healthMetric != m
+        // A measure flip on the SAME activity (the habit qualification pills, or tapping
+        // the goal's own activity in the picker) must not wipe a hand-set minutes bar.
+        // Compared against the OUTGOING metric, so it must precede the assignment.
+        let sameWorkoutActivity = changed && m.workout != nil
+            && m.workout?.activity == healthMetric?.workout?.activity
         healthMetric = m
         if isHabit {
             if m.isBoolean {
                 healthDailyTarget = "1"
+            } else if sameWorkoutActivity {
+                // Sessions ignore the field (any workout qualifies; the payload sends 1),
+                // so only top up a missing/degenerate value when flipping TO minutes.
+                if m.workoutMeasure == .minutes, (Int(healthDailyTarget) ?? 0) <= 1 {
+                    healthDailyTarget = String(m.suggestedDailyTarget)
+                }
             } else if changed || healthDailyTarget.trimmingCharacters(in: .whitespaces).isEmpty {
-                healthDailyTarget = String(m.suggestedTarget)
+                // Daily bar, not the goal target: a workout-sessions habit is "any workout
+                // that day" (1); a workout-minutes habit a modest daily 30.
+                healthDailyTarget = String(m.suggestedDailyTarget)
             }
         } else if m.isBoolean {
             // A boolean on a *count* goal accumulates met-days ("close the ring 15×"):
@@ -1554,6 +1666,14 @@ struct GoalCreateSheet: View {
     /// the metric (e.g. a ring on a total), fall to habit; a boolean already on a count goal
     /// stays a count ("close the ring 15×").
     private func pickFromHealth(_ m: HealthKitBridge.Metric) {
+        // The picker lists one row per activity (a habit shows the sessions sibling of a
+        // minutes-configured goal), so tapping the already-linked metric — or its
+        // sibling — is a confirmation, not a measure reset that would wipe the
+        // minutes bar back to a default.
+        if m == healthMetric || (m.workoutSibling != nil && m.workoutSibling == healthMetric) {
+            showHealthPicker = false
+            return
+        }
         if !m.applies(toGoalType: goalType) { goalType = "habit" }
         autoFromHealth = true
         if title.trimmingCharacters(in: .whitespaces).isEmpty { title = m.chipLabel }
@@ -2185,8 +2305,14 @@ struct GoalCreateSheet: View {
             // turning the toggle off (or switching to an incompatible type) clears it server-side.
             "healthMetric": activeHealthMetric.map { .string($0.key) } ?? .null,
             // Daily threshold only for a health-linked habit; null everywhere else.
+            // A sessions habit qualifies with ANY workout that day (threshold 1); the
+            // text field keeps holding the user's minutes bar so a measure flip
+            // round-trips without losing it.
             "healthDailyTarget": (activeHealthMetric != nil && isHabit)
-                ? (Double(healthDailyTarget).map(JSONValue.double) ?? .null) : .null,
+                ? (activeHealthMetric?.workoutMeasure == .sessions
+                    ? .double(1)
+                    : (Double(healthDailyTarget).map(JSONValue.double) ?? .null))
+                : .null,
             "deadline": hasDeadline ? .string(isoDay(deadline)) : .null,
         ]
         if isHabit {

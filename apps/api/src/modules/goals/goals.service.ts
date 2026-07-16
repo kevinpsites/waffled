@@ -34,8 +34,32 @@ export const HABIT_PERIODS = new Set(['day', 'week', 'month'])
 // through unchanged — no counting rule cares whether the daily total is whole or fractional.
 export const HEALTH_METRICS = new Set([
   'steps', 'flights', 'exercise_minutes', 'active_energy', 'walk_run_distance',
+  'cycling_distance', 'swimming_distance', 'wheelchair_distance',
   'move_ring', 'exercise_ring', 'stand_ring', 'rings_all', 'mindful_minutes', 'mood',
+  // Workout-type metrics: the measure (minutes summed vs sessions counted) is baked
+  // into the key so a synced day-value is unambiguous — no workout logic server-side.
+  ...['running', 'cycling', 'swimming', 'yoga', 'strength', 'any'].flatMap((a) =>
+    [`workout_${a}_minutes`, `workout_${a}_sessions`]),
 ])
+
+/** Metrics that are met-or-not per day (rings closed / mood logged) — nothing to sum. */
+const BOOLEAN_HEALTH_METRICS = new Set(['move_ring', 'exercise_ring', 'stand_ring', 'rings_all', 'mood'])
+
+/**
+ * Whether a health metric can drive a goal of this type — mirrors the iOS
+ * `Metric.applies(toGoalType:)` rules the pickers enforce. Without this check a raw
+ * API call can store e.g. session counts on a total goal; iOS then computes
+ * activeHealthMetric == nil for it and a later unrelated edit silently null-patches
+ * the link away.
+ */
+export function healthMetricFitsGoalType(metric: string, goalType: string): boolean {
+  if (metric.startsWith('workout_')) {
+    if (metric.endsWith('_minutes')) return goalType === 'total' || goalType === 'habit'
+    if (metric.endsWith('_sessions')) return goalType === 'count' || goalType === 'habit'
+  }
+  if (BOOLEAN_HEALTH_METRICS.has(metric)) return goalType === 'habit' || goalType === 'count'
+  return goalType === 'total' || goalType === 'count' || goalType === 'habit'
+}
 
 // ---- goal lists (membership groups) ----------------------------------------
 
@@ -937,6 +961,24 @@ export async function updateGoal(tenant: Tenant, id: string, patch: UpdateGoalIn
             [tenant.householdId, id]
           )).rows[0]?.goal_list_id ?? null
       await demoteListSpotlight(client, tenant.householdId, targetList, id)
+    }
+    // Re-linking to a DIFFERENT metric clears the other metrics' auto-logged progress
+    // first: sibling workout keys (minutes ↔ sessions) see the same real-world workouts,
+    // so surviving old-key logs would double-count every already-qualified day when the
+    // new key back-fills. Metric-scoped on purpose — unlinking (null) keeps the progress
+    // that genuinely happened, and re-linking the same metric stays a no-op (the
+    // idempotency rows still map, so re-syncs replace in place).
+    if ('healthMetric' in patch && patch.healthMetric != null) {
+      await client.query(
+        `update goal_logs set deleted_at=now()
+          where household_id=$1 and deleted_at is null
+            and id in (select goal_log_id from health_goal_logs where goal_id=$2 and metric <> $3)`,
+        [tenant.householdId, id, patch.healthMetric]
+      )
+      await client.query(
+        `delete from health_goal_logs where household_id=$1 and goal_id=$2 and metric <> $3`,
+        [tenant.householdId, id, patch.healthMetric]
+      )
     }
     const sets: string[] = []
     const vals: unknown[] = []

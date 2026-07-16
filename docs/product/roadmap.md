@@ -55,14 +55,20 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   detail read-model, person + family overview, **calendar → goal** auto-count (single
   and recurring events) with learned suggestions.
 - **Apple Health → goals (iPhone)** — link a goal to an Apple Health / Apple Watch metric
-  (steps, flights climbed, exercise minutes, active energy, **mindful minutes**, **activity
-  rings** — Move/Exercise/Stand or all three — and **mood**, iOS 17+) and its progress
-  auto-fills: numeric goals accumulate each day's total, a **habit** counts a day whenever it
-  clears a daily threshold ("2,000 steps a day, 5×/week"), and rings/mood count a day when the
-  ring closes or a mood is logged. Ring/mood links also work on a **count** goal — each met day
-  adds one, so "close my Exercise ring 15× this month" or "log my mood 20 days" accumulate
-  toward the target (open days add nothing; a later correction self-adjusts). A **"set a goal
-  from your Health data"** picker shows your
+  (steps, flights climbed, exercise minutes, active energy, **distance** — walking + running,
+  cycling, swimming, wheelchair; fractional, mi/km per device region — **workouts by type** —
+  running / cycling / swimming / yoga / strength training, or any workout — plus **mindful
+  minutes**, **activity rings** — Move/Exercise/Stand or all three — and **mood**, iOS 17+) and
+  its progress auto-fills: numeric goals accumulate each day's total, a **habit** counts a day
+  whenever it clears a daily threshold ("2,000 steps a day, 5×/week"), and rings/mood count a
+  day when the ring closes or a mood is logged. Ring/mood links also work on a **count** goal —
+  each met day adds one, so "close my Exercise ring 15× this month" or "log my mood 20 days"
+  accumulate toward the target (open days add nothing; a later correction self-adjusts).
+  **Workout metrics read your actual `HKWorkout` sessions** (a different query shape from the
+  cumulative totals) and pick the measure that fits the goal — **minutes** on a total, **sessions**
+  on a count, and for a habit either "any workout counts the day" or an at-least-N-minutes bar.
+  The **"Track from Apple Health" picker** is grouped by goal shape (adds-up metrics for
+  total/count vs qualifying-day habits, rings first), searchable, and shows your
   live value per metric so you pick something real. Opening the app **catches up every missed
   day** since the last sync (bounded at the goal's creation date, so it never back-fills from
   before the goal existed). Opt-in per goal in the editor's **Extras** (next to calendar
@@ -189,16 +195,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   authorship — no capability needed to volunteer or reassign a cook).
 
 - **Apple Health → goals — remaining follow-ons (iPhone).** Tiers 0–2 shipped (see **Done** —
-  the full metric set incl. rings/mindful/mood **and walking + running distance** (fractional,
-  mi/km per device region), habit thresholds, ring/mood **count** goals ("close the ring 15×"),
-  the "set a goal from your Health data" picker, and gap catch-up). What's left is deliberately
-  deferred:
-  - **Workout-type-specific metrics.** Distance and exercise minutes today are Apple's *combined*
-    totals — a bike ride, treadmill run, and elliptical session all collapse together. Reading
-    `HKWorkout` and filtering by `HKWorkoutActivityType` (cycling / running / elliptical / hiking …)
-    would let a goal track one activity — a genuinely new query shape (workouts, not cumulative
-    quantities), so it's its own follow-up rather than another metric key. Standalone **cycling /
-    swimming distance** would ride the existing distance path and could land alongside it.
+  the full metric set incl. rings/mindful/mood, the **four distance metrics** (walk + run,
+  cycling, swimming, wheelchair — fractional, mi/km per device region), **workout-type metrics**
+  (`HKWorkout` by activity; minutes / sessions / workout-day habits), habit thresholds,
+  ring/mood **count** goals ("close the ring 15×"), the grouped + searchable "Track from Apple
+  Health" picker, and gap catch-up). What's left is deliberately deferred:
   - **Graduated ring goals ("I hit 75% of my Move ring").** Apple's `HKActivitySummary`
     exposes each ring's **value *and* the user's personal goal**, not just closed/not — so the
     ring is really a numerator/denominator we currently collapse to a boolean at 100%. We could
