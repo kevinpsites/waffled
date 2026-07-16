@@ -1062,8 +1062,16 @@ private struct HealthDataPickerSheet: View {
                         .font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2)
                 }
                 ForEach(sections, id: \.title) { section in
-                    Section(section.title) {
+                    Section {
                         ForEach(section.metrics, id: \.self) { m in row(m) }
+                    } header: {
+                        Text(section.title)
+                    } footer: {
+                        // Discoverability: on a total, workouts can only sum minutes — point
+                        // at the Count goal type, where the same activities count sessions.
+                        if section.title == "Workouts" && goalType == "total" {
+                            Text("Counting workouts instead? Make the goal a **Count** and these track sessions — “swim 12 times this month”.")
+                        }
                     }
                 }
             }
