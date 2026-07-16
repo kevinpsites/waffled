@@ -157,6 +157,44 @@ describe('goals — /health-sync counting (total/count)', () => {
   })
 })
 
+describe('goals — /health-sync counting (fractional distance, Tier 1)', () => {
+  it('accumulates and replaces fractional walk/run distance without truncating', async () => {
+    // Distance (miles/km) is the first *fractional* health metric — steps/flights/minutes
+    // are all whole numbers. This guards that the numeric columns + sync path keep the
+    // decimals (a naive Int cast would collapse 3.2 mi to 3).
+    const id = await createGoal({
+      title: 'Marathon training miles', goalType: 'total', unit: 'mi', targetValue: 100,
+      healthMetric: 'walk_run_distance',
+    })
+
+    expect((await sync(id, '2026-07-08', 3.2, 'walk_run_distance')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBeCloseTo(3.2, 5)
+
+    // Same day re-syncs in place (idempotent), not appended.
+    expect((await sync(id, '2026-07-08', 4.6, 'walk_run_distance')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBeCloseTo(4.6, 5)
+
+    // A new day accumulates the fractional totals.
+    expect((await sync(id, '2026-07-09', 5.15, 'walk_run_distance')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBeCloseTo(9.75, 5)
+  })
+
+  it('counts a distance habit day only when it clears a fractional daily target', async () => {
+    const id = await createGoal({
+      title: '3 miles a day', goalType: 'habit', habitPeriod: 'week', habitTargetPerPeriod: 5,
+      healthMetric: 'walk_run_distance', healthDailyTarget: 3,
+    })
+
+    // Under 3 mi → recorded, no completion.
+    expect((await sync(id, '2026-07-08', 2.5, 'walk_run_distance')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(0)
+
+    // Clears 3 mi → exactly one completion.
+    expect((await sync(id, '2026-07-08', 3.4, 'walk_run_distance')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(1)
+  })
+})
+
 describe('goals — /health-sync counting (habit daily threshold)', () => {
   it('counts one completion only when the day clears the threshold, and undoes a day that later falls short', async () => {
     const id = await createGoal({

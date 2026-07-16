@@ -184,9 +184,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   authorship — no capability needed to volunteer or reassign a cook).
 
 - **Apple Health → goals — remaining follow-ons (iPhone).** Tiers 0–2 shipped (see **Done** —
-  the full metric set incl. rings/mindful/mood, habit thresholds, ring/mood **count** goals
-  ("close the ring 15×"), the "set a goal from your Health data" picker, and gap catch-up).
-  What's left is deliberately deferred:
+  the full metric set incl. rings/mindful/mood **and walking + running distance** (fractional,
+  mi/km per device region), habit thresholds, ring/mood **count** goals ("close the ring 15×"),
+  the "set a goal from your Health data" picker, and gap catch-up). What's left is deliberately
+  deferred:
+  - **Workout-type-specific metrics.** Distance and exercise minutes today are Apple's *combined*
+    totals — a bike ride, treadmill run, and elliptical session all collapse together. Reading
+    `HKWorkout` and filtering by `HKWorkoutActivityType` (cycling / running / elliptical / hiking …)
+    would let a goal track one activity — a genuinely new query shape (workouts, not cumulative
+    quantities), so it's its own follow-up rather than another metric key. Standalone **cycling /
+    swimming distance** would ride the existing distance path and could land alongside it.
   - **Graduated ring goals ("I hit 75% of my Move ring").** Apple's `HKActivitySummary`
     exposes each ring's **value *and* the user's personal goal**, not just closed/not — so the
     ring is really a numerator/denominator we currently collapse to a boolean at 100%. We could

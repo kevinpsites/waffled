@@ -29,8 +29,11 @@ export const HABIT_PERIODS = new Set(['day', 'week', 'month'])
 // HealthKitBridge.Metric keys. Quantity metrics (steps…mindful_minutes) send a raw daily
 // total; the boolean metrics (rings, mood) send 1 when met / 0 when not, so they ride the
 // habit daily-threshold path (threshold 1) — the server stays metric-agnostic either way.
+// walk_run_distance is the first *fractional* quantity (miles/km): the server stores it in
+// the same numeric columns (goal_logs.amount, goals.health_daily_target), so decimals ride
+// through unchanged — no counting rule cares whether the daily total is whole or fractional.
 export const HEALTH_METRICS = new Set([
-  'steps', 'flights', 'exercise_minutes', 'active_energy',
+  'steps', 'flights', 'exercise_minutes', 'active_energy', 'walk_run_distance',
   'move_ring', 'exercise_ring', 'stand_ring', 'rings_all', 'mindful_minutes', 'mood',
 ])
 

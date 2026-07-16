@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Walking & running distance is now an Apple Health goal metric.** Alongside steps, flights,
+  exercise minutes and the rest, an iPhone user can link a goal to their walking + running
+  distance (which also includes hikes) so a "run 100 miles this year" or "walk 3 miles a day"
+  goal fills itself. Distance shows in miles or kilometers to match your device's region, and —
+  being fractional — is tracked to a decimal rather than rounded.
 - **One-command cloud deploy to Oracle Cloud's Always Free tier via Terraform.** A new
   `infra/terraform/oci` module stands up the whole stack (Postgres, PowerSync, api, Caddy,
   backup) on a free Arm Ampere A1 instance and, when you give it a domain, fronts it with
