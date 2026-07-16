@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../icons'
-import { usePersons, useHousehold, api, countdownsApi, pantryApi, can, localToday, type Person, type ListSummary } from '../../lib/api'
-import { parseCapture, intentSummary, looksConfident, memberTypeLabel, MEMBER_TYPES, goalTypeLabel, GOAL_TYPES, type ParsedIntent } from '../../lib/capture/parse'
+import { usePersons, useHousehold, api, countdownsApi, pantryApi, can, localToday, type Person, type ListSummary, type Candidate } from '../../lib/api'
+import { parseCapture, intentSummary, looksConfident, memberTypeLabel, MEMBER_TYPES, goalTypeLabel, GOAL_TYPES, mutateTargetLabel, type ParsedIntent } from '../../lib/capture/parse'
 import { moduleEnabled, rewardsEnabled } from '../../lib/modules'
 import { describeRrule } from './recurrence'
 
@@ -78,6 +78,8 @@ function primaryOf(i: ParsedIntent): string {
       return i.name
     case 'list':
       return i.itemName
+    case 'mutate':
+      return i.target.description
     case 'unsupported':
       return ''
   }
@@ -99,6 +101,9 @@ function withPrimary(i: ParsedIntent, v: string): ParsedIntent {
       return { ...i, name: v }
     case 'list':
       return { ...i, itemName: v }
+    case 'mutate':
+      // A mutate isn't edited inline (its "primary" is a resolved row, not free text).
+      return i
     case 'unsupported':
       return i
   }
@@ -448,6 +453,53 @@ function DraftFields({ intent, persons, lists, set, today, viewer, canManageGoal
   return null
 }
 
+// TIER 2 — the mutate flow's candidate picker. Reuses the .cap-people/.cap-person chips
+// (same as PersonChips/GoalWho). 0 candidates → a not-found line (+ any disabledReason);
+// 1 → auto-selected, still confirmed explicitly; 2+ → chips to pick. Every `delete` (even
+// a single confident match) demands the explicit destructive button — ↵ never deletes.
+const CONFIRM_LABEL: Record<string, string> = {
+  complete: 'Mark done', log: 'Log it', reschedule: 'Reschedule', reassign: 'Reassign', redeem: 'Redeem', delete: 'Delete it',
+}
+type CandidateState = { list: Candidate[]; disabledReason?: string; forDesc: string }
+function CandidatePicker({ intent, state, chosenId, onPick, onCommit, busy }: {
+  intent: Extract<ParsedIntent, { kind: 'mutate' }>
+  state: CandidateState | null
+  chosenId: string | null
+  onPick: (id: string) => void
+  onCommit: () => void
+  busy: boolean
+}) {
+  const kindLabel = mutateTargetLabel(intent.targetKind)
+  // Still resolving (no result yet, or a stale result for a previous phrase).
+  if (!state || state.forDesc !== intent.target.description) {
+    return <div className="cap-detail">Finding a {kindLabel} like that…</div>
+  }
+  if (state.list.length === 0) {
+    return (
+      <div className="cap-primary" style={{ whiteSpace: 'normal' }}>
+        Couldn’t find a {kindLabel} like that{state.disabledReason ? ` — ${state.disabledReason}` : ''}
+      </div>
+    )
+  }
+  const isDelete = intent.verb === 'delete'
+  return (
+    <>
+      <div className="cap-people">
+        {state.list.map((c) => (
+          <button key={c.id} type="button" className={`cap-person ${chosenId === c.id ? 'on' : ''}`} onClick={() => onPick(c.id)}>
+            {c.title}{c.subtitle ? ` · ${c.subtitle}` : ''}
+          </button>
+        ))}
+      </div>
+      {chosenId && (
+        <button type="button" className={`btn btn-primary ${isDelete ? 'cap-danger' : ''}`} style={{ alignSelf: 'flex-start' }} disabled={busy} onClick={onCommit}>
+          {CONFIRM_LABEL[intent.verb] ?? 'Confirm'}
+        </button>
+      )}
+    </>
+  )
+}
+
 export function CaptureBar() {
   const { persons } = usePersons()
   // The current viewer's admin state gates the `person` (add-a-member) commit —
@@ -477,6 +529,10 @@ export function CaptureBar() {
   const [server, setServer] = useState<{ intent: ParsedIntent | null; via: string; forText: string } | null>(null)
   const [lists, setLists] = useState<ListSummary[]>([])
   const [draft, setDraft] = useState<ParsedIntent | null>(null)
+  // TIER 2 — the candidate rows for a mutate intent (from /api/capture/resolve) and the
+  // chosen one's id. `state.forDesc` guards against showing candidates for a stale phrase.
+  const [candidates, setCandidates] = useState<CandidateState | null>(null)
+  const [chosenId, setChosenId] = useState<string | null>(null)
   // When the LLM disagrees with a confident on-device guess on the *kind*, we keep
   // the on-device preview and offer the LLM's take — this flips to it on demand.
   const [preferLlm, setPreferLlm] = useState(false)
@@ -558,8 +614,36 @@ export function CaptureBar() {
           ? { kind: 'unsupported', reason: 'The Pantry module is turned off. Turn it on in Settings → Modules to add pantry items.' }
           : rawIntent?.kind === 'reward' && (!rewardsOn || !canManageRewards)
             ? { kind: 'unsupported', reason: !rewardsOn ? 'Rewards are turned off.' : 'Ask a parent to add a reward.' }
-            : rawIntent
-  const editing = draft !== null && intent?.kind !== 'unsupported'
+            // A mutate can only be resolved by the SERVER (it owns the candidate lookup +
+            // the real verb/targetKind). If the only guess we have is the on-device marker
+            // (offline / server unavailable), degrade to "I need a connection for that."
+            : rawIntent?.kind === 'mutate' && via === 'on-device'
+              ? { kind: 'unsupported', reason: 'I need a connection for that.' }
+              : rawIntent
+  const editing = draft !== null && intent?.kind !== 'unsupported' && intent?.kind !== 'mutate'
+  // A stable key for the current server mutate intent — drives the candidate resolve so
+  // it fires once per distinct phrase (not on every render).
+  const mutateKey = intent?.kind === 'mutate' ? `${intent.verb}|${intent.targetKind}|${intent.target.description}` : null
+
+  // Resolve candidates once a server mutate intent arrives (keyed on mutateKey so it
+  // fires per distinct phrase, not per render). Clears the picker for any non-mutate.
+  useEffect(() => {
+    if (intent?.kind !== 'mutate') { setCandidates(null); setChosenId(null); return }
+    const desc = intent.target.description
+    let alive = true
+    setCandidates(null)
+    setChosenId(null)
+    api.resolveCandidates({ verb: intent.verb, targetKind: intent.targetKind, target: intent.target, args: intent.args })
+      .then((r) => {
+        if (!alive) return
+        setCandidates({ list: r.candidates, disabledReason: r.disabledReason, forDesc: desc })
+        // 1 candidate → auto-select (still confirmed explicitly); 2+ → leave unpicked.
+        setChosenId(r.candidates.length === 1 ? r.candidates[0].id : null)
+      })
+      .catch(() => { if (alive) setCandidates({ list: [], forDesc: desc }) })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mutateKey])
 
   function open() {
     setExpanded(true)
@@ -572,6 +656,8 @@ export function CaptureBar() {
     setText('')
     setServer(null)
     setDraft(null)
+    setCandidates(null)
+    setChosenId(null)
     setThinking(false)
     setFlash(null)
   }
@@ -676,9 +762,43 @@ export function CaptureBar() {
       }) // apps/web/src/lib/api/rewards.ts → POST /api/rewards
       return `Added “${i.title}” to the reward shop`
     }
+    if (i.kind === 'mutate') {
+      // The row was picked in the preview; the server applies the mutation (verb → the
+      // module's own service fn) and returns the flash message (or a 4xx we surface).
+      const chosen = candidates?.list.find((c) => c.id === chosenId)
+      const r = await api.commitMutate({ verb: i.verb, targetKind: i.targetKind, targetId: chosenId!, args: i.args ?? {}, meta: chosen?.meta })
+      return r.message
+    }
     if (i.kind === 'unsupported') return ''
     await api.createChore({ title: i.title, personId: personId(i.personName), rewardAmount: i.stars ?? undefined, rrule: i.rrule ?? undefined })
     return `Added the “${i.title}” chore${i.personName ? ` for ${i.personName}` : ''}`
+  }
+
+  async function performCommit(toCommit: ParsedIntent) {
+    if (busy) return
+    setBusy(true)
+    try {
+      const msg = await commit(toCommit)
+      setText('')
+      setServer(null)
+      setDraft(null)
+      setCandidates(null)
+      setChosenId(null)
+      setFlash({ ok: true, msg })
+      setTimeout(() => {
+        setFlash(null)
+        setExpanded(false)
+      }, 1500)
+    } catch (err) {
+      // A mutate commit rethrows the server's human `message` (e.g. "That chore needs a
+      // photo…"); surface it. Other commits keep the generic reload/sign-in hint.
+      const msg = toCommit.kind === 'mutate' && err instanceof Error && err.message
+        ? err.message
+        : "Couldn't add that — try reloading or signing in again."
+      setFlash({ ok: false, msg })
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function submit(e?: FormEvent) {
@@ -693,22 +813,10 @@ export function CaptureBar() {
       setFlash({ ok: false, msg: toCommit.reason })
       return
     }
-    setBusy(true)
-    try {
-      const msg = await commit(toCommit)
-      setText('')
-      setServer(null)
-      setDraft(null)
-      setFlash({ ok: true, msg })
-      setTimeout(() => {
-        setFlash(null)
-        setExpanded(false)
-      }, 1500)
-    } catch {
-      setFlash({ ok: false, msg: "Couldn't add that — try reloading or signing in again." })
-    } finally {
-      setBusy(false)
-    }
+    // Enter/↵ commits a non-destructive mutate only once a row is chosen; a `delete`
+    // must go through the explicit destructive button in the picker (never Enter).
+    if (toCommit.kind === 'mutate' && (!chosenId || toCommit.verb === 'delete')) return
+    await performCommit(toCommit)
   }
 
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -721,7 +829,10 @@ export function CaptureBar() {
   }
 
   const preview = intent ? intentSummary(intent) : null
-  const canCommit = !!intent && intent.kind !== 'unsupported'
+  // A mutate needs a chosen row to commit — and a `delete` is NEVER committable via ↵
+  // (only the explicit destructive button), so ↵ stays disabled for it.
+  const canCommit = !!intent && intent.kind !== 'unsupported' &&
+    (intent.kind !== 'mutate' || (!!chosenId && intent.verb !== 'delete'))
 
   return (
     <>
@@ -782,6 +893,11 @@ export function CaptureBar() {
 
                     {intent.kind === 'unsupported' ? (
                       <div className="cap-primary">{intent.reason}</div>
+                    ) : intent.kind === 'mutate' ? (
+                      <div className="cap-edit">
+                        <div className="cap-primary" style={{ whiteSpace: 'normal' }}>{preview.primary}</div>
+                        <CandidatePicker intent={intent} state={candidates} chosenId={chosenId} onPick={setChosenId} onCommit={() => void performCommit(intent)} busy={busy} />
+                      </div>
                     ) : editing ? (
                       <div className="cap-edit">
                         <input className="cap-edit-input" value={primaryOf(intent)} onChange={(e) => setDraft(withPrimary(intent, e.target.value))} aria-label="Edit" autoFocus />

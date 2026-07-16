@@ -740,6 +740,90 @@ describe('chore capability gating (non-admin members)', () => {
   })
 })
 
+describe('capture — chores target', () => {
+  type Inst = { id: string; choreId: string; choreTitle: string; personId: string | null; status: string }
+  async function instances(): Promise<Inst[]> {
+    return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances
+  }
+  function resolve(body: unknown, token = kevin) {
+    return call('POST', '/api/capture/resolve', token, body)
+  }
+  function commit(body: unknown, token = kevin) {
+    return call('POST', '/api/capture/commit', token, body)
+  }
+
+  it('resolves a chore by description → one candidate id = the instance, subtitle, confidence > 0', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Take out the trash', personId: kevinId, rewardAmount: 2 })
+    const res = await resolve({ targetKind: 'chore', verb: 'complete', target: { description: 'trash' }, args: {} })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    const cand = body.candidates.find((c: { title: string }) => c.title === 'Take out the trash')
+    expect(cand).toBeTruthy()
+    const inst = (await instances()).find((i) => i.choreTitle === 'Take out the trash')!
+    expect(cand.id).toBe(inst.id) // candidate id is the chore_instances.id, not the template
+    expect(cand.meta.choreId).toBe(inst.choreId)
+    expect(typeof cand.subtitle).toBe('string')
+    expect(cand.subtitle.length).toBeGreaterThan(0)
+    expect(cand.confidence).toBeGreaterThan(0)
+  })
+
+  it('resolves a recurring chore even before an instance is materialized (ensureTodayInstances ran)', async () => {
+    // createChore does NOT materialize instances for recurring chores — only ensureTodayInstances does.
+    await call('POST', '/api/chores', kevin, { title: 'Water the plants', personId: kevinId, rrule: 'FREQ=DAILY' })
+    // resolve WITHOUT first hitting the instances endpoint (which would materialize it)
+    const res = await resolve({ targetKind: 'chore', verb: 'complete', target: { description: 'water plants' }, args: {} })
+    const body = JSON.parse(res.body)
+    expect(body.candidates.some((c: { title: string }) => c.title === 'Water the plants')).toBe(true)
+  })
+
+  it('commits a complete → 200 {ok, message} and the instance flips to done', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Sweep the porch', personId: kevinId, rewardAmount: 1 })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Sweep the porch')!
+    const res = await commit({ targetKind: 'chore', verb: 'complete', targetId: inst.id, args: {} })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.ok).toBe(true)
+    expect(body.message).toContain('Sweep the porch')
+    expect((await instances()).find((i) => i.choreTitle === 'Sweep the porch')!.status).toBe('done')
+  })
+
+  it('reassigns a chore to another person by name', async () => {
+    const wanda = await addMember('Wanda', 'kid', false, 'dev|wanda-cap')
+    await call('POST', '/api/chores', kevin, { title: 'Fold laundry', personId: kevinId })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Fold laundry')!
+    const res = await commit({ targetKind: 'chore', verb: 'reassign', targetId: inst.id, args: { personName: 'wanda' } })
+    expect(res.statusCode).toBe(200)
+    expect((await instances()).find((i) => i.choreTitle === 'Fold laundry')!.personId).toBe(wanda)
+  })
+
+  it('a kid without chore.manage cannot reassign to another person (403)', async () => {
+    await addMember('Reba', 'kid', false, 'dev|reassign-kid')
+    const kidTok = mint('dev|reassign-kid')
+    await call('POST', '/api/chores', kevin, { title: 'Dust shelves', personId: null, rrule: 'FREQ=DAILY' })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Dust shelves')!
+    const res = await commit({ targetKind: 'chore', verb: 'reassign', targetId: inst.id, args: { personName: 'Kevin' } }, kidTok)
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('module off → resolve returns candidates:[] + disabledReason', async () => {
+    const setChores = (on: boolean) =>
+      withClient((c) =>
+        c.query(
+          `update households set settings = coalesce(settings,'{}'::jsonb)
+             || jsonb_build_object('modules', coalesce(settings->'modules','{}'::jsonb) || jsonb_build_object('chores', $2::boolean))
+           where id=$1`,
+          [householdId, on]
+        )
+      )
+    await setChores(false)
+    const res = await resolve({ targetKind: 'chore', verb: 'complete', target: { description: 'trash' }, args: {} })
+    const body = JSON.parse(res.body)
+    expect(body.candidates).toEqual([])
+    expect(body.disabledReason).toBe('Chores is turned off.')
+    await setChores(true) // restore
+  })
+})
+
 describe('one-off chores + rollover (carry-forward)', () => {
   const today = todayInTz(TZ)
   function shift(d: string, days: number): string {

@@ -32,6 +32,7 @@ import {
   HEALTH_METRICS,
   personsInHousehold,
 } from './goals.service'
+import { registerGoalCaptureTarget } from './goals-capture'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -383,4 +384,8 @@ export function registerGoalRoutes(api: Api): void {
     if (!ok) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
     return res.status(204).send('')
   }))
+
+  // Capture Tier 2: register the 'goal' mutate target (resolve + `log`) into the
+  // capture registry from this startup seam.
+  registerGoalCaptureTarget()
 }

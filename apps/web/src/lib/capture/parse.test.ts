@@ -1,4 +1,4 @@
-import { parseCapture, intentSummary, type ParsedIntent } from './parse'
+import { parseCapture, intentSummary, looksConfident, type ParsedIntent } from './parse'
 
 // Fixed "now": Thursday, June 11 2026, 9:00 AM local.
 const NOW = new Date(2026, 5, 11, 9, 0, 0)
@@ -640,5 +640,65 @@ describe('intentSummary + edge cases', () => {
     expect(s.icon).toBe('📅')
     expect(s.primary).toBe('Soccer')
     expect(s.detail).toContain('Wally')
+  })
+})
+
+// ── Tier 2: mutate verbs ────────────────────────────────────────────────────────
+// The offline heuristic detects a mutation verb and returns a NON-committable
+// `mutate` marker (best-effort verb + rough targetKind); the real verb/targetKind/id
+// come from the SERVER intent + /api/capture/resolve. `looksConfident` is false for
+// mutate so the bar shows "thinking" and never auto-commits offline.
+describe('parseCapture — mutate verbs (Tier 2)', () => {
+  const asMutate = (i: ParsedIntent | null) => {
+    if (!i || i.kind !== 'mutate') throw new Error(`expected mutate, got ${i?.kind}`)
+    return i
+  }
+
+  it('"mark the trash chore done" → complete a chore', () => {
+    const m = asMutate(p('mark the trash chore done'))
+    expect(m.verb).toBe('complete')
+    expect(m.targetKind).toBe('chore')
+    expect(m.target.description.toLowerCase()).toContain('trash')
+  })
+
+  it('"log 20 min on my reading goal" → log a goal', () => {
+    const m = asMutate(p('log 20 min on my reading goal'))
+    expect(m.verb).toBe('log')
+    expect(m.targetKind).toBe('goal')
+  })
+
+  it('"delete the dentist appointment" → delete an event', () => {
+    const m = asMutate(p('delete the dentist appointment'))
+    expect(m.verb).toBe('delete')
+    expect(m.targetKind).toBe('event')
+  })
+
+  it('"cross milk off the list" → complete a list item', () => {
+    const m = asMutate(p('cross milk off the list'))
+    expect(m.verb).toBe('complete')
+    expect(m.targetKind).toBe('listItem')
+  })
+
+  it('"give the dishes to Wally" → reassign', () => {
+    const m = asMutate(p('give the dishes to Wally'))
+    expect(m.verb).toBe('reassign')
+  })
+
+  it('a mutate marker is NEVER confident (forces the server path, no offline auto-commit)', () => {
+    expect(looksConfident(p('mark the trash chore done'), 'mark the trash chore done')).toBe(false)
+    expect(looksConfident(p('delete the dentist appointment'), 'delete the dentist appointment')).toBe(false)
+  })
+
+  it('regression: create phrases still parse as their create kind', () => {
+    expect(p('Soccer Tue 4pm for Wally')?.kind).toBe('event')
+    expect(p('add milk to the grocery list')?.kind).toBe('grocery')
+    expect(p('set a goal to read 20 books')?.kind).toBe('goal')
+    expect(p('add a reward: ice cream night for 50 stars')?.kind).toBe('reward')
+  })
+
+  it('summarizes a mutate for the preview chip (primary = the description)', () => {
+    const s = intentSummary(asMutate(p('delete the dentist appointment')))
+    expect(s.primary.toLowerCase()).toContain('dentist')
+    expect(s.kind).toBeTruthy()
   })
 })

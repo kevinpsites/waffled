@@ -88,7 +88,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   name), **family members** (admin-only), **goals**, **pantry items**, and **rewards** — each
   gated on the relevant module/permission and confirmed in an editable preview before it
   commits. The full "Add anything → Do anything" plan (mutate / settings / query / multi-action
-  tiers) is in [`capture-expansion.md`](./capture-expansion.md); the create tier (Tier 1) is done.
+  tiers) is in [`capture-expansion.md`](./capture-expansion.md), with the build plan in
+  [`capture-tier2-plan.md`](./capture-tier2-plan.md); the create tier (Tier 1) is done, and the
+  **mutate tier (Tier 2) has begun** — completing/reassigning chores and logging goal progress land
+  first (web), via a parse → resolve-candidate → commit flow with module-owned resolvers.
 - **Weather** — Open-Meteo on the topbar (no key).
 - **Extensibility — optional modules + public API** — a **pluggable optional-module
   framework** (registry + per-household `settings.modules` toggle, a **Settings → Modules**
