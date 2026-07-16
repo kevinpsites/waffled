@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Swipe between weeks in the iPhone meal planner.** The weekly meal plan now pages with a
+  horizontal flick — swipe left for next week, right for the previous one — the same gesture
+  the Calendar and Chores screens already use. The arrow buttons and "Jump to this week"
+  still work exactly as before.
 - **Track one activity from Apple Health: workout-type goal metrics.** A goal can now follow a
   specific kind of workout — running, cycling, swimming, yoga, strength training, or *any*
   workout — instead of Apple's combined totals, so a bike ride, treadmill run, and elliptical
@@ -90,6 +94,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Dragging a meal to another day in the iOS week planner now lands instantly.** The
+  dropped meal used to sit still until the server round-trip finished, which read as lag
+  (the web planner was already instant). The app now swaps the two slots on screen the
+  moment you let go, saves in the background, and quietly puts things back — with a
+  dismissible notice — in the rare case the server says no.
 - **`./waffled upgrade` no longer trips over its own update.** Upgrading from an older
   release could fail mid-way with a cryptic `required variable … is missing a value`
   error, because the still-running old script drove the freshly downloaded configuration

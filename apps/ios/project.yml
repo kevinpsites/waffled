@@ -96,6 +96,11 @@ targets:
             UTTypeDescription: Waffled recipe ingredient row
             UTTypeConformsTo:
               - public.data
+          # Same non-text trick for dragging a planned meal between week-planner slots.
+          - UTTypeIdentifier: app.waffled.meal-slot
+            UTTypeDescription: Waffled planned meal slot
+            UTTypeConformsTo:
+              - public.data
     # HealthKit capability. Required for the read-authorization prompt to work at runtime
     # (the framework itself autolinks from `import HealthKit`). iPhone-only feature, but the
     # entitlement lives on the single universal target; code guards on isHealthDataAvailable().
