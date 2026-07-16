@@ -1,11 +1,21 @@
 // Seed a rich demo household ("The Seinfelds") for screenshots / docs / app-store.
-// DEV / SEED TOOL ONLY. Runs on the host against a stack's DATABASE_URL (like
-// import-recipes.ts). Two phases so recipes can be copied in between:
+// DEV / SEED TOOL ONLY. Two phases so recipes can be copied in between.
+//
+// This file is an esbuild entrypoint (see esbuild.config.mjs), so it also ships in
+// the runtime image as `dist/seed-demo.js`. Prefer running it IN the api container —
+// no host Node/tsx, no node_modules, and DATABASE_URL is already the stack's DB.
+// It is GATED: it refuses to run unless WAFFLED_ALLOW_DEMO_SEED is set, so a
+// self-hoster can't seed a fake household by accident.
+//
+//   docker compose exec -e WAFFLED_ALLOW_DEMO_SEED=1 api node dist/seed-demo.js base
+//   # …copy recipes into the DB (see ./scripts, or the pg_dump|sed|psql step)…
+//   docker compose exec -e WAFFLED_ALLOW_DEMO_SEED=1 api node dist/seed-demo.js meals
+//
+// Or run it on the host against any stack's DATABASE_URL (like import-recipes.ts):
 //
 //   cd apps/api
-//   DATABASE_URL=postgres://waffled:<pw>@localhost:5532/waffled npx tsx scripts/seed-demo.ts base
-//   # …copy recipes into the DB (see ./scripts, or the pg_dump|sed|psql step)…
-//   DATABASE_URL=… npx tsx scripts/seed-demo.ts meals
+//   WAFFLED_ALLOW_DEMO_SEED=1 DATABASE_URL=postgres://waffled:<pw>@localhost:5532/waffled npx tsx scripts/seed-demo.ts base
+//   WAFFLED_ALLOW_DEMO_SEED=1 DATABASE_URL=… npx tsx scripts/seed-demo.ts meals
 //
 // `base`  — household, 4 people (Jerry+Kramer adults, George+Elaine kids), modules,
 //           currencies, rewards + kid jars, chores + star ledger, goals + logs,
@@ -43,7 +53,9 @@ async function addPerson(hh: string, p: {
   return row.id
 }
 
-// A timed event at local wall-clock `HH:MM` on current_date + dayOffset (household TZ).
+// A timed event at local wall-clock `HH:MM`, `day` days after the Sunday of the
+// current week (day 0 = this Sunday; negative = earlier). Anchored to the week —
+// not the seed day — so the calendar always fills the same weeks. Household TZ.
 async function timedEvent(hh: string, o: {
   title: string; emoji?: string; day: number; time: string; durMin?: number; person: string | null
 }) {
@@ -51,20 +63,28 @@ async function timedEvent(hh: string, o: {
     `insert into events (household_id, title, starts_at, ends_at, all_day, timezone, person_id,
        origin, sync_state, status)
      values ($1,$2,
-       ((current_date + $3::int)::timestamp + $4::time) at time zone $5,
-       ((current_date + $3::int)::timestamp + $4::time + ($6 || ' minutes')::interval) at time zone $5,
+       ((current_date - extract(dow from current_date)::int + $3::int)::timestamp + $4::time) at time zone $5,
+       ((current_date - extract(dow from current_date)::int + $3::int)::timestamp + $4::time + ($6 || ' minutes')::interval) at time zone $5,
        false,$5,$7,'manual','local_only','confirmed')`,
     [hh, o.emoji ? `${o.emoji} ${o.title}` : o.title, o.day, o.time, TZ, String(o.durMin ?? 60), o.person]
   )
 }
 
+// Regular all-day events are week-anchored like `timedEvent` (so "Farmers market"
+// lands on a real Saturday). Countdowns, though, are anchored to the SEED DAY
+// (`current_date + day`) so their "N sleeps" number is exact and reproducible for
+// screenshots — matching the `countdowns` table row and the photos, which are also
+// seed-day-anchored. (Week-anchoring a countdown would drift it up to 6 days.)
 async function allDayEvent(hh: string, o: {
   title: string; emoji?: string; day: number; person: string | null; countdown?: boolean
 }) {
+  const anchor = o.countdown
+    ? '(current_date + $3::int)'
+    : '(current_date - extract(dow from current_date)::int + $3::int)'
   await query(
     `insert into events (household_id, title, starts_at, all_day, timezone, person_id,
        origin, sync_state, status, is_countdown)
-     values ($1,$2,(current_date + $3::int)::timestamp at time zone $4,true,$4,$5,
+     values ($1,$2,${anchor}::timestamp at time zone $4,true,$4,$5,
        'manual','local_only','confirmed',$6)`,
     [hh, o.emoji ? `${o.emoji} ${o.title}` : o.title, o.day, TZ, o.person, o.countdown ?? false]
   )
@@ -125,7 +145,7 @@ async function seedGoals(ids: Ids) {
   }
 }
 
-async function seedBase() {
+export async function seedBase() {
   const exists = await query(`select 1 from households where name = 'The Seinfelds' and deleted_at is null`)
   if (exists.rowCount) throw new Error('A "The Seinfelds" household already exists — run ./waffled-demo nuke first for a clean seed.')
 
@@ -318,22 +338,34 @@ async function seedBase() {
        values ($1,$2,$3,$4,$5, now() - ($6 || ' days')::interval, $7::jsonb, $8, $8)`,
       [hh, cap, emoji, color, memory, String(days), JSON.stringify({ heart: hearts }), jerry])
 
-  // ── Calendar: a full week + countdowns ───────────────────────────────────────
-  await timedEvent(hh, { title: "Dinner at Monk's Café", emoji: '🍽️', day: 0, time: '18:30', durMin: 90, person: jerry })
-  await timedEvent(hh, { title: 'Dentist', emoji: '🦷', day: 0, time: '09:00', durMin: 45, person: jerry })
-  await timedEvent(hh, { title: 'Stand-up set at the Comedy Cellar', emoji: '🎤', day: 1, time: '20:00', durMin: 60, person: jerry })
-  await timedEvent(hh, { title: 'Ballet class', emoji: '🩰', day: 1, time: '16:00', durMin: 60, person: elaine })
-  await timedEvent(hh, { title: 'Kramerica Industries meeting', emoji: '💼', day: 2, time: '10:00', durMin: 60, person: kramer })
-  await timedEvent(hh, { title: 'Little League practice', emoji: '⚾', day: 2, time: '15:30', durMin: 90, person: george })
-  await timedEvent(hh, { title: 'Piano lesson', emoji: '🎹', day: 3, time: '08:00', durMin: 45, person: elaine })
-  await timedEvent(hh, { title: 'Coffee with Newman', emoji: '☕', day: 3, time: '12:30', durMin: 60, person: kramer })
-  await allDayEvent(hh, { title: 'Field trip to the museum', emoji: '🏛️', day: 4, person: george })
-  await timedEvent(hh, { title: 'Family movie night', emoji: '🎬', day: 4, time: '19:30', durMin: 120, person: jerry })
-  await allDayEvent(hh, { title: 'Farmers market', emoji: '🥕', day: 5, person: kramer })
-  await timedEvent(hh, { title: 'Brunch with the gang', emoji: '🥞', day: 6, time: '11:00', durMin: 90, person: jerry })
-  // Countdowns
-  await allDayEvent(hh, { title: 'Trip to the Hamptons', emoji: '🏖️', day: 21, person: jerry, countdown: true })
-  await allDayEvent(hh, { title: 'First day of school', emoji: '🎒', day: 44, person: george, countdown: true })
+  // ── Calendar: a lived-in month + countdowns ──────────────────────────────────
+  // `day` counts from the Sunday of the current week (0=Sun … 6=Sat). We fill a
+  // rolling five-week window — last week (-1) through three weeks out (+3) — so
+  // whichever day the seed runs, "this week" and "next week" are always populated.
+  // (This is a rolling ~month, not a calendar-month-aligned view.) Weekly rhythms
+  // repeat every week; one-offs are sprinkled through for variety.
+  const calWeeks = [-1, 0, 1, 2, 3]
+  for (const w of calWeeks) {
+    const b = w * 7
+    await timedEvent(hh, { title: 'Ballet class', emoji: '🩰', day: b + 1, time: '16:00', durMin: 60, person: elaine }) // Mondays
+    await timedEvent(hh, { title: 'Kramerica Industries meeting', emoji: '💼', day: b + 2, time: '10:00', durMin: 60, person: kramer }) // Tuesdays
+    await timedEvent(hh, { title: 'Little League practice', emoji: '⚾', day: b + 2, time: '15:30', durMin: 90, person: george }) // Tuesdays
+    await timedEvent(hh, { title: 'Piano lesson', emoji: '🎹', day: b + 3, time: '08:00', durMin: 45, person: elaine }) // Wednesdays
+    await timedEvent(hh, { title: 'Family movie night', emoji: '🎬', day: b + 5, time: '19:30', durMin: 120, person: jerry }) // Fridays
+    await allDayEvent(hh, { title: 'Farmers market', emoji: '🥕', day: b + 6, person: kramer }) // Saturdays
+  }
+  // One-offs across the month
+  await timedEvent(hh, { title: 'Coffee with Newman', emoji: '☕', day: -4, time: '12:30', durMin: 60, person: kramer }) // last Wed
+  await allDayEvent(hh, { title: 'Field trip to the museum', emoji: '🏛️', day: -3, person: george }) // last Thu
+  await timedEvent(hh, { title: 'Dentist', emoji: '🦷', day: 1, time: '09:00', durMin: 45, person: jerry }) // this Mon
+  await timedEvent(hh, { title: "Dinner at Monk's Café", emoji: '🍽️', day: 4, time: '18:30', durMin: 90, person: jerry }) // this Thu
+  await timedEvent(hh, { title: 'Stand-up set at the Comedy Cellar', emoji: '🎤', day: 6, time: '20:00', durMin: 60, person: jerry }) // this Sat
+  await timedEvent(hh, { title: 'Brunch with the gang', emoji: '🥞', day: 7, time: '11:00', durMin: 90, person: jerry }) // next Sun
+  await timedEvent(hh, { title: 'Parent-teacher conference', emoji: '🏫', day: 11, time: '17:00', durMin: 30, person: george }) // next Thu
+  await timedEvent(hh, { title: 'Poker night', emoji: '🃏', day: 19, time: '20:30', durMin: 150, person: jerry }) // +2 Fri
+  // Countdowns — seed-day-anchored so the "sleeps" number is exact & reproducible.
+  await allDayEvent(hh, { title: 'Trip to the Hamptons', emoji: '🏖️', day: 20, person: jerry, countdown: true }) // 20 sleeps
+  await allDayEvent(hh, { title: 'First day of school', emoji: '🎒', day: 44, person: george, countdown: true }) // 44 sleeps
   await query(
     `insert into countdowns (household_id, title, date, emoji, color, created_by)
      values ($1,'Jerry''s comedy special taping', current_date + 30, '🎬','#4F7FE0',$2)`, [hh, jerry])
@@ -388,7 +420,23 @@ async function seedMeals() {
   console.log(`✅ meals seeded — 1 active plan, ${7 + 3} entries, ${favs.length} favorites, cooked history on ~16 recipes`)
 }
 
-async function main() {
+// This entrypoint ships in the runtime image (`dist/seed-demo.js`) so it can be run
+// in-container, but it injects a fake "The Seinfelds" household and is a dev/screenshot
+// tool — not something a self-hoster should ever hit by accident. Gate it: it refuses
+// to do anything unless WAFFLED_ALLOW_DEMO_SEED is explicitly set (e.g. on the demo stack).
+export function demoSeedEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = (env.WAFFLED_ALLOW_DEMO_SEED ?? '').trim().toLowerCase()
+  return v === '1' || v === 'true' || v === 'yes'
+}
+
+export async function main() {
+  if (!demoSeedEnabled()) {
+    console.error(
+      'demo seed is disabled. This is a dev/screenshot tool that injects a fake "The Seinfelds"\n' +
+      'household — set WAFFLED_ALLOW_DEMO_SEED=1 to enable it (e.g. `docker compose exec -e\n' +
+      'WAFFLED_ALLOW_DEMO_SEED=1 api node dist/seed-demo.js base`).')
+    process.exit(1)
+  }
   const phase = process.argv[2]
   if (phase === 'base') await seedBase()
   else if (phase === 'meals') await seedMeals()
@@ -397,10 +445,13 @@ async function main() {
     console.log('✅ goals reseeded — 1 family group (2 shared goals) + 4 individual lists')
   }
   else {
-    console.error('usage: tsx scripts/seed-demo.ts <base|meals|goals>')
+    console.error('usage: seed-demo <base|meals|goals>  (e.g. `node dist/seed-demo.js base` in-container, or `npx tsx scripts/seed-demo.ts base` on the host)')
     process.exit(1)
   }
   await closePool()
 }
 
-main().catch(async (e) => { console.error(e); await closePool(); process.exit(1) })
+// Only auto-run when executed as the entrypoint (`node dist/seed-demo.js …`), not when
+// imported (e.g. by the integration test, which drives seedBase against a testcontainer).
+if (typeof require !== 'undefined' && require.main === module)
+  main().catch(async (e) => { console.error(e); await closePool(); process.exit(1) })

@@ -33,6 +33,7 @@ table). The seams already exist:
 | Flights of stairs | `count`/`total`, `unit='flights'` | `flightsClimbed` |
 | Exercise minutes | `total`, `unit='min'` | `appleExerciseTime` |
 | Active energy | `total`, `unit='cal'` | `activeEnergyBurned` |
+| Walk + run distance | `total`/`count`/`habit`, `unit='mi'`/`'km'` (fractional) | `distanceWalkingRunning` |
 | Close activity rings | `habit` (daily met / not-met) | `HKActivitySummary` |
 | Mindful minutes | `total` or `habit` | `mindfulSession` |
 | **Record my mood** | `habit` — auto-checks when an entry exists that day | `HKStateOfMind` *(iOS 17+)* |
@@ -127,6 +128,12 @@ and every surface (iPhone/iPad/web) sees the aggregated number, never the raw he
 
 **v1 metric set:** steps, flights, exercise minutes, activity rings (all stable pre-iOS-17).
 **Fast-follow:** mood + mindful minutes.
+**Shipped since:** **walking + running distance** — the first *fractional* quantity metric
+(`distanceWalkingRunning`, `key='walk_run_distance'`). Reads in miles or kilometers per the
+device's `Locale.measurementSystem`; stores through the same `numeric` columns (no schema
+change), so decimals ride the existing cumulative-sum / daily-threshold paths untouched. It
+includes hikes (Apple folds hiking distance into walking+running — there is no separate
+hiking-distance quantity type; a dedicated hike is a *workout*, i.e. Tier 2).
 
 ### Tier 2 — First-class health goals + metric discovery
 
@@ -139,6 +146,16 @@ and every surface (iPhone/iPad/web) sees the aggregated number, never the raw he
   metrics after a permission request — never "everything Apple Health has."
 - **Full health goal type:** manual entry disabled when linked; rings auto-fill the visual;
   streaks computed from health; mood/mindful habits auto-check; richer badges.
+- **Workout-type-specific metrics (a distinct query shape).** Every metric so far is a
+  *cumulative quantity* (`HKStatisticsQuery` sum) or an activity summary — none reads
+  `HKWorkout`. Distance and exercise minutes are Apple's *combined* totals, so a bike ride,
+  treadmill run, and elliptical session are indistinguishable. Tracking one activity means a
+  new `HKSampleQuery` over `HKWorkoutType` filtered by `HKWorkoutActivityType`
+  (`.cycling` / `.running` / `.elliptical` / `.hiking` …), summing each workout's duration or
+  distance. That's a genuinely new read path (`total(for:on:)` only handles the cumulative /
+  summary shapes today), so it's its own tier of work — not another `Metric` key. Standalone
+  **cycling / swimming distance** (`distanceCycling` / `distanceSwimming`) are the cheap
+  in-between: they ride the existing fractional-distance path and could land whenever wanted.
 - **Later / optional:** a rewards tie-in ("hit your step goal → earn a marble"). Goals don't
   touch `ledger_entries` today, so this is a deliberate follow-on, not part of Tier 1–2.
 - **Out of scope:** writing back *into* HealthKit (e.g. logging a Waffled workout to Health).

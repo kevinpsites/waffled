@@ -111,14 +111,13 @@ describe('countdowns', () => {
   })
 
   it("derives a member's next birthday", async () => {
-    // Date-relative so the birthday always lands inside the horizon (a hardcoded MM-DD
-    // silently drops off the list once "today" passes it and it rolls a full year out).
-    const bd = birthdayInDays(5)
-    await call('POST', '/api/persons', kevin, { name: 'Wally', memberType: 'kid', birthday: bd })
+    // Inside the horizon relative to "today" — a fixed date breaks once it rolls a year out.
+    const birthday = birthdayInDays(30)
+    await call('POST', '/api/persons', kevin, { name: 'Wally', memberType: 'kid', birthday })
     const list = JSON.parse((await call('GET', '/api/countdowns', kevin)).body).countdowns
     const bday = list.find((c: { source: string; title: string }) => c.source === 'birthday' && c.title === "Wally's birthday")
     expect(bday).toBeTruthy()
-    expect(bday.date.endsWith(bd.slice(5))).toBe(true)
+    expect(bday.date.endsWith(birthday.slice(4))).toBe(true)
     expect(bday.daysLeft).toBeGreaterThanOrEqual(0)
   })
 

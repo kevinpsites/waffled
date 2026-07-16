@@ -14,6 +14,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Walking & running distance is now an Apple Health goal metric.** Alongside steps, flights,
+  exercise minutes and the rest, an iPhone user can link a goal to their walking + running
+  distance (which also includes hikes) so a "run 100 miles this year" or "walk 3 miles a day"
+  goal fills itself. Distance shows in miles or kilometers to match your device's region, and —
+  being fractional — is tracked to a decimal rather than rounded.
+- **One-command cloud deploy to Oracle Cloud's Always Free tier via Terraform.** A new
+  `infra/terraform/oci` module stands up the whole stack (Postgres, PowerSync, api, Caddy,
+  backup) on a free Arm Ampere A1 instance and, when you give it a domain, fronts it with
+  automatic HTTPS — including a TLS front for offline-sync (a `powersync.` subdomain by default,
+  or a same-domain port / dedicated hostname). Pass your API keys and other config through named
+  variables. `terraform apply` prints the public IP, the DNS records to create, and the URL to
+  open. See the module's `README.md` and the "Deploy to Oracle Cloud" guide.
+- **`./waffled` accepts a `--override <file>` flag** to layer an extra Compose file on top of the
+  base one, so a deployment can add published ports or mounts without editing tracked files. It's
+  explicit opt-in only (nothing auto-loads), and is used by the Oracle Cloud deploy.
 
 - **Quick-add now understands countdowns.** Type something like "12 days until Disney",
   "Disney in 12 days", "countdown for the beach party on August 25", or even
@@ -59,6 +74,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **`./waffled upgrade` no longer trips over its own update.** Upgrading from an older
+  release could fail mid-way with a cryptic `required variable … is missing a value`
+  error, because the still-running old script drove the freshly downloaded configuration
+  before learning about newly required settings. The upgrade now restarts itself under
+  the new version of the script as soon as the update lands, so missing secrets are
+  generated into `.env` before anything else runs — one command, no manual `.env` edits.
+- **`./waffled up` and `upgrade` no longer crash with "unbound variable" on macOS.** The
+  health wait added in 0.8.0 aborted at the very end of every start/upgrade on the stock
+  macOS shell (bash 3.2) — after the stack was already up, hiding the final status
+  report. The wait now runs (and reports service health) on every supported shell.
 
 ## [0.8.0] - 2026-07-14
 
@@ -86,6 +111,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   defaults.
 
 ### Added
+- **Operators can populate a demo household straight from the running container.** The
+  "The Seinfelds" screenshot/demo seed now ships inside the API image, so you can fill a
+  fresh install with a lived-in example family — people, chores, goals, meals, pantry,
+  photos, and a rolling month of calendar events (last week through three weeks out, so
+  "this week" and "next week" are never empty) — without any host tooling. It is off by
+  default and refuses to run unless you set `WAFFLED_ALLOW_DEMO_SEED=1`, so it can never
+  inject demo data into a real household by accident.
 - **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
   weekly planner now offers an add button for every unplanned meal — Breakfast, Lunch, and
   Dinner — instead of a lone "Plan dinner" affordance, matching what the iPad grid already did.
