@@ -80,6 +80,25 @@ describe('CaptureBar — Tier 2 mutate picker', () => {
     await waitFor(() => expect(screen.getByText(/Marked/)).toBeInTheDocument())
   })
 
+  it('still resolves when the parse is on-device (no LLM configured — online, not offline)', async () => {
+    // A household with no AI provider: /api/capture defers, so api.resolve falls back to the
+    // on-device heuristic and returns the mutate marker with via 'on-device'. The mutate must
+    // STILL hit /resolve — it must NOT be blocked as "I need a connection for that."
+    resolve.mockResolvedValue({ intent: mutateIntent('complete', 'chore', 'trash chore'), via: 'on-device' })
+    resolveCandidates.mockResolvedValue({
+      candidates: [{ id: 'ci1', title: 'Take out the trash', subtitle: 'Wally · pending', confidence: 1 }],
+    })
+    commitMutate.mockResolvedValue({ ok: true, message: 'Marked “Take out the trash” done' })
+
+    render(<CaptureBar />)
+    openAndType('mark the trash chore done')
+
+    await waitFor(() => expect(resolveCandidates).toHaveBeenCalled(), { timeout: 3000 })
+    expect(resolveCandidates).toHaveBeenCalledWith(expect.objectContaining({ verb: 'complete', targetKind: 'chore' }))
+    expect(await screen.findByText(/Take out the trash/)).toBeInTheDocument()
+    expect(screen.queryByText(/I need a connection/i)).not.toBeInTheDocument()
+  })
+
   it('shows a not-found state with the disabledReason (0 candidates)', async () => {
     resolve.mockResolvedValue({ intent: mutateIntent('complete', 'chore', 'laundry'), via: 'anthropic' })
     resolveCandidates.mockResolvedValue({ candidates: [], disabledReason: 'Chores is turned off' })

@@ -460,7 +460,7 @@ function DraftFields({ intent, persons, lists, set, today, viewer, canManageGoal
 const CONFIRM_LABEL: Record<string, string> = {
   complete: 'Mark done', log: 'Log it', reschedule: 'Reschedule', reassign: 'Reassign', redeem: 'Redeem', delete: 'Delete it',
 }
-type CandidateState = { list: Candidate[]; disabledReason?: string; forDesc: string }
+type CandidateState = { list: Candidate[]; disabledReason?: string; forDesc: string; offline?: boolean }
 function CandidatePicker({ intent, state, chosenId, onPick, onCommit, busy }: {
   intent: Extract<ParsedIntent, { kind: 'mutate' }>
   state: CandidateState | null
@@ -473,6 +473,9 @@ function CandidatePicker({ intent, state, chosenId, onPick, onCommit, busy }: {
   // Still resolving (no result yet, or a stale result for a previous phrase).
   if (!state || state.forDesc !== intent.target.description) {
     return <div className="cap-detail">Finding a {kindLabel} like that…</div>
+  }
+  if (state.offline) {
+    return <div className="cap-primary" style={{ whiteSpace: 'normal' }}>I need a connection for that.</div>
   }
   if (state.list.length === 0) {
     return (
@@ -614,12 +617,11 @@ export function CaptureBar() {
           ? { kind: 'unsupported', reason: 'The Pantry module is turned off. Turn it on in Settings → Modules to add pantry items.' }
           : rawIntent?.kind === 'reward' && (!rewardsOn || !canManageRewards)
             ? { kind: 'unsupported', reason: !rewardsOn ? 'Rewards are turned off.' : 'Ask a parent to add a reward.' }
-            // A mutate can only be resolved by the SERVER (it owns the candidate lookup +
-            // the real verb/targetKind). If the only guess we have is the on-device marker
-            // (offline / server unavailable), degrade to "I need a connection for that."
-            : rawIntent?.kind === 'mutate' && via === 'on-device'
-              ? { kind: 'unsupported', reason: 'I need a connection for that.' }
-              : rawIntent
+            // A mutate always goes to the SERVER's candidate lookup (POST /capture/resolve) — even
+            // when the *parse* came from the on-device heuristic (a household with no LLM configured
+            // still resolves + commits online). We only surface "I need a connection" when the
+            // resolve call itself fails (handled below), NOT merely because the parse was on-device.
+            : rawIntent
   const editing = draft !== null && intent?.kind !== 'unsupported' && intent?.kind !== 'mutate'
   // A stable key for the current server mutate intent — drives the candidate resolve so
   // it fires once per distinct phrase (not on every render).
@@ -640,7 +642,7 @@ export function CaptureBar() {
         // 1 candidate → auto-select (still confirmed explicitly); 2+ → leave unpicked.
         setChosenId(r.candidates.length === 1 ? r.candidates[0].id : null)
       })
-      .catch(() => { if (alive) setCandidates({ list: [], forDesc: desc }) })
+      .catch(() => { if (alive) setCandidates({ list: [], forDesc: desc, offline: true }) })
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mutateKey])
