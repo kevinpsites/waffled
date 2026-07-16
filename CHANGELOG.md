@@ -90,6 +90,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Creating a list on iOS now opens it right away.** After tapping Create (or Create
+  from template) in the New-list sheet, the app takes you straight into the new list's
+  detail so you can start adding items — instead of leaving you on the Lists overview
+  to hunt for the row you just made. The web app already worked this way.
 - **`./waffled upgrade` no longer trips over its own update.** Upgrading from an older
   release could fail mid-way with a cryptic `required variable … is missing a value`
   error, because the still-running old script drove the freshly downloaded configuration
