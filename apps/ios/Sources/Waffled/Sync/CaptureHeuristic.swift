@@ -327,6 +327,347 @@ enum CaptureHeuristic {
         return best?.name
     }
 
+    // MARK: countdown
+
+    // A future day to count down to, with NO clock time. Triggers: "N days until X",
+    // "X in N days", "countdown to X [on <date>]", "N sleeps until X". A clock time
+    // means it's a scheduled event, so we bail then. Mirrors `detectCountdown` in parse.ts.
+    private static func ymdLocal(_ d: Date, _ cal: Calendar) -> String {
+        String(format: "%04d-%02d-%02d", cal.component(.year, from: d), cal.component(.month, from: d), cal.component(.day, from: d))
+    }
+    private static func countdownWhen(_ target: Date, _ now: Date, _ cal: Calendar) -> String {
+        let days = Int((startOfDay(target, cal).timeIntervalSince(startOfDay(now, cal)) / 86_400).rounded())
+        let rel = days <= 0 ? "Today" : (days == 1 ? "Tomorrow" : "\(days) days")
+        return "\(fmt(target, "EEE, MMM d", cal)) · \(rel)"
+    }
+
+    // MARK: holidays
+
+    // Resolve a known holiday name to its NEXT occurrence on/after startOfDay(now).
+    // KEEP IN SYNC with the web `findHoliday` and the server `resolveDayFromText`.
+    private struct HolidayHit { var date: Date; var label: String; var span: Span }
+
+    private static func nthWeekdayOfMonth(_ year: Int, _ month: Int, _ targetDow: Int, _ n: Int, _ cal: Calendar) -> Date {
+        let first = ymd(year, month - 1, 1, cal)
+        let firstDow = weekday0(first, cal)
+        let offset = (targetDow - firstDow + 7) % 7
+        return ymd(year, month - 1, 1 + offset + (n - 1) * 7, cal)
+    }
+    private static func lastWeekdayOfMonth(_ year: Int, _ month: Int, _ targetDow: Int, _ cal: Calendar) -> Date {
+        // Day 0 of the next month = the last day of this one.
+        let last = ymd(year, month, 0, cal)
+        let lastDow = weekday0(last, cal)
+        let lastDay = cal.component(.day, from: last)
+        let offset = (lastDow - targetDow + 7) % 7
+        return ymd(year, month - 1, lastDay - offset, cal)
+    }
+    private static func easterSunday(_ year: Int, _ cal: Calendar) -> Date {
+        // Anonymous Gregorian algorithm (Computus).
+        let a = year % 19
+        let b = year / 100
+        let c = year % 100
+        let d = b / 4
+        let e = b % 4
+        let f = (b + 8) / 25
+        let g = (b - f + 1) / 3
+        let h = (19 * a + b - d - g + 15) % 30
+        let i = c / 4
+        let k = c % 4
+        let l = (32 + 2 * e + 2 * i - h - k) % 7
+        let m = (a + 11 * h + 22 * l) / 451
+        let month = (h + l - 7 * m + 114) / 31 // 3=Mar, 4=Apr
+        let day = ((h + l - 7 * m + 114) % 31) + 1
+        return ymd(year, month - 1, day, cal)
+    }
+
+    private struct HolidayDef { let re: String; let label: String; let calc: (Int, Calendar) -> Date }
+    private static let holidays: [HolidayDef] = [
+        HolidayDef(re: #"\bnew\s+year'?s?\s+eve\b"#, label: "New Year's Eve") { y, c in ymd(y, 11, 31, c) },
+        HolidayDef(re: #"\bnew\s+year'?s?(?:\s+day)?\b"#, label: "New Year's Day") { y, c in ymd(y, 0, 1, c) },
+        HolidayDef(re: #"\bvalentine'?s?(?:\s+day)?\b"#, label: "Valentine's Day") { y, c in ymd(y, 1, 14, c) },
+        HolidayDef(re: #"\bst\.?\s+patrick'?s?(?:\s+day)?\b"#, label: "St. Patrick's Day") { y, c in ymd(y, 2, 17, c) },
+        HolidayDef(re: #"\bcinco\s+de\s+mayo\b"#, label: "Cinco de Mayo") { y, c in ymd(y, 4, 5, c) },
+        HolidayDef(re: #"\bjuneteenth\b"#, label: "Juneteenth") { y, c in ymd(y, 5, 19, c) },
+        HolidayDef(re: #"\b(?:independence\s+day|july\s+4th|july\s+4|4th\s+of\s+july|fourth\s+of\s+july)\b"#, label: "Independence Day") { y, c in ymd(y, 6, 4, c) },
+        HolidayDef(re: #"\bhalloween\b"#, label: "Halloween") { y, c in ymd(y, 9, 31, c) },
+        HolidayDef(re: #"\bveterans'?\s+day\b"#, label: "Veterans Day") { y, c in ymd(y, 10, 11, c) },
+        HolidayDef(re: #"\bchristmas\s+eve\b"#, label: "Christmas Eve") { y, c in ymd(y, 11, 24, c) },
+        HolidayDef(re: #"\b(?:christmas|xmas)\b"#, label: "Christmas") { y, c in ymd(y, 11, 25, c) },
+        HolidayDef(re: #"\bmlk(?:\s+day)?\b|\bmartin\s+luther\s+king(?:\s+jr\.?)?(?:\s+day)?\b"#, label: "MLK Day") { y, c in nthWeekdayOfMonth(y, 1, 1, 3, c) },
+        HolidayDef(re: #"\bpresidents'?\s+day\b"#, label: "Presidents' Day") { y, c in nthWeekdayOfMonth(y, 2, 1, 3, c) },
+        HolidayDef(re: #"\bmother'?s?\s+day\b"#, label: "Mother's Day") { y, c in nthWeekdayOfMonth(y, 5, 0, 2, c) },
+        HolidayDef(re: #"\bmemorial\s+day\b"#, label: "Memorial Day") { y, c in lastWeekdayOfMonth(y, 5, 1, c) },
+        HolidayDef(re: #"\bfather'?s?\s+day\b"#, label: "Father's Day") { y, c in nthWeekdayOfMonth(y, 6, 0, 3, c) },
+        HolidayDef(re: #"\blabor\s+day\b"#, label: "Labor Day") { y, c in nthWeekdayOfMonth(y, 9, 1, 1, c) },
+        HolidayDef(re: #"\bthanksgiving\b"#, label: "Thanksgiving") { y, c in nthWeekdayOfMonth(y, 11, 4, 4, c) },
+        HolidayDef(re: #"\bgood\s+friday\b"#, label: "Good Friday") { y, c in addDays(easterSunday(y, c), -2, c) },
+        HolidayDef(re: #"\beaster\b"#, label: "Easter") { y, c in easterSunday(y, c) },
+    ]
+
+    private static func findHoliday(_ text: NSString, _ now: Date, _ cal: Calendar) -> HolidayHit? {
+        let base = startOfDay(now, cal)
+        let nowYear = cal.component(.year, from: now)
+        var best: HolidayHit?
+        for h in holidays {
+            guard let m = firstMatch(h.re, text) else { continue }
+            var date = h.calc(nowYear, cal)
+            if startOfDay(date, cal) < base { date = h.calc(nowYear + 1, cal) }
+            let sp = span(m)
+            // Earliest match in the text wins (and, at equal starts, the earlier
+            // list entry — so "Christmas Eve" beats "Christmas").
+            if best == nil || sp.start < best!.span.start {
+                best = HolidayHit(date: date, label: h.label, span: sp)
+            }
+        }
+        return best
+    }
+    private static func detectCountdown(_ text: NSString, _ now: Date, _ cal: Calendar) -> CaptureIntent? {
+        if findTime(text) != nil { return nil }   // a clock time → schedule an event instead
+        var titleRaw: String?
+        var target: Date?
+
+        if let m = firstMatch(#"^\s*(\d{1,3})\s+(?:days?|sleeps?)\s+(?:until|til|till|to|before)\s+(.+)$"#, text) {
+            target = addDays(startOfDay(now, cal), Int(m.groups[1] ?? "") ?? 0, cal); titleRaw = m.groups[2]
+        }
+        if titleRaw == nil, let m = firstMatch(#"^(.+?)\s+in\s+(\d{1,3})\s+(?:days?|sleeps?)\s*$"#, text) {
+            target = addDays(startOfDay(now, cal), Int(m.groups[2] ?? "") ?? 0, cal); titleRaw = m.groups[1]
+        }
+        if titleRaw == nil, let m = firstMatch(#"\bcountdown\s+(?:to|until|til|till|for)\s+(.+)$"#, text) {
+            titleRaw = m.groups[1]
+            // "countdown to X on <date>" — pull an explicit day out of the tail.
+            if let raw = titleRaw, let dh = findDay(raw as NSString, now, cal) {
+                target = ymd(dh.y, dh.mo, dh.d, cal)
+                let stripped = cut(raw as NSString, [dh.span])
+                titleRaw = replaceFirst(#"\b(?:on|to)\s*$"#, stripped, "") as String
+            } else if let raw = titleRaw, let hh = findHoliday(raw as NSString, now, cal) {
+                // No explicit day — try a holiday name ("countdown for thanksgiving").
+                target = hh.date
+                let remaining = tidy(cut(raw as NSString, [hh.span]))
+                titleRaw = remaining.isEmpty ? hh.label : remaining
+            }
+        }
+        guard let tRaw = titleRaw, let t = target else { return nil }
+        let title = titleCase(tidy(tRaw as NSString))
+        return .countdown(title: title.isEmpty ? "Countdown" : title, date: ymdLocal(t, cal),
+                          emoji: nil, whenLabel: countdownWhen(t, now, cal))
+    }
+
+    // MARK: person
+
+    // Add a new household member. Triggers: "add my son/daughter/… <name>", "add a
+    // family member <name>", "create a profile for <name>". MINIMAL heuristic (plan §5):
+    // name + memberType + safe defaults; the LLM upgrade fills avatarEmoji/birthday/isAdmin.
+    // Mirrors `detectPerson` in parse.ts.
+    private static let relKid = "son|daughter|kid|child|boy|girl|baby"
+    private static let relTeen = "teenager|teen"
+    private static let relAdult = "husband|wife|spouse|partner|mom|mum|mommy|mother|dad|daddy|father|parent|adult|grandma|grandpa|grandmother|grandfather"
+
+    private static func memberTypeForRel(_ word: String) -> String {
+        let w = word.lowercased() as NSString
+        if test("^(?:\(relKid))$", w) { return "kid" }
+        if test("^(?:\(relTeen))$", w) { return "teen" }
+        return "adult"
+    }
+    // Drop a trailing ", age 8" / "aged 8" (age maps to nothing today — no birthday).
+    private static func cleanPersonName(_ raw: String) -> String {
+        let noAge = replaceFirst(#"[\s,]+(?:who\s+is\s+|aged?\s+)\d{1,3}\b.*$"#, raw as NSString, "")
+        return titleCase(tidy(noAge))
+    }
+    private static func detectPerson(_ text: NSString) -> CaptureIntent? {
+        if findTime(text) != nil { return nil }   // a clock time → scheduling, not a profile
+        // A birthday / weekday / dated note is an event or countdown, not a profile — bail
+        // before the relationship regex can grab the trailing noun as a name. Mirrors parse.ts.
+        if test(#"\bbirthday\b"#, text) { return nil }
+        if test(#"\b(?:sun|sunday|mon|monday|tues?|tuesday|wed|weds|wednesday|thur?s?|thursday|fri|friday|sat|saturday)s?\b"#, text) { return nil }
+        if test(#"\b(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\.?\s+\d{1,2}\b"#, text)
+            || test(#"\b\d{1,2}/\d{1,2}\b"#, text) { return nil }
+        // The `(?![’'ʼ]s)` lookahead stops "mom's"/"dad's" being read as a relationship —
+        // literal apostrophe chars (a raw string wouldn't interpret \u{2019}). Mirrors parse.ts.
+        let relPat = "\\b(?:add|create|make|register)\\s+(?:my|our|a|an|the)?\\s*(?:new\\s+)?(\(relKid)|\(relTeen)|\(relAdult))(?![’'ʼ]s)\\b[\\s,:-]*(?:named\\s+|called\\s+)?(.+)$"
+        if let m = firstMatch(relPat, text) {
+            let name = cleanPersonName(m.groups[2] ?? "")
+            if !name.isEmpty {
+                return .person(name: name, memberType: memberTypeForRel(m.groups[1] ?? ""),
+                               avatarEmoji: nil, birthday: nil, isAdmin: false)
+            }
+        }
+        let memPat = "\\b(?:add|create|make|register)\\s+(?:a\\s+|an\\s+|the\\s+|my\\s+|our\\s+)?(?:new\\s+)?(?:family\\s+member|household\\s+member|family\\s+profile|profile|person|member)\\b\\s*(?:for\\s+|named\\s+|called\\s+|[:-]\\s*)?(.+)$"
+        if let m = firstMatch(memPat, text) {
+            let name = cleanPersonName(m.groups[1] ?? "")
+            if !name.isEmpty {
+                return .person(name: name, memberType: "adult", avatarEmoji: nil, birthday: nil, isAdmin: false)
+            }
+        }
+        return nil
+    }
+
+    // MARK: goal
+
+    // A personal/shared goal. Triggers: "set a goal to…", "set a personal/new/weekly goal
+    // to…", "I want to…", "my goal is…", "new goal: …". An optional adjective (or two) can
+    // sit between the article/pronoun and "goal", so the anchor is "goal", not "a goal".
+    // The offline heuristic then infers the target/unit/deadline (below). Mirrors
+    // `detectGoal` (+ GOAL_TOTAL_UNIT / goalMeasure / goalDeadline) in parse.ts.
+    private static let goalTrigger = "^\\s*(?:set(?:ting)?\\s+(?:a\\s+|an\\s+|the\\s+|our\\s+|my\\s+|myself\\s+a\\s+|myself\\s+|us\\s+a\\s+|us\\s+)?(?:[a-z]+\\s+){0,3}?goal\\s+(?:to|of|:)\\s+|add\\s+(?:a\\s+|an\\s+|the\\s+|our\\s+|my\\s+)?(?:[a-z]+\\s+){0,3}?goal\\s+(?:to\\s+|of\\s+)?|(?:i|we)\\s+want\\s+to\\s+|(?:i|we)['\u{2019}]d\\s+like\\s+to\\s+|my\\s+goal\\s+is\\s+(?:to\\s+)?|our\\s+goal\\s+is\\s+(?:to\\s+)?|new\\s+goal\\s*[:-]\\s*)(.+)$"
+
+    // Units that ACCUMULATE → a `total` goal; anything else countable → a `count` goal.
+    private static let goalTotalUnit = "^(?:miles?|mi|kilometers?|km|meters?|m|lbs?|pounds?|kgs?|kilograms?|kilos?|ounces?|oz|grams?|g|hours?|hrs?|hr|minutes?|mins?|min|seconds?|secs?|days?|weeks?|dollars?|usd|bucks?|cents?|gallons?|gal|liters?|litres?|l|calories?|cals?|cal|steps?|reps?|points?|pts?)$"
+
+    // Number + unit → (targetValue, unit, goalType, span). "$500" → dollars/total; else
+    // "<number> <word>" where the word decides count vs total. Mirrors parse.ts goalMeasure.
+    private static func goalMeasure(_ text: NSString) -> (targetValue: Double, unit: String, goalType: String, span: Span)? {
+        if let cur = firstMatch(#"(\$)\s?(\d+(?:\.\d+)?)"#, text) {
+            return (Double(cur.groups[2] ?? "") ?? 0, "dollars", "total", span(cur))
+        }
+        if let m = firstMatch(#"(\d+(?:\.\d+)?)\s+([A-Za-z]+)"#, text) {
+            let unit = (m.groups[2] ?? "").lowercased()
+            let goalType = test(goalTotalUnit, unit as NSString) ? "total" : "count"
+            return (Double(m.groups[1] ?? "") ?? 0, unit, goalType, span(m))
+        }
+        return nil
+    }
+
+    // Resolve a goal deadline from "by <when>" / "this year|month". Mirrors parse.ts goalDeadline.
+    private static func goalDeadline(_ text: NSString, _ now: Date, _ cal: Calendar) -> (date: String, start: Int, end: Int)? {
+        if let ty = firstMatch(#"\b(?:by\s+|before\s+)?(?:the\s+end\s+of\s+)?this\s+(year|month)\b"#, text) {
+            let kind = (ty.groups[1] ?? "").lowercased()
+            let y = cal.component(.year, from: now)
+            let d: Date = kind == "year" ? ymd(y, 11, 31, cal) : ymd(y, cal.component(.month, from: now), 0, cal)
+            return (ymdLocal(d, cal), ty.range.location, ty.range.location + ty.range.length)
+        }
+        if let bm = firstMatch(#"\bby\s+(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\b"#, text) {
+            let afterIdx = min(bm.range.location + bm.range.length, text.length)
+            if !test(#"^\s*\d"#, text.substring(from: afterIdx) as NSString) {
+                let mo = months[(bm.groups[1] ?? "").lowercased()] ?? 0
+                var year = cal.component(.year, from: now)
+                if mo < cal.component(.month, from: now) - 1 { year += 1 }
+                let d = ymd(year, mo + 1, 0, cal) // day 0 of the next month = last day of the target month
+                return (ymdLocal(d, cal), bm.range.location, bm.range.location + bm.range.length)
+            }
+        }
+        if let by = firstMatch(#"\bby\s+"#, text) {
+            let afterStart = by.range.location + by.range.length
+            let after = text.substring(from: min(afterStart, text.length)) as NSString
+            if let dh = findDay(after, now, cal) {
+                let d = ymd(dh.y, dh.mo, dh.d, cal)
+                return (ymdLocal(d, cal), by.range.location, afterStart + dh.span.end)
+            }
+        }
+        return nil
+    }
+
+    // Infer who the goal is for from the phrasing (the same word-driven inference the rest
+    // of the bar does): "family"/"our"/"together"/"we want"/… → 'everyone'; "personal"/
+    // "my own"/"i want to"/… → 'me'; no hint → nil. Mirrors parse.ts `goalAudience`.
+    private static func goalAudience(_ text: NSString) -> String? {
+        if test(#"\b(family|our|everyone|shared|as a family|together|us|we want)\b"#, text) { return "everyone" }
+        // NOTE: literal ' and ’ in the char class — a raw string doesn't interpret \u{…}.
+        if test(#"\b(personal|my own|for myself|my goal|i want to|i['’]d like to)\b"#, text) { return "me" }
+        return nil
+    }
+
+    private static func detectGoal(_ text: NSString, _ now: Date, _ cal: Calendar) -> CaptureIntent? {
+        guard let m = firstMatch(goalTrigger, text) else { return nil }
+        // A "soft" trigger ("I/we want to", "I'd like to") that doesn't contain the literal
+        // word "goal" must NOT hijack a meal phrase — "I want to have tacos for dinner"
+        // falls through to the meal branch. Mirrors parse.ts.
+        let full = m.groups[0] ?? ""
+        let bodyStr = m.groups[1] ?? ""
+        let trigger = full.hasSuffix(bodyStr) ? String(full.dropLast(bodyStr.count)) : full
+        let softTrigger = !trigger.lowercased().contains("goal")
+        let mealSignal = test(#"\bfor\s+(dinner|lunch|breakfast|supper|brunch)\b"#, text)
+            || test(#"\b(meal\s*plan|on the menu|dinner menu)\b"#, text)
+        if softTrigger && mealSignal { return nil }
+        var body = bodyStr as NSString
+        // Deadline first (so a trailing "by september" isn't read as a target unit), then
+        // the number + unit — stripping each phrase out of the title as we go.
+        var deadline: String?
+        if let dl = goalDeadline(body, now, cal) {
+            deadline = dl.date
+            body = (body.substring(to: min(dl.start, body.length)) + " " + body.substring(from: min(dl.end, body.length))) as NSString
+        }
+        var goalType = "habit"
+        var targetValue: Double?
+        var unit: String?
+        if let meas = goalMeasure(body) {
+            goalType = meas.goalType; targetValue = meas.targetValue; unit = meas.unit
+            body = (body.substring(to: min(meas.span.start, body.length)) + " " + body.substring(from: min(meas.span.end, body.length))) as NSString
+        }
+        let title = titleCase(tidy(body))
+        if title.isEmpty { return nil }
+        return .goal(title: title, goalType: goalType, targetValue: targetValue, unit: unit,
+                     deadline: deadline, trackingMode: "shared_total", audience: goalAudience(text))
+    }
+
+    // MARK: pantry
+
+    // An item you ALREADY HAVE on hand, named with an explicit pantry/fridge/freezer
+    // destination: "add X to (the) pantry", "put X in the fridge/freezer", "we have X
+    // in the pantry". Distinguished from grocery (something to BUY — the shopping list)
+    // by that explicit destination: a bare "add milk" or "add milk to the shopping
+    // list" stays grocery. FULL heuristic (plan §5). Mirrors `detectPantry` in parse.ts.
+    private static let pantryTarget = #"\b(?:to|in|into|inside)\s+(?:the\s+|my\s+|our\s+)?(pantry|fridge|freezer|refrigerator)\b"#
+    private static let pantryLead = #"^\s*(?:please\s+|kindly\s+|can you\s+)?(?:we\s+have\s+|i\s+have\s+|there(?:'s|\s+is|\s+are)\s+|add|put|throw|toss|drop|stock|store|stick|need|get|grab)?\s*(.+?)\s+(?:to|in|into|inside)\s+(?:the\s+|my\s+|our\s+)?(?:pantry|fridge|freezer|refrigerator)\b"#
+
+    private static func pantryLocation(_ word: String) -> String {
+        let w = word.lowercased()
+        if w == "fridge" || w == "refrigerator" { return "Fridge" }
+        if w == "freezer" { return "Freezer" }
+        return "Pantry"
+    }
+    // Split a leading quantity into a numeric amount + its unit ("2 cans of beans" →
+    // amount "2", unit "cans", name "beans"). Reuses splitQuantity, then separates the
+    // number from the unit — pantry keeps them in distinct fields. Mirrors parse.ts.
+    private static func splitAmountUnit(_ s: String) -> (amount: String?, unit: String?, name: String) {
+        let (quantity, name) = splitQuantity(s)
+        guard let q = quantity else { return (nil, nil, name) }
+        if let m = firstMatch(#"^(\d+(?:\.\d+)?)\s*(.*)$"#, q as NSString) {
+            let unit = (m.groups[2] ?? "").trimmingCharacters(in: .whitespaces)
+            return (m.groups[1], unit.isEmpty ? nil : unit, name)
+        }
+        return (q, nil, name)
+    }
+    private static func detectPantry(_ text: NSString) -> CaptureIntent? {
+        guard let loc = firstMatch(pantryTarget, text) else { return nil }
+        let location = pantryLocation(loc.groups[1] ?? "")
+        let im = firstMatch(pantryLead, text)
+        let basis = tidy((im?.groups[1] ?? (text as String)) as NSString)
+        let (amount, unit, name) = splitAmountUnit(basis)
+        let itemName = titleCase(name)
+        if itemName.isEmpty { return nil }
+        return .pantry(name: itemName, amount: amount, unit: unit, location: location, expiresOn: nil, lowAt: nil)
+    }
+
+    // MARK: reward
+
+    // A reward-shop item kids spend stars/points on. Triggers on the explicit word
+    // "reward": "add a reward: <title> for N stars", "new reward <title> costs N points",
+    // "reward: <title>". Pulls the numeric star/point cost. FULL heuristic (plan §5).
+    // Mirrors `detectReward` in parse.ts — the offline path can't know the household's
+    // currency/category/approval default, so those stay nil.
+    private static let rewardWord = #"\breward\b"#
+    private static let rewardLead = #"^\s*(?:please\s+|kindly\s+|can you\s+)?(?:add|create|make|set\s*up|new|give)?\s*(?:a\s+|an\s+|the\s+)?(?:new\s+)?reward\b[\s:—-]*(?:called\s+|named\s+|for\s+|entitled\s+)?(.*)$"#
+    private static let rewardCost = #"\b(?:for|costs?|worth|priced\s+at|at|=)\s+(\d{1,6})\s*(?:stars?|points?|pts?|coins?)?\b|\b(\d{1,6})\s*(?:stars?|points?|pts?|coins?)\b"#
+
+    private static func detectReward(_ text: NSString) -> CaptureIntent? {
+        guard test(rewardWord, text) else { return nil }
+        let lead = firstMatch(rewardLead, text)
+        var basis = (lead?.groups[1] ?? (text as String)) as NSString
+        // Pull the cost out of the title basis (it may trail the name).
+        var cost: Int?
+        if let cm = firstMatch(rewardCost, basis) {
+            cost = Int(cm.groups[1] ?? cm.groups[2] ?? "")
+            let before = basis.substring(to: cm.range.location)
+            let after = basis.substring(from: min(cm.range.location + cm.range.length, basis.length))
+            basis = (before + " " + after) as NSString
+        }
+        // Drop a dangling price lead-in left behind ("… for", "… costs").
+        basis = replaceFirst(#"\b(?:for|costs?|worth|priced\s+at|at)\s*$"#, basis, "")
+        let title = titleCase(tidy(basis))
+        if title.isEmpty { return nil }
+        return .reward(title: title, emoji: nil, cost: cost, currency: nil, category: nil, requiresApproval: nil)
+    }
+
     // MARK: parse
 
     static func parse(_ raw: String, persons: [String] = [], now: Date = Date(),
@@ -336,6 +677,18 @@ enum CaptureHeuristic {
         let text = trimmed as NSString
 
         let person = findPerson(text, persons)
+
+        // PERSON — "add my son Max" / "add a family member Jane". A specific create phrase,
+        // so it wins over the generic grocery/event fallbacks. Minimal: name + memberType.
+        if let personIntent = detectPerson(text) { return personIntent }
+
+        // GOAL — "set a goal to read 20 books" / "I want to get in shape". An explicit goal
+        // phrase, so it wins over the grocery/task fallbacks. Minimal: title + habit default.
+        if let goalIntent = detectGoal(text, now, cal) { return goalIntent }
+
+        // REWARD — "add a reward: ice cream night for 50 stars". The explicit word "reward"
+        // is a specific create phrase, so it wins over the grocery/task fallbacks.
+        if let rewardIntent = detectReward(text) { return rewardIntent }
 
         // TASK / CHORE — an explicit keyword wins over the date heuristics.
         if test(taskSignal, text) || test(choreWord, text) {
@@ -425,6 +778,10 @@ enum CaptureHeuristic {
             if !itemName.isEmpty { return .list(itemName: itemName, listName: listName, quantity: quantity) }
         }
 
+        // COUNTDOWN — a day marker ("12 days until Disney"). Before the event branch so
+        // an explicit "countdown to X on <date>" isn't swallowed as a plain dated event.
+        if let countdown = detectCountdown(text, now, cal) { return countdown }
+
         let day = findDay(text, now, cal)
         let time = findTime(text)
         let startWeekday = day.map { weekday0(ymd($0.y, $0.mo, $0.d, cal), cal) } ?? weekday0(now, cal)
@@ -471,6 +828,11 @@ enum CaptureHeuristic {
             return .event(title: title.isEmpty ? "Event" : title, startsAt: isoUTC(target), allDay: allDay,
                           personName: person?.name, rrule: rec.rrule, scheduleLabel: scheduleLabel, whenLabel: whenLabel)
         }
+
+        // PANTRY — an item on hand with an explicit pantry/fridge/freezer destination
+        // ("add 2 cans of beans to the pantry"). Before the grocery fallback so it isn't
+        // mis-routed to the shopping list; a bare "add milk" (no destination) stays grocery.
+        if let pantryIntent = detectPantry(text) { return pantryIntent }
 
         // GROCERY — verbs, "to the list", units, or the bare-noun fallback.
         var stripped = cut(text, person.map { [$0.span] } ?? [])

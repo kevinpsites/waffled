@@ -83,7 +83,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   select bulk move/delete, screensaver + per-album screensaver source, crossfade
   slideshow, recipe hero images.
 - **AI capture** — pluggable provider (Claude / OpenAI-compatible / Ollama), instant
-  heuristic → LLM upgrade, offline fallback.
+  heuristic → LLM upgrade, offline fallback. The "Add anything" bar now **creates** across
+  the app: events, tasks/chores, grocery, meals, custom lists, countdowns (incl. holidays by
+  name), **family members** (admin-only), **goals**, **pantry items**, and **rewards** — each
+  gated on the relevant module/permission and confirmed in an editable preview before it
+  commits. The full "Add anything → Do anything" plan (mutate / settings / query / multi-action
+  tiers) is in [`capture-expansion.md`](./capture-expansion.md); the create tier (Tier 1) is done.
 - **Weather** — Open-Meteo on the topbar (no key).
 - **Extensibility — optional modules + public API** — a **pluggable optional-module
   framework** (registry + per-household `settings.modules` toggle, a **Settings → Modules**

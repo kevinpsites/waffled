@@ -134,6 +134,200 @@ describe('finalizeIntent — model JSON → finished intent', () => {
     expect(i.mealType).toBe('lunch')
     expect(i.date).toBe('2026-06-12')
   })
+
+  it('maps a countdown with an explicit date + emoji', () => {
+    const i = finalizeIntent({ kind: 'countdown', title: 'Disney', date: '2026-08-25', emoji: '🏰' }, ctx)
+    expect(i.kind).toBe('countdown')
+    expect(i.title).toBe('Disney')
+    expect(i.date).toBe('2026-08-25')
+    expect(i.emoji).toBe('🏰')
+    expect(i.whenLabel).toMatch(/·/)
+  })
+
+  it('resolves a loose countdown date ("in 12 days") deterministically', () => {
+    const i = finalizeIntent({ kind: 'countdown', title: 'Vacation', date: 'in 12 days' }, ctx)
+    expect(i.kind).toBe('countdown')
+    // A non-ISO date is run through resolveDayFromText (same as the meal path).
+    expect(i.date).toBe(resolveDayFromText('in 12 days', ctx.timezone))
+    expect(i.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+
+  it('resolves a holiday-name countdown date ("thanksgiving") to the next Thanksgiving', () => {
+    const i = finalizeIntent({ kind: 'countdown', title: 'Thanksgiving', date: 'thanksgiving' }, ctx)
+    expect(i.kind).toBe('countdown')
+    expect(i.title).toBe('Thanksgiving')
+    // Deterministic holiday resolution — the 4th Thursday of November, on/after today.
+    expect(i.date).toBe(resolveDayFromText('thanksgiving', ctx.timezone))
+    const d = new Date(`${i.date}T00:00:00Z`)
+    expect(d.getUTCDay()).toBe(4) // Thursday
+    expect(d.getUTCMonth()).toBe(10) // November
+    expect(d.getUTCDate()).toBeGreaterThanOrEqual(22) // 4th Thursday is always the 22nd–28th
+    expect(d.getUTCDate()).toBeLessThanOrEqual(28)
+  })
+
+  it('rejects a countdown with no usable date', () => {
+    expect(() => finalizeIntent({ kind: 'countdown', title: 'Someday' }, ctx)).toThrow()
+  })
+
+  it('rejects a countdown with no title', () => {
+    expect(() => finalizeIntent({ kind: 'countdown', date: '2026-08-25' }, ctx)).toThrow()
+  })
+
+  it('maps a person with an explicit memberType', () => {
+    const i = finalizeIntent({ kind: 'person', name: 'Max', memberType: 'kid', avatarEmoji: '👦' }, ctx)
+    expect(i.kind).toBe('person')
+    expect(i.name).toBe('Max')
+    expect(i.memberType).toBe('kid')
+    expect(i.avatarEmoji).toBe('👦')
+    expect(i.isAdmin).toBe(false)
+  })
+
+  it('defaults a person memberType to adult when missing', () => {
+    const i = finalizeIntent({ kind: 'person', name: 'Jane' }, ctx)
+    expect(i.kind).toBe('person')
+    expect(i.memberType).toBe('adult')
+  })
+
+  it('coerces a bogus person memberType to adult', () => {
+    expect(finalizeIntent({ kind: 'person', name: 'Sam', memberType: 'grandpa' }, ctx).memberType).toBe('adult')
+  })
+
+  it('keeps a valid person birthday but drops a non-ISO one (never invents from an age)', () => {
+    expect(finalizeIntent({ kind: 'person', name: 'Max', memberType: 'kid', birthday: '2018-06-05' }, ctx).birthday).toBe('2018-06-05')
+    expect(finalizeIntent({ kind: 'person', name: 'Max', memberType: 'kid', birthday: 'age 8' }, ctx).birthday).toBeNull()
+  })
+
+  it('rejects a person with no name', () => {
+    expect(() => finalizeIntent({ kind: 'person', memberType: 'kid' }, ctx)).toThrow()
+  })
+
+  it('maps a count goal with an explicit numeric target + unit', () => {
+    expect(finalizeIntent(
+      { kind: 'goal', title: 'Read 20 books', goalType: 'count', targetValue: 20, unit: 'books' }, ctx
+    )).toEqual({
+      kind: 'goal', title: 'Read 20 books', goalType: 'count',
+      trackingMode: 'shared_total', participantMode: 'count_once', targetBasis: 'family',
+      targetValue: 20, unit: 'books', deadline: null, audience: null, participantIds: [],
+    })
+  })
+
+  it('includes an empty participantIds on a goal (the web goal type requires string[])', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Read', goalType: 'count', targetValue: 5 }, ctx).participantIds).toEqual([])
+  })
+
+  it('carries the goal audience through (defaulting null, coercing bogus)', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Family walk', audience: 'everyone' }, ctx).audience).toBe('everyone')
+    expect(finalizeIntent({ kind: 'goal', title: 'My run', audience: 'me' }, ctx).audience).toBe('me')
+    expect(finalizeIntent({ kind: 'goal', title: 'Read', goalType: 'count', targetValue: 5 }, ctx).audience).toBeNull()
+    expect(finalizeIntent({ kind: 'goal', title: 'X', audience: 'nonsense' }, ctx).audience).toBeNull()
+  })
+
+  it('carries explicit goal assignment fields (trackingMode/participantMode/targetBasis) through', () => {
+    const i = finalizeIntent(
+      { kind: 'goal', title: 'Family miles', goalType: 'total', targetValue: 100, unit: 'miles', trackingMode: 'each_tracks', participantMode: 'split', targetBasis: 'per_person' },
+      ctx
+    )
+    expect(i).toMatchObject({ trackingMode: 'each_tracks', participantMode: 'split', targetBasis: 'per_person', unit: 'miles' })
+  })
+
+  it('defaults the goal assignment fields sensibly when absent', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Get in shape' }, ctx)).toMatchObject({
+      trackingMode: 'shared_total', participantMode: 'count_once', targetBasis: 'family',
+    })
+  })
+
+  it('coerces bogus goal assignment fields to their defaults', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'X', goalType: 'count', targetValue: 3, participantMode: 'nope', targetBasis: 'bogus' }, ctx))
+      .toMatchObject({ participantMode: 'count_once', targetBasis: 'family' })
+  })
+
+  it('maps an accumulating total goal, keeping the target', () => {
+    const i = finalizeIntent({ kind: 'goal', title: 'Save $500', goalType: 'total', targetValue: 500, unit: 'dollars' }, ctx)
+    expect(i).toMatchObject({ kind: 'goal', title: 'Save $500', goalType: 'total', trackingMode: 'shared_total', targetValue: 500, unit: 'dollars' })
+  })
+
+  it('defaults a bare goal ("get in shape") to a habit with no target', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Get in shape' }, ctx)).toMatchObject({
+      kind: 'goal', title: 'Get in shape', goalType: 'habit', trackingMode: 'shared_total',
+    })
+  })
+
+  it('downgrades a count goal with no number to a habit', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Drink water', goalType: 'count' }, ctx))
+      .toMatchObject({ goalType: 'habit' })
+  })
+
+  it('keeps a valid goal deadline but drops a non-ISO one', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Read 20 books', goalType: 'count', targetValue: 20, deadline: '2026-12-31' }, ctx).deadline).toBe('2026-12-31')
+    expect(finalizeIntent({ kind: 'goal', title: 'Read 20 books', goalType: 'count', targetValue: 20, deadline: 'this year' }, ctx).deadline).toBeNull()
+  })
+
+  it('coerces a bogus goalType to habit', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Be kind', goalType: 'nonsense' }, ctx).goalType).toBe('habit')
+  })
+
+  it('rejects a goal with no title', () => {
+    expect(() => finalizeIntent({ kind: 'goal', goalType: 'habit' }, ctx)).toThrow()
+  })
+
+  it('maps a pantry item with amount + unit, defaulting location to Pantry', () => {
+    expect(finalizeIntent({ kind: 'pantry', name: 'Beans', amount: '2', unit: 'cans' }, ctx)).toEqual({
+      kind: 'pantry', name: 'Beans', amount: '2', unit: 'cans', location: 'Pantry', expiresOn: null, lowAt: null,
+    })
+  })
+
+  it('keeps an explicit pantry location and a low-stock threshold', () => {
+    const i = finalizeIntent({ kind: 'pantry', name: 'Milk', location: 'Fridge', lowAt: 1 }, ctx)
+    expect(i).toMatchObject({ kind: 'pantry', name: 'Milk', location: 'Fridge', lowAt: 1 })
+  })
+
+  it('treats a null pantry lowAt as no threshold (not 0), but keeps a real number', () => {
+    expect(finalizeIntent({ kind: 'pantry', name: 'Milk', lowAt: null }, ctx).lowAt).toBeNull()
+    expect(finalizeIntent({ kind: 'pantry', name: 'Milk', lowAt: 2 }, ctx).lowAt).toBe(2)
+  })
+
+  it('keeps a valid pantry expiresOn but drops a non-ISO one', () => {
+    expect(finalizeIntent({ kind: 'pantry', name: 'Milk', expiresOn: '2026-08-01' }, ctx).expiresOn).toBe('2026-08-01')
+    expect(finalizeIntent({ kind: 'pantry', name: 'Milk', expiresOn: 'next week' }, ctx).expiresOn).toBeNull()
+  })
+
+  it('rejects a pantry item with no name', () => {
+    expect(() => finalizeIntent({ kind: 'pantry', amount: '2' }, ctx)).toThrow()
+  })
+
+  // Grocery vs pantry stay distinct kinds — an item to BUY is grocery; an item ON
+  // HAND (explicit pantry target) is pantry. finalizeIntent honors the kind it's given.
+  it('keeps grocery and pantry as separate kinds (no conflation)', () => {
+    expect(finalizeIntent({ kind: 'grocery', name: 'Milk' }, ctx).kind).toBe('grocery')
+    expect(finalizeIntent({ kind: 'pantry', name: 'Milk' }, ctx).kind).toBe('pantry')
+  })
+
+  it('maps a reward with emoji + cost, defaulting the rest to null', () => {
+    expect(finalizeIntent({ kind: 'reward', title: 'Ice cream night', emoji: '🍦', cost: 50 }, ctx)).toEqual({
+      kind: 'reward', title: 'Ice cream night', emoji: '🍦', cost: 50, currency: null, category: null, requiresApproval: null,
+    })
+  })
+
+  it('coerces a reward cost to a non-negative integer (rounds floats, clamps negatives to 0)', () => {
+    expect(finalizeIntent({ kind: 'reward', title: 'X', cost: 49.6 }, ctx).cost).toBe(50)
+    expect(finalizeIntent({ kind: 'reward', title: 'X', cost: -5 }, ctx).cost).toBe(0)
+    // "50" (string) still coerces to the integer 50.
+    expect(finalizeIntent({ kind: 'reward', title: 'X', cost: '50' }, ctx).cost).toBe(50)
+  })
+
+  it('leaves a reward cost null when none is given', () => {
+    expect(finalizeIntent({ kind: 'reward', title: 'Movie night' }, ctx).cost).toBeNull()
+  })
+
+  it('passes requiresApproval through, else leaves it null (inherit household default)', () => {
+    expect(finalizeIntent({ kind: 'reward', title: 'X', requiresApproval: true }, ctx).requiresApproval).toBe(true)
+    expect(finalizeIntent({ kind: 'reward', title: 'X', requiresApproval: false }, ctx).requiresApproval).toBe(false)
+    expect(finalizeIntent({ kind: 'reward', title: 'X' }, ctx).requiresApproval).toBeNull()
+  })
+
+  it('rejects a reward with no title', () => {
+    expect(() => finalizeIntent({ kind: 'reward', cost: 50 }, ctx)).toThrow()
+  })
 })
 
 describe('resolveDayFromText — deterministic meal day (model-independent)', () => {
@@ -155,5 +349,30 @@ describe('resolveDayFromText — deterministic meal day (model-independent)', ()
     const d = days(resolveDayFromText('today', tz)!, resolveDayFromText('next thursday', tz)!)
     expect(d).toBeGreaterThanOrEqual(7)
     expect(d).toBeLessThanOrEqual(13)
+  })
+  it('resolves a fixed-date holiday name ("christmas") to Dec 25', () => {
+    const c = resolveDayFromText('christmas', tz)!
+    expect(c).toMatch(/-12-25$/)
+    // Never in the past relative to today.
+    expect(days(resolveDayFromText('today', tz)!, c)).toBeGreaterThanOrEqual(0)
+  })
+  it('resolves a computed holiday name ("thanksgiving") to the 4th Thursday of November', () => {
+    const t = resolveDayFromText('thanksgiving', tz)!
+    const d = new Date(`${t}T00:00:00Z`)
+    expect(d.getUTCDay()).toBe(4)
+    expect(d.getUTCMonth()).toBe(10)
+  })
+  it('lets an explicit month+day win over a stray holiday word ("christmas party on june 20")', () => {
+    expect(resolveDayFromText('countdown to the christmas party on june 20', tz)).toMatch(/-06-20$/)
+  })
+  it('resolves "12 days until christmas" by the day-count, not Dec 25', () => {
+    const today = resolveDayFromText('today', tz)!
+    expect(days(today, resolveDayFromText('12 days until christmas', tz)!)).toBe(12)
+  })
+  it('still resolves a holiday when it is the whole expression ("countdown to christmas")', () => {
+    expect(resolveDayFromText('countdown to christmas', tz)).toMatch(/-12-25$/)
+  })
+  it('ignores holiday words entirely when holidays:false', () => {
+    expect(resolveDayFromText('christmas ham for dinner', tz, { holidays: false })).toBeNull()
   })
 })

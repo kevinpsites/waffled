@@ -10,13 +10,22 @@ enum CaptureIntent: Sendable, Equatable {
     case task(title: String, personName: String?, stars: Int?, rrule: String?, scheduleLabel: String)
     case meal(title: String, date: String?, mealType: String, whenLabel: String)
     case list(itemName: String, listName: String?, quantity: String?)
+    case countdown(title: String, date: String, emoji: String?, whenLabel: String)
+    case person(name: String, memberType: String, avatarEmoji: String?, birthday: String?, isAdmin: Bool)
+    case goal(title: String, goalType: String, targetValue: Double?, unit: String?, deadline: String?, trackingMode: String, audience: String?)
+    case pantry(name: String, amount: String?, unit: String?, location: String, expiresOn: String?, lowAt: Double?)
+    case reward(title: String, emoji: String?, cost: Int?, currency: String?, category: String?, requiresApproval: Bool?)
 }
 
 extension CaptureIntent: Decodable {
     private enum K: String, CodingKey {
         case kind, title, startsAt, allDay, personName, whenLabel
         case name, quantity, stars, rrule, scheduleLabel, date, mealType
-        case itemName, listName
+        case itemName, listName, emoji
+        case memberType, avatarEmoji, birthday, isAdmin
+        case goalType, targetValue, unit, deadline, trackingMode, audience
+        case amount, location, expiresOn, lowAt
+        case cost, currency, category, requiresApproval
     }
 
     init(from decoder: Decoder) throws {
@@ -58,6 +67,49 @@ extension CaptureIntent: Decodable {
                 listName: try c.decodeIfPresent(String.self, forKey: .listName),
                 quantity: try c.decodeIfPresent(String.self, forKey: .quantity)
             )
+        case "countdown":
+            self = .countdown(
+                title: try c.decode(String.self, forKey: .title),
+                date: try c.decode(String.self, forKey: .date),
+                emoji: try c.decodeIfPresent(String.self, forKey: .emoji),
+                whenLabel: (try? c.decode(String.self, forKey: .whenLabel)) ?? ""
+            )
+        case "person":
+            self = .person(
+                name: try c.decode(String.self, forKey: .name),
+                memberType: (try? c.decode(String.self, forKey: .memberType)) ?? "adult",
+                avatarEmoji: try c.decodeIfPresent(String.self, forKey: .avatarEmoji),
+                birthday: try c.decodeIfPresent(String.self, forKey: .birthday),
+                isAdmin: (try? c.decode(Bool.self, forKey: .isAdmin)) ?? false
+            )
+        case "goal":
+            self = .goal(
+                title: try c.decode(String.self, forKey: .title),
+                goalType: (try? c.decode(String.self, forKey: .goalType)) ?? "habit",
+                targetValue: try? c.decode(Double.self, forKey: .targetValue),
+                unit: try c.decodeIfPresent(String.self, forKey: .unit),
+                deadline: try c.decodeIfPresent(String.self, forKey: .deadline),
+                trackingMode: (try? c.decode(String.self, forKey: .trackingMode)) ?? "shared_total",
+                audience: try c.decodeIfPresent(String.self, forKey: .audience)
+            )
+        case "pantry":
+            self = .pantry(
+                name: try c.decode(String.self, forKey: .name),
+                amount: try c.decodeIfPresent(String.self, forKey: .amount),
+                unit: try c.decodeIfPresent(String.self, forKey: .unit),
+                location: (try? c.decode(String.self, forKey: .location)) ?? "Pantry",
+                expiresOn: try c.decodeIfPresent(String.self, forKey: .expiresOn),
+                lowAt: try? c.decode(Double.self, forKey: .lowAt)
+            )
+        case "reward":
+            self = .reward(
+                title: try c.decode(String.self, forKey: .title),
+                emoji: try c.decodeIfPresent(String.self, forKey: .emoji),
+                cost: try? c.decode(Int.self, forKey: .cost),
+                currency: try c.decodeIfPresent(String.self, forKey: .currency),
+                category: try c.decodeIfPresent(String.self, forKey: .category),
+                requiresApproval: try? c.decode(Bool.self, forKey: .requiresApproval)
+            )
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c,
                 debugDescription: "Unknown intent kind: \(other)")
@@ -92,6 +144,29 @@ struct CaptureSummary {
             icon = "📝"; kind = "List"
             primary = [quantity, itemName].compactMap { $0 }.joined(separator: " ")
             detail = listName.map { "Adds to \($0)" } ?? "Adds to a list"
+        case let .countdown(title, _, _, whenLabel):
+            icon = "⏳"; kind = "Countdown"; primary = title; detail = whenLabel
+        case let .person(name, memberType, avatarEmoji, _, _):
+            icon = avatarEmoji ?? "👤"; kind = "Family member"; primary = name
+            detail = memberType == "kid" ? "Kid" : (memberType == "teen" ? "Teen" : "Adult")
+        case let .goal(title, goalType, targetValue, unit, deadline, _, _):
+            icon = "🎯"; kind = "Goal"; primary = title
+            let typeLabel = goalType == "count" ? "Count" : (goalType == "total" ? "Total" : (goalType == "checklist" ? "Checklist" : "Habit"))
+            let target = targetValue.map { tv -> String in
+                let n = tv == tv.rounded() ? String(Int(tv)) : String(tv)
+                return unit.map { "\(n) \($0)" } ?? n
+            }
+            detail = [typeLabel, target, deadline.map { "by \($0)" }]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        case let .pantry(name, amount, unit, location, expiresOn, _):
+            icon = "🥫"; kind = "Pantry"
+            primary = [amount, unit, name].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+            detail = ["Adds to \(location)", expiresOn.map { "expires \($0)" }]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        case let .reward(title, emoji, cost, _, _, requiresApproval):
+            icon = emoji ?? "🎁"; kind = "Reward"; primary = title
+            detail = ["Adds to the reward shop", cost.map { "\($0)★" }, requiresApproval == true ? "needs approval" : nil]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         }
     }
 }

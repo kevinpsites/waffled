@@ -226,7 +226,12 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
-| Natural-language capture → event / task / grocery / meal | ✅ | ✅ | ✅ | ✅ Done |
+| Natural-language capture → event / task / grocery / meal / list | ✅ | ✅ | ✅ | ✅ Done |
+| Capture a **countdown** ("12 days until Disney", "countdown for the beach party on Aug 25", "countdown for Thanksgiving") | ✅ | ✅ | ✅ | ✅ Done (always-on; resolves the target day — incl. holidays by name — editable in the preview; any detected emoji is carried through) |
+| Capture a **family member** ("add my son Max", "add a family member named Robin") | ✅ | ✅ | ✅ | ✅ Done (admin-only; infers adult / teen / kid, editable in the preview; non-admins get a friendly "ask an adult" note) |
+| Capture a **goal** ("set a goal to read 20 books this year", "I want to get in shape") | ✅ | ✅ | ✅ | ✅ Done (infers count / total / habit / checklist + target, unit, deadline — all editable; gated on the Goals module) |
+| Capture a **pantry item** ("add milk to the pantry", "put 2 cans of beans in the fridge") | ✅ | ✅ | ✅ | ✅ Done (distinguished from grocery by an explicit pantry / fridge / freezer target; offered only when the Pantry module is on) |
+| Capture a **reward** ("add a reward: ice cream night for 50 stars") | ✅ | ✅ | ✅ | ✅ Done (parses the star/point cost, editable; needs Rewards enabled **and** the `reward.manage` capability — kids see "ask a parent") |
 | Capture parses **event recurrence** + edit Repeats/Ends in the preview | ✅ | ✅ | ✅ | ✅ Done ("lunch every Thursday for a month" → RRULE) |
 | **Pluggable provider** (Anthropic / OpenAI-compatible / Ollama), per household | ✅ | ✅ | ✅ | ✅ Done |
 | Instant on-device parse, then **upgrade to LLM** with a provider tag | ✅ | ✅ | ✅ | ✅ Done (instant guess + "improving…"; **pick** the other take on a kind-disagreement; **recurrence backfill** when a weak LLM drops it) |

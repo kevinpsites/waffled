@@ -30,6 +30,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   base one, so a deployment can add published ports or mounts without editing tracked files. It's
   explicit opt-in only (nothing auto-loads), and is used by the Oracle Cloud deploy.
 
+- **Quick-add now understands countdowns.** Type something like "12 days until Disney",
+  "Disney in 12 days", "countdown for the beach party on August 25", or even
+  "countdown for Thanksgiving" into the "Add anything" bar and Waffled creates a countdown
+  to that day — it recognizes holidays by name (Thanksgiving, Christmas, Easter, the Fourth
+  of July, and more) and resolves them to their next date. Always on, with the target date
+  editable in the confirm-and-edit preview (any emoji it detects is carried through to the
+  countdown), on web, iPhone, and iPad.
+- **Quick-add can add a family member.** Type something like "add my son Max", "add my wife
+  Sara", or "add a family member named Robin" into the "Add anything" bar and Waffled sets up
+  their profile — inferring whether they're an adult, teen, or kid, all editable in the
+  confirm-and-edit preview before it's created (on web, iPhone, and iPad). Adding members is
+  an adult-only action, so a kid or teen sees a friendly "Only an adult can add family members"
+  note instead.
+- **Quick-add can set a goal.** Type something like "set a personal goal to run 10 miles by
+  september", "set a new goal to read 20 books", "I want to get in shape", or "my goal is to
+  save $500" into the "Add anything" bar and Waffled starts the goal for you — it understands
+  everyday phrasings (a "personal"/"new"/"weekly" goal reads the same as a plain one) and, even
+  with no AI configured, pulls out the number, the unit, and a deadline ("10 miles" by the end
+  of September) on its own. It figures out whether the goal is a simple habit, a countable
+  target (20 books), or an accumulating total, and lets you fine-tune the type, target, unit,
+  deadline, and who it's for — just you, everyone, or specific people — in the confirm-and-edit
+  preview before it's created (on web, iPhone, and iPad). It even reads the wording to preselect
+  who the goal is for — a "family" or "shared" goal starts for everyone, a "personal" one just
+  for you — and on the web, "Just me" and your own name now stay in sync as the same person. If
+  a household has turned the Goals module off, quick-add says so instead of failing.
+- **Quick-add can stock the pantry.** Type something like "add milk to the pantry", "put 2 cans
+  of beans in the pantry", or "we have milk in the fridge" into the "Add anything" bar and Waffled
+  logs it as an item you already have on hand — pulling out the amount, unit, and where it's stored
+  (Pantry, Fridge, or Freezer), all editable (along with an expiry date and low-stock threshold) in
+  the confirm-and-edit preview before it's saved (on web, iPhone, and iPad). This is kept separate
+  from groceries: something to buy ("add milk", "add milk to the shopping list") still goes on the
+  shopping list, and only an explicit pantry/fridge/freezer destination stocks the pantry. Because
+  the Pantry module is off by default, quick-add offers this only when a household has turned it on.
+- **Quick-add can add a reward.** Type something like "add a reward: ice cream night for 50 stars"
+  or "new reward extra screen time costs 100 points" into the "Add anything" bar and Waffled adds it
+  to the reward shop — pulling out the star/point cost, with the name, cost, emoji, and whether it
+  needs a parent's approval all editable in the confirm-and-edit preview before it's saved (on web,
+  iPhone, and iPad). Because rewards are the "spend" side of the chores economy, quick-add offers this
+  only when rewards are turned on and to grown-ups who manage rewards — otherwise it says so (a kid
+  sees "Ask a parent to add a reward") instead of failing.
+
 ### Changed
 
 ### Fixed

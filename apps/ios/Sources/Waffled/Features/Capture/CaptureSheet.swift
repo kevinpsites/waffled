@@ -35,6 +35,28 @@ struct CaptureSheet: View {
     @State private var evUntil = Date()
     @State private var mealSlot = "dinner"
     @State private var mealDate = Date()
+    @State private var cdDate = Date()                       // countdown target day
+    @State private var cdEmoji: String?                       // server-parsed countdown emoji (carried through)
+    @State private var personType = "adult"                   // person member type (adult|teen|kid)
+    @State private var personEmoji: String?                   // LLM-picked avatar emoji (carried through)
+    @State private var personBirthday: String?               // LLM-picked birthday YYYY-MM-DD (carried through)
+    @State private var personIsAdmin = false                 // LLM-picked admin flag (carried through)
+    @State private var goalType = "habit"                     // goal type (count|total|habit|checklist)
+    @State private var goalTarget = ""                        // numeric target (count/total), as text
+    @State private var goalUnit = ""                          // target unit (count/total)
+    @State private var goalDeadlineOn = false                 // whether the goal has a deadline
+    @State private var goalDeadline = Date()                  // the deadline day
+    @State private var goalTrackingMode = "shared_total"      // LLM-picked tracking mode (carried through)
+    @State private var goalAssignEveryone = false             // who's it for: false = just me, true = everyone
+    @State private var pantryAmount = ""                      // pantry amount on hand (as text)
+    @State private var pantryUnit = ""                        // pantry amount's unit
+    @State private var pantryLocation = "Pantry"              // where it's stored (Pantry/Fridge/Freezer)
+    @State private var pantryExpiresOn = false                // whether an expiry date is set
+    @State private var pantryExpires = Date()                 // the expiry day
+    @State private var pantryLowAt: Double?                    // server-parsed "running low" threshold (carried through)
+    @State private var rewardEmoji = ""                       // reward avatar emoji
+    @State private var rewardCost = ""                        // reward star/point cost (as text)
+    @State private var rewardRequiresApproval: Bool?          // nil = inherit household default
     @State private var lists: [WaffledAPI.ListSummary] = []   // for the list picker
     @State private var editing = false                     // glance → full field editor
     @FocusState private var focused: Bool
@@ -42,7 +64,9 @@ struct CaptureSheet: View {
 
     private static let kinds: [(key: String, icon: String, label: String)] = [
         ("event", "📅", "Event"), ("list", "📝", "List"), ("grocery", "🛒", "Grocery"),
-        ("task", "✅", "Task"), ("meal", "🍽️", "Meal"),
+        ("task", "✅", "Task"), ("meal", "🍽️", "Meal"), ("countdown", "⏳", "Countdown"),
+        ("person", "👤", "Family member"), ("goal", "🎯", "Goal"), ("pantry", "🥫", "Pantry"),
+        ("reward", "🎁", "Reward"),
     ]
 
     // ISO8601DateFormatter is expensive to allocate; hoist the two distinct configs
@@ -104,6 +128,11 @@ struct CaptureSheet: View {
         editing = false; editKind = "event"; editName = ""; editQty = ""
         evRepeat = .none; evUntilOn = false; evPerson = nil
         taskStars = 0; taskRrule = nil
+        personType = "adult"; personEmoji = nil; personBirthday = nil; personIsAdmin = false
+        goalType = "habit"; goalTarget = ""; goalUnit = ""; goalDeadlineOn = false; goalTrackingMode = "shared_total"; goalAssignEveryone = false
+        cdEmoji = nil
+        pantryAmount = ""; pantryUnit = ""; pantryLocation = "Pantry"; pantryExpiresOn = false; pantryLowAt = nil
+        rewardEmoji = ""; rewardCost = ""; rewardRequiresApproval = nil
         detent = .large
     }
 
@@ -273,6 +302,11 @@ struct CaptureSheet: View {
         case let .task(t, _, _, _, _): return ("Task", t)
         case let .meal(t, _, _, _): return ("Meal", t)
         case let .list(item, _, _): return ("List", item)
+        case let .countdown(t, _, _, _): return ("Countdown", t)
+        case let .person(n, _, _, _, _): return ("Family member", n)
+        case let .goal(t, _, _, _, _, _, _): return ("Goal", t)
+        case let .pantry(n, _, _, _, _, _): return ("Pantry", n)
+        case let .reward(t, _, _, _, _, _): return ("Reward", t)
         }
     }
 
@@ -309,6 +343,23 @@ struct CaptureSheet: View {
             return editListName.isEmpty ? "Adds to a list" : "Adds to \(editListName)"
         case "meal":
             return "\(mealSlot.capitalized) · \(DateFmt.string(mealDate, "EEE, MMM d", sync.householdTz))"
+        case "countdown":
+            return DateFmt.string(cdDate, "EEE, MMM d", sync.householdTz)
+        case "person":
+            return personType == "kid" ? "Kid" : (personType == "teen" ? "Teen" : "Adult")
+        case "goal":
+            let typeLabel = goalType == "count" ? "Count" : (goalType == "total" ? "Total" : (goalType == "checklist" ? "Checklist" : "Habit"))
+            let measured = goalType == "count" || goalType == "total"
+            let target = measured && !goalTarget.isEmpty ? [goalTarget, goalUnit].filter { !$0.isEmpty }.joined(separator: " ") : ""
+            let by = goalDeadlineOn ? "by " + DateFmt.string(goalDeadline, "MMM d", sync.householdTz) : ""
+            return [typeLabel, target, by].filter { !$0.isEmpty }.joined(separator: " · ")
+        case "pantry":
+            let expires = pantryExpiresOn ? "expires " + DateFmt.string(pantryExpires, "MMM d", sync.householdTz) : ""
+            return ["Adds to \(pantryLocation)", expires].filter { !$0.isEmpty }.joined(separator: " · ")
+        case "reward":
+            let cost = rewardCost.trimmingCharacters(in: .whitespaces)
+            let approval = rewardRequiresApproval == true ? "needs approval" : ""
+            return ["Adds to the reward shop", cost.isEmpty ? "" : "\(cost)★", approval].filter { !$0.isEmpty }.joined(separator: " · ")
         default: return ""
         }
     }
@@ -369,8 +420,135 @@ struct CaptureSheet: View {
                 }
             }
             HStack { DatePicker("", selection: $mealDate, displayedComponents: .date).labelsHidden(); Spacer(minLength: 0) }
+        case "countdown":
+            HStack { DatePicker("", selection: $cdDate, displayedComponents: .date).labelsHidden(); Spacer(minLength: 0) }
+        case "person":
+            ChipFlow(spacing: 8, lineSpacing: 8) {
+                ForEach([("adult", "Adult"), ("teen", "Teen"), ("kid", "Kid")], id: \.0) { key, label in
+                    selectChip(label, on: personType == key) { personType = key }
+                }
+            }
+            if personBlocked {
+                Text("Only an adult can add family members.")
+                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.primaryD)
+            }
+        case "goal":
+            ChipFlow(spacing: 8, lineSpacing: 8) {
+                ForEach([("count", "Count"), ("total", "Total"), ("habit", "Habit"), ("checklist", "Checklist")], id: \.0) { key, label in
+                    selectChip(label, on: goalType == key) { goalType = key }
+                }
+            }
+            if goalType == "count" || goalType == "total" {
+                HStack(spacing: 8) {
+                    TextField("target", text: $goalTarget)
+                        .keyboardType(.numberPad)
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(maxWidth: 96)
+                        .padding(.horizontal, 12).padding(.vertical, 10).innerInput()
+                    TextField("unit (e.g. books)", text: $goalUnit)
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 10).innerInput()
+                }
+            }
+            HStack(spacing: 8) {
+                toggleChip("By a date", on: goalDeadlineOn) { goalDeadlineOn.toggle() }
+                if goalDeadlineOn {
+                    DatePicker("", selection: $goalDeadline, displayedComponents: .date).labelsHidden()
+                }
+                Spacer(minLength: 0)
+            }
+            // Who's it for — a simple Just me (personal) vs Everyone (shared) choice,
+            // resolved to participantIds on commit (web offers the richer per-person picker).
+            // A viewer without `goal.manage` (kids) can only make a just-me goal — POST
+            // /api/goals rejects others — so we don't offer Everyone.
+            ChipFlow(spacing: 8, lineSpacing: 8) {
+                selectChip("🙋 Just me", on: !goalAssignEveryone) { goalAssignEveryone = false }
+                if sync.can("goal.manage") {
+                    selectChip("👨‍👩‍👧 Everyone", on: goalAssignEveryone) { goalAssignEveryone = true }
+                }
+            }
+            if goalBlocked {
+                Text("Goals is turned off. Turn it on in Settings → Modules.")
+                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.primaryD)
+            }
+        case "pantry":
+            HStack(spacing: 8) {
+                TextField("amount", text: $pantryAmount)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(maxWidth: 96)
+                    .padding(.horizontal, 12).padding(.vertical, 10).innerInput()
+                TextField("unit (e.g. cans)", text: $pantryUnit)
+                    .font(.system(size: 14, weight: .semibold))
+                    .padding(.horizontal, 12).padding(.vertical, 10).innerInput()
+            }
+            ChipFlow(spacing: 8, lineSpacing: 8) {
+                ForEach(pantryLocations, id: \.self) { loc in
+                    selectChip(loc, on: pantryLocation == loc) { pantryLocation = loc }
+                }
+            }
+            HStack(spacing: 8) {
+                toggleChip("Expires", on: pantryExpiresOn) { pantryExpiresOn.toggle() }
+                if pantryExpiresOn {
+                    DatePicker("", selection: $pantryExpires, displayedComponents: .date).labelsHidden()
+                }
+                Spacer(minLength: 0)
+            }
+            if pantryBlocked {
+                Text("The Pantry module is turned off. Turn it on in Settings → Modules.")
+                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.primaryD)
+            }
+        case "reward":
+            HStack(spacing: 8) {
+                TextField("emoji", text: $rewardEmoji)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(maxWidth: 72)
+                    .padding(.horizontal, 12).padding(.vertical, 10).innerInput()
+                TextField("cost (stars)", text: $rewardCost)
+                    .keyboardType(.numberPad)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(maxWidth: 120)
+                    .padding(.horizontal, 12).padding(.vertical, 10).innerInput()
+                Spacer(minLength: 0)
+            }
+            toggleChip("Needs approval", on: rewardRequiresApproval == true) {
+                rewardRequiresApproval = (rewardRequiresApproval == true) ? false : true
+            }
+            if rewardBlocked {
+                Text(rewardBlockedReason)
+                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.primaryD)
+            }
         default: EmptyView()
         }
+    }
+
+    /// Location chips for the pantry editor — the common three, plus the current value
+    /// if the parse produced a household-custom one (so it stays selectable).
+    private var pantryLocations: [String] {
+        var locs = ["Pantry", "Fridge", "Freezer"]
+        if !pantryLocation.isEmpty, !locs.contains(pantryLocation) { locs.append(pantryLocation) }
+        return locs
+    }
+
+    /// The `person` create is admin-only (adminRoute). A non-admin sees a reason and
+    /// can't commit — the graceful analogue of the web's "unsupported" degrade.
+    private var personBlocked: Bool { editKind == "person" && sync.currentPerson?.isAdmin != true }
+
+    /// The `goal` create is gated on the Goals module (default on). When off, the viewer
+    /// sees a reason and can't commit — the graceful analogue of the web's degrade.
+    private var goalBlocked: Bool { editKind == "goal" && !sync.module(.goals) }
+
+    /// The `pantry` module defaults OFF, so a pantry create is SUPPRESSED unless the
+    /// module is enabled — the viewer sees a reason and can't commit (the graceful
+    /// analogue of the web's suppress-when-off degrade), and we never POST.
+    private var pantryBlocked: Bool { editKind == "pantry" && !sync.module(.pantry) }
+
+    /// The `reward` create has TWO gates, both of which must hold: rewards must be on
+    /// (chores module + the rewards sub-toggle) AND the viewer must hold `reward.manage`
+    /// (kids don't). Either failing suppresses the commit — the graceful analogue of the
+    /// web's degrade — and we never POST.
+    private var rewardBlocked: Bool { editKind == "reward" && (!sync.rewardsOn || !sync.can("reward.manage")) }
+    private var rewardBlockedReason: String {
+        !sync.rewardsOn ? "Rewards are turned off." : "Ask a parent to add a reward."
     }
 
     // MARK: field pieces
@@ -533,6 +711,11 @@ struct CaptureSheet: View {
         case "event": return "Event title"
         case "task": return "Chore title"
         case "meal": return "Meal"
+        case "countdown": return "Countdown title"
+        case "person": return "Name"
+        case "goal": return "Goal"
+        case "pantry": return "Item"
+        case "reward": return "Reward"
         default: return "Item"
         }
     }
@@ -544,11 +727,18 @@ struct CaptureSheet: View {
         case "grocery": return "Add to groceries"
         case "list": return "Add to list"
         case "meal": return "Add meal"
+        case "countdown": return "Add countdown"
+        case "person": return "Add family member"
+        case "goal": return "Add goal"
+        case "pantry": return "Add to pantry"
+        case "reward": return "Add reward"
         default: return "Add"
         }
     }
     private var canCommit: Bool {
-        !editName.trimmingCharacters(in: .whitespaces).isEmpty && (editKind != "list" || !editListName.trimmingCharacters(in: .whitespaces).isEmpty)
+        !editName.trimmingCharacters(in: .whitespaces).isEmpty
+            && (editKind != "list" || !editListName.trimmingCharacters(in: .whitespaces).isEmpty)
+            && !personBlocked && !goalBlocked && !pantryBlocked && !rewardBlocked
     }
     private var viaLabel: String {
         switch via {
@@ -619,7 +809,9 @@ struct CaptureSheet: View {
     private func kindOf(_ i: CaptureIntent) -> String {
         switch i {
         case .event: return "event"; case .grocery: return "grocery"; case .task: return "task"
-        case .meal: return "meal"; case .list: return "list"
+        case .meal: return "meal"; case .list: return "list"; case .countdown: return "countdown"
+        case .person: return "person"; case .goal: return "goal"; case .pantry: return "pantry"
+        case .reward: return "reward"
         }
     }
 
@@ -657,6 +849,45 @@ struct CaptureSheet: View {
         case let .list(itemName, listName, quantity):
             editKind = "list"; editName = itemName; editQty = quantity ?? ""
             editListName = listName ?? (lists.first { $0.listType.lowercased() != "grocery" }?.name ?? "")
+        case let .countdown(title, d, emoji, _):
+            // Parse the day in the HOUSEHOLD tz (matching commit) so a device in another
+            // zone doesn't shift it. Carry the server-parsed emoji through commit.
+            editKind = "countdown"; editName = title; cdEmoji = emoji
+            cdDate = DateFmt.date(d, "yyyy-MM-dd", sync.householdTz) ?? Date()
+        case let .person(name, memberType, avatarEmoji, birthday, isAdmin):
+            editKind = "person"; editName = name; personType = memberType
+            personEmoji = avatarEmoji; personBirthday = birthday; personIsAdmin = isAdmin
+        case let .goal(title, gType, targetValue, unit, deadline, trackingMode, audience):
+            editKind = "goal"; editName = title; goalType = gType
+            goalTrackingMode = trackingMode
+            // Seed the who's-it-for toggle from the inferred audience: everyone → shared,
+            // me/nil → just me (mirrors the web GoalWho seeding). A viewer without
+            // `goal.manage` (kids) can only make a just-me goal, so clamp to that.
+            goalAssignEveryone = audience == "everyone" && sync.can("goal.manage")
+            goalUnit = unit ?? ""
+            goalTarget = targetValue.map { $0 == $0.rounded() ? String(Int($0)) : String($0) } ?? ""
+            // Parse the deadline in the HOUSEHOLD tz (matching commit) so it doesn't shift.
+            if let deadline, let d = DateFmt.date(deadline, "yyyy-MM-dd", sync.householdTz) {
+                goalDeadlineOn = true; goalDeadline = d
+            } else {
+                goalDeadlineOn = false
+            }
+        case let .pantry(name, amount, unit, location, expiresOn, lowAt):
+            editKind = "pantry"; editName = name
+            pantryAmount = amount ?? ""; pantryUnit = unit ?? ""
+            pantryLocation = location.isEmpty ? "Pantry" : location
+            pantryLowAt = lowAt   // carried through to commit (no editor field yet)
+            // Parse the expiry in the HOUSEHOLD tz (matching commit) so it doesn't shift.
+            if let expiresOn, let d = DateFmt.date(expiresOn, "yyyy-MM-dd", sync.householdTz) {
+                pantryExpiresOn = true; pantryExpires = d
+            } else {
+                pantryExpiresOn = false
+            }
+        case let .reward(title, emoji, cost, _, _, requiresApproval):
+            editKind = "reward"; editName = title
+            rewardEmoji = emoji ?? ""
+            rewardCost = cost.map(String.init) ?? ""
+            rewardRequiresApproval = requiresApproval
         }
     }
 
@@ -689,6 +920,62 @@ struct CaptureSheet: View {
                 ok = await sync.commitMeal(title: name, date: d, mealType: mealSlot)
             case "list":
                 ok = await sync.commitListItem(item: name, listName: editListName, quantity: qty)
+            case "countdown":
+                let d = DateFmt.string(cdDate, "yyyy-MM-dd", sync.householdTz)
+                ok = await sync.commitCountdown(title: name, date: d, emoji: cdEmoji)
+            case "person":
+                // Admin-only create — refuse gracefully rather than POSTing a 403.
+                guard sync.currentPerson?.isAdmin == true else {
+                    error = "Only an adult can add family members."; phase = .preview; return
+                }
+                ok = await sync.commitPerson(name: name, memberType: personType,
+                                             avatarEmoji: personEmoji, birthday: personBirthday, isAdmin: personIsAdmin)
+            case "goal":
+                // Module-gated — refuse gracefully rather than POSTing when Goals is off.
+                guard sync.module(.goals) else {
+                    error = "Goals is turned off. Turn it on in Settings → Modules."; phase = .preview; return
+                }
+                // count/total carry a numeric target + unit; habit/checklist don't. Downgrade
+                // a count/total with no real number to a habit (mirrors the server).
+                let measured = goalType == "count" || goalType == "total"
+                let target = measured ? Double(goalTarget.trimmingCharacters(in: .whitespaces)) : nil
+                let type = measured && target == nil ? "habit" : goalType
+                let unit = (measured && !goalUnit.trimmingCharacters(in: .whitespaces).isEmpty) ? goalUnit.trimmingCharacters(in: .whitespaces) : nil
+                let deadline = goalDeadlineOn ? DateFmt.string(goalDeadline, "yyyy-MM-dd", sync.householdTz) : nil
+                // Just me → the current viewer; Everyone → all household members. A viewer
+                // without `goal.manage` (kids) may only assign themselves — POST /api/goals
+                // 403s if a non-manager includes other participants — so clamp to just-me.
+                let everyone = goalAssignEveryone && sync.can("goal.manage")
+                let participantIds = everyone
+                    ? sync.members.map(\.id)
+                    : (sync.currentPersonId.map { [$0] } ?? [])
+                ok = await sync.commitGoal(title: name, goalType: type, trackingMode: goalTrackingMode,
+                                           targetValue: type == "habit" || type == "checklist" ? nil : target,
+                                           unit: type == "habit" || type == "checklist" ? nil : unit, deadline: deadline,
+                                           participantIds: participantIds)
+            case "pantry":
+                // Pantry defaults OFF — suppress the commit entirely rather than POSTing
+                // when the module is disabled (mirrors the web suppress-when-off gate).
+                guard sync.module(.pantry) else {
+                    error = "The Pantry module is turned off. Turn it on in Settings → Modules."; phase = .preview; return
+                }
+                let amount = pantryAmount.trimmingCharacters(in: .whitespaces)
+                let unit = pantryUnit.trimmingCharacters(in: .whitespaces)
+                let expiresOn = pantryExpiresOn ? DateFmt.string(pantryExpires, "yyyy-MM-dd", sync.householdTz) : nil
+                ok = await sync.commitPantry(name: name, amount: amount.isEmpty ? nil : amount,
+                                             unit: unit.isEmpty ? nil : unit,
+                                             location: pantryLocation.isEmpty ? "Pantry" : pantryLocation,
+                                             expiresOn: expiresOn, lowAt: pantryLowAt)
+            case "reward":
+                // TWO gates — refuse gracefully rather than POSTing when rewards are off or
+                // the viewer can't manage rewards (mirrors the web suppress-when-blocked gate).
+                guard sync.rewardsOn, sync.can("reward.manage") else {
+                    error = rewardBlockedReason; phase = .preview; return
+                }
+                let emoji = rewardEmoji.trimmingCharacters(in: .whitespaces)
+                let cost = Int(rewardCost.trimmingCharacters(in: .whitespaces))
+                ok = await sync.commitReward(title: name, emoji: emoji.isEmpty ? nil : emoji,
+                                             cost: cost.map { max(0, $0) }, requiresApproval: rewardRequiresApproval)
             default:
                 ok = false
             }
