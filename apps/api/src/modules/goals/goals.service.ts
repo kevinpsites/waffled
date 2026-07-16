@@ -34,6 +34,7 @@ export const HABIT_PERIODS = new Set(['day', 'week', 'month'])
 // through unchanged — no counting rule cares whether the daily total is whole or fractional.
 export const HEALTH_METRICS = new Set([
   'steps', 'flights', 'exercise_minutes', 'active_energy', 'walk_run_distance',
+  'cycling_distance', 'swimming_distance', 'wheelchair_distance',
   'move_ring', 'exercise_ring', 'stand_ring', 'rings_all', 'mindful_minutes', 'mood',
 ])
 

@@ -84,7 +84,7 @@ targets:
         # WRITE to Health at runtime — but App Store static analysis (ITMS-90683) requires
         # BOTH purpose strings the moment the HealthKit entitlement is present, regardless
         # of whether the write APIs are ever called, so we must ship the Update string too.
-        NSHealthShareUsageDescription: Waffled reads your step, flight, exercise, energy, and walking + running distance totals from Apple Health so a goal can fill in its own progress.
+        NSHealthShareUsageDescription: Waffled reads your step, flight, exercise, energy, and distance totals (walking, cycling, swimming, wheelchair) from Apple Health so a goal can fill in its own progress.
         NSHealthUpdateUsageDescription: Waffled does not write any data to Apple Health; this access is not used.
         # Dev only: allow plain-HTTP to localhost/the tailnet (no TLS in local stack).
         NSAppTransportSecurity:

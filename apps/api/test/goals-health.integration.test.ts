@@ -195,6 +195,28 @@ describe('goals — /health-sync counting (fractional distance, Tier 1)', () => 
   })
 })
 
+describe('goals — activity-specific distance metrics (Tier 2, slice 1)', () => {
+  // Cycling / swimming / wheelchair distance ride the exact fractional path walk/run
+  // distance proved out — the server only needs to accept the keys.
+  it.each(['cycling_distance', 'swimming_distance', 'wheelchair_distance'])(
+    'accepts %s on create and syncs fractional totals',
+    async (metric) => {
+      const id = await createGoal({
+        title: `Distance via ${metric}`, goalType: 'total', unit: 'mi', targetValue: 50,
+        healthMetric: metric,
+      })
+      expect((await getGoal(id)).healthMetric).toBe(metric)
+
+      expect((await sync(id, '2026-07-08', 6.3, metric)).statusCode).toBe(200)
+      expect((await getGoal(id)).totalProgress).toBeCloseTo(6.3, 5)
+      // Same-day re-sync replaces in place; a new day accumulates.
+      expect((await sync(id, '2026-07-08', 7.1, metric)).statusCode).toBe(200)
+      expect((await sync(id, '2026-07-09', 2.4, metric)).statusCode).toBe(200)
+      expect((await getGoal(id)).totalProgress).toBeCloseTo(9.5, 5)
+    }
+  )
+})
+
 describe('goals — /health-sync counting (habit daily threshold)', () => {
   it('counts one completion only when the day clears the threshold, and undoes a day that later falls short', async () => {
     const id = await createGoal({

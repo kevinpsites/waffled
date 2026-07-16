@@ -11,6 +11,7 @@ import Testing
     /// Must equal apps/api/src/modules/goals/goals.service.ts `HEALTH_METRICS`.
     static let apiKeys: Set<String> = [
         "steps", "flights", "exercise_minutes", "active_energy", "walk_run_distance",
+        "cycling_distance", "swimming_distance", "wheelchair_distance",
         "move_ring", "exercise_ring", "stand_ring", "rings_all", "mindful_minutes", "mood",
     ]
 
@@ -52,14 +53,31 @@ import Testing
         }
     }
 
-    // Walk + run distance (Tier 1) is a fractional *quantity* metric — it must behave like
-    // steps (numeric + habit, never boolean) so it rides the existing cumulative-sum path.
-    @Test func walkRunDistanceIsAQuantityMetric() {
-        let d = HealthKitBridge.Metric.walkRunDistance
-        #expect(!d.isBoolean)
-        #expect(d.applies(toGoalType: "total"))
-        #expect(d.applies(toGoalType: "habit"))
-        #expect(d.quantityType != nil)   // reads via a cumulative-sum HKQuantityType
+    /// All four distance metrics — walk+run (Tier 1) plus cycling / swimming / wheelchair
+    /// (Tier 2 slice 1). They ride the same fractional cumulative-sum path.
+    static let distanceMetrics: [HealthKitBridge.Metric] = [
+        .walkRunDistance, .cyclingDistance, .swimmingDistance, .wheelchairDistance,
+    ]
+
+    // Distance metrics are fractional *quantity* metrics — they must behave like steps
+    // (numeric + habit, never boolean) so they ride the existing cumulative-sum path.
+    @Test func distanceMetricsAreQuantityMetrics() {
+        for d in Self.distanceMetrics {
+            #expect(!d.isBoolean)
+            #expect(d.applies(toGoalType: "total"))
+            #expect(d.applies(toGoalType: "habit"))
+            #expect(d.quantityType != nil)   // reads via a cumulative-sum HKQuantityType
+        }
+    }
+
+    // Every distance metric shares the locale-aware km/mi unit + label, so the stored
+    // number always matches the word shown next to it.
+    @Test func distanceMetricsShareTheLocaleAwareUnit() {
+        let expected = HealthKitBridge.Metric.walkRunDistance.quantityUnit
+        for d in Self.distanceMetrics {
+            #expect(d.quantityUnit == expected)
+            #expect(d.label == HealthKitBridge.Metric.walkRunDistance.label)
+        }
     }
 
     // Units follow the device's measurement system: metric locales read/label kilometers,
@@ -72,7 +90,8 @@ import Testing
     // "3.2 mi today" — distance is fractional, so it must NOT truncate to an Int the way
     // steps/flights do.
     @Test func distanceFormatsWithOneDecimal() {
-        let s = HealthKitBridge.Metric.walkRunDistance.formatCurrent(3.24)
-        #expect(s.contains("3.2"))
+        for d in Self.distanceMetrics {
+            #expect(d.formatCurrent(3.24).contains("3.2"))
+        }
     }
 }

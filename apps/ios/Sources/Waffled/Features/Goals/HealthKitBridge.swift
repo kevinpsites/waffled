@@ -26,6 +26,7 @@ final class HealthKitBridge {
         // Declaration order drives the editor's chip order — keep the boolean rings
         // grouped together at the end, after the numeric metrics + mindful + mood.
         case steps, flights, exerciseMinutes, activeEnergy, walkRunDistance
+        case cyclingDistance, swimmingDistance, wheelchairDistance
         case mindfulMinutes, mood
         case moveRing, exerciseRing, standRing, ringsAll
 
@@ -38,6 +39,9 @@ final class HealthKitBridge {
             case .exerciseMinutes: return "exercise_minutes"
             case .activeEnergy:    return "active_energy"
             case .walkRunDistance: return "walk_run_distance"
+            case .cyclingDistance: return "cycling_distance"
+            case .swimmingDistance: return "swimming_distance"
+            case .wheelchairDistance: return "wheelchair_distance"
             case .moveRing:        return "move_ring"
             case .exerciseRing:    return "exercise_ring"
             case .standRing:       return "stand_ring"
@@ -93,7 +97,8 @@ final class HealthKitBridge {
         /// map 1:1; rings read the daily activity summary; mood reads State of Mind (iOS 17+).
         var readTypes: Set<HKObjectType> {
             switch self {
-            case .steps, .flights, .exerciseMinutes, .activeEnergy, .walkRunDistance:
+            case .steps, .flights, .exerciseMinutes, .activeEnergy, .walkRunDistance,
+                 .cyclingDistance, .swimmingDistance, .wheelchairDistance:
                 return quantityType.map { [$0] } ?? []
             case .mindfulMinutes:
                 return [HKCategoryType(.mindfulSession)]
@@ -114,6 +119,9 @@ final class HealthKitBridge {
             case .exerciseMinutes: return HKQuantityType(.appleExerciseTime)
             case .activeEnergy:    return HKQuantityType(.activeEnergyBurned)
             case .walkRunDistance: return HKQuantityType(.distanceWalkingRunning)
+            case .cyclingDistance: return HKQuantityType(.distanceCycling)
+            case .swimmingDistance: return HKQuantityType(.distanceSwimming)
+            case .wheelchairDistance: return HKQuantityType(.distanceWheelchair)
             default:               return nil
             }
         }
@@ -126,7 +134,8 @@ final class HealthKitBridge {
             case .steps, .flights: return .count()
             case .exerciseMinutes: return .minute()
             case .activeEnergy:    return .kilocalorie()
-            case .walkRunDistance: return Self.usesMetricDistance ? .meterUnit(with: .kilo) : .mile()
+            case .walkRunDistance, .cyclingDistance, .swimmingDistance, .wheelchairDistance:
+                return Self.usesMetricDistance ? .meterUnit(with: .kilo) : .mile()
             default:               return nil
             }
         }
@@ -150,7 +159,8 @@ final class HealthKitBridge {
             case .flights:         return "flights"
             case .exerciseMinutes: return "min"
             case .activeEnergy:    return "cal"
-            case .walkRunDistance: return Self.distanceLabel(usesMetric: Self.usesMetricDistance)
+            case .walkRunDistance, .cyclingDistance, .swimmingDistance, .wheelchairDistance:
+                return Self.distanceLabel(usesMetric: Self.usesMetricDistance)
             case .mindfulMinutes:  return "min"
             case .moveRing:        return "move ring"
             case .exerciseRing:    return "exercise ring"
@@ -168,6 +178,9 @@ final class HealthKitBridge {
             case .exerciseMinutes: return "Exercise"
             case .activeEnergy:    return "Energy"
             case .walkRunDistance: return "Walk + run"
+            case .cyclingDistance: return "Cycling"
+            case .swimmingDistance: return "Swimming"
+            case .wheelchairDistance: return "Wheelchair"
             case .mindfulMinutes:  return "Mindful"
             case .moveRing:        return "Move ring"
             case .exerciseRing:    return "Exercise ring"
@@ -185,7 +198,10 @@ final class HealthKitBridge {
             case .flights:         return 10
             case .exerciseMinutes: return 30
             case .activeEnergy:    return 500
-            case .walkRunDistance: return Self.distanceTarget(usesMetric: Self.usesMetricDistance)
+            case .walkRunDistance, .cyclingDistance, .wheelchairDistance:
+                return Self.distanceTarget(usesMetric: Self.usesMetricDistance)
+            // A swim mile is a different beast — suggest ~1 km / 1 mi, not a walking 5k.
+            case .swimmingDistance: return 1
             case .mindfulMinutes:  return 10
             case .moveRing, .exerciseRing, .standRing, .ringsAll, .mood: return 1
             }
@@ -200,6 +216,9 @@ final class HealthKitBridge {
             case .exerciseMinutes: return "Apple Watch exercise minutes — the green ring."
             case .activeEnergy:    return "Active calories burned — the Apple Watch move ring."
             case .walkRunDistance: return "Walking & running distance from your iPhone and Apple Watch — includes hikes."
+            case .cyclingDistance: return "Cycling distance from your Apple Watch or cycling workouts."
+            case .swimmingDistance: return "Swimming distance from your Apple Watch swim workouts."
+            case .wheelchairDistance: return "Wheelchair pushes distance from your iPhone and Apple Watch."
             case .mindfulMinutes:  return "Mindful minutes logged in Health or the Mindfulness app."
             case .moveRing:        return "Counts a day when you close your Apple Watch Move ring."
             case .exerciseRing:    return "Counts a day when you close your Apple Watch Exercise ring."
@@ -218,7 +237,8 @@ final class HealthKitBridge {
             case .exerciseMinutes, .mindfulMinutes:  return "\(Int(v)) min today"
             case .activeEnergy:                      return "\(Int(v)) cal today"
             // Distance is fractional — one decimal ("3.2 mi today"), never an Int cast.
-            case .walkRunDistance:                   return String(format: "%.1f %@ today", v, label)
+            case .walkRunDistance, .cyclingDistance, .swimmingDistance, .wheelchairDistance:
+                return String(format: "%.1f %@ today", v, label)
             default:                                 return "\(Int(v)) today"
             }
         }
@@ -304,7 +324,8 @@ final class HealthKitBridge {
     func total(for metric: Metric, on day: Date) async -> Double? {
         guard isAvailable else { return nil }
         switch metric {
-        case .steps, .flights, .exerciseMinutes, .activeEnergy, .walkRunDistance:
+        case .steps, .flights, .exerciseMinutes, .activeEnergy, .walkRunDistance,
+             .cyclingDistance, .swimmingDistance, .wheelchairDistance:
             return await quantitySum(metric, on: day)
         case .mindfulMinutes:
             return await mindfulMinutes(on: day)
