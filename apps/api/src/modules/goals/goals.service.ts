@@ -36,6 +36,10 @@ export const HEALTH_METRICS = new Set([
   'steps', 'flights', 'exercise_minutes', 'active_energy', 'walk_run_distance',
   'cycling_distance', 'swimming_distance', 'wheelchair_distance',
   'move_ring', 'exercise_ring', 'stand_ring', 'rings_all', 'mindful_minutes', 'mood',
+  // Workout-type metrics: the measure (minutes summed vs sessions counted) is baked
+  // into the key so a synced day-value is unambiguous — no workout logic server-side.
+  ...['running', 'cycling', 'swimming', 'yoga', 'strength', 'any'].flatMap((a) =>
+    [`workout_${a}_minutes`, `workout_${a}_sessions`]),
 ])
 
 // ---- goal lists (membership groups) ----------------------------------------

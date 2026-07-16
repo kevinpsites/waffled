@@ -217,6 +217,55 @@ describe('goals — activity-specific distance metrics (Tier 2, slice 1)', () =>
   )
 })
 
+describe('goals — workout-type metrics (Tier 2, slice 2)', () => {
+  // Per-activity workout metrics: the measure is baked into the key (minutes vs
+  // sessions), so the server needs no workout-specific logic — minutes accumulate
+  // like exercise minutes, sessions accumulate like a count, habits threshold.
+  it('accumulates workout minutes on a total goal', async () => {
+    const id = await createGoal({
+      title: 'Yoga hours', goalType: 'total', unit: 'min', targetValue: 1000,
+      healthMetric: 'workout_yoga_minutes',
+    })
+    expect((await sync(id, '2026-07-08', 35, 'workout_yoga_minutes')).statusCode).toBe(200)
+    expect((await sync(id, '2026-07-09', 20, 'workout_yoga_minutes')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(55)
+  })
+
+  it('accumulates workout sessions on a count goal', async () => {
+    const id = await createGoal({
+      title: 'Swim 12 times', goalType: 'count', unit: 'swims', targetValue: 12,
+      healthMetric: 'workout_swimming_sessions',
+    })
+    expect((await sync(id, '2026-07-08', 2, 'workout_swimming_sessions')).statusCode).toBe(200)
+    expect((await sync(id, '2026-07-09', 1, 'workout_swimming_sessions')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(3)
+  })
+
+  it('counts an any-workout habit day only when a session exists', async () => {
+    const id = await createGoal({
+      title: 'Move every day', goalType: 'habit', habitPeriod: 'week', habitTargetPerPeriod: 5,
+      healthMetric: 'workout_any_sessions', healthDailyTarget: 1,
+    })
+    expect((await sync(id, '2026-07-08', 0, 'workout_any_sessions')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(0)
+    expect((await sync(id, '2026-07-08', 1, 'workout_any_sessions')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(1)
+  })
+
+  it('accepts every workout activity × measure key on create', async () => {
+    for (const activity of ['running', 'cycling', 'swimming', 'yoga', 'strength', 'any']) {
+      for (const [measure, goalType, extra] of [
+        ['minutes', 'total', { unit: 'min', targetValue: 100 }],
+        ['sessions', 'count', { unit: 'times', targetValue: 10 }],
+      ] as const) {
+        const metric = `workout_${activity}_${measure}`
+        const id = await createGoal({ title: metric, goalType, healthMetric: metric, ...extra })
+        expect((await getGoal(id)).healthMetric).toBe(metric)
+      }
+    }
+  })
+})
+
 describe('goals — /health-sync counting (habit daily threshold)', () => {
   it('counts one completion only when the day clears the threshold, and undoes a day that later falls short', async () => {
     const id = await createGoal({

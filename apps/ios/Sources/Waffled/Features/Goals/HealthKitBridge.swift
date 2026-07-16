@@ -29,10 +29,66 @@ final class HealthKitBridge {
         case cyclingDistance, swimmingDistance, wheelchairDistance
         case mindfulMinutes, mood
         case moveRing, exerciseRing, standRing, ringsAll
+        // Workout-type metrics (Tier 2): one activity × one measure per case. Unlike the
+        // cumulative quantities above these read HKWorkout samples, and the *measure* is
+        // baked into the key so each key syncs one unambiguous number per day.
+        case workoutRunningMinutes, workoutRunningSessions
+        case workoutCyclingMinutes, workoutCyclingSessions
+        case workoutSwimmingMinutes, workoutSwimmingSessions
+        case workoutYogaMinutes, workoutYogaSessions
+        case workoutStrengthMinutes, workoutStrengthSessions
+        case workoutAnyMinutes, workoutAnySessions
+
+        /// How a workout metric collapses a day's workouts into a number: summed minutes
+        /// ("300 min of yoga") or a session count ("swam 12×" / "a day with a run").
+        enum WorkoutMeasure { case minutes, sessions }
+
+        /// Activity + measure + key fragment for the workout metrics; nil for everything
+        /// else. `activities` is empty for the any-workout pair (no activity filter);
+        /// strength matches both of Apple's strength-training activity types.
+        var workoutInfo: (activities: [HKWorkoutActivityType], measure: WorkoutMeasure, slug: String)? {
+            switch self {
+            case .workoutRunningMinutes:   return ([.running], .minutes, "running")
+            case .workoutRunningSessions:  return ([.running], .sessions, "running")
+            case .workoutCyclingMinutes:   return ([.cycling], .minutes, "cycling")
+            case .workoutCyclingSessions:  return ([.cycling], .sessions, "cycling")
+            case .workoutSwimmingMinutes:  return ([.swimming], .minutes, "swimming")
+            case .workoutSwimmingSessions: return ([.swimming], .sessions, "swimming")
+            case .workoutYogaMinutes:      return ([.yoga], .minutes, "yoga")
+            case .workoutYogaSessions:     return ([.yoga], .sessions, "yoga")
+            case .workoutStrengthMinutes:
+                return ([.traditionalStrengthTraining, .functionalStrengthTraining], .minutes, "strength")
+            case .workoutStrengthSessions:
+                return ([.traditionalStrengthTraining, .functionalStrengthTraining], .sessions, "strength")
+            case .workoutAnyMinutes:       return ([], .minutes, "any")
+            case .workoutAnySessions:      return ([], .sessions, "any")
+            default:                       return nil
+            }
+        }
+        var isWorkout: Bool { workoutInfo != nil }
+        var workoutMeasure: WorkoutMeasure? { workoutInfo?.measure }
+
+        /// The sibling workout metric with the other measure (same activity), used when a
+        /// goal-type switch strands a pick — a swim-minutes total flipping to a count goal
+        /// becomes swim-sessions instead of falling all the way back to steps.
+        var workoutSibling: Metric? {
+            guard let info = workoutInfo else { return nil }
+            let other: WorkoutMeasure = info.measure == .minutes ? .sessions : .minutes
+            return Metric.allCases.first { $0.workoutInfo?.slug == info.slug && $0.workoutMeasure == other }
+        }
+
+        /// The one pure step of the workout read path: a day's workout durations → the
+        /// metric's number (count them or sum them).
+        static func workoutValue(measure: WorkoutMeasure, durationsMinutes: [Double]) -> Double {
+            measure == .sessions ? Double(durationsMinutes.count) : durationsMinutes.reduce(0, +)
+        }
 
         /// Canonical key persisted server-side (goals.health_metric) and sent to
         /// /health-sync. Must match the API's HEALTH_METRICS set.
         var key: String {
+            if let w = workoutInfo {
+                return "workout_\(w.slug)_\(w.measure == .minutes ? "minutes" : "sessions")"
+            }
             switch self {
             case .steps:           return "steps"
             case .flights:         return "flights"
@@ -48,6 +104,9 @@ final class HealthKitBridge {
             case .ringsAll:        return "rings_all"
             case .mindfulMinutes:  return "mindful_minutes"
             case .mood:            return "mood"
+            // Workout metrics returned above; a *new* metric missing its arm yields ""
+            // and fails everyMetricKeyMatchesTheServerSet rather than compiling silently.
+            default:               return ""
             }
         }
 
@@ -86,6 +145,16 @@ final class HealthKitBridge {
         /// so it drives a habit (streak) or a *count* of met-days ("close the ring 15×") —
         /// but there's nothing to sum, so never a total. Never checklists.
         func applies(toGoalType goalType: String) -> Bool {
+            // A workout measure fits the goal shape it *is*: minutes SUM (total, or a
+            // daily-minutes habit), sessions COUNT (count, or a "worked out today" habit).
+            if let measure = workoutMeasure {
+                switch goalType {
+                case "habit": return true
+                case "total": return measure == .minutes
+                case "count": return measure == .sessions
+                default:      return false
+                }
+            }
             switch goalType {
             case "habit", "count": return true
             case "total":          return !isBoolean
@@ -96,6 +165,7 @@ final class HealthKitBridge {
         /// HealthKit object types to request *read* access for. Quantity + category types
         /// map 1:1; rings read the daily activity summary; mood reads State of Mind (iOS 17+).
         var readTypes: Set<HKObjectType> {
+            if isWorkout { return [HKObjectType.workoutType()] }
             switch self {
             case .steps, .flights, .exerciseMinutes, .activeEnergy, .walkRunDistance,
                  .cyclingDistance, .swimmingDistance, .wheelchairDistance:
@@ -106,6 +176,8 @@ final class HealthKitBridge {
                 return [HKObjectType.activitySummaryType()]
             case .mood:
                 if #available(iOS 17.0, *) { return [HKObjectType.stateOfMindType()] }
+                return []
+            default:   // workout metrics returned above
                 return []
             }
         }
@@ -154,6 +226,16 @@ final class HealthKitBridge {
         /// The goal `unit` stored when a numeric metric is picked, and the word shown next
         /// to a value ("7,340 steps"). Booleans are habits (unit is null server-side).
         var label: String {
+            if let w = workoutInfo {
+                guard w.measure == .sessions else { return "min" }
+                switch w.slug {
+                case "running":  return "runs"
+                case "cycling":  return "rides"
+                case "swimming": return "swims"
+                case "any":      return "workouts"
+                default:         return "sessions"   // yoga / strength
+                }
+            }
             switch self {
             case .steps:           return "steps"
             case .flights:         return "flights"
@@ -167,11 +249,53 @@ final class HealthKitBridge {
             case .standRing:       return "stand ring"
             case .ringsAll:        return "rings"
             case .mood:            return "mood"
+            default:               return ""   // workout metrics returned above
+            }
+        }
+
+        /// Tile emoji for the grouped picker + the editor's counting row (mock design).
+        var emoji: String {
+            if let w = workoutInfo {
+                switch w.slug {
+                case "running":  return "🏅"
+                case "cycling":  return "🚵"
+                case "swimming": return "🥽"
+                case "yoga":     return "🧘"
+                case "strength": return "🏋️"
+                default:         return "🔥"
+                }
+            }
+            switch self {
+            case .steps:              return "👟"
+            case .flights:            return "🪜"
+            case .exerciseMinutes:    return "🔥"
+            case .activeEnergy:       return "⚡"
+            case .walkRunDistance:    return "🏃"
+            case .cyclingDistance:    return "🚴"
+            case .swimmingDistance:   return "🏊"
+            case .wheelchairDistance: return "🦽"
+            case .mindfulMinutes:     return "🌿"
+            case .mood:               return "💗"
+            case .moveRing:           return "🔴"
+            case .exerciseRing:       return "🟢"
+            case .standRing:          return "🔵"
+            case .ringsAll:           return "🎯"
+            default:                  return "❤️"   // workout metrics returned above
             }
         }
 
         /// Short label for the editor's picker chip.
         var chipLabel: String {
+            if let w = workoutInfo {
+                switch w.slug {
+                case "running":  return "Running workouts"
+                case "cycling":  return "Cycling workouts"
+                case "swimming": return "Swimming workouts"
+                case "yoga":     return "Yoga"
+                case "strength": return "Strength training"
+                default:         return "Any workout"
+                }
+            }
             switch self {
             case .steps:           return "Steps"
             case .flights:         return "Flights"
@@ -187,12 +311,15 @@ final class HealthKitBridge {
             case .standRing:       return "Stand ring"
             case .ringsAll:        return "All rings"
             case .mood:            return "Mood"
+            default:               return ""   // workout metrics returned above
             }
         }
 
         /// A sensible starting target to pre-fill when the metric is picked, so the user
         /// isn't staring at an empty number field. Booleans use 1 (met/not) — kept hidden.
         var suggestedTarget: Int {
+            // Workout goal targets: ~300 min or ~12 sessions to fill the number field.
+            if let w = workoutInfo { return w.measure == .minutes ? 300 : 12 }
             switch self {
             case .steps:           return 10000
             case .flights:         return 10
@@ -204,12 +331,34 @@ final class HealthKitBridge {
             case .swimmingDistance: return 1
             case .mindfulMinutes:  return 10
             case .moveRing, .exerciseRing, .standRing, .ringsAll, .mood: return 1
+            default: return 1   // workout metrics returned above
             }
+        }
+
+        /// A habit day's threshold prefill. Distinct from `suggestedTarget` (the goal's
+        /// overall number): a sessions habit defaults to 1 — any workout that day counts —
+        /// and a minutes habit to a modest daily 30, while quantity metrics keep their
+        /// suggested amount as the daily bar (e.g. steps a day).
+        var suggestedDailyTarget: Int {
+            if let w = workoutInfo { return w.measure == .sessions ? 1 : 30 }
+            return suggestedTarget
         }
 
         /// Plain-language "what is this?" shown under the picker so the user knows what
         /// Apple Health actually tracks for each choice.
         var explanation: String {
+            if let w = workoutInfo {
+                let what: String
+                switch w.slug {
+                case "running":  what = "Running workouts recorded on your Apple Watch or iPhone."
+                case "cycling":  what = "Cycling workouts — outdoor and indoor rides."
+                case "swimming": what = "Swim workouts from your Apple Watch."
+                case "yoga":     what = "Yoga workouts you record."
+                case "strength": what = "Strength training — traditional and functional."
+                default:         what = "Any workout you record, whatever the type."
+                }
+                return what + (w.measure == .minutes ? " Adds up the minutes." : " Counts each workout.")
+            }
             switch self {
             case .steps:           return "Steps counted by your iPhone and Apple Watch."
             case .flights:         return "Flights of stairs climbed, tracked by your iPhone."
@@ -225,13 +374,53 @@ final class HealthKitBridge {
             case .standRing:       return "Counts a day when you close your Apple Watch Stand ring."
             case .ringsAll:        return "Counts a day when you close all three Apple Watch rings."
             case .mood:            return "Counts a day when you log how you're feeling (iOS 17+)."
+            default:               return ""   // workout metrics returned above
             }
+        }
+
+        /// All workout metrics carrying `measure`, in declaration (display) order.
+        static func workoutMetrics(measure: WorkoutMeasure) -> [Metric] {
+            allCases.filter { $0.workoutMeasure == measure }
+        }
+
+        /// The grouped, goal-type-aware picker list (mocks: an "adds up automatically"
+        /// grouping for total/count vs a "counts qualifying days" grouping for habits).
+        /// Workouts surface the measure that fits the goal type — minutes on a total,
+        /// sessions on a count/habit (a habit can still flip to a minutes threshold).
+        /// Sections only ever contain metrics that apply; empty sections drop out.
+        static func sections(forGoalType goalType: String) -> [(title: String, metrics: [Metric])] {
+            let everyday: [Metric] = [.steps, .flights, .exerciseMinutes, .activeEnergy]
+            let distance: [Metric] = [.walkRunDistance, .cyclingDistance, .swimmingDistance, .wheelchairDistance]
+            let rings: [Metric] = [.moveRing, .exerciseRing, .standRing, .ringsAll]
+            let raw: [(String, [Metric])]
+            if goalType == "habit" {
+                raw = [
+                    ("Apple Watch rings", rings),
+                    ("Logged each day", [.mood, .mindfulMinutes]),
+                    ("Workout days", workoutMetrics(measure: .sessions)),
+                    ("Daily targets", everyday + distance),
+                ]
+            } else {
+                raw = [
+                    ("Everyday", everyday),
+                    ("Distance", distance),
+                    ("Workouts", workoutMetrics(measure: goalType == "count" ? .sessions : .minutes)),
+                    ("Mindfulness", [.mindfulMinutes]),
+                    ("Apple Watch rings", rings),      // count only — drop out on totals
+                    ("Logged each day", [.mood]),      // count only — drop out on totals
+                ]
+            }
+            return raw
+                .map { (title: $0.0, metrics: $0.1.filter { $0.applies(toGoalType: goalType) }) }
+                .filter { !$0.metrics.isEmpty }
         }
 
         /// A short "current value" string for the discovery picker, given the day's reading.
         func formatCurrent(_ value: Double?) -> String {
             guard let v = value else { return "—" }
             if isBoolean { return v >= 1 ? "done today" : "not yet today" }
+            // Workouts read whole numbers either way: "42 min today" / "2 swims today".
+            if isWorkout { return "\(Int(v)) \(label) today" }
             switch self {
             case .steps, .flights:                   return "\(Int(v)) \(label) today"
             case .exerciseMinutes, .mindfulMinutes:  return "\(Int(v)) min today"
@@ -323,6 +512,7 @@ final class HealthKitBridge {
     /// vs empty) and simply yields no suggestion.
     func total(for metric: Metric, on day: Date) async -> Double? {
         guard isAvailable else { return nil }
+        if metric.isWorkout { return await workoutStat(metric, on: day) }
         switch metric {
         case .steps, .flights, .exerciseMinutes, .activeEnergy, .walkRunDistance,
              .cyclingDistance, .swimmingDistance, .wheelchairDistance:
@@ -333,6 +523,8 @@ final class HealthKitBridge {
             return await ringClosed(metric, on: day)
         case .mood:
             return await moodLogged(on: day)
+        default:   // workout metrics dispatched above
+            return nil
         }
     }
 
@@ -405,6 +597,31 @@ final class HealthKitBridge {
             let q = HKSampleQuery(sampleType: HKObjectType.stateOfMindType(), predicate: predicate,
                                   limit: 1, sortDescriptors: nil) { _, samples, _ in
                 continuation.resume(returning: (samples?.isEmpty == false) ? 1 : 0)
+            }
+            store.execute(q)
+        }
+    }
+
+    /// The day's workouts collapsed to the metric's number — a genuinely different query
+    /// shape from the cumulative quantities: an HKSampleQuery over HKWorkout samples,
+    /// filtered to the metric's activity type(s) (none = any workout), then counted or
+    /// duration-summed via the pure `workoutValue`. nil = query failed (denied reads just
+    /// return no samples, which reads as 0 — indistinguishable by Apple's design).
+    private func workoutStat(_ metric: Metric, on day: Date) async -> Double? {
+        guard let info = metric.workoutInfo else { return nil }
+        let (start, end) = Self.dayBounds(day)
+        var predicates = [HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)]
+        if !info.activities.isEmpty {
+            predicates.append(NSCompoundPredicate(orPredicateWithSubpredicates:
+                info.activities.map { HKQuery.predicateForWorkouts(with: $0) }))
+        }
+        let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
+        return await withCheckedContinuation { continuation in
+            let q = HKSampleQuery(sampleType: .workoutType(), predicate: predicate,
+                                  limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                guard let workouts = samples as? [HKWorkout] else { continuation.resume(returning: nil); return }
+                let minutes = workouts.map { $0.duration / 60.0 }
+                continuation.resume(returning: Metric.workoutValue(measure: info.measure, durationsMinutes: minutes))
             }
             store.execute(q)
         }
