@@ -899,6 +899,14 @@ export function CaptureBar() {
                       <div className="cap-edit">
                         <div className="cap-primary" style={{ whiteSpace: 'normal' }}>{preview.primary}</div>
                         <CandidatePicker intent={intent} state={candidates} chosenId={chosenId} onPick={setChosenId} onCommit={() => void performCommit(intent)} busy={busy} />
+                        {/* Mutations lean on matching an existing item. The on-device parser is
+                            best-effort (common phrasings only); an AI provider makes "do anything"
+                            reliable — so say so plainly whenever we're running without one. */}
+                        {via === 'on-device' && (
+                          <div className="cap-detail" style={{ marginTop: 6, whiteSpace: 'normal' }}>
+                            Matched on-device (no AI key). Add an AI provider in <strong>Settings → AI &amp; capture</strong> for reliable “do anything” results.
+                          </div>
+                        )}
                       </div>
                     ) : editing ? (
                       <div className="cap-edit">

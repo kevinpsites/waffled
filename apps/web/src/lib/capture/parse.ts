@@ -694,28 +694,64 @@ const MUTATE_PATTERNS: { re: RegExp; verb: MutateVerb; group: number }[] = [
   // redeem — "redeem X", "<person> spent/spend N … on X"
   { re: /^\s*(?:please\s+)?redeem\s+(.+)$/i, verb: 'redeem', group: 1 },
   { re: /^\s*.+?\s+(?:spent|spend|spends)\s+.+?\s+(?:on|for)\s+(.+)$/i, verb: 'redeem', group: 1 },
-  // log — "log X", "record X"
+  // log — "log X", "record X", and "add <amount> to … goal" (the amount is pulled into args;
+  // the trailing goal phrase is the description). The `goal` word keeps it from stealing the
+  // pantry/list creates ("add milk to the pantry" / "add X to the list").
   { re: /^\s*(?:please\s+)?(?:log|record)\s+(.+)$/i, verb: 'log', group: 1 },
+  { re: /^\s*(?:please\s+)?add\s+.+?\s+to\s+(.+?\bgoal\b.*)$/i, verb: 'log', group: 1 },
 ]
 
-// A rough targetKind from the noun in the phrase — the server overrides this. Order
-// matters: an explicit "chore"/"goal"/"reward" word wins over the looser event/list cues.
-function guessTargetKind(text: string): MutateTargetKind | null {
+// A rough targetKind, server-overridden. An explicit "chore"/"goal"/"reward" word wins;
+// otherwise we DEFAULT from the verb (a "mark X done" is almost always a chore, a "log" a
+// goal, etc.) — without this, a phrase with no kind noun ("mark set the table done") resolves
+// against no target and dead-ends on "couldn't find a match".
+const VERB_DEFAULT_KIND: Record<MutateVerb, MutateTargetKind> = {
+  complete: 'chore', log: 'goal', reschedule: 'event', reassign: 'chore', redeem: 'reward', delete: 'event',
+}
+function guessTargetKind(text: string, verb: MutateVerb): MutateTargetKind {
   if (/\bchores?\b/i.test(text)) return 'chore'
   if (/\bgoals?\b/i.test(text)) return 'goal'
   if (/\breward\b/i.test(text)) return 'reward'
   if (/\b(appointment|meeting|event|practice|reservation)\b/i.test(text)) return 'event'
-  if (/\b(?:list\s*item|item|list)\b/i.test(text) || /\boff\b/i.test(text)) return 'listItem'
-  return null
+  if (/\b(?:list\s*item|item|list)\b/i.test(text) || (verb === 'complete' && /\boff\b/i.test(text))) return 'listItem'
+  return VERB_DEFAULT_KIND[verb]
+}
+
+// Best-effort args from the phrase (the server refines them): a numeric amount for `log`
+// (time units → hours/minutes so the goal-log folds them; else a plain amount), and the
+// "to <name>" assignee for `reassign`.
+function mutateArgs(verb: MutateVerb, text: string): Record<string, unknown> {
+  if (verb === 'log') {
+    const m = /(\d+(?:\.\d+)?)\s*([a-z]+)/i.exec(text)
+    if (m) {
+      const n = parseFloat(m[1])
+      const unit = m[2].toLowerCase()
+      if (/^(?:hours?|hrs?|hr)$/.test(unit)) return { hours: n }
+      if (/^(?:minutes?|mins?|min)$/.test(unit)) return { minutes: n }
+      return { amount: n }
+    }
+  }
+  if (verb === 'reassign') {
+    const m = /\bto\s+([A-Za-z][\w'’-]*)/.exec(text)
+    if (m) return { personName: m[1] }
+  }
+  return {}
 }
 
 // Clean a captured noun phrase into a display description: drop a leading amount/unit
-// ("20 min on my reading goal" → "reading goal"), a leading "on/the/my", and filler.
+// ("20 min on my reading goal" → "reading goal"), a leading "on/to my/our/the", and a
+// trailing "for <people>" (participants, not part of the name).
 function mutateDescription(raw: string): string {
   let s = tidy(raw)
-  const onIdx = / on (?:my |our |the )?/i.exec(s)
-  if (onIdx) s = s.slice(onIdx.index + onIdx[0].length)
+  const pre = / (?:on|to) (?:my |our |the )?/i.exec(s)
+  if (pre) s = s.slice(pre.index + pre[0].length)
+  s = s.replace(/^\s*(?:my |our |the )/i, '')
   s = s.replace(/^\s*\d+(?:\.\d+)?\s+[a-z]+\s+/i, '') // a leading "20 min ", "2 chapters "
+  s = s.replace(/\s+for\s+[a-z].*$/i, '') // trailing "for kevin and wally"
+  // Drop a trailing kind noun ("outside goal" → "outside", "trash chore" → "trash") so the
+  // name — not the polluting kind word — drives the ranking. Keep it if that empties the string.
+  const bare = s.replace(/\s+(?:goals?|chores?|rewards?|events?|tasks?|items?)\s*$/i, '')
+  if (tidy(bare)) s = bare
   return tidy(s)
 }
 
@@ -725,7 +761,7 @@ function detectMutate(text: string): Extract<ParsedIntent, { kind: 'mutate' }> |
     if (!m) continue
     const description = mutateDescription(m[group] ?? '')
     if (!description) continue
-    return { kind: 'mutate', verb, targetKind: guessTargetKind(text), target: { description }, args: {} }
+    return { kind: 'mutate', verb, targetKind: guessTargetKind(text, verb), target: { description }, args: mutateArgs(verb, text) }
   }
   return null
 }

@@ -661,10 +661,27 @@ describe('parseCapture — mutate verbs (Tier 2)', () => {
     expect(m.target.description.toLowerCase()).toContain('trash')
   })
 
-  it('"log 20 min on my reading goal" → log a goal', () => {
+  it('"log 20 min on my reading goal" → log a goal (minutes pulled into args)', () => {
     const m = asMutate(p('log 20 min on my reading goal'))
     expect(m.verb).toBe('log')
     expect(m.targetKind).toBe('goal')
+    expect(m.target.description.toLowerCase()).toBe('reading') // trailing "goal" dropped for cleaner ranking
+    expect(m.args).toMatchObject({ minutes: 20 })
+  })
+
+  it('"mark set the table done for Elaine" → chore by verb default (no "chore" word)', () => {
+    const m = asMutate(p('mark set the table done for Elaine'))
+    expect(m.verb).toBe('complete')
+    expect(m.targetKind).toBe('chore') // defaulted from the verb, not a "chore" noun
+    expect(m.target.description.toLowerCase()).toBe('set the table')
+  })
+
+  it('"add 10 hours to our outside goal for kevin and wally" → log a goal (not grocery)', () => {
+    const m = asMutate(p('add 10 hours to our outside goal for kevin and wally'))
+    expect(m.verb).toBe('log')
+    expect(m.targetKind).toBe('goal')
+    expect(m.target.description.toLowerCase()).toBe('outside') // amount, "for …", and "goal" stripped
+    expect(m.args).toMatchObject({ hours: 10 })
   })
 
   it('"delete the dentist appointment" → delete an event', () => {
@@ -679,9 +696,11 @@ describe('parseCapture — mutate verbs (Tier 2)', () => {
     expect(m.targetKind).toBe('listItem')
   })
 
-  it('"give the dishes to Wally" → reassign', () => {
+  it('"give the dishes to Wally" → reassign a chore (person pulled into args)', () => {
     const m = asMutate(p('give the dishes to Wally'))
     expect(m.verb).toBe('reassign')
+    expect(m.targetKind).toBe('chore')
+    expect(m.args).toMatchObject({ personName: 'Wally' })
   })
 
   it('a mutate marker is NEVER confident (forces the server path, no offline auto-commit)', () => {

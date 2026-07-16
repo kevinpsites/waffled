@@ -78,7 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **completing and reassigning chores** and **logging goal progress**, on the web. Actions always run
   against the server (they never guess offline), reassigning someone else's chore still needs a
   grown-up, and anything destructive asks first. More actions (rescheduling events, crossing items off
-  lists, redeeming rewards) and iPhone/iPad support are on the way.
+  lists, redeeming rewards) and iPhone/iPad support are on the way. **Reliable "do anything" needs an AI
+  provider** — configure one in Settings → AI & capture; without a key the on-device parser still handles
+  common phrasings on a best-effort basis (and the preview says so), but an AI key is what makes the full
+  range of wording and matching dependable.
 
 ### Changed
 

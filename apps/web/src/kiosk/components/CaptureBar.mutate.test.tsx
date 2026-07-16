@@ -97,6 +97,8 @@ describe('CaptureBar — Tier 2 mutate picker', () => {
     expect(resolveCandidates).toHaveBeenCalledWith(expect.objectContaining({ verb: 'complete', targetKind: 'chore' }))
     expect(await screen.findByText(/Take out the trash/)).toBeInTheDocument()
     expect(screen.queryByText(/I need a connection/i)).not.toBeInTheDocument()
+    // ...and it plainly tells the user an AI key gives reliable results.
+    expect(screen.getByText(/Add an AI provider/i)).toBeInTheDocument()
   })
 
   it('shows a not-found state with the disabledReason (0 candidates)', async () => {
