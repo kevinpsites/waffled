@@ -43,4 +43,14 @@ describe('GoalWho — audience-seeded, set-based selection', () => {
     expect(isJustMe).toBe(false)
     expect(isEveryone).toBe(false)
   })
+
+  // Finding #7: a non-manager (a kid) can only create a self-only goal — an "everyone"
+  // audience must clamp down to the viewer so POST /api/goals never 403s on goal.manage.
+  it('clamps a non-manager to a viewer-only set even for an "everyone" audience', () => {
+    expect(seedGoalParticipants('everyone', jerry, all, false)).toEqual([jerry])
+  })
+
+  it('a manager still seeds Everyone from an "everyone" audience (unchanged default)', () => {
+    expect(seedGoalParticipants('everyone', jerry, all, true)).toEqual(all)
+  })
 })

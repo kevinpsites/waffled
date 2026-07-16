@@ -193,7 +193,11 @@ function PersonChips({ persons, value, onChange, noneLabel }: { persons: Person[
 // Seed the "who's it for" SET from the inferred audience: 'everyone' → all members;
 // 'me'/null → just the viewer (empty when the viewer id hasn't loaded yet, so the preview
 // still renders). Pure so it's unit-testable.
-export function seedGoalParticipants(audience: 'me' | 'everyone' | null, viewerId: string | null, allIds: string[]): string[] {
+export function seedGoalParticipants(audience: 'me' | 'everyone' | null, viewerId: string | null, allIds: string[], canManageOthers = true): string[] {
+  // A non-manager (a kid) can only create a self-only goal — POST /api/goals requires the
+  // goal.manage capability the moment participants include anyone but the caller — so we
+  // clamp "everyone" down to just the viewer rather than 403 on commit.
+  if (!canManageOthers) return viewerId ? [viewerId] : []
   if (audience === 'everyone' && allIds.length) return allIds
   return viewerId ? [viewerId] : []
 }
@@ -218,17 +222,26 @@ export function goalWhoHighlights(ids: string[], viewerId: string | null, allIds
 // clicking only your own tile is equivalent to Just me. The set is seeded once from the
 // inferred `audience` so "family"/"personal" phrasing lands on the right preset.
 // Reuses the .cap-people person chips.
-function GoalWho({ intent, persons, viewer, set }: { intent: Extract<ParsedIntent, { kind: 'goal' }>; persons: Person[]; viewer: Person | null; set: (i: ParsedIntent) => void }) {
+function GoalWho({ intent, persons, viewer, set, canManageGoals }: { intent: Extract<ParsedIntent, { kind: 'goal' }>; persons: Person[]; viewer: Person | null; set: (i: ParsedIntent) => void; canManageGoals: boolean }) {
   const ids = intent.participantIds
   const allIds = useMemo(() => persons.map((p) => p.id), [persons])
   // Seed the set from the inferred audience while it's still empty (nothing picked yet).
   useEffect(() => {
     if (ids.length === 0) {
-      const seed = seedGoalParticipants(intent.audience, viewer?.id ?? null, allIds)
+      const seed = seedGoalParticipants(intent.audience, viewer?.id ?? null, allIds, canManageGoals)
       if (seed.length) set({ ...intent, participantIds: seed })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [intent.audience, viewer?.id, allIds.length])
+  }, [intent.audience, viewer?.id, allIds.length, canManageGoals])
+  // A non-manager (a kid) can only make a personal goal, so there's no picker to show —
+  // just a lit, non-interactive "Assigned to you" chip (reusing the .cap-people chips).
+  if (!canManageGoals) {
+    return (
+      <div className="cap-people">
+        <span className="cap-person on">🙋 Assigned to you</span>
+      </div>
+    )
+  }
   const { isJustMe, isEveryone } = goalWhoHighlights(ids, viewer?.id ?? null, allIds)
   const toggle = (id: string) => {
     const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
@@ -252,7 +265,7 @@ function GoalWho({ intent, persons, viewer, set }: { intent: Extract<ParsedInten
 }
 
 // Per-kind "basics" — extends the inline edit beyond just the title.
-function DraftFields({ intent, persons, lists, set, today, viewer }: { intent: ParsedIntent; persons: Person[]; lists: ListSummary[]; set: (i: ParsedIntent) => void; today: string; viewer: Person | null }) {
+function DraftFields({ intent, persons, lists, set, today, viewer, canManageGoals }: { intent: ParsedIntent; persons: Person[]; lists: ListSummary[]; set: (i: ParsedIntent) => void; today: string; viewer: Person | null; canManageGoals: boolean }) {
   if (intent.kind === 'grocery') {
     return (
       <input className="cap-edit-sub" value={intent.quantity ?? ''} placeholder="quantity (optional, e.g. 2 lbs)" aria-label="Quantity" onChange={(e) => set({ ...intent, quantity: e.target.value || null })} />
@@ -389,7 +402,7 @@ function DraftFields({ intent, persons, lists, set, today, viewer }: { intent: P
             <input type="date" className="cap-edit-mini" value={intent.deadline ?? ''} aria-label="Deadline" onChange={(e) => set({ ...intent, deadline: e.target.value || null })} />
           </label>
         </div>
-        <GoalWho intent={intent} persons={persons} viewer={viewer} set={set} />
+        <GoalWho intent={intent} persons={persons} viewer={viewer} set={set} canManageGoals={canManageGoals} />
       </>
     )
   }
@@ -452,6 +465,10 @@ export function CaptureBar() {
   // the `reward.manage` capability (kids don't). Either failing → an unsupported preview.
   const rewardsOn = rewardsEnabled(household)
   const canManageRewards = can(viewer, 'reward.manage')
+  // POST /api/goals requires goal.manage the moment a goal includes anyone but the caller
+  // (kids lack it). We don't block a kid — they CAN make a personal goal — so this only
+  // clamps the "who's it for" set/picker down to themselves.
+  const canManageGoals = can(viewer, 'goal.manage')
   const [text, setText] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -490,7 +507,13 @@ export function CaptureBar() {
     const id = setTimeout(async () => {
       const r = await api.resolve(text, names, listNames)
       if (mine === seq.current) {
-        setServer({ intent: r.intent, via: r.via, forText: text })
+        // Be defensive: a server goal intent may arrive without participantIds/audience —
+        // normalize so the goal preview + picker never read an undefined array.
+        const intent =
+          r.intent?.kind === 'goal'
+            ? { ...r.intent, participantIds: r.intent.participantIds ?? [], audience: r.intent.audience ?? null }
+            : r.intent
+        setServer({ intent, via: r.via, forText: text })
         setThinking(false)
       }
     }, 800)
@@ -614,7 +637,10 @@ export function CaptureBar() {
       // only yourself never needs goal.manage). A picked subset / Everyone is sent as-is.
       const participantIds = i.participantIds.length
         ? i.participantIds
-        : seedGoalParticipants(i.audience, viewer?.id ?? null, persons.map((p) => p.id))
+        : seedGoalParticipants(i.audience, viewer?.id ?? null, persons.map((p) => p.id), canManageGoals)
+      // Final clamp: a non-manager never POSTs other people (even via a stale picked set) —
+      // POST /api/goals would 403 on goal.manage, surfacing as a bogus sign-in error.
+      const finalIds = canManageGoals ? participantIds : (viewer ? [viewer.id] : participantIds)
       await api.createGoal({
         title: i.title,
         goalType: i.goalType,
@@ -624,7 +650,7 @@ export function CaptureBar() {
         targetValue: i.targetValue ?? undefined,
         unit: i.unit ?? undefined,
         deadline: i.deadline ?? undefined,
-        participantIds,
+        participantIds: finalIds,
       }) // apps/web/src/lib/api/goals.ts → POST /api/goals
       return `Added the “${i.title}” goal`
     }
@@ -759,7 +785,7 @@ export function CaptureBar() {
                     ) : editing ? (
                       <div className="cap-edit">
                         <input className="cap-edit-input" value={primaryOf(intent)} onChange={(e) => setDraft(withPrimary(intent, e.target.value))} aria-label="Edit" autoFocus />
-                        <DraftFields intent={intent} persons={persons} lists={customLists} set={setDraft} today={localToday()} viewer={viewer ?? null} />
+                        <DraftFields intent={intent} persons={persons} lists={customLists} set={setDraft} today={localToday()} viewer={viewer ?? null} canManageGoals={canManageGoals} />
                         <div className="cap-kind-chips">
                           {KINDS.map(({ k, label }) => (
                             <button key={k} type="button" className={`cap-kind-chip ${intent.kind === k ? 'on' : ''}`} onClick={() => setDraft(rerouteKind(intent, k, localToday()))}>

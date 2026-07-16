@@ -51,6 +51,9 @@ export interface CaptureIntent {
   unit?: string | null
   deadline?: string | null
   audience?: string | null
+  // goal intent: which household members the goal is for (the LLM does not pick
+  // people, so this is always [] server-side; the web goal type requires string[]).
+  participantIds?: string[]
   // pantry intent: an item already on hand (module `pantry`, default off)
   amount?: string | null
   location?: string | null
@@ -221,7 +224,9 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
     const location = r.location != null && String(r.location).trim() ? String(r.location).trim() : 'Pantry'
     const expiresOn = typeof r.expiresOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.expiresOn) ? r.expiresOn : null
     const rawLow = typeof r.lowAt === 'number' ? r.lowAt : Number(r.lowAt)
-    const lowAt = Number.isFinite(rawLow) && rawLow >= 0 ? rawLow : null
+    // Require an actual value: Number(null) === 0 would otherwise turn a schema-emitted
+    // `lowAt: null` into a real threshold of 0 (silently disabling the low-stock warning).
+    const lowAt = r.lowAt != null && Number.isFinite(rawLow) && rawLow >= 0 ? rawLow : null
     return { kind, name, amount, unit, location, expiresOn, lowAt }
   }
   if (kind === 'reward') {
@@ -294,7 +299,7 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
     const deadline = typeof r.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.deadline) ? r.deadline : null
     // Inferred who-hint that seeds the client's "who's it for" control; coerce to the enum.
     const audience = (['me', 'everyone'] as const).find((a) => a === String(r.audience ?? '').toLowerCase()) ?? null
-    return { kind, title, goalType, trackingMode, participantMode, targetBasis, targetValue: cleanTarget, unit, deadline, audience }
+    return { kind, title, goalType, trackingMode, participantMode, targetBasis, targetValue: cleanTarget, unit, deadline, audience, participantIds: [] }
   }
   if (kind === 'event') {
     const raw0 = r.startsAt ? String(r.startsAt) : null
@@ -456,7 +461,7 @@ const HOLIDAYS: { re: RegExp; calc: (y: number) => Date }[] = [
 // Deterministically resolve a calendar day from free text (today/tomorrow,
 // a weekday optionally with "next", "in N days", a holiday name, a month+day, or
 // m/d) → the model is unreliable at date math, so we do it ourselves. null = no day.
-export function resolveDayFromText(text: string, tz: string): string | null {
+export function resolveDayFromText(text: string, tz: string, opts?: { holidays?: boolean }): string | null {
   const today = todayInTz(tz)
   const base = new Date(`${today}T00:00:00Z`)
   const iso = (d: Date) => d.toISOString().slice(0, 10)
@@ -479,12 +484,10 @@ export function resolveDayFromText(text: string, tz: string): string | null {
   const inDays = /\bin\s+(\d{1,2})\s+days?\b/.exec(t)
   if (inDays) return add(parseInt(inDays[1], 10))
 
-  for (const h of HOLIDAYS) {
-    if (!h.re.test(t)) continue
-    let d = h.calc(base.getUTCFullYear())
-    if (d.getTime() < base.getTime()) d = h.calc(base.getUTCFullYear() + 1)
-    return iso(d)
-  }
+  // "N days/sleeps until/til/till/to/before X" — mirrors the web CD_UNTIL regex so a
+  // countdown counts N days out, never getting hijacked by a holiday word in X.
+  const until = /\b(\d{1,3})\s+(?:days?|sleeps?)\s+(?:until|til|till|to|before)\b/.exec(t)
+  if (until) return add(parseInt(until[1], 10))
 
   const md = /\b(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\.?\s+(\d{1,2})\b/.exec(t)
   if (md) {
@@ -502,6 +505,17 @@ export function resolveDayFromText(text: string, tz: string): string | null {
       let year = base.getUTCFullYear()
       if (mo < base.getUTCMonth() || (mo === base.getUTCMonth() && day < base.getUTCDate())) year += 1
       return iso(new Date(Date.UTC(year, mo, day)))
+    }
+  }
+  // Holidays LAST and matched anywhere in the text — so an explicit month+day or m/d
+  // wins over a stray holiday word (e.g. "christmas party on june 20" → June 20). Skip
+  // entirely when the caller opts out (a holiday word in a meal dish must not set a date).
+  if (opts?.holidays !== false) {
+    for (const h of HOLIDAYS) {
+      if (!h.re.test(t)) continue
+      let d = h.calc(base.getUTCFullYear())
+      if (d.getTime() < base.getTime()) d = h.calc(base.getUTCFullYear() + 1)
+      return iso(d)
     }
   }
   return null
@@ -583,7 +597,8 @@ export async function parseWithProvider(householdId: string, text: string): Prom
   // Small local models are unreliable at date math: if the meal text clearly
   // names a day, resolve it deterministically and override the model's guess.
   if (intent.kind === 'meal') {
-    const resolved = resolveDayFromText(text, ctx.timezone)
+    // Holidays OFF: a dish name like "christmas ham" must not silently set a meal date.
+    const resolved = resolveDayFromText(text, ctx.timezone, { holidays: false })
     if (resolved && resolved !== intent.date) {
       intent.date = resolved
       intent.whenLabel = `${mealDayLabel(resolved, ctx.timezone)} · ${cap(intent.mealType ?? 'dinner')}`

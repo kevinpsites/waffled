@@ -475,7 +475,15 @@ enum CaptureHeuristic {
     }
     private static func detectPerson(_ text: NSString) -> CaptureIntent? {
         if findTime(text) != nil { return nil }   // a clock time → scheduling, not a profile
-        let relPat = "\\b(?:add|create|make|register)\\s+(?:my|our|a|an|the)?\\s*(?:new\\s+)?(\(relKid)|\(relTeen)|\(relAdult))\\b[\\s,:-]*(?:named\\s+|called\\s+)?(.+)$"
+        // A birthday / weekday / dated note is an event or countdown, not a profile — bail
+        // before the relationship regex can grab the trailing noun as a name. Mirrors parse.ts.
+        if test(#"\bbirthday\b"#, text) { return nil }
+        if test(#"\b(?:sun|sunday|mon|monday|tues?|tuesday|wed|weds|wednesday|thur?s?|thursday|fri|friday|sat|saturday)s?\b"#, text) { return nil }
+        if test(#"\b(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\.?\s+\d{1,2}\b"#, text)
+            || test(#"\b\d{1,2}/\d{1,2}\b"#, text) { return nil }
+        // The `(?![’'ʼ]s)` lookahead stops "mom's"/"dad's" being read as a relationship —
+        // literal apostrophe chars (a raw string wouldn't interpret \u{2019}). Mirrors parse.ts.
+        let relPat = "\\b(?:add|create|make|register)\\s+(?:my|our|a|an|the)?\\s*(?:new\\s+)?(\(relKid)|\(relTeen)|\(relAdult))(?![’'ʼ]s)\\b[\\s,:-]*(?:named\\s+|called\\s+)?(.+)$"
         if let m = firstMatch(relPat, text) {
             let name = cleanPersonName(m.groups[2] ?? "")
             if !name.isEmpty {
@@ -560,7 +568,17 @@ enum CaptureHeuristic {
 
     private static func detectGoal(_ text: NSString, _ now: Date, _ cal: Calendar) -> CaptureIntent? {
         guard let m = firstMatch(goalTrigger, text) else { return nil }
-        var body = (m.groups[1] ?? "") as NSString
+        // A "soft" trigger ("I/we want to", "I'd like to") that doesn't contain the literal
+        // word "goal" must NOT hijack a meal phrase — "I want to have tacos for dinner"
+        // falls through to the meal branch. Mirrors parse.ts.
+        let full = m.groups[0] ?? ""
+        let bodyStr = m.groups[1] ?? ""
+        let trigger = full.hasSuffix(bodyStr) ? String(full.dropLast(bodyStr.count)) : full
+        let softTrigger = !trigger.lowercased().contains("goal")
+        let mealSignal = test(#"\bfor\s+(dinner|lunch|breakfast|supper|brunch)\b"#, text)
+            || test(#"\b(meal\s*plan|on the menu|dinner menu)\b"#, text)
+        if softTrigger && mealSignal { return nil }
+        var body = bodyStr as NSString
         // Deadline first (so a trailing "by september" isn't read as a target unit), then
         // the number + unit — stripping each phrase out of the title as we go.
         var deadline: String?

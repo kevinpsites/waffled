@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "countdown for Thanksgiving" into the "Add anything" bar and Waffled creates a countdown
   to that day — it recognizes holidays by name (Thanksgiving, Christmas, Easter, the Fourth
   of July, and more) and resolves them to their next date. Always on, with the target date
-  (and an optional emoji) editable in the confirm-and-edit preview, on web, iPhone, and iPad.
+  editable in the confirm-and-edit preview (any emoji it detects is carried through to the
+  countdown), on web, iPhone, and iPad.
 - **Quick-add can add a family member.** Type something like "add my son Max", "add my wife
   Sara", or "add a family member named Robin" into the "Add anything" bar and Waffled sets up
   their profile — inferring whether they're an adult, teen, or kid, all editable in the

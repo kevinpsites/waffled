@@ -455,12 +455,14 @@ final class SyncManager {
     /// Commit a captured pantry item via REST (`POST /api/pantry`). The caller gates on
     /// the Pantry module being enabled first (it defaults OFF), so a disabled module never
     /// reaches here. The Pantry screen reloads on next appearance (fetch-on-view).
-    func commitPantry(name: String, amount: String?, unit: String?, location: String, expiresOn: String?) async -> Bool {
+    func commitPantry(name: String, amount: String?, unit: String?, location: String, expiresOn: String?, lowAt: Double? = nil) async -> Bool {
         await restCommit {
             var body: [String: JSONValue] = ["name": .string(name), "location": .string(location)]
             if let amount, !amount.isEmpty { body["amount"] = .string(amount) }
             if let unit, !unit.isEmpty { body["unit"] = .string(unit) }
             if let expiresOn, !expiresOn.isEmpty { body["expiresOn"] = .string(expiresOn) }
+            // The server keeps `low_at` only for a finite threshold ≥ 0 (mirrors the route).
+            if let lowAt, lowAt >= 0 { body["lowAt"] = .double(lowAt) }
             _ = try await api.pantryCreate(body)
         }
     }

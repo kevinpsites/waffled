@@ -36,6 +36,7 @@ struct CaptureSheet: View {
     @State private var mealSlot = "dinner"
     @State private var mealDate = Date()
     @State private var cdDate = Date()                       // countdown target day
+    @State private var cdEmoji: String?                       // server-parsed countdown emoji (carried through)
     @State private var personType = "adult"                   // person member type (adult|teen|kid)
     @State private var personEmoji: String?                   // LLM-picked avatar emoji (carried through)
     @State private var personBirthday: String?               // LLM-picked birthday YYYY-MM-DD (carried through)
@@ -52,6 +53,7 @@ struct CaptureSheet: View {
     @State private var pantryLocation = "Pantry"              // where it's stored (Pantry/Fridge/Freezer)
     @State private var pantryExpiresOn = false                // whether an expiry date is set
     @State private var pantryExpires = Date()                 // the expiry day
+    @State private var pantryLowAt: Double?                    // server-parsed "running low" threshold (carried through)
     @State private var rewardEmoji = ""                       // reward avatar emoji
     @State private var rewardCost = ""                        // reward star/point cost (as text)
     @State private var rewardRequiresApproval: Bool?          // nil = inherit household default
@@ -128,7 +130,8 @@ struct CaptureSheet: View {
         taskStars = 0; taskRrule = nil
         personType = "adult"; personEmoji = nil; personBirthday = nil; personIsAdmin = false
         goalType = "habit"; goalTarget = ""; goalUnit = ""; goalDeadlineOn = false; goalTrackingMode = "shared_total"; goalAssignEveryone = false
-        pantryAmount = ""; pantryUnit = ""; pantryLocation = "Pantry"; pantryExpiresOn = false
+        cdEmoji = nil
+        pantryAmount = ""; pantryUnit = ""; pantryLocation = "Pantry"; pantryExpiresOn = false; pantryLowAt = nil
         rewardEmoji = ""; rewardCost = ""; rewardRequiresApproval = nil
         detent = .large
     }
@@ -456,9 +459,13 @@ struct CaptureSheet: View {
             }
             // Who's it for — a simple Just me (personal) vs Everyone (shared) choice,
             // resolved to participantIds on commit (web offers the richer per-person picker).
+            // A viewer without `goal.manage` (kids) can only make a just-me goal — POST
+            // /api/goals rejects others — so we don't offer Everyone.
             ChipFlow(spacing: 8, lineSpacing: 8) {
                 selectChip("🙋 Just me", on: !goalAssignEveryone) { goalAssignEveryone = false }
-                selectChip("👨‍👩‍👧 Everyone", on: goalAssignEveryone) { goalAssignEveryone = true }
+                if sync.can("goal.manage") {
+                    selectChip("👨‍👩‍👧 Everyone", on: goalAssignEveryone) { goalAssignEveryone = true }
+                }
             }
             if goalBlocked {
                 Text("Goals is turned off. Turn it on in Settings → Modules.")
@@ -842,12 +849,11 @@ struct CaptureSheet: View {
         case let .list(itemName, listName, quantity):
             editKind = "list"; editName = itemName; editQty = quantity ?? ""
             editListName = listName ?? (lists.first { $0.listType.lowercased() != "grocery" }?.name ?? "")
-        case let .countdown(title, d, _, _):
-            editKind = "countdown"; editName = title
-            let parts = d.split(separator: "-").compactMap { Int($0) }
-            cdDate = parts.count == 3
-                ? (Cal.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) ?? Date())
-                : Date()
+        case let .countdown(title, d, emoji, _):
+            // Parse the day in the HOUSEHOLD tz (matching commit) so a device in another
+            // zone doesn't shift it. Carry the server-parsed emoji through commit.
+            editKind = "countdown"; editName = title; cdEmoji = emoji
+            cdDate = DateFmt.date(d, "yyyy-MM-dd", sync.householdTz) ?? Date()
         case let .person(name, memberType, avatarEmoji, birthday, isAdmin):
             editKind = "person"; editName = name; personType = memberType
             personEmoji = avatarEmoji; personBirthday = birthday; personIsAdmin = isAdmin
@@ -855,22 +861,24 @@ struct CaptureSheet: View {
             editKind = "goal"; editName = title; goalType = gType
             goalTrackingMode = trackingMode
             // Seed the who's-it-for toggle from the inferred audience: everyone → shared,
-            // me/nil → just me (mirrors the web GoalWho seeding).
-            goalAssignEveryone = audience == "everyone"
+            // me/nil → just me (mirrors the web GoalWho seeding). A viewer without
+            // `goal.manage` (kids) can only make a just-me goal, so clamp to that.
+            goalAssignEveryone = audience == "everyone" && sync.can("goal.manage")
             goalUnit = unit ?? ""
             goalTarget = targetValue.map { $0 == $0.rounded() ? String(Int($0)) : String($0) } ?? ""
-            let parts = (deadline ?? "").split(separator: "-").compactMap { Int($0) }
-            if parts.count == 3, let d = Cal.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) {
+            // Parse the deadline in the HOUSEHOLD tz (matching commit) so it doesn't shift.
+            if let deadline, let d = DateFmt.date(deadline, "yyyy-MM-dd", sync.householdTz) {
                 goalDeadlineOn = true; goalDeadline = d
             } else {
                 goalDeadlineOn = false
             }
-        case let .pantry(name, amount, unit, location, expiresOn, _):
+        case let .pantry(name, amount, unit, location, expiresOn, lowAt):
             editKind = "pantry"; editName = name
             pantryAmount = amount ?? ""; pantryUnit = unit ?? ""
             pantryLocation = location.isEmpty ? "Pantry" : location
-            let parts = (expiresOn ?? "").split(separator: "-").compactMap { Int($0) }
-            if parts.count == 3, let d = Cal.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) {
+            pantryLowAt = lowAt   // carried through to commit (no editor field yet)
+            // Parse the expiry in the HOUSEHOLD tz (matching commit) so it doesn't shift.
+            if let expiresOn, let d = DateFmt.date(expiresOn, "yyyy-MM-dd", sync.householdTz) {
                 pantryExpiresOn = true; pantryExpires = d
             } else {
                 pantryExpiresOn = false
@@ -914,7 +922,7 @@ struct CaptureSheet: View {
                 ok = await sync.commitListItem(item: name, listName: editListName, quantity: qty)
             case "countdown":
                 let d = DateFmt.string(cdDate, "yyyy-MM-dd", sync.householdTz)
-                ok = await sync.commitCountdown(title: name, date: d, emoji: nil)
+                ok = await sync.commitCountdown(title: name, date: d, emoji: cdEmoji)
             case "person":
                 // Admin-only create — refuse gracefully rather than POSTing a 403.
                 guard sync.currentPerson?.isAdmin == true else {
@@ -934,9 +942,11 @@ struct CaptureSheet: View {
                 let type = measured && target == nil ? "habit" : goalType
                 let unit = (measured && !goalUnit.trimmingCharacters(in: .whitespaces).isEmpty) ? goalUnit.trimmingCharacters(in: .whitespaces) : nil
                 let deadline = goalDeadlineOn ? DateFmt.string(goalDeadline, "yyyy-MM-dd", sync.householdTz) : nil
-                // Just me → the current viewer; Everyone → all household members. Empty (no
-                // viewer id) lets the route scope it to the caller.
-                let participantIds = goalAssignEveryone
+                // Just me → the current viewer; Everyone → all household members. A viewer
+                // without `goal.manage` (kids) may only assign themselves — POST /api/goals
+                // 403s if a non-manager includes other participants — so clamp to just-me.
+                let everyone = goalAssignEveryone && sync.can("goal.manage")
+                let participantIds = everyone
                     ? sync.members.map(\.id)
                     : (sync.currentPersonId.map { [$0] } ?? [])
                 ok = await sync.commitGoal(title: name, goalType: type, trackingMode: goalTrackingMode,
@@ -955,7 +965,7 @@ struct CaptureSheet: View {
                 ok = await sync.commitPantry(name: name, amount: amount.isEmpty ? nil : amount,
                                              unit: unit.isEmpty ? nil : unit,
                                              location: pantryLocation.isEmpty ? "Pantry" : pantryLocation,
-                                             expiresOn: expiresOn)
+                                             expiresOn: expiresOn, lowAt: pantryLowAt)
             case "reward":
                 // TWO gates — refuse gracefully rather than POSTing when rewards are off or
                 // the viewer can't manage rewards (mirrors the web suppress-when-blocked gate).

@@ -218,6 +218,21 @@ describe('parseCapture — meals', () => {
   it('"eating out at 7pm" is a reservation (event), not a meal', () => {
     expect(p('eating out at 7pm on friday')?.kind).toBe('event')
   })
+
+  // Finding #3: a soft "I want to …" trigger must not steal a meal phrase for a goal.
+  it('"I want to have tacos for dinner tomorrow" is a meal, not a goal', () => {
+    const i = p('I want to have tacos for dinner tomorrow')
+    expect(i?.kind).toBe('meal')
+    if (i?.kind !== 'meal') throw new Error('expected meal')
+    expect(i.title).toBe('Tacos')
+    expect(i.mealType).toBe('dinner')
+    expect(new Date(`${i.date}T00:00:00`).getDate()).toBe(12) // tomorrow (Jun 12)
+  })
+
+  // Regression guard for Finding #3: a soft trigger with NO meal signal is still a goal.
+  it('"I want to get in shape" stays a habit goal (soft-trigger regression)', () => {
+    expect(p('I want to get in shape')?.kind).toBe('goal')
+  })
 })
 
 describe('parseCapture — countdown', () => {
@@ -383,6 +398,24 @@ describe('parseCapture — person', () => {
     expect(s.kind).toBe('Family member')
     expect(s.primary).toBe('Max')
     expect(s.detail).toBe('Kid')
+  })
+
+  // Finding #4: a possessive + a date is a calendar/countdown item, NOT a new member
+  // named "'s birthday on June 5".
+  it('"add my mom\'s birthday on June 5" is not a person (possessive + date)', () => {
+    expect(p("add my mom's birthday on June 5")?.kind).not.toBe('person')
+  })
+
+  // Finding #4: "boy scouts" (an ordinary noun containing "boy") + a weekday is not a kid.
+  it('"add boy scouts meeting Tuesday" is not a person', () => {
+    expect(p('add boy scouts meeting Tuesday')?.kind).not.toBe('person')
+  })
+
+  // Regression guards for Finding #4: real profile-add phrases still route to person.
+  it('"add a family member Jane" is still a person', () => {
+    const i = p('add a family member Jane')
+    if (i?.kind !== 'person') throw new Error('expected person')
+    expect(i.name).toBe('Jane')
   })
 })
 

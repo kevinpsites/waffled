@@ -332,6 +332,22 @@ private func dowOfDate(_ s: String) -> Int {
         #expect(m.name == "Max")
         #expect(m.birthday == nil)
     }
+    // Regression: detectPerson must not hijack possessives ("mom's birthday") or ordinary
+    // nouns that merely follow a weekday/date. Mirrors parse.ts.
+    @Test func momsBirthdayIsNotPerson() {
+        #expect(asPerson(p("add my mom's birthday on June 5")) == nil)
+    }
+    @Test func boyScoutsMeetingIsNotPerson() {
+        #expect(asPerson(p("add boy scouts meeting Tuesday")) == nil)
+    }
+    @Test func sonMaxStillPerson() {
+        #expect(asPerson(p("add my son Max"))?.name == "Max")
+    }
+    @Test func familyMemberJaneStillPerson() {
+        let m = asPerson(p("add a family member Jane"))!
+        #expect(m.name == "Jane")
+        #expect(m.memberType == "adult")
+    }
 }
 
 @Suite struct CaptureHeuristicGoalTests {
@@ -400,6 +416,19 @@ private func dowOfDate(_ s: String) -> Int {
     @Test func iWantFishForDinnerIsMeal() {
         // "I want to…" is the trigger, not "I want <noun>" — this stays a meal.
         #expect(asMeal(p("I want fish for dinner")) != nil)
+    }
+    @Test func iWantToHaveTacosForDinnerIsMeal() {
+        // A "soft" goal trigger ("I want to") + a meal signal ("for dinner") is a meal,
+        // not a goal — it falls through to the meal branch. Mirrors parse.ts.
+        let m = asMeal(p("I want to have tacos for dinner tomorrow"))!
+        #expect(m.title.lowercased().contains("tacos"))
+        #expect(m.mealType == "dinner")
+    }
+    @Test func iWantToGetInShapeStaysGoal() {
+        // Same soft trigger, but NO meal signal → stays a goal.
+        let g = asGoal(p("I want to get in shape"))!
+        #expect(g.title == "Get in shape")
+        #expect(g.goalType == "habit")
     }
     @Test func defaultsAssignment() {
         let g = asGoal(p("set a goal to run 10 miles"))!

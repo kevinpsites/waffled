@@ -227,7 +227,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
 | Natural-language capture → event / task / grocery / meal / list | ✅ | ✅ | ✅ | ✅ Done |
-| Capture a **countdown** ("12 days until Disney", "countdown for the beach party on Aug 25", "countdown for Thanksgiving") | ✅ | ✅ | ✅ | ✅ Done (always-on; resolves the target day — incl. holidays by name — optional emoji, editable in the preview) |
+| Capture a **countdown** ("12 days until Disney", "countdown for the beach party on Aug 25", "countdown for Thanksgiving") | ✅ | ✅ | ✅ | ✅ Done (always-on; resolves the target day — incl. holidays by name — editable in the preview; any detected emoji is carried through) |
 | Capture a **family member** ("add my son Max", "add a family member named Robin") | ✅ | ✅ | ✅ | ✅ Done (admin-only; infers adult / teen / kid, editable in the preview; non-admins get a friendly "ask an adult" note) |
 | Capture a **goal** ("set a goal to read 20 books this year", "I want to get in shape") | ✅ | ✅ | ✅ | ✅ Done (infers count / total / habit / checklist + target, unit, deadline — all editable; gated on the Goals module) |
 | Capture a **pantry item** ("add milk to the pantry", "put 2 cans of beans in the fridge") | ✅ | ✅ | ✅ | ✅ Done (distinguished from grocery by an explicit pantry / fridge / freezer target; offered only when the Pantry module is on) |

@@ -457,7 +457,7 @@ function detectCountdown(text: string, now: Date): Extract<ParsedIntent, { kind:
 const REL_KID = 'son|daughter|kid|child|boy|girl|baby'
 const REL_TEEN = 'teenager|teen'
 const REL_ADULT = 'husband|wife|spouse|partner|mom|mum|mommy|mother|dad|daddy|father|parent|adult|grandma|grandpa|grandmother|grandfather'
-const PERSON_REL = new RegExp(`\\b(?:add|create|make|register)\\s+(?:my|our|a|an|the)?\\s*(?:new\\s+)?(${REL_KID}|${REL_TEEN}|${REL_ADULT})\\b[\\s,:-]*(?:named\\s+|called\\s+)?(.+)$`, 'i')
+const PERSON_REL = new RegExp(`\\b(?:add|create|make|register)\\s+(?:my|our|a|an|the)?\\s*(?:new\\s+)?(${REL_KID}|${REL_TEEN}|${REL_ADULT})(?![’'ʼ]s)\\b[\\s,:-]*(?:named\\s+|called\\s+)?(.+)$`, 'i')
 const PERSON_MEMBER = /\b(?:add|create|make|register)\s+(?:a\s+|an\s+|the\s+|my\s+|our\s+)?(?:new\s+)?(?:family\s+member|household\s+member|family\s+profile|profile|person|member)\b\s*(?:for\s+|named\s+|called\s+|[:-]\s*)?(.+)$/i
 
 function memberTypeForRel(word: string): string {
@@ -475,8 +475,12 @@ function cleanPersonName(raw: string): string {
 }
 
 function detectPerson(text: string): Extract<ParsedIntent, { kind: 'person' }> | null {
-  // A clock time or an explicit date signals scheduling, not a profile.
+  // A clock time or an explicit date signals scheduling, not a profile. A profile-add
+  // never carries a birthday/date, so those cues bail (they belong to a countdown/event).
   if (findTime(text)) return null
+  if (/\bbirthday\b/i.test(text)) return null
+  if (/\b(?:mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|sun)(?:day|nesday|rsday|urday)?\b/i.test(text)) return null
+  if (/\b(?:jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b|\b\d{1,2}\/\d{1,2}\b/i.test(text)) return null
   const rel = PERSON_REL.exec(text)
   if (rel) {
     const name = cleanPersonName(rel[2])
@@ -557,6 +561,13 @@ function goalAudience(text: string): 'me' | 'everyone' | null {
 function detectGoal(text: string, now: Date): Extract<ParsedIntent, { kind: 'goal' }> | null {
   const m = GOAL_TRIGGER.exec(text)
   if (!m) return null
+  // A "soft" trigger ("I want to …", "I'd like to …") has no literal word "goal" in it,
+  // so it's easy to over-fire on a meal phrase ("I want to have tacos for dinner"). When
+  // the text carries a meal signal, bail so it falls through to the meal branch.
+  const matchedTrigger = m[0].slice(0, m[0].length - m[1].length)
+  const softTrigger = !/goal/i.test(matchedTrigger)
+  const MEAL_SIGNAL = /\bfor\s+(?:dinner|lunch|breakfast|supper|brunch)\b|\b(?:meal\s*plan|on the menu|dinner menu)\b/i
+  if (softTrigger && MEAL_SIGNAL.test(text)) return null
   let body = m[1]
   // Deadline first (so a trailing "by september" doesn't get read as a target unit),
   // then the number + unit — stripping each phrase out of the title as we go.

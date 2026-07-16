@@ -207,8 +207,12 @@ describe('finalizeIntent — model JSON → finished intent', () => {
     )).toEqual({
       kind: 'goal', title: 'Read 20 books', goalType: 'count',
       trackingMode: 'shared_total', participantMode: 'count_once', targetBasis: 'family',
-      targetValue: 20, unit: 'books', deadline: null, audience: null,
+      targetValue: 20, unit: 'books', deadline: null, audience: null, participantIds: [],
     })
+  })
+
+  it('includes an empty participantIds on a goal (the web goal type requires string[])', () => {
+    expect(finalizeIntent({ kind: 'goal', title: 'Read', goalType: 'count', targetValue: 5 }, ctx).participantIds).toEqual([])
   })
 
   it('carries the goal audience through (defaulting null, coercing bogus)', () => {
@@ -275,6 +279,11 @@ describe('finalizeIntent — model JSON → finished intent', () => {
   it('keeps an explicit pantry location and a low-stock threshold', () => {
     const i = finalizeIntent({ kind: 'pantry', name: 'Milk', location: 'Fridge', lowAt: 1 }, ctx)
     expect(i).toMatchObject({ kind: 'pantry', name: 'Milk', location: 'Fridge', lowAt: 1 })
+  })
+
+  it('treats a null pantry lowAt as no threshold (not 0), but keeps a real number', () => {
+    expect(finalizeIntent({ kind: 'pantry', name: 'Milk', lowAt: null }, ctx).lowAt).toBeNull()
+    expect(finalizeIntent({ kind: 'pantry', name: 'Milk', lowAt: 2 }, ctx).lowAt).toBe(2)
   })
 
   it('keeps a valid pantry expiresOn but drops a non-ISO one', () => {
@@ -352,5 +361,18 @@ describe('resolveDayFromText — deterministic meal day (model-independent)', ()
     const d = new Date(`${t}T00:00:00Z`)
     expect(d.getUTCDay()).toBe(4)
     expect(d.getUTCMonth()).toBe(10)
+  })
+  it('lets an explicit month+day win over a stray holiday word ("christmas party on june 20")', () => {
+    expect(resolveDayFromText('countdown to the christmas party on june 20', tz)).toMatch(/-06-20$/)
+  })
+  it('resolves "12 days until christmas" by the day-count, not Dec 25', () => {
+    const today = resolveDayFromText('today', tz)!
+    expect(days(today, resolveDayFromText('12 days until christmas', tz)!)).toBe(12)
+  })
+  it('still resolves a holiday when it is the whole expression ("countdown to christmas")', () => {
+    expect(resolveDayFromText('countdown to christmas', tz)).toMatch(/-12-25$/)
+  })
+  it('ignores holiday words entirely when holidays:false', () => {
+    expect(resolveDayFromText('christmas ham for dinner', tz, { holidays: false })).toBeNull()
   })
 })
