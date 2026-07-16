@@ -1,4 +1,5 @@
 import Foundation
+import HealthKit
 import Testing
 @testable import Waffled
 
@@ -90,6 +91,33 @@ import Testing
         for m in HealthKitBridge.Metric.allCases where !m.isWorkout {
             #expect(m.workoutMeasure == nil)
         }
+    }
+
+    // The sibling map powers the habit qualification flip ("any workout" ↔ "at least N
+    // min") and the goal-type remap — same activity, other measure, nil off workouts.
+    @Test func workoutSiblingFlipsTheMeasureAndKeepsTheActivity() {
+        #expect(HealthKitBridge.Metric.workoutYogaMinutes.workoutSibling == .workoutYogaSessions)
+        #expect(HealthKitBridge.Metric.workoutAnySessions.workoutSibling == .workoutAnyMinutes)
+        #expect(HealthKitBridge.Metric.steps.workoutSibling == nil)
+        for m in HealthKitBridge.Metric.allCases where m.isWorkout {
+            #expect(m.workoutSibling?.workoutSibling == m)   // involution
+        }
+    }
+
+    // A day's workouts are fetched ONCE (one HKSampleQuery) and every workout metric is
+    // derived from the same list in pure code — filtered by activity (strength matches
+    // both of Apple's strength types; "any" matches all), then counted or summed.
+    @Test func workoutValueFiltersTheDaysWorkoutsByActivity() {
+        let day: [(type: HKWorkoutActivityType, minutes: Double)] = [
+            (.yoga, 40), (.running, 20.5), (.functionalStrengthTraining, 25),
+        ]
+        #expect(HealthKitBridge.Metric.workoutYogaMinutes.workoutValue(fromDay: day) == 40)
+        #expect(HealthKitBridge.Metric.workoutStrengthMinutes.workoutValue(fromDay: day) == 25)
+        #expect(HealthKitBridge.Metric.workoutRunningSessions.workoutValue(fromDay: day) == 1)
+        #expect(HealthKitBridge.Metric.workoutAnySessions.workoutValue(fromDay: day) == 3)
+        #expect(HealthKitBridge.Metric.workoutAnyMinutes.workoutValue(fromDay: day) == 85.5)
+        #expect(HealthKitBridge.Metric.workoutCyclingSessions.workoutValue(fromDay: day) == 0)
+        #expect(HealthKitBridge.Metric.steps.workoutValue(fromDay: day) == nil)
     }
 
     // The one pure step of the new HKWorkout read path: collapsing a day's workout

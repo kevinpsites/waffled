@@ -675,7 +675,12 @@ struct GoalLogSheet: View {
     /// metric, pre-fetch today's total once. Denied/empty reads just leave it nil.
     private func loadHealthSuggestion() async {
         let hk = HealthKitBridge.shared
-        guard hk.isAvailable, let metric = HealthKitBridge.Metric.matching(unit: goal.unit) else { return }
+        // The goal's stored link decides the metric; the unit heuristic is only the
+        // fallback for unlinked goals. (A cycling-distance goal's unit is "mi" too —
+        // matching(unit:) alone would suggest walk+run miles for it.)
+        guard hk.isAvailable,
+              let metric = HealthKitBridge.Metric(key: goal.healthMetric)
+                ?? HealthKitBridge.Metric.matching(unit: goal.unit) else { return }
         try? await hk.requestReadAuthorization()
         if let value = await hk.todayTotal(for: metric), value > 0 {
             healthSuggestion = (metric, value)
@@ -1036,7 +1041,6 @@ private struct HealthDataPickerSheet: View {
     let onPick: (HealthKitBridge.Metric) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var values: [String: Double?] = [:]
-    @State private var loading = true
     @State private var search = ""
 
     private var isHabit: Bool { goalType == "habit" }
@@ -1084,15 +1088,18 @@ private struct HealthDataPickerSheet: View {
     }
 
     private func row(_ m: HealthKitBridge.Metric) -> some View {
-        let on = m == selected
+        // A habit lists the sessions measure, but the goal may be linked to the minutes
+        // sibling ("at least 45 min of yoga") — the activity's row is still "its" row.
+        let on = m == selected || (selected != nil && m.workoutSibling == selected)
         return Button { onPick(m) } label: {
             HStack(spacing: 12) {
                 WaffledEmojiTile(emoji: m.emoji, size: 17, frame: 34, cornerRadius: 10)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(m.chipLabel).font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(on ? WF.ai : WF.ink)
-                    // "Fills in miles" until the live read lands, then "3.2 mi today".
-                    Text(loading ? "Fills in \(isHabit ? "days" : m.label)" : m.formatCurrent(values[m.key] ?? nil))
+                    // "Fills in miles" until THIS row's live read lands (reads fan out
+                    // and publish per-metric), then "3.2 mi today".
+                    Text(values[m.key].map { m.formatCurrent($0) } ?? "Fills in \(isHabit ? "days" : m.label)")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                 }
                 Spacer()
@@ -1104,12 +1111,21 @@ private struct HealthDataPickerSheet: View {
 
     private func load() async {
         _ = try? await HealthKitBridge.shared.requestReadAuthorization()
-        var out: [String: Double?] = [:]
-        for m in HealthKitBridge.Metric.sections(forGoalType: goalType).flatMap(\.metrics) {
-            out[m.key] = await HealthKitBridge.shared.total(for: m, on: Date())
+        let metrics = HealthKitBridge.Metric.sections(forGoalType: goalType).flatMap(\.metrics)
+        // Fan the reads out (rows appear as each lands — total wait is the slowest
+        // query, not the sum) and fetch the day's workouts ONCE: every workout row is
+        // derived from that single list in pure code instead of its own HKSampleQuery.
+        async let workoutDay = HealthKitBridge.shared.workoutsOfDay(Date())
+        await withTaskGroup(of: (String, Double?).self) { group in
+            for m in metrics where !m.isWorkout {
+                group.addTask { (m.key, await HealthKitBridge.shared.total(for: m, on: Date())) }
+            }
+            for await (key, value) in group { values[key] = value }
         }
-        values = out
-        loading = false
+        let day = await workoutDay
+        for m in metrics where m.isWorkout {
+            values[m.key] = day.flatMap { m.workoutValue(fromDay: $0) }
+        }
     }
 }
 
@@ -1561,9 +1577,7 @@ struct GoalCreateSheet: View {
                 Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
             }
             .padding(12)
-            .background(WF.card)
-            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+            .wfField()
         }
         .buttonStyle(.plain)
     }
@@ -1615,10 +1629,21 @@ struct GoalCreateSheet: View {
     /// Boolean metrics (rings/mood) carry an implicit threshold of 1 (met/not).
     private func selectHealthMetric(_ m: HealthKitBridge.Metric) {
         let changed = healthMetric != m
+        // A measure flip on the SAME activity (the habit qualification pills, or tapping
+        // the goal's own activity in the picker) must not wipe a hand-set minutes bar.
+        // Compared against the OUTGOING metric, so it must precede the assignment.
+        let sameWorkoutActivity = changed && m.workout != nil
+            && m.workout?.activity == healthMetric?.workout?.activity
         healthMetric = m
         if isHabit {
             if m.isBoolean {
                 healthDailyTarget = "1"
+            } else if sameWorkoutActivity {
+                // Sessions ignore the field (any workout qualifies; the payload sends 1),
+                // so only top up a missing/degenerate value when flipping TO minutes.
+                if m.workoutMeasure == .minutes, (Int(healthDailyTarget) ?? 0) <= 1 {
+                    healthDailyTarget = String(m.suggestedDailyTarget)
+                }
             } else if changed || healthDailyTarget.trimmingCharacters(in: .whitespaces).isEmpty {
                 // Daily bar, not the goal target: a workout-sessions habit is "any workout
                 // that day" (1); a workout-minutes habit a modest daily 30.
@@ -1641,6 +1666,14 @@ struct GoalCreateSheet: View {
     /// the metric (e.g. a ring on a total), fall to habit; a boolean already on a count goal
     /// stays a count ("close the ring 15×").
     private func pickFromHealth(_ m: HealthKitBridge.Metric) {
+        // The picker lists one row per activity (a habit shows the sessions sibling of a
+        // minutes-configured goal), so tapping the already-linked metric — or its
+        // sibling — is a confirmation, not a measure reset that would wipe the
+        // minutes bar back to a default.
+        if m == healthMetric || (m.workoutSibling != nil && m.workoutSibling == healthMetric) {
+            showHealthPicker = false
+            return
+        }
         if !m.applies(toGoalType: goalType) { goalType = "habit" }
         autoFromHealth = true
         if title.trimmingCharacters(in: .whitespaces).isEmpty { title = m.chipLabel }
@@ -2272,8 +2305,14 @@ struct GoalCreateSheet: View {
             // turning the toggle off (or switching to an incompatible type) clears it server-side.
             "healthMetric": activeHealthMetric.map { .string($0.key) } ?? .null,
             // Daily threshold only for a health-linked habit; null everywhere else.
+            // A sessions habit qualifies with ANY workout that day (threshold 1); the
+            // text field keeps holding the user's minutes bar so a measure flip
+            // round-trips without losing it.
             "healthDailyTarget": (activeHealthMetric != nil && isHabit)
-                ? (Double(healthDailyTarget).map(JSONValue.double) ?? .null) : .null,
+                ? (activeHealthMetric?.workoutMeasure == .sessions
+                    ? .double(1)
+                    : (Double(healthDailyTarget).map(JSONValue.double) ?? .null))
+                : .null,
             "deadline": hasDeadline ? .string(isoDay(deadline)) : .null,
         ]
         if isHabit {

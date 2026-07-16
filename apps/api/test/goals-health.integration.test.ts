@@ -266,6 +266,69 @@ describe('goals — workout-type metrics (Tier 2, slice 2)', () => {
   })
 })
 
+describe('goals — health metric ↔ goal-type pairing (review hardening)', () => {
+  // The clients only offer fitting pairs; the server must reject the rest, or an
+  // unfitting link round-trips into iOS as activeHealthMetric == nil and a later
+  // unrelated edit silently null-patches the link away.
+  it('rejects a measure that does not fit the goal type, on create and patch', async () => {
+    // A total sums — session counts don't fit it.
+    expect((await call('POST', '/api/goals', kevin, {
+      title: 'X', goalType: 'total', trackingMode: 'shared_total', unit: 'times', targetValue: 10,
+      healthMetric: 'workout_running_sessions',
+    })).statusCode).toBe(400)
+    // A count counts — minute sums don't fit it.
+    expect((await call('POST', '/api/goals', kevin, {
+      title: 'X', goalType: 'count', trackingMode: 'shared_total', unit: 'min', targetValue: 100,
+      healthMetric: 'workout_yoga_minutes',
+    })).statusCode).toBe(400)
+    // Booleans (rings/mood) have nothing to sum — never a total (pre-existing gap, now closed).
+    expect((await call('POST', '/api/goals', kevin, {
+      title: 'X', goalType: 'total', trackingMode: 'shared_total', unit: 'days', targetValue: 20,
+      healthMetric: 'rings_all',
+    })).statusCode).toBe(400)
+
+    const id = await createGoal({ title: 'Minutes', goalType: 'total', unit: 'min', targetValue: 100 })
+    expect((await call('PATCH', `/api/goals/${id}`, kevin, { healthMetric: 'workout_running_sessions' })).statusCode).toBe(400)
+    expect((await call('PATCH', `/api/goals/${id}`, kevin, { healthMetric: 'workout_running_minutes' })).statusCode).toBe(200)
+  })
+})
+
+describe('goals — re-linking clears the old metric’s auto progress (review fix)', () => {
+  it('does not double-count a day when a habit flips to its sibling measure', async () => {
+    // Same yoga workout feeds both sibling keys, so the flip would double-count
+    // every qualified day if the old key’s logs survived.
+    const id = await createGoal({
+      title: 'Yoga habit', goalType: 'habit', habitPeriod: 'week', habitTargetPerPeriod: 5,
+      healthMetric: 'workout_yoga_minutes', healthDailyTarget: 30,
+    })
+    expect((await sync(id, '2026-07-08', 45, 'workout_yoga_minutes')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(1)
+
+    // One-tap qualification flip: "at least 30 min" → "any workout counts".
+    expect((await call('PATCH', `/api/goals/${id}`, kevin, {
+      healthMetric: 'workout_yoga_sessions', healthDailyTarget: 1,
+    })).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(0)   // old-key day cleared
+
+    expect((await sync(id, '2026-07-08', 1, 'workout_yoga_sessions')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(1)   // same real day counts once
+  })
+
+  it('keeps auto progress on unlink, and re-linking the same metric stays idempotent', async () => {
+    const id = await createGoal({ title: 'Steps', goalType: 'total', unit: 'steps', targetValue: 100000, healthMetric: 'steps' })
+    expect((await sync(id, '2026-07-08', 7000, 'steps')).statusCode).toBe(200)
+
+    // Unlink: the steps already walked stay on the goal.
+    expect((await call('PATCH', `/api/goals/${id}`, kevin, { healthMetric: null })).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(7000)
+
+    // Re-link the SAME metric: the old day replaces in place, never doubles.
+    expect((await call('PATCH', `/api/goals/${id}`, kevin, { healthMetric: 'steps' })).statusCode).toBe(200)
+    expect((await sync(id, '2026-07-08', 7500, 'steps')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(7500)
+  })
+})
+
 describe('goals — /health-sync counting (habit daily threshold)', () => {
   it('counts one completion only when the day clears the threshold, and undoes a day that later falls short', async () => {
     const id = await createGoal({
