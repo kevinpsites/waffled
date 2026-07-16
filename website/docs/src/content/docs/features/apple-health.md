@@ -1,6 +1,6 @@
 ---
 title: Apple Health → goals
-description: Link a goal to Apple Health on iPhone and let steps, flights, exercise minutes, walking & running distance, or active energy fill your progress automatically.
+description: Link a goal to Apple Health on iPhone and let steps, distance (walking, cycling, swimming, wheelchair), workouts by type, activity rings, mindful minutes, or your mood fill your progress automatically.
 ---
 
 Link a [goal](/features/goals/) to an Apple Health metric on your iPhone and it fills itself in — no more tapping "+1" after every walk. Steps, exercise, mindful minutes, your Apple Watch rings, even your mood flow from your iPhone and Apple Watch straight into the goal's progress, and opening the app catches up any days you missed. ❤️
@@ -73,6 +73,7 @@ If you deny access, the goal simply stops receiving Health data — you can stil
 - ⌚ **Apple Watch is automatic** — Watch steps, stairs, and workouts sync into iPhone Health on their own, so there's nothing separate to connect.
 - 🔒 **Personal by nature** — a health link belongs to the one person whose iPhone it is; it attaches to that person's tracking, not a shared household goal.
 - 🛜 **Needs a connection** — goals are online-only (not offline PowerSync), so syncing a day's total requires a live link to your server.
+- 🔁 **Switching metrics starts the auto-fill fresh** — re-linking a goal to a *different* metric clears the previous metric's auto-filled progress (the same yoga session must never count twice when "at least 30 min" becomes "any workout counts"). Manual entries always stay, **unlinking** keeps everything already earned, and re-linking the *same* metric just picks up where it left off.
 - 🔐 **Your data stays yours** — only the aggregated number (e.g. "7,340 steps") is synced to your self-hosted server; raw Health records never leave your phone.
 - ⏳ **Mood needs iOS 17+** — mood uses Apple's *State of Mind*, which only exists on iOS 17 and later.
 - 📏 **Distance uses your region's units** — every distance metric (walk + run, cycling, swimming, wheelchair) reads in **miles** or **kilometers** to match your iPhone's region setting, and is tracked to a decimal (e.g. "3.2 mi today") rather than rounded. Walk + run covers all your walking and running, hikes included.
