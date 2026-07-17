@@ -16,7 +16,7 @@ Waffled is a **free download on the App Store** — one universal app for iPhone
 ## Highlights
 
 - 📱 **One universal app, two idioms** — iPhone gets the personal-planner idiom (bottom tabs); iPad gets the family-hub idiom (side rail, wide layouts + screensaver) — picked automatically by device idiom, no separate download.
-- 🔐 **Native sign-in** — email/password plus OIDC SSO through a web auth session, a Keychain token store, and silent 401 refresh so you stay signed in.
+- 🔐 **Native sign-in** — email/password plus OIDC SSO through a web auth session, a Keychain token store, and silent 401 refresh so you stay signed in. The login screen offers exactly what your server allows: on an SSO-only server (password login disabled by the admin) the email/password form is hidden, just like the web.
 - 📅 **Offline-first calendar** — the calendar reads and writes through a local SQLite mirror with queued writes (PowerSync), so it survives network blips and reconnects cleanly.
 - 🌐 **Fresh everywhere else** — chores, rewards, goals, lists, meals, pantry, and photos are online REST, kept current by an in-app refresh bus.
 - 🔔 **Local event reminders** — scheduled straight from the events mirror with no push server (64-pending cap).

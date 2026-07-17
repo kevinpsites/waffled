@@ -124,41 +124,54 @@ struct LoginView: View {
         .padding(.bottom, isKiosk ? 36 : 28)
     }
 
+    /// Same gating as the web's `AuthGate`: the server's /api/auth/status decides
+    /// which sign-in methods exist — an OIDC-only server hides email + password.
+    private var showsPassword: Bool { WaffledAPI.AuthStatus.allowsPassword(session.status) }
+    private var showsSSO: Bool { WaffledAPI.AuthStatus.allowsSSO(session.status) }
+
     private var form: some View {
         VStack(spacing: 14) {
-            field("Email", text: $email, focusedOn: .email, keyboard: .emailAddress, content: .username)
-                .submitLabel(.next)
-                .onSubmit { focus = .password }
-            field("Password", text: $password, focusedOn: .password, secure: true, content: .password)
-                .submitLabel(.go)
-                .onSubmit { Task { await submit() } }
+            if showsPassword {
+                field("Email", text: $email, focusedOn: .email, keyboard: .emailAddress, content: .username)
+                    .submitLabel(.next)
+                    .onSubmit { focus = .password }
+                field("Password", text: $password, focusedOn: .password, secure: true, content: .password)
+                    .submitLabel(.go)
+                    .onSubmit { Task { await submit() } }
+            }
 
             if let error {
                 Text(error).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            WaffledPrimaryCTA(
-                label: busy ? "Signing in…" : "Sign in",
-                tint: WF.primary,
-                isDisabled: !canSubmit,
-                action: { Task { await submit() } }
-            )
-            .padding(.top, 4)
+            if showsPassword {
+                WaffledPrimaryCTA(
+                    label: busy ? "Signing in…" : "Sign in",
+                    tint: WF.primary,
+                    isDisabled: !canSubmit,
+                    action: { Task { await submit() } }
+                )
+                .padding(.top, 4)
+            }
 
-            if let label = session.status?.oidc?.buttonLabel {
-                ssoButton(label)
+            if showsSSO {
+                ssoButton(session.status?.oidc?.buttonLabel ?? "Sign in with SSO",
+                          divided: showsPassword)
             }
         }
     }
 
     /// "Sign in with <provider>" — backend-mediated OIDC via a secure web session.
-    private func ssoButton(_ label: String) -> some View {
+    /// `divided` adds the "or" rule above it, only meaningful under a password form.
+    private func ssoButton(_ label: String, divided: Bool) -> some View {
         VStack(spacing: 12) {
-            HStack(spacing: 10) {
-                Rectangle().fill(WF.hair).frame(height: 1)
-                Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
-                Rectangle().fill(WF.hair).frame(height: 1)
+            if divided {
+                HStack(spacing: 10) {
+                    Rectangle().fill(WF.hair).frame(height: 1)
+                    Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                    Rectangle().fill(WF.hair).frame(height: 1)
+                }
             }
             Button { Task { await submitOIDC() } } label: {
                 Text(busy ? "Opening…" : label)
