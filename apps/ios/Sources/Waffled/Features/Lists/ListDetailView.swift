@@ -349,14 +349,12 @@ struct ListDetailView: View {
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
 
     /// The kiosk column's global bottom edge (measured in `kioskBody`), used with the
-    /// real keyboard overlap to compute how far the add bar must ride up to clear the
-    /// keys — see the comment in `kioskBody`.
+    /// real keyboard position to compute how far the add bar must ride up to clear
+    /// the keys — see the comment in `kioskBody`.
     @State private var columnBottom: CGFloat = 0
     private var addBarShift: CGFloat {
-        let overlap = KeyboardState.shared.overlap
-        guard overlap > 0, columnBottom > 0 else { return 0 }
-        let keyboardTop = UIScreen.main.bounds.maxY - overlap
-        return max(0, columnBottom - keyboardTop)
+        KeyboardState.barShift(columnBottom: columnBottom,
+                               keyboardTop: KeyboardState.shared.topInWindow)
     }
 
     var body: some View {
@@ -509,15 +507,13 @@ struct ListDetailView: View {
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                     .scrollDismissesKeyboard(.interactively)
+                    // The lifted bar is drawn OVER the List's bottom (offset is
+                    // render-only), so grow the scrollable range by the same amount —
+                    // otherwise the last rows would rest behind the bar, unreachable.
+                    .contentMargins(.bottom, addBarShift, for: .scrollContent)
                 addBar.offset(y: -addBarShift)
             }
-            .background(
-                GeometryReader { g in
-                    Color.clear
-                        .onAppear { columnBottom = g.frame(in: .global).maxY }
-                        .onChange(of: g.frame(in: .global).maxY) { _, v in columnBottom = v }
-                }
-            )
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { columnBottom = $0 }
             .frame(maxWidth: .infinity)
             if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.staples.isEmpty) {
                 Rectangle().fill(WF.hair).frame(width: 1)
