@@ -101,6 +101,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is tidied up only when you leave it. Clearing the free-entry amount on a total goal now
   correctly disables the Log/Save button instead of silently logging the number that was
   there before.
+- **The Offline banner no longer flashes on brief connection blips.** Momentary hiccups —
+  a sync reconnect, waking the app, hopping between Wi-Fi and cellular — used to flash
+  "Offline" across the top of the iPhone app and the kiosk for a second. Both now wait
+  until the connection has been down for a sustained stretch (10 seconds) before saying
+  anything, and the banner still clears the moment you're back online.
 - **`./waffled upgrade` no longer trips over its own update.** Upgrading from an older
   release could fail mid-way with a cryptic `required variable … is missing a value`
   error, because the still-running old script drove the freshly downloaded configuration
