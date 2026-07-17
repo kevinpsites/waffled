@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, renderHook } from '@testing-library/react'
+import { act, render, renderHook } from '@testing-library/react'
 import { OFFLINE_BANNER_GRACE_MS, useSustainedOffline } from './pwa'
 
 // The kiosk's Offline banner must not flash on every blip (PowerSync reconnects,
@@ -74,6 +74,32 @@ describe('useSustainedOffline', () => {
       vi.advanceTimersByTime(4_000)
     })
     expect(result.current).toBe(true)
+  })
+
+  it('never paints a stale offline frame after reconnect (clears synchronously in render)', () => {
+    // Records the value every render pass actually painted — a post-paint-effect
+    // clear would paint one extra `true` frame on the render where `online`
+    // flips back, which renderHook + act-flushed effects can't see.
+    const painted: boolean[] = []
+    function Probe() {
+      painted.push(useSustainedOffline())
+      return null
+    }
+    render(<Probe />)
+    act(() => {
+      goOffline()
+    })
+    act(() => {
+      vi.advanceTimersByTime(OFFLINE_BANNER_GRACE_MS)
+    })
+    expect(painted.at(-1)).toBe(true)
+    const framesBefore = painted.length
+    act(() => {
+      goOnline()
+    })
+    expect(painted.length).toBeGreaterThan(framesBefore)
+    // Every render after the reconnect must already read false — same frame.
+    expect(painted.slice(framesBefore)).not.toContain(true)
   })
 
   it('hides promptly when connectivity returns', () => {

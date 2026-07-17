@@ -41,11 +41,15 @@ export function useSustainedOffline(graceMs: number = OFFLINE_BANNER_GRACE_MS): 
   const [sustained, setSustained] = useState(false)
   useEffect(() => {
     if (online) {
+      // Reset the stored flag so the next outage starts hidden; the return
+      // below already hides the banner synchronously on this very render.
       setSustained(false)
       return
     }
     const timer = window.setTimeout(() => setSustained(true), graceMs)
     return () => window.clearTimeout(timer)
   }, [online, graceMs])
-  return sustained
+  // Clear in-render, not in the post-paint effect — otherwise the banner
+  // paints one stale frame on the render where connectivity returns.
+  return online ? false : sustained
 }

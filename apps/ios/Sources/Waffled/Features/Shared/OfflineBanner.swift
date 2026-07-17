@@ -35,10 +35,13 @@ struct OfflineBanner: View {
 
     /// Feed the gate; connected clears immediately, disconnected arms a single
     /// cancellable sleep until the gate's grace deadline, then re-evaluates.
+    /// SuspendingClock so backgrounded time never burns the grace window (a
+    /// continuous clock would resume past-deadline on wake and flash the bar
+    /// before PowerSync reconnects).
     private func evaluate(_ s: SyncManager.Status) {
         graceTask?.cancel()
         graceTask = nil
-        let clock = ContinuousClock()
+        let clock = SuspendingClock()
         guard let deadline = gate.connectivityChanged(
             isConnected: s == .connected, now: clock.now) else { return }
         graceTask = Task {
