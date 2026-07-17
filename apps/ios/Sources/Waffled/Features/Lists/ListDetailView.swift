@@ -348,6 +348,15 @@ struct ListDetailView: View {
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
 
+    /// The kiosk column's global bottom edge (measured in `kioskBody`), used with the
+    /// real keyboard position to compute how far the add bar must ride up to clear
+    /// the keys — see the comment in `kioskBody`.
+    @State private var columnBottom: CGFloat = 0
+    private var addBarShift: CGFloat {
+        KeyboardState.barShift(columnBottom: columnBottom,
+                               keyboardTop: KeyboardState.shared.topInWindow)
+    }
+
     var body: some View {
         Group {
             if isKiosk { kioskBody } else { phoneBody }
@@ -483,13 +492,29 @@ struct ListDetailView: View {
     /// staples (the web grocery layout). The side panel shows only for grocery.
     private var kioskBody: some View {
         HStack(spacing: 0) {
-            List { itemRows }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .scrollDismissesKeyboard(.interactively)
-                .safeAreaInset(edge: .top, spacing: 0) { topControls }
-                .safeAreaInset(edge: .bottom, spacing: 0) { addBar }
-                .frame(maxWidth: .infinity)
+            // topControls and addBar are plain rows here, NOT `.safeAreaInset`s like on
+            // iPhone: a List drags inset-pinned chrome down into the window's keyboard
+            // safe-area region, which iPadOS under-reports in landscape (accessory +
+            // predictive rows uncounted) — burying "Add item" under the keys. The bar
+            // additionally rides up by `addBarShift`: the measured distance it would
+            // still sit below the REAL keyboard top (`KeyboardState`). An `.offset` is a
+            // pure render-time translation, so it can't re-enter the safe-area math that
+            // caused the burial — and it self-corrects to 0 whenever the system's own
+            // avoidance put the column in the right place.
+            VStack(spacing: 0) {
+                topControls
+                List { itemRows }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
+                    // The lifted bar is drawn OVER the List's bottom (offset is
+                    // render-only), so grow the scrollable range by the same amount —
+                    // otherwise the last rows would rest behind the bar, unreachable.
+                    .contentMargins(.bottom, addBarShift, for: .scrollContent)
+                addBar.offset(y: -addBarShift)
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { columnBottom = $0 }
+            .frame(maxWidth: .infinity)
             if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.staples.isEmpty) {
                 Rectangle().fill(WF.hair).frame(width: 1)
                 ScrollView(showsIndicators: false) {

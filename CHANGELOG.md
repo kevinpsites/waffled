@@ -171,8 +171,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the keyboard made the app think the screen had rotated — the page rebuilt itself
   mid-word, dropping the item you were typing and leaving the add-item field buried
   behind the keyboard. The layout now only changes on a real rotation, so the field
-  (and your half-typed item) stays visible above the keyboard. On iPhone, the keyboard
-  had no way to be put away on a list; a Done button above the keyboard and
+  (and your half-typed item) stays visible above the keyboard. Held sideways — the usual
+  counter/wall mount — the field *still* ended up under the keys, because iPadOS
+  under-reports how tall the landscape keyboard really is; the app now measures the
+  keyboard itself and lifts the add bar to sit right on top of it. On iPhone, the
+  keyboard had no way to be put away on a list; a Done button above the keyboard and
   drag-down-to-dismiss on the items now tuck it away.
 - **`./waffled upgrade` no longer trips over its own update.** Upgrading from an older
   release could fail mid-way with a cryptic `required variable … is missing a value`
