@@ -100,7 +100,7 @@ struct AppRoot: View {
             // scaffold they're simple views.
             Group {
                 switch tab {
-                case .today:    TodayView(path: $todayPath, openCalendar: { tab = .calendar })
+                case .today:    TodayView(approvals: approvals, path: $todayPath, openCalendar: { tab = .calendar })
                 case .calendar: CalendarView(openEventId: $calendarOpenEventId)
                 case .flex:
                     // The 4th slot follows the household's modules: Meals if on, else a

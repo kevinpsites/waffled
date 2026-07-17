@@ -91,6 +91,19 @@ enum Agenda {
         EventTime.dayKey(now, tz)
     }
 
+    /// Seconds from `now` until just past the next midnight in `tz` (a +1s margin so
+    /// a sleeper wakes on the new day, never at 23:59:59.9). Drives the dashboards'
+    /// day-rollover refetch: a device left open on Today across midnight would
+    /// otherwise keep showing yesterday's dinner/chores until an unrelated refresh.
+    /// Never returns ≤ 0 (a zero sleep would spin).
+    static func secondsUntilNextDay(after now: Date, tz: TimeZone) -> TimeInterval {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = tz
+        let nextMidnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now))
+            ?? now.addingTimeInterval(86_400)
+        return max(1, nextMidnight.timeIntervalSince(now) + 1)
+    }
+
     /// Has this event already ended? All-day events are "past" only once their day is
     /// before today; timed events once their end (or start, if open-ended) is before now.
     /// Mirrors the web's `isPastEvent`. Used to subtly fade already-done events.
