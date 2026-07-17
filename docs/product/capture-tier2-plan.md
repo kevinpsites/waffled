@@ -319,7 +319,9 @@ contract. (Alternative: everything in one large PR — more review surface, more
    call.)
 4. **DECIDED: capture event mutates act on the occurrence, never the series** (§4.4) — and event
    `reassign` is deferred (unsupported-verb copy answers it). Shipped in the fast-follow PR along with
-   the listItem + reward targets and the keyword half-weight ranking fix; iOS parity remains open.
+   the listItem + reward targets and the keyword half-weight ranking fix. iOS parity shipped in
+   PR #85 (2026-07-17): `CaptureHeuristic.swift` mirrors the `parse.ts` mutate detector, and the
+   full resolve → pick-one → commit flow runs on iPhone/iPad against the same frozen contract.
 
 ## 10. TDD checklist (per work-unit)
 - [ ] `rankCandidates` unit tests (exact / overlap / tie / below-threshold).
