@@ -2203,6 +2203,10 @@ struct WaffledAPI: Sendable {
     struct GroceryBoardDTO: Decodable, Sendable {
         let weekStart: String
         let meals: [Meal]
+        /// Recipes whose ingredients are on the list but that aren't planned this
+        /// week (added straight from a recipe page). Optional so older servers
+        /// without the field still decode.
+        let unscheduled: [UnscheduledRecipe]?
         let items: [ListItemDTO]
         let staples: [Staple]
         struct Meal: Decodable, Sendable, Identifiable {
@@ -2214,6 +2218,13 @@ struct WaffledAPI: Sendable {
             let mealType: String?
             var id: String { (recipeId ?? "") + "|" + date + "|" + (mealType ?? "") }
         }
+        struct UnscheduledRecipe: Decodable, Sendable, Identifiable {
+            let recipeId: String
+            let title: String
+            let emoji: String?
+            let color: String
+            var id: String { recipeId }
+        }
         struct Staple: Decodable, Sendable, Identifiable {
             let id: String
             let name: String
@@ -2223,6 +2234,16 @@ struct WaffledAPI: Sendable {
     /// The grocery board (aisle groupings + meal dots + this week's meals + staples).
     func groceryBoard() async throws -> GroceryBoardDTO {
         try await getJSON("/api/lists/grocery/board", as: GroceryBoardDTO.self)
+    }
+
+    /// Add a recipe's ingredients straight to the grocery list — no meal-plan entry
+    /// needed. The server skips pantry staples, merges quantities into rows already
+    /// on the list, and links every item back to the recipe (so it groups under the
+    /// recipe in the by-meal view). Returns how many new rows were added (merges
+    /// into existing rows don't count).
+    func groceryFromRecipe(recipeId: String) async throws -> Int {
+        struct Resp: Decodable { let added: Int }
+        return try await sendJSON("POST", "/api/lists/grocery/from-recipe/\(recipeId)", as: Resp.self).added
     }
 
     /// Pantry staples (assumed in-house, left off the list) — the editable master list,

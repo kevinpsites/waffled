@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Add any recipe's ingredients to the grocery list — no meal plan needed.** Every recipe
+  page (web and iOS) now has a first-class "Add to grocery" action, so a one-off dinner, a
+  side, or a snack goes straight to the list: staples you already have are skipped, quantities
+  merge into items already on the list, and each item remembers which recipe it came from. In
+  the grocery list's *By meal* view these recipes appear as their own "Unscheduled" sections —
+  with their own dot colors — instead of disappearing into "Other items". Items you add this
+  way are yours until you clear them: refreshing the list or planning a week rebuilds only the
+  meal-plan items and leaves recipe-page adds (and anything you've deleted) alone. On iOS the
+  recipe page's "Add to grocery" now uses this same path, so its items group and merge
+  properly too.
 - **Waffled is on the App Store.** The native iOS app is now a free public download for
   iPhone and iPad — [get it on the App Store](https://apps.apple.com/app/waffled/id6787621452).
   The [waffled.app](https://waffled.app) landing page has a new download section (official

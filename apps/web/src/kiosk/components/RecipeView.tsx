@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { groceryApi, mealsApi, pantryApi, useRecipe, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
 import { ScheduleModal } from './ScheduleModal'
@@ -8,11 +8,14 @@ import '../../styles/recipe.css'
 
 // Favorite / edit / schedule as icon buttons. Rendered in the topbar (full-screen
 // route, on the back-button row) and inline (modal preview, which has no topbar).
-function RecipeActionIcons({ fav, onFav, onEdit, onSchedule }: { fav: boolean; onFav: () => void; onEdit: () => void; onSchedule: () => void }) {
+function RecipeActionIcons({ fav, onFav, onEdit, onSchedule, onAddToGrocery }: { fav: boolean; onFav: () => void; onEdit: () => void; onSchedule: () => void; onAddToGrocery: () => void }) {
   return (
     <>
       <button type="button" className={`icon-btn rd-fav ${fav ? 'on' : ''}`} aria-label="Favorite" aria-pressed={fav} onClick={onFav}>
         <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.6-9.2-9C1.3 8 2.6 4.7 5.8 4.5 8 4.3 9.4 5.8 12 8.6c2.6-2.8 4-4.3 6.2-4.1 3.2.2 4.5 3.5 3 6.5C19 15.4 12 20 12 20z" /></svg>
+      </button>
+      <button type="button" className="icon-btn" aria-label="Add to grocery" onClick={onAddToGrocery}>
+        <svg viewBox="0 0 24 24"><path d="M2.5 4h2.4l2.2 11.2a1.6 1.6 0 0 0 1.6 1.3h8.9a1.6 1.6 0 0 0 1.6-1.2l1.8-7.3H6.1M9.5 20.2a.9.9 0 1 1-1.8 0 .9.9 0 0 1 1.8 0zM18.6 20.2a.9.9 0 1 1-1.8 0 .9.9 0 0 1 1.8 0z" /></svg>
       </button>
       <button type="button" className="icon-btn" aria-label="Edit recipe" onClick={onEdit}>
         <svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
@@ -132,6 +135,7 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const [fav, setFav] = useState(false)
   const [scheduling, setScheduling] = useState(false)
   const [addedNote, setAddedNote] = useState<string | null>(null)
+  const addingGrocery = useRef(false) // in-flight guard for addToGrocery
   const [cooked, setCooked] = useState(0)
   const [notes, setNotes] = useState('')
   const [usedMatches, setUsedMatches] = useState<RecipeMatch[] | null>(null)
@@ -212,6 +216,7 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
                 onFav={toggleFav}
                 onEdit={() => navigate(`/meals/recipe/${recipe.id}/edit`)}
                 onSchedule={() => setScheduling(true)}
+                onAddToGrocery={addToGrocery}
               />
             </div>
           )}
@@ -230,8 +235,16 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const missing = ingredients.filter((i) => !i.isStaple).map((i) => i.name)
 
   async function addToGrocery() {
-    await groceryApi.groceryFromRecipe(recipe!.id)
-    setAddedNote(missing.length ? `Added ${missing.length} item${missing.length === 1 ? '' : 's'} to this week’s grocery list.` : 'Everything’s on hand — nothing to add.')
+    if (addingGrocery.current) return // three controls share this handler — no double-fire
+    addingGrocery.current = true
+    try {
+      const { added } = await groceryApi.groceryFromRecipe(recipe!.id)
+      setAddedNote(added > 0 ? `Added ${added} item${added === 1 ? '' : 's'} to this week’s grocery list.` : 'Everything’s already on the list or on hand — nothing to add.')
+    } catch {
+      setAddedNote('Couldn’t reach the grocery list — try again.')
+    } finally {
+      addingGrocery.current = false
+    }
   }
 
   // Categorical chips are what people scan — show the first few, tuck the rest behind
@@ -270,6 +283,7 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
             onFav={toggleFav}
             onEdit={() => navigate(`/meals/recipe/${recipe.id}/edit`)}
             onSchedule={() => setScheduling(true)}
+            onAddToGrocery={addToGrocery}
           />
         </div>
       )}

@@ -24,6 +24,7 @@ struct RecipeDetailView: View {
     /// ingredients to the grocery list.
     @State private var tagsExpanded = false
     @State private var groceryAdded = false
+    @State private var groceryBusy = false
     /// Local check-off (like the web) — tick ingredients as you shop/cook; not persisted.
     @State private var checkedIngredients: Set<String> = []
     @State private var scheduling = false
@@ -71,6 +72,10 @@ struct RecipeDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { scheduling = true } label: { Label("Schedule…", systemImage: "calendar") }
+                    Button { addRecipeToGrocery() } label: {
+                        Label(groceryAdded ? "Added to grocery ✓" : "Add to grocery list", systemImage: "cart.badge.plus")
+                    }
+                    .disabled(groceryAdded)
                     Button { editing = true } label: { Label("Edit recipe", systemImage: "pencil") }
                     Button(role: .destructive) { confirmingDelete = true } label: {
                         Label("Delete recipe", systemImage: "trash")
@@ -361,7 +366,7 @@ struct RecipeDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             if !missing.isEmpty {
-                Button { addMissingToGrocery(missing) } label: {
+                Button { addRecipeToGrocery() } label: {
                     Text(groceryAdded ? "Added ✓" : "Add to grocery")
                         .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(WF.primaryD)
                 }
@@ -373,11 +378,33 @@ struct RecipeDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
-    private func addMissingToGrocery(_ names: [String]) {
-        groceryAdded = true
+    /// One call adds every non-staple ingredient — the server merges quantities into
+    /// rows already on the list and links items back to this recipe, so they group
+    /// under it in the grocery board's by-meal view (no meal-plan entry needed).
+    /// `groceryAdded` (which disables the banner button) only flips on success, so
+    /// a failed request stays retryable and never reads as "Added ✓".
+    private func addRecipeToGrocery() {
+        if groceryAdded {
+            // the ⋯-menu entry can still fire after the banner shows "Added ✓" —
+            // acknowledge instead of silently no-oping
+            withAnimation { cookedMessage = "Already on your grocery list." }
+            return
+        }
+        guard !groceryBusy else { return }
+        groceryBusy = true
         Task {
-            for name in names { try? await api.addGroceryItem(name: name) }
-            withAnimation { cookedMessage = "Added \(names.count) to your grocery list." }
+            defer { groceryBusy = false }
+            do {
+                let added = try await api.groceryFromRecipe(recipeId: r.id)
+                groceryAdded = true
+                withAnimation {
+                    cookedMessage = added > 0
+                        ? "Added \(added) to your grocery list."
+                        : "Everything’s already on the list or on hand."
+                }
+            } catch {
+                withAnimation { cookedMessage = "Couldn’t reach the grocery list — try again." }
+            }
         }
     }
 
