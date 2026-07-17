@@ -10,8 +10,10 @@ struct CrudOpDTO: Encodable {
 }
 
 /// A minimal JSON value so a single body dict can mix strings, ints, and explicit
-/// nulls (the server distinguishes "absent" from `null` for some fields).
-enum JSONValue: Encodable {
+/// nulls (the server distinguishes "absent" from `null` for some fields). It's also
+/// `Decodable`, so free-form server JSON (a capture `args` map, a `Candidate.meta`
+/// blob) round-trips through the app unchanged and back into the commit body.
+enum JSONValue: Codable, Equatable, Sendable {
     case string(String), int(Int), double(Double), bool(Bool), null
     case array([JSONValue]), object([String: JSONValue])
 
@@ -25,6 +27,23 @@ enum JSONValue: Encodable {
         case .null: try c.encodeNil()
         case let .array(a): try c.encode(a)
         case let .object(o): try c.encode(o)
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        // Bool before Int so a JSON `true` isn't coerced to a number; Int before Double
+        // so a whole number stays integral (and re-encodes without a trailing `.0`).
+        if c.decodeNil() { self = .null }
+        else if let b = try? c.decode(Bool.self) { self = .bool(b) }
+        else if let i = try? c.decode(Int.self) { self = .int(i) }
+        else if let d = try? c.decode(Double.self) { self = .double(d) }
+        else if let s = try? c.decode(String.self) { self = .string(s) }
+        else if let a = try? c.decode([JSONValue].self) { self = .array(a) }
+        else if let o = try? c.decode([String: JSONValue].self) { self = .object(o) }
+        else {
+            throw DecodingError.dataCorruptedError(
+                in: c, debugDescription: "Unsupported JSON value")
         }
     }
 }
@@ -242,6 +261,82 @@ struct WaffledAPI: Sendable {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = "{}".data(using: .utf8)
         _ = try? await URLSession.shared.data(for: req)
+    }
+
+    // MARK: capture Tier 2 (mutate — resolve → commit)
+
+    /// A single row a mutate could act on, returned by `/api/capture/resolve`. `meta` is a
+    /// free-form blob the resolver attaches (e.g. an event's `{seriesId, occurrenceStart}`)
+    /// that MUST be passed back into `/commit` unchanged. Byte-identical to the web `Candidate`.
+    struct Candidate: Decodable, Identifiable, Sendable, Equatable {
+        let id: String
+        let title: String
+        let subtitle: String?
+        let confidence: Double
+        let meta: [String: JSONValue]?
+    }
+
+    /// `/api/capture/resolve` response. Three "empty" cases are distinguished only by
+    /// `unsupported` + `disabledReason` (all HTTP 200 — see the server handler): an
+    /// unregistered kind / unsupported verb → `unsupported: true` + a reason; a disabled
+    /// module → a reason with no `unsupported`; a genuine no-match → bare `candidates: []`.
+    struct ResolveResponse: Decodable, Sendable {
+        let candidates: [Candidate]
+        let disabledReason: String?
+        let unsupported: Bool?
+    }
+
+    /// The friendly server message a failed `/commit` carries (`{ error, message }`) — thrown
+    /// so its `errorDescription` is the message the user should see (mirrors the web rethrow).
+    struct CaptureCommitError: LocalizedError { let message: String; var errorDescription: String? { message } }
+    private struct CommitResult: Decodable { let message: String }
+    private struct ServerError: Decodable { let error: String?; let message: String? }
+
+    /// Resolve a parsed mutate to candidate rows. Body mirrors the web `resolveCandidates`
+    /// call: `{ verb, targetKind, target: { description }, args }`.
+    func resolveMutate(verb: String, targetKind: String?, description: String,
+                       args: [String: JSONValue]) async throws -> ResolveResponse {
+        var req = URLRequest(url: url("/api/capture/resolve"))
+        req.httpMethod = "POST"
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: JSONValue] = [
+            "verb": .string(verb),
+            "targetKind": targetKind.map(JSONValue.string) ?? .null,
+            "target": .object(["description": .string(description)]),
+            "args": .object(args),
+        ]
+        req.httpBody = try JSONEncoder().encode(body)
+        let (data, resp) = try await perform(req)
+        try check(resp, data)
+        return try Self.decoder.decode(ResolveResponse.self, from: data)
+    }
+
+    /// Apply a chosen mutate. Body = the web `MutateCommand`: `{ verb, targetKind, targetId,
+    /// args, meta? }`. Returns the server's success message; on a 4xx/5xx throws a
+    /// `CaptureCommitError` carrying the server's friendly `message`.
+    func commitMutate(verb: String, targetKind: String?, targetId: String,
+                      args: [String: JSONValue], meta: [String: JSONValue]?) async throws -> String {
+        var req = URLRequest(url: url("/api/capture/commit"))
+        req.httpMethod = "POST"
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: JSONValue] = [
+            "verb": .string(verb),
+            "targetKind": targetKind.map(JSONValue.string) ?? .null,
+            "targetId": .string(targetId),
+            "args": .object(args),
+        ]
+        if let meta { body["meta"] = .object(meta) }
+        req.httpBody = try JSONEncoder().encode(body)
+        let (data, resp) = try await perform(req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if (200..<300).contains(code) {
+            return try Self.decoder.decode(CommitResult.self, from: data).message
+        }
+        let msg = (try? Self.decoder.decode(ServerError.self, from: data)).flatMap { $0.message ?? $0.error }
+            ?? "Couldn’t do that — try again."
+        throw CaptureCommitError(message: msg)
     }
 
     // MARK: capture commits (non-synced tables go over REST)

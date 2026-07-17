@@ -66,6 +66,11 @@ push to `main`, force-push, or merge without being asked.
    permission prompt). Match the existing pages' Starlight frontmatter + voice. Ask "if a user
    went looking for this, would they find and understand it?" — if not, the feature isn't done.
    Skip only when nothing user-facing changed (pure internal churn).
+   **Docs land in the SAME PR as the feature — never as a follow-up.** Before opening the PR,
+   grep the whole repo for the feature's old status phrasing ("planned", "coming", "fast-follow",
+   "remains open", "web-only", …) and fix every hit — including internal plan/status docs under
+   `docs/` (e.g. `docs/product/*-plan.md`), not just the user-facing pages. This has bitten
+   three times now (three doc-only fast-follow PRs that should have been part of the original).
 3. **Cut a release ONLY with `./waffled release X.Y.Z`** — never hand-bump versions or
    hand-edit the changelog heading, and never move a published tag. That one command is the
    source of truth: it reviews the `[Unreleased]` notes (and **requires ≥1 entry**), dates

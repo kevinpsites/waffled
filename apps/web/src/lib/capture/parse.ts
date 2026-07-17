@@ -729,9 +729,11 @@ function guessTargetKind(text: string, verb: MutateVerb): MutateTargetKind {
 }
 
 // Best-effort args from the phrase (the server refines them): a numeric amount for `log`
-// (time units → hours/minutes so the goal-log folds them; else a plain amount), and the
-// "to <name>" assignee for `reassign`.
-function mutateArgs(verb: MutateVerb, text: string): Record<string, unknown> {
+// (time units → hours/minutes so the goal-log folds them; else a plain amount), the
+// "to <name>" assignee for `reassign`, and the destination date/time for `reschedule`
+// (resolved with the same findDay/findTime helpers the event create path uses, so a
+// no-LLM household can move an event end-to-end).
+function mutateArgs(verb: MutateVerb, text: string, now: Date): Record<string, unknown> {
   if (verb === 'log') {
     const m = /(\d+(?:\.\d+)?)\s*([a-z]+)/i.exec(text)
     if (m) {
@@ -745,6 +747,22 @@ function mutateArgs(verb: MutateVerb, text: string): Record<string, unknown> {
   if (verb === 'reassign') {
     const m = /\bto\s+([A-Za-z][\w'’-]*)/.exec(text)
     if (m) return { personName: m[1] }
+  }
+  if (verb === 'reschedule') {
+    // The destination phrase after the FIRST "to/for" ("move soccer to Thursday 4pm"
+    // → "Thursday 4pm"). Lazy `.*?` so a trailing participant clause ("...to Friday for
+    // Wally") can't swallow the spoken date. Emit only what the phrase actually gives —
+    // the server keeps whichever half (date/time) wasn't spoken.
+    const m = /^.*?\b(?:to|for)\s+(.+)$/i.exec(text)
+    if (m) {
+      const dest = m[1]
+      const args: Record<string, unknown> = {}
+      const day = findDay(dest, now)
+      if (day) args.date = `${day.y}-${String(day.mo + 1).padStart(2, '0')}-${String(day.d).padStart(2, '0')}`
+      const time = findTime(dest)
+      if (time) args.time = `${String(time.h).padStart(2, '0')}:${String(time.m).padStart(2, '0')}`
+      return args
+    }
   }
   return {}
 }
@@ -766,13 +784,13 @@ function mutateDescription(raw: string): string {
   return tidy(s)
 }
 
-function detectMutate(text: string): Extract<ParsedIntent, { kind: 'mutate' }> | null {
+function detectMutate(text: string, now: Date): Extract<ParsedIntent, { kind: 'mutate' }> | null {
   for (const { re, verb, group } of MUTATE_PATTERNS) {
     const m = re.exec(text)
     if (!m) continue
     const description = mutateDescription(m[group] ?? '')
     if (!description) continue
-    return { kind: 'mutate', verb, targetKind: guessTargetKind(text, verb), target: { description }, args: mutateArgs(verb, text) }
+    return { kind: 'mutate', verb, targetKind: guessTargetKind(text, verb), target: { description }, args: mutateArgs(verb, text, now) }
   }
   return null
 }
@@ -786,7 +804,7 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
   // MUTATE — a verb acting on an EXISTING row ("mark … done", "delete …", "log …").
   // Detected FIRST, before every create branch, and returns a non-committable marker so
   // the bar forces the server path (the LLM re-parses to the real verb/targetKind/args).
-  const mutateIntent = detectMutate(text)
+  const mutateIntent = detectMutate(text, now)
   if (mutateIntent) return mutateIntent
 
   // PERSON — "add my son Max" / "add a family member Jane". A specific create phrase,

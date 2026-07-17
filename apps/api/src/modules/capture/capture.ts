@@ -19,6 +19,7 @@ import {
   type ResolveCtx,
 } from './capture-resolvers'
 import config from '../../platform/config'
+import { zonedToUtc, localYmd, whenLabel } from './tz'
 import {
   completeJson,
   getAiConfig,
@@ -372,7 +373,7 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
       personName,
       rrule,
       scheduleLabel: scheduleLabel(rrule),
-      whenLabel: whenLabel(startsAt, allDay, ctx.timezone),
+      whenLabel: whenLabel(new Date(startsAt), allDay, ctx.timezone),
     }
   }
   // task / chore
@@ -417,39 +418,13 @@ function matchList(raw: string, lists: string[]): string {
   return matchListStrict(raw, lists) ?? raw
 }
 
-// The tz's offset (ms) from UTC at a given instant, via Intl — no tz library.
-function tzOffsetMs(at: Date, tz: string): number {
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
-  })
-  const m: Record<string, string> = {}
-  for (const p of dtf.formatToParts(at)) m[p.type] = p.value
-  const asUTC = Date.UTC(+m.year, +m.month - 1, +m.day, +(m.hour === '24' ? '0' : m.hour), +m.minute, +m.second)
-  return asUTC - at.getTime()
-}
-
-// Normalize a model datetime to a UTC ISO string. A naive local value (no zone
-// suffix) is interpreted in the household timezone; an explicit offset/Z is kept.
-function zonedToUtc(value: string, tz: string): string {
-  const hasZone = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(value.trim())
-  if (hasZone) return new Date(value).toISOString()
-  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/.exec(value.trim())
-  if (!m) return new Date(value).toISOString() // let Date try; finalize validates
-  const [, y, mo, d, h, mi, s] = m
-  const guess = Date.UTC(+y, +mo - 1, +d, +h, +mi, +(s ?? 0))
-  const off = tzOffsetMs(new Date(guess), tz)
-  return new Date(guess - off).toISOString()
-}
-
 function cap(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s
 }
 
 // Today's date (YYYY-MM-DD) in a timezone — the default meal date.
 function todayInTz(tz: string): string {
-  const m: Record<string, string> = {}
-  for (const p of new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())) m[p.type] = p.value
-  return `${m.year}-${m.month}-${m.day}`
+  return localYmd(new Date(), tz)
 }
 
 const WD: Record<string, number> = {
@@ -595,14 +570,6 @@ function countdownWhenLabel(date: string, tz: string): string {
   const day = new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
   const rel = diff <= 0 ? 'Today' : diff === 1 ? 'Tomorrow' : `${diff} days`
   return `${day} · ${rel}`
-}
-
-function whenLabel(iso: string, allDay: boolean, tz: string): string {
-  const d = new Date(iso)
-  const day = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz })
-  if (allDay) return `${day} · All day`
-  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz })
-  return `${day} · ${time}`
 }
 
 function scheduleLabel(rrule: string | null): string {

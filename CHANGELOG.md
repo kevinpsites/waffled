@@ -24,6 +24,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   meal-plan items and leaves recipe-page adds (and anything you've deleted) alone. On iOS the
   recipe page's "Add to grocery" now uses this same path, so its items group and merge
   properly too.
+- **Waffled is on the App Store.** The native iOS app is now a free public download for
+  iPhone and iPad — [get it on the App Store](https://apps.apple.com/app/waffled/id6787621452).
+  The [waffled.app](https://waffled.app) landing page has a new download section (official
+  badge + a QR code you can scan from the kiosk), and the docs' mobile-app page links
+  straight to the listing.
+- **Quick-add actions now work on iPhone and iPad, not just the web.** Everything the capture
+  bar can *do* to things you already have — "mark the trash chore done", "give the dishes to
+  Wally", "log 20 min on my reading goal", "move soccer to Thursday 4pm", "cross off milk",
+  "redeem ice cream night for George" — is now on the phone and the family display too. The
+  same on-device parser recognizes the action, your server finds the real item, and the sheet
+  shows a **pick-one candidate list** to confirm before anything changes; destructive actions
+  (delete/cancel) still ask first. This brings iPhone/iPad to full parity with the web capture bar.
+- **Quick-add now acts on lists, calendar events, and rewards too.** Tell the capture bar
+  "cross off milk", "move soccer to Thursday 4pm", "cancel the dentist appointment", or
+  "redeem ice cream night for George" and it finds the real item and asks you to confirm —
+  the same pick-one flow chores and goals already have. Event changes move or cancel **just
+  that occurrence**, never the whole series, and redeeming goes through the same star-balance
+  and parent-approval rules as the rewards page.
+- **Smarter goal matching in quick-add.** A vague word like "outside" no longer ranks every
+  outdoors-ish goal as a perfect match — goals whose *title* contains your words now rank
+  above ones that only match by theme, so the right goal lands at the top of the picker.
 - **Swipe between weeks in the iPhone meal planner.** The weekly meal plan now pages with a
   horizontal flick — swipe left for next week, right for the previous one — the same gesture
   the Calendar and Chores screens already use. The arrow buttons and "Jump to this week"
@@ -104,11 +125,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   understands actions on things you already have — **"mark the trash chore done"**, **"give the
   dishes to Wally"**, **"log 20 min on my reading goal"**. You describe the thing in your own words
   (no need to know its exact name); Waffled finds it, and when a phrase could match more than one, it
-  shows the matches so you pick the right one before anything changes. This first release covers
-  **completing and reassigning chores** and **logging goal progress**, on the web. Actions always run
-  against the server (they never guess offline), reassigning someone else's chore still needs a
-  grown-up, and anything destructive asks first. More actions (rescheduling events, crossing items off
-  lists, redeeming rewards) and iPhone/iPad support are on the way. **Reliable "do anything" needs an AI
+  shows the matches so you pick the right one before anything changes. This covers
+  **completing and reassigning chores** and **logging goal progress**, on web, iPhone, and iPad. Actions
+  always run against the server (they never guess offline), reassigning someone else's chore still needs a
+  grown-up, and anything destructive asks first. (Rescheduling events, crossing items off lists, and
+  redeeming rewards ship alongside — see the entries above.) **Reliable "do anything" needs an AI
   provider** — configure one in Settings → AI & capture; without a key the on-device parser still handles
   common phrasings on a best-effort basis (and the preview says so), but an AI key is what makes the full
   range of wording and matching dependable.

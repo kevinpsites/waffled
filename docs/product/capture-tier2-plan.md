@@ -197,38 +197,44 @@ service fn, enforcing the route's caps).
     is open. Default to the speaker.
 - **Gate:** `moduleEnabled('goals')` (defaultOn).
 
-### 4.3 List items — check off / delete (`modules/lists/`)
-- **Search:** no item search exists — `select id,name,checked from list_items where household_id=$1
-  [and list_id=$2] and deleted_at is null`, then `rankCandidates` on `name`. If the phrase names a list
-  ("off the grocery list"), pre-filter via the existing `matchListStrict` on list names, else search
-  across the household. Prefer `checked=false` for `complete`.
-- **Apply:** `complete` → `patchItem(id,{checked:true})` (`lists.service.ts:304`, `PATCH
-  /api/list-items/:id`). `delete` → `softDeleteItem(id)` (`lists.routes.ts:196`) — soft, but still a
-  destructive-confirm in the UI. No per-capability gate; module gate `lists` (optional module).
-- **Gate:** `moduleEnabled('lists')`.
+### 4.3 List items — check off / delete (`modules/lists/`) — SHIPPED (`lists-capture.ts`)
+- **Search:** live items across the household's active (non-template) lists in one query joining
+  `lists` for the name, then `rankCandidates` on `name`. **Subtitle = the list's name** so two "Milk"s
+  disambiguate ("Milk (Groceries)" vs "Milk (Costco)"). Checked items are dropped for `complete`
+  (still offered for `delete`).
+- **Apply:** `complete` → `setItemChecked(tenant, id, true)` (`lists.service.ts:280`). `delete` →
+  `softDeleteItem(householdId, id)` — soft, but still a destructive-confirm in the UI. Household-scoped
+  404 guard; no per-capability gate (mirrors the plain-tenantRoute item routes).
+- **Gate:** `moduleEnabled('lists')` → disabledReason "Lists is turned off."
 
-### 4.4 Events — reschedule / reassign / delete (`modules/events/events.ts`)
-- **Search:** pull a window via `rangeEvents(householdId, from, to, viewerPersonId)` (`events.ts:252`)
-  — default window ≈ today..+30d (configurable) — then rank `title`. Candidate id = **master/series
-  id**; for a recurring hit, put `occurrenceStart` in `meta` and set `meta.seriesScopeOnly` where
-  relevant.
-- **Apply — `PATCH /api/events/:id`** (`updateEvent`, `events.ts:274`):
-  - `reschedule` → `{ startsAt }` (build from `args.date`/`args.time` via `resolveDayFromText` +
-    existing tz helpers). Recurring: default `scope:'this'` with `occurrenceStart` → `overrideOccurrence`.
-  - `reassign` → resolve `personName`→id, `{ participantIds:[id] }`. **Recurring reassign is
-    master-only** (`scope:'all'`) — state that in the confirm card (§1).
-  - `delete` → `DELETE /api/events/:id` (`events.ts:659`); recurring uses `?scope=this&occurrenceStart=`.
-    Always destructive-confirm.
+### 4.4 Events — reschedule / delete (`modules/events/events.ts`) — SHIPPED (`events-capture.ts`)
+- **Search:** an upcoming window via `rangeEvents` from "now", ranked on `title`; past events are
+  excluded. Subtitle = a human date/time ("Fri Jul 18 · 7:00 PM"). Candidate meta =
+  `{ seriesId, occurrenceStart | null }` (echoed for the client contract only — `applyMutation`
+  re-derives the occurrence/series handle from the DB by targetId, with an `rrule is null` guard so
+  a master id can never be mutated as a "single").
+- **Semantics — the occurrence, never the series:** recurring rows go through `overrideOccurrence`
+  (scope `'this'`; delete = cancel + rematerialize), singles through `updateEvent` /
+  `softDeleteEvent` + `materializeMaster` — mirroring the PATCH/DELETE routes.
+- **Apply:**
+  - `reschedule` → `args.date` / `args.time` (LLM contract; the web heuristic extracts them
+    on-device too). Date-only keeps the original clock time, time-only keeps the day; neither →
+    friendly 400. Duration preserved by sliding `endsAt` by the start delta.
+  - `delete` → destructive-confirm in the UI; "Canceled *X* (just this one)" for an occurrence.
+  - **`reassign` is NOT wired to capture** (deferred) — the bar answers with the honest
+    unsupported-verb copy. Recurring reassign being master-only is the open design question.
 - **Gate:** none (calendar always on).
 
-### 4.5 Rewards — redeem (`modules/rewards/rewards.ts`)
-- **Search:** `listRewards(householdId)` (`rewards.ts:70`), rank `title`. Candidate id = reward id;
-  subtitle = `${cost} ${currency}`.
-- **Apply — `POST /api/rewards/:id/redeem`** (`requestRedemption`, `rewards.ts:170`): resolve
-  `args.personName`→id (default speaker). If `requires_approval` → pending (message: "Sent to a parent
-  for approval"); else balance-guarded debit (409 "not enough stars" → surface it). **No redeem
-  capability** — any member. `reward.grant`/spot-award is out of Tier 2 scope.
-- **Gate:** `rewardsEnabled` (chores module on AND `settings.chores.rewards`).
+### 4.5 Rewards — redeem (`modules/rewards/rewards.ts`) — SHIPPED (`rewards-capture.ts`)
+- **Search:** the reward catalog, ranked on `title`. Candidate id = reward id; subtitle =
+  `${cost} ${currency}`.
+- **Apply** — via `requestRedemption` (`rewards.ts:170`), exactly as `POST /api/rewards/:id/redeem`:
+  resolve `args.personName`→id via the shared `findPersonByName` (default speaker; unknown name →
+  friendly 400). `requires_approval` → pending redemption + "waiting for approval" message; else
+  balance-guarded debit ("Redeemed … (−N stars)"; `{error}` → 409 with the route's own "not enough
+  stars" message). **No redeem capability** — any member. `reward.grant`/spot-award stays out of scope.
+- **Gate:** `rewardsEnabled` (chores module on AND `settings.chores.rewards`) → disabledReason
+  "Rewards is turned off." (the sub-toggle nuance is not distinguished, same as the routes' gate).
 
 ---
 
@@ -260,6 +266,10 @@ exact match, token-overlap, tie → both returned, below-threshold → empty.
   other / delete template), `goal.manage` (attribute-other). Self-actions and redeem are open.
 - **0/1/many fork thresholds:** ≥1 candidate over `HIGH` (~0.75) and clearly ahead of #2 → auto-single;
   any candidates over `LOW` (~0.4) → picker; none → not-found. Tune in the ranking util; unit-tested.
+- **Keyword matches count at half weight** (`KEYWORD_WEIGHT` in `candidate-match.ts`): a description
+  token found only in a row's `keywords` (concept vocabulary) scores 0.5 vs 1.0 for a title token —
+  otherwise a one-word description like "outside" tied every outdoors-concept goal at 1.00 (PR #73
+  review fast-follow).
 - **Destructive confirm:** every `delete` (and the "already done?" undo edge) forces an explicit
   confirm button in the preview even at confidence 1.0.
 - **Offline / heuristic:** `parse.ts` + `CaptureHeuristic.swift` detect mutation verbs at the top of
@@ -307,6 +317,11 @@ contract. (Alternative: everything in one large PR — more review surface, more
    fast-follow PRs on the same frozen contract. (§8)
 3. **Ranking thresholds** (HIGH/LOW) — start ~0.75/0.4, tune against seeded fixtures. (§6, implementer's
    call.)
+4. **DECIDED: capture event mutates act on the occurrence, never the series** (§4.4) — and event
+   `reassign` is deferred (unsupported-verb copy answers it). Shipped in the fast-follow PR along with
+   the listItem + reward targets and the keyword half-weight ranking fix. iOS parity shipped in
+   PR #85 (2026-07-17): `CaptureHeuristic.swift` mirrors the `parse.ts` mutate detector, and the
+   full resolve → pick-one → commit flow runs on iPhone/iPad against the same frozen contract.
 
 ## 10. TDD checklist (per work-unit)
 - [ ] `rankCandidates` unit tests (exact / overlap / tie / below-threshold).
