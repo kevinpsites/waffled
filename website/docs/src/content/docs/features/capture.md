@@ -8,7 +8,7 @@ The "Add anything" bar is the fast front door to the whole app — one natural-l
 ## Highlights
 
 - 🧭 **Routes a phrase** → event · task · grocery · meal · list · unsupported, resolving your household-local "now" and family names as it goes.
-- ✅ **Acts on existing things too** — mark a chore done, log progress on a goal, cross an item off a list, move or cancel an event, redeem a reward, straight from the bar; you confirm the exact match before anything commits. See [Acting on existing things](#acting-on-existing-things).
+- ✅ **Acts on existing things too** *(Web / Kiosk for now)* — mark a chore done, log progress on a goal, cross an item off a list, move or cancel an event, redeem a reward, straight from the bar; you confirm the exact match before anything commits. See [Acting on existing things](#acting-on-existing-things).
 - 🔁 **Understands recurrence** — "lunch every Thursday for a month" parses into an **RRULE**, editable via **Repeats / Ends** right in the preview.
 - 🔌 **Pluggable provider per household** — Anthropic · OpenAI-compatible · Ollama, with a configurable model; the active provider/model is stored per household. See [AI providers](/administration/ai-providers/).
 - ⚡ **Instant, then better** — an on-device parse shows immediately, then upgrades to the LLM with a provider tag (**"improving…"**); on a kind-disagreement you can pick the other take, and it **backfills recurrence** when a weak model drops it.
@@ -16,7 +16,7 @@ The "Add anything" bar is the fast front door to the whole app — one natural-l
 
 ## Acting on existing things
 
-The bar isn't just for adding — it can change what's already there:
+The bar isn't just for adding — it can change what's already there. **This is on Web / Kiosk today; iPhone and iPad still capture new things everywhere, with the act-on-existing flow coming to them next.**
 
 - "mark set the table done for Elaine"
 - "give the dishes to Wally"
@@ -35,13 +35,13 @@ The parser (your AI provider if configured, otherwise the on-device fallback) pr
 
 ## Where it works
 
-| Surface | Support |
-|---|---|
-| Web / Kiosk | ✅ |
-| iPhone | ✅ |
-| iPad | ✅ |
+| Surface | Add new things | Act on existing things |
+|---|---|---|
+| Web / Kiosk | ✅ | ✅ |
+| iPhone | ✅ | 🚧 Planned |
+| iPad | ✅ | 🚧 Planned |
 
-The capture bar behaves the same across every surface — the instant on-device parse, the LLM upgrade, and the editable recurrence preview all show up on Web/Kiosk, iPhone, and iPad. **Acting on existing things is Web/Kiosk-first** — iPhone and iPad still capture new things everywhere, with the act-on-existing flow coming to them next.
+**Adding** new things behaves the same across every surface — the instant on-device parse, the LLM upgrade, and the editable recurrence preview all show up on Web/Kiosk, iPhone, and iPad. **Acting on existing things** (the mutate verbs above — complete, log, reschedule, redeem, and the rest) is **Web/Kiosk-only for now**; iPhone and iPad still capture new things everywhere, and the act-on-existing flow is coming to them next.
 
 ## Settings
 
