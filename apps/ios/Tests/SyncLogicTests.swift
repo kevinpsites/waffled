@@ -428,6 +428,30 @@ private final class Counter { var n = 0 }
             try decode(#"{"kind":"spaceship"}"#)
         }
     }
+
+    // Empty-resolve copy (mirrors the web CandidatePicker): `unsupported` must show ONLY a
+    // capability message — never "Couldn't find…", which would tell the user the item doesn't
+    // exist when only the action is unsupported. A version-skewed server may omit the reason,
+    // so the fallback copy has to kick in on `unsupported` alone.
+    @Test func unsupportedShowsReasonOnly() {
+        #expect(MutateLabels.emptyHint(unsupported: true, disabledReason: "Chores are turned off for this household.", targetKind: "chore")
+                == "Chores are turned off for this household.")
+    }
+
+    @Test func unsupportedWithoutReasonFallsBackToCapabilityCopy() {
+        #expect(MutateLabels.emptyHint(unsupported: true, disabledReason: nil, targetKind: "chore")
+                == "Quick-add can't do that yet.")
+    }
+
+    @Test func noMatchShowsCouldntFind() {
+        #expect(MutateLabels.emptyHint(unsupported: false, disabledReason: nil, targetKind: "goal")
+                == "Couldn't find a goal like that")
+    }
+
+    @Test func noMatchAppendsReasonWhenPresent() {
+        #expect(MutateLabels.emptyHint(unsupported: false, disabledReason: "Nothing due today.", targetKind: nil)
+                == "Couldn't find a match like that — Nothing due today.")
+    }
 }
 
 // The `Cal` cache underpins the kiosk perf sweep: hot paths look up a shared

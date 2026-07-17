@@ -242,8 +242,7 @@ struct CaptureSheet: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+        .wfField(radius: WF.rLG)
     }
 
     // The resolve state machine (mirrors the web CandidatePicker): thinking → candidates,
@@ -253,12 +252,9 @@ struct CaptureSheet: View {
             if s.offline {
                 mutateHint("I need a connection for that.")
             } else if s.candidates.isEmpty {
-                if s.unsupported, let reason = s.disabledReason {
-                    mutateHint(reason)   // unsupported → show ONLY the reason, never "couldn't find"
-                } else {
-                    mutateHint("Couldn't find a \(MutateLabels.targetLabel(mutateTargetKind)) like that"
-                               + (s.disabledReason.map { " — \($0)" } ?? ""))
-                }
+                mutateHint(MutateLabels.emptyHint(unsupported: s.unsupported,
+                                                  disabledReason: s.disabledReason,
+                                                  targetKind: mutateTargetKind))
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
@@ -430,8 +426,7 @@ struct CaptureSheet: View {
             }
         }
         .padding(14)
-        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+        .wfField(radius: WF.rLG)
     }
 
     /// When the LLM and the on-device guess disagree on the kind, offer the other take —
@@ -544,8 +539,7 @@ struct CaptureSheet: View {
             }
         }
         .padding(14)
-        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+        .wfField(radius: WF.rLG)
     }
 
     @ViewBuilder private var kindFields: some View {

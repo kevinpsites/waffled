@@ -244,6 +244,15 @@ enum MutateLabels {
         default: return "Do it"
         }
     }
+    /// Copy for an empty resolve (mirrors the web CandidatePicker). `unsupported` means the
+    /// ACTION can't run — show only a capability message, never "Couldn't find…", which would
+    /// wrongly tell the user the item doesn't exist. The reason can be absent on a
+    /// version-skewed server, so the fallback keys off `unsupported` alone.
+    static func emptyHint(unsupported: Bool, disabledReason: String?, targetKind: String?) -> String {
+        if unsupported { return disabledReason ?? "Quick-add can't do that yet." }
+        return "Couldn't find a \(targetLabel(targetKind)) like that"
+            + (disabledReason.map { " — \($0)" } ?? "")
+    }
 }
 
 /// The resolved state of a mutate — the candidate rows plus the degrade info the sheet
