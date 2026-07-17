@@ -16,12 +16,13 @@ struct WeekPlannerView: View {
     @State private var loading = true
     @State private var picking: PlanTarget?
     @State private var planningWeek = false
-    /// A failed drag-and-drop commit (the entries were already rolled back) — shows the
-    /// dismissible banner, mirroring the Chores proof-error banner.
+    /// A drag-and-drop the server rejected — shows the dismissible banner.
     @State private var swapError: String?
-    /// Drops whose server writes are still in flight. While > 0 the `mealsRev`-triggered
-    /// reload is suppressed, so a half-committed swap can't clobber the optimistic state.
-    @State private var swapsInFlight = 0
+    /// One in-flight discipline for the optimistic drops: every reload path (`mealsRev`
+    /// bumps, week paging, pull-to-refresh) asks the gate first, so a half-committed
+    /// swap can never be fetched over the optimistic/rolled-back entries, and the last
+    /// drop to settle replays exactly one reload.
+    @State private var gate = MealPlanSwap.Gate()
     /// The day card currently under a drag (highlighted as the drop target).
     @State private var dropTargetDay: String?
     /// iPad grid: which "date|mealType" cell is under a drag, and whether all meal
@@ -48,13 +49,10 @@ struct WeekPlannerView: View {
         }
         .background(WF.canvas)
         .task { await load(); autoPlanOnceIfNeeded() }
-        .onChange(of: weekOffset) { _, _ in Task { await load() } }
-        .onChange(of: sync.mealsRev) { _, _ in
-            // Our own drop bumps mealsRev per write; reloading mid-swap would show the
-            // half-committed server state. The drop task reconciles when it finishes.
-            guard swapsInFlight == 0 else { return }
-            Task { await load() }
-        }
+        // Both reload triggers go through the gate: mid-drop they'd fetch the
+        // half-committed server state, so they're deferred and replayed on settle.
+        .onChange(of: weekOffset) { _, _ in if gate.shouldReloadNow() { Task { await load() } } }
+        .onChange(of: sync.mealsRev) { _, _ in if gate.shouldReloadNow() { Task { await load() } } }
         .sheet(item: $picking) { target in
             RecipePickerSheet(model: recipes) { recipe in
                 Task {
@@ -83,7 +81,7 @@ struct WeekPlannerView: View {
             }
             .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)
         }
-        .refreshable { await load() }
+        .refreshable { if gate.shouldReloadNow() { await load() } }
         // Horizontal flick steps a week (matching the Chores day list and Calendar).
         // simultaneousGesture (not gesture) so vertical scrolling and dragging a meal
         // still work; HorizontalSwipe returns nil for small or mostly-vertical drags.
@@ -396,66 +394,78 @@ struct WeekPlannerView: View {
 
     /// Drop handler for both layouts (day card + iPad grid cell). Swaps the two slots in
     /// `entries` immediately — the meal lands the moment the finger lifts — then commits
-    /// the two REST writes in the background (meal plans are REST-only, no PowerSync local
-    /// write to lean on). On a rejected write the entries roll back and the banner shows;
-    /// on success the week reconciles against server truth (upserted row ids change).
+    /// the writes in the background (meal plans are REST-only, no PowerSync local write
+    /// to lean on), in `MealPlanSwap.writes`' loss-safe order: the dragged meal is
+    /// upserted into the target slot FIRST (its own row untouched), and only then is the
+    /// source slot rewritten — so a failure between the writes leaves the dragged meal
+    /// planned twice (recoverable), never zero times. On any failure a compensating
+    /// write best-effort-restores the target slot, the banner shows, and the entries
+    /// either roll back locally (sole in-flight drop, server untouched) or are refetched
+    /// from server truth by the settle reload the `gate` replays.
     private func moveMeal(srcDate: String, srcSlot: String, dstDate: String, dstSlot: String) -> Bool {
         guard let swapped = MealPlanSwap.apply(entries, srcDate: srcDate, srcSlot: srcSlot,
-                                               dstDate: dstDate, dstSlot: dstSlot) else { return false }
+                                               dstDate: dstDate, dstSlot: dstSlot),
+              let plan = MealPlanSwap.writes(entries, srcDate: srcDate, srcSlot: srcSlot,
+                                             dstDate: dstDate, dstSlot: dstSlot) else { return false }
         let snapshot = entries
-        let src = entries.first { $0.date == srcDate && $0.mealType == srcSlot }
-        let dst = entries.first { $0.date == dstDate && $0.mealType == dstSlot }
         let week = ymd(weekStart)
         withAnimation { entries = swapped; swapError = nil }
-        swapsInFlight += 1
+        gate.begin()
         Task {
-            let backOk = await placeMeal(dst, on: srcDate, mealType: srcSlot)
-            let overOk = await placeMeal(src, on: dstDate, mealType: dstSlot)
-            swapsInFlight -= 1
-            // If the user paged to another week mid-flight, its load owns `entries` now.
-            guard ymd(weekStart) == week else { return }
-            if backOk && overOk {
-                // Reconcile quietly; keep the optimistic state on a transient fetch error
-                // rather than blanking the week.
-                if let fresh = try? await api.mealsWeek(start: week) { entries = fresh }
+            var failed = false
+            // 1. Dragged meal → target slot. A failure here means the server never
+            //    changed (this op doesn't touch the meal's own row).
+            if await perform(plan.ordered[0]) {
+                // 2. Rewrite the source slot (displaced meal back, or clear on a move).
+                if !(await perform(plan.ordered[1])) {
+                    failed = true
+                    // The dragged meal now exists in both slots. Best-effort restore of
+                    // the target slot returns the server to its exact pre-drag state;
+                    // if even this fails, the duplicate is visible and fixable — the
+                    // meal is never lost.
+                    _ = await perform(plan.compensation)
+                }
             } else {
-                withAnimation { entries = snapshot }
-                swapError = "Couldn't move that meal, so it was put back. Check your connection and try again."
+                failed = true
             }
+
+            if failed {
+                swapError = "Couldn't move that meal. Check your connection and try again."
+                if gate.mayApplyResult, ymd(weekStart) == week {
+                    // Sole in-flight drop and no reload was deferred behind it: the
+                    // server never changed, so the snapshot is a true rollback.
+                    withAnimation { entries = snapshot }
+                } else {
+                    // Overlapping drops / a half-committed server: don't guess — let
+                    // the settle reload fetch server truth.
+                    gate.requestSettleReload()
+                }
+            }
+            // Settle LAST (after rollback), so no reload can slip in between the
+            // decrement and the entries write. The replayed load doubles as the
+            // success-path reconcile — our own mealsRev bumps queued it.
+            if gate.finish() { await load() }
         }
         return true
     }
 
-    @discardableResult
-    private func placeMeal(_ entry: WaffledAPI.WeekEntryDTO?, on date: String, mealType: String) async -> Bool {
-        if let e = entry {
-            return await sync.setMealPlan(date: date, mealType: mealType,
-                                          recipeId: e.recipeId, title: e.recipeId == nil ? (e.title ?? e.displayTitle) : nil,
+    /// Execute one planned write against the server (upsert, or clear when empty).
+    private func perform(_ op: MealPlanSwap.Op) async -> Bool {
+        if let e = op.entry {
+            return await sync.setMealPlan(date: op.date, mealType: op.mealType,
+                                          recipeId: e.recipeId,
+                                          title: e.recipeId == nil ? (e.title ?? e.displayTitle) : nil,
                                           cookPersonId: e.cook?.personId)
-        } else {
-            return await sync.clearMealPlan(date: date, mealType: mealType)
         }
+        return await sync.clearMealPlan(date: op.date, mealType: op.mealType)
     }
 
     /// A dismissible inline error for a drag-and-drop that the server rejected — the
-    /// same surface as the Chores proof-error banner.
+    /// shared `DismissibleErrorBanner` (same surface as the Chores proof banner).
     @ViewBuilder
     private var swapErrorBanner: some View {
         if let msg = swapError {
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 15)).foregroundStyle(WF.primary)
-                Text(msg).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
-                Spacer(minLength: 6)
-                Button { withAnimation { swapError = nil } } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundStyle(WF.ink3)
-                }.buttonStyle(.plain)
-            }
-            .padding(12)
-            .background(WF.primary.opacity(0.10))
-            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
-                .strokeBorder(WF.primary.opacity(0.3), lineWidth: 1))
+            DismissibleErrorBanner(message: msg) { withAnimation { swapError = nil } }
         }
     }
 
@@ -472,7 +482,10 @@ struct WeekPlannerView: View {
 
     private func load() async {
         loading = true
-        entries = (try? await api.mealsWeek(start: ymd(weekStart))) ?? []
+        // Keep what's shown on a failed fetch (e.g. offline right after a rolled-back
+        // drop, or paging with no connection) instead of blanking the week —
+        // pull-to-refresh retries.
+        if let fresh = try? await api.mealsWeek(start: ymd(weekStart)) { entries = fresh }
         loading = false
     }
 

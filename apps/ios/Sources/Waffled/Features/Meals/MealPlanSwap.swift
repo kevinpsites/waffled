@@ -41,6 +41,81 @@ enum MealPlanSwap {
         if let dst { out.append(dst.moved(to: srcDate, slot: srcSlot)) }
         return out
     }
+
+    /// One server write: upsert `entry` into the slot, or clear it when `entry` is nil
+    /// (mirrors `setMealPlan` / `clearMealPlan`).
+    struct Op: Equatable {
+        let date: String
+        let mealType: String
+        let entry: WaffledAPI.WeekEntryDTO?
+    }
+
+    /// The ordered, loss-safe server writes for a drop, plus the compensating write for
+    /// a failure between them.
+    ///
+    /// Order matters: `ordered[0]` upserts the **dragged** meal into the target slot —
+    /// its own row is untouched, so if this write fails the server never changed and a
+    /// local snapshot rollback is a true rollback. Only `ordered[1]` rewrites the source
+    /// slot (displaced meal back, or a clear on a move-to-empty). If *that* write fails,
+    /// the dragged meal exists in **both** slots — a recoverable duplicate, never a loss
+    /// (writing the source slot first could leave it in zero slots). `compensation` then
+    /// restores the target slot to its pre-drag content, returning the server to its
+    /// exact pre-drag state; if even that fails, the duplicate remains visible and fixable.
+    ///
+    /// Returns `nil` for the same no-op drops as `apply`.
+    static func writes(_ entries: [WaffledAPI.WeekEntryDTO],
+                       srcDate: String, srcSlot: String,
+                       dstDate: String, dstSlot: String) -> (ordered: [Op], compensation: Op)? {
+        guard !(srcDate == dstDate && srcSlot == dstSlot),
+              let src = entries.first(where: { $0.date == srcDate && $0.mealType == srcSlot })
+        else { return nil }
+        let dst = entries.first { $0.date == dstDate && $0.mealType == dstSlot }
+        return (ordered: [Op(date: dstDate, mealType: dstSlot, entry: src),
+                          Op(date: srcDate, mealType: srcSlot, entry: dst)],
+                compensation: Op(date: dstDate, mealType: dstSlot, entry: dst))
+    }
+
+    /// Serializes the planner's optimistic drops against its reload triggers, so every
+    /// path that could refetch (`mealsRev` bumps, week paging, pull-to-refresh) obeys
+    /// ONE discipline: while any drop's writes/rollback are unfinished, reloads are
+    /// deferred — a half-committed week can never be fetched over the optimistic or
+    /// rolled-back entries — and the last drop to settle replays exactly one reload.
+    ///
+    /// A finishing drop may write the entries itself (its snapshot rollback) only via
+    /// `mayApplyResult`: it must be the *sole* in-flight drop with nothing deferred
+    /// behind it. Overlapping drops, or any drop whose first write already landed
+    /// (bumping `mealsRev`), leave the entries to the settle reload — server truth wins
+    /// over guessing.
+    struct Gate {
+        private(set) var inFlight = 0
+        private var pendingReload = false
+
+        /// A drop's optimistic state was applied; its writes are starting.
+        mutating func begin() { inFlight += 1 }
+
+        /// A reload trigger fired. `true` → load now; `false` → deferred, replayed by
+        /// the drop that settles last.
+        mutating func shouldReloadNow() -> Bool {
+            guard inFlight > 0 else { return true }
+            pendingReload = true
+            return false
+        }
+
+        /// Whether the finishing drop may write the entries itself (see type docs).
+        var mayApplyResult: Bool { inFlight == 1 && !pendingReload }
+
+        /// A drop couldn't apply its own result — queue the settle reload that will.
+        mutating func requestSettleReload() { pendingReload = true }
+
+        /// The drop fully settled (writes + reconcile/rollback done). `true` → run the
+        /// deferred reload now; only the last drop out replays it.
+        mutating func finish() -> Bool {
+            inFlight = max(0, inFlight - 1)
+            guard inFlight == 0, pendingReload else { return false }
+            pendingReload = false
+            return true
+        }
+    }
 }
 
 private extension WaffledAPI.WeekEntryDTO {
