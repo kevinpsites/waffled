@@ -137,6 +137,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **The iPad nav always shows where you are.** Opening a page from the **More** grid —
+  like Goals, Lists, or Photos when they aren't pinned to the rail — used to leave the
+  side rail (and the portrait bottom bar) with nothing highlighted. The More tile now
+  lights up whenever the current page doesn't have a tile of its own.
 - **Creating a list on iOS now opens it right away.** After tapping Create (or Create
   from template) in the New-list sheet, the app takes you straight into the new list's
   detail so you can start adding items — instead of leaving you on the Lists overview
