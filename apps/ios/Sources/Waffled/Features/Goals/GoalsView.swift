@@ -607,8 +607,16 @@ struct GoalLogSheet: View {
     @State private var amount: Double
     @State private var amountText: String
     /// Time goals are logged as hours + minutes; the server folds them into decimal hours.
-    @State private var hours: Int
-    @State private var minutes: Int
+    /// The raw text is the single source of truth so a cleared field stays empty while
+    /// editing (value 0) instead of snapping back to the old number — it's only normalized
+    /// (via DurationEntry) when the field loses focus. The logged Ints are derived, never
+    /// stored, so text and value can't drift apart.
+    @State private var hoursText: String
+    @State private var minutesText: String
+    private var hours: Int { DurationEntry.value(of: hoursText) }
+    private var minutes: Int { DurationEntry.value(of: minutesText, cap: 59) }
+    private enum HMField { case hours, minutes }
+    @FocusState private var hmFocus: HMField?
     @State private var who: Set<String>
     @State private var note = ""
     /// A checklist goal's steps (fetched on appear; ticking is the "log" for checklists).
@@ -666,8 +674,8 @@ struct GoalLogSheet: View {
         _amount = State(initialValue: initial)
         _amountText = State(initialValue: goalFmt(initial))
         // A time goal (total measured in hours) starts at 1h 0m and is entered as hours + minutes.
-        _hours = State(initialValue: (goal.goalType != "habit" && goal.goalType != "count" && isHours) ? 1 : 0)
-        _minutes = State(initialValue: 0)
+        _hoursText = State(initialValue: (goal.goalType != "habit" && goal.goalType != "count" && isHours) ? "1" : "0")
+        _minutesText = State(initialValue: "0")
         _who = State(initialValue: goal.participants.count == 1 ? [goal.participants[0].personId] : [])
     }
 
@@ -804,8 +812,13 @@ struct GoalLogSheet: View {
                 timeChipRow
                 HStack(spacing: 8) {
                     Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
-                    hmField($hours, unit: "hr")
-                    hmField($minutes, unit: "min", clampTo: 59)
+                    hmField($hoursText, unit: "hr", field: .hours)
+                    hmField($minutesText, unit: "min", field: .minutes)
+                }
+                // Normalize only when a field is left: "" → "0", "07" → "7", 75 min → 59.
+                .onChange(of: hmFocus) { old, _ in
+                    if old == .hours { hoursText = DurationEntry.normalized(hoursText) }
+                    if old == .minutes { minutesText = DurationEntry.normalized(minutesText, cap: 59) }
                 }
             }
         } else {
@@ -821,18 +834,25 @@ struct GoalLogSheet: View {
                         .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                         .frame(width: 110)
-                        .onChange(of: amountText) { _, new in if let v = Double(new) { amount = v } }
+                        // Locale-aware ("2,5" on a comma-decimal pad); empty/unparsable = 0
+                        // (Log disables) — never the stale previous amount, which would
+                        // silently log a number the field no longer shows.
+                        .onChange(of: amountText) { _, new in amount = AmountEntry.value(of: new) }
                     if let u = goal.unit { Text(u).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3) }
                 }
             }
         }
     }
 
-    /// A compact whole-number field for hours or minutes. `clampTo` caps the value
-    /// (minutes at 59); the numeric keypad already blocks negatives.
-    private func hmField(_ value: Binding<Int>, unit: String, clampTo: Int? = nil) -> some View {
+    /// A compact whole-number field for hours or minutes. Text-backed (not an Int
+    /// `format:` binding) so a cleared field stays empty while editing — the old Int
+    /// binding re-materialized the previous value the moment focus moved. The logged
+    /// Ints are *derived* from the text (see `hours`/`minutes`, empty = 0, minutes
+    /// capped at 59); the visible text is only normalized on focus loss (see the
+    /// `.onChange(of: hmFocus)`).
+    private func hmField(_ text: Binding<String>, unit: String, field: HMField) -> some View {
         HStack(spacing: 6) {
-            TextField("0", value: value, format: .number)
+            TextField("0", text: text)
                 .keyboardType(.numberPad)
                 .multilineTextAlignment(.center)
                 .font(.system(size: 16, weight: .semibold))
@@ -840,9 +860,7 @@ struct GoalLogSheet: View {
                 .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                 .frame(width: 64)
-                .onChange(of: value.wrappedValue) { _, v in
-                    if v < 0 { value.wrappedValue = 0 } else if let cap = clampTo, v > cap { value.wrappedValue = cap }
-                }
+                .focused($hmFocus, equals: field)
             Text(unit).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
         }
     }
@@ -866,8 +884,8 @@ struct GoalLogSheet: View {
     }
 
     private func setTimeChip(_ v: Double) {
-        hours = Int(v)
-        minutes = Int((v - Double(Int(v))) * 60 + 0.5)
+        hoursText = String(Int(v))
+        minutesText = String(Int((v - Double(Int(v))) * 60 + 0.5))
     }
 
     private func stepButton(_ icon: String, disabled: Bool, _ action: @escaping () -> Void) -> some View {
@@ -2415,7 +2433,9 @@ struct GoalEntryEditSheet: View {
                                         .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                                         .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                                         .frame(width: 120)
-                                        .onChange(of: amountText) { _, new in if let v = Double(new) { amount = v } }
+                                        // Locale-aware ("2,5"); empty/unparsable = 0 (Save disables)
+                                        // — never the stale previous amount the field no longer shows.
+                                        .onChange(of: amountText) { _, new in amount = AmountEntry.value(of: new) }
                                     if let u = unit { Text(u).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3) }
                                 }
                             }
@@ -2477,6 +2497,8 @@ struct GoalEntryEditSheet: View {
                                DateFmt.string(loggedOn, "yyyy-MM-dd", DateFmt.utc))
                         dismiss()
                     }.fontWeight(.semibold)
+                    // A cleared amount is 0 — block saving it rather than writing a 0 entry.
+                    .disabled(numeric && logAmount == 0)
                 }
             }
         }

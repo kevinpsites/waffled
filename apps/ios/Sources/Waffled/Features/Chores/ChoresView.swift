@@ -544,23 +544,11 @@ struct ChoresView: View {
     }
 
     /// A dismissible inline error for a failed photo upload / the 422 "needs a photo"
-    /// guard — mirrors web's `proofErr` banner.
+    /// guard — mirrors web's `proofErr` banner (shared `DismissibleErrorBanner` chrome).
     @ViewBuilder
     private var proofErrorBanner: some View {
         if let msg = model.proofError {
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 15)).foregroundStyle(WF.primary)
-                Text(msg).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
-                Spacer(minLength: 6)
-                Button { withAnimation { model.proofError = nil } } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundStyle(WF.ink3)
-                }.buttonStyle(.plain)
-            }
-            .padding(12)
-            .background(WF.primary.opacity(0.10))
-            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.primary.opacity(0.3), lineWidth: 1))
+            DismissibleErrorBanner(message: msg) { withAnimation { model.proofError = nil } }
         }
     }
 

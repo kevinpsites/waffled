@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Swipe between weeks in the iPhone meal planner.** The weekly meal plan now pages with a
+  horizontal flick — swipe left for next week, right for the previous one — the same gesture
+  the Calendar and Chores screens already use. The arrow buttons and "Jump to this week"
+  still work exactly as before.
 - **Track one activity from Apple Health: workout-type goal metrics.** A goal can now follow a
   specific kind of workout — running, cycling, swimming, yoga, strength training, or *any*
   workout — instead of Apple's combined totals, so a bike ride, treadmill run, and elliptical
@@ -90,6 +94,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Creating a list on iOS now opens it right away.** After tapping Create (or Create
+  from template) in the New-list sheet, the app takes you straight into the new list's
+  detail so you can start adding items — instead of leaving you on the Lists overview
+  to hunt for the row you just made. The web app already worked this way.
+- **Clearing the hours field while logging a goal on iOS no longer snaps back to 1.** In
+  the log-progress sheet for a time goal, deleting the hours (or minutes) value and tapping
+  the other field re-filled it with the old number, so "45 minutes" could quietly become
+  "1h 45m". An emptied field now stays empty while you type — it simply counts as 0 — and
+  is tidied up only when you leave it. Clearing the free-entry amount on a total goal now
+  correctly disables the Log/Save button instead of silently logging the number that was
+  there before.
+- **The Offline banner no longer flashes on brief connection blips.** Momentary hiccups —
+  a sync reconnect, waking the app, hopping between Wi-Fi and cellular — used to flash
+  "Offline" across the top of the iPhone app and the kiosk for a second. Both now wait
+  until the connection has been down for a sustained stretch (10 seconds) before saying
+  anything, and the banner still clears the moment you're back online.
+- **The iOS Today screen stays fresh and no longer flashes empty cards.** Tonight's dinner,
+  chores, grocery, and goals now refetch when the app returns to the foreground — so a meal
+  plan changed on the web (or another phone) shows up without leaving the screen and coming
+  back — and again just past midnight, so a device left open overnight doesn't keep showing
+  yesterday's dinner and chores. While the page is still loading, the goals and grocery cards
+  show a "Loading…" placeholder instead of briefly claiming "Set a family goal" or "0 items
+  to buy", and a refresh that fails (offline, expired sign-in) keeps what's on screen instead
+  of blanking cards to "No dinner planned" or "All bought ✓" — on both the iPhone dashboard
+  and the iPad family display.
+- **Dragging a meal to another day in the iOS week planner now lands instantly.** The
+  dropped meal used to sit still until the server round-trip finished, which read as lag
+  (the web planner was already instant). The app now swaps the two slots on screen the
+  moment you let go, saves in the background, and quietly puts things back — with a
+  dismissible notice — in the rare case the server says no.
+- **Typing on the grocery list no longer fights the keyboard (iOS).** On iPad, opening
+  the keyboard made the app think the screen had rotated — the page rebuilt itself
+  mid-word, dropping the item you were typing and leaving the add-item field buried
+  behind the keyboard. The layout now only changes on a real rotation, so the field
+  (and your half-typed item) stays visible above the keyboard. On iPhone, the keyboard
+  had no way to be put away on a list; a Done button above the keyboard and
+  drag-down-to-dismiss on the items now tuck it away.
 - **`./waffled upgrade` no longer trips over its own update.** Upgrading from an older
   release could fail mid-way with a cryptic `required variable … is missing a value`
   error, because the still-running old script drove the freshly downloaded configuration

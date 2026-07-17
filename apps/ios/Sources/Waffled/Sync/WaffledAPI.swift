@@ -2051,12 +2051,36 @@ struct WaffledAPI: Sendable {
     // MARK: Lists (index + generic detail)
 
     /// A list in the household's index (Grocery, packing lists, …).
+    ///
+    /// Two server shapes decode into this: the index endpoints (GET /api/lists,
+    /// GET templates) attach a live `itemCount`, but every *mutate* reply (create,
+    /// apply-template, save-as-/unmark-template, PATCH rename) is bare
+    /// `presentList(...)` JSON **without** it — so `itemCount` defaults to 0
+    /// instead of failing the whole decode (which silently broke create → open,
+    /// template convert/use, and capture's create-on-the-fly against every server).
+    /// The 0 is honest for a just-created list, and cosmetic elsewhere: consumers
+    /// reload the index (counted) or open the detail (loads real items).
     struct ListSummary: Decodable, Identifiable, Hashable, Sendable {
         let id: String
         let name: String
         let emoji: String?
         let listType: String
         let itemCount: Int
+
+        init(id: String, name: String, emoji: String?, listType: String, itemCount: Int) {
+            self.id = id; self.name = name; self.emoji = emoji
+            self.listType = listType; self.itemCount = itemCount
+        }
+
+        private enum CodingKeys: String, CodingKey { case id, name, emoji, listType, itemCount }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            name = try c.decode(String.self, forKey: .name)
+            emoji = try c.decodeIfPresent(String.self, forKey: .emoji)
+            listType = try c.decode(String.self, forKey: .listType)
+            itemCount = try c.decodeIfPresent(Int.self, forKey: .itemCount) ?? 0
+        }
     }
 
     /// One row in a list detail — section (aisle for grocery), quantity, assignee.

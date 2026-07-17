@@ -136,6 +136,11 @@ enum DemoHooks {
     static var openList: String? { AppConfig.env("WAFFLED_OPEN_LIST") }
     /// With openList set, auto-present the first item's Details editor (verification).
     static var openDetails: Bool { AppConfig.env("WAFFLED_OPEN_DETAILS") == "1" }
+    /// On a list's detail, auto-focus the "Add item" field (keyboard verification).
+    static var focusAdd: Bool { AppConfig.env("WAFFLED_FOCUS_ADD") == "1" }
+    /// Skip the iPad boot cover (headless verification of REST-driven kiosk pages
+    /// when the PowerSync endpoint isn't reachable from the simulator).
+    static var skipBootCover: Bool { AppConfig.env("WAFFLED_SKIP_BOOT_COVER") == "1" }
     /// Initial grocery board mode for verification: "meal" switches to By meal.
     static var groceryMode: String? { AppConfig.env("WAFFLED_GROCERY_MODE") }
     /// On the Meals tab, push a recipe's detail by title substring (verification).
