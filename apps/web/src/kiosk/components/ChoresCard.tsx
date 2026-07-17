@@ -48,8 +48,40 @@ function Ring({ person, sym }: { person: PersonChores; sym: string }) {
   )
 }
 
+function UpForGrabsRow({ count }: { count: number }) {
+  return (
+    <Link
+      to="/tasks"
+      className="chores-card-row"
+      style={{ display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none', color: 'inherit' }}
+    >
+      <div
+        aria-hidden="true"
+        style={{
+          width: 42,
+          height: 42,
+          flex: 'none',
+          borderRadius: '50%',
+          display: 'grid',
+          placeItems: 'center',
+          background: 'var(--card-2, #faf8f4)',
+          fontSize: 20,
+        }}
+      >
+        🙌
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>Up for grabs</div>
+        <div className="tiny muted">
+          {count} {count === 1 ? 'chore' : 'chores'} available
+        </div>
+      </div>
+    </Link>
+  )
+}
+
 export function ChoresCard() {
-  const { people, loading, error } = useChoresToday()
+  const { people, upForGrabs, loading, error } = useChoresToday()
   const { defaultCurrency, currencies } = useCurrencies()
   const { person: me } = useHousehold()
   const sym = defaultCurrency?.symbol ?? '⭐'
@@ -72,9 +104,10 @@ export function ChoresCard() {
       {error && (
         <div className="tiny muted" style={{ padding: '8px 0' }}>Couldn't load chores — reload or sign in.</div>
       )}
-      {!loading && !error && withChores.length === 0 && (
+      {!loading && !error && withChores.length === 0 && upForGrabs === 0 && (
         <div className="tiny muted" style={{ padding: '8px 0' }}>No chores yet.</div>
       )}
+      {upForGrabs > 0 && <UpForGrabsRow count={upForGrabs} />}
       {withChores.map((p) => (
         <Ring key={p.id} person={p} sym={sym} />
       ))}
@@ -86,7 +119,7 @@ export function ChoresCard() {
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             width: '100%', marginTop: 8, padding: '10px 12px', border: 0,
-            background: 'var(--card-2, #faf8f4)', borderRadius: 12, cursor: 'pointer',
+            background: 'var(--card-2)', borderRadius: 12, cursor: 'pointer',
             font: 'inherit', fontSize: 14, fontWeight: 700, color: 'var(--ink-2)',
           }}
         >

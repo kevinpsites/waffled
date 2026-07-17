@@ -203,7 +203,7 @@ export function ScanModal({ locations, avoidAllergens, allergenPeople, onClose, 
 
                 <div className="pl-scan-acts">
                   <button type="button" className="pill" disabled={busy} onClick={resume}>Cancel</button>
-                  <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={busy || (!found && !name.trim())} onClick={add}>
+                  <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={busy || (!found && !name.trim())} onClick={add}>
                     {busy ? 'Adding…' : 'Add & scan next'}
                   </button>
                 </div>

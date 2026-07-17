@@ -7,7 +7,17 @@
 // heuristic parser — so the bar always works, even offline.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
+import { log } from '../../platform/logger'
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
+import type { Tenant } from '../households/households'
+import {
+  getCaptureTarget,
+  unsupportedKindReason,
+  unsupportedVerbReason,
+  type TargetKind,
+  type MutateVerb,
+  type ResolveCtx,
+} from './capture-resolvers'
 import config from '../../platform/config'
 import {
   completeJson,
@@ -24,7 +34,7 @@ type Api = ReturnType<typeof createAPI>
 // What the model is asked to emit. Mirrors the kiosk's ParsedIntent so the client
 // treats a server parse and a local heuristic parse identically.
 export interface CaptureIntent {
-  kind: 'event' | 'task' | 'grocery' | 'meal' | 'list' | 'unsupported'
+  kind: 'event' | 'task' | 'grocery' | 'meal' | 'list' | 'countdown' | 'person' | 'goal' | 'pantry' | 'reward' | 'mutate' | 'unsupported'
   title?: string
   name?: string | null
   quantity?: string | null
@@ -35,9 +45,45 @@ export interface CaptureIntent {
   stars?: number | null
   date?: string | null
   mealType?: string | null
+  // countdown intent: a future day to count down to
+  emoji?: string | null
+  // person intent: a new household member
+  memberType?: string | null
+  avatarEmoji?: string | null
+  birthday?: string | null
+  isAdmin?: boolean | null
+  // goal intent: a personal/shared goal (count/total/habit/checklist)
+  goalType?: string | null
+  trackingMode?: string | null
+  participantMode?: string | null
+  targetBasis?: string | null
+  targetValue?: number | null
+  unit?: string | null
+  deadline?: string | null
+  audience?: string | null
+  // goal intent: which household members the goal is for (the LLM does not pick
+  // people, so this is always [] server-side; the web goal type requires string[]).
+  participantIds?: string[]
+  // pantry intent: an item already on hand (module `pantry`, default off)
+  amount?: string | null
+  location?: string | null
+  expiresOn?: string | null
+  lowAt?: number | null
+  // reward intent: a reward-shop item (gated on rewards + reward.manage)
+  cost?: number | null
+  currency?: string | null
+  category?: string | null
+  requiresApproval?: boolean | null
   // list intent: add itemName to the named (non-grocery) list
   listName?: string | null
   itemName?: string | null
+  // mutate intent (Tier 2): act on an EXISTING row. The model extracts the verb +
+  // target.description (the spoken noun phrase) + loose args ONLY — never an id; the
+  // resolve/commit routes resolve the row deterministically.
+  verb?: MutateVerb
+  targetKind?: TargetKind
+  target?: { description: string }
+  args?: Record<string, unknown>
   // unsupported intent: a short, friendly reason quick-add can't do it
   reason?: string
   whenLabel?: string
@@ -45,6 +91,17 @@ export interface CaptureIntent {
 }
 
 const MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack'])
+
+// Same shape the mirrored feature routes gate their :id params on — a commit's
+// targetId must be a resolved Candidate.id (always a UUID), so anything else is a
+// client bug we 400 with a friendly message instead of a raw Postgres cast error.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Tier 2 mutate axis. Verbs are lowercased before lookup; target kinds are camelCase
+// (listItem) so we match case-insensitively via the lower→canonical map.
+const MUTATE_VERBS = new Set<string>(['complete', 'log', 'reschedule', 'reassign', 'redeem', 'delete'])
+const TARGET_KINDS: TargetKind[] = ['chore', 'goal', 'listItem', 'event', 'reward']
+const TARGET_KIND_BY_LOWER = new Map<string, TargetKind>(TARGET_KINDS.map((k) => [k.toLowerCase(), k]))
 
 interface CaptureContext {
   now: string
@@ -61,9 +118,9 @@ const INTENT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    kind: { type: 'string', enum: ['event', 'task', 'grocery', 'meal', 'list', 'unsupported'] },
-    title: { type: ['string', 'null'], description: 'Clean title for event/task; the dish for a meal' },
-    name: { type: ['string', 'null'], description: 'Grocery item name' },
+    kind: { type: 'string', enum: ['event', 'task', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'pantry', 'reward', 'mutate', 'unsupported'] },
+    title: { type: ['string', 'null'], description: 'Clean title for event/task; the dish for a meal; the goal for a goal; the reward name for a reward' },
+    name: { type: ['string', 'null'], description: 'Grocery item name, (kind=person) the new family member\'s name, or (kind=pantry) the on-hand item\'s name' },
     quantity: { type: ['string', 'null'], description: 'Grocery/list amount, e.g. "2 lbs"' },
     listName: { type: ['string', 'null'], description: 'For kind=list: the target custom list (match one of the household lists when possible)' },
     itemName: { type: ['string', 'null'], description: 'For kind=list: the item to add to that list' },
@@ -73,8 +130,38 @@ const INTENT_SCHEMA = {
     allDay: { type: ['boolean', 'null'] },
     rrule: { type: ['string', 'null'], description: 'Recurrence for an EVENT or task (RFC5545 RRULE), e.g. FREQ=WEEKLY;BYDAY=TU or FREQ=DAILY or FREQ=MONTHLY' },
     stars: { type: ['integer', 'null'] },
-    date: { type: ['string', 'null'], description: 'Meal date as YYYY-MM-DD: the resolved day the user said (today/tomorrow/Friday/next Thursday); only today if none was said' },
+    date: { type: ['string', 'null'], description: 'Date as YYYY-MM-DD for a meal or countdown: the resolved day the user said (today/tomorrow/Friday/next Thursday/in 12 days); only today if none was said' },
     mealType: { type: ['string', 'null'], enum: ['breakfast', 'lunch', 'dinner', 'snack', null], description: 'Meal slot (default dinner)' },
+    emoji: { type: ['string', 'null'], description: 'For kind=countdown or kind=reward: a single fitting emoji, or null' },
+    memberType: { type: ['string', 'null'], enum: ['adult', 'teen', 'kid', null], description: 'For kind=person: adult | teen | kid (default adult)' },
+    avatarEmoji: { type: ['string', 'null'], description: 'For kind=person: a single fitting face emoji, or null' },
+    birthday: { type: ['string', 'null'], description: 'For kind=person: their birthday as YYYY-MM-DD if given (NEVER inferred from an age), else null' },
+    isAdmin: { type: ['boolean', 'null'], description: 'For kind=person: true only if they are clearly a parent/guardian' },
+    goalType: { type: ['string', 'null'], enum: ['count', 'total', 'habit', 'checklist', null], description: 'For kind=goal: count (a countable target), total (an accumulating amount), habit (a recurring habit with no number), or checklist (a list of steps). Default habit.' },
+    trackingMode: { type: ['string', 'null'], enum: ['shared_total', 'each_tracks', null], description: 'For kind=goal: shared_total (one shared progress bar) or each_tracks (everyone tracks their own). Default shared_total.' },
+    participantMode: { type: ['string', 'null'], enum: ['count_once', 'split', null], description: 'For kind=goal: how a shared group entry counts — count_once (default) or split.' },
+    targetBasis: { type: ['string', 'null'], enum: ['family', 'per_person', null], description: 'For kind=goal: family (one flat target, default) or per_person (ring = target × members).' },
+    targetValue: { type: ['number', 'null'], description: 'For kind=goal (count/total): the numeric target, e.g. 20 for "read 20 books". Null when there is no number.' },
+    unit: { type: ['string', 'null'], description: 'For kind=goal (count/total): the unit of the target, e.g. "books", "miles", "dollars"; for kind=pantry: the amount\'s unit, e.g. "cans", "lbs". Else null.' },
+    deadline: { type: ['string', 'null'], description: 'For kind=goal: a YYYY-MM-DD deadline if a date is given ("this year" → the Dec 31 of the current year), else null' },
+    audience: { type: ['string', 'null'], enum: ['me', 'everyone', null], description: 'For kind=goal: who the goal is for, inferred from the phrasing — "everyone" for a family/shared/together goal ("set a family goal", "our goal", "we want to"), "me" for a personal one ("personal goal", "my own", "I want to"), else null.' },
+    amount: { type: ['string', 'null'], description: 'For kind=pantry: how much is on hand, e.g. "2" (pair with unit) or "2 lbs". Else null.' },
+    location: { type: ['string', 'null'], description: 'For kind=pantry: where it is stored (e.g. Pantry, Fridge, Freezer). Default Pantry.' },
+    expiresOn: { type: ['string', 'null'], description: 'For kind=pantry: an expiry date YYYY-MM-DD if one is given, else null.' },
+    lowAt: { type: ['number', 'null'], description: 'For kind=pantry: the "running low" threshold number if mentioned, else null.' },
+    cost: { type: ['integer', 'null'], description: 'For kind=reward: the star/point price as a non-negative whole number (e.g. 50 for "for 50 stars"), else null.' },
+    currency: { type: ['string', 'null'], description: 'For kind=reward: the star/point currency name if a non-default one is named, else null.' },
+    category: { type: ['string', 'null'], description: 'For kind=reward: a shop category (e.g. treats, screen time) if one is clear, else null.' },
+    requiresApproval: { type: ['boolean', 'null'], description: 'For kind=reward: true/false ONLY if the note says whether a parent must approve; else null to inherit the household default.' },
+    verb: { type: ['string', 'null'], enum: ['complete', 'log', 'reschedule', 'reassign', 'redeem', 'delete', null], description: 'For kind=mutate: the action to take on an EXISTING thing.' },
+    targetKind: { type: ['string', 'null'], enum: ['chore', 'goal', 'listItem', 'event', 'reward', null], description: 'For kind=mutate: which kind of existing thing the verb acts on.' },
+    target: {
+      type: ['object', 'null'],
+      description: 'For kind=mutate: the spoken noun phrase naming the existing thing, e.g. { "description": "trash chore" }. Copy the words the user used — do NOT invent an id.',
+      properties: { description: { type: 'string' } },
+      additionalProperties: false,
+    },
+    args: { type: ['object', 'null'], description: 'For kind=mutate: verb parameters the note gives (e.g. { "minutes": 20 } for log, { "date": "YYYY-MM-DD" } for reschedule, { "personName": "Wally" } for reassign/redeem). Never an id. Omit fields not mentioned.', additionalProperties: true },
   },
   required: ['kind'],
 }
@@ -88,18 +175,24 @@ function systemPrompt(ctx: CaptureContext): string {
     `Family members: ${fam}.`,
     `Custom lists: ${ctx.lists && ctx.lists.length ? ctx.lists.join(', ') : '(none yet)'}.`,
     '',
-    'Kinds: "event" = happens at a date/time; "task" = a chore someone does, maybe recurring; "grocery" = an item to buy (the grocery/shopping list); "meal" = a dish for the weekly meal plan; "list" = add an item to a named custom list (packing list, Costco, Target run, etc. — NOT groceries); "unsupported" = anything else.',
+    'Kinds: "event" = happens at a date/time; "task" = a chore someone does, maybe recurring; "grocery" = an item to buy (the grocery/shopping list); "pantry" = an item you ALREADY HAVE on hand, stored in the pantry/fridge/freezer (NOT the shopping list); "meal" = a dish for the weekly meal plan; "list" = add an item to a named custom list (packing list, Costco, Target run, etc. — NOT groceries); "countdown" = a future day to count down to (no clock time); "person" = add a new family/household member; "goal" = a personal or shared goal to work toward; "reward" = a reward-shop item kids can spend their stars/points on; "mutate" = act on something that ALREADY EXISTS (mark it done, log progress, move it, reassign it, redeem it, or delete it); "unsupported" = anything else.',
     'Always follow these rules:',
     '- ALWAYS extract a concise "title" (for grocery use "name") — strip command words like "please add", "make a chore to", "to X\'s list".',
     '- If a quoted phrase is present, use it verbatim as the title.',
     '- personName MUST be exactly one of the family members if the note refers to one (case-insensitive, ignore possessives like "Kelly\'s" → "Kelly"); otherwise null.',
     '- event: compute startsAt as a LOCAL date-time with NO timezone suffix (e.g. 2026-06-16T16:00:00) — the server applies the household timezone. Resolve relative dates (today/tomorrow/"Tue") against the current date above; allDay=true only when no clock time is given. If it REPEATS ("every Tuesday", "weekly", "every day", "monthly"), ALSO set rrule (FREQ=WEEKLY;BYDAY=TU / FREQ=DAILY / FREQ=MONTHLY / FREQ=YEARLY) with startsAt = the FIRST occurrence; otherwise rrule null.',
     '- task: recurring → rrule with two-letter weekday codes (FREQ=WEEKLY;BYDAY=MO,WE,SA) or FREQ=DAILY; one-off → rrule null.',
-    '- grocery: ONLY the grocery/shopping list or bare food/household-shopping items. "quantity" is just the amount (e.g. "2 lbs"), or null. Never prefix it with a label.',
+    '- grocery: something to BUY — the grocery/shopping list, or a bare food/household-shopping item ("add milk", "add milk to the shopping list"). "quantity" is just the amount (e.g. "2 lbs"), or null. Never prefix it with a label. NOTE: "add X to the pantry/fridge/freezer" is a PANTRY item (already on hand), not grocery.',
+    '- pantry: an item you ALREADY HAVE, named with an explicit pantry/fridge/freezer destination — "add X to (the) pantry", "put X in the fridge/freezer", "we have X in the pantry". Set "name" (the item); optional "amount"+"unit" (e.g. "2"+"cans"), "location" (Pantry/Fridge/Freezer, default Pantry), "expiresOn" (YYYY-MM-DD), "lowAt". This is DIFFERENT from grocery: grocery = to buy (shopping list); pantry = already on hand. Route to pantry ONLY when the note explicitly stores it in the pantry/fridge/freezer.',
     '- list: "add X to (the) <list>" / "put X on my <list>" where <list> is a NAMED non-grocery list → kind "list" with itemName=X and listName=the list. Match listName to one of the Custom lists above when it clearly refers to one (e.g. "the lake packing trip" → "Lake trip packing"); otherwise keep the user\'s name. Optional "quantity".',
     '- "eating out" / "order in" / "takeout" / "delivery" (no clock time) → kind "meal" with title "Eating out".',
     '- meal: "meal plan", "on the menu", or "<dish> for dinner/lunch/breakfast" → kind "meal". Put the dish in "title" and set "mealType" (default "dinner"). For "date", RESOLVE any relative day (today/tomorrow/"Friday"/"next Thursday") against the current date above into YYYY-MM-DD — exactly like events do — and ONLY default to today when no day is mentioned. A specific clock time means it is an EVENT, not a meal.',
-    '- unsupported: if the note is a GOAL ("set a goal to…", "I want to read 5 books"), a reminder/notification, or anything that is not an event, task/chore, grocery item, meal, or list item, return kind "unsupported" with a short friendly "reason" (e.g. "Quick-add doesn\'t create goals yet — add it from the Goals screen."). Do NOT force it into another kind.',
+    '- countdown: a future DAY to count down to with NO clock time — a day marker, not a scheduled event. "N days until X", "X in N days", "countdown to X [on <date>]", "N sleeps until X". Set "title"=X and RESOLVE the target day into "date" (YYYY-MM-DD) exactly like meals/events (handle "in N days", explicit dates, and weekdays). Optionally set a fitting "emoji". If a clock time is given, it is an EVENT instead.',
+    '- person: "add my son/daughter/husband/wife/mom/dad/… <name>", "add a family member <name>", "create a profile for <name>" → kind "person". Set "name" (just the person\'s name). Infer "memberType": son/daughter/kid/child → "kid", teen/teenager → "teen", spouse/husband/wife/partner/mom/dad/parent/adult → "adult"; default "adult" for a bare name. Optionally set "avatarEmoji" (a fitting face), "birthday" (YYYY-MM-DD) ONLY if an actual date is given, and "isAdmin" true only for a clear parent/guardian. NEVER invent a birthday from an age ("age 8" → leave birthday null).',
+    '- goal: "set a goal to…", "set a personal/new/weekly goal to…", "set myself a goal to…", "I want to…", "my goal is…" → kind "goal" (an adjective like personal/new/big/weekly/family between the article and "goal" is fine). Set "title" (the goal itself). Infer "goalType": a countable target ("read 20 books") → "count" with "targetValue" (20) + "unit" ("books"); an accumulating amount ("save $500", "run 100 miles") → "total" with targetValue + unit; a recurring habit with NO number ("drink water", "get in shape", "meditate every day") → "habit"; an explicit list of steps → "checklist"; when unsure → "habit". A count/total with no number is really a habit — leave targetValue null and use "habit". Default "trackingMode" "shared_total". Optionally set "deadline" (YYYY-MM-DD) when a date is given ("this year" → Dec 31 of this year; "by september" → the last day of the next September). Set "audience" from the phrasing: "everyone" for a family/shared/together goal ("set a family goal", "our goal", "we want to…"), "me" for a personal one ("personal goal", "my own", "I want to…"), else null.',
+    '- reward: "add a reward: <name> for N stars", "new reward <name> costs N points", "reward: <name>" → kind "reward". Set "title" (the reward name) and, when a star/point price is given, "cost" (the whole number N). Trigger only on the explicit word "reward". Optionally set "emoji". This is the reward SHOP catalog, NOT awarding stars for a chore.',
+    '- mutate: the note acts on something that ALREADY EXISTS rather than creating something new — "mark/cross off/finish X", "log/record N on X", "move/reschedule X to <day>", "give/assign X to <name>", "redeem/spend on X", "delete/remove/cancel X". Set kind "mutate", "verb" (complete | log | reschedule | reassign | redeem | delete), "targetKind" (chore | goal | listItem | event | reward — which kind of existing thing it is), and "target" = { "description": the words naming that thing, e.g. "trash chore", "reading goal", "soccer" }. Put verb params in "args": log → { amount } or { minutes } / { hours }; reschedule → { date: "YYYY-MM-DD", time: "HH:mm" }; reassign/redeem → { personName }. NEVER invent an id — the server finds the exact row from your description. Complete/delete take no args.',
+    '- unsupported: if the note is a reminder/notification, or anything that is not an event, task/chore, grocery item, meal, list item, countdown, family member, goal, reward, or an action on an existing thing, return kind "unsupported" with a short friendly "reason". Do NOT force it into another kind.',
     '- stars = the integer reward if mentioned, else null.',
     '',
     'Examples below ASSUME today is Thursday June 11 2026. Always recompute dates from the ACTUAL current date stated above, not from this example date:',
@@ -110,13 +203,31 @@ function systemPrompt(ctx: CaptureContext): string {
     '"Please add laundry for Monday and Saturday to Kelly\'s chore list" -> {"kind":"task","title":"Laundry","personName":"Kelly","rrule":"FREQ=WEEKLY;BYDAY=MO,SA","stars":null}',
     '"\\"Take Out the Trash\\" for Lottie on Tuesday and Thursday" -> {"kind":"task","title":"Take Out the Trash","personName":"Lottie","rrule":"FREQ=WEEKLY;BYDAY=TU,TH"}',
     '"grab 2 lbs of chicken thighs" -> {"kind":"grocery","name":"chicken thighs","quantity":"2 lbs"}',
+    '"add milk to the shopping list" -> {"kind":"grocery","name":"milk","quantity":null}',
+    '"add 2 cans of beans to the pantry" -> {"kind":"pantry","name":"Beans","amount":"2","unit":"cans","location":"Pantry"}',
+    '"we have a gallon of milk in the fridge" -> {"kind":"pantry","name":"Milk","amount":"1","unit":"gallon","location":"Fridge"}',
     '"add towels to the lake packing trip" -> {"kind":"list","itemName":"Towels","listName":"Lake trip packing"}',
     '"put sunscreen and goggles on the beach list" -> {"kind":"list","itemName":"Sunscreen and goggles","listName":"Beach"}',
     '"lets put shawarma on the meal plan" -> {"kind":"meal","title":"Shawarma","mealType":"dinner"}',
     '"tacos for lunch on Friday" -> {"kind":"meal","title":"Tacos","mealType":"lunch","date":"2026-06-12"}',
     '"I want fish for dinner next Thursday" -> {"kind":"meal","title":"Fish","mealType":"dinner","date":"2026-06-18"}',
     '"we\'re eating out Friday" -> {"kind":"meal","title":"Eating out","mealType":"dinner","date":"2026-06-12"}',
-    '"set a goal to read 20 books this year" -> {"kind":"unsupported","reason":"Quick-add doesn\'t create goals yet — add it from the Goals screen."}',
+    '"12 days until Disney" -> {"kind":"countdown","title":"Disney","date":"2026-06-23","emoji":"🏰"}',
+    '"add a countdown for thanksgiving" -> {"kind":"countdown","title":"Thanksgiving","date":"2026-11-26","emoji":"🦃"}',
+    '"countdown for november 20th" -> {"kind":"countdown","title":"Countdown","date":"2026-11-20","emoji":"⏳"}',
+    '"add my son Max" -> {"kind":"person","name":"Max","memberType":"kid","avatarEmoji":"👦"}',
+    '"add a family member named Jane" -> {"kind":"person","name":"Jane","memberType":"adult"}',
+    '"set a goal to read 20 books this year" -> {"kind":"goal","title":"Read 20 books","goalType":"count","targetValue":20,"unit":"books","trackingMode":"shared_total","deadline":"2026-12-31"}',
+    '"set a personal goal to run 10 miles by september" -> {"kind":"goal","title":"Run 10 miles","goalType":"total","targetValue":10,"unit":"miles","trackingMode":"shared_total","deadline":"2026-09-30"}',
+    '"I want to get in shape" -> {"kind":"goal","title":"Get in shape","goalType":"habit","trackingMode":"shared_total"}',
+    '"my goal is to save $500" -> {"kind":"goal","title":"Save $500","goalType":"total","targetValue":500,"unit":"dollars","trackingMode":"shared_total"}',
+    '"add a reward: ice cream night for 50 stars" -> {"kind":"reward","title":"Ice cream night","cost":50,"emoji":"🍦"}',
+    '"new reward extra screen time costs 100 points" -> {"kind":"reward","title":"Extra screen time","cost":100}',
+    '"mark the trash chore done" -> {"kind":"mutate","verb":"complete","targetKind":"chore","target":{"description":"trash chore"}}',
+    '"log 20 min on my reading goal" -> {"kind":"mutate","verb":"log","targetKind":"goal","target":{"description":"reading goal"},"args":{"minutes":20}}',
+    '"move soccer to Thursday" -> {"kind":"mutate","verb":"reschedule","targetKind":"event","target":{"description":"soccer"},"args":{"date":"2026-06-18"}}',
+    '"give the dishes to Wally" -> {"kind":"mutate","verb":"reassign","targetKind":"chore","target":{"description":"dishes"},"args":{"personName":"Wally"}}',
+    '"delete the dentist appointment" -> {"kind":"mutate","verb":"delete","targetKind":"event","target":{"description":"dentist appointment"}}',
   ].join('\n')
 }
 
@@ -124,7 +235,7 @@ function systemPrompt(ctx: CaptureContext): string {
 export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent {
   const r = (raw ?? {}) as Record<string, unknown>
   const kindRaw = String(r.kind ?? '').toLowerCase()
-  const kind: CaptureIntent['kind'] = (['event', 'grocery', 'meal', 'list', 'unsupported'] as const).find((k) => k === kindRaw) ?? 'task'
+  const kind: CaptureIntent['kind'] = (['event', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'pantry', 'reward', 'mutate', 'unsupported'] as const).find((k) => k === kindRaw) ?? 'task'
 
   // Only accept a person that's actually in the family (case-insensitive).
   const pn = r.personName == null ? null : String(r.personName)
@@ -132,6 +243,20 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
 
   if (kind === 'unsupported') {
     return { kind, reason: String(r.reason ?? '').trim() || 'That isn’t something quick-add can do yet.' }
+  }
+  if (kind === 'mutate') {
+    // Validate/coerce verb + targetKind against the enums; require a non-empty target
+    // description. Do NOT resolve any id here — resolve/commit do that against the DB.
+    const verbRaw = String(r.verb ?? '').toLowerCase()
+    if (!MUTATE_VERBS.has(verbRaw)) throw new Error('mutate: bad verb')
+    const verb = verbRaw as MutateVerb
+    const targetKind = TARGET_KIND_BY_LOWER.get(String(r.targetKind ?? '').toLowerCase())
+    if (!targetKind) throw new Error('mutate: bad targetKind')
+    const description = String((r.target as { description?: unknown } | null | undefined)?.description ?? '').trim()
+    if (!description) throw new Error('mutate: no target description')
+    // args is a loose passthrough object (only the fields a verb reads are used later).
+    const args = r.args && typeof r.args === 'object' ? (r.args as Record<string, unknown>) : {}
+    return { kind, verb, targetKind, target: { description }, args }
   }
   if (kind === 'list') {
     const itemName = String(r.itemName ?? r.name ?? r.title ?? '').trim()
@@ -146,6 +271,36 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
     if (!name) throw new Error('grocery: no item')
     return { kind, name, quantity: r.quantity ? String(r.quantity) : null }
   }
+  if (kind === 'pantry') {
+    const name = String(r.name ?? r.title ?? '').trim()
+    if (!name) throw new Error('pantry: no item')
+    // amount/unit are free-text (the route stores them as strings); location defaults
+    // to 'Pantry'; expiresOn is kept only if a real ISO day; lowAt only if a number ≥ 0.
+    const amount = r.amount != null && String(r.amount).trim() ? String(r.amount).trim() : null
+    const unit = r.unit != null && String(r.unit).trim() ? String(r.unit).trim() : null
+    const location = r.location != null && String(r.location).trim() ? String(r.location).trim() : 'Pantry'
+    const expiresOn = typeof r.expiresOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.expiresOn) ? r.expiresOn : null
+    const rawLow = typeof r.lowAt === 'number' ? r.lowAt : Number(r.lowAt)
+    // Require an actual value: Number(null) === 0 would otherwise turn a schema-emitted
+    // `lowAt: null` into a real threshold of 0 (silently disabling the low-stock warning).
+    const lowAt = r.lowAt != null && Number.isFinite(rawLow) && rawLow >= 0 ? rawLow : null
+    return { kind, name, amount, unit, location, expiresOn, lowAt }
+  }
+  if (kind === 'reward') {
+    const title = String(r.title ?? r.name ?? '').trim()
+    if (!title) throw new Error('reward: no title')
+    const emoji = r.emoji ? String(r.emoji).trim() || null : null
+    // cost: a non-negative whole number (round floats, clamp negatives to 0), mirroring
+    // the route's `Math.max(0, Math.round(...))`; null when no price is given.
+    const rawCost = typeof r.cost === 'number' ? r.cost : Number(r.cost)
+    const cost = r.cost != null && Number.isFinite(rawCost) ? Math.max(0, Math.round(rawCost)) : null
+    const currency = r.currency != null && String(r.currency).trim() ? String(r.currency).trim() : null
+    const category = r.category != null && String(r.category).trim() ? String(r.category).trim() : null
+    // Passthrough: keep an explicit boolean; else null so the route inherits the
+    // household's reward-approval default.
+    const requiresApproval = typeof r.requiresApproval === 'boolean' ? r.requiresApproval : null
+    return { kind, title, emoji, cost, currency, category, requiresApproval }
+  }
   if (kind === 'meal') {
     const title = String(r.title ?? r.name ?? '').trim()
     if (!title) throw new Error('meal: no dish')
@@ -153,6 +308,55 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
     const mealType = MEAL_TYPES.has(mt) ? mt : 'dinner'
     const date = typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date) ? r.date : todayInTz(ctx.timezone)
     return { kind, title, date, mealType, whenLabel: `${mealDayLabel(date, ctx.timezone)} · ${cap(mealType)}` }
+  }
+  if (kind === 'countdown') {
+    const title = String(r.title ?? r.name ?? '').trim()
+    if (!title) throw new Error('countdown: no title')
+    // Accept an ISO day as-is; a loose day ("in 12 days"/"friday") resolves like meals.
+    const date =
+      typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date)
+        ? r.date
+        : typeof r.date === 'string'
+          ? resolveDayFromText(r.date, ctx.timezone)
+          : null
+    if (!date) throw new Error('countdown: no date')
+    const emoji = r.emoji ? String(r.emoji).trim() || null : null
+    return { kind, title, date, emoji, whenLabel: countdownWhenLabel(date, ctx.timezone) }
+  }
+  if (kind === 'person') {
+    const name = String(r.name ?? r.title ?? '').trim()
+    if (!name) throw new Error('person: no name')
+    const mt = String(r.memberType ?? '').toLowerCase()
+    const memberType = (['adult', 'teen', 'kid'] as const).find((t) => t === mt) ?? 'adult'
+    const avatarEmoji = r.avatarEmoji ? String(r.avatarEmoji).trim() || null : null
+    // Only a real ISO day — never an age. The prompt is told not to invent one either.
+    const birthday = typeof r.birthday === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.birthday) ? r.birthday : null
+    const isAdmin = r.isAdmin == null ? false : !!r.isAdmin
+    return { kind, name, memberType, avatarEmoji, birthday, isAdmin }
+  }
+  if (kind === 'goal') {
+    const title = String(r.title ?? r.name ?? '').trim()
+    if (!title) throw new Error('goal: no title')
+    // A real numeric target (finite number); count/total need one — else it's a habit.
+    const rawTarget = typeof r.targetValue === 'number' ? r.targetValue : Number(r.targetValue)
+    const targetValue = Number.isFinite(rawTarget) && rawTarget > 0 ? rawTarget : null
+    // Mirror the route's shape rule (goals.service GOAL_TYPES + goalShapeError): coerce
+    // to the enum, and downgrade a count/total with no real number to a plain habit.
+    let goalType = (['count', 'total', 'habit', 'checklist'] as const).find((t) => t === String(r.goalType ?? '').toLowerCase()) ?? 'habit'
+    if ((goalType === 'count' || goalType === 'total') && targetValue == null) goalType = 'habit'
+    // A count target must be a whole number (the route rejects a fractional one).
+    const cleanTarget = goalType === 'count' && targetValue != null ? Math.round(targetValue) : targetValue
+    const trackingMode = (['shared_total', 'each_tracks'] as const).find((m) => m === String(r.trackingMode ?? '').toLowerCase()) ?? 'shared_total'
+    // Assignment shape (mirrors GoalCreate's create payload): participantMode + targetBasis,
+    // carried through so the client's "who's it for" choice round-trips, coerced to the enum
+    // with the same defaults the route uses (count_once / family).
+    const participantMode = (['count_once', 'split'] as const).find((m) => m === String(r.participantMode ?? '').toLowerCase()) ?? 'count_once'
+    const targetBasis = (['family', 'per_person'] as const).find((b) => b === String(r.targetBasis ?? '').toLowerCase()) ?? 'family'
+    const unit = r.unit && (goalType === 'count' || goalType === 'total') ? String(r.unit).trim() || null : null
+    const deadline = typeof r.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.deadline) ? r.deadline : null
+    // Inferred who-hint that seeds the client's "who's it for" control; coerce to the enum.
+    const audience = (['me', 'everyone'] as const).find((a) => a === String(r.audience ?? '').toLowerCase()) ?? null
+    return { kind, title, goalType, trackingMode, participantMode, targetBasis, targetValue: cleanTarget, unit, deadline, audience, participantIds: [] }
   }
   if (kind === 'event') {
     const raw0 = r.startsAt ? String(r.startsAt) : null
@@ -257,10 +461,64 @@ const MO: Record<string, number> = {
   jul: 6, july: 6, aug: 7, august: 7, sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11,
 }
 
+// Holiday resolution — a known holiday name → its NEXT occurrence on/after today
+// (UTC math, mirroring the rest of this function). KEEP IN SYNC with the web/Swift
+// `findHoliday` heuristics.
+function nthWeekdayUTC(year: number, month0: number, weekday: number, n: number): Date {
+  const first = new Date(Date.UTC(year, month0, 1))
+  const offset = (weekday - first.getUTCDay() + 7) % 7
+  return new Date(Date.UTC(year, month0, 1 + offset + (n - 1) * 7))
+}
+function lastWeekdayUTC(year: number, month0: number, weekday: number): Date {
+  const last = new Date(Date.UTC(year, month0 + 1, 0)) // day 0 of next month = last day of this
+  const offset = (last.getUTCDay() - weekday + 7) % 7
+  return new Date(Date.UTC(year, month0, last.getUTCDate() - offset))
+}
+function easterSundayUTC(year: number): Date {
+  // Anonymous Gregorian algorithm (Computus).
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const mth = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * mth + 114) / 31) // 3=Mar, 4=Apr
+  const day = ((h + l - 7 * mth + 114) % 31) + 1
+  return new Date(Date.UTC(year, month - 1, day))
+}
+const HOLIDAYS: { re: RegExp; calc: (y: number) => Date }[] = [
+  { re: /\bnew\s+year'?s?\s+eve\b/, calc: (y) => new Date(Date.UTC(y, 11, 31)) },
+  { re: /\bnew\s+year'?s?(?:\s+day)?\b/, calc: (y) => new Date(Date.UTC(y, 0, 1)) },
+  { re: /\bvalentine'?s?(?:\s+day)?\b/, calc: (y) => new Date(Date.UTC(y, 1, 14)) },
+  { re: /\bst\.?\s+patrick'?s?(?:\s+day)?\b/, calc: (y) => new Date(Date.UTC(y, 2, 17)) },
+  { re: /\bcinco\s+de\s+mayo\b/, calc: (y) => new Date(Date.UTC(y, 4, 5)) },
+  { re: /\bjuneteenth\b/, calc: (y) => new Date(Date.UTC(y, 5, 19)) },
+  { re: /\b(?:independence\s+day|july\s+4th|july\s+4|4th\s+of\s+july|fourth\s+of\s+july)\b/, calc: (y) => new Date(Date.UTC(y, 6, 4)) },
+  { re: /\bhalloween\b/, calc: (y) => new Date(Date.UTC(y, 9, 31)) },
+  { re: /\bveterans'?\s+day\b/, calc: (y) => new Date(Date.UTC(y, 10, 11)) },
+  { re: /\bchristmas\s+eve\b/, calc: (y) => new Date(Date.UTC(y, 11, 24)) },
+  { re: /\b(?:christmas|xmas)\b/, calc: (y) => new Date(Date.UTC(y, 11, 25)) },
+  { re: /\bmlk(?:\s+day)?\b|\bmartin\s+luther\s+king(?:\s+jr\.?)?(?:\s+day)?\b/, calc: (y) => nthWeekdayUTC(y, 0, 1, 3) },
+  { re: /\bpresidents'?\s+day\b/, calc: (y) => nthWeekdayUTC(y, 1, 1, 3) },
+  { re: /\bmother'?s?\s+day\b/, calc: (y) => nthWeekdayUTC(y, 4, 0, 2) },
+  { re: /\bmemorial\s+day\b/, calc: (y) => lastWeekdayUTC(y, 4, 1) },
+  { re: /\bfather'?s?\s+day\b/, calc: (y) => nthWeekdayUTC(y, 5, 0, 3) },
+  { re: /\blabor\s+day\b/, calc: (y) => nthWeekdayUTC(y, 8, 1, 1) },
+  { re: /\bthanksgiving\b/, calc: (y) => nthWeekdayUTC(y, 10, 4, 4) },
+  { re: /\bgood\s+friday\b/, calc: (y) => new Date(easterSundayUTC(y).getTime() - 2 * 86_400_000) },
+  { re: /\beaster\b/, calc: (y) => easterSundayUTC(y) },
+]
+
 // Deterministically resolve a calendar day from free text (today/tomorrow,
-// a weekday optionally with "next", "in N days", a month+day, or m/d) → the
-// model is unreliable at date math, so we do it ourselves. null = no day stated.
-export function resolveDayFromText(text: string, tz: string): string | null {
+// a weekday optionally with "next", "in N days", a holiday name, a month+day, or
+// m/d) → the model is unreliable at date math, so we do it ourselves. null = no day.
+export function resolveDayFromText(text: string, tz: string, opts?: { holidays?: boolean }): string | null {
   const today = todayInTz(tz)
   const base = new Date(`${today}T00:00:00Z`)
   const iso = (d: Date) => d.toISOString().slice(0, 10)
@@ -283,6 +541,11 @@ export function resolveDayFromText(text: string, tz: string): string | null {
   const inDays = /\bin\s+(\d{1,2})\s+days?\b/.exec(t)
   if (inDays) return add(parseInt(inDays[1], 10))
 
+  // "N days/sleeps until/til/till/to/before X" — mirrors the web CD_UNTIL regex so a
+  // countdown counts N days out, never getting hijacked by a holiday word in X.
+  const until = /\b(\d{1,3})\s+(?:days?|sleeps?)\s+(?:until|til|till|to|before)\b/.exec(t)
+  if (until) return add(parseInt(until[1], 10))
+
   const md = /\b(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\.?\s+(\d{1,2})\b/.exec(t)
   if (md) {
     const mo = MO[md[1]]
@@ -301,6 +564,17 @@ export function resolveDayFromText(text: string, tz: string): string | null {
       return iso(new Date(Date.UTC(year, mo, day)))
     }
   }
+  // Holidays LAST and matched anywhere in the text — so an explicit month+day or m/d
+  // wins over a stray holiday word (e.g. "christmas party on june 20" → June 20). Skip
+  // entirely when the caller opts out (a holiday word in a meal dish must not set a date).
+  if (opts?.holidays !== false) {
+    for (const h of HOLIDAYS) {
+      if (!h.re.test(t)) continue
+      let d = h.calc(base.getUTCFullYear())
+      if (d.getTime() < base.getTime()) d = h.calc(base.getUTCFullYear() + 1)
+      return iso(d)
+    }
+  }
   return null
 }
 
@@ -312,6 +586,15 @@ function mealDayLabel(date: string, tz: string): string {
   if (diff === 1) return 'Tomorrow'
   if (diff === -1) return 'Yesterday'
   return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+// A countdown's preview label — the target day plus how far off it is.
+function countdownWhenLabel(date: string, tz: string): string {
+  const today = todayInTz(tz)
+  const diff = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000)
+  const day = new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const rel = diff <= 0 ? 'Today' : diff === 1 ? 'Tomorrow' : `${diff} days`
+  return `${day} · ${rel}`
 }
 
 function whenLabel(iso: string, allDay: boolean, tz: string): string {
@@ -371,10 +654,19 @@ export async function parseWithProvider(householdId: string, text: string): Prom
   // Small local models are unreliable at date math: if the meal text clearly
   // names a day, resolve it deterministically and override the model's guess.
   if (intent.kind === 'meal') {
-    const resolved = resolveDayFromText(text, ctx.timezone)
+    // Holidays OFF: a dish name like "christmas ham" must not silently set a meal date.
+    const resolved = resolveDayFromText(text, ctx.timezone, { holidays: false })
     if (resolved && resolved !== intent.date) {
       intent.date = resolved
       intent.whenLabel = `${mealDayLabel(resolved, ctx.timezone)} · ${cap(intent.mealType ?? 'dinner')}`
+    }
+  }
+  // Likewise for a countdown: trust the deterministic day parse over the model's.
+  if (intent.kind === 'countdown') {
+    const resolved = resolveDayFromText(text, ctx.timezone)
+    if (resolved && resolved !== intent.date) {
+      intent.date = resolved
+      intent.whenLabel = countdownWhenLabel(resolved, ctx.timezone)
     }
   }
   // Likewise small models often drop the list name — recover it from the raw text
@@ -400,6 +692,24 @@ export async function warmProvider(householdId: string): Promise<void> {
   }).catch(() => {})
 }
 
+// Build the richer resolve/commit context from a resolved Tenant — the household's
+// settings + timezone (same select shape parseWithProvider uses) plus a fresh `now`.
+// This is distinct from CaptureContext (names-only, for the stateless parse).
+async function buildResolveCtx(tenant: Tenant): Promise<ResolveCtx> {
+  const { rows } = await query<{ timezone: string; settings: unknown }>(
+    `select timezone, settings from households where id = $1`,
+    [tenant.householdId]
+  )
+  return {
+    tenant,
+    householdId: tenant.householdId,
+    personId: tenant.personId,
+    now: new Date(),
+    timezone: rows[0]?.timezone ?? 'UTC',
+    settings: rows[0]?.settings ?? null,
+  }
+}
+
 // ── Routes ───────────────────────────────────────────────────────────────────
 export function registerCaptureRoutes(api: Api): void {
   // Warm the model (fire-and-forget) — the kiosk calls this when the capture bar
@@ -419,6 +729,75 @@ export function registerCaptureRoutes(api: Api): void {
       return { intent, via, fallback: false }
     } catch (err) {
       return { intent: null, via: 'heuristic', fallback: true, error: (err as Error).message }
+    }
+  }))
+
+  // Tier 2 mutate — step 2: resolve a spoken noun phrase to candidate rows. Thin
+  // dispatcher over the capture registry. Three distinguishable "no candidates" cases:
+  // an unregistered kind or a verb the target can't apply → candidates:[] + unsupported
+  // + a friendly disabledReason (so the client never says "couldn't find it" about
+  // something quick-add can't touch); a disabled module → candidates:[] + its
+  // disabledReason; a genuinely-empty match stays a bare 200 { candidates: [] }.
+  // A resolver/DB failure is a real 500 (logged), never a silent no-match.
+  api.post('/api/capture/resolve', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { verb?: unknown; targetKind?: unknown; target?: { description?: unknown }; args?: unknown }
+    const kindRaw = String(body.targetKind ?? '')
+    const target = getCaptureTarget(kindRaw as TargetKind)
+    if (!target) {
+      return { candidates: [], unsupported: true, disabledReason: unsupportedKindReason(kindRaw) }
+    }
+    const verb = String(body.verb ?? '') as MutateVerb
+    if (!target.supportedVerbs.includes(verb)) {
+      return { candidates: [], unsupported: true, disabledReason: unsupportedVerbReason(kindRaw as TargetKind, verb) }
+    }
+    try {
+      const ctx = await buildResolveCtx(tenant)
+      if (!target.isEnabled(ctx)) return { candidates: [], disabledReason: target.disabledReason }
+      const description = String(body.target?.description ?? '').trim()
+      const args = body.args && typeof body.args === 'object' ? (body.args as Record<string, unknown>) : {}
+      const candidates = await target.resolveCandidates(ctx, { verb, target: { description }, args })
+      return { candidates }
+    } catch (err) {
+      log.error('capture resolve failed', { err, requestId: (req as Request & { requestId?: string }).requestId })
+      return res.status(500).json({ error: 'Error', message: 'Something went wrong finding that — try again.' })
+    }
+  }))
+
+  // Tier 2 mutate — step 3: apply the chosen mutation. 400 { error:'Unsupported' } for
+  // an unknown/disabled target kind or a verb the target can't apply (same friendly
+  // copy /resolve uses), and 400 for a malformed targetId before anything touches the
+  // DB. The module's applyMutation enforces the same caps its route does; a thrown
+  // domain error with a 4xx statusCode is relayed as { error, message }, while anything
+  // else (raw Postgres errors, outages) is logged and returned as a generic 500.
+  api.post('/api/capture/commit', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { verb?: unknown; targetKind?: unknown; targetId?: unknown; args?: unknown; meta?: unknown }
+    const kindRaw = String(body.targetKind ?? '')
+    const target = getCaptureTarget(kindRaw as TargetKind)
+    if (!target) return res.status(400).json({ error: 'Unsupported', message: unsupportedKindReason(kindRaw) })
+    const verb = String(body.verb ?? '') as MutateVerb
+    if (!target.supportedVerbs.includes(verb)) {
+      return res.status(400).json({ error: 'Unsupported', message: unsupportedVerbReason(kindRaw as TargetKind, verb) })
+    }
+    const targetId = String(body.targetId ?? '')
+    if (!UUID_RE.test(targetId)) {
+      return res.status(400).json({ error: 'BadRequest', message: "Couldn't find that one — try picking it again." })
+    }
+    const ctx = await buildResolveCtx(tenant)
+    if (!target.isEnabled(ctx)) return res.status(400).json({ error: 'Unsupported', message: target.disabledReason })
+    const args = body.args && typeof body.args === 'object' ? (body.args as Record<string, unknown>) : {}
+    const meta = body.meta && typeof body.meta === 'object' ? (body.meta as Record<string, unknown>) : undefined
+    try {
+      const { message } = await target.applyMutation(ctx, { verb, targetId, args, meta })
+      return { ok: true, message }
+    } catch (err) {
+      const e = err as Error & { statusCode?: unknown }
+      // Relay only a real 4xx domain error; anything else must not leak (raw Postgres
+      // messages, outages) — log it and answer with a generic 500.
+      if (typeof e.statusCode === 'number' && Number.isInteger(e.statusCode) && e.statusCode >= 400 && e.statusCode < 500) {
+        return res.status(e.statusCode).json({ error: e.name || 'Error', message: e.message })
+      }
+      log.error('capture commit failed', { err: e, requestId: (req as Request & { requestId?: string }).requestId })
+      return res.status(500).json({ error: 'Error', message: "Something went wrong applying that — try again." })
     }
   }))
 

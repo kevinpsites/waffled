@@ -427,6 +427,63 @@ final class SyncManager {
         return ok
     }
 
+    /// Commit a captured countdown via REST. `date` must be YYYY-MM-DD. The Countdowns
+    /// card reloads on next appearance (no reactive rev — the list is fetch-on-view).
+    func commitCountdown(title: String, date: String, emoji: String?) async -> Bool {
+        await restCommit { _ = try await api.createCountdown(title: title, date: date, emoji: emoji) }
+    }
+
+    /// Commit a captured family member via REST (`POST /api/persons`, admin-only). The
+    /// caller gates on `currentPerson?.isAdmin` first; a non-admin never reaches here.
+    func commitPerson(name: String, memberType: String, avatarEmoji: String?, birthday: String?, isAdmin: Bool) async -> Bool {
+        await restCommit {
+            try await api.createPerson(name: name, memberType: memberType, avatarEmoji: avatarEmoji, birthday: birthday, isAdmin: isAdmin)
+        }
+    }
+
+    /// Commit a captured goal via REST (`POST /api/goals`). The caller gates on the Goals
+    /// module being enabled first; a disabled module never reaches here. The Goals screen
+    /// reloads on next appearance (no reactive rev — the list is fetch-on-view).
+    func commitGoal(title: String, goalType: String, trackingMode: String, targetValue: Double?, unit: String?, deadline: String?, participantIds: [String] = []) async -> Bool {
+        await restCommit {
+            try await api.createGoal(title: title, goalType: goalType, trackingMode: trackingMode,
+                                     targetValue: targetValue, unit: unit, deadline: deadline,
+                                     participantIds: participantIds)
+        }
+    }
+
+    /// Commit a captured pantry item via REST (`POST /api/pantry`). The caller gates on
+    /// the Pantry module being enabled first (it defaults OFF), so a disabled module never
+    /// reaches here. The Pantry screen reloads on next appearance (fetch-on-view).
+    func commitPantry(name: String, amount: String?, unit: String?, location: String, expiresOn: String?, lowAt: Double? = nil) async -> Bool {
+        await restCommit {
+            var body: [String: JSONValue] = ["name": .string(name), "location": .string(location)]
+            if let amount, !amount.isEmpty { body["amount"] = .string(amount) }
+            if let unit, !unit.isEmpty { body["unit"] = .string(unit) }
+            if let expiresOn, !expiresOn.isEmpty { body["expiresOn"] = .string(expiresOn) }
+            // The server keeps `low_at` only for a finite threshold ≥ 0 (mirrors the route).
+            if let lowAt, lowAt >= 0 { body["lowAt"] = .double(lowAt) }
+            _ = try await api.pantryCreate(body)
+        }
+    }
+
+    /// Commit a captured reward via REST (`POST /api/rewards`). The caller gates on BOTH
+    /// rewards being on (`rewardsOn`) and the viewer holding `reward.manage` first, so a
+    /// blocked case never reaches here. Omits `requiresApproval` when nil so the route
+    /// inherits the household default; bumps `rewardsRev` so the reward shop refreshes.
+    @discardableResult
+    func commitReward(title: String, emoji: String?, cost: Int?, requiresApproval: Bool?) async -> Bool {
+        let ok = await restCommit {
+            var body: [String: JSONValue] = ["title": .string(title)]
+            if let cost { body["cost"] = .int(cost) }
+            if let emoji, !emoji.isEmpty { body["emoji"] = .string(emoji) }
+            if let requiresApproval { body["requiresApproval"] = .bool(requiresApproval) }
+            try await api.rewardCreate(body)
+        }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
     /// Plan (upsert) a meal slot from the weekly planner; bumps `mealsRev` so the
     /// Today card and any open week reload.
     func setMealPlan(date: String, mealType: String, recipeId: String?, title: String?, cookPersonId: String? = nil) async -> Bool {

@@ -2,7 +2,7 @@
 // SSO-only email invite), the member signs in, and login can be removed. Fresh
 // container so the instance starts uninitialized.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { runMigrations } from '../src/migrate'
 
 let pg: StartedPostgreSqlContainer

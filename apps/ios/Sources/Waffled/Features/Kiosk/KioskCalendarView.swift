@@ -151,10 +151,8 @@ struct KioskCalendarView: View {
     /// Horizontal flick → step month / week / day (mirrors the header chevrons). Ignores
     /// agenda mode and predominantly-vertical drags so the time grids still scroll.
     private func handleSwipe(_ value: DragGesture.Value) {
-        guard mode != .agenda else { return }
-        let dx = value.translation.width, dy = value.translation.height
-        guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return }
-        step(dx < 0 ? 1 : -1)   // swipe left = next
+        guard mode != .agenda, let dir = HorizontalSwipe.step(value) else { return }
+        step(dir)
     }
 
     private func chevron(_ s: String) -> some View {
@@ -183,11 +181,11 @@ struct KioskCalendarView: View {
                     Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 22)
                 } else {
                     Image(systemName: "person.2.fill").font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(on ? .white : WF.ink2)
+                        .foregroundStyle(on ? WF.onInk : WF.ink2)
                         .frame(width: 22, height: 22)
-                        .background(on ? Color.white.opacity(0.22) : WF.panel).clipShape(Circle())
+                        .background(on ? WF.onInk.opacity(0.22) : WF.panel).clipShape(Circle())
                 }
-                Text(label).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? .white : WF.ink2)
+                Text(label).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? WF.onInk : WF.ink2)
             }
             .padding(.leading, 6).padding(.trailing, 13).padding(.vertical, 6)
             .background(on ? WF.ink : WF.card)
@@ -248,10 +246,10 @@ struct KioskCalendarView: View {
                     if let cds = countdowns.byDate[cell.key], let first = cds.first {
                         HStack(spacing: 2) {
                             Text(first.emoji ?? "⏳").font(.system(size: 9))
-                            Text(CountdownFormat.short(first.daysLeft)).font(.system(size: 9, weight: .heavy)).foregroundStyle(Color(hex: 0x8A6D3B))
+                            Text(CountdownFormat.short(first.daysLeft)).font(.system(size: 9, weight: .heavy)).foregroundStyle(WF.warn)
                         }
                         .padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(Color(hex: 0xF4ECD8)).clipShape(Capsule())
+                        .background(WF.warnT).clipShape(Capsule())
                     }
                 }
                 ForEach(items.prefix(3)) { ev in eventChip(ev) }

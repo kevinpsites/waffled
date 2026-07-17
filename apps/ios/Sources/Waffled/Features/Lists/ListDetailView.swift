@@ -347,6 +347,10 @@ struct ListDetailView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             if model.isTemplate { templateBanner }
         }
+        // An explicit way to put the keyboard away — the add bar keeps focus after
+        // every submit (rapid entry), so without this the keyboard has no Done/✕.
+        // Dropping focus also commits an in-flight inline edit (see onChange(of: focus)).
+        .wfKeyboardDoneToolbar { focus = nil }
         .toolbar {
             // Grocery is auto-built, so it has no template/delete menu. A template gets
             // Use / Move to Lists / Delete; a normal list gets Save as template / Delete.
@@ -398,6 +402,10 @@ struct ListDetailView: View {
             if DemoHooks.openDetails, !didAutoDetails, let first = model.items.first {
                 didAutoDetails = true
                 detailItem = first
+            }
+            if DemoHooks.focusAdd {
+                try? await Task.sleep(for: .seconds(1))
+                focus = .add
             }
         }
         .refreshable { await model.load() }
@@ -453,6 +461,9 @@ struct ListDetailView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        // Drag down through the items to tuck the keyboard away (the add bar's field
+        // otherwise keeps it up with no way to dismiss on iPhone).
+        .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .top, spacing: 0) { topControls }
         .safeAreaInset(edge: .bottom, spacing: 0) { addBar }
     }
@@ -464,6 +475,7 @@ struct ListDetailView: View {
             List { itemRows }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.interactively)
                 .safeAreaInset(edge: .top, spacing: 0) { topControls }
                 .safeAreaInset(edge: .bottom, spacing: 0) { addBar }
                 .frame(maxWidth: .infinity)

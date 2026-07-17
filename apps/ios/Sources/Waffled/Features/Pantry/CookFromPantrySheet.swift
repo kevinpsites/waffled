@@ -71,6 +71,9 @@ struct CookFromPantryCard: View {
 struct CookFromPantrySheet: View {
     @Environment(SyncManager.self) private var sync
     @Environment(\.dismiss) private var dismiss
+    /// Cook Mode presents app-level (from `RootView`); this sheet would otherwise block
+    /// that cover, so it dismisses itself the moment a cook starts (auto-cook here).
+    @Environment(CookSessionStore.self) private var cook
     let items: [WaffledAPI.PantryItem]
     let ready: [WaffledAPI.CookReady]
     let mains: [WaffledAPI.CookMain]
@@ -115,6 +118,11 @@ struct CookFromPantrySheet: View {
             .navigationDestination(for: ProteinFilter.self) { RecipesLibraryView(model: model, initialProtein: $0.protein) }
         }
         .task { await model.load(); await loadPlanned() }
+        // Auto-cook pushes a recipe here then starts a cook; close this sheet so the
+        // app-root Cook Mode cover isn't queued behind it.
+        .onChange(of: cook.isActive) { _, active in
+            if active { dismiss() }
+        }
         .sheet(isPresented: $planningWeek) {
             PlanWeekSheet(start: ymd(weekStart), weekLabel: weekTitle, weekDays: weekDays,
                           familySize: max(1, sync.members.count), recipes: model,
@@ -177,7 +185,7 @@ struct CookFromPantrySheet: View {
                     Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                     HStack(spacing: 6) {
                         badge(heat ? "Heat & serve" : "Ready to eat", WF.primary)
-                        if let e = expiryNote(m) { badge(e, Color(hex: 0xB8860B)) }
+                        if let e = expiryNote(m) { badge(e, WF.warn) }
                     }
                 }
                 Spacer(minLength: 0)
@@ -231,13 +239,13 @@ struct CookFromPantrySheet: View {
                         .padding(.horizontal, 14).padding(.vertical, 7).background(WF.primary).clipShape(Capsule())
                 }.buttonStyle(.plain)
             }
-            if let e = r.expiringItem { Text("Uses \(e) due soon").font(.system(size: 12)).foregroundStyle(Color(hex: 0xB8860B)) }
+            if let e = r.expiringItem { Text("Uses \(e) due soon").font(.system(size: 12)).foregroundStyle(WF.warn) }
             if !r.have.isEmpty {
                 ChipFlow(spacing: 6, lineSpacing: 6) {
                     ForEach(r.have, id: \.self) { h in
-                        Text("✓ \(h)").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(Color(hex: 0x2E7D46))
+                        Text("✓ \(h)").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(WF.success)
                             .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color(hex: 0x2E7D46).opacity(0.12)).clipShape(Capsule())
+                            .background(WF.success.opacity(0.12)).clipShape(Capsule())
                     }
                 }
             }
@@ -293,7 +301,7 @@ struct CookFromPantrySheet: View {
                 ForEach(loose) { i in
                     HStack(spacing: 5) {
                         Text(i.name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink2)
-                        if let e = expiryNote(i) { Text(e).font(.system(size: 11, weight: .bold)).foregroundStyle(Color(hex: 0xB8860B)) }
+                        if let e = expiryNote(i) { Text(e).font(.system(size: 11, weight: .bold)).foregroundStyle(WF.warn) }
                     }
                     .padding(.horizontal, 10).padding(.vertical, 6).background(WF.panel).clipShape(Capsule())
                 }

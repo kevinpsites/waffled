@@ -24,6 +24,11 @@ final class NotificationManager {
     /// event, then clears it.
     var pendingEventId: String?
 
+    /// Set when the user taps a fired cook-mode timer notification; `RootView` observes
+    /// this to re-open Cook Mode at the right recipe + step, then clears it. Kept in a
+    /// separate namespace from `pendingEventId` so the two deep-links never collide.
+    var pendingCookTimer: CookTimerLink?
+
     /// Whether iOS has granted permission — drives the Settings hint.
     private(set) var authorization: UNAuthorizationStatus = .notDetermined
     /// How many upcoming reminders were dropped by the 64-pending cap last pass
@@ -222,6 +227,16 @@ private final class NotifDelegate: NSObject, UNUserNotificationCenterDelegate {
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let content = response.notification.request.content
+        // Cook-mode timer taps carry a recipe + step (no eventId) — deep-link into Cook
+        // Mode. Checked first so a cook timer is never mistaken for an event reminder.
+        if let recipeId = content.userInfo["cookRecipeId"] as? String {
+            let step = content.userInfo["cookStepIndex"] as? Int ?? 0
+            Task { @MainActor in
+                manager?.pendingCookTimer = CookTimerLink(recipeId: recipeId, stepIndex: step)
+                completionHandler()
+            }
+            return
+        }
         let id = content.userInfo["eventId"] as? String
         switch response.actionIdentifier {
         case "SNOOZE":

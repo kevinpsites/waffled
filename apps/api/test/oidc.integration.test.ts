@@ -3,7 +3,7 @@
 // exchange → authed request. Also covers the not-invited rejection and the
 // password-lockout guard. Fresh container so the instance starts uninitialized.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createServer, type Server } from 'node:http'
 import { generateKeyPairSync, randomUUID, type KeyObject } from 'node:crypto'
 import { AddressInfo } from 'node:net'
@@ -14,6 +14,10 @@ let pg: StartedPostgreSqlContainer
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let app: any
 let closePool: () => Promise<void>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let query: any
+
+const LOCAL_SECRET = 'waffled-local-dev-secret-change-me'
 
 // ── stub IdP ───────────────────────────────────────────────────────────────────
 let idp: Server
@@ -111,6 +115,13 @@ function call(method: string, path: string, opts: { body?: unknown; token?: stri
 }
 const json = (r: RunResult) => JSON.parse(r.body)
 const loc = (r: RunResult) => r.headers.location ?? r.headers.Location ?? ''
+const mint = (sub: string) => jwt.sign({}, LOCAL_SECRET, {
+  algorithm: 'HS256',
+  subject: sub,
+  issuer: 'waffled-local',
+  audience: 'waffled-api',
+  expiresIn: '1h',
+})
 
 beforeAll(async () => {
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
@@ -122,10 +133,11 @@ beforeAll(async () => {
   await runMigrations(url)
   process.env.DATABASE_URL = url
   process.env.TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64') // 32 bytes → encryption available
+  process.env.LOCAL_JWT_SECRET = LOCAL_SECRET
   delete process.env.AUTH0_DOMAIN
   delete process.env.AUTH_FORCE_PASSWORD
   app = (await import('../src/app')).default
-  closePool = (await import('../src/platform/db')).closePool
+  ;({ query, closePool } = await import('../src/platform/db'))
 }, 120_000)
 afterAll(async () => {
   await closePool?.()
@@ -151,7 +163,7 @@ async function ssoLogin(redirect = 'http://localhost:8080/'): Promise<RunResult>
 }
 
 describe('OIDC login', () => {
-  let admin: { accessToken: string }
+  let admin: { accessToken: string; person: { id: string } }
 
   it('sets up the admin and enables OIDC via the admin config route', async () => {
     const setup = await call('POST', '/api/auth/setup', {
@@ -162,6 +174,15 @@ describe('OIDC login', () => {
     })
     expect(setup.statusCode).toBe(201)
     admin = json(setup)
+
+    const assigned = await query(
+      `select cfg.installation_owner_account_id, p.account_id
+         from auth_config cfg
+         join persons p on p.id = $1
+        where cfg.id = true`,
+      [admin.person.id]
+    )
+    expect(assigned.rows[0].installation_owner_account_id).toBe(assigned.rows[0].account_id)
 
     // Status: only password before OIDC is configured.
     expect(json(await call('GET', '/api/auth/status')).methods).toEqual(['password'])
@@ -178,6 +199,108 @@ describe('OIDC login', () => {
     expect(s.methods).toContain('oidc')
     expect(s.methods).toContain('password')
     expect(s.oidc).toMatchObject({ buttonLabel: 'Sign in with Acme' })
+  })
+
+  it('reserves installation-wide auth config for the installation owner account', async () => {
+    const originalHousehold = await query(
+      `select id, owner_person_id from households order by created_at, id limit 1`
+    )
+    await query(`update households set owner_person_id = null where id = $1`, [originalHousehold.rows[0].id])
+    expect((await call('GET', '/api/auth/config', { token: admin.accessToken })).statusCode).toBe(200)
+    await query(`update households set owner_person_id = $1 where id = $2`, [
+      originalHousehold.rows[0].owner_person_id,
+      originalHousehold.rows[0].id,
+    ])
+
+    const extra = json(await call('POST', '/api/households', {
+      token: admin.accessToken,
+      body: {
+        name: 'Lake House',
+        timezone: 'America/Chicago',
+        person: { name: 'Kevin' },
+      },
+    }))
+    const switched = json(await call('POST', '/api/auth/switch', {
+      token: admin.accessToken,
+      body: { householdId: extra.household.id },
+    }))
+    expect((await call('GET', '/api/auth/config', { token: switched.accessToken })).statusCode).toBe(200)
+
+    const household = await query(
+      `insert into households (name, timezone) values ('Other family', 'UTC') returning id`
+    )
+    const person = await query(
+      `insert into persons (household_id, name, member_type, is_admin)
+       values ($1, 'Other owner', 'adult', true) returning id`,
+      [household.rows[0].id]
+    )
+    await query(`update households set owner_person_id = $1 where id = $2`, [
+      person.rows[0].id,
+      household.rows[0].id,
+    ])
+    await query(
+      `insert into identities
+         (household_id, person_id, provider, auth0_user_id, email_verified, is_primary)
+       values ($1, $2, 'password', 'dev|other-owner', true, true)`,
+      [household.rows[0].id, person.rows[0].id]
+    )
+    const otherAdmin = mint('dev|other-owner')
+
+    expect((await call('GET', '/api/auth/config', { token: otherAdmin })).statusCode).toBe(403)
+    expect((await call('PUT', '/api/auth/config', {
+      token: otherAdmin,
+      body: { buttonLabel: 'Hijacked login' },
+    })).statusCode).toBe(403)
+    expect((await call('POST', '/api/auth/config/test', {
+      token: otherAdmin,
+      body: { issuerUrl: issuer },
+    })).statusCode).toBe(403)
+
+    const ownerConfig = json(await call('GET', '/api/auth/config', { token: admin.accessToken }))
+    expect(ownerConfig.buttonLabel).toBe('Sign in with Acme')
+  })
+
+  it('rejects foreign web origins and unregistered native redirect schemes', async () => {
+    expect((await call('GET', '/api/auth/oidc/start', {
+      query: { redirect: 'https://attacker.example/' },
+    })).statusCode).toBe(400)
+    expect((await call('GET', '/api/auth/oidc/start', {
+      query: { redirect: 'attacker://auth/callback' },
+    })).statusCode).toBe(400)
+  })
+
+  it('escapes identity-provider errors rendered in the browser result page', async () => {
+    const result = await call('GET', '/api/auth/oidc/callback', {
+      query: {
+        error: 'access_denied',
+        error_description: '<img src=x onerror=alert(1)>',
+      },
+    })
+    expect(result.statusCode).toBe(400)
+    expect(result.body).not.toContain('<img src=x')
+    expect(result.body).toContain('&lt;img src=x onerror=alert(1)&gt;')
+  })
+
+  it('revalidates redirect destinations persisted before an upgrade', async () => {
+    stubUser = { sub: 'idp-sub-1', email: 'kevin@example.com', email_verified: true }
+    const state = `legacy-${randomUUID()}`
+    const nonce = `nonce-${randomUUID()}`
+    await query(
+      `insert into oidc_login_states (state, code_verifier, nonce, redirect_to)
+       values ($1, 'legacy-verifier', $2, 'https://attacker.example/')`,
+      [state, nonce]
+    )
+
+    const authorizeUrl = new URL(`${issuer}/authorize`)
+    authorizeUrl.searchParams.set('state', state)
+    authorizeUrl.searchParams.set('nonce', nonce)
+    authorizeUrl.searchParams.set('redirect_uri', 'http://localhost:8080/api/auth/oidc/callback')
+    const authRes = await fetch(authorizeUrl, { redirect: 'manual' })
+    const code = new URL(authRes.headers.get('location')!).searchParams.get('code')!
+
+    const cb = await call('GET', '/api/auth/oidc/callback', { query: { code, state } })
+    expect(cb.statusCode).toBe(302)
+    expect(loc(cb)).toMatch(/^http:\/\/localhost:8080\/auth\/callback\?code=/)
   })
 
   it('links an invited email on first SSO login and authenticates', async () => {

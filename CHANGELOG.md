@@ -19,10 +19,256 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same setup Immich uses — with a "Send test email" button that verifies the
   connection before saving. The App Password is stored encrypted. This lays the
   groundwork for emailed weekly summaries (calendar, meals, groceries, and chores).
+- **Swipe between weeks in the iPhone meal planner.** The weekly meal plan now pages with a
+  horizontal flick — swipe left for next week, right for the previous one — the same gesture
+  the Calendar and Chores screens already use. The arrow buttons and "Jump to this week"
+  still work exactly as before.
+- **Track one activity from Apple Health: workout-type goal metrics.** A goal can now follow a
+  specific kind of workout — running, cycling, swimming, yoga, strength training, or *any*
+  workout — instead of Apple's combined totals, so a bike ride, treadmill run, and elliptical
+  session are no longer one big number. The measure fits the goal: a **total** adds up the
+  minutes ("300 minutes of yoga this year"), a **count** counts the sessions ("swim 12 times
+  this month"), and a **habit** counts qualifying days — any workout that day, or only past a
+  minutes bar you set ("at least 30 min, 5 days a week"). iPhone-only, like all Health links.
+- **More Apple Health distance metrics: cycling, swimming, and wheelchair.** Each is its own
+  linkable metric alongside walking + running, tracked to a decimal in miles or kilometers per
+  your device's region — so "cycle 500 miles this year" or a daily swim-distance habit fill
+  themselves.
+- **A clearer "Track from Apple Health" picker.** Picking a metric now opens a searchable list
+  grouped around what your goal shape needs — metrics that *add up* (Everyday, Distance,
+  Workouts, Mindfulness) for amount goals, and *qualifying days* (Apple Watch rings, logged-each-day,
+  workout days, daily targets) for habits — with your live value beside each metric and the
+  selected one shown as a "Counting" card in the goal editor.
+- **Walking & running distance is now an Apple Health goal metric.** Alongside steps, flights,
+  exercise minutes and the rest, an iPhone user can link a goal to their walking + running
+  distance (which also includes hikes) so a "run 100 miles this year" or "walk 3 miles a day"
+  goal fills itself. Distance shows in miles or kilometers to match your device's region, and —
+  being fractional — is tracked to a decimal rather than rounded.
+- **One-command cloud deploy to Oracle Cloud's Always Free tier via Terraform.** A new
+  `infra/terraform/oci` module stands up the whole stack (Postgres, PowerSync, api, Caddy,
+  backup) on a free Arm Ampere A1 instance and, when you give it a domain, fronts it with
+  automatic HTTPS — including a TLS front for offline-sync (a `powersync.` subdomain by default,
+  or a same-domain port / dedicated hostname). Pass your API keys and other config through named
+  variables. `terraform apply` prints the public IP, the DNS records to create, and the URL to
+  open. See the module's `README.md` and the "Deploy to Oracle Cloud" guide.
+- **`./waffled` accepts a `--override <file>` flag** to layer an extra Compose file on top of the
+  base one, so a deployment can add published ports or mounts without editing tracked files. It's
+  explicit opt-in only (nothing auto-loads), and is used by the Oracle Cloud deploy.
+
+- **Quick-add now understands countdowns.** Type something like "12 days until Disney",
+  "Disney in 12 days", "countdown for the beach party on August 25", or even
+  "countdown for Thanksgiving" into the "Add anything" bar and Waffled creates a countdown
+  to that day — it recognizes holidays by name (Thanksgiving, Christmas, Easter, the Fourth
+  of July, and more) and resolves them to their next date. Always on, with the target date
+  editable in the confirm-and-edit preview (any emoji it detects is carried through to the
+  countdown), on web, iPhone, and iPad.
+- **Quick-add can add a family member.** Type something like "add my son Max", "add my wife
+  Sara", or "add a family member named Robin" into the "Add anything" bar and Waffled sets up
+  their profile — inferring whether they're an adult, teen, or kid, all editable in the
+  confirm-and-edit preview before it's created (on web, iPhone, and iPad). Adding members is
+  an adult-only action, so a kid or teen sees a friendly "Only an adult can add family members"
+  note instead.
+- **Quick-add can set a goal.** Type something like "set a personal goal to run 10 miles by
+  september", "set a new goal to read 20 books", "I want to get in shape", or "my goal is to
+  save $500" into the "Add anything" bar and Waffled starts the goal for you — it understands
+  everyday phrasings (a "personal"/"new"/"weekly" goal reads the same as a plain one) and, even
+  with no AI configured, pulls out the number, the unit, and a deadline ("10 miles" by the end
+  of September) on its own. It figures out whether the goal is a simple habit, a countable
+  target (20 books), or an accumulating total, and lets you fine-tune the type, target, unit,
+  deadline, and who it's for — just you, everyone, or specific people — in the confirm-and-edit
+  preview before it's created (on web, iPhone, and iPad). It even reads the wording to preselect
+  who the goal is for — a "family" or "shared" goal starts for everyone, a "personal" one just
+  for you — and on the web, "Just me" and your own name now stay in sync as the same person. If
+  a household has turned the Goals module off, quick-add says so instead of failing.
+- **Quick-add can stock the pantry.** Type something like "add milk to the pantry", "put 2 cans
+  of beans in the pantry", or "we have milk in the fridge" into the "Add anything" bar and Waffled
+  logs it as an item you already have on hand — pulling out the amount, unit, and where it's stored
+  (Pantry, Fridge, or Freezer), all editable (along with an expiry date and low-stock threshold) in
+  the confirm-and-edit preview before it's saved (on web, iPhone, and iPad). This is kept separate
+  from groceries: something to buy ("add milk", "add milk to the shopping list") still goes on the
+  shopping list, and only an explicit pantry/fridge/freezer destination stocks the pantry. Because
+  the Pantry module is off by default, quick-add offers this only when a household has turned it on.
+- **Quick-add can add a reward.** Type something like "add a reward: ice cream night for 50 stars"
+  or "new reward extra screen time costs 100 points" into the "Add anything" bar and Waffled adds it
+  to the reward shop — pulling out the star/point cost, with the name, cost, emoji, and whether it
+  needs a parent's approval all editable in the confirm-and-edit preview before it's saved (on web,
+  iPhone, and iPad). Because rewards are the "spend" side of the chores economy, quick-add offers this
+  only when rewards are turned on and to grown-ups who manage rewards — otherwise it says so (a kid
+  sees "Ask a parent to add a reward") instead of failing.
+- **Quick-add can now *do* things, not just add them.** Beyond creating, the "Add anything" bar
+  understands actions on things you already have — **"mark the trash chore done"**, **"give the
+  dishes to Wally"**, **"log 20 min on my reading goal"**. You describe the thing in your own words
+  (no need to know its exact name); Waffled finds it, and when a phrase could match more than one, it
+  shows the matches so you pick the right one before anything changes. This first release covers
+  **completing and reassigning chores** and **logging goal progress**, on the web. Actions always run
+  against the server (they never guess offline), reassigning someone else's chore still needs a
+  grown-up, and anything destructive asks first. More actions (rescheduling events, crossing items off
+  lists, redeeming rewards) and iPhone/iPad support are on the way. **Reliable "do anything" needs an AI
+  provider** — configure one in Settings → AI & capture; without a key the on-device parser still handles
+  common phrasings on a best-effort basis (and the preview says so), but an AI key is what makes the full
+  range of wording and matching dependable.
 
 ### Changed
 
 ### Fixed
+- **Creating a list on iOS now opens it right away.** After tapping Create (or Create
+  from template) in the New-list sheet, the app takes you straight into the new list's
+  detail so you can start adding items — instead of leaving you on the Lists overview
+  to hunt for the row you just made. The web app already worked this way.
+- **Clearing the hours field while logging a goal on iOS no longer snaps back to 1.** In
+  the log-progress sheet for a time goal, deleting the hours (or minutes) value and tapping
+  the other field re-filled it with the old number, so "45 minutes" could quietly become
+  "1h 45m". An emptied field now stays empty while you type — it simply counts as 0 — and
+  is tidied up only when you leave it. Clearing the free-entry amount on a total goal now
+  correctly disables the Log/Save button instead of silently logging the number that was
+  there before.
+- **The Offline banner no longer flashes on brief connection blips.** Momentary hiccups —
+  a sync reconnect, waking the app, hopping between Wi-Fi and cellular — used to flash
+  "Offline" across the top of the iPhone app and the kiosk for a second. Both now wait
+  until the connection has been down for a sustained stretch (10 seconds) before saying
+  anything, and the banner still clears the moment you're back online.
+- **The iOS Today screen stays fresh and no longer flashes empty cards.** Tonight's dinner,
+  chores, grocery, and goals now refetch when the app returns to the foreground — so a meal
+  plan changed on the web (or another phone) shows up without leaving the screen and coming
+  back — and again just past midnight, so a device left open overnight doesn't keep showing
+  yesterday's dinner and chores. While the page is still loading, the goals and grocery cards
+  show a "Loading…" placeholder instead of briefly claiming "Set a family goal" or "0 items
+  to buy", and a refresh that fails (offline, expired sign-in) keeps what's on screen instead
+  of blanking cards to "No dinner planned" or "All bought ✓" — on both the iPhone dashboard
+  and the iPad family display.
+- **Dragging a meal to another day in the iOS week planner now lands instantly.** The
+  dropped meal used to sit still until the server round-trip finished, which read as lag
+  (the web planner was already instant). The app now swaps the two slots on screen the
+  moment you let go, saves in the background, and quietly puts things back — with a
+  dismissible notice — in the rare case the server says no.
+- **Typing on the grocery list no longer fights the keyboard (iOS).** On iPad, opening
+  the keyboard made the app think the screen had rotated — the page rebuilt itself
+  mid-word, dropping the item you were typing and leaving the add-item field buried
+  behind the keyboard. The layout now only changes on a real rotation, so the field
+  (and your half-typed item) stays visible above the keyboard. On iPhone, the keyboard
+  had no way to be put away on a list; a Done button above the keyboard and
+  drag-down-to-dismiss on the items now tuck it away.
+- **`./waffled upgrade` no longer trips over its own update.** Upgrading from an older
+  release could fail mid-way with a cryptic `required variable … is missing a value`
+  error, because the still-running old script drove the freshly downloaded configuration
+  before learning about newly required settings. The upgrade now restarts itself under
+  the new version of the script as soon as the update lands, so missing secrets are
+  generated into `.env` before anything else runs — one command, no manual `.env` edits.
+- **`./waffled up` and `upgrade` no longer crash with "unbound variable" on macOS.** The
+  health wait added in 0.8.0 aborted at the very end of every start/upgrade on the stock
+  macOS shell (bash 3.2) — after the stack was already up, hiding the final status
+  report. The wait now runs (and reports service health) on every supported shell.
+
+## [0.8.0] - 2026-07-14
+
+### Security
+
+- **Member logins now respect account ownership.** An administrator can update the login
+  already linked to a household profile, but an account owned by a different person must
+  join through the explicit invitation and acceptance flow.
+- **Sign-in callbacks now return only to Waffled.** OIDC login handoffs are restricted to
+  the current web origin or the registered native-app callback, and browser error pages
+  safely render messages returned by an identity provider.
+- **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
+  attachments now reject malformed or cross-household keys, and local storage prevents
+  paths from escaping the configured media directory.
+- **Installation-wide login settings now have one recoverable owner.** Global login and
+  SSO configuration no longer accepts changes from administrators of any household;
+  ownership persists across household changes and can be recovered from the host admin CLI.
+- **Authenticated API responses no longer enter a shared browser cache.** The web service
+  worker removes API caches created by older versions; the app shell and PowerSync calendar
+  remain available offline, while REST-backed screens require the server instead of risking
+  another account's stale response.
+- **Production starts only with durable, non-default secrets.** Setup generates a stable
+  PowerSync signing key with the other required secrets, repairs missing environment values,
+  and refuses production startup when secrets are malformed or still use public development
+  defaults.
+
+### Added
+- **Operators can populate a demo household straight from the running container.** The
+  "The Seinfelds" screenshot/demo seed now ships inside the API image, so you can fill a
+  fresh install with a lived-in example family — people, chores, goals, meals, pantry,
+  photos, and a rolling month of calendar events (last week through three weeks out, so
+  "this week" and "next week" are never empty) — without any host tooling. It is off by
+  default and refuses to run unless you set `WAFFLED_ALLOW_DEMO_SEED=1`, so it can never
+  inject demo data into a real household by accident.
+- **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
+  weekly planner now offers an add button for every unplanned meal — Breakfast, Lunch, and
+  Dinner — instead of a lone "Plan dinner" affordance, matching what the iPad grid already did.
+- **"Plan my week" and "Plan my month" now work even without an AI provider — they shuffle.**
+  Households that haven't configured an LLM used to get an error when they asked the planner to
+  fill a week or a month. Instead, the planner now deals a random hand from your own recipe
+  library: it fills only the empty dinner slots, skips anything already planned in that window or
+  cooked in the last couple of weeks, and leaves slots you've already set alone. No AI required,
+  and the app doesn't change — the same "Plan my week" / "Plan my month" buttons just always
+  return a plan.
+- **Dark mode, everywhere.** Waffled now has a warm dark theme alongside the original light one,
+  chosen from **Settings → Appearance** on the web, the kitchen kiosk display, **and the
+  iPhone/iPad app**: pick Light, Dark, or **Match system** to follow your device automatically.
+  It's a warm dark — surfaces and text move to soft charcoals rather than cold black-and-blue, and
+  every brand, accent, and per-person color stays exactly the same, so the app still reads as
+  Waffled with the lights off. The choice is saved per device and applies instantly. The two
+  platforms share one palette, so a screen looks the same with the lights off on your phone as it
+  does on the wall.
+- **Add a recipe from a photo or by describing it — now on iPhone and iPad, not just the web.**
+  The recipe editor's "start from…" options now include **From a photo** (snap or choose up to six
+  pictures of a recipe card, cookbook page, or handwritten note and let the AI read them) and
+  **Describe it** (say or type the ingredients and steps in any order — with on-device voice
+  dictation — and the AI organizes it into a recipe). Both prefill the editor for you to review and
+  save, exactly like the web app, and appear only when your household's AI provider supports them.
+
+### Changed
+- **New chores now default to a one-off on the day you're viewing, and each day's list is sorted sensibly.** On iPhone/iPad, adding a chore from the Chores tab now starts as "Just once" due on the day currently shown — instead of a recurring daily chore always due today. A day's chores are also ordered unfinished-first, then by due time (earliest first, untimed last), then A–Z.
+- **Cook Mode on iPad now keeps the current step's ingredients in a left sidebar.** Instead of
+  the ingredients scrolling away beneath the big instruction, the iPad wall display pins them in
+  a fixed left-hand column so you can glance at what a step needs while the instruction fills the
+  rest of the screen. iPhone keeps its single scrolling column with ingredients inline.
+- **The color system is now a single source of truth.** Every color the web app uses is defined
+  once as a design token (including new semantic tokens for success / warning / danger / info),
+  and the scattered one-off hex values that had crept in were consolidated onto them. This is what
+  makes dark mode consistent — and keeps future color changes to one place.
+
+- **The self-hosting quick start is now copy-pasteable for first-time Docker users.** It
+  explains the required terminal, initial credentials, success checks, and safe troubleshooting.
+
+### Fixed
+- **Upgrades now stop when their safety checks fail.** `./waffled upgrade` aborts after
+  a failed repository fast-forward or database backup unless backup skipping is explicit.
+
+- **Up-for-grabs chores now appear on Today.** The Family Chores card shows unassigned
+  chores that anyone can claim instead of incorrectly saying there are no chores yet.
+
+- **The iOS photo grid now reuses decoded images while scrolling.** Photo tiles no longer
+  refetch and decode the same image whenever SwiftUI recreates a grid cell.
+- **`./waffled up` now waits for health checks before showing its final status.** Normal startup
+  no longer looks like a failure just because API, PowerSync, or Caddy is still warming up.
+
+- **The iPhone Goals list now updates itself after you change a goal.** Deleting a goal, logging
+  progress, ticking a checklist step, or editing an entry from a goal's detail screen now refreshes
+  the list the moment you go back — no more stale card until you pull-to-refresh.
+- **Participant chips in the Goals log sheet no longer jump around when tapped.** Selecting who took
+  part keeps each chip the same size instead of growing and nudging its neighbours sideways.
+- **Chores tab feels right on iPhone: swipe between days, and no more empty reward badge.** You can now swipe left or right on the chores list to step a day at a time (matching the calendar), and a chore with no star reward no longer shows a stray "★ 0".
+- **Tap a candidate in "Plan my week with AI" to preview its recipe.** In the AI plan review,
+  tapping a suggestion card's emoji and title now opens the full recipe detail (swap, pick, and
+  lock still work as before); brand-new "✨ New dish" suggestions have nothing to open yet, so
+  their tap does nothing.
+- **Cook Mode now stays open when you leave the app and comes back where you were.** On the
+  iPad, backgrounding the app (Home button or app switcher) used to drop you back on Today and
+  lose Cook Mode entirely; now Cook Mode — and any running timers — survive backgrounding and are
+  right there when you return, still on the current step. Tapping a fired timer's notification
+  also re-opens Cook Mode at the exact step whose timer went off. Finishing a cook from Cook
+  Mode still offers the "Used from your pantry" update so your on-hand stock stays accurate.
+- **Cook Mode timers now reliably alert you after you leave the app.** A running step timer's
+  notification used to be cancelled the moment Cook Mode closed — including when you simply pressed
+  Home — so backgrounding the app with a timer running meant no alert ever fired. The pending
+  alert is now kept alive across backgrounding and only cleared when you actually pause or dismiss
+  the timer.
+- **Cook Mode timers now say which timer went off and alert like a proper kitchen alarm.** When
+  several step timers are running at once, the "Timer done" screen and the out-of-app
+  notification now name the specific timer (e.g. "Step 5 · 3-minute timer") instead of just its
+  step, and the notification is marked time-sensitive so it breaks through Focus and the
+  notification summary when you've stepped away from the app.
 
 ## [0.7.0] - 2026-07-10
 
@@ -815,7 +1061,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/kevinpsites/waffled/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kevinpsites/waffled/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/kevinpsites/waffled/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/kevinpsites/waffled/compare/v0.5.0...v0.6.0

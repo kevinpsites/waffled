@@ -1,6 +1,6 @@
 // Chores domain — migration + api. Shares one Postgres testcontainer + app.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
@@ -204,6 +204,21 @@ describe('chores today api', () => {
     expect(res.statusCode).toBe(200)
     const me = JSON.parse(res.body).people.find((p: { id: string }) => p.id === kevinId)
     expect(me).toMatchObject({ total: 1, done: 0, stars: 0 })
+  })
+
+  it('surfaces up-for-grabs chores without assigning them to a person summary', async () => {
+    const before = JSON.parse((await call('GET', '/api/chores/today', kevin)).body)
+    const beforeTotal = before.people.find((p: { id: string }) => p.id === kevinId).total
+
+    const add = await call('POST', '/api/chores', kevin, {
+      title: 'Anyone can sweep',
+      personId: null,
+    })
+    expect(add.statusCode).toBe(201)
+
+    const after = JSON.parse((await call('GET', '/api/chores/today', kevin)).body)
+    expect(after.upForGrabs).toBe(before.upForGrabs + 1)
+    expect(after.people.find((p: { id: string }) => p.id === kevinId).total).toBe(beforeTotal)
   })
 })
 
@@ -459,6 +474,17 @@ describe('photo-proof chores', () => {
     return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances
   }
 
+  it('rejects proof keys outside the current household', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Unsafe proof', personId: kevinId, rewardAmount: 1, requiresPhoto: true })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Unsafe proof')!
+    const res = await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, {
+      storageKey: `${householdId}/../../etc/passwd`,
+      contentType: 'image/jpeg',
+    })
+    expect(res.statusCode).toBe(400)
+    expect((await instances()).find((i) => i.choreTitle === 'Unsafe proof')!.status).toBe('pending')
+  })
+
   it('requires a photo to complete: 422 without one, succeeds with a storage key', async () => {
     await call('POST', '/api/chores', kevin, { title: 'Tidy room', personId: kevinId, rewardAmount: 4, requiresPhoto: true })
     const inst = (await instances()).find((i) => i.choreTitle === 'Tidy room')!
@@ -470,26 +496,26 @@ describe('photo-proof chores', () => {
 
     // with a proof key → done, proofUrl resolves to /media/<key>
     const done = await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, {
-      storageKey: `${kevinId}/abc.jpg`,
+      storageKey: `${householdId}/${'a'.repeat(32)}.jpg`,
       contentType: 'image/jpeg',
     })
     expect(done.statusCode).toBe(200)
     expect(JSON.parse(done.body).instance.status).toBe('done')
     const after = (await instances()).find((i) => i.choreTitle === 'Tidy room')!
-    expect(after.proofUrl).toMatch(/\/media\/.*abc\.jpg$/)
+    expect(after.proofUrl).toMatch(/\/media\/.*a{32}\.jpg$/)
   })
 
   it('combines with approval: proof shows in the awaiting queue; reject clears it', async () => {
     await call('POST', '/api/chores', kevin, { title: 'Wash car', personId: kevinId, rewardAmount: 8, requiresApproval: true, requiresPhoto: true })
     const inst = (await instances()).find((i) => i.choreTitle === 'Wash car')!
     const done = await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, {
-      storageKey: `${kevinId}/car.webp`,
+      storageKey: `${householdId}/${'b'.repeat(32)}.webp`,
       contentType: 'image/webp',
     })
     expect(JSON.parse(done.body).instance.status).toBe('awaiting')
 
     const queue = JSON.parse((await call('GET', '/api/chore-instances/awaiting', kevin)).body).instances as Inst[]
-    expect(queue.find((i) => i.choreTitle === 'Wash car')!.proofUrl).toMatch(/car\.webp$/)
+    expect(queue.find((i) => i.choreTitle === 'Wash car')!.proofUrl).toMatch(/b{32}\.webp$/)
 
     expect((await call('POST', `/api/chore-instances/${inst.id}/reject`, kevin)).statusCode).toBe(200)
     const back = (await instances()).find((i) => i.choreTitle === 'Wash car')!
@@ -519,7 +545,7 @@ describe('photo-proof retention', () => {
   async function completedWithProof(title: string): Promise<string> {
     await call('POST', '/api/chores', kevin, { title, personId: kevinId, rewardAmount: 1, requiresPhoto: true })
     const inst = (await instances()).find((i) => i.choreTitle === title)!
-    await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, { storageKey: `${kevinId}/${title}.jpg`, contentType: 'image/jpeg' })
+    await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, { storageKey: `${householdId}/${Buffer.from(title).toString('hex').padEnd(32, '0').slice(0, 32)}.jpg`, contentType: 'image/jpeg' })
     return inst.id
   }
 
@@ -539,7 +565,7 @@ describe('photo-proof retention', () => {
     const i = (await instances()).find((x) => x.choreTitle === 'Vacuum')!
     expect(i.status).toBe('done')
     expect(i.hadProof).toBe(true)
-    expect(i.proofUrl).toMatch(/Vacuum\.jpg$/)
+    expect(i.proofUrl).toMatch(/[0-9a-f]{32}\.jpg$/)
   })
 
   it('the sweep deletes aged proofs (keeping hadProof) but spares fresh + awaiting ones', async () => {
@@ -548,7 +574,7 @@ describe('photo-proof retention', () => {
     // an awaiting (not settled) photo chore must never be swept, however old
     await call('POST', '/api/chores', kevin, { title: 'Pending proof', personId: kevinId, rewardAmount: 1, requiresPhoto: true, requiresApproval: true })
     const pend = (await instances()).find((i) => i.choreTitle === 'Pending proof')!
-    await call('POST', `/api/chore-instances/${pend.id}/complete`, kevin, { storageKey: `${kevinId}/pend.jpg`, contentType: 'image/jpeg' })
+    await call('POST', `/api/chore-instances/${pend.id}/complete`, kevin, { storageKey: `${householdId}/${'c'.repeat(32)}.jpg`, contentType: 'image/jpeg' })
 
     // backdate the aged one + the awaiting one well past the 3-day window
     await withClient((c) =>
@@ -563,9 +589,9 @@ describe('photo-proof retention', () => {
     const aged = after.find((i) => i.choreTitle === 'Old proof')!
     expect(aged.proofUrl).toBeNull()   // blob + key gone
     expect(aged.hadProof).toBe(true)   // …but we still remember a photo was attached
-    expect(after.find((i) => i.choreTitle === 'Fresh proof')!.proofUrl).toMatch(/Fresh proof\.jpg$/)
+    expect(after.find((i) => i.choreTitle === 'Fresh proof')!.proofUrl).toMatch(/[0-9a-f]{32}\.jpg$/)
     // awaiting one keeps its proof despite being backdated
-    expect(after.find((i) => i.choreTitle === 'Pending proof')!.proofUrl).toMatch(/pend\.jpg$/)
+    expect(after.find((i) => i.choreTitle === 'Pending proof')!.proofUrl).toMatch(/c{32}\.jpg$/)
   })
 })
 
@@ -581,7 +607,7 @@ describe('stored proof photos (review/manage)', () => {
   async function completeWithProof(title: string): Promise<string> {
     await call('POST', '/api/chores', kevin, { title, personId: kevinId, rewardAmount: 1, requiresPhoto: true })
     const inst = (await instances()).find((i) => i.choreTitle === title)!
-    await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, { storageKey: `${kevinId}/${title}.jpg`, contentType: 'image/jpeg' })
+    await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, { storageKey: `${householdId}/${Buffer.from(title).toString('hex').padEnd(32, '0').slice(0, 32)}.jpg`, contentType: 'image/jpeg' })
     return inst.id
   }
 
@@ -592,7 +618,7 @@ describe('stored proof photos (review/manage)', () => {
     let proofs = await listProofs()
     const a = proofs.find((p) => p.choreTitle === 'Proof A')!
     expect(a.instanceId).toBe(aId)
-    expect(a.proofUrl).toMatch(/Proof A\.jpg$/)
+    expect(a.proofUrl).toMatch(/[0-9a-f]{32}\.jpg$/)
     expect(proofs.some((p) => p.choreTitle === 'Proof B')).toBe(true)
 
     // delete one
@@ -711,6 +737,119 @@ describe('chore capability gating (non-admin members)', () => {
   it('non-admins cannot read or write the permissions matrix (403)', async () => {
     expect((await call('GET', '/api/permissions', kidToken)).statusCode).toBe(403)
     expect((await call('PUT', '/api/permissions', adultToken, { permissions: {} })).statusCode).toBe(403)
+  })
+})
+
+describe('capture — chores target', () => {
+  type Inst = { id: string; choreId: string; choreTitle: string; personId: string | null; status: string }
+  async function instances(): Promise<Inst[]> {
+    return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances
+  }
+  function resolve(body: unknown, token = kevin) {
+    return call('POST', '/api/capture/resolve', token, body)
+  }
+  function commit(body: unknown, token = kevin) {
+    return call('POST', '/api/capture/commit', token, body)
+  }
+
+  it('resolves a chore by description → one candidate id = the instance, subtitle, confidence > 0', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Take out the trash', personId: kevinId, rewardAmount: 2 })
+    const res = await resolve({ targetKind: 'chore', verb: 'complete', target: { description: 'trash' }, args: {} })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    const cand = body.candidates.find((c: { title: string }) => c.title === 'Take out the trash')
+    expect(cand).toBeTruthy()
+    const inst = (await instances()).find((i) => i.choreTitle === 'Take out the trash')!
+    expect(cand.id).toBe(inst.id) // candidate id is the chore_instances.id, not the template
+    expect(cand.meta.choreId).toBe(inst.choreId)
+    expect(typeof cand.subtitle).toBe('string')
+    expect(cand.subtitle.length).toBeGreaterThan(0)
+    expect(cand.confidence).toBeGreaterThan(0)
+  })
+
+  it('resolves a recurring chore even before an instance is materialized (ensureTodayInstances ran)', async () => {
+    // createChore does NOT materialize instances for recurring chores — only ensureTodayInstances does.
+    await call('POST', '/api/chores', kevin, { title: 'Water the plants', personId: kevinId, rrule: 'FREQ=DAILY' })
+    // resolve WITHOUT first hitting the instances endpoint (which would materialize it)
+    const res = await resolve({ targetKind: 'chore', verb: 'complete', target: { description: 'water plants' }, args: {} })
+    const body = JSON.parse(res.body)
+    expect(body.candidates.some((c: { title: string }) => c.title === 'Water the plants')).toBe(true)
+  })
+
+  it('commits a complete → 200 {ok, message} and the instance flips to done', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Sweep the porch', personId: kevinId, rewardAmount: 1 })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Sweep the porch')!
+    const res = await commit({ targetKind: 'chore', verb: 'complete', targetId: inst.id, args: {} })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.ok).toBe(true)
+    expect(body.message).toContain('Sweep the porch')
+    expect((await instances()).find((i) => i.choreTitle === 'Sweep the porch')!.status).toBe('done')
+  })
+
+  it('reassigns a chore to another person by name', async () => {
+    const wanda = await addMember('Wanda', 'kid', false, 'dev|wanda-cap')
+    await call('POST', '/api/chores', kevin, { title: 'Fold laundry', personId: kevinId })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Fold laundry')!
+    const res = await commit({ targetKind: 'chore', verb: 'reassign', targetId: inst.id, args: { personName: 'wanda' } })
+    expect(res.statusCode).toBe(200)
+    expect((await instances()).find((i) => i.choreTitle === 'Fold laundry')!.personId).toBe(wanda)
+  })
+
+  it('a kid without chore.manage cannot reassign to another person (403)', async () => {
+    await addMember('Reba', 'kid', false, 'dev|reassign-kid')
+    const kidTok = mint('dev|reassign-kid')
+    await call('POST', '/api/chores', kevin, { title: 'Dust shelves', personId: null, rrule: 'FREQ=DAILY' })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Dust shelves')!
+    const res = await commit({ targetKind: 'chore', verb: 'reassign', targetId: inst.id, args: { personName: 'Kevin' } }, kidTok)
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('rejects a proof storageKey belonging to another household (same check as the route)', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Scrub the tub', personId: kevinId, rewardAmount: 1 })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Scrub the tub')!
+    const foreignKey = `00000000-0000-4000-8000-000000000000/${'c'.repeat(32)}.jpg`
+    const res = await commit({ targetKind: 'chore', verb: 'complete', targetId: inst.id, args: { storageKey: foreignKey, contentType: 'image/jpeg' } })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/proof/i)
+    // still pending, and no proof key was stored
+    const after = await withClient((c) =>
+      c.query<{ status: string; proof_storage_key: string | null }>(
+        `select status, proof_storage_key from chore_instances where id=$1`, [inst.id]
+      )
+    )
+    expect(after.rows[0].status).toBe('pending')
+    expect(after.rows[0].proof_storage_key).toBeNull()
+
+    // a key that DOES belong to the household still works
+    const ownKey = `${householdId}/${'d'.repeat(32)}.jpg`
+    const ok = await commit({ targetKind: 'chore', verb: 'complete', targetId: inst.id, args: { storageKey: ownKey, contentType: 'image/jpeg' } })
+    expect(ok.statusCode).toBe(200)
+    const done = await withClient((c) =>
+      c.query<{ status: string; proof_storage_key: string | null }>(
+        `select status, proof_storage_key from chore_instances where id=$1`, [inst.id]
+      )
+    )
+    expect(done.rows[0].status).toBe('done')
+    expect(done.rows[0].proof_storage_key).toBe(ownKey)
+  })
+
+  it('module off → resolve returns candidates:[] + disabledReason', async () => {
+    const setChores = (on: boolean) =>
+      withClient((c) =>
+        c.query(
+          `update households set settings = coalesce(settings,'{}'::jsonb)
+             || jsonb_build_object('modules', coalesce(settings->'modules','{}'::jsonb) || jsonb_build_object('chores', $2::boolean))
+           where id=$1`,
+          [householdId, on]
+        )
+      )
+    await setChores(false)
+    const res = await resolve({ targetKind: 'chore', verb: 'complete', target: { description: 'trash' }, args: {} })
+    const body = JSON.parse(res.body)
+    expect(body.candidates).toEqual([])
+    expect(body.disabledReason).toBe('Chores is turned off.')
+    await setChores(true) // restore
   })
 })
 

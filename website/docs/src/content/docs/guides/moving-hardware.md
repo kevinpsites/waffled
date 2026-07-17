@@ -36,7 +36,7 @@ See [Backup & restore](/operations/backup/) for what's in a dump.
 Install Docker + the Compose v2 plugin, then clone the repo:
 
 ```bash
-git clone <this-repo> waffled && cd waffled
+git clone https://github.com/kevinpsites/waffled.git waffled && cd waffled
 ```
 
 Put your saved **`infra/compose/.env`** in place. This keeps the **same

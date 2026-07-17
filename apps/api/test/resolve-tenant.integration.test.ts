@@ -9,7 +9,7 @@
 //   - signup now creates + links an account (account_id on persons, last_household_id)
 // Driven end-to-end through the real app handler, like the other integration suites.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { randomBytes } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'

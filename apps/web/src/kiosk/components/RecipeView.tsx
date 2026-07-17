@@ -109,7 +109,7 @@ function StepRow({ s, onNote }: { s: RecipeStep; onNote: (val: string) => void }
           <div className="rd-step-noteedit">
             <textarea autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="add a note for this step…" />
             <div className="rd-step-noteactions">
-              <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => { onNote(draft); setEditing(false) }}>Save</button>
+              <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} onClick={() => { onNote(draft); setEditing(false) }}>Save</button>
               {s.note && <button type="button" className="pill" onClick={() => { onNote(''); setEditing(false) }}>Remove</button>}
               <button type="button" className="pill" onClick={() => setEditing(false)}>Cancel</button>
             </div>

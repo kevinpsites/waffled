@@ -2,6 +2,8 @@
 // no AUTH0_DOMAIN → local HS256 mode (self-minted dev tokens, zero external deps).
 // Set AUTH0_DOMAIN → Auth0 RS256 mode (validates against Auth0's JWKS).
 
+import { createPrivateKey } from 'node:crypto'
+
 export type AuthMode = 'local' | 'auth0'
 
 const auth0Domain = process.env.AUTH0_DOMAIN ?? null
@@ -15,6 +17,47 @@ const env = (name: string): string | undefined => {
   const v = process.env[name]
   return v != null && v.trim() !== '' ? v : undefined
 }
+
+const LOCAL_DEVELOPMENT_SECRET = 'waffled-local-dev-secret-change-me'
+
+function decodeBase64(value: string): Buffer | null {
+  const compact = value.trim()
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact) || compact.length % 4 !== 0) return null
+  return Buffer.from(compact, 'base64')
+}
+
+/** Refuse to start a production API with missing, temporary, or malformed keys. */
+export function assertProductionSecrets(source: NodeJS.ProcessEnv = process.env): void {
+  const errors: string[] = []
+  const sessionSecret = source.LOCAL_JWT_SECRET?.trim()
+  if (!sessionSecret || sessionSecret === LOCAL_DEVELOPMENT_SECRET || sessionSecret.length < 32) {
+    errors.push('LOCAL_JWT_SECRET must be a unique value of at least 32 characters')
+  }
+
+  const encryptionKey = source.TOKEN_ENCRYPTION_KEY
+    ? decodeBase64(source.TOKEN_ENCRYPTION_KEY)
+    : null
+  if (!encryptionKey || encryptionKey.length !== 32) {
+    errors.push('TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key')
+  }
+
+  const signingKey = source.POWERSYNC_JWT_PRIVATE_KEY?.trim()
+  try {
+    const pem = signingKey?.startsWith('-----BEGIN')
+      ? signingKey
+      : signingKey && decodeBase64(signingKey)?.toString('utf8')
+    const privateKey = pem ? createPrivateKey(pem) : null
+    if (!privateKey || privateKey.asymmetricKeyType !== 'rsa') throw new Error('not an RSA key')
+  } catch {
+    errors.push('POWERSYNC_JWT_PRIVATE_KEY must be an RSA private key (PEM or base64 PEM)')
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Invalid production secrets:\n- ${errors.join('\n- ')}\nRun ./waffled up to generate missing values.`)
+  }
+}
+
+if (process.env.NODE_ENV === 'production') assertProductionSecrets()
 
 /** A capture-parsing provider is "available" only if its secret/host is in the
  *  environment. Keys live here (server-side) and are NEVER exposed to clients;
@@ -130,7 +173,7 @@ export const config: AppConfig = {
 
     // Local mode (HS256) — default until Auth0 is wired up.
     local: {
-      secret: process.env.LOCAL_JWT_SECRET ?? 'waffled-local-dev-secret-change-me',
+      secret: process.env.LOCAL_JWT_SECRET ?? LOCAL_DEVELOPMENT_SECRET,
       issuer: process.env.LOCAL_JWT_ISSUER ?? 'waffled-local',
       audience: process.env.LOCAL_JWT_AUDIENCE ?? 'waffled-api',
     },

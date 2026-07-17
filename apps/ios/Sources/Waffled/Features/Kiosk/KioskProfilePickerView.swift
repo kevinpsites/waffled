@@ -60,7 +60,7 @@ struct KioskProfilePickerView: View {
         .overlay(alignment: .bottom) {
             if let claimError {
                 Text(claimError)
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.onInk)
                     .padding(.horizontal, 18).padding(.vertical, 12)
                     .background(WF.ink.opacity(0.92)).clipShape(Capsule())
                     .padding(.bottom, 40).transition(.move(edge: .bottom).combined(with: .opacity))

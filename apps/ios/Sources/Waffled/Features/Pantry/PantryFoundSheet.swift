@@ -67,9 +67,9 @@ struct PantryFoundSheet: View {
             Text(found ? foundText : "Not found in a product database · \(result.barcode)")
                 .font(.system(size: 12.5, weight: .bold))
         }
-        .foregroundStyle(found ? Color(hex: 0x167A4A) : WF.ink3)
+        .foregroundStyle(found ? WF.success : WF.ink3)
         .padding(.horizontal, 11).padding(.vertical, 6)
-        .background((found ? Color(hex: 0x167A4A) : WF.ink3).opacity(0.12)).clipShape(Capsule())
+        .background((found ? WF.success : WF.ink3).opacity(0.12)).clipShape(Capsule())
     }
 
     private var heroRow: some View {

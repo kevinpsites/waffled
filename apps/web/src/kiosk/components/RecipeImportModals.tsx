@@ -79,7 +79,7 @@ export function PhotoImportModal({ onClose, onDraft }: { onClose: () => void; on
                   type="button"
                   aria-label="Remove photo"
                   onClick={() => setPhotos((prev) => prev.filter((_, j) => j !== i))}
-                  style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: '50%', border: 0, background: 'rgba(0,0,0,.65)', color: '#fff', cursor: 'pointer', lineHeight: 1 }}
+                  style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: '50%', border: 0, background: 'rgba(0,0,0,.65)', color: 'var(--on-accent)', cursor: 'pointer', lineHeight: 1 }}
                 >×</button>
               </div>
             ))}
@@ -109,7 +109,7 @@ export function PhotoImportModal({ onClose, onDraft }: { onClose: () => void; on
           </div>
         )}
 
-        {err && <div className="tiny" style={{ color: 'var(--danger,#c0392b)', fontWeight: 700, marginTop: 10 }}>{err}</div>}
+        {err && <div className="tiny" style={{ color: 'var(--danger)', fontWeight: 700, marginTop: 10 }}>{err}</div>}
 
         {photos.length > 0 && (
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--hair)' }}>
@@ -209,7 +209,7 @@ export function DescribeImportModal({ onClose, onDraft }: { onClose: () => void;
                 type="button"
                 className="pill"
                 onClick={toggleMic}
-                style={listening ? { background: '#c0392b', color: '#fff', border: 0 } : undefined}
+                style={listening ? { background: 'var(--danger)', color: 'var(--on-accent)', border: 0 } : undefined}
               >
                 {listening ? '● Listening… tap to stop' : '🎤 Dictate'}
               </button>
@@ -224,7 +224,7 @@ export function DescribeImportModal({ onClose, onDraft }: { onClose: () => void;
           />
         </label>
 
-        {err && <div className="tiny" style={{ color: 'var(--danger,#c0392b)', fontWeight: 700, marginTop: 10 }}>{err}</div>}
+        {err && <div className="tiny" style={{ color: 'var(--danger)', fontWeight: 700, marginTop: 10 }}>{err}</div>}
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>

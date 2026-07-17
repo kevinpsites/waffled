@@ -57,12 +57,12 @@ struct FamilyView: View {
                 // Module-gated tiles drop out when a household turns that feature off
                 // (Settings → Modules). Photos + Settings are core and never gated.
                 LazyVGrid(columns: cols, spacing: 12) {
-                    if sync.module(.chores) { tile("✅", "Chores", hub.choresSubtitle, FamilyColor.wally.tint, .chores, badge: choreApprovals) }
-                    if sync.module(.goals) { tile("🎯", "Goals", hub.goalsSubtitle, Color(hex: 0xE8F0E4), .goals) }
-                    if sync.rewardsOn { tile("⭐", "Rewards", hub.rewardsSubtitle, Color(hex: 0xFDF0D6), .rewards, badge: rewardApprovals) }
-                    if sync.module(.lists) { tile("📋", "Lists", hub.listsSubtitle, FamilyColor.kevin.tint, .lists) }
-                    if sync.module(.pantry) { tile("🥫", "Pantry", "What’s on hand", Color(hex: 0xF3E8D6), .pantry) }
-                    tile("📷", "Photos", hub.photosSubtitle, Color(hex: 0xDFF0EF), .photos)
+                    if sync.module(.chores) { tile("✅", "Chores", hub.choresSubtitle, FamilyColor.person3.tint, .chores, badge: choreApprovals) }
+                    if sync.module(.goals) { tile("🎯", "Goals", hub.goalsSubtitle, WF.successT, .goals) }
+                    if sync.rewardsOn { tile("⭐", "Rewards", hub.rewardsSubtitle, WF.warnT, .rewards, badge: rewardApprovals) }
+                    if sync.module(.lists) { tile("📋", "Lists", hub.listsSubtitle, FamilyColor.person1.tint, .lists) }
+                    if sync.module(.pantry) { tile("🥫", "Pantry", "What’s on hand", WF.warnT, .pantry) }
+                    tile("📷", "Photos", hub.photosSubtitle, WF.successT, .photos)
                     tile("⚙️", "Settings", "People, calendars, AI", WF.panel, .settings)
                 }
             }
@@ -172,7 +172,7 @@ struct FamilyView: View {
 
     private var syncDotColor: Color {
         switch sync.status {
-        case .connected: return FamilyColor.wally.solid
+        case .connected: return FamilyColor.person3.solid
         case .connecting: return WF.gold
         case .offline, .idle: return WF.ink3
         }

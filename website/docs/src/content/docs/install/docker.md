@@ -10,7 +10,7 @@ reference for *what* gets installed and how the pieces fit; for the shortest pat
 ## Install in three commands
 
 ```bash
-git clone <this-repo> waffled && cd waffled
+git clone https://github.com/kevinpsites/waffled.git waffled && cd waffled
 ./waffled setup   # recommended if a tablet/phone/other computer will connect
 ./waffled up      # preflight → create .env → pull images → migrate → start
 ```
@@ -21,8 +21,8 @@ Open the address it prints — **`http://localhost:8080`** by default — and co
 ## What `./waffled up` does on first run
 
 1. **Creates `infra/compose/.env`** from `.env.example`, generating `LOCAL_JWT_SECRET`,
-   `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you (via `openssl`). An existing `.env` is
-   never touched.
+   `TOKEN_ENCRYPTION_KEY`, `POWERSYNC_JWT_PRIVATE_KEY`, and `POSTGRES_PASSWORD` for you
+   (via `openssl`). Missing values in an existing `.env` are filled without changing custom values.
 2. **Pulls the prebuilt multi-arch images** (`api`, `caddy`, `backup`) from GHCR, pinned to
    `WAFFLED_VERSION`, plus stock Postgres and PowerSync. Prefer source? `./waffled up --build`.
 3. **Runs a one-shot `migrate` service** to apply the schema — including the PowerSync
