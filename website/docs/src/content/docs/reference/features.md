@@ -39,7 +39,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Rotating refresh tokens + transparent 401-refresh | ✅ | ✅ | ✅ | ✅ Done (Keychain token store) |
 | **OIDC SSO** (backend-mediated, invite-gated) | ✅ | ✅ | ✅ | ✅ Done (`ASWebAuthenticationSession`) |
 | Admin-managed OIDC config (Settings, secret encrypted at rest) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — web/server-only admin by design |
-| Disable password login / force SSO (break-glass guard) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — web/server-only admin by design |
+| Disable password login / force SSO (break-glass guard) | ✅ | ✅ | ✅ | ✅ Done — config is web/server-only admin by design; every client's login screen honors it (an SSO-only server hides the email/password form on web **and** iPhone/iPad) |
 | **Member management** — grant a person a login (email ± password) + kiosk PIN | ✅ | ✅ | ✅ | ✅ Done |
 | **Members CRUD** (profiles: name, avatar, color, role, admin, birthday) | ✅ | ✅ | ✅ | ✅ Done |
 | **Role-based permissions** — per-role capability grid (Settings → Family); [model](/concepts/permissions/) | ✅ | ✅ | ✅ | ✅ Done (editable matrix, admin-only) |

@@ -81,6 +81,24 @@ struct WaffledAPI: Sendable {
         let methods: [String]
         let oidc: OIDC?
         struct OIDC: Decodable, Sendable { let buttonLabel: String? }
+
+        // Which sign-in affordances the login screen may offer — the same rules as
+        // the web's `AuthGate` (apps/web/src/kiosk/AuthGate.tsx). Static over an
+        // optional because "no status yet" has defined behavior of its own.
+
+        /// With no status yet (unreachable server / still probing) the password form
+        /// stays available so the screen is never stranded without inputs; once the
+        /// server answers, it alone decides (OIDC-only servers omit "password").
+        static func allowsPassword(_ status: AuthStatus?) -> Bool {
+            guard let status else { return true }
+            return status.methods.contains("password")
+        }
+
+        /// SSO needs both the method flag and the `oidc` config payload.
+        static func allowsSSO(_ status: AuthStatus?) -> Bool {
+            guard let status else { return false }
+            return status.oidc != nil && status.methods.contains("oidc")
+        }
     }
     struct Session: Decodable, Sendable {
         let accessToken: String

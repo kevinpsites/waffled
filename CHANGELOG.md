@@ -141,6 +141,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   like Goals, Lists, or Photos when they aren't pinned to the rail — used to leave the
   side rail (and the portrait bottom bar) with nothing highlighted. The More tile now
   lights up whenever the current page doesn't have a tile of its own.
+- **The iOS login screen now offers only the sign-in methods your server allows.** If an
+  admin turns off password login (SSO-only), the iPhone/iPad login hides the email and
+  password fields and shows just the SSO button — matching the web, which already did
+  this. Checking or changing the server address re-reads what that server allows, and if
+  the server can't be reached yet the password form stays available as a safe fallback.
 - **Creating a list on iOS now opens it right away.** After tapping Create (or Create
   from template) in the New-list sheet, the app takes you straight into the new list's
   detail so you can start adding items — instead of leaving you on the Lists overview
