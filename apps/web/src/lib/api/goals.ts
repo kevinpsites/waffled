@@ -141,6 +141,22 @@ export interface GoalDetail extends Goal {
   streakDays: number
 }
 
+// Day-bucketed log history powering the goal-detail data views (Week/Month/Pace/
+// Year/By-person/Year-ring). `perMember` may include a key at 0 (a count_once
+// shared event's attendee — present, not credited): key on presence, not amount>0.
+export interface GoalActivityDay {
+  dateKey: string // YYYY-MM-DD, household-local
+  total: number
+  perMember: Record<string, number>
+}
+
+export interface GoalActivity {
+  startDate: string // YYYY-MM-DD, household-local — goal.createdAt's local date
+  endDate: string | null // goal.deadline
+  today: string // YYYY-MM-DD, household-local
+  days: GoalActivityDay[]
+}
+
 export const goalsApi = {
   goalLists: () => apiGet<{ lists: GoalList[] }>('/api/goal-lists'),
   createGoalList: (input: Record<string, unknown>) => apiSend<{ list: { id: string } }>('POST', '/api/goal-lists', input),
@@ -149,6 +165,7 @@ export const goalsApi = {
   goals: (listId?: string | null) =>
     apiGet<{ goals: Goal[] }>(listId ? `/api/goals?listId=${listId}` : '/api/goals'),
   goal: (id: string) => apiGet<{ goal: GoalDetail }>(`/api/goals/${id}`),
+  activity: (id: string) => apiGet<GoalActivity>(`/api/goals/${id}/activity`),
   createGoal: (input: Record<string, unknown>) => apiSend<{ goal: { id: string } }>('POST', '/api/goals', input).then(tap('goals')),
   updateGoal: (id: string, patch: Record<string, unknown>) => apiSend<{ goal: GoalDetail }>('PATCH', `/api/goals/${id}`, patch).then(tap('goals')),
   logGoal: (id: string, body: { amount?: number; hours?: number; minutes?: number; personIds?: string[]; personId?: string | null; note?: string | null; loggedOn?: string | null }) =>
@@ -250,4 +267,31 @@ export function useGoalDetail(id: string | null): GoalDetailState {
   // elsewhere, etc.). Same-id refetch is silent (no loading flash) per the effect above.
   useRefetchOn(['goals'], () => setNonce((n) => n + 1))
   return { goal, loading, error, refetch: () => setNonce((n) => n + 1) }
+}
+
+export interface GoalActivityState {
+  activity: GoalActivity | null
+  loading: boolean
+  error: boolean
+}
+
+export function useGoalActivity(id: string | null): GoalActivityState {
+  const [activity, setActivity] = useState<GoalActivity | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [nonce, setNonce] = useState(0)
+  useEffect(() => {
+    if (!id) return
+    let alive = true
+    setLoading(true)
+    goalsApi
+      .activity(id)
+      .then((d) => alive && (setActivity(d), setLoading(false), setError(false)))
+      .catch(() => alive && (setError(true), setLoading(false)))
+    return () => {
+      alive = false
+    }
+  }, [id, nonce])
+  useRefetchOn(['goals'], () => setNonce((n) => n + 1))
+  return { activity, loading, error }
 }
