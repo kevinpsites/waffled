@@ -44,6 +44,52 @@ describe('rankCandidates', () => {
     expect(out[0].id).toBe('a')
   })
 
+  // A keyword (concept-vocabulary) match is weaker evidence than the user's words
+  // actually appearing in the row's title — before the weighting, "outside" scored
+  // 1.00 against EVERY goal whose title touched the outdoors concept, so all of them
+  // tied at the top (PR #73 review fast-follow).
+  it('scores a keyword-only match at half a title-token match, never 1.0', () => {
+    const outdoors = ['outside', 'outdoor', 'park', 'nature', 'camping', 'lawn']
+    const goals = [
+      { id: 'camp', title: 'Go camping', keywords: outdoors },
+      { id: 'mow', title: 'Mow the lawn', keywords: outdoors },
+      { id: 'play', title: 'Play outside', keywords: outdoors },
+    ]
+    const out = rankCandidates('outside', goals)
+    const play = out.find((c) => c.id === 'play')!
+    const camp = out.find((c) => c.id === 'camp')!
+    const mow = out.find((c) => c.id === 'mow')!
+    expect(play.confidence).toBe(1) // "outside" is literally in the title
+    expect(camp.confidence).toBe(0.5) // concept vocabulary only
+    expect(mow.confidence).toBe(0.5)
+    expect(out[0].id).toBe('play') // the title match ranks first, not a 3-way tie
+  })
+
+  it('scores a mixed title+keyword match between the two weights', () => {
+    const out = rankCandidates('reading outside', [
+      { id: 'g', title: 'Reading time', keywords: ['outside', 'park'] },
+    ])
+    // "reading" hits the title (1), "outside" only a keyword (0.5) → 1.5/2
+    expect(out[0].confidence).toBe(0.75)
+  })
+
+  // The keyword half-weight exists to break the "outside" tie — NOT to newly drop a
+  // match that the pre-weighting code surfaced. In a 4-token phrase a lone keyword hit
+  // weighs 0.5/4 = 0.125 < FLOOR (0.15); if the floor were gated on the weighted score
+  // it would vanish. The floor is gated on the UNWEIGHTED overlap, so it survives —
+  // demoted (reported at 0.125), never silently dropped (PR #83 review).
+  it('keeps a keyword-only match in a long phrase — demoted, not dropped', () => {
+    const goals = [
+      { id: 'camp', title: 'Go camping', keywords: ['outside', 'nature'] },
+      { id: 'read', title: 'Read a book outside', keywords: [] },
+    ]
+    const out = rankCandidates('play with kids outside', goals)
+    const camp = out.find((c) => c.id === 'camp')
+    expect(camp).toBeDefined() // survived the floor via the unweighted overlap
+    expect(camp!.confidence).toBeCloseTo(0.125) // reported weighted → demoted
+    expect(out[0].id).toBe('read') // a real title-token hit still outranks it
+  })
+
   it('returns [] for gibberish with no overlap', () => {
     expect(rankCandidates('qwerty zxcvb', rows)).toEqual([])
   })

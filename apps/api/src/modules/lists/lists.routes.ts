@@ -2,6 +2,7 @@
 // /api/pantry-staples). Logic in lists.service.ts; types in lists.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { moduleRoutes } from '../../platform/route-guards'
+import { registerListItemCaptureTarget } from './lists-capture'
 import type { CreateListInput, PatchItemInput } from './lists.types'
 import {
   getOrCreateGroceryList,
@@ -249,4 +250,8 @@ export function registerListRoutes(api: Api): void {
     if (!ok) return res.status(404).json({ error: 'NotFound', message: 'staple not found' })
     return res.status(204).send('')
   }))
+
+  // Register the listItem capture target (Tier 2 mutate: complete/delete) into the
+  // capture registry so /api/capture/{resolve,commit} can dispatch to it.
+  registerListItemCaptureTarget()
 }

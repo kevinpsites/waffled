@@ -67,15 +67,19 @@ describe('POST /api/capture/resolve — dispatcher with an unregistered target k
     expect(body.disabledReason.length).toBeGreaterThan(0)
   })
 
-  it('gives a per-kind friendly reason for a parser-emitted but unregistered kind (event)', async () => {
+  // Every parser-emitted kind (chore/goal/listItem/event/reward) now has a registered
+  // target (fast-follow to PR #73), so the per-kind "can't change X yet" copy is only
+  // reachable for a kind the parser never emits — and a real kind with no match must be
+  // an honest no-match, NOT the unsupported shape.
+  it('treats a registered kind with no matching rows as a plain no-match, not unsupported', async () => {
     const res = await call('POST', '/api/capture/resolve', kevin, {
       targetKind: 'event', verb: 'reschedule', target: { description: 'soccer' }, args: { date: '2026-07-20' },
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
     expect(body.candidates).toEqual([])
-    expect(body.unsupported).toBe(true)
-    expect(body.disabledReason).toMatch(/calendar/i)
+    expect(body.unsupported).toBeUndefined()
+    expect(body.disabledReason).toBeUndefined()
   })
 })
 
