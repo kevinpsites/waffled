@@ -533,3 +533,171 @@ private func dowOfDate(_ s: String) -> Int {
         #expect(!CaptureHeuristic.looksConfident(p("milk"), text: "milk"))   // bare noun held back
     }
 }
+
+// MARK: Tier 2 — mutate verbs (mirrors parse.test.ts › "parseCapture — mutate verbs")
+//
+// The offline heuristic detects a mutation verb and returns a NON-committable `mutate`
+// marker (best-effort verb + rough targetKind + args); the real verb/targetKind/id come
+// from the SERVER intent + /api/capture/resolve. `looksConfident` is false for mutate so
+// the bar shows "thinking" and never auto-commits offline. KEEP IN SYNC with parse.test.ts.
+
+private func asMutate(_ i: CaptureIntent?) -> (verb: String, targetKind: String?, description: String, args: [String: JSONValue])? {
+    if case let .mutate(v, tk, d, a) = i { return (v, tk, d, a) }
+    return nil
+}
+
+@Suite struct CaptureHeuristicMutateTests {
+    @Test func markChoreDone() {
+        let m = asMutate(p("mark the trash chore done"))!
+        #expect(m.verb == "complete")
+        #expect(m.targetKind == "chore")
+        #expect(m.description.lowercased().contains("trash"))
+    }
+    @Test func logGoalMinutes() {
+        let m = asMutate(p("log 20 min on my reading goal"))!
+        #expect(m.verb == "log")
+        #expect(m.targetKind == "goal")
+        #expect(m.description.lowercased() == "reading")   // trailing "goal" dropped
+        #expect(m.args["minutes"] == .double(20))
+    }
+    @Test func completeChoreByVerbDefault() {
+        let m = asMutate(p("mark set the table done for Elaine"))!
+        #expect(m.verb == "complete")
+        #expect(m.targetKind == "chore")   // defaulted from the verb, not a "chore" noun
+        #expect(m.description.lowercased() == "set the table")
+    }
+    @Test func addHoursToGoalNotGrocery() {
+        let m = asMutate(p("add 10 hours to our outside goal for kevin and wally"))!
+        #expect(m.verb == "log")
+        #expect(m.targetKind == "goal")
+        #expect(m.description.lowercased() == "outside")   // amount, "for …", "goal" stripped
+        #expect(m.args["hours"] == .double(10))
+    }
+    @Test func deleteEvent() {
+        let m = asMutate(p("delete the dentist appointment"))!
+        #expect(m.verb == "delete")
+        #expect(m.targetKind == "event")
+    }
+    @Test func crossListItem() {
+        let m = asMutate(p("cross milk off the list"))!
+        #expect(m.verb == "complete")
+        #expect(m.targetKind == "listItem")
+    }
+    @Test func reassignChorePerson() {
+        let m = asMutate(p("give the dishes to Wally"))!
+        #expect(m.verb == "reassign")
+        #expect(m.targetKind == "chore")
+        #expect(m.args["personName"] == .string("Wally"))
+    }
+    // F4 — the bare "log/record X" catch-all must not hijack confident creates.
+    @Test func recordEventNotGoalLog() {
+        let e = asEvent(p("record the school play Friday 7pm"))!
+        #expect(dow(e.startsAt) == 5)   // Friday
+        #expect(hour(e.startsAt) == 19)
+    }
+    @Test func logMinutesGuard() {
+        let m = asMutate(p("log 30 minutes on my reading goal"))!
+        #expect(m.verb == "log")
+        #expect(m.targetKind == "goal")
+        #expect(m.args["minutes"] == .double(30))
+    }
+    // F5 — "cross/check/tick off X" (leading off), not only "cross X off".
+    @Test func leadingOffCrossOff() {
+        let m = asMutate(p("cross off milk"))!
+        #expect(m.verb == "complete")
+        #expect(m.targetKind == "listItem")
+        #expect(m.description.lowercased() == "milk")
+    }
+    @Test func leadingOffCheckTick() {
+        let m1 = asMutate(p("check off milk"))!
+        #expect(m1.verb == "complete")
+        #expect(m1.description.lowercased() == "milk")
+        let m2 = asMutate(p("tick off the bread"))!
+        #expect(m2.verb == "complete")
+        #expect(m2.description.lowercased() == "bread")
+    }
+    @Test func trailingOffStillWorks() {
+        let m = asMutate(p("cross milk off"))!
+        #expect(m.verb == "complete")
+        #expect(m.targetKind == "listItem")
+        #expect(m.description.lowercased() == "milk")
+    }
+    // F8 — a time-unit "spent" is a goal-log, not a redeem (which would drop the amount).
+    @Test func spentMinutesIsLog() {
+        let m = asMutate(p("I spent 30 minutes on my reading goal"))!
+        #expect(m.verb == "log")
+        #expect(m.targetKind == "goal")
+        #expect(m.args["minutes"] == .double(30))
+    }
+    @Test func spentPointsIsRedeem() {
+        let m = asMutate(p("Wally spent 50 points on the ice cream reward"))!
+        #expect(m.verb == "redeem")
+        #expect(m.targetKind == "reward")
+        #expect(m.description.lowercased().contains("ice cream"))
+    }
+    // reschedule — extract the destination date/time so no-LLM households move events.
+    @Test func rescheduleDateAndTime() {
+        let m = asMutate(p("move soccer to Thursday 4pm"))!
+        #expect(m.verb == "reschedule")
+        #expect(m.targetKind == "event")
+        #expect(m.description.lowercased() == "soccer")
+        // NOW is Thursday Jun 11 2026 — a bare "Thursday" is today.
+        #expect(m.args == ["date": .string("2026-06-11"), "time": .string("16:00")])
+    }
+    @Test func rescheduleDateOnly() {
+        let m = asMutate(p("reschedule the dentist appointment to tomorrow"))!
+        #expect(m.verb == "reschedule")
+        #expect(m.args == ["date": .string("2026-06-12")])
+    }
+    @Test func rescheduleTimeOnly() {
+        let m = asMutate(p("move piano lesson to 3pm"))!
+        #expect(m.verb == "reschedule")
+        #expect(m.args == ["time": .string("15:00")])
+    }
+    @Test func rescheduleNextFriday() {
+        let m = asMutate(p("push book club to next Friday"))!
+        #expect(m.verb == "reschedule")
+        #expect(m.args == ["date": .string("2026-06-19")])
+    }
+    // The destination anchors on the FIRST "to/for" — a trailing participant clause
+    // ("for Wally") must not swallow the spoken date (PR #83 review fix).
+    @Test func rescheduleFirstToWins() {
+        let m = asMutate(p("move soccer to Friday for Wally"))!
+        #expect(m.verb == "reschedule")
+        #expect(m.args == ["date": .string("2026-06-12")])   // Friday is Jun 12
+    }
+    @Test func rescheduleBareEmptyArgs() {
+        let m = asMutate(p("reschedule soccer"))!
+        #expect(m.verb == "reschedule")
+        #expect(m.args.isEmpty)
+    }
+    @Test func mutateNeverConfident() {
+        #expect(!CaptureHeuristic.looksConfident(p("mark the trash chore done"), text: "mark the trash chore done"))
+        #expect(!CaptureHeuristic.looksConfident(p("delete the dentist appointment"), text: "delete the dentist appointment"))
+    }
+    @Test func createPhrasesStillParseAsCreate() {
+        #expect(kindKey(p("Soccer Tue 4pm for Wally")) == "event")
+        #expect(kindKey(p("add milk to the grocery list")) == "grocery")
+        #expect(kindKey(p("set a goal to read 20 books")) == "goal")
+        #expect(kindKey(p("add a reward: ice cream night for 50 stars")) == "reward")
+    }
+    @Test func summarizesMutate() {
+        let s = CaptureSummary(asMutateIntent(p("delete the dentist appointment"))!)
+        #expect(s.primary.lowercased().contains("dentist"))
+        #expect(!s.kind.isEmpty)
+    }
+}
+
+private func asMutateIntent(_ i: CaptureIntent?) -> CaptureIntent? {
+    if case .mutate = i { return i }
+    return nil
+}
+
+private func kindKey(_ i: CaptureIntent?) -> String? {
+    switch i {
+    case .event: return "event"; case .grocery: return "grocery"; case .task: return "task"
+    case .meal: return "meal"; case .list: return "list"; case .countdown: return "countdown"
+    case .person: return "person"; case .goal: return "goal"; case .pantry: return "pantry"
+    case .reward: return "reward"; case .mutate: return "mutate"; case .none: return nil
+    }
+}

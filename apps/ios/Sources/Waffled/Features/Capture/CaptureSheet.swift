@@ -57,6 +57,15 @@ struct CaptureSheet: View {
     @State private var rewardEmoji = ""                       // reward avatar emoji
     @State private var rewardCost = ""                        // reward star/point cost (as text)
     @State private var rewardRequiresApproval: Bool?          // nil = inherit household default
+    // Tier 2 mutate (act on an existing row): verb + rough targetKind + description + args
+    // seed /api/capture/resolve; the user picks a candidate, then /api/capture/commit.
+    @State private var mutateVerb = ""
+    @State private var mutateTargetKind: String?
+    @State private var mutateDescription = ""
+    @State private var mutateArgs: [String: JSONValue] = [:]
+    @State private var mutateState: MutateResolveState?       // resolved candidates / degrade
+    @State private var mutateChosenId: String?                // the picked candidate
+    @State private var mutateResolveKey = ""                  // guards a stale/duplicate resolve
     @State private var lists: [WaffledAPI.ListSummary] = []   // for the list picker
     @State private var editing = false                     // glance → full field editor
     @FocusState private var focused: Bool
@@ -133,6 +142,8 @@ struct CaptureSheet: View {
         cdEmoji = nil
         pantryAmount = ""; pantryUnit = ""; pantryLocation = "Pantry"; pantryExpiresOn = false; pantryLowAt = nil
         rewardEmoji = ""; rewardCost = ""; rewardRequiresApproval = nil
+        mutateVerb = ""; mutateTargetKind = nil; mutateDescription = ""; mutateArgs = [:]
+        mutateState = nil; mutateChosenId = nil; mutateResolveKey = ""
         detent = .large
     }
 
@@ -191,7 +202,153 @@ struct CaptureSheet: View {
     // MARK: preview — a confident one-tap "glance", with the full field editor a tap away
 
     @ViewBuilder private var previewView: some View {
-        if editing { editorView } else { glanceView }
+        if editKind == "mutate" { mutatePreview }
+        else if editing { editorView } else { glanceView }
+    }
+
+    // MARK: mutate preview (Tier 2 — pick a candidate row, then commit)
+
+    private var mutatePreview: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            mutateHeaderCard
+            mutateCandidateArea
+            HStack(spacing: 10) {
+                Button("Edit text") { phase = .input; focused = true; mutateResolveKey = "" }
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                    .frame(maxWidth: .infinity).padding(.vertical, 13)
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                if mutateChosenId != nil { mutateConfirmButton }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // The verb + target + description, with a compact "→ when / +amount / → who" summary.
+    private var mutateHeaderCard: some View {
+        HStack(spacing: 12) {
+            WaffledEmojiTile(emoji: MutateLabels.icon(mutateVerb))
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(MutateLabels.verbLabel(mutateVerb).uppercased())
+                        .font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ai)
+                    Text(MutateLabels.targetLabel(mutateTargetKind))
+                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
+                }
+                Text(mutateDescription).font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
+                if !mutateArgsSummary.isEmpty {
+                    Text(mutateArgsSummary).font(.system(size: 12.5)).foregroundStyle(WF.ink2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .wfField(radius: WF.rLG)
+    }
+
+    // The resolve state machine (mirrors the web CandidatePicker): thinking → candidates,
+    // or one of the three empty degrades (offline / unsupported-reason-only / no-match).
+    @ViewBuilder private var mutateCandidateArea: some View {
+        if let s = mutateState, s.forKey == mutateResolveKey {
+            if s.offline {
+                mutateHint("I need a connection for that.")
+            } else if s.candidates.isEmpty {
+                mutateHint(MutateLabels.emptyHint(unsupported: s.unsupported,
+                                                  disabledReason: s.disabledReason,
+                                                  targetKind: mutateTargetKind))
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(s.candidates) { mutateCandidateRow($0) }
+                    }
+                }
+                .frame(maxHeight: 260)
+            }
+        } else {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Finding a \(MutateLabels.targetLabel(mutateTargetKind)) like that…")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+            }
+            .padding(.vertical, 6)
+        }
+    }
+
+    private func mutateHint(_ text: String) -> some View {
+        Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
+    }
+
+    private func mutateCandidateRow(_ c: WaffledAPI.Candidate) -> some View {
+        let on = mutateChosenId == c.id
+        return Button { mutateChosenId = c.id } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(c.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? WF.ai : WF.ink)
+                    if let sub = c.subtitle, !sub.isEmpty {
+                        Text(sub).font(.system(size: 12)).foregroundStyle(WF.ink3).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 6)
+                Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18)).foregroundStyle(on ? WF.ai : WF.hair)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(on ? WF.ai.opacity(0.1) : WF.card2)
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                .strokeBorder(on ? WF.ai : WF.hair, lineWidth: on ? 1.5 : 1))
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Delete gets the danger tint (its own explicit tap — never an implicit commit).
+    private var mutateConfirmButton: some View {
+        WaffledPrimaryCTA(
+            label: MutateLabels.confirmLabel(mutateVerb),
+            tint: mutateVerb == "delete" ? WF.danger : WF.primary,
+            isBusy: phase == .committing,
+            isDisabled: mutateChosenId == nil,
+            action: commit
+        )
+    }
+
+    /// A compact "→ when / +amount / → who" line under the mutate title, from the parsed args.
+    private var mutateArgsSummary: String {
+        switch mutateVerb {
+        case "reschedule":
+            let parts = [mutateArgString("date").flatMap(mutateDateLabel),
+                         mutateArgString("time").flatMap(mutateTimeLabel)].compactMap { $0 }
+            return parts.isEmpty ? "" : "→ " + parts.joined(separator: " · ")
+        case "log":
+            if let n = mutateArgNumber("hours") { return "+\(trimNum(n)) hours" }
+            if let n = mutateArgNumber("minutes") { return "+\(trimNum(n)) minutes" }
+            if let n = mutateArgNumber("amount") { return "+\(trimNum(n))" }
+            return ""
+        case "reassign":
+            return mutateArgString("personName").map { "→ \($0)" } ?? ""
+        default:
+            return ""
+        }
+    }
+    private func mutateArgString(_ k: String) -> String? {
+        if case let .string(s)? = mutateArgs[k] { return s }
+        return nil
+    }
+    private func mutateArgNumber(_ k: String) -> Double? {
+        switch mutateArgs[k] {
+        case let .double(d)?: return d
+        case let .int(i)?: return Double(i)
+        default: return nil
+        }
+    }
+    private func trimNum(_ n: Double) -> String { n == n.rounded() ? String(Int(n)) : String(n) }
+    private func mutateDateLabel(_ ymd: String) -> String? {
+        guard let d = DateFmt.date(ymd, "yyyy-MM-dd", sync.householdTz) else { return ymd }
+        return DateFmt.string(d, "EEE, MMM d", sync.householdTz)
+    }
+    private func mutateTimeLabel(_ hm: String) -> String? {
+        guard let d = DateFmt.date(hm, "HH:mm", sync.householdTz) else { return hm }
+        return DateFmt.string(d, "h:mm a", sync.householdTz)
     }
 
     // Glance: the first guess. Tap Add to commit it as-is, or Edit to refine.
@@ -269,8 +426,7 @@ struct CaptureSheet: View {
             }
         }
         .padding(14)
-        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+        .wfField(radius: WF.rLG)
     }
 
     /// When the LLM and the on-device guess disagree on the kind, offer the other take —
@@ -307,6 +463,7 @@ struct CaptureSheet: View {
         case let .goal(t, _, _, _, _, _, _): return ("Goal", t)
         case let .pantry(n, _, _, _, _, _): return ("Pantry", n)
         case let .reward(t, _, _, _, _, _): return ("Reward", t)
+        case let .mutate(verb, _, d, _): return (MutateLabels.verbLabel(verb), d)
         }
     }
 
@@ -382,8 +539,7 @@ struct CaptureSheet: View {
             }
         }
         .padding(14)
-        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+        .wfField(radius: WF.rLG)
     }
 
     @ViewBuilder private var kindFields: some View {
@@ -811,7 +967,7 @@ struct CaptureSheet: View {
         case .event: return "event"; case .grocery: return "grocery"; case .task: return "task"
         case .meal: return "meal"; case .list: return "list"; case .countdown: return "countdown"
         case .person: return "person"; case .goal: return "goal"; case .pantry: return "pantry"
-        case .reward: return "reward"
+        case .reward: return "reward"; case .mutate: return "mutate"
         }
     }
 
@@ -888,10 +1044,36 @@ struct CaptureSheet: View {
             rewardEmoji = emoji ?? ""
             rewardCost = cost.map(String.init) ?? ""
             rewardRequiresApproval = requiresApproval
+        case let .mutate(verb, targetKind, description, args):
+            // Act on an existing row: seed the marker, then resolve candidate rows. The user
+            // picks one before committing — a mutate is never auto-committed (unlike a create).
+            editKind = "mutate"; editName = description
+            mutateVerb = verb; mutateTargetKind = targetKind
+            mutateDescription = description; mutateArgs = args
+            triggerMutateResolve()
+        }
+    }
+
+    /// Kick off `/api/capture/resolve` for the current mutate marker, keyed on
+    /// verb|targetKind|description so a re-parse to the SAME target doesn't re-resolve and a
+    /// stale response (text changed underneath) is dropped. Auto-selects a lone candidate.
+    private func triggerMutateResolve() {
+        let key = "\(mutateVerb)|\(mutateTargetKind ?? "")|\(mutateDescription)"
+        guard key != mutateResolveKey else { return }
+        mutateResolveKey = key
+        mutateState = nil
+        mutateChosenId = nil
+        Task {
+            let state = await sync.resolveMutate(verb: mutateVerb, targetKind: mutateTargetKind,
+                                                 description: mutateDescription, args: mutateArgs, key: key)
+            guard mutateResolveKey == key else { return }   // superseded by a newer parse
+            mutateState = state
+            if state.candidates.count == 1 { mutateChosenId = state.candidates.first?.id }
         }
     }
 
     private func commit() {
+        if editKind == "mutate" { commitMutate(); return }
         error = nil; phase = .committing
         let name = editName.trimmingCharacters(in: .whitespacesAndNewlines)
         let qty = editQty.trimmingCharacters(in: .whitespaces).isEmpty ? nil : editQty.trimmingCharacters(in: .whitespaces)
@@ -983,6 +1165,26 @@ struct CaptureSheet: View {
                 dismiss()
             } else {
                 error = sync.lastError ?? "Couldn't add that."; phase = .preview
+            }
+        }
+    }
+
+    /// Commit the chosen mutate candidate. Requires a pick (so a mutate is never committed
+    /// without one — the DemoHooks auto-commit path no-ops here); flashes the server message
+    /// on failure and keeps the picker up so the user can retry or pick again.
+    private func commitMutate() {
+        guard let id = mutateChosenId,
+              let chosen = mutateState?.candidates.first(where: { $0.id == id }) else {
+            phase = .preview; return
+        }
+        error = nil; phase = .committing
+        Task {
+            let r = await sync.commitMutate(verb: mutateVerb, targetKind: mutateTargetKind,
+                                            targetId: id, args: mutateArgs, meta: chosen.meta)
+            if r.ok {
+                dismiss()
+            } else {
+                error = r.message; phase = .preview
             }
         }
     }
