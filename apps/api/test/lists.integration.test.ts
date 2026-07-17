@@ -429,6 +429,23 @@ describe('grocery auto-build from a recipe', () => {
     expect(names).not.toContain('Garlic')
   })
 
+  it('surfaces recipes added off-plan as "unscheduled" on the board', async () => {
+    // Chorizo Tacos was added via from-recipe but never planned this week — the
+    // board should return it under `unscheduled` so the by-meal view can give its
+    // items their own section instead of dumping them into "Other items".
+    const board = JSON.parse((await call('GET', '/api/lists/grocery/board', kevin)).body)
+    const un = board.unscheduled as Array<{ recipeId: string; title: string; emoji: string | null; color: string }>
+    expect(un).toBeDefined()
+    const tacos = un.find((u) => u.recipeId === recipeId)
+    expect(tacos).toMatchObject({ title: 'Chorizo Tacos', emoji: '🌮' })
+    expect(tacos!.color).toMatch(/^#/)
+    // recipes never referenced by a list item stay out of it
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Never Shopped', emoji: '🫥' })
+    const strayId = JSON.parse(r.body).recipe.id
+    const again = JSON.parse((await call('GET', '/api/lists/grocery/board', kevin)).body)
+    expect((again.unscheduled as Array<{ recipeId: string }>).some((u) => u.recipeId === strayId)).toBe(false)
+  })
+
   it('shops for the substitution, not the original ingredient', async () => {
     const r = await call('POST', '/api/recipes', kevin, { title: 'Turkey Burgers', emoji: '🍔' })
     const rid = JSON.parse(r.body).recipe.id
@@ -493,6 +510,11 @@ describe('grocery auto-build + pantry staples', () => {
     expect(salmon).toMatchObject({ aisle: 'Meat & Seafood', quantity: '1.5 lb', source: 'auto' })
     expect(salmon.sourceRecipeIds).toContain(recipeId)
     expect(board.meals.some((d: { recipeId: string; mealType: string }) => d.recipeId === recipeId && d.mealType === 'dinner')).toBe(true)
+
+    // planned this week → its items group under the meal, not "unscheduled"
+    expect(board.unscheduled.some((u: { recipeId: string }) => u.recipeId === recipeId)).toBe(false)
+    // ...while the off-plan Chorizo Tacos from the earlier describe stays unscheduled
+    expect(board.unscheduled.some((u: { title: string }) => u.title === 'Chorizo Tacos')).toBe(true)
   })
 
   it('manages pantry staples (defaults, add, delete)', async () => {

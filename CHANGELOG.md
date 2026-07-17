@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Add any recipe's ingredients to the grocery list — no meal plan needed.** Every recipe
+  page (web and iOS) now has a first-class "Add to grocery" action, so a one-off dinner, a
+  side, or a snack goes straight to the list: staples you already have are skipped, quantities
+  merge into items already on the list, and each item remembers which recipe it came from. In
+  the grocery list's *By meal* view these recipes appear as their own "Unscheduled" sections —
+  with their own dot colors — instead of disappearing into "Other items". On iOS the recipe
+  page's "Add to grocery" now uses this same path, so its items group and merge properly too.
 - **Swipe between weeks in the iPhone meal planner.** The weekly meal plan now pages with a
   horizontal flick — swipe left for next week, right for the previous one — the same gesture
   the Calendar and Chores screens already use. The arrow buttons and "Jump to this week"

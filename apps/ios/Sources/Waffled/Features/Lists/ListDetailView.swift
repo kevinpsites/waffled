@@ -4,12 +4,14 @@ import Observation
 /// Grocery board view modes.
 enum GroceryViewMode: Hashable { case aisle, meal }
 
-/// A run of items under one meal in "By meal" mode (`meal == nil` is the trailing
-/// "Staples & extras" group).
+/// A run of items under one meal in "By meal" mode. `unscheduled` set = a recipe
+/// on the list but not on this week's plan; both nil = the trailing
+/// "Staples & extras" group.
 struct MealGroup: Identifiable {
     let meal: WaffledAPI.GroceryBoardDTO.Meal?
     let items: [WaffledAPI.ListItemDTO]
-    var id: String { meal?.id ?? "__extras__" }
+    var unscheduled: WaffledAPI.GroceryBoardDTO.UnscheduledRecipe? = nil
+    var id: String { meal?.id ?? unscheduled.map { "unscheduled|\($0.recipeId)" } ?? "__extras__" }
 }
 
 /// One list's items — works for any list (Grocery included). Tapping the circle
@@ -31,6 +33,9 @@ final class ListDetailModel {
 
     /// This week's meals (grocery board only) — drive the meal grouping + dots.
     private(set) var meals: [WaffledAPI.GroceryBoardDTO.Meal] = []
+    /// Recipes on the list but not on this week's plan (added straight from a
+    /// recipe page) — get their own by-meal sections + dot colors.
+    private(set) var unscheduled: [WaffledAPI.GroceryBoardDTO.UnscheduledRecipe] = []
     /// Pantry staples (assumed in-house, left off the list) — tap to add anyway.
     private(set) var staples: [WaffledAPI.GroceryBoardDTO.Staple] = []
     /// The week the board covers (YYYY-MM-DD) — passed to rebuild.
@@ -76,16 +81,20 @@ final class ListDetailModel {
     /// "By meal" grouping: each active item under its first matching dinner (by
     /// date), with a trailing "Staples & extras" group for anything meal-less.
     func mealSections() -> [MealGroup] {
-        MealGrouping.sections(items: activeItems, meals: meals)
+        MealGrouping.sections(items: activeItems, meals: meals, unscheduled: unscheduled)
     }
 
     /// One meal-color dot per *distinct recipe* the item belongs to (a recipe planned
-    /// in two slots is the same dot, not two).
+    /// in two slots is the same dot, not two). Unscheduled recipes get dots too.
     func dotColors(for item: WaffledAPI.ListItemDTO) -> [String] {
         var seen = Set<String>()
         var colors: [String] = []
         for rid in (item.sourceRecipeIds ?? []) where seen.insert(rid).inserted {
-            if let m = meals.first(where: { $0.recipeId == rid }) { colors.append(m.color) }
+            if let m = meals.first(where: { $0.recipeId == rid }) {
+                colors.append(m.color)
+            } else if let u = unscheduled.first(where: { $0.recipeId == rid }) {
+                colors.append(u.color)
+            }
         }
         return colors
     }
@@ -100,6 +109,7 @@ final class ListDetailModel {
             if isGrocery {
                 let board = try await api.groceryBoard()
                 meals = board.meals
+                unscheduled = board.unscheduled ?? []
                 staples = board.staples
                 weekStart = board.weekStart
                 items = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
@@ -657,6 +667,18 @@ struct ListDetailView: View {
                             .clipShape(Capsule())
                     }
                     Text((meal.title ?? "Meal").uppercased())
+                        .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                        .foregroundStyle(WF.ink3)
+                        .lineLimit(1)
+                } else if let recipe = group.unscheduled {
+                    let color = Color(hexString: recipe.color) ?? WF.ink3
+                    Text("UNSCHEDULED")
+                        .font(.system(size: 9.5, weight: .heavy)).tracking(0.4)
+                        .foregroundStyle(color)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(color.opacity(0.15))
+                        .clipShape(Capsule())
+                    Text(recipe.title.uppercased())
                         .font(.system(size: 11, weight: .heavy)).tracking(0.5)
                         .foregroundStyle(WF.ink3)
                         .lineLimit(1)

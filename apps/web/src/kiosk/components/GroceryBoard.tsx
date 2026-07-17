@@ -181,6 +181,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const colorFor = useMemo(() => {
     const m = new Map<string, string>()
     board?.meals.forEach((d) => d.recipeId && m.set(d.recipeId, d.color))
+    board?.unscheduled?.forEach((u) => m.set(u.recipeId, u.color))
     return (ids: string[]) => ids.map((id) => m.get(id)).filter(Boolean) as string[]
   }, [board])
 
@@ -243,7 +244,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     }
   }
 
-  const sections: Array<{ aisle: string | null; items: GroceryBoardItem[]; mealType?: string }> =
+  const sections: Array<{ aisle: string | null; items: GroceryBoardItem[]; mealType?: string; unscheduled?: boolean }> =
     view === 'aisle'
       ? aisleSections(activeItems)
       : (() => {
@@ -256,16 +257,22 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           const ord = (t: string) => MEAL_TYPES.indexOf(t as (typeof MEAL_TYPES)[number])
           const byMeal = [...board.meals].sort((a, b) => ord(a.mealType) - ord(b.mealType) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
           const seen = new Set<string>()
-          const perMeal: Array<{ aisle: string | null; items: GroceryBoardItem[]; mealType?: string }> = []
+          const perMeal: Array<{ aisle: string | null; items: GroceryBoardItem[]; mealType?: string; unscheduled?: boolean }> = []
           for (const d of byMeal) {
             if (!d.recipeId || seen.has(d.recipeId)) continue
             seen.add(d.recipeId)
             const items = activeItems.filter((i) => i.sourceRecipeIds.includes(d.recipeId!))
             if (items.length) perMeal.push({ aisle: d.title ?? 'Meal', items, mealType: d.mealType })
           }
-          // Anything not tied to one of this week's meals — hand-added items AND
-          // items added from a recipe that isn't planned this week — still needs a
-          // home, or it would vanish in the By-meal view.
+          // Recipes added straight from a recipe page (not planned this week) get
+          // their own sections after the planned meals — the "unscheduled" shelf.
+          for (const u of board.unscheduled ?? []) {
+            recipeIds.add(u.recipeId)
+            const items = activeItems.filter((i) => i.sourceRecipeIds.includes(u.recipeId))
+            if (items.length) perMeal.push({ aisle: u.title ?? 'Recipe', items, unscheduled: true })
+          }
+          // Anything not tied to a planned or unscheduled recipe — hand-added
+          // items — still needs a home, or it would vanish in the By-meal view.
           const leftovers = activeItems.filter((i) => !i.sourceRecipeIds.some((id) => recipeIds.has(id)))
           return leftovers.length ? [...perMeal, { aisle: 'Other items', items: leftovers }] : perMeal
         })()
@@ -280,7 +287,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   // leading ungrouped/manual section has no header and always shows. The section
   // key is unique (one ungrouped + unique aisle/meal names), so it doubles as the
   // React key and the collapse key.
-  const renderSection = (sec: { aisle: string | null; items: GroceryBoardItem[]; mealType?: string }) => {
+  const renderSection = (sec: { aisle: string | null; items: GroceryBoardItem[]; mealType?: string; unscheduled?: boolean }) => {
     const key = `${view}|${sec.aisle ?? '__none__'}`
     const isCollapsed = !!sec.aisle && collapsed.has(key)
     return (
@@ -290,6 +297,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
             <span className={`cal-chev ${isCollapsed ? '' : 'open'}`}>›</span>
             {view === 'aisle' && AISLE_EMOJI[sec.aisle] && <span className="ga-emo">{AISLE_EMOJI[sec.aisle]}</span>}
             {view === 'meal' && sec.mealType && <span className={`meal-badge mt-${sec.mealType}`}>{MEAL_EMOJI[sec.mealType]} {MEAL_LABEL[sec.mealType]}</span>}
+            {view === 'meal' && sec.unscheduled && <span className="meal-badge mt-unscheduled">Unscheduled</span>}
             {sec.aisle}
             <span className="ga-n">{sec.items.length}</span>
           </div>

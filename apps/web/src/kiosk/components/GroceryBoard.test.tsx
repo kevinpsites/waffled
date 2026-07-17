@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { GroceryBoard } from './GroceryBoard'
 import { TopbarSlotProvider } from '../topbar-slot'
@@ -87,5 +87,60 @@ describe('GroceryBoard item attribution', () => {
     await screen.findByText('Cookies')
     const cookies = screen.getByText('Cookies').closest('.gitem') as HTMLElement
     expect(cookies.textContent).not.toContain('from meal plan')
+  })
+})
+
+// An item added straight from a recipe page (recipe not planned this week) —
+// the board's `unscheduled` array gives it its own by-meal section.
+const offPlanItem = {
+  id: 'u1',
+  name: 'Avocados',
+  quantity: '3',
+  checked: false,
+  checkedAt: null,
+  section: null,
+  sortOrder: 2,
+  assignee: null,
+  aisle: '',
+  source: 'auto',
+  sourceRecipeIds: ['r2'],
+  addedBy: null,
+}
+
+function mockBoardWithUnscheduled() {
+  globalThis.fetch = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.includes('/api/lists/grocery/board')) {
+      return ok({
+        list: { id: 'g', name: 'Grocery', emoji: '🛒', listType: 'grocery', isAutoBuilt: true, sortMode: 'manual', itemCount: 3 },
+        weekStart: '2026-06-07',
+        meals: [{ date: '2026-06-08', mealType: 'dinner', recipeId: 'r1', title: 'Pasta', emoji: '🍝', color: '#1f5fd0' }],
+        unscheduled: [{ recipeId: 'r2', title: 'Guacamole', emoji: '🥑', color: '#8B5CF6' }],
+        items: [manualItem, autoItem, offPlanItem],
+        staples: [],
+      })
+    }
+    return { ok: false, status: 404, json: async () => ({}) }
+  }) as unknown as typeof fetch
+}
+
+describe('GroceryBoard unscheduled recipes (By meal view)', () => {
+  it('groups off-plan recipe items under their own "unscheduled" section, not "Other items"', async () => {
+    mockBoardWithUnscheduled()
+    renderBoard()
+    await screen.findByText('Avocados')
+    fireEvent.click(screen.getByRole('button', { name: 'By meal' }))
+
+    // the off-plan recipe gets its own section, tagged as unscheduled
+    const header = screen.getByText('Guacamole').closest('.grocery-section-h') as HTMLElement
+    expect(header).toBeInTheDocument()
+    expect(header.textContent).toMatch(/unscheduled/i)
+    const section = header.closest('.grocery-section') as HTMLElement
+    expect(section.textContent).toContain('Avocados')
+
+    // hand-added leftovers still land in "Other items"; the recipe item doesn't
+    const other = screen.getByText('Other items').closest('.grocery-section') as HTMLElement
+    expect(other.textContent).toContain('Cookies')
+    expect(other.textContent).not.toContain('Avocados')
   })
 })

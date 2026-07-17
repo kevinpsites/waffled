@@ -71,6 +71,7 @@ struct RecipeDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { scheduling = true } label: { Label("Schedule…", systemImage: "calendar") }
+                    Button { addRecipeToGrocery() } label: { Label("Add to grocery list", systemImage: "cart.badge.plus") }
                     Button { editing = true } label: { Label("Edit recipe", systemImage: "pencil") }
                     Button(role: .destructive) { confirmingDelete = true } label: {
                         Label("Delete recipe", systemImage: "trash")
@@ -361,7 +362,7 @@ struct RecipeDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             if !missing.isEmpty {
-                Button { addMissingToGrocery(missing) } label: {
+                Button { addRecipeToGrocery() } label: {
                     Text(groceryAdded ? "Added ✓" : "Add to grocery")
                         .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(WF.primaryD)
                 }
@@ -373,11 +374,18 @@ struct RecipeDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
-    private func addMissingToGrocery(_ names: [String]) {
+    /// One call adds every non-staple ingredient — the server merges quantities into
+    /// rows already on the list and links items back to this recipe, so they group
+    /// under it in the grocery board's by-meal view (no meal-plan entry needed).
+    private func addRecipeToGrocery() {
         groceryAdded = true
         Task {
-            for name in names { try? await api.addGroceryItem(name: name) }
-            withAnimation { cookedMessage = "Added \(names.count) to your grocery list." }
+            let added = (try? await api.groceryFromRecipe(recipeId: r.id)) ?? 0
+            withAnimation {
+                cookedMessage = added > 0
+                    ? "Added \(added) to your grocery list."
+                    : "Everything’s already on the list or on hand."
+            }
         }
     }
 

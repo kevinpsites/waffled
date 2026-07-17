@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { RecipeView } from './RecipeView'
 import type { RecipeDetail } from '../../lib/api'
@@ -54,6 +54,24 @@ function renderView() {
     </MemoryRouter>,
   )
 }
+
+describe('RecipeView — add ingredients to grocery', () => {
+  it('always offers an "Add to grocery" action and posts the recipe to the grocery list', async () => {
+    recipeRef.current = makeDetail({ id: 'r1', title: 'Guacamole' })
+    const calls: string[] = []
+    globalThis.fetch = vi.fn(async (url: string) => {
+      calls.push(String(url))
+      return { ok: true, json: async () => ({ added: 3 }) }
+    }) as unknown as typeof fetch
+    renderView()
+
+    // first-class action — present even when the on-hand banner has nothing "missing"
+    const btn = screen.getByRole('button', { name: 'Add to grocery' })
+    fireEvent.click(btn)
+    expect(await screen.findByText(/Added 3 items/)).toBeInTheDocument()
+    expect(calls.some((u) => u.includes('/api/lists/grocery/from-recipe/r1'))).toBe(true)
+  })
+})
 
 describe('RecipeView — New tag', () => {
   it('shows the 🆕 New tag when the recipe has never been cooked', () => {

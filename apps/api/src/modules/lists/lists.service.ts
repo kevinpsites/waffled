@@ -608,10 +608,31 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
     aisle: i.category && i.category !== 'Other' ? i.category : aisleFor(i.name, i.quantity),
   }))
 
+  // Recipes whose ingredients are on the list but that aren't planned this week
+  // (added straight from a recipe page) — surfaced so the by-meal view can give
+  // them their own section instead of lumping them into "Other items". Colors
+  // continue the same rotation as the planned meals so their dots stay distinct.
+  const plannedIds = new Set(mealRows.rows.map((d) => d.recipe_id).filter(Boolean))
+  const offPlanIds = [...new Set(items.flatMap((i) => i.sourceRecipeIds))].filter((id) => !plannedIds.has(id))
+  let unscheduled: Array<{ recipeId: string; title: string; emoji: string | null; color: string }> = []
+  if (offPlanIds.length) {
+    const { rows } = await query<{ id: string; title: string; emoji: string | null }>(
+      `select id, title, emoji from recipes
+        where household_id=$1 and id = any($2) and deleted_at is null
+        order by lower(title)`,
+      [tenant.householdId, offPlanIds]
+    )
+    unscheduled = rows.map((r) => {
+      if (!colorByRecipe.has(r.id)) colorByRecipe.set(r.id, DINNER_COLORS[nextColor++ % DINNER_COLORS.length])
+      return { recipeId: r.id, title: r.title, emoji: r.emoji, color: colorByRecipe.get(r.id)! }
+    })
+  }
+
   return {
     list: presentList(list),
     weekStart,
     meals,
+    unscheduled,
     items,
     staples: await listPantryStaples(tenant.householdId),
   }
