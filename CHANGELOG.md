@@ -94,6 +94,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from template) in the New-list sheet, the app takes you straight into the new list's
   detail so you can start adding items — instead of leaving you on the Lists overview
   to hunt for the row you just made. The web app already worked this way.
+- **Clearing the hours field while logging a goal on iOS no longer snaps back to 1.** In
+  the log-progress sheet for a time goal, deleting the hours (or minutes) value and tapping
+  the other field re-filled it with the old number, so "45 minutes" could quietly become
+  "1h 45m". An emptied field now stays empty while you type — it simply counts as 0 — and
+  is tidied up only when you leave it. Clearing the free-entry amount on a total goal now
+  correctly disables the Log/Save button instead of silently logging the number that was
+  there before.
 - **`./waffled upgrade` no longer trips over its own update.** Upgrading from an older
   release could fail mid-way with a cryptic `required variable … is missing a value`
   error, because the still-running old script drove the freshly downloaded configuration
