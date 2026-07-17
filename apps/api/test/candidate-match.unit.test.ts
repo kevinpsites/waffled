@@ -73,6 +73,23 @@ describe('rankCandidates', () => {
     expect(out[0].confidence).toBe(0.75)
   })
 
+  // The keyword half-weight exists to break the "outside" tie — NOT to newly drop a
+  // match that the pre-weighting code surfaced. In a 4-token phrase a lone keyword hit
+  // weighs 0.5/4 = 0.125 < FLOOR (0.15); if the floor were gated on the weighted score
+  // it would vanish. The floor is gated on the UNWEIGHTED overlap, so it survives —
+  // demoted (reported at 0.125), never silently dropped (PR #83 review).
+  it('keeps a keyword-only match in a long phrase — demoted, not dropped', () => {
+    const goals = [
+      { id: 'camp', title: 'Go camping', keywords: ['outside', 'nature'] },
+      { id: 'read', title: 'Read a book outside', keywords: [] },
+    ]
+    const out = rankCandidates('play with kids outside', goals)
+    const camp = out.find((c) => c.id === 'camp')
+    expect(camp).toBeDefined() // survived the floor via the unweighted overlap
+    expect(camp!.confidence).toBeCloseTo(0.125) // reported weighted → demoted
+    expect(out[0].id).toBe('read') // a real title-token hit still outranks it
+  })
+
   it('returns [] for gibberish with no overlap', () => {
     expect(rankCandidates('qwerty zxcvb', rows)).toEqual([])
   })

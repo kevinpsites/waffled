@@ -99,6 +99,30 @@ describe('resolve — event candidates', () => {
     expect(cand.meta.occurrenceStart).toBeNull() // single event
   })
 
+  it('surfaces an in-progress multi-day event that started before today', async () => {
+    // A camping trip already underway (began 2 days ago, ends in 2) — you should still
+    // be able to "cancel the camping trip". rangeEvents filters on starts_at::date, so
+    // the resolve window must open before it began (PR #83 review, direction a).
+    await createEvent({ title: 'Camping trip', startsAt: atUtc(-2, 9).toISOString(), endsAt: atUtc(2, 17).toISOString() })
+    const res = await resolve({ targetKind: 'event', verb: 'delete', target: { description: 'camping trip' }, args: {} })
+    expect(res.statusCode).toBe(200)
+    const titles = JSON.parse(res.body).candidates.map((c: { title: string }) => c.title)
+    expect(titles).toContain('Camping trip')
+  })
+
+  it('does not surface an event that already ended earlier today', async () => {
+    // Ended an hour ago. It must NOT resolve — otherwise, as the sole match, the bar
+    // auto-selects it and the user reschedules an appointment already past (PR #83
+    // review, direction b). The window is now-based, not date-based.
+    const startedAt = new Date(Date.now() - 2 * 3_600_000)
+    const endedAt = new Date(Date.now() - 3_600_000)
+    await createEvent({ title: 'Morning standup', startsAt: startedAt.toISOString(), endsAt: endedAt.toISOString() })
+    const res = await resolve({ targetKind: 'event', verb: 'reschedule', target: { description: 'morning standup' }, args: {} })
+    expect(res.statusCode).toBe(200)
+    const titles = JSON.parse(res.body).candidates.map((c: { title: string }) => c.title)
+    expect(titles).not.toContain('Morning standup')
+  })
+
   it('flags a verb events cannot apply (complete) as unsupported', async () => {
     const res = await resolve({ targetKind: 'event', verb: 'complete', target: { description: 'soccer' }, args: {} })
     expect(res.statusCode).toBe(200)
@@ -144,6 +168,48 @@ describe('commit — reschedule a single event', () => {
     expect(res.statusCode).toBe(200)
     ev = JSON.parse((await call('GET', `/api/events/${id}`, kevin)).body).event
     expect(ev.startsAt).toBe(`${newDay}T08:05:00.000Z`)
+  })
+
+  it('converts a single all-day event to a timed one when a clock time is given', async () => {
+    // "move the fair to 4pm" on an all-day event must actually show 4pm — not silently
+    // write the time while the row stays all-day and every surface ignores it (PR #83
+    // review). A single event can clear all_day.
+    const day = ymd(atUtc(5, 0))
+    const id = await createEvent({ title: 'County fair', startsAt: `${day}T00:00:00.000Z`, allDay: true })
+    const res = await commit({ targetKind: 'event', verb: 'reschedule', targetId: id, args: { time: '16:00' } })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).message).toMatch(/4:00/) // labeled with a time, not "All day"
+    const ev = JSON.parse((await call('GET', `/api/events/${id}`, kevin)).body).event
+    expect(ev.allDay).toBe(false)
+    expect(ev.startsAt).toBe(`${day}T16:00:00.000Z`)
+  })
+
+  it('refuses to give a RECURRING all-day occurrence a clock time (no per-occurrence all_day)', async () => {
+    // event_overrides has no all_day column, so we can't clear it per-occurrence —
+    // 400 honestly rather than silently swallow the time (PR #83 review).
+    const day = ymd(atUtc(2, 0))
+    await createEvent({ title: 'Trash day', startsAt: `${day}T00:00:00.000Z`, allDay: true, rrule: 'FREQ=WEEKLY' })
+    const occs = (await range(atUtc(0, 0), atUtc(40, 0))).filter((e) => e.title === 'Trash day')
+    expect(occs.length).toBeGreaterThanOrEqual(2)
+    const target = occs[1]
+    const res = await commit({
+      targetKind: 'event', verb: 'reschedule', targetId: target.id,
+      args: { time: '09:00' }, meta: { seriesId: target.seriesId, occurrenceStart: target.occurrenceStart },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/all-day/i)
+  })
+
+  it('date-only reschedule of an all-day event keeps it all-day', async () => {
+    // Only a TIME converts it. Moving an all-day event to another day stays all-day.
+    const day = ymd(atUtc(3, 0))
+    const id = await createEvent({ title: 'Yard sale', startsAt: `${day}T00:00:00.000Z`, allDay: true })
+    const newDay = ymd(atUtc(9, 0))
+    const res = await commit({ targetKind: 'event', verb: 'reschedule', targetId: id, args: { date: newDay } })
+    expect(res.statusCode).toBe(200)
+    const ev = JSON.parse((await call('GET', `/api/events/${id}`, kevin)).body).event
+    expect(ev.allDay).toBe(true)
+    expect(ev.startsAt).toBe(`${newDay}T00:00:00.000Z`)
   })
 
   it('400s with friendly copy when no date/time is given', async () => {

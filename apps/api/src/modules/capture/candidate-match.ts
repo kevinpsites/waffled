@@ -52,8 +52,12 @@ const KEYWORD_WEIGHT = 0.5
 // Rank `rows` against a free-text `description`, sorted descending by confidence
 // (0..1). An exact normalized title match scores 1.0; otherwise confidence is the
 // weighted token overlap / description tokens — a token in the row's title counts 1,
-// a token found only via `keywords` counts KEYWORD_WEIGHT. Rows below the floor are
-// dropped; a description with no usable tokens yields [].
+// a token found only via `keywords` counts KEYWORD_WEIGHT. The FLOOR is applied to the
+// UNWEIGHTED overlap (did enough real tokens match at all), not the weighted score —
+// so the half-weight only re-orders ties, it never drops a match the pre-weighting code
+// would have surfaced (e.g. a lone keyword hit in a 4-token phrase scores 0.5/4 = 0.125
+// < FLOOR when weighted, yet its unweighted overlap 1/4 = 0.25 clears it). A description
+// with no usable tokens yields [].
 export function rankCandidates(description: string, rows: RankRow[]): Candidate[] {
   const descNorm = normalize(description)
   const descTokens = new Set(tokenize(description))
@@ -63,20 +67,29 @@ export function rankCandidates(description: string, rows: RankRow[]): Candidate[
   for (const row of rows) {
     const titleNorm = normalize(row.title)
     let confidence: number
+    let floorScore: number // unweighted overlap fraction — gates the drop decision only
     if (titleNorm && titleNorm === descNorm) {
       confidence = 1
+      floorScore = 1
     } else {
       const titleTokens = new Set(tokenize(row.title))
       const kwTokens = new Set<string>()
       for (const kw of row.keywords ?? []) for (const t of tokenize(kw)) kwTokens.add(t)
-      let shared = 0
+      let weighted = 0
+      let matched = 0
       for (const t of descTokens) {
-        if (titleTokens.has(t)) shared += 1
-        else if (kwTokens.has(t)) shared += KEYWORD_WEIGHT
+        if (titleTokens.has(t)) {
+          weighted += 1
+          matched += 1
+        } else if (kwTokens.has(t)) {
+          weighted += KEYWORD_WEIGHT
+          matched += 1
+        }
       }
-      confidence = shared / descTokens.size
+      confidence = weighted / descTokens.size
+      floorScore = matched / descTokens.size
     }
-    if (confidence >= FLOOR) {
+    if (floorScore >= FLOOR) {
       const candidate: Candidate = { id: row.id, title: row.title, confidence }
       if (row.subtitle !== undefined) candidate.subtitle = row.subtitle
       out.push(candidate)

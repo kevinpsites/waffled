@@ -786,6 +786,16 @@ describe('parseCapture — mutate verbs (Tier 2)', () => {
     expect(m.args).toEqual({ date: '2026-06-19' })
   })
 
+  // The destination anchors on the FIRST "to/for", not the last — a trailing
+  // participant clause ("for Wally") must not swallow the spoken date (PR #83 review:
+  // a greedy anchor extracted "Wally" and lost Friday, 400ing the no-LLM commit).
+  it('"move soccer to Friday for Wally" → keeps Friday, not the trailing participant', () => {
+    const m = asMutate(p('move soccer to Friday for Wally'))
+    expect(m.verb).toBe('reschedule')
+    // NOW is Thursday Jun 11 2026 — Friday is Jun 12.
+    expect(m.args).toEqual({ date: '2026-06-12' })
+  })
+
   it('a bare "reschedule soccer" still emits empty args (server asks for the when)', () => {
     const m = asMutate(p('reschedule soccer'))
     expect(m.verb).toBe('reschedule')

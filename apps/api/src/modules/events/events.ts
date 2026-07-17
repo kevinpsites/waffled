@@ -236,7 +236,7 @@ const OCC_SELECT = `
 // events only to their owner. A null viewer (a bare kiosk device with no profile claimed)
 // sees family only — `owner_person_id = NULL` never matches. `alias` is the events /
 // occurrences table alias; `p` is the param placeholder holding the viewer's person id.
-const visibleTo = (alias: string, p: string) =>
+export const visibleTo = (alias: string, p: string) =>
   `and (${alias}.visibility = 'family' or ${alias}.owner_person_id = ${p})`
 
 export async function todayEvents(householdId: string, date: string, viewerPersonId: string | null): Promise<EventRow[]> {

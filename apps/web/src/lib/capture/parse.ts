@@ -749,10 +749,11 @@ function mutateArgs(verb: MutateVerb, text: string, now: Date): Record<string, u
     if (m) return { personName: m[1] }
   }
   if (verb === 'reschedule') {
-    // The destination phrase after the LAST "to/for" ("move soccer to Thursday 4pm"
-    // → "Thursday 4pm"). Emit only what the phrase actually gives — the server keeps
-    // whichever half (date/time) wasn't spoken.
-    const m = /^.*\b(?:to|for)\s+(.+)$/i.exec(text)
+    // The destination phrase after the FIRST "to/for" ("move soccer to Thursday 4pm"
+    // → "Thursday 4pm"). Lazy `.*?` so a trailing participant clause ("...to Friday for
+    // Wally") can't swallow the spoken date. Emit only what the phrase actually gives —
+    // the server keeps whichever half (date/time) wasn't spoken.
+    const m = /^.*?\b(?:to|for)\s+(.+)$/i.exec(text)
     if (m) {
       const dest = m[1]
       const args: Record<string, unknown> = {}
