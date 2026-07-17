@@ -791,6 +791,14 @@ button.goal-listhead-link:hover {
   display: flex; flex-direction: column; align-items: flex-start; border: 0; cursor: pointer; font: inherit;
 }
 .gdv-month-cell.future { border: 1px dashed var(--hair); cursor: default; }
+.gdv-month-nav { display: flex; align-items: center; gap: 10px; }
+.gdv-month-navbtn {
+  width: 28px; height: 28px; flex: none; border-radius: 999px; border: 1px solid var(--hair);
+  background: var(--card); color: var(--ink-2); font-size: 15px; font-weight: 700; cursor: pointer;
+  display: grid; place-items: center; box-shadow: var(--sh-1);
+}
+.gdv-month-navbtn:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
+.gdv-month-navbtn:disabled { opacity: .35; cursor: default; }
 .gdv-month-daynum { font-size: 11.5px; font-weight: 800; }
 .gdv-month-total { font-size: 13px; }
 .gdv-month-dots { margin-top: auto; }

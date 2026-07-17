@@ -55,4 +55,18 @@ describe('MonthHeatmap', () => {
     fireEvent.click(screen.getByText('10'))
     expect(onDayClick).toHaveBeenCalledWith('2026-07-10')
   })
+
+  it('navigates to the previous month, and blocks paging past the current month', () => {
+    const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
+    render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }))
+    expect(screen.getByText('June')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next month' })).not.toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }))
+    expect(screen.getByText('July')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled()
+  })
 })

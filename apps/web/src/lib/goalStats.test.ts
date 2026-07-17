@@ -72,15 +72,15 @@ describe('classifyTimeframe', () => {
 describe('goal-type -> view mapping', () => {
   it('total: signature is Pace; year/month/yearRing drop for a short window', () => {
     expect(defaultView('total', 'long')).toBe('pace')
-    expect(availableViews('total', 'long')).toEqual(['pace', 'year', 'byPerson', 'month', 'week', 'yearRing'])
-    expect(availableViews('total', 'short')).toEqual(['pace', 'byPerson', 'week'])
+    expect(availableViews('total', 'long')).toEqual(['week', 'month', 'year', 'pace', 'yearRing', 'byPerson'])
+    expect(availableViews('total', 'short')).toEqual(['week', 'pace', 'byPerson'])
     expect(defaultView('total', 'short')).toBe('pace') // still fits
   })
 
   it('count: signature is the Collection grid', () => {
     expect(defaultView('count', 'long')).toBe('collection')
-    expect(availableViews('count', 'long')).toEqual(['collection', 'pace', 'month'])
-    expect(availableViews('count', 'short')).toEqual(['collection', 'pace']) // month drops
+    expect(availableViews('count', 'long')).toEqual(['month', 'pace', 'collection'])
+    expect(availableViews('count', 'short')).toEqual(['pace', 'collection']) // month drops
   })
 
   it('habit: signature is the Consistency dot-calendar; falls back to Week when it does not fit a short window', () => {
@@ -96,7 +96,7 @@ describe('goal-type -> view mapping', () => {
   })
 
   it('open-ended keeps Year/Week/By-person for total goals', () => {
-    expect(availableViews('total', 'open-ended')).toEqual(['pace', 'year', 'byPerson', 'month', 'week', 'yearRing'])
+    expect(availableViews('total', 'open-ended')).toEqual(['week', 'month', 'year', 'pace', 'yearRing', 'byPerson'])
   })
 })
 

@@ -89,8 +89,8 @@ export function classifyTimeframe(startDate: string, endDate: string | null): Ti
 // The full offer list per type, ordered signature-first (per the handoff's mapping
 // table). Timeframe filtering is applied afterward by availableViews.
 const TYPE_VIEWS: Record<string, ViewKey[]> = {
-  total: ['pace', 'year', 'byPerson', 'month', 'week', 'yearRing'],
-  count: ['collection', 'pace', 'month'],
+  total: ['week', 'month', 'year', 'pace', 'yearRing', 'byPerson'],
+  count: ['month', 'pace', 'collection'],
   habit: ['consistency', 'week'],
   checklist: [],
 }
