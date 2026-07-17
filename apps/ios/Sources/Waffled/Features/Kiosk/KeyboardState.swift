@@ -46,6 +46,12 @@ import UIKit
     }
 
     private init() {
+        // Headless verification: WAFFLED_FAKE_KB_TOP=<windowY> pretends a docked
+        // keyboard's top edge sits at that window-space Y, so landscape lift behavior
+        // can be screenshot without the Simulator's flaky programmatic focus.
+        if let fake = AppConfig.env("WAFFLED_FAKE_KB_TOP").flatMap(Double.init) {
+            topInWindow = CGFloat(fake)
+        }
         let nc = NotificationCenter.default
         nc.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification,
                        object: nil, queue: .main) { [weak self] note in

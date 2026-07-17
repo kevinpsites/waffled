@@ -53,17 +53,23 @@ struct KioskDashboard: View {
     @AppStorage("waffled.kioskGoalId") private var kioskGoalId = ""
     @State private var logGoal: WaffledAPI.Goal?
 
-    /// The goal the Goal-focused layout features: the pinned one if it still exists, else
-    /// the featured goal, else a whole-family goal, else the first goal.
-    private var kioskGoal: WaffledAPI.Goal? {
-        if !kioskGoalId.isEmpty, let g = model.goals.first(where: { $0.id == kioskGoalId }) { return g }
-        if let f = model.goals.first(where: { $0.isSpotlight ?? false }) ?? model.goals.first(where: { $0.isFeatured }) { return f }
-        let everyone = Set(sync.members.map(\.id))
-        if everyone.count > 1,
-           let fam = model.goals.first(where: { everyone.isSubset(of: Set($0.participants.map(\.personId))) }) {
+    /// The card's pick order as a pure function (tested in KioskGoalPickTests): pinned
+    /// if it still exists → Spotlight → Pinned tier (isFeatured) → a whole-family goal
+    /// (multi-member households) → the first goal.
+    nonisolated static func featuredGoal(_ goals: [WaffledAPI.Goal], pinnedId: String,
+                                         memberIds: Set<String>) -> WaffledAPI.Goal? {
+        if !pinnedId.isEmpty, let g = goals.first(where: { $0.id == pinnedId }) { return g }
+        if let f = goals.first(where: { $0.isSpotlight ?? false }) ?? goals.first(where: { $0.isFeatured }) { return f }
+        if memberIds.count > 1,
+           let fam = goals.first(where: { memberIds.isSubset(of: Set($0.participants.map(\.personId))) }) {
             return fam
         }
-        return model.goals.first
+        return goals.first
+    }
+
+    /// The goal the Goal-focused layout features — see `featuredGoal` for the pick order.
+    private var kioskGoal: WaffledAPI.Goal? {
+        Self.featuredGoal(model.goals, pinnedId: kioskGoalId, memberIds: Set(sync.members.map(\.id)))
     }
 
     private var tz: TimeZone { sync.householdTz }
@@ -114,8 +120,12 @@ struct KioskDashboard: View {
         // of the Lists page's WAFFLED_FOCUS_ADD hook).
         .task {
             if DemoHooks.focusAdd, DemoHooks.kioskPage == "today" {
-                try? await Task.sleep(for: .seconds(1.5))
-                groceryFocused = true
+                // Retry a few times: focusing mid-rotation (forced-landscape
+                // verification) gets dropped, so keep re-asserting until it sticks.
+                for attempt in 0..<5 {
+                    try? await Task.sleep(for: .seconds(attempt == 0 ? 2 : 2.5))
+                    groceryFocused = true
+                }
             }
         }
         // Day rollover on the always-on display: sleep to just past each

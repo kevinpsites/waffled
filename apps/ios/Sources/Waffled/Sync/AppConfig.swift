@@ -136,6 +136,10 @@ enum DemoHooks {
     static var openList: String? { AppConfig.env("WAFFLED_OPEN_LIST") }
     /// With openList set, auto-present the first item's Details editor (verification).
     static var openDetails: Bool { AppConfig.env("WAFFLED_OPEN_DETAILS") == "1" }
+    /// Force the scene's interface orientation on launch: "landscape" | "portrait".
+    /// The Simulator has no headless rotate API, so landscape keyboard checks (the
+    /// iPad inset under-report, PR #90/#92) request the rotation from inside the app.
+    static var forceOrientation: String? { AppConfig.env("WAFFLED_ORIENTATION") }
     /// Auto-focus the add field (keyboard verification): a list detail's "Add item",
     /// or — with kioskPage=today — the Today grocery card's quick-add.
     static var focusAdd: Bool { AppConfig.env("WAFFLED_FOCUS_ADD") == "1" }
