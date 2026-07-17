@@ -137,6 +137,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **The iPad calendar is much snappier.** Opening the Calendar tab and tapping days in the
+  month view used to re-scan and re-bucket every synced event (including every occurrence of
+  recurring events) on each tap, which felt sluggish on a busy household calendar. The app
+  now indexes events by day once when the data actually changes, so switching to the
+  calendar, picking a day, and flipping between Month/Week/Day are simple lookups. The
+  Today screen's "This week" agenda uses the same index.
+- **Tapping the Family Goal card on the iPad Today screen now opens that goal.** The card
+  only responded on its little arrow (which went to the Goals index) and the Log button —
+  tapping the goal itself did nothing. Tapping anywhere else on the card now lands directly
+  on that goal's detail page; the arrow and Log button keep doing what they did.
+- **The Today screen's grocery quick-add no longer hides under the iPad keyboard.** The same
+  sideways-keyboard quirk fixed on the Lists page also buried the "Add an item" row on the
+  Today grocery card. It now lifts itself clear of the keyboard while you type, and the last
+  few items stay scrollable above it.
 - **Creating a list on iOS now opens it right away.** After tapping Create (or Create
   from template) in the New-list sheet, the app takes you straight into the new list's
   detail so you can start adding items — instead of leaving you on the Lists overview

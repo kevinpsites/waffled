@@ -136,7 +136,8 @@ enum DemoHooks {
     static var openList: String? { AppConfig.env("WAFFLED_OPEN_LIST") }
     /// With openList set, auto-present the first item's Details editor (verification).
     static var openDetails: Bool { AppConfig.env("WAFFLED_OPEN_DETAILS") == "1" }
-    /// On a list's detail, auto-focus the "Add item" field (keyboard verification).
+    /// Auto-focus the add field (keyboard verification): a list detail's "Add item",
+    /// or — with kioskPage=today — the Today grocery card's quick-add.
     static var focusAdd: Bool { AppConfig.env("WAFFLED_FOCUS_ADD") == "1" }
     /// Skip the iPad boot cover (headless verification of REST-driven kiosk pages
     /// when the PowerSync endpoint isn't reachable from the simulator).
