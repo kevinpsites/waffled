@@ -886,6 +886,29 @@ describe('capture — goals target', () => {
     expect(await goalProgress(pianoTimeGoal)).toBeCloseTo(before + 20 / 60, 3)
   })
 
+  it('400s a count goal given minutes (same rule as POST /goals/:id/log — no silent 1)', async () => {
+    const before = await goalProgress(readCountGoal)
+    const res = await commit(capToken, { verb: 'log', targetKind: 'goal', targetId: readCountGoal, args: { minutes: 20 } })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/time goal/i)
+    expect(await goalProgress(readCountGoal)).toBe(before) // nothing logged
+  })
+
+  it('logs a bare amount on a time goal as hours (same as the route), not a spurious 400', async () => {
+    const before = await goalProgress(pianoTimeGoal)
+    const res = await commit(capToken, { verb: 'log', targetKind: 'goal', targetId: pianoTimeGoal, args: { amount: 2 } })
+    expect(res.statusCode).toBe(200)
+    expect(await goalProgress(pianoTimeGoal)).toBeCloseTo(before + 2, 3)
+  })
+
+  it('400s minutes outside 0–59 on a time goal (the route’s fold guard applies here too)', async () => {
+    const before = await goalProgress(pianoTimeGoal)
+    const res = await commit(capToken, { verb: 'log', targetKind: 'goal', targetId: pianoTimeGoal, args: { minutes: 200 } })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/minutes 0–59/)
+    expect(await goalProgress(pianoTimeGoal)).toBe(before)
+  })
+
   it('commits a log on a habit goal (amount forced to 1)', async () => {
     const res = await commit(capToken, { verb: 'log', targetKind: 'goal', targetId: habitGoal, args: { amount: 5 } })
     expect(res.statusCode).toBe(200)

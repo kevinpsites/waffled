@@ -7,10 +7,13 @@
 // heuristic parser — so the bar always works, even offline.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
+import { log } from '../../platform/logger'
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
 import type { Tenant } from '../households/households'
 import {
   getCaptureTarget,
+  unsupportedKindReason,
+  unsupportedVerbReason,
   type TargetKind,
   type MutateVerb,
   type ResolveCtx,
@@ -80,7 +83,7 @@ export interface CaptureIntent {
   verb?: MutateVerb
   targetKind?: TargetKind
   target?: { description: string }
-  mutateArgs?: Record<string, unknown>
+  args?: Record<string, unknown>
   // unsupported intent: a short, friendly reason quick-add can't do it
   reason?: string
   whenLabel?: string
@@ -88,6 +91,11 @@ export interface CaptureIntent {
 }
 
 const MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack'])
+
+// Same shape the mirrored feature routes gate their :id params on — a commit's
+// targetId must be a resolved Candidate.id (always a UUID), so anything else is a
+// client bug we 400 with a friendly message instead of a raw Postgres cast error.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // Tier 2 mutate axis. Verbs are lowercased before lookup; target kinds are camelCase
 // (listItem) so we match case-insensitively via the lower→canonical map.
@@ -247,8 +255,8 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
     const description = String((r.target as { description?: unknown } | null | undefined)?.description ?? '').trim()
     if (!description) throw new Error('mutate: no target description')
     // args is a loose passthrough object (only the fields a verb reads are used later).
-    const mutateArgs = r.args && typeof r.args === 'object' ? (r.args as Record<string, unknown>) : {}
-    return { kind, verb, targetKind, target: { description }, mutateArgs }
+    const args = r.args && typeof r.args === 'object' ? (r.args as Record<string, unknown>) : {}
+    return { kind, verb, targetKind, target: { description }, args }
   }
   if (kind === 'list') {
     const itemName = String(r.itemName ?? r.name ?? r.title ?? '').trim()
@@ -725,49 +733,71 @@ export function registerCaptureRoutes(api: Api): void {
   }))
 
   // Tier 2 mutate — step 2: resolve a spoken noun phrase to candidate rows. Thin
-  // dispatcher over the capture registry. Never throws to the client (mirrors how
-  // /api/capture swallows failures): an unknown/errored kind returns candidates:[];
-  // a disabled module returns candidates:[] + disabledReason so the client can say
-  // "that's turned off" rather than "no match".
-  api.post('/api/capture/resolve', tenantRoute(async (tenant, req: Request) => {
+  // dispatcher over the capture registry. Three distinguishable "no candidates" cases:
+  // an unregistered kind or a verb the target can't apply → candidates:[] + unsupported
+  // + a friendly disabledReason (so the client never says "couldn't find it" about
+  // something quick-add can't touch); a disabled module → candidates:[] + its
+  // disabledReason; a genuinely-empty match stays a bare 200 { candidates: [] }.
+  // A resolver/DB failure is a real 500 (logged), never a silent no-match.
+  api.post('/api/capture/resolve', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { verb?: unknown; targetKind?: unknown; target?: { description?: unknown }; args?: unknown }
-    const target = getCaptureTarget(String(body.targetKind ?? '') as TargetKind)
-    if (!target) return { candidates: [] }
+    const kindRaw = String(body.targetKind ?? '')
+    const target = getCaptureTarget(kindRaw as TargetKind)
+    if (!target) {
+      return { candidates: [], unsupported: true, disabledReason: unsupportedKindReason(kindRaw) }
+    }
+    const verb = String(body.verb ?? '') as MutateVerb
+    if (!target.supportedVerbs.includes(verb)) {
+      return { candidates: [], unsupported: true, disabledReason: unsupportedVerbReason(kindRaw as TargetKind, verb) }
+    }
     try {
       const ctx = await buildResolveCtx(tenant)
       if (!target.isEnabled(ctx)) return { candidates: [], disabledReason: target.disabledReason }
-      const verb = String(body.verb ?? '') as MutateVerb
       const description = String(body.target?.description ?? '').trim()
       const args = body.args && typeof body.args === 'object' ? (body.args as Record<string, unknown>) : {}
       const candidates = await target.resolveCandidates(ctx, { verb, target: { description }, args })
       return { candidates }
-    } catch {
-      return { candidates: [] }
+    } catch (err) {
+      log.error('capture resolve failed', { err, requestId: (req as Request & { requestId?: string }).requestId })
+      return res.status(500).json({ error: 'Error', message: 'Something went wrong finding that — try again.' })
     }
   }))
 
   // Tier 2 mutate — step 3: apply the chosen mutation. 400 { error:'Unsupported' } for
-  // an unknown or disabled target kind. The module's applyMutation enforces the same
-  // caps its route does and delegates to the module service; a thrown domain error is
-  // shaped into a 4xx { error, message } so caps/validation failures surface as a
-  // readable message instead of a 500.
+  // an unknown/disabled target kind or a verb the target can't apply (same friendly
+  // copy /resolve uses), and 400 for a malformed targetId before anything touches the
+  // DB. The module's applyMutation enforces the same caps its route does; a thrown
+  // domain error with a 4xx statusCode is relayed as { error, message }, while anything
+  // else (raw Postgres errors, outages) is logged and returned as a generic 500.
   api.post('/api/capture/commit', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { verb?: unknown; targetKind?: unknown; targetId?: unknown; args?: unknown; meta?: unknown }
-    const target = getCaptureTarget(String(body.targetKind ?? '') as TargetKind)
-    if (!target) return res.status(400).json({ error: 'Unsupported' })
-    const ctx = await buildResolveCtx(tenant)
-    if (!target.isEnabled(ctx)) return res.status(400).json({ error: 'Unsupported' })
+    const kindRaw = String(body.targetKind ?? '')
+    const target = getCaptureTarget(kindRaw as TargetKind)
+    if (!target) return res.status(400).json({ error: 'Unsupported', message: unsupportedKindReason(kindRaw) })
     const verb = String(body.verb ?? '') as MutateVerb
+    if (!target.supportedVerbs.includes(verb)) {
+      return res.status(400).json({ error: 'Unsupported', message: unsupportedVerbReason(kindRaw as TargetKind, verb) })
+    }
     const targetId = String(body.targetId ?? '')
+    if (!UUID_RE.test(targetId)) {
+      return res.status(400).json({ error: 'BadRequest', message: "Couldn't find that one — try picking it again." })
+    }
+    const ctx = await buildResolveCtx(tenant)
+    if (!target.isEnabled(ctx)) return res.status(400).json({ error: 'Unsupported', message: target.disabledReason })
     const args = body.args && typeof body.args === 'object' ? (body.args as Record<string, unknown>) : {}
     const meta = body.meta && typeof body.meta === 'object' ? (body.meta as Record<string, unknown>) : undefined
     try {
       const { message } = await target.applyMutation(ctx, { verb, targetId, args, meta })
       return { ok: true, message }
     } catch (err) {
-      const e = err as Error & { statusCode?: number }
-      const status = e.statusCode && e.statusCode >= 400 && e.statusCode < 500 ? e.statusCode : 400
-      return res.status(status).json({ error: e.name || 'Error', message: e.message })
+      const e = err as Error & { statusCode?: unknown }
+      // Relay only a real 4xx domain error; anything else must not leak (raw Postgres
+      // messages, outages) — log it and answer with a generic 500.
+      if (typeof e.statusCode === 'number' && Number.isInteger(e.statusCode) && e.statusCode >= 400 && e.statusCode < 500) {
+        return res.status(e.statusCode).json({ error: e.name || 'Error', message: e.message })
+      }
+      log.error('capture commit failed', { err: e, requestId: (req as Request & { requestId?: string }).requestId })
+      return res.status(500).json({ error: 'Error', message: "Something went wrong applying that — try again." })
     }
   }))
 

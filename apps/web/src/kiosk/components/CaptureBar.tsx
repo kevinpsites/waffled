@@ -460,7 +460,7 @@ function DraftFields({ intent, persons, lists, set, today, viewer, canManageGoal
 const CONFIRM_LABEL: Record<string, string> = {
   complete: 'Mark done', log: 'Log it', reschedule: 'Reschedule', reassign: 'Reassign', redeem: 'Redeem', delete: 'Delete it',
 }
-type CandidateState = { list: Candidate[]; disabledReason?: string; forDesc: string; offline?: boolean }
+type CandidateState = { list: Candidate[]; disabledReason?: string; unsupported?: boolean; forDesc: string; offline?: boolean }
 function CandidatePicker({ intent, state, chosenId, onPick, onCommit, busy }: {
   intent: Extract<ParsedIntent, { kind: 'mutate' }>
   state: CandidateState | null
@@ -478,6 +478,11 @@ function CandidatePicker({ intent, state, chosenId, onPick, onCommit, busy }: {
     return <div className="cap-primary" style={{ whiteSpace: 'normal' }}>I need a connection for that.</div>
   }
   if (state.list.length === 0) {
+    // `unsupported` = quick-add can't act on this kind/verb yet (the row may well exist) —
+    // show ONLY the server's reason, never a misleading "couldn't find it".
+    if (state.unsupported) {
+      return <div className="cap-primary" style={{ whiteSpace: 'normal' }}>{state.disabledReason ?? 'Quick-add can’t do that yet.'}</div>
+    }
     return (
       <div className="cap-primary" style={{ whiteSpace: 'normal' }}>
         Couldn’t find a {kindLabel} like that{state.disabledReason ? ` — ${state.disabledReason}` : ''}
@@ -623,14 +628,20 @@ export function CaptureBar() {
             // resolve call itself fails (handled below), NOT merely because the parse was on-device.
             : rawIntent
   const editing = draft !== null && intent?.kind !== 'unsupported' && intent?.kind !== 'mutate'
-  // A stable key for the current server mutate intent — drives the candidate resolve so
-  // it fires once per distinct phrase (not on every render).
-  const mutateKey = intent?.kind === 'mutate' ? `${intent.verb}|${intent.targetKind}|${intent.target.description}` : null
+  // A stable key for the current mutate intent — drives the candidate resolve so it fires
+  // once per distinct phrase (not on every render). ONLY a SETTLED parse gets a key: one
+  // api.resolve returned for the CURRENT text (`usingServer` — including via 'on-device',
+  // the no-LLM fallback inside api.resolve). The per-keystroke LOCAL parse must never fire
+  // /capture/resolve — paste/dictation/resumed typing briefly renders with thinking=false,
+  // and each stray call with a partial description costs a server round-trip that also
+  // inserts today's chore instances (ensureTodayInstances).
+  const mutateKey = intent?.kind === 'mutate' && usingServer ? `${intent.verb}|${intent.targetKind}|${intent.target.description}` : null
 
-  // Resolve candidates once a server mutate intent arrives (keyed on mutateKey so it
-  // fires per distinct phrase, not per render). Clears the picker for any non-mutate.
+  // Resolve candidates once a settled mutate intent arrives (keyed on mutateKey so it
+  // fires per distinct phrase, not per render). Clears the picker for any non-mutate
+  // (or a not-yet-settled parse).
   useEffect(() => {
-    if (intent?.kind !== 'mutate') { setCandidates(null); setChosenId(null); return }
+    if (!mutateKey || intent?.kind !== 'mutate') { setCandidates(null); setChosenId(null); return }
     const desc = intent.target.description
     let alive = true
     setCandidates(null)
@@ -638,7 +649,7 @@ export function CaptureBar() {
     api.resolveCandidates({ verb: intent.verb, targetKind: intent.targetKind, target: intent.target, args: intent.args })
       .then((r) => {
         if (!alive) return
-        setCandidates({ list: r.candidates, disabledReason: r.disabledReason, forDesc: desc })
+        setCandidates({ list: r.candidates, disabledReason: r.disabledReason, unsupported: r.unsupported, forDesc: desc })
         // 1 candidate → auto-select (still confirmed explicitly); 2+ → leave unpicked.
         setChosenId(r.candidates.length === 1 ? r.candidates[0].id : null)
       })

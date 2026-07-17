@@ -805,6 +805,35 @@ describe('capture — chores target', () => {
     expect(res.statusCode).toBe(403)
   })
 
+  it('rejects a proof storageKey belonging to another household (same check as the route)', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Scrub the tub', personId: kevinId, rewardAmount: 1 })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Scrub the tub')!
+    const foreignKey = `00000000-0000-4000-8000-000000000000/${'c'.repeat(32)}.jpg`
+    const res = await commit({ targetKind: 'chore', verb: 'complete', targetId: inst.id, args: { storageKey: foreignKey, contentType: 'image/jpeg' } })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/proof/i)
+    // still pending, and no proof key was stored
+    const after = await withClient((c) =>
+      c.query<{ status: string; proof_storage_key: string | null }>(
+        `select status, proof_storage_key from chore_instances where id=$1`, [inst.id]
+      )
+    )
+    expect(after.rows[0].status).toBe('pending')
+    expect(after.rows[0].proof_storage_key).toBeNull()
+
+    // a key that DOES belong to the household still works
+    const ownKey = `${householdId}/${'d'.repeat(32)}.jpg`
+    const ok = await commit({ targetKind: 'chore', verb: 'complete', targetId: inst.id, args: { storageKey: ownKey, contentType: 'image/jpeg' } })
+    expect(ok.statusCode).toBe(200)
+    const done = await withClient((c) =>
+      c.query<{ status: string; proof_storage_key: string | null }>(
+        `select status, proof_storage_key from chore_instances where id=$1`, [inst.id]
+      )
+    )
+    expect(done.rows[0].status).toBe('done')
+    expect(done.rows[0].proof_storage_key).toBe(ownKey)
+  })
+
   it('module off → resolve returns candidates:[] + disabledReason', async () => {
     const setChores = (on: boolean) =>
       withClient((c) =>

@@ -680,9 +680,11 @@ function detectReward(text: string): Extract<ParsedIntent, { kind: 'reward' }> |
 //   (apps/ios/Sources/*/Sync/CaptureHeuristic.swift + its CaptureHeuristicTests). Do NOT
 //   edit iOS in this change; port the same verb/target rules there in the follow-up.
 const MUTATE_PATTERNS: { re: RegExp; verb: MutateVerb; group: number }[] = [
-  // complete — "mark/set X (as) done/complete/finished/off", "check/cross X off …"
+  // complete — "mark/set X (as) done/complete/finished/off", and BOTH check-off orders:
+  // "check/cross/tick off X" (leading off) and "check/cross/tick X off" (trailing off).
   { re: /^\s*(?:please\s+)?(?:mark|set)\s+(.+?)\s+(?:as\s+)?(?:done|complete|completed|finished|off)\b/i, verb: 'complete', group: 1 },
-  { re: /^\s*(?:please\s+)?(?:check|cross|tick)\s+(?:off\s+)?(.+?)\s+off\b/i, verb: 'complete', group: 1 },
+  { re: /^\s*(?:please\s+)?(?:check|cross|tick)\s+off\s+(.+)$/i, verb: 'complete', group: 1 },
+  { re: /^\s*(?:please\s+)?(?:check|cross|tick)\s+(.+?)\s+off\b/i, verb: 'complete', group: 1 },
   { re: /^\s*(?:please\s+)?(?:complete|finish)\s+(.+)$/i, verb: 'complete', group: 1 },
   // delete — "delete/remove/cancel X"
   { re: /^\s*(?:please\s+)?(?:delete|remove|cancel)\s+(.+)$/i, verb: 'delete', group: 1 },
@@ -691,13 +693,22 @@ const MUTATE_PATTERNS: { re: RegExp; verb: MutateVerb; group: number }[] = [
   { re: /^\s*(?:please\s+)?reschedule\s+(.+)$/i, verb: 'reschedule', group: 1 },
   // reassign — "reassign/give/assign X to …"
   { re: /^\s*(?:please\s+)?(?:reassign|give|assign)\s+(.+?)\s+to\s+.+$/i, verb: 'reassign', group: 1 },
-  // redeem — "redeem X", "<person> spent/spend N … on X"
+  // redeem — "redeem X", "<person> spent N points/stars on X", "spent … on the X reward".
+  // A "spent" phrase needs REWARD context (a points/stars amount, or "reward" in the target)
+  // so a time-spent phrase ("I spent 30 minutes on my reading goal") falls through to `log`
+  // below instead of a redeem that drops the amount and can only 400 (F8).
   { re: /^\s*(?:please\s+)?redeem\s+(.+)$/i, verb: 'redeem', group: 1 },
-  { re: /^\s*.+?\s+(?:spent|spend|spends)\s+.+?\s+(?:on|for)\s+(.+)$/i, verb: 'redeem', group: 1 },
-  // log — "log X", "record X", and "add <amount> to … goal" (the amount is pulled into args;
-  // the trailing goal phrase is the description). The `goal` word keeps it from stealing the
-  // pantry/list creates ("add milk to the pantry" / "add X to the list").
-  { re: /^\s*(?:please\s+)?(?:log|record)\s+(.+)$/i, verb: 'log', group: 1 },
+  { re: /^\s*.+?\s+(?:spent|spend|spends)\s+.+?\b(?:points?|stars?|pts?|coins?)\b.*?\s+(?:on|for)\s+(.+)$/i, verb: 'redeem', group: 1 },
+  { re: /^\s*.+?\s+(?:spent|spend|spends)\s+.+?\s+(?:on|for)\s+(.+?\breward\b.*)$/i, verb: 'redeem', group: 1 },
+  // log — needs real goal-log signal (F4): an amount right after the verb ("log 30 minutes
+  // on my reading goal", "record 2 chapters"), the word "goal" in the phrase, a time-unit
+  // "spent" ("I spent 30 minutes on my reading goal"), or "add <amount> to … goal". A bare
+  // "log/record X" ("record the school play Friday 7pm") is NOT a mutate — it falls through
+  // to the create branches. The `goal` word also keeps "add …" from stealing the pantry/list
+  // creates ("add milk to the pantry" / "add X to the list").
+  { re: /^\s*(?:please\s+)?(?:log|record)\s+(\d+(?:\.\d+)?(?:\s+.+)?)$/i, verb: 'log', group: 1 },
+  { re: /^\s*(?:please\s+)?(?:log|record)\s+(.+?\bgoal\b.*)$/i, verb: 'log', group: 1 },
+  { re: /^\s*.+?\s+(?:spent|spend|spends)\s+(\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?)\b.*)$/i, verb: 'log', group: 1 },
   { re: /^\s*(?:please\s+)?add\s+.+?\s+to\s+(.+?\bgoal\b.*)$/i, verb: 'log', group: 1 },
 ]
 

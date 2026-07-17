@@ -119,6 +119,70 @@ describe('CaptureBar — Tier 2 mutate picker', () => {
     expect(commitMutate).not.toHaveBeenCalled()
   })
 
+  it('passes the server intent’s verb args through /resolve AND /commit (F1)', async () => {
+    resolve.mockResolvedValue({
+      intent: { kind: 'mutate', verb: 'reassign', targetKind: 'chore', target: { description: 'dishes' }, args: { personName: 'Wally' } } as unknown as ParsedIntent,
+      via: 'anthropic',
+    })
+    resolveCandidates.mockResolvedValue({
+      candidates: [{ id: 'c1', title: 'Do the dishes', subtitle: 'George · pending', confidence: 1 }],
+    })
+    commitMutate.mockResolvedValue({ ok: true, message: 'Reassigned “Do the dishes” to Wally' })
+
+    render(<CaptureBar />)
+    openAndType('give the dishes to Wally')
+
+    await waitFor(() => expect(resolveCandidates).toHaveBeenCalled(), { timeout: 3000 })
+    expect(resolveCandidates).toHaveBeenCalledWith(expect.objectContaining({ args: { personName: 'Wally' } }))
+
+    const confirm = await screen.findByRole('button', { name: /reassign/i })
+    fireEvent.click(confirm)
+    await waitFor(() => expect(commitMutate).toHaveBeenCalled())
+    expect(commitMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ verb: 'reassign', targetId: 'c1', args: { personName: 'Wally' } }),
+    )
+  })
+
+  it('resolves candidates ONLY for the settled parse — typing churn fires no stray /resolve', async () => {
+    resolve.mockResolvedValue({ intent: mutateIntent('delete', 'event', 'dentist appointment'), via: 'anthropic' })
+    resolveCandidates.mockResolvedValue({
+      candidates: [{ id: 'ev1', title: 'Dentist', subtitle: 'Fri 4pm', confidence: 0.95 }],
+    })
+
+    render(<CaptureBar />)
+    fireEvent.click(document.querySelector('.capture-trigger') as HTMLElement)
+    const ta = screen.getByLabelText('Add anything') as HTMLTextAreaElement
+    // Two quick edits: after each change the FIRST render still has thinking=false, which
+    // used to leak the per-keystroke LOCAL mutate parse ("den") into POST /capture/resolve.
+    fireEvent.change(ta, { target: { value: 'delete the den' } })
+    fireEvent.change(ta, { target: { value: 'delete the dentist appointment' } })
+
+    await waitFor(() => expect(resolveCandidates).toHaveBeenCalled(), { timeout: 3000 })
+    // Give any stray extra call a beat to surface before counting.
+    await new Promise((r) => setTimeout(r, 100))
+    expect(resolveCandidates).toHaveBeenCalledTimes(1)
+    expect(resolveCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({ target: { description: 'dentist appointment' } }),
+    )
+  })
+
+  it('shows ONLY the disabledReason when the server marks the mutate unsupported', async () => {
+    resolve.mockResolvedValue({ intent: mutateIntent('reschedule', 'event', 'dentist'), via: 'anthropic' })
+    resolveCandidates.mockResolvedValue({
+      candidates: [],
+      unsupported: true,
+      disabledReason: "Quick-add can't change calendar events yet — edit them on the Calendar page.",
+    })
+
+    render(<CaptureBar />)
+    openAndType('move the dentist to Friday')
+
+    await waitFor(() => expect(screen.getByText(/Quick-add can.t change calendar events yet/)).toBeInTheDocument(), { timeout: 3000 })
+    // The event may well exist — never claim we "couldn't find" it.
+    expect(screen.queryByText(/Couldn.t find/i)).not.toBeInTheDocument()
+    expect(commitMutate).not.toHaveBeenCalled()
+  })
+
   it('forces an explicit destructive confirm for delete (↵ disabled; only the Delete button commits)', async () => {
     resolve.mockResolvedValue({ intent: mutateIntent('delete', 'event', 'dentist appointment'), via: 'anthropic' })
     resolveCandidates.mockResolvedValue({

@@ -703,6 +703,60 @@ describe('parseCapture — mutate verbs (Tier 2)', () => {
     expect(m.args).toMatchObject({ personName: 'Wally' })
   })
 
+  // F4 — the bare "log/record X" catch-all must not hijack confident creates.
+  it('"record the school play Friday 7pm" → an event create, NOT a goal-log (F4)', () => {
+    const e = asEvent(p('record the school play Friday 7pm'))
+    const d = new Date(e.startsAt)
+    expect(d.getDay()).toBe(5) // Friday
+    expect(d.getHours()).toBe(19)
+  })
+
+  it('"log 30 minutes on my reading goal" still → a goal-log with minutes (F4 guard)', () => {
+    const m = asMutate(p('log 30 minutes on my reading goal'))
+    expect(m.verb).toBe('log')
+    expect(m.targetKind).toBe('goal')
+    expect(m.args).toMatchObject({ minutes: 30 })
+  })
+
+  // F5 — "cross/check/tick off X" (leading off) works, not only "cross X off".
+  it('"cross off milk" → complete a list item (leading "off") (F5)', () => {
+    const m = asMutate(p('cross off milk'))
+    expect(m.verb).toBe('complete')
+    expect(m.targetKind).toBe('listItem')
+    expect(m.target.description.toLowerCase()).toBe('milk')
+  })
+
+  it('"check off milk" / "tick off the bread" → complete (F5)', () => {
+    const m1 = asMutate(p('check off milk'))
+    expect(m1.verb).toBe('complete')
+    expect(m1.target.description.toLowerCase()).toBe('milk')
+    const m2 = asMutate(p('tick off the bread'))
+    expect(m2.verb).toBe('complete')
+    expect(m2.target.description.toLowerCase()).toBe('bread')
+  })
+
+  it('"cross milk off" → complete (trailing "off" still works) (F5)', () => {
+    const m = asMutate(p('cross milk off'))
+    expect(m.verb).toBe('complete')
+    expect(m.targetKind).toBe('listItem')
+    expect(m.target.description.toLowerCase()).toBe('milk')
+  })
+
+  // F8 — a time-unit "spent" is a goal-log, not a redeem (which would drop the amount and 400).
+  it('"I spent 30 minutes on my reading goal" → log a goal, NOT redeem (F8)', () => {
+    const m = asMutate(p('I spent 30 minutes on my reading goal'))
+    expect(m.verb).toBe('log')
+    expect(m.targetKind).toBe('goal')
+    expect(m.args).toMatchObject({ minutes: 30 })
+  })
+
+  it('"Wally spent 50 points on the ice cream reward" still → redeem (F8 guard)', () => {
+    const m = asMutate(p('Wally spent 50 points on the ice cream reward'))
+    expect(m.verb).toBe('redeem')
+    expect(m.targetKind).toBe('reward')
+    expect(m.target.description.toLowerCase()).toContain('ice cream')
+  })
+
   it('a mutate marker is NEVER confident (forces the server path, no offline auto-commit)', () => {
     expect(looksConfident(p('mark the trash chore done'), 'mark the trash chore done')).toBe(false)
     expect(looksConfident(p('delete the dentist appointment'), 'delete the dentist appointment')).toBe(false)

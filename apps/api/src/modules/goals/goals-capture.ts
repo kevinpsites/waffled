@@ -10,28 +10,16 @@ import { requireCapability } from '../../platform/permissions'
 import { rankCandidates, type Candidate, type RankRow } from '../capture/candidate-match'
 import {
   registerCaptureTarget,
+  httpError,
+  findPersonByName,
+  impliesMine,
   type CaptureTarget,
   type ResolveCtx,
   type ResolveRequest,
   type MutateCommand,
 } from '../capture/capture-resolvers'
 import { conceptKeywords } from './goal-match'
-import { listGoals, logProgress, isTimeUnit, personsInHousehold } from './goals.service'
-
-// A 4xx the /commit dispatcher shapes into { error, message } (it reads statusCode).
-function httpError(statusCode: number, message: string): Error & { statusCode: number } {
-  const e = new Error(message) as Error & { statusCode: number }
-  e.statusCode = statusCode
-  return e
-}
-
-// Does the phrase say "my"/"our"/"mine"? Then scope to the speaker's own goals. The
-// ranker strips these as stopwords, so we sniff the raw description before it's ranked.
-function impliesMine(description: string): boolean {
-  return /\b(my|mine|our)\b/i.test(description)
-}
-
-const numOr0 = (v: unknown): number => (v == null ? 0 : Number(v))
+import { listGoals, logProgress, goalLogAmount, personsInHousehold } from './goals.service'
 
 // A short progress/target line for the pick-one preview.
 function goalSubtitle(g: { totalProgress: number; target: number | null; unit: string | null; goalType: string }): string {
@@ -49,12 +37,9 @@ async function resolveOtherPerson(ctx: ResolveCtx, args: Record<string, unknown>
   }
   const name = typeof args.personName === 'string' && args.personName.trim() ? args.personName.trim() : null
   if (name) {
-    const { rows } = await query<{ id: string }>(
-      `select id from persons where household_id=$1 and deleted_at is null and lower(name)=lower($2) limit 1`,
-      [ctx.householdId, name]
-    )
-    if (!rows[0]) throw httpError(400, 'unknown person')
-    return rows[0].id
+    const person = await findPersonByName(ctx.householdId, name)
+    if (!person) throw httpError(400, 'unknown person')
+    return person.id
   }
   return null
 }
@@ -62,6 +47,7 @@ async function resolveOtherPerson(ctx: ResolveCtx, args: Record<string, unknown>
 const goalTarget: CaptureTarget = {
   isEnabled: (ctx: ResolveCtx) => moduleEnabled(ctx.settings, 'goals'),
   disabledReason: 'Goals is turned off.',
+  supportedVerbs: ['log'],
 
   async resolveCandidates(ctx: ResolveCtx, req: ResolveRequest): Promise<Candidate[]> {
     const goals = await listGoals(ctx.householdId)
@@ -96,9 +82,6 @@ const goalTarget: CaptureTarget = {
     )
     const goal = rows[0]
     if (!goal) throw httpError(404, 'goal not found')
-    if (goal.goal_type === 'checklist') {
-      throw httpError(400, 'checklist goals are updated by ticking steps, not logging progress')
-    }
     const args = cmd.args ?? {}
 
     // Self-log is open; attributing to another person takes goal.manage (mirrors
@@ -110,26 +93,19 @@ const goalTarget: CaptureTarget = {
       personIds = [other]
     }
 
-    // Amount is derived from the goal's type (the "what counting" decision):
-    //   habit                → one completion (forced to 1).
-    //   total + a time unit  → hours + minutes folded to decimal hours.
-    //   count                → a whole number (rounded).
-    //   other total          → the raw numeric amount.
-    let amount: number
-    if (goal.goal_type === 'habit') {
-      amount = 1
-    } else if (goal.goal_type === 'total' && isTimeUnit(goal.unit)) {
-      amount = numOr0(args.hours) + numOr0(args.minutes) / 60
-      if (!(amount > 0)) throw httpError(400, 'log some time — hours and minutes cannot both be zero')
-    } else if (goal.goal_type === 'count') {
-      amount = args.amount == null ? 1 : Math.round(Number(args.amount))
-      if (!Number.isFinite(amount) || amount === 0) throw httpError(400, 'a count goal is logged in whole numbers')
-    } else {
-      amount = Number(args.amount)
-      if (!Number.isFinite(amount) || amount === 0) throw httpError(400, 'amount must be a non-zero number')
-    }
+    // Spoken-note defaults only — a habit log is always one completion, and a count
+    // goal with no number means "one" ("log my reading goal" → 1 book). Everything
+    // else passes through goalLogAmount, the SAME mapping/validation POST
+    // /api/goals/:id/log uses, so the two entry points can never diverge.
+    const hasNumbers = args.amount != null || args.hours != null || args.minutes != null
+    const logBody: { amount?: unknown; hours?: unknown; minutes?: unknown } =
+      goal.goal_type === 'habit' || (goal.goal_type === 'count' && !hasNumbers)
+        ? { amount: 1 }
+        : { amount: args.amount, hours: args.hours, minutes: args.minutes }
+    const mapped = goalLogAmount({ goalType: goal.goal_type, unit: goal.unit }, logBody)
+    if ('error' in mapped) throw httpError(400, mapped.error)
 
-    await logProgress(ctx.tenant, cmd.targetId, amount, personIds, null, { at: null })
+    await logProgress(ctx.tenant, cmd.targetId, mapped.amount, personIds, null, { at: null })
     return { message: `Logged progress on "${goal.title}"` }
   },
 }

@@ -7,8 +7,12 @@
 import { query } from '../../platform/db'
 import { can } from '../../platform/permissions'
 import { moduleEnabled } from '../../platform/modules'
+import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 import {
   registerCaptureTarget,
+  httpError,
+  findPersonByName,
+  impliesMine,
   type CaptureTarget,
   type ResolveCtx,
   type ResolveRequest,
@@ -24,15 +28,6 @@ import {
   ProofRequiredError,
 } from './chores.service'
 
-// A thrown domain error the /api/capture/commit dispatcher shapes into a 4xx
-// { error, message } (it reads .statusCode + .message). Using a real Error keeps
-// .name sensible and lint happy.
-function httpError(statusCode: number, message: string): Error & { statusCode: number } {
-  const err = new Error(message) as Error & { statusCode: number }
-  err.statusCode = statusCode
-  return err
-}
-
 // The chore title behind an instance id (for the commit confirmation message).
 async function instanceTitle(householdId: string, instanceId: string): Promise<string | null> {
   const { rows } = await query<{ title: string }>(
@@ -44,27 +39,18 @@ async function instanceTitle(householdId: string, instanceId: string): Promise<s
   return rows[0]?.title ?? null
 }
 
-// Resolve a spoken person name → a household member (case-insensitive exact match).
-async function findPersonByName(householdId: string, name: string): Promise<{ id: string; name: string } | null> {
-  const { rows } = await query<{ id: string; name: string }>(
-    `select id, name from persons
-      where household_id = $1 and lower(name) = lower($2) and deleted_at is null
-      order by created_at limit 1`,
-    [householdId, name.trim()]
-  )
-  return rows[0] ?? null
-}
-
 const choreCaptureTarget: CaptureTarget = {
   isEnabled: (ctx: ResolveCtx) => moduleEnabled(ctx.settings, 'chores'),
   disabledReason: 'Chores is turned off.',
+  supportedVerbs: ['complete', 'reassign'],
 
   async resolveCandidates(ctx: ResolveCtx, req: ResolveRequest): Promise<Candidate[]> {
     // Recurring chores have no chore_instances row until they're materialized, so
     // materialize today's first, then list — candidate ids are those instance ids.
     const today = todayDate(ctx.timezone)
     await ensureTodayInstances(ctx.householdId, today)
-    const instances = await listTodayInstances(ctx.householdId, today, ctx.timezone)
+    // Candidate matching never shows streaks — skip the 60-day streak scan.
+    const instances = await listTodayInstances(ctx.householdId, today, ctx.timezone, { streaks: false })
     const byId = new Map(instances.map((i) => [i.id, i]))
 
     // For 'complete' an already-done instance is nothing to act on — drop it.
@@ -83,8 +69,8 @@ const choreCaptureTarget: CaptureTarget = {
       }
     })
 
-    // "my/mine …" → prefer the speaker's own instances, keeping confidence order within.
-    if (/\b(my|mine)\b/i.test(req.target.description)) {
+    // "my/mine/our …" → prefer the speaker's own instances, keeping confidence order within.
+    if (impliesMine(req.target.description)) {
       enriched.sort((a, b) => {
         const am = a.meta?.assigneePersonId === ctx.personId ? 1 : 0
         const bm = b.meta?.assigneePersonId === ctx.personId ? 1 : 0
@@ -99,6 +85,14 @@ const choreCaptureTarget: CaptureTarget = {
     if (cmd.verb === 'complete') {
       const title = await instanceTitle(ctx.householdId, cmd.targetId)
       if (!title) throw httpError(404, 'That chore is gone.')
+      // Same ownership check POST /chore-instances/:id/complete enforces: a supplied
+      // proof key must be a media key of THIS household — never someone else's blob.
+      if (cmd.args.storageKey != null && (
+        typeof cmd.args.storageKey !== 'string' ||
+        !mediaKeyBelongsToHousehold(cmd.args.storageKey, ctx.householdId)
+      )) {
+        throw httpError(400, 'invalid proof image key')
+      }
       // Proof is optional; forward one only if the caller supplied a storage key.
       const proof =
         typeof cmd.args.storageKey === 'string'

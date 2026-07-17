@@ -118,7 +118,12 @@ and `systemPrompt` (`capture.ts:132`) with the verb vocabulary + few-shots. `fin
 
 ### 3.2 `POST /api/capture/resolve`  (tenantRoute → has `tenant.personId` speaker + `householdId`)
 Request: `{ verb, targetKind, target:{description}, args }` (the MutateIntent, echoed).
-Response: `{ candidates: Candidate[] }`
+Response: `{ candidates: Candidate[] }`. Two flagged empty cases so the client never says
+"couldn't find it" about something quick-add can't touch: an unregistered `targetKind` or a
+verb outside the target's `supportedVerbs` → `{ candidates: [], unsupported: true,
+disabledReason }` (friendly per-kind copy, e.g. "Quick-add can't change calendar events yet —
+edit them on the Calendar page."); a disabled module → `{ candidates: [], disabledReason }`.
+Resolver/DB failures are a logged 500, never a silent no-match.
 ```ts
 interface Candidate {
   id: string           // the row id to act on (chore_instances.id, goal id, list_items.id, event master id, reward id)
@@ -137,7 +142,10 @@ Request: `{ verb, targetKind, targetId, args, meta? }` (targetId = the chosen `C
 echoed from the candidate).
 Response: `{ ok: true, message: string }` (or a 4xx with `{ error, message }` the preview surfaces).
 Dispatcher: `getCaptureTarget(targetKind).applyMutation(ctx, { verb, targetId, args, meta })`, which
-enforces caps and delegates to the module service.
+enforces caps and delegates to the module service. Before dispatching it 400s an unregistered kind,
+a verb outside the target's `supportedVerbs` (same friendly copy /resolve uses), and a non-UUID
+`targetId`. A thrown 4xx domain error is relayed as `{ error, message }`; anything else (raw
+Postgres errors, outages) is logged and returned as a generic 500.
 
 ### 3.4 Shared ranking util (build once, every resolver uses it)
 `apps/api/src/modules/capture/candidate-match.ts`:

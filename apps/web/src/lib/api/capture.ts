@@ -42,7 +42,9 @@ export interface CaptureConfig {
 }
 
 interface ServerParse {
-  intent: ParsedIntent | null
+  // A server mutate intent carries its verb args under `args` (older server builds said
+  // `mutateArgs`) — the raw shape may have either, so type both for normalization.
+  intent: (ParsedIntent & { mutateArgs?: Record<string, unknown> }) | null
   via: Provider
   fallback: boolean
 }
@@ -56,7 +58,13 @@ export const captureApi = {
     try {
       const r = await apiSend<ServerParse>('POST', '/api/capture', { text })
       if (r.fallback || !r.intent) return local()
-      return { intent: r.intent, via: r.via }
+      // TIER 2 — normalize a mutate's verb args onto intent.args (accept both spellings);
+      // dropping them turned "give the dishes to Wally" into a reassign with no assignee.
+      const intent =
+        r.intent.kind === 'mutate'
+          ? { ...r.intent, args: r.intent.args ?? r.intent.mutateArgs ?? {} }
+          : r.intent
+      return { intent, via: r.via }
     } catch {
       return local()
     }
@@ -64,7 +72,10 @@ export const captureApi = {
   // TIER 2 — turn a server-parsed mutate intent into candidate rows to pick from.
   // Returns the ranked candidates plus an optional `disabledReason` (a 200 with 0
   // candidates when the target module is turned off, so the preview can say so).
-  resolveCandidates: (intent: MutateIntent): Promise<{ candidates: Candidate[]; disabledReason?: string }> =>
+  // `unsupported: true` marks a kind/verb quick-add can't act on yet (event/listItem/
+  // reward, or an unsupported verb for the kind) — the row may well exist, so the UI
+  // must show the reason, not "couldn't find it".
+  resolveCandidates: (intent: MutateIntent): Promise<{ candidates: Candidate[]; disabledReason?: string; unsupported?: boolean }> =>
     apiSend('POST', '/api/capture/resolve', {
       verb: intent.verb,
       targetKind: intent.targetKind,
