@@ -124,8 +124,19 @@ function ItemRow({
   )
 }
 
+// One rendered run of items — an aisle, a planned meal, an unscheduled recipe, or
+// the trailing "Other items". `key` is the stable React/collapse identity (recipe
+// ids for meal-view sections — titles are free text and can collide).
+interface BoardSection {
+  key: string
+  aisle: string | null
+  items: GroceryBoardItem[]
+  mealType?: string
+  unscheduled?: boolean
+}
+
 // Group items into ordered aisle sections; manual/uncategorized items lead, ungrouped.
-function aisleSections(items: GroceryBoardItem[]): Array<{ aisle: string | null; items: GroceryBoardItem[] }> {
+function aisleSections(items: GroceryBoardItem[]): BoardSection[] {
   const ungrouped = items.filter((i) => !i.aisle)
   const byAisle = new Map<string, GroceryBoardItem[]>()
   for (const i of items) {
@@ -133,10 +144,10 @@ function aisleSections(items: GroceryBoardItem[]): Array<{ aisle: string | null;
     if (!byAisle.has(i.aisle)) byAisle.set(i.aisle, [])
     byAisle.get(i.aisle)!.push(i)
   }
-  const out: Array<{ aisle: string | null; items: GroceryBoardItem[] }> = []
-  if (ungrouped.length) out.push({ aisle: null, items: ungrouped })
-  for (const a of AISLE_ORDER) if (byAisle.has(a)) out.push({ aisle: a, items: byAisle.get(a)! })
-  for (const [a, list] of byAisle) if (!AISLE_ORDER.includes(a)) out.push({ aisle: a, items: list })
+  const out: BoardSection[] = []
+  if (ungrouped.length) out.push({ key: '__none__', aisle: null, items: ungrouped })
+  for (const a of AISLE_ORDER) if (byAisle.has(a)) out.push({ key: a, aisle: a, items: byAisle.get(a)! })
+  for (const [a, list] of byAisle) if (!AISLE_ORDER.includes(a)) out.push({ key: a, aisle: a, items: list })
   return out
 }
 
@@ -244,37 +255,43 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     }
   }
 
-  const sections: Array<{ aisle: string | null; items: GroceryBoardItem[]; mealType?: string; unscheduled?: boolean }> =
+  const sections: BoardSection[] =
     view === 'aisle'
       ? aisleSections(activeItems)
       : (() => {
-          const recipeIds = new Set(board.meals.filter((d) => d.recipeId).map((d) => d.recipeId!))
           // One section per planned recipe (deduped — a dish planned in two slots
           // shows once), tagged with the meal type so the breakdown reads
           // "Dinner · Tomato Pasta". Grouped by meal type (Breakfast → Lunch →
           // Dinner → Snack), then by day within each — mirrors the rail's
           // segment order and how people shop ("everything for the dinners").
+          // Each item renders once: earlier sections claim shared items first
+          // (planned meals before unscheduled recipes — mirrors iOS MealGrouping).
           const ord = (t: string) => MEAL_TYPES.indexOf(t as (typeof MEAL_TYPES)[number])
           const byMeal = [...board.meals].sort((a, b) => ord(a.mealType) - ord(b.mealType) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
           const seen = new Set<string>()
-          const perMeal: Array<{ aisle: string | null; items: GroceryBoardItem[]; mealType?: string; unscheduled?: boolean }> = []
+          const used = new Set<string>()
+          const claim = (recipeId: string) => {
+            const items = activeItems.filter((i) => !used.has(i.id) && i.sourceRecipeIds.includes(recipeId))
+            items.forEach((i) => used.add(i.id))
+            return items
+          }
+          const perMeal: BoardSection[] = []
           for (const d of byMeal) {
             if (!d.recipeId || seen.has(d.recipeId)) continue
             seen.add(d.recipeId)
-            const items = activeItems.filter((i) => i.sourceRecipeIds.includes(d.recipeId!))
-            if (items.length) perMeal.push({ aisle: d.title ?? 'Meal', items, mealType: d.mealType })
+            const items = claim(d.recipeId)
+            if (items.length) perMeal.push({ key: `meal|${d.recipeId}`, aisle: d.title ?? 'Meal', items, mealType: d.mealType })
           }
           // Recipes added straight from a recipe page (not planned this week) get
           // their own sections after the planned meals — the "unscheduled" shelf.
           for (const u of board.unscheduled ?? []) {
-            recipeIds.add(u.recipeId)
-            const items = activeItems.filter((i) => i.sourceRecipeIds.includes(u.recipeId))
-            if (items.length) perMeal.push({ aisle: u.title ?? 'Recipe', items, unscheduled: true })
+            const items = claim(u.recipeId)
+            if (items.length) perMeal.push({ key: `un|${u.recipeId}`, aisle: u.title ?? 'Recipe', items, unscheduled: true })
           }
-          // Anything not tied to a planned or unscheduled recipe — hand-added
+          // Anything not claimed by a planned or unscheduled recipe — hand-added
           // items — still needs a home, or it would vanish in the By-meal view.
-          const leftovers = activeItems.filter((i) => !i.sourceRecipeIds.some((id) => recipeIds.has(id)))
-          return leftovers.length ? [...perMeal, { aisle: 'Other items', items: leftovers }] : perMeal
+          const leftovers = activeItems.filter((i) => !used.has(i.id))
+          return leftovers.length ? [...perMeal, { key: '__other__', aisle: 'Other items', items: leftovers }] : perMeal
         })()
 
   // Rail: a segment per meal type that's actually planned this week (defaults to
@@ -284,11 +301,11 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const railMeals = board.meals.filter((m) => m.mealType === effectiveRailMeal)
 
   // One section's markup. Sections with a header (aisles / meals) collapse; the
-  // leading ungrouped/manual section has no header and always shows. The section
-  // key is unique (one ungrouped + unique aisle/meal names), so it doubles as the
-  // React key and the collapse key.
-  const renderSection = (sec: { aisle: string | null; items: GroceryBoardItem[]; mealType?: string; unscheduled?: boolean }) => {
-    const key = `${view}|${sec.aisle ?? '__none__'}`
+  // leading ungrouped/manual section has no header and always shows. Each
+  // section's stable `key` (aisle name / recipe id) doubles as the React key
+  // and the collapse key, namespaced by view.
+  const renderSection = (sec: BoardSection) => {
+    const key = `${view}|${sec.key}`
     const isCollapsed = !!sec.aisle && collapsed.has(key)
     return (
       <div key={key} className="grocery-section">

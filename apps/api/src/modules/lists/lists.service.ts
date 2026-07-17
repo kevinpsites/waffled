@@ -375,8 +375,10 @@ export async function softDeleteItem(householdId: string, id: string): Promise<b
   return !!rowCount
 }
 
-// Auto-build: add a recipe's ingredients to the grocery list, skipping names
-// already on it. Returns null if the recipe isn't in this household.
+// Add a recipe's ingredients to the grocery list from its page — an *explicit*
+// user action, so rows get source='recipe' (not 'auto'): the weekly rebuild only
+// recomputes derived 'auto' rows, and these must survive it. Merges into rows
+// already on the list by name. Returns null if the recipe isn't in this household.
 export async function addRecipeToGrocery(
   tenant: Tenant,
   recipeId: string
@@ -387,8 +389,8 @@ export async function addRecipeToGrocery(
   const list = await getOrCreateGroceryList(tenant)
   const ingredients = await listIngredients(tenant.householdId, recipeId)
   const subs = getOverrides(recipe).subs ?? {}
-  const existing = await query<{ id: string; name: string; quantity: string | null; source_recipe_ids: string[] | null }>(
-    `select id, name, quantity, source_recipe_ids from list_items
+  const existing = await query<{ id: string; name: string; quantity: string | null; source: string; source_recipe_ids: string[] | null }>(
+    `select id, name, quantity, source, source_recipe_ids from list_items
        where household_id=$1 and list_id=$2 and deleted_at is null`,
     [tenant.householdId, list.id]
   )
@@ -410,17 +412,20 @@ export async function addRecipeToGrocery(
     const dupe = have.get(key)
     if (dupe) {
       // already on the list — bump the quantity and credit this recipe too,
-      // rather than silently skipping (so two recipes' limes become "2").
+      // rather than silently skipping (so two recipes' limes become "2"). An
+      // 'auto' row gains an off-plan stake here, so promote it to 'recipe' or
+      // the next weekly rebuild would wipe the merged quantity.
       const mergedQty = mergeQuantity(dupe.quantity, quantity)
       const ids = [...new Set([...(dupe.source_recipe_ids ?? []), recipeId])]
-      await query(`update list_items set quantity=$1, source_recipe_ids=$2 where id=$3`, [mergedQty, ids, dupe.id])
+      const source = dupe.source === 'auto' ? 'recipe' : dupe.source
+      await query(`update list_items set quantity=$1, source_recipe_ids=$2, source=$3 where id=$4`, [mergedQty, ids, source, dupe.id])
       continue
     }
-    have.set(key, { id: '', name, quantity, source_recipe_ids: [recipeId] })
+    have.set(key, { id: '', name, quantity, source: 'recipe', source_recipe_ids: [recipeId] })
     const { rows } = await query<ListItemRow>(
       `insert into list_items
          (household_id, list_id, name, quantity, category, source, source_recipe_ids, created_by)
-       values ($1,$2,$3,$4,$5,'auto',$6,$7) returning *`,
+       values ($1,$2,$3,$4,$5,'recipe',$6,$7) returning *`,
       [tenant.householdId, list.id, name, quantity, aisle, [recipeId], tenant.personId]
     )
     added.push(rows[0])
@@ -545,8 +550,29 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
     ).rows.map((r) => r.name.trim().toLowerCase())
   )
   await query(`delete from list_items where household_id=$1 and list_id=$2 and source='auto'`, [tenant.householdId, list.id])
+
+  // Explicit off-plan adds (source='recipe') survive the wipe above. When the
+  // week's build needs a name one of them already covers, credit the planned
+  // recipes on that row instead of inserting a duplicate. Quantities are left
+  // alone on purpose: a promoted row already includes the planned amount, and
+  // re-adding it on every rebuild would grow the number without bound.
+  const recipeRows = await query<{ id: string; name: string; source_recipe_ids: string[] | null }>(
+    `select id, name, source_recipe_ids from list_items
+       where household_id=$1 and list_id=$2 and source='recipe' and deleted_at is null`,
+    [tenant.householdId, list.id]
+  )
+  const offPlanByName = new Map(recipeRows.rows.map((r) => [r.name.trim().toLowerCase(), r]))
+
   let order = 0
   for (const g of byName.values()) {
+    const surviving = offPlanByName.get(g.name.trim().toLowerCase())
+    if (surviving) {
+      const ids = [...new Set([...(surviving.source_recipe_ids ?? []), ...g.recipeIds])]
+      if (ids.length !== (surviving.source_recipe_ids ?? []).length) {
+        await query(`update list_items set source_recipe_ids=$1 where id=$2`, [ids, surviving.id])
+      }
+      continue
+    }
     const qty = g.amount != null ? `${Number(g.amount.toFixed(2))}${g.unit ? ` ${g.unit}` : ''}` : g.unit
     const checked = prevChecked.has(g.name.trim().toLowerCase())
     await query(
@@ -568,14 +594,27 @@ const MEAL_ORDER: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, 
 export async function groceryBoard(tenant: Tenant, weekStart: string) {
   const list = await getOrCreateGroceryList(tenant)
   const weekEnd = isoAddDays(weekStart, 6)
-  const mealRows = await query<{ date: string; meal_type: string; recipe_id: string | null; title: string | null; emoji: string | null }>(
-    `select e.date, e.meal_type, e.recipe_id, coalesce(r.title, e.title) as title, r.emoji
-       from meal_plan_entries e left join recipes r on r.id = e.recipe_id and r.deleted_at is null
-      where e.household_id=$1 and e.deleted_at is null
-        and e.date >= $2 and e.date <= $3
-      order by e.date`,
-    [tenant.householdId, weekStart, weekEnd]
-  )
+  // the two board queries are independent — fetch them in one round-trip
+  const [mealRows, itemRows] = await Promise.all([
+    query<{ date: string; meal_type: string; recipe_id: string | null; title: string | null; emoji: string | null }>(
+      `select e.date, e.meal_type, e.recipe_id, coalesce(r.title, e.title) as title, r.emoji
+         from meal_plan_entries e left join recipes r on r.id = e.recipe_id and r.deleted_at is null
+        where e.household_id=$1 and e.deleted_at is null
+          and e.date >= $2 and e.date <= $3
+        order by e.date`,
+      [tenant.householdId, weekStart, weekEnd]
+    ),
+    query<ListItemRow>(
+      `select li.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
+              cb.name as creator_name, cb.avatar_emoji as creator_avatar, cb.color_hex as creator_color
+         from list_items li
+         left join persons p on p.id = li.assigned_to
+         left join persons cb on cb.id = li.created_by and cb.deleted_at is null
+        where li.household_id=$1 and li.list_id=$2 and li.deleted_at is null
+        order by li.sort_order nulls last, li.created_at`,
+      [tenant.householdId, list.id]
+    ),
+  ])
   const colorByRecipe = new Map<string, string>()
   let nextColor = 0
   const meals = mealRows.rows
@@ -591,16 +630,6 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
     })
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (MEAL_ORDER[a.mealType] ?? 9) - (MEAL_ORDER[b.mealType] ?? 9)))
 
-  const itemRows = await query<ListItemRow>(
-    `select li.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
-            cb.name as creator_name, cb.avatar_emoji as creator_avatar, cb.color_hex as creator_color
-       from list_items li
-       left join persons p on p.id = li.assigned_to
-       left join persons cb on cb.id = li.created_by and cb.deleted_at is null
-      where li.household_id=$1 and li.list_id=$2 and li.deleted_at is null
-      order by li.sort_order nulls last, li.created_at`,
-    [tenant.householdId, list.id]
-  )
   const items = itemRows.rows.map((i) => ({
     ...presentListItem(i),
     // fall back to name-based classification when a row has no/Other aisle (older
@@ -608,25 +637,31 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
     aisle: i.category && i.category !== 'Other' ? i.category : aisleFor(i.name, i.quantity),
   }))
 
-  // Recipes whose ingredients are on the list but that aren't planned this week
-  // (added straight from a recipe page) — surfaced so the by-meal view can give
-  // them their own section instead of lumping them into "Other items". Colors
-  // continue the same rotation as the planned meals so their dots stay distinct.
+  // Recipes explicitly added from their page (source='recipe' rows) that aren't
+  // planned this week — surfaced so the by-meal view can give them their own
+  // section instead of lumping them into "Other items". Only explicit adds count:
+  // derived 'auto' rows from a plan-ahead build or last week's rollover would
+  // otherwise show phantom "Unscheduled" sections. Colors continue the planned
+  // meals' rotation so their dots stay distinct.
   const plannedIds = new Set(mealRows.rows.map((d) => d.recipe_id).filter(Boolean))
-  const offPlanIds = [...new Set(items.flatMap((i) => i.sourceRecipeIds))].filter((id) => !plannedIds.has(id))
-  let unscheduled: Array<{ recipeId: string; title: string; emoji: string | null; color: string }> = []
-  if (offPlanIds.length) {
-    const { rows } = await query<{ id: string; title: string; emoji: string | null }>(
-      `select id, title, emoji from recipes
-        where household_id=$1 and id = any($2) and deleted_at is null
-        order by lower(title)`,
-      [tenant.householdId, offPlanIds]
-    )
-    unscheduled = rows.map((r) => {
-      if (!colorByRecipe.has(r.id)) colorByRecipe.set(r.id, DINNER_COLORS[nextColor++ % DINNER_COLORS.length])
-      return { recipeId: r.id, title: r.title, emoji: r.emoji, color: colorByRecipe.get(r.id)! }
-    })
-  }
+  const offPlanIds = [
+    ...new Set(items.filter((i) => i.source === 'recipe').flatMap((i) => i.sourceRecipeIds)),
+  ].filter((id) => !plannedIds.has(id))
+  const [unscheduledRecipes, staples] = await Promise.all([
+    offPlanIds.length
+      ? query<{ id: string; title: string; emoji: string | null }>(
+          `select id, title, emoji from recipes
+            where household_id=$1 and id = any($2) and deleted_at is null
+            order by lower(title)`,
+          [tenant.householdId, offPlanIds]
+        ).then((r) => r.rows)
+      : Promise.resolve([]),
+    listPantryStaples(tenant.householdId),
+  ])
+  const unscheduled = unscheduledRecipes.map((r) => {
+    if (!colorByRecipe.has(r.id)) colorByRecipe.set(r.id, DINNER_COLORS[nextColor++ % DINNER_COLORS.length])
+    return { recipeId: r.id, title: r.title, emoji: r.emoji, color: colorByRecipe.get(r.id)! }
+  })
 
   return {
     list: presentList(list),
@@ -634,7 +669,7 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
     meals,
     unscheduled,
     items,
-    staples: await listPantryStaples(tenant.householdId),
+    staples,
   }
 }
 

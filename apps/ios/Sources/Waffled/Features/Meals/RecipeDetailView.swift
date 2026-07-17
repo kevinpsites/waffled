@@ -377,14 +377,21 @@ struct RecipeDetailView: View {
     /// One call adds every non-staple ingredient — the server merges quantities into
     /// rows already on the list and links items back to this recipe, so they group
     /// under it in the grocery board's by-meal view (no meal-plan entry needed).
+    /// `groceryAdded` (which disables the banner button) only flips on success, so
+    /// a failed request stays retryable and never reads as "Added ✓".
     private func addRecipeToGrocery() {
-        groceryAdded = true
+        guard !groceryAdded else { return }
         Task {
-            let added = (try? await api.groceryFromRecipe(recipeId: r.id)) ?? 0
-            withAnimation {
-                cookedMessage = added > 0
-                    ? "Added \(added) to your grocery list."
-                    : "Everything’s already on the list or on hand."
+            do {
+                let added = try await api.groceryFromRecipe(recipeId: r.id)
+                groceryAdded = true
+                withAnimation {
+                    cookedMessage = added > 0
+                        ? "Added \(added) to your grocery list."
+                        : "Everything’s already on the list or on hand."
+                }
+            } catch {
+                withAnimation { cookedMessage = "Couldn’t reach the grocery list — try again." }
             }
         }
     }

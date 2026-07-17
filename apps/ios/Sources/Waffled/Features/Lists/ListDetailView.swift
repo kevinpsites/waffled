@@ -237,6 +237,7 @@ final class ListDetailModel {
         do {
             let board = try await api.rebuildGrocery(weekStart: weekStart)
             meals = board.meals
+            unscheduled = board.unscheduled ?? []
             staples = board.staples
             weekStart = board.weekStart
             settling = []

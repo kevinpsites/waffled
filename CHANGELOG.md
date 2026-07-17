@@ -19,8 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   side, or a snack goes straight to the list: staples you already have are skipped, quantities
   merge into items already on the list, and each item remembers which recipe it came from. In
   the grocery list's *By meal* view these recipes appear as their own "Unscheduled" sections —
-  with their own dot colors — instead of disappearing into "Other items". On iOS the recipe
-  page's "Add to grocery" now uses this same path, so its items group and merge properly too.
+  with their own dot colors — instead of disappearing into "Other items". Items you add this
+  way are yours until you clear them: refreshing the list or planning a week rebuilds only the
+  meal-plan items and leaves recipe-page adds (and anything you've deleted) alone. On iOS the
+  recipe page's "Add to grocery" now uses this same path, so its items group and merge
+  properly too.
 - **Swipe between weeks in the iPhone meal planner.** The weekly meal plan now pages with a
   horizontal flick — swipe left for next week, right for the previous one — the same gesture
   the Calendar and Chores screens already use. The arrow buttons and "Jump to this week"

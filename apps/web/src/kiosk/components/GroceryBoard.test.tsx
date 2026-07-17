@@ -107,7 +107,7 @@ const offPlanItem = {
   addedBy: null,
 }
 
-function mockBoardWithUnscheduled() {
+function mockBoardWithUnscheduled(extra: { items?: unknown[]; unscheduled?: unknown[] } = {}) {
   globalThis.fetch = vi.fn(async (url: string) => {
     const u = String(url)
     if (u.includes('/api/lists/grocery/board')) {
@@ -115,8 +115,8 @@ function mockBoardWithUnscheduled() {
         list: { id: 'g', name: 'Grocery', emoji: '🛒', listType: 'grocery', isAutoBuilt: true, sortMode: 'manual', itemCount: 3 },
         weekStart: '2026-06-07',
         meals: [{ date: '2026-06-08', mealType: 'dinner', recipeId: 'r1', title: 'Pasta', emoji: '🍝', color: '#1f5fd0' }],
-        unscheduled: [{ recipeId: 'r2', title: 'Guacamole', emoji: '🥑', color: '#8B5CF6' }],
-        items: [manualItem, autoItem, offPlanItem],
+        unscheduled: extra.unscheduled ?? [{ recipeId: 'r2', title: 'Guacamole', emoji: '🥑', color: '#8B5CF6' }],
+        items: extra.items ?? [manualItem, autoItem, offPlanItem],
         staples: [],
       })
     }
@@ -142,5 +142,23 @@ describe('GroceryBoard unscheduled recipes (By meal view)', () => {
     const other = screen.getByText('Other items').closest('.grocery-section') as HTMLElement
     expect(other.textContent).toContain('Cookies')
     expect(other.textContent).not.toContain('Avocados')
+  })
+
+  it('renders an item shared by a planned and an unscheduled recipe only once, under the planned meal', async () => {
+    // limes feed planned Pasta (r1) AND off-plan Guacamole (r2) — one row, claimed
+    // by the planned meal first (mirrors iOS's MealGrouping)
+    const shared = { ...offPlanItem, id: 's1', name: 'Limes', sourceRecipeIds: ['r1', 'r2'] }
+    mockBoardWithUnscheduled({ items: [autoItem, shared, offPlanItem] })
+    renderBoard()
+    await screen.findByText('Limes')
+    fireEvent.click(screen.getByRole('button', { name: 'By meal' }))
+
+    expect(screen.getAllByText('Limes')).toHaveLength(1)
+    // 'Pasta' also appears in the week rail — take its *section* occurrence
+    const pasta = screen.getAllByText('Pasta').map((el) => el.closest('.grocery-section')).find(Boolean) as HTMLElement
+    expect(pasta.textContent).toContain('Limes')
+    const guac = screen.getByText('Guacamole').closest('.grocery-section') as HTMLElement
+    expect(guac.textContent).not.toContain('Limes')
+    expect(guac.textContent).toContain('Avocados')
   })
 })
