@@ -1,4 +1,4 @@
-import { parseCapture, intentSummary, type ParsedIntent } from './parse'
+import { parseCapture, intentSummary, looksConfident, type ParsedIntent } from './parse'
 
 // Fixed "now": Thursday, June 11 2026, 9:00 AM local.
 const NOW = new Date(2026, 5, 11, 9, 0, 0)
@@ -640,5 +640,138 @@ describe('intentSummary + edge cases', () => {
     expect(s.icon).toBe('📅')
     expect(s.primary).toBe('Soccer')
     expect(s.detail).toContain('Wally')
+  })
+})
+
+// ── Tier 2: mutate verbs ────────────────────────────────────────────────────────
+// The offline heuristic detects a mutation verb and returns a NON-committable
+// `mutate` marker (best-effort verb + rough targetKind); the real verb/targetKind/id
+// come from the SERVER intent + /api/capture/resolve. `looksConfident` is false for
+// mutate so the bar shows "thinking" and never auto-commits offline.
+describe('parseCapture — mutate verbs (Tier 2)', () => {
+  const asMutate = (i: ParsedIntent | null) => {
+    if (!i || i.kind !== 'mutate') throw new Error(`expected mutate, got ${i?.kind}`)
+    return i
+  }
+
+  it('"mark the trash chore done" → complete a chore', () => {
+    const m = asMutate(p('mark the trash chore done'))
+    expect(m.verb).toBe('complete')
+    expect(m.targetKind).toBe('chore')
+    expect(m.target.description.toLowerCase()).toContain('trash')
+  })
+
+  it('"log 20 min on my reading goal" → log a goal (minutes pulled into args)', () => {
+    const m = asMutate(p('log 20 min on my reading goal'))
+    expect(m.verb).toBe('log')
+    expect(m.targetKind).toBe('goal')
+    expect(m.target.description.toLowerCase()).toBe('reading') // trailing "goal" dropped for cleaner ranking
+    expect(m.args).toMatchObject({ minutes: 20 })
+  })
+
+  it('"mark set the table done for Elaine" → chore by verb default (no "chore" word)', () => {
+    const m = asMutate(p('mark set the table done for Elaine'))
+    expect(m.verb).toBe('complete')
+    expect(m.targetKind).toBe('chore') // defaulted from the verb, not a "chore" noun
+    expect(m.target.description.toLowerCase()).toBe('set the table')
+  })
+
+  it('"add 10 hours to our outside goal for kevin and wally" → log a goal (not grocery)', () => {
+    const m = asMutate(p('add 10 hours to our outside goal for kevin and wally'))
+    expect(m.verb).toBe('log')
+    expect(m.targetKind).toBe('goal')
+    expect(m.target.description.toLowerCase()).toBe('outside') // amount, "for …", and "goal" stripped
+    expect(m.args).toMatchObject({ hours: 10 })
+  })
+
+  it('"delete the dentist appointment" → delete an event', () => {
+    const m = asMutate(p('delete the dentist appointment'))
+    expect(m.verb).toBe('delete')
+    expect(m.targetKind).toBe('event')
+  })
+
+  it('"cross milk off the list" → complete a list item', () => {
+    const m = asMutate(p('cross milk off the list'))
+    expect(m.verb).toBe('complete')
+    expect(m.targetKind).toBe('listItem')
+  })
+
+  it('"give the dishes to Wally" → reassign a chore (person pulled into args)', () => {
+    const m = asMutate(p('give the dishes to Wally'))
+    expect(m.verb).toBe('reassign')
+    expect(m.targetKind).toBe('chore')
+    expect(m.args).toMatchObject({ personName: 'Wally' })
+  })
+
+  // F4 — the bare "log/record X" catch-all must not hijack confident creates.
+  it('"record the school play Friday 7pm" → an event create, NOT a goal-log (F4)', () => {
+    const e = asEvent(p('record the school play Friday 7pm'))
+    const d = new Date(e.startsAt)
+    expect(d.getDay()).toBe(5) // Friday
+    expect(d.getHours()).toBe(19)
+  })
+
+  it('"log 30 minutes on my reading goal" still → a goal-log with minutes (F4 guard)', () => {
+    const m = asMutate(p('log 30 minutes on my reading goal'))
+    expect(m.verb).toBe('log')
+    expect(m.targetKind).toBe('goal')
+    expect(m.args).toMatchObject({ minutes: 30 })
+  })
+
+  // F5 — "cross/check/tick off X" (leading off) works, not only "cross X off".
+  it('"cross off milk" → complete a list item (leading "off") (F5)', () => {
+    const m = asMutate(p('cross off milk'))
+    expect(m.verb).toBe('complete')
+    expect(m.targetKind).toBe('listItem')
+    expect(m.target.description.toLowerCase()).toBe('milk')
+  })
+
+  it('"check off milk" / "tick off the bread" → complete (F5)', () => {
+    const m1 = asMutate(p('check off milk'))
+    expect(m1.verb).toBe('complete')
+    expect(m1.target.description.toLowerCase()).toBe('milk')
+    const m2 = asMutate(p('tick off the bread'))
+    expect(m2.verb).toBe('complete')
+    expect(m2.target.description.toLowerCase()).toBe('bread')
+  })
+
+  it('"cross milk off" → complete (trailing "off" still works) (F5)', () => {
+    const m = asMutate(p('cross milk off'))
+    expect(m.verb).toBe('complete')
+    expect(m.targetKind).toBe('listItem')
+    expect(m.target.description.toLowerCase()).toBe('milk')
+  })
+
+  // F8 — a time-unit "spent" is a goal-log, not a redeem (which would drop the amount and 400).
+  it('"I spent 30 minutes on my reading goal" → log a goal, NOT redeem (F8)', () => {
+    const m = asMutate(p('I spent 30 minutes on my reading goal'))
+    expect(m.verb).toBe('log')
+    expect(m.targetKind).toBe('goal')
+    expect(m.args).toMatchObject({ minutes: 30 })
+  })
+
+  it('"Wally spent 50 points on the ice cream reward" still → redeem (F8 guard)', () => {
+    const m = asMutate(p('Wally spent 50 points on the ice cream reward'))
+    expect(m.verb).toBe('redeem')
+    expect(m.targetKind).toBe('reward')
+    expect(m.target.description.toLowerCase()).toContain('ice cream')
+  })
+
+  it('a mutate marker is NEVER confident (forces the server path, no offline auto-commit)', () => {
+    expect(looksConfident(p('mark the trash chore done'), 'mark the trash chore done')).toBe(false)
+    expect(looksConfident(p('delete the dentist appointment'), 'delete the dentist appointment')).toBe(false)
+  })
+
+  it('regression: create phrases still parse as their create kind', () => {
+    expect(p('Soccer Tue 4pm for Wally')?.kind).toBe('event')
+    expect(p('add milk to the grocery list')?.kind).toBe('grocery')
+    expect(p('set a goal to read 20 books')?.kind).toBe('goal')
+    expect(p('add a reward: ice cream night for 50 stars')?.kind).toBe('reward')
+  })
+
+  it('summarizes a mutate for the preview chip (primary = the description)', () => {
+    const s = intentSummary(asMutate(p('delete the dentist appointment')))
+    expect(s.primary.toLowerCase()).toContain('dentist')
+    expect(s.kind).toBeTruthy()
   })
 })

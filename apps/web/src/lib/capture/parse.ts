@@ -26,7 +26,16 @@ export type ParsedIntent =
   | { kind: 'goal'; title: string; goalType: string; targetValue: number | null; unit: string | null; deadline: string | null; trackingMode: string; participantMode: string; targetBasis: string; participantIds: string[]; audience: 'me' | 'everyone' | null }
   | { kind: 'pantry'; name: string; amount: string | null; unit: string | null; location: string; expiresOn: string | null; lowAt: number | null }
   | { kind: 'reward'; title: string; emoji: string | null; cost: number | null; currency: string | null; category: string | null; requiresApproval: boolean | null }
+  // TIER 2 — a MUTATE verb acting on an EXISTING row. The offline heuristic only
+  // returns a best-effort, NON-committable marker (verb + a rough targetKind from the
+  // noun); the authoritative verb/targetKind/args come from the SERVER intent, and the
+  // real row id comes from POST /api/capture/resolve. `looksConfident` is false for it.
+  | { kind: 'mutate'; verb: MutateVerb; targetKind: MutateTargetKind | null; target: { description: string }; args: Record<string, unknown> }
   | { kind: 'unsupported'; reason: string }
+
+// The mutate verb/target vocabulary (mirrors the server §3.1 wire contract).
+export type MutateVerb = 'complete' | 'log' | 'reschedule' | 'reassign' | 'redeem' | 'delete'
+export type MutateTargetKind = 'chore' | 'goal' | 'listItem' | 'event' | 'reward'
 
 // Member types for the `person` intent, and a human label for the preview.
 export const MEMBER_TYPES = ['adult', 'teen', 'kid'] as const
@@ -660,11 +669,125 @@ function detectReward(text: string): Extract<ParsedIntent, { kind: 'reward' }> |
   return { kind: 'reward', title, emoji: null, cost, currency: null, category: null, requiresApproval: null }
 }
 
+// MUTATE — a verb acting on an EXISTING row ("mark the trash chore done", "log 20 min
+// on my reading goal", "delete the dentist appointment"). This offline heuristic only
+// recognizes the verb + a rough noun-phrase description and guesses a targetKind; the
+// SERVER re-parses to the authoritative verb/targetKind/args, and the row is picked by
+// POST /api/capture/resolve. The marker is deliberately NON-committable (looksConfident
+// → false) so a destructive action is never auto-committed offline (plan §2.4/§6).
+//
+// ⚠️ KEEP IN SYNC — this detector is a tracked FAST-FOLLOW on iOS
+//   (apps/ios/Sources/*/Sync/CaptureHeuristic.swift + its CaptureHeuristicTests). Do NOT
+//   edit iOS in this change; port the same verb/target rules there in the follow-up.
+const MUTATE_PATTERNS: { re: RegExp; verb: MutateVerb; group: number }[] = [
+  // complete — "mark/set X (as) done/complete/finished/off", and BOTH check-off orders:
+  // "check/cross/tick off X" (leading off) and "check/cross/tick X off" (trailing off).
+  { re: /^\s*(?:please\s+)?(?:mark|set)\s+(.+?)\s+(?:as\s+)?(?:done|complete|completed|finished|off)\b/i, verb: 'complete', group: 1 },
+  { re: /^\s*(?:please\s+)?(?:check|cross|tick)\s+off\s+(.+)$/i, verb: 'complete', group: 1 },
+  { re: /^\s*(?:please\s+)?(?:check|cross|tick)\s+(.+?)\s+off\b/i, verb: 'complete', group: 1 },
+  { re: /^\s*(?:please\s+)?(?:complete|finish)\s+(.+)$/i, verb: 'complete', group: 1 },
+  // delete — "delete/remove/cancel X"
+  { re: /^\s*(?:please\s+)?(?:delete|remove|cancel)\s+(.+)$/i, verb: 'delete', group: 1 },
+  // reschedule — "reschedule/move/push X (to …)"
+  { re: /^\s*(?:please\s+)?(?:reschedule|move|push)\s+(.+?)\s+(?:to|for)\s+.+$/i, verb: 'reschedule', group: 1 },
+  { re: /^\s*(?:please\s+)?reschedule\s+(.+)$/i, verb: 'reschedule', group: 1 },
+  // reassign — "reassign/give/assign X to …"
+  { re: /^\s*(?:please\s+)?(?:reassign|give|assign)\s+(.+?)\s+to\s+.+$/i, verb: 'reassign', group: 1 },
+  // redeem — "redeem X", "<person> spent N points/stars on X", "spent … on the X reward".
+  // A "spent" phrase needs REWARD context (a points/stars amount, or "reward" in the target)
+  // so a time-spent phrase ("I spent 30 minutes on my reading goal") falls through to `log`
+  // below instead of a redeem that drops the amount and can only 400 (F8).
+  { re: /^\s*(?:please\s+)?redeem\s+(.+)$/i, verb: 'redeem', group: 1 },
+  { re: /^\s*.+?\s+(?:spent|spend|spends)\s+.+?\b(?:points?|stars?|pts?|coins?)\b.*?\s+(?:on|for)\s+(.+)$/i, verb: 'redeem', group: 1 },
+  { re: /^\s*.+?\s+(?:spent|spend|spends)\s+.+?\s+(?:on|for)\s+(.+?\breward\b.*)$/i, verb: 'redeem', group: 1 },
+  // log — needs real goal-log signal (F4): an amount right after the verb ("log 30 minutes
+  // on my reading goal", "record 2 chapters"), the word "goal" in the phrase, a time-unit
+  // "spent" ("I spent 30 minutes on my reading goal"), or "add <amount> to … goal". A bare
+  // "log/record X" ("record the school play Friday 7pm") is NOT a mutate — it falls through
+  // to the create branches. The `goal` word also keeps "add …" from stealing the pantry/list
+  // creates ("add milk to the pantry" / "add X to the list").
+  { re: /^\s*(?:please\s+)?(?:log|record)\s+(\d+(?:\.\d+)?(?:\s+.+)?)$/i, verb: 'log', group: 1 },
+  { re: /^\s*(?:please\s+)?(?:log|record)\s+(.+?\bgoal\b.*)$/i, verb: 'log', group: 1 },
+  { re: /^\s*.+?\s+(?:spent|spend|spends)\s+(\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?)\b.*)$/i, verb: 'log', group: 1 },
+  { re: /^\s*(?:please\s+)?add\s+.+?\s+to\s+(.+?\bgoal\b.*)$/i, verb: 'log', group: 1 },
+]
+
+// A rough targetKind, server-overridden. An explicit "chore"/"goal"/"reward" word wins;
+// otherwise we DEFAULT from the verb (a "mark X done" is almost always a chore, a "log" a
+// goal, etc.) — without this, a phrase with no kind noun ("mark set the table done") resolves
+// against no target and dead-ends on "couldn't find a match".
+const VERB_DEFAULT_KIND: Record<MutateVerb, MutateTargetKind> = {
+  complete: 'chore', log: 'goal', reschedule: 'event', reassign: 'chore', redeem: 'reward', delete: 'event',
+}
+function guessTargetKind(text: string, verb: MutateVerb): MutateTargetKind {
+  if (/\bchores?\b/i.test(text)) return 'chore'
+  if (/\bgoals?\b/i.test(text)) return 'goal'
+  if (/\breward\b/i.test(text)) return 'reward'
+  if (/\b(appointment|meeting|event|practice|reservation)\b/i.test(text)) return 'event'
+  if (/\b(?:list\s*item|item|list)\b/i.test(text) || (verb === 'complete' && /\boff\b/i.test(text))) return 'listItem'
+  return VERB_DEFAULT_KIND[verb]
+}
+
+// Best-effort args from the phrase (the server refines them): a numeric amount for `log`
+// (time units → hours/minutes so the goal-log folds them; else a plain amount), and the
+// "to <name>" assignee for `reassign`.
+function mutateArgs(verb: MutateVerb, text: string): Record<string, unknown> {
+  if (verb === 'log') {
+    const m = /(\d+(?:\.\d+)?)\s*([a-z]+)/i.exec(text)
+    if (m) {
+      const n = parseFloat(m[1])
+      const unit = m[2].toLowerCase()
+      if (/^(?:hours?|hrs?|hr)$/.test(unit)) return { hours: n }
+      if (/^(?:minutes?|mins?|min)$/.test(unit)) return { minutes: n }
+      return { amount: n }
+    }
+  }
+  if (verb === 'reassign') {
+    const m = /\bto\s+([A-Za-z][\w'’-]*)/.exec(text)
+    if (m) return { personName: m[1] }
+  }
+  return {}
+}
+
+// Clean a captured noun phrase into a display description: drop a leading amount/unit
+// ("20 min on my reading goal" → "reading goal"), a leading "on/to my/our/the", and a
+// trailing "for <people>" (participants, not part of the name).
+function mutateDescription(raw: string): string {
+  let s = tidy(raw)
+  const pre = / (?:on|to) (?:my |our |the )?/i.exec(s)
+  if (pre) s = s.slice(pre.index + pre[0].length)
+  s = s.replace(/^\s*(?:my |our |the )/i, '')
+  s = s.replace(/^\s*\d+(?:\.\d+)?\s+[a-z]+\s+/i, '') // a leading "20 min ", "2 chapters "
+  s = s.replace(/\s+for\s+[a-z].*$/i, '') // trailing "for kevin and wally"
+  // Drop a trailing kind noun ("outside goal" → "outside", "trash chore" → "trash") so the
+  // name — not the polluting kind word — drives the ranking. Keep it if that empties the string.
+  const bare = s.replace(/\s+(?:goals?|chores?|rewards?|events?|tasks?|items?)\s*$/i, '')
+  if (tidy(bare)) s = bare
+  return tidy(s)
+}
+
+function detectMutate(text: string): Extract<ParsedIntent, { kind: 'mutate' }> | null {
+  for (const { re, verb, group } of MUTATE_PATTERNS) {
+    const m = re.exec(text)
+    if (!m) continue
+    const description = mutateDescription(m[group] ?? '')
+    if (!description) continue
+    return { kind: 'mutate', verb, targetKind: guessTargetKind(text, verb), target: { description }, args: mutateArgs(verb, text) }
+  }
+  return null
+}
+
 export function parseCapture(raw: string, persons: string[] = [], now: Date = new Date(), lists: string[] = []): ParsedIntent | null {
   const text = raw.trim()
   if (!text) return null
 
   const person = findPerson(text, persons)
+
+  // MUTATE — a verb acting on an EXISTING row ("mark … done", "delete …", "log …").
+  // Detected FIRST, before every create branch, and returns a non-committable marker so
+  // the bar forces the server path (the LLM re-parses to the real verb/targetKind/args).
+  const mutateIntent = detectMutate(text)
+  if (mutateIntent) return mutateIntent
 
   // PERSON — "add my son Max" / "add a family member Jane". A specific create phrase,
   // so it wins over the generic grocery/event fallbacks. Minimal: name + memberType.
@@ -841,6 +964,10 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
 // fallback, which is a last resort — so we hold that one back while the LLM thinks.
 export function looksConfident(intent: ParsedIntent | null, text: string): boolean {
   if (!intent) return false
+  // A mutate marker is NEVER confident — it must go to the server (which owns the real
+  // verb/targetKind + candidate lookup), so we keep "thinking" and never auto-commit it
+  // offline. Offline it degrades to an "I need a connection for that" preview.
+  if (intent.kind === 'mutate') return false
   if (intent.kind !== 'grocery') return true
   // Generic verbs ("add", "get", "need") aren't grocery-specific — they fit
   // everything ("add a goal", "add soccer"). Only a real shopping cue counts:
@@ -907,7 +1034,36 @@ export function intentSummary(intent: ParsedIntent): { icon: string; kind: strin
           intent.requiresApproval ? 'needs approval' : '',
         ].filter(Boolean).join(' · '),
       }
+    case 'mutate':
+      return { icon: mutateIcon(intent.verb), kind: mutateVerbLabel(intent.verb), primary: intent.target.description, detail: '' }
     case 'unsupported':
       return { icon: '🤔', kind: 'Not supported yet', primary: intent.reason, detail: '' }
   }
+}
+
+// Human label + icon for a mutate verb, used by the preview chip + the candidate picker.
+export function mutateVerbLabel(v: MutateVerb): string {
+  return v === 'complete' ? 'Mark done'
+    : v === 'log' ? 'Log progress'
+    : v === 'reschedule' ? 'Reschedule'
+    : v === 'reassign' ? 'Reassign'
+    : v === 'redeem' ? 'Redeem'
+    : 'Delete'
+}
+export function mutateIcon(v: MutateVerb): string {
+  return v === 'complete' ? '✅'
+    : v === 'log' ? '📈'
+    : v === 'reschedule' ? '📅'
+    : v === 'reassign' ? '🔄'
+    : v === 'redeem' ? '⭐'
+    : '🗑️'
+}
+// Human label for a mutate targetKind (for the "couldn't find a …" not-found message).
+export function mutateTargetLabel(k: MutateTargetKind | null): string {
+  return k === 'chore' ? 'chore'
+    : k === 'goal' ? 'goal'
+    : k === 'listItem' ? 'list item'
+    : k === 'event' ? 'event'
+    : k === 'reward' ? 'reward'
+    : 'match'
 }

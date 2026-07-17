@@ -557,6 +557,53 @@ export function isTimeUnit(unit: string | null | undefined): boolean {
   return unit != null && TIME_UNITS.has(unit.trim().toLowerCase())
 }
 
+// The ONE body→log-amount mapping/validation for logging progress on a goal — shared
+// by POST /api/goals/:id/log and the capture commit applier so the two callers can
+// never diverge (e.g. minutes on a count goal, a bare amount on a time goal, or the
+// hours/minutes fold guard). Returns the folded decimal amount, or the 400 message.
+export function goalLogAmount(
+  meta: { goalType: string; unit: string | null },
+  body: { amount?: unknown; hours?: unknown; minutes?: unknown }
+): { amount: number } | { error: string } {
+  // A checklist has no numeric progress — it's driven by ticking steps.
+  if (meta.goalType === 'checklist') {
+    return { error: 'checklist goals are updated by ticking steps, not logging progress' }
+  }
+  // Time goals may be logged as hours + minutes; the server folds them into the
+  // decimal-hours `amount` so the client never has to (10m -> 0.1666…). Both fields
+  // are optional and either may stand alone (0h 45m, or 2h with no minutes).
+  const usesHm = body.hours != null || body.minutes != null
+  if (usesHm) {
+    if (body.amount != null) {
+      return { error: 'send either amount or hours/minutes, not both' }
+    }
+    if (meta.goalType !== 'total' || !isTimeUnit(meta.unit)) {
+      return { error: 'hours and minutes only apply to a time goal (measured in hours)' }
+    }
+    const hours = body.hours == null ? 0 : Number(body.hours)
+    const minutes = body.minutes == null ? 0 : Number(body.minutes)
+    // Whole hours + a 0–59 minute remainder — the same shape both clients enter, reasserted
+    // here so a non-UI caller can't fold e.g. { minutes: 200 } into 3.33h.
+    if (!Number.isInteger(hours) || hours < 0 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+      return { error: 'hours must be a whole number ≥ 0 and minutes 0–59' }
+    }
+    const amount = hours + minutes / 60
+    if (amount === 0) {
+      return { error: 'log some time — hours and minutes cannot both be zero' }
+    }
+    return { amount }
+  }
+  const amount = Number(body.amount)
+  if (!Number.isFinite(amount) || amount === 0) {
+    return { error: 'amount must be a non-zero number' }
+  }
+  // A count goal tallies whole things (parks, books) — no fractional amounts.
+  if (meta.goalType === 'count' && !Number.isInteger(amount)) {
+    return { error: 'a count goal is logged in whole numbers' }
+  }
+  return { amount }
+}
+
 // True only if every id is a live person in this household — so a /log can't attribute
 // progress to a stranger (or someone in another household).
 export async function personsInHousehold(householdId: string, ids: string[]): Promise<boolean> {

@@ -90,6 +90,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   iPhone, and iPad). Because rewards are the "spend" side of the chores economy, quick-add offers this
   only when rewards are turned on and to grown-ups who manage rewards — otherwise it says so (a kid
   sees "Ask a parent to add a reward") instead of failing.
+- **Quick-add can now *do* things, not just add them.** Beyond creating, the "Add anything" bar
+  understands actions on things you already have — **"mark the trash chore done"**, **"give the
+  dishes to Wally"**, **"log 20 min on my reading goal"**. You describe the thing in your own words
+  (no need to know its exact name); Waffled finds it, and when a phrase could match more than one, it
+  shows the matches so you pick the right one before anything changes. This first release covers
+  **completing and reassigning chores** and **logging goal progress**, on the web. Actions always run
+  against the server (they never guess offline), reassigning someone else's chore still needs a
+  grown-up, and anything destructive asks first. More actions (rescheduling events, crossing items off
+  lists, redeeming rewards) and iPhone/iPad support are on the way. **Reliable "do anything" needs an AI
+  provider** — configure one in Settings → AI & capture; without a key the on-device parser still handles
+  common phrasings on a best-effort basis (and the preview says so), but an AI key is what makes the full
+  range of wording and matching dependable.
 
 ### Changed
 

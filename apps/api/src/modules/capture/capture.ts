@@ -7,7 +7,17 @@
 // heuristic parser — so the bar always works, even offline.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
+import { log } from '../../platform/logger'
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
+import type { Tenant } from '../households/households'
+import {
+  getCaptureTarget,
+  unsupportedKindReason,
+  unsupportedVerbReason,
+  type TargetKind,
+  type MutateVerb,
+  type ResolveCtx,
+} from './capture-resolvers'
 import config from '../../platform/config'
 import {
   completeJson,
@@ -24,7 +34,7 @@ type Api = ReturnType<typeof createAPI>
 // What the model is asked to emit. Mirrors the kiosk's ParsedIntent so the client
 // treats a server parse and a local heuristic parse identically.
 export interface CaptureIntent {
-  kind: 'event' | 'task' | 'grocery' | 'meal' | 'list' | 'countdown' | 'person' | 'goal' | 'pantry' | 'reward' | 'unsupported'
+  kind: 'event' | 'task' | 'grocery' | 'meal' | 'list' | 'countdown' | 'person' | 'goal' | 'pantry' | 'reward' | 'mutate' | 'unsupported'
   title?: string
   name?: string | null
   quantity?: string | null
@@ -67,6 +77,13 @@ export interface CaptureIntent {
   // list intent: add itemName to the named (non-grocery) list
   listName?: string | null
   itemName?: string | null
+  // mutate intent (Tier 2): act on an EXISTING row. The model extracts the verb +
+  // target.description (the spoken noun phrase) + loose args ONLY — never an id; the
+  // resolve/commit routes resolve the row deterministically.
+  verb?: MutateVerb
+  targetKind?: TargetKind
+  target?: { description: string }
+  args?: Record<string, unknown>
   // unsupported intent: a short, friendly reason quick-add can't do it
   reason?: string
   whenLabel?: string
@@ -74,6 +91,17 @@ export interface CaptureIntent {
 }
 
 const MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack'])
+
+// Same shape the mirrored feature routes gate their :id params on — a commit's
+// targetId must be a resolved Candidate.id (always a UUID), so anything else is a
+// client bug we 400 with a friendly message instead of a raw Postgres cast error.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Tier 2 mutate axis. Verbs are lowercased before lookup; target kinds are camelCase
+// (listItem) so we match case-insensitively via the lower→canonical map.
+const MUTATE_VERBS = new Set<string>(['complete', 'log', 'reschedule', 'reassign', 'redeem', 'delete'])
+const TARGET_KINDS: TargetKind[] = ['chore', 'goal', 'listItem', 'event', 'reward']
+const TARGET_KIND_BY_LOWER = new Map<string, TargetKind>(TARGET_KINDS.map((k) => [k.toLowerCase(), k]))
 
 interface CaptureContext {
   now: string
@@ -90,7 +118,7 @@ const INTENT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    kind: { type: 'string', enum: ['event', 'task', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'pantry', 'reward', 'unsupported'] },
+    kind: { type: 'string', enum: ['event', 'task', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'pantry', 'reward', 'mutate', 'unsupported'] },
     title: { type: ['string', 'null'], description: 'Clean title for event/task; the dish for a meal; the goal for a goal; the reward name for a reward' },
     name: { type: ['string', 'null'], description: 'Grocery item name, (kind=person) the new family member\'s name, or (kind=pantry) the on-hand item\'s name' },
     quantity: { type: ['string', 'null'], description: 'Grocery/list amount, e.g. "2 lbs"' },
@@ -125,6 +153,15 @@ const INTENT_SCHEMA = {
     currency: { type: ['string', 'null'], description: 'For kind=reward: the star/point currency name if a non-default one is named, else null.' },
     category: { type: ['string', 'null'], description: 'For kind=reward: a shop category (e.g. treats, screen time) if one is clear, else null.' },
     requiresApproval: { type: ['boolean', 'null'], description: 'For kind=reward: true/false ONLY if the note says whether a parent must approve; else null to inherit the household default.' },
+    verb: { type: ['string', 'null'], enum: ['complete', 'log', 'reschedule', 'reassign', 'redeem', 'delete', null], description: 'For kind=mutate: the action to take on an EXISTING thing.' },
+    targetKind: { type: ['string', 'null'], enum: ['chore', 'goal', 'listItem', 'event', 'reward', null], description: 'For kind=mutate: which kind of existing thing the verb acts on.' },
+    target: {
+      type: ['object', 'null'],
+      description: 'For kind=mutate: the spoken noun phrase naming the existing thing, e.g. { "description": "trash chore" }. Copy the words the user used — do NOT invent an id.',
+      properties: { description: { type: 'string' } },
+      additionalProperties: false,
+    },
+    args: { type: ['object', 'null'], description: 'For kind=mutate: verb parameters the note gives (e.g. { "minutes": 20 } for log, { "date": "YYYY-MM-DD" } for reschedule, { "personName": "Wally" } for reassign/redeem). Never an id. Omit fields not mentioned.', additionalProperties: true },
   },
   required: ['kind'],
 }
@@ -138,7 +175,7 @@ function systemPrompt(ctx: CaptureContext): string {
     `Family members: ${fam}.`,
     `Custom lists: ${ctx.lists && ctx.lists.length ? ctx.lists.join(', ') : '(none yet)'}.`,
     '',
-    'Kinds: "event" = happens at a date/time; "task" = a chore someone does, maybe recurring; "grocery" = an item to buy (the grocery/shopping list); "pantry" = an item you ALREADY HAVE on hand, stored in the pantry/fridge/freezer (NOT the shopping list); "meal" = a dish for the weekly meal plan; "list" = add an item to a named custom list (packing list, Costco, Target run, etc. — NOT groceries); "countdown" = a future day to count down to (no clock time); "person" = add a new family/household member; "goal" = a personal or shared goal to work toward; "reward" = a reward-shop item kids can spend their stars/points on; "unsupported" = anything else.',
+    'Kinds: "event" = happens at a date/time; "task" = a chore someone does, maybe recurring; "grocery" = an item to buy (the grocery/shopping list); "pantry" = an item you ALREADY HAVE on hand, stored in the pantry/fridge/freezer (NOT the shopping list); "meal" = a dish for the weekly meal plan; "list" = add an item to a named custom list (packing list, Costco, Target run, etc. — NOT groceries); "countdown" = a future day to count down to (no clock time); "person" = add a new family/household member; "goal" = a personal or shared goal to work toward; "reward" = a reward-shop item kids can spend their stars/points on; "mutate" = act on something that ALREADY EXISTS (mark it done, log progress, move it, reassign it, redeem it, or delete it); "unsupported" = anything else.',
     'Always follow these rules:',
     '- ALWAYS extract a concise "title" (for grocery use "name") — strip command words like "please add", "make a chore to", "to X\'s list".',
     '- If a quoted phrase is present, use it verbatim as the title.',
@@ -154,7 +191,8 @@ function systemPrompt(ctx: CaptureContext): string {
     '- person: "add my son/daughter/husband/wife/mom/dad/… <name>", "add a family member <name>", "create a profile for <name>" → kind "person". Set "name" (just the person\'s name). Infer "memberType": son/daughter/kid/child → "kid", teen/teenager → "teen", spouse/husband/wife/partner/mom/dad/parent/adult → "adult"; default "adult" for a bare name. Optionally set "avatarEmoji" (a fitting face), "birthday" (YYYY-MM-DD) ONLY if an actual date is given, and "isAdmin" true only for a clear parent/guardian. NEVER invent a birthday from an age ("age 8" → leave birthday null).',
     '- goal: "set a goal to…", "set a personal/new/weekly goal to…", "set myself a goal to…", "I want to…", "my goal is…" → kind "goal" (an adjective like personal/new/big/weekly/family between the article and "goal" is fine). Set "title" (the goal itself). Infer "goalType": a countable target ("read 20 books") → "count" with "targetValue" (20) + "unit" ("books"); an accumulating amount ("save $500", "run 100 miles") → "total" with targetValue + unit; a recurring habit with NO number ("drink water", "get in shape", "meditate every day") → "habit"; an explicit list of steps → "checklist"; when unsure → "habit". A count/total with no number is really a habit — leave targetValue null and use "habit". Default "trackingMode" "shared_total". Optionally set "deadline" (YYYY-MM-DD) when a date is given ("this year" → Dec 31 of this year; "by september" → the last day of the next September). Set "audience" from the phrasing: "everyone" for a family/shared/together goal ("set a family goal", "our goal", "we want to…"), "me" for a personal one ("personal goal", "my own", "I want to…"), else null.',
     '- reward: "add a reward: <name> for N stars", "new reward <name> costs N points", "reward: <name>" → kind "reward". Set "title" (the reward name) and, when a star/point price is given, "cost" (the whole number N). Trigger only on the explicit word "reward". Optionally set "emoji". This is the reward SHOP catalog, NOT awarding stars for a chore.',
-    '- unsupported: if the note is a reminder/notification, or anything that is not an event, task/chore, grocery item, meal, list item, countdown, family member, goal, or reward, return kind "unsupported" with a short friendly "reason". Do NOT force it into another kind.',
+    '- mutate: the note acts on something that ALREADY EXISTS rather than creating something new — "mark/cross off/finish X", "log/record N on X", "move/reschedule X to <day>", "give/assign X to <name>", "redeem/spend on X", "delete/remove/cancel X". Set kind "mutate", "verb" (complete | log | reschedule | reassign | redeem | delete), "targetKind" (chore | goal | listItem | event | reward — which kind of existing thing it is), and "target" = { "description": the words naming that thing, e.g. "trash chore", "reading goal", "soccer" }. Put verb params in "args": log → { amount } or { minutes } / { hours }; reschedule → { date: "YYYY-MM-DD", time: "HH:mm" }; reassign/redeem → { personName }. NEVER invent an id — the server finds the exact row from your description. Complete/delete take no args.',
+    '- unsupported: if the note is a reminder/notification, or anything that is not an event, task/chore, grocery item, meal, list item, countdown, family member, goal, reward, or an action on an existing thing, return kind "unsupported" with a short friendly "reason". Do NOT force it into another kind.',
     '- stars = the integer reward if mentioned, else null.',
     '',
     'Examples below ASSUME today is Thursday June 11 2026. Always recompute dates from the ACTUAL current date stated above, not from this example date:',
@@ -185,6 +223,11 @@ function systemPrompt(ctx: CaptureContext): string {
     '"my goal is to save $500" -> {"kind":"goal","title":"Save $500","goalType":"total","targetValue":500,"unit":"dollars","trackingMode":"shared_total"}',
     '"add a reward: ice cream night for 50 stars" -> {"kind":"reward","title":"Ice cream night","cost":50,"emoji":"🍦"}',
     '"new reward extra screen time costs 100 points" -> {"kind":"reward","title":"Extra screen time","cost":100}',
+    '"mark the trash chore done" -> {"kind":"mutate","verb":"complete","targetKind":"chore","target":{"description":"trash chore"}}',
+    '"log 20 min on my reading goal" -> {"kind":"mutate","verb":"log","targetKind":"goal","target":{"description":"reading goal"},"args":{"minutes":20}}',
+    '"move soccer to Thursday" -> {"kind":"mutate","verb":"reschedule","targetKind":"event","target":{"description":"soccer"},"args":{"date":"2026-06-18"}}',
+    '"give the dishes to Wally" -> {"kind":"mutate","verb":"reassign","targetKind":"chore","target":{"description":"dishes"},"args":{"personName":"Wally"}}',
+    '"delete the dentist appointment" -> {"kind":"mutate","verb":"delete","targetKind":"event","target":{"description":"dentist appointment"}}',
   ].join('\n')
 }
 
@@ -192,7 +235,7 @@ function systemPrompt(ctx: CaptureContext): string {
 export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent {
   const r = (raw ?? {}) as Record<string, unknown>
   const kindRaw = String(r.kind ?? '').toLowerCase()
-  const kind: CaptureIntent['kind'] = (['event', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'pantry', 'reward', 'unsupported'] as const).find((k) => k === kindRaw) ?? 'task'
+  const kind: CaptureIntent['kind'] = (['event', 'grocery', 'meal', 'list', 'countdown', 'person', 'goal', 'pantry', 'reward', 'mutate', 'unsupported'] as const).find((k) => k === kindRaw) ?? 'task'
 
   // Only accept a person that's actually in the family (case-insensitive).
   const pn = r.personName == null ? null : String(r.personName)
@@ -200,6 +243,20 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
 
   if (kind === 'unsupported') {
     return { kind, reason: String(r.reason ?? '').trim() || 'That isn’t something quick-add can do yet.' }
+  }
+  if (kind === 'mutate') {
+    // Validate/coerce verb + targetKind against the enums; require a non-empty target
+    // description. Do NOT resolve any id here — resolve/commit do that against the DB.
+    const verbRaw = String(r.verb ?? '').toLowerCase()
+    if (!MUTATE_VERBS.has(verbRaw)) throw new Error('mutate: bad verb')
+    const verb = verbRaw as MutateVerb
+    const targetKind = TARGET_KIND_BY_LOWER.get(String(r.targetKind ?? '').toLowerCase())
+    if (!targetKind) throw new Error('mutate: bad targetKind')
+    const description = String((r.target as { description?: unknown } | null | undefined)?.description ?? '').trim()
+    if (!description) throw new Error('mutate: no target description')
+    // args is a loose passthrough object (only the fields a verb reads are used later).
+    const args = r.args && typeof r.args === 'object' ? (r.args as Record<string, unknown>) : {}
+    return { kind, verb, targetKind, target: { description }, args }
   }
   if (kind === 'list') {
     const itemName = String(r.itemName ?? r.name ?? r.title ?? '').trim()
@@ -635,6 +692,24 @@ export async function warmProvider(householdId: string): Promise<void> {
   }).catch(() => {})
 }
 
+// Build the richer resolve/commit context from a resolved Tenant — the household's
+// settings + timezone (same select shape parseWithProvider uses) plus a fresh `now`.
+// This is distinct from CaptureContext (names-only, for the stateless parse).
+async function buildResolveCtx(tenant: Tenant): Promise<ResolveCtx> {
+  const { rows } = await query<{ timezone: string; settings: unknown }>(
+    `select timezone, settings from households where id = $1`,
+    [tenant.householdId]
+  )
+  return {
+    tenant,
+    householdId: tenant.householdId,
+    personId: tenant.personId,
+    now: new Date(),
+    timezone: rows[0]?.timezone ?? 'UTC',
+    settings: rows[0]?.settings ?? null,
+  }
+}
+
 // ── Routes ───────────────────────────────────────────────────────────────────
 export function registerCaptureRoutes(api: Api): void {
   // Warm the model (fire-and-forget) — the kiosk calls this when the capture bar
@@ -654,6 +729,75 @@ export function registerCaptureRoutes(api: Api): void {
       return { intent, via, fallback: false }
     } catch (err) {
       return { intent: null, via: 'heuristic', fallback: true, error: (err as Error).message }
+    }
+  }))
+
+  // Tier 2 mutate — step 2: resolve a spoken noun phrase to candidate rows. Thin
+  // dispatcher over the capture registry. Three distinguishable "no candidates" cases:
+  // an unregistered kind or a verb the target can't apply → candidates:[] + unsupported
+  // + a friendly disabledReason (so the client never says "couldn't find it" about
+  // something quick-add can't touch); a disabled module → candidates:[] + its
+  // disabledReason; a genuinely-empty match stays a bare 200 { candidates: [] }.
+  // A resolver/DB failure is a real 500 (logged), never a silent no-match.
+  api.post('/api/capture/resolve', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { verb?: unknown; targetKind?: unknown; target?: { description?: unknown }; args?: unknown }
+    const kindRaw = String(body.targetKind ?? '')
+    const target = getCaptureTarget(kindRaw as TargetKind)
+    if (!target) {
+      return { candidates: [], unsupported: true, disabledReason: unsupportedKindReason(kindRaw) }
+    }
+    const verb = String(body.verb ?? '') as MutateVerb
+    if (!target.supportedVerbs.includes(verb)) {
+      return { candidates: [], unsupported: true, disabledReason: unsupportedVerbReason(kindRaw as TargetKind, verb) }
+    }
+    try {
+      const ctx = await buildResolveCtx(tenant)
+      if (!target.isEnabled(ctx)) return { candidates: [], disabledReason: target.disabledReason }
+      const description = String(body.target?.description ?? '').trim()
+      const args = body.args && typeof body.args === 'object' ? (body.args as Record<string, unknown>) : {}
+      const candidates = await target.resolveCandidates(ctx, { verb, target: { description }, args })
+      return { candidates }
+    } catch (err) {
+      log.error('capture resolve failed', { err, requestId: (req as Request & { requestId?: string }).requestId })
+      return res.status(500).json({ error: 'Error', message: 'Something went wrong finding that — try again.' })
+    }
+  }))
+
+  // Tier 2 mutate — step 3: apply the chosen mutation. 400 { error:'Unsupported' } for
+  // an unknown/disabled target kind or a verb the target can't apply (same friendly
+  // copy /resolve uses), and 400 for a malformed targetId before anything touches the
+  // DB. The module's applyMutation enforces the same caps its route does; a thrown
+  // domain error with a 4xx statusCode is relayed as { error, message }, while anything
+  // else (raw Postgres errors, outages) is logged and returned as a generic 500.
+  api.post('/api/capture/commit', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { verb?: unknown; targetKind?: unknown; targetId?: unknown; args?: unknown; meta?: unknown }
+    const kindRaw = String(body.targetKind ?? '')
+    const target = getCaptureTarget(kindRaw as TargetKind)
+    if (!target) return res.status(400).json({ error: 'Unsupported', message: unsupportedKindReason(kindRaw) })
+    const verb = String(body.verb ?? '') as MutateVerb
+    if (!target.supportedVerbs.includes(verb)) {
+      return res.status(400).json({ error: 'Unsupported', message: unsupportedVerbReason(kindRaw as TargetKind, verb) })
+    }
+    const targetId = String(body.targetId ?? '')
+    if (!UUID_RE.test(targetId)) {
+      return res.status(400).json({ error: 'BadRequest', message: "Couldn't find that one — try picking it again." })
+    }
+    const ctx = await buildResolveCtx(tenant)
+    if (!target.isEnabled(ctx)) return res.status(400).json({ error: 'Unsupported', message: target.disabledReason })
+    const args = body.args && typeof body.args === 'object' ? (body.args as Record<string, unknown>) : {}
+    const meta = body.meta && typeof body.meta === 'object' ? (body.meta as Record<string, unknown>) : undefined
+    try {
+      const { message } = await target.applyMutation(ctx, { verb, targetId, args, meta })
+      return { ok: true, message }
+    } catch (err) {
+      const e = err as Error & { statusCode?: unknown }
+      // Relay only a real 4xx domain error; anything else must not leak (raw Postgres
+      // messages, outages) — log it and answer with a generic 500.
+      if (typeof e.statusCode === 'number' && Number.isInteger(e.statusCode) && e.statusCode >= 400 && e.statusCode < 500) {
+        return res.status(e.statusCode).json({ error: e.name || 'Error', message: e.message })
+      }
+      log.error('capture commit failed', { err: e, requestId: (req as Request & { requestId?: string }).requestId })
+      return res.status(500).json({ error: 'Error', message: "Something went wrong applying that — try again." })
     }
   }))
 
