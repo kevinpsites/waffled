@@ -60,4 +60,19 @@ describe('WeekHeatmap', () => {
     fireEvent.click(screen.getByText('Fr'))
     expect(onDayClick).toHaveBeenCalledWith('2026-07-17')
   })
+
+  it('navigates to the previous week, and blocks paging past the current week', () => {
+    const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
+    render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Next week' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous week' }))
+    expect(screen.getByText('That week')).toBeInTheDocument()
+    expect(screen.getByText(/Jul 4 – Jul 10/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next week' })).not.toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next week' }))
+    expect(screen.getByText('This week')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next week' })).toBeDisabled()
+  })
 })
