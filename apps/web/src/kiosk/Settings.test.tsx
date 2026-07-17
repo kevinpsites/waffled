@@ -65,8 +65,30 @@ describe('Settings screen', () => {
     mockApi()
     renderSettings()
     await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Lists'))
+    expect(screen.getByText(/List defaults & sharing/)).toBeInTheDocument()
+  })
+
+  it('shows the Notifications email panel hydrated from the API', async () => {
+    const emailSettings = {
+      enabled: true, host: 'smtp.gmail.com', port: 587, secure: false, ignoreCert: false,
+      username: 'you@gmail.com', hasPassword: true, fromName: 'Waffled', fromAddress: 'waffled@example.com',
+      digestEnabled: true, digestDow: 1, digestHour: 7, digestSections: ['calendar', 'meals'], canEncrypt: true,
+    }
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (String(url).includes('/api/email/settings')) return { ok: true, json: async () => emailSettings }
+      if (String(url).includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (String(url).includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (String(url).includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+    renderSettings()
+    await screen.findByText('Kevin')
     fireEvent.click(screen.getByText('Notifications'))
-    expect(screen.getByText(/Push to phones/)).toBeInTheDocument()
+    // Loads the stored host + shows the saved-password placeholder (never the password itself).
+    expect(await screen.findByDisplayValue('smtp.gmail.com')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('•••••• (saved)')).toBeInTheDocument()
+    expect(screen.getByText('Send test email')).toBeInTheDocument()
   })
 
   it('shows the Display & Kiosk panel with the family-display toggle', async () => {

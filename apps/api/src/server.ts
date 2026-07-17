@@ -10,6 +10,7 @@ import { startSyncScheduler } from './modules/calendar/calendar-sync.service'
 import { startExpansionScheduler } from './modules/calendar/expansion.service'
 import { startProofCleanupScheduler } from './modules/chores/chore-proof-cleanup.service'
 import { startRecipeIngestCleanupScheduler } from './modules/meals/recipe-ingest.service'
+import { startWeeklyDigestScheduler } from './modules/email/weekly-digest.service'
 
 interface RunResult {
   statusCode: number
@@ -53,4 +54,7 @@ server.listen(config.port, () => {
   startProofCleanupScheduler()
   // Delete AI recipe-ingest source photos past their (short) retention window.
   startRecipeIngestCleanupScheduler()
+  // Send the weekly summary/plan digest to households that opted in (at their local
+  // configured day/hour; idempotent per ISO week).
+  startWeeklyDigestScheduler()
 })

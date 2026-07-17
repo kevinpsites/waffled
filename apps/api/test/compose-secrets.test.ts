@@ -15,6 +15,15 @@ describe('Compose secret defaults', () => {
     expect(compose).not.toContain('waffled-local-dev-secret-change-me')
   })
 
+  it('forwards the documented email envs to the api container', async () => {
+    // .env.example documents these knobs; without a compose passthrough they
+    // silently do nothing in a compose deployment.
+    const compose = await readFile(resolve(root, 'infra/compose/docker-compose.yml'), 'utf8')
+    expect(compose).toContain('EMAIL_DEFAULT_FROM_ADDRESS: ${EMAIL_DEFAULT_FROM_ADDRESS:-}')
+    expect(compose).toContain('EMAIL_PUBLIC_BASE_URL: ${EMAIL_PUBLIC_BASE_URL:-}')
+    expect(compose).toContain('WEEKLY_DIGEST_INTERVAL_MS: ${WEEKLY_DIGEST_INTERVAL_MS:-}')
+  })
+
   it('declares and generates a durable PowerSync signing key', async () => {
     const example = await readFile(resolve(root, 'infra/compose/.env.example'), 'utf8')
     expect(example).toMatch(/^POWERSYNC_JWT_PRIVATE_KEY=$/m)

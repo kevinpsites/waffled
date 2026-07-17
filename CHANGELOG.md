@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Send email through your own Gmail/SMTP server.** Admins can now configure an SMTP
+  server in Settings — including a Gmail account via a 2-Step-Verification App Password,
+  the same setup Immich uses — with a "Send test email" button that verifies the
+  connection before saving. The App Password is stored encrypted. This lays the
+  groundwork for emailed weekly summaries (calendar, meals, groceries, and chores).
 - **Swipe between weeks in the iPhone meal planner.** The weekly meal plan now pages with a
   horizontal flick — swipe left for next week, right for the previous one — the same gesture
   the Calendar and Chores screens already use. The arrow buttons and "Jump to this week"

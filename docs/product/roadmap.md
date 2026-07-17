@@ -134,6 +134,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Partial / in progress 🟡
 
+- **Outbound email + weekly digest** — admins configure their own SMTP server (Gmail App
+  Password supported, Immich-style) from **Settings → Notifications → Email**, with a
+  "Send test email" check and an encrypted-at-rest password; a container-side scheduler
+  sends an opt-in weekly summary (calendar + meals + grocery + chores) at the household's
+  local day/hour, once per week. *Still to come:* an iOS settings mirror and adopting the
+  transport for transactional email (invites, reminders). **Inbound email** (email → event/
+  chore/list, self-posting with attachments) is planned — see `docs/plans/inbound-email.md`.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
   are REST + live-refresh bus.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend

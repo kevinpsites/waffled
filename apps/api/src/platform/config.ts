@@ -81,12 +81,25 @@ export interface GoogleConfig {
   apiBase: string
 }
 
+/** Outbound email. The SMTP transport (host/port/user/App-Password) is configured
+ *  per-household in the DB and edited from the admin UI (mirroring Immich) — NOT
+ *  here. These env vars are only operational defaults: a fallback From address, the
+ *  absolute base URL used for links/images inside emails, and the digest scheduler
+ *  tick. */
+export interface EmailConfig {
+  defaultFromAddress: string | null
+  publicBaseUrl: string | null
+  weeklyDigestIntervalMs: number
+}
+
 export interface AppConfig {
   env: string
   port: number
   ai: AiConfig
   google: GoogleConfig
-  /** Secrets-at-rest. tokenEncryptionKey encrypts Google refresh tokens (src/crypto.ts). */
+  email: EmailConfig
+  /** Secrets-at-rest. tokenEncryptionKey encrypts Google refresh tokens + SMTP
+   *  App Passwords (src/crypto.ts). */
   security: { tokenEncryptionKey: string | null }
   auth: {
     mode: AuthMode
@@ -142,6 +155,14 @@ export const config: AppConfig = {
     tokenUrl: process.env.GOOGLE_TOKEN_URL ?? 'https://oauth2.googleapis.com/token',
     userinfoUrl: process.env.GOOGLE_USERINFO_URL ?? 'https://openidconnect.googleapis.com/v1/userinfo',
     apiBase: process.env.GOOGLE_CALENDAR_API_BASE ?? 'https://www.googleapis.com/calendar/v3',
+  },
+
+  // Outbound email operational defaults. SMTP transport creds live per-household in
+  // the DB (household_email_settings), never in env.
+  email: {
+    defaultFromAddress: env('EMAIL_DEFAULT_FROM_ADDRESS') ?? null,
+    publicBaseUrl: env('EMAIL_PUBLIC_BASE_URL') ?? null,
+    weeklyDigestIntervalMs: parseInt(env('WEEKLY_DIGEST_INTERVAL_MS') ?? '900000', 10),
   },
 
   security: { tokenEncryptionKey: process.env.TOKEN_ENCRYPTION_KEY ?? null },
