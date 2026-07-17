@@ -110,6 +110,21 @@
 /* recipe on the list but not on this week's plan */
 .meal-badge.mt-unscheduled { background: color-mix(in srgb, var(--ink-3) 14%, transparent); color: var(--ink-2); }
 
+/* rail: divider + caption above the unscheduled recipes (legend for their dots) */
+.grocery-rail-div {
+  height: 1px;
+  background: var(--hair);
+  margin: 12px 0 10px;
+}
+.grocery-rail-sub {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 8px;
+}
+
 /* rail meal-type selector */
 .rail-seg {
   display: flex;

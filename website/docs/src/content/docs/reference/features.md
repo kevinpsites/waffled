@@ -172,7 +172,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **List templates** — save a list as a reusable template, apply → a fresh unchecked copy, manage (delete) | ✅ | ✅ | ✅ | ✅ Done — mobile: one New-list modal (name + emoji + Create) with an "Or start from a template" picker (**select-then-Create**, name pre-fills from the template); long-press a template to delete |
 | **Auto-built grocery board** from the week's dinners | ✅ | ✅ | ✅ | ✅ Done |
 | **Add a recipe's ingredients to the grocery list from its page** — no meal-plan entry needed (one-off dinners, sides, snacks); staples skipped, quantities merged, items linked back to the recipe | ✅ | ✅ | ✅ | ✅ Done — web: cart icon in the recipe actions (plus the on-hand banner button); mobile: "Add to grocery list" in the recipe ⋯ menu + the banner button |
-| **Unscheduled recipe sections in By-meal view** — off-plan recipes group under their own "Unscheduled" header with their own dot color, instead of lumping into "Other items" | ✅ | ✅ | ✅ | ✅ Done |
+| **Unscheduled recipe sections in By-meal view** — off-plan recipes group under their own "Unscheduled" header with their own dot color, instead of lumping into "Other items"; they're also listed in the "This week's meals" card below a divider, completing the dot-color legend | ✅ | ✅ | ✅ | ✅ Done |
 | **Aisle grouping** + **quantity merge** (By aisle / By meal) | ✅ | ✅ | ✅ | ✅ Done |
 | **Pantry staples** (kept off the list; Pantry check) | ✅ | ✅ | ✅ | ✅ Done |
 | Check off / add / delete (persists) | ✅ | ✅ | ✅ | ✅ Done |

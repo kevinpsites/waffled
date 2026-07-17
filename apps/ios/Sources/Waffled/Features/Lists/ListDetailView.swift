@@ -458,7 +458,7 @@ struct ListDetailView: View {
     /// iPhone: items with the meals recap + staples inline in the list.
     private var phoneBody: some View {
         List {
-            if model.isGrocery && !model.meals.isEmpty && !searchActive {
+            if model.isGrocery && (!model.meals.isEmpty || !model.unscheduled.isEmpty) && !searchActive {
                 summaryPanel
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .listRowSeparator(.hidden).listRowBackground(Color.clear)
@@ -761,9 +761,45 @@ struct ListDetailView: View {
             VStack(spacing: 8) {
                 ForEach(railMeals) { meal in mealRecapRow(meal) }
             }
+
+            // Off-plan recipes added from their pages — below a divider so the card
+            // stays a complete legend for the item dot colors. Unaffected by the
+            // meal-type segment (they belong to no slot).
+            if !model.unscheduled.isEmpty {
+                Rectangle().fill(WF.hair).frame(height: 1)
+                Text("UNSCHEDULED")
+                    .font(.system(size: 10, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
+                VStack(spacing: 8) {
+                    ForEach(model.unscheduled) { recipe in unscheduledRecapRow(recipe) }
+                }
+            }
         }
         .padding(14)
         .wfField()
+    }
+
+    /// A rail row for an unscheduled recipe — same shape as the meal rows minus the
+    /// day label; taps through to the recipe like they do.
+    @ViewBuilder private func unscheduledRecapRow(_ recipe: WaffledAPI.GroceryBoardDTO.UnscheduledRecipe) -> some View {
+        let color = Color(hexString: recipe.color) ?? WF.ink3
+        Button {
+            openRecipe(.placeholder(id: recipe.recipeId, title: recipe.title, emoji: recipe.emoji,
+                                    category: nil, cookTimeMinutes: nil, servings: nil))
+        } label: {
+            HStack(spacing: 10) {
+                Circle().fill(color).frame(width: 9, height: 9)
+                Text(recipe.title)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 6)
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
+                Text(recipe.emoji ?? "🍽️")
+                    .font(.system(size: 14))
+                    .frame(width: 28, height: 28)
+                    .background(color.opacity(0.12)).clipShape(Circle())
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder private func mealRecapRow(_ meal: WaffledAPI.GroceryBoardDTO.Meal) -> some View {

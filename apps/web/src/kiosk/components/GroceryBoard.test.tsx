@@ -131,8 +131,12 @@ describe('GroceryBoard unscheduled recipes (By meal view)', () => {
     await screen.findByText('Avocados')
     fireEvent.click(screen.getByRole('button', { name: 'By meal' }))
 
+    // the rail legend lists it under the week's meals, below the divider
+    const rail = document.querySelector('.grocery-railcard') as HTMLElement
+    expect(rail.textContent).toContain('Guacamole')
+
     // the off-plan recipe gets its own section, tagged as unscheduled
-    const header = screen.getByText('Guacamole').closest('.grocery-section-h') as HTMLElement
+    const header = screen.getAllByText('Guacamole').map((el) => el.closest('.grocery-section-h')).find(Boolean) as HTMLElement
     expect(header).toBeInTheDocument()
     expect(header.textContent).toMatch(/unscheduled/i)
     const section = header.closest('.grocery-section') as HTMLElement
@@ -157,7 +161,7 @@ describe('GroceryBoard unscheduled recipes (By meal view)', () => {
     // 'Pasta' also appears in the week rail — take its *section* occurrence
     const pasta = screen.getAllByText('Pasta').map((el) => el.closest('.grocery-section')).find(Boolean) as HTMLElement
     expect(pasta.textContent).toContain('Limes')
-    const guac = screen.getByText('Guacamole').closest('.grocery-section') as HTMLElement
+    const guac = screen.getAllByText('Guacamole').map((el) => el.closest('.grocery-section')).find(Boolean) as HTMLElement
     expect(guac.textContent).not.toContain('Limes')
     expect(guac.textContent).toContain('Avocados')
   })

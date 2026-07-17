@@ -440,6 +440,22 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
               <span className="gdinner-e" style={{ background: `${d.color}1f` }}>{d.emoji ?? MEAL_EMOJI[d.mealType] ?? '🍽️'}</span>
             </div>
           ))}
+          {/* Off-plan recipes added from their pages — kept below a divider so the
+              card stays a complete legend for the item dot colors. Not affected by
+              the meal-type segment (they belong to no slot). */}
+          {(board.unscheduled ?? []).length > 0 && (
+            <>
+              <div className="grocery-rail-div" />
+              <div className="grocery-rail-sub">Unscheduled</div>
+              {(board.unscheduled ?? []).map((u) => (
+                <div key={u.recipeId} className="gdinner">
+                  <span className="gdinner-c" style={{ background: u.color }} />
+                  <span className="gdinner-t">{u.title}</span>
+                  <span className="gdinner-e" style={{ background: `${u.color}1f` }}>{u.emoji ?? '🍽️'}</span>
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
         <div className="card grocery-railcard">
