@@ -399,6 +399,30 @@ private final class Counter { var n = 0 }
         #expect(mealType == "dinner")
     }
 
+    @Test func decodesMutate() throws {
+        // The server intent shape: verb + nested target.description + args.
+        guard case let .mutate(verb, targetKind, description, args) =
+            try decode(#"{"kind":"mutate","verb":"reschedule","targetKind":"event","target":{"description":"soccer"},"args":{"date":"2026-06-12","time":"16:00"}}"#) else {
+            Issue.record("expected mutate"); return
+        }
+        #expect(verb == "reschedule")
+        #expect(targetKind == "event")
+        #expect(description == "soccer")
+        #expect(args["date"] == .string("2026-06-12"))
+        #expect(args["time"] == .string("16:00"))
+    }
+
+    @Test func decodesMutateLegacyArgsAndNullKind() throws {
+        // `mutateArgs` is the legacy alias; a null targetKind must decode to nil (not throw).
+        guard case let .mutate(verb, targetKind, _, args) =
+            try decode(#"{"kind":"mutate","verb":"log","targetKind":null,"target":{"description":"reading"},"mutateArgs":{"minutes":30}}"#) else {
+            Issue.record("expected mutate"); return
+        }
+        #expect(verb == "log")
+        #expect(targetKind == nil)
+        #expect(args["minutes"] == .int(30))
+    }
+
     @Test func rejectsUnknownKind() {
         #expect(throws: (any Error).self) {
             try decode(#"{"kind":"spaceship"}"#)

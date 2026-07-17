@@ -15,6 +15,12 @@ enum CaptureIntent: Sendable, Equatable {
     case goal(title: String, goalType: String, targetValue: Double?, unit: String?, deadline: String?, trackingMode: String, audience: String?)
     case pantry(name: String, amount: String?, unit: String?, location: String, expiresOn: String?, lowAt: Double?)
     case reward(title: String, emoji: String?, cost: Int?, currency: String?, category: String?, requiresApproval: Bool?)
+    /// Tier 2 — a verb acting on an EXISTING row (complete/log/reschedule/reassign/redeem/
+    /// delete). Unlike the create cases this isn't committed directly: `verb` + `targetKind`
+    /// + `description` drive `/api/capture/resolve` to a list of candidate rows, one of which
+    /// the user picks before `/api/capture/commit`. `args` is best-effort (date/time/amount/
+    /// assignee) and refined server-side. Mirrors the web `ParsedIntent` mutate member.
+    case mutate(verb: String, targetKind: String?, description: String, args: [String: JSONValue])
 }
 
 extension CaptureIntent: Decodable {
@@ -26,7 +32,11 @@ extension CaptureIntent: Decodable {
         case goalType, targetValue, unit, deadline, trackingMode, audience
         case amount, location, expiresOn, lowAt
         case cost, currency, category, requiresApproval
+        case verb, targetKind, target, args, mutateArgs
     }
+
+    /// The nested `target: { description }` object a mutate intent carries.
+    private struct MutateTarget: Decodable { let description: String }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -110,6 +120,17 @@ extension CaptureIntent: Decodable {
                 category: try c.decodeIfPresent(String.self, forKey: .category),
                 requiresApproval: try? c.decode(Bool.self, forKey: .requiresApproval)
             )
+        case "mutate":
+            // `args` is the current key; `mutateArgs` is the legacy alias the server may
+            // still emit (web normalizes both). Missing/malformed → an empty map.
+            let args = (try? c.decode([String: JSONValue].self, forKey: .args))
+                ?? (try? c.decode([String: JSONValue].self, forKey: .mutateArgs)) ?? [:]
+            self = .mutate(
+                verb: try c.decode(String.self, forKey: .verb),
+                targetKind: try c.decodeIfPresent(String.self, forKey: .targetKind),
+                description: (try c.decode(MutateTarget.self, forKey: .target)).description,
+                args: args
+            )
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c,
                 debugDescription: "Unknown intent kind: \(other)")
@@ -167,6 +188,72 @@ struct CaptureSummary {
             icon = emoji ?? "🎁"; kind = "Reward"; primary = title
             detail = ["Adds to the reward shop", cost.map { "\($0)★" }, requiresApproval == true ? "needs approval" : nil]
                 .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        case let .mutate(verb, targetKind, description, _):
+            icon = MutateLabels.icon(verb); kind = MutateLabels.verbLabel(verb)
+            primary = description
+            detail = MutateLabels.targetLabel(targetKind)
         }
     }
+}
+
+/// Display copy for a Tier 2 mutate — icon, verb title, and target-kind noun. Mirrors the
+/// web `mutateIcon` / `mutateVerbLabel` / `mutateTargetLabel` (parse.ts) so the iOS preview
+/// reads the same as the kiosk.
+enum MutateLabels {
+    static func icon(_ verb: String) -> String {
+        switch verb {
+        case "complete": return "✅"
+        case "log": return "📈"
+        case "reschedule": return "📅"
+        case "reassign": return "🔄"
+        case "redeem": return "⭐"
+        case "delete": return "🗑️"
+        default: return "✨"
+        }
+    }
+    static func verbLabel(_ verb: String) -> String {
+        switch verb {
+        case "complete": return "Mark done"
+        case "log": return "Log progress"
+        case "reschedule": return "Reschedule"
+        case "reassign": return "Reassign"
+        case "redeem": return "Redeem"
+        case "delete": return "Delete"
+        default: return "Update"
+        }
+    }
+    static func targetLabel(_ targetKind: String?) -> String {
+        switch targetKind {
+        case "chore": return "chore"
+        case "goal": return "goal"
+        case "listItem": return "list item"
+        case "event": return "event"
+        case "reward": return "reward"
+        default: return "match"
+        }
+    }
+    /// The confirm-button label per verb (mirrors the web `CONFIRM_LABEL`).
+    static func confirmLabel(_ verb: String) -> String {
+        switch verb {
+        case "complete": return "Mark done"
+        case "log": return "Log it"
+        case "reschedule": return "Reschedule"
+        case "reassign": return "Reassign"
+        case "redeem": return "Redeem"
+        case "delete": return "Delete it"
+        default: return "Do it"
+        }
+    }
+}
+
+/// The resolved state of a mutate — the candidate rows plus the degrade info the sheet
+/// renders. Mirrors the web `CandidateState`: the three "empty" cases are distinguished by
+/// `unsupported` + `disabledReason`, and `offline` flags a resolve call that itself failed.
+/// `forKey` (verb|targetKind|description) guards against a stale result overwriting a newer parse.
+struct MutateResolveState: Sendable, Equatable {
+    var candidates: [WaffledAPI.Candidate]
+    var disabledReason: String?
+    var unsupported: Bool
+    var offline: Bool
+    var forKey: String
 }

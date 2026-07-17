@@ -668,6 +668,119 @@ enum CaptureHeuristic {
         return .reward(title: title, emoji: nil, cost: cost, currency: nil, category: nil, requiresApproval: nil)
     }
 
+    // MARK: mutate (Tier 2 — act on an existing row)
+
+    // A verb acting on an EXISTING row (complete/log/reschedule/reassign/redeem/delete).
+    // The heuristic returns a NON-committable marker: a best-effort verb + rough targetKind
+    // + args. The real verb/targetKind/id come from the server intent + /api/capture/resolve,
+    // so the bar forces the server path (looksConfident → false) and never auto-commits.
+    // Mirrors `MUTATE_PATTERNS` / `detectMutate` in parse.ts — KEEP IN SYNC.
+    private struct MutatePattern { let re: String; let verb: String }
+    private static let mutatePatterns: [MutatePattern] = [
+        // complete — "mark/set X (as) done/…/off", and BOTH check-off orders.
+        MutatePattern(re: #"^\s*(?:please\s+)?(?:mark|set)\s+(.+?)\s+(?:as\s+)?(?:done|complete|completed|finished|off)\b"#, verb: "complete"),
+        MutatePattern(re: #"^\s*(?:please\s+)?(?:check|cross|tick)\s+off\s+(.+)$"#, verb: "complete"),
+        MutatePattern(re: #"^\s*(?:please\s+)?(?:check|cross|tick)\s+(.+?)\s+off\b"#, verb: "complete"),
+        MutatePattern(re: #"^\s*(?:please\s+)?(?:complete|finish)\s+(.+)$"#, verb: "complete"),
+        // delete — "delete/remove/cancel X"
+        MutatePattern(re: #"^\s*(?:please\s+)?(?:delete|remove|cancel)\s+(.+)$"#, verb: "delete"),
+        // reschedule — "reschedule/move/push X (to …)"
+        MutatePattern(re: #"^\s*(?:please\s+)?(?:reschedule|move|push)\s+(.+?)\s+(?:to|for)\s+.+$"#, verb: "reschedule"),
+        MutatePattern(re: #"^\s*(?:please\s+)?reschedule\s+(.+)$"#, verb: "reschedule"),
+        // reassign — "reassign/give/assign X to …"
+        MutatePattern(re: #"^\s*(?:please\s+)?(?:reassign|give|assign)\s+(.+?)\s+to\s+.+$"#, verb: "reassign"),
+        // redeem — "redeem X", "<person> spent N points/stars on X", "spent … on the X reward".
+        MutatePattern(re: #"^\s*(?:please\s+)?redeem\s+(.+)$"#, verb: "redeem"),
+        MutatePattern(re: #"^\s*.+?\s+(?:spent|spend|spends)\s+.+?\b(?:points?|stars?|pts?|coins?)\b.*?\s+(?:on|for)\s+(.+)$"#, verb: "redeem"),
+        MutatePattern(re: #"^\s*.+?\s+(?:spent|spend|spends)\s+.+?\s+(?:on|for)\s+(.+?\breward\b.*)$"#, verb: "redeem"),
+        // log — needs real goal-log signal (amount after the verb, "goal" in the phrase, a
+        // time-unit "spent", or "add <amount> to … goal"). A bare "log/record X" is NOT a mutate.
+        MutatePattern(re: #"^\s*(?:please\s+)?(?:log|record)\s+(\d+(?:\.\d+)?(?:\s+.+)?)$"#, verb: "log"),
+        MutatePattern(re: #"^\s*(?:please\s+)?(?:log|record)\s+(.+?\bgoal\b.*)$"#, verb: "log"),
+        MutatePattern(re: #"^\s*.+?\s+(?:spent|spend|spends)\s+(\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?)\b.*)$"#, verb: "log"),
+        MutatePattern(re: #"^\s*(?:please\s+)?add\s+.+?\s+to\s+(.+?\bgoal\b.*)$"#, verb: "log"),
+    ]
+
+    private static let verbDefaultKind: [String: String] = [
+        "complete": "chore", "log": "goal", "reschedule": "event",
+        "reassign": "chore", "redeem": "reward", "delete": "event",
+    ]
+
+    // A rough targetKind, server-overridden. An explicit "chore"/"goal"/"reward" word wins;
+    // otherwise DEFAULT from the verb. Mirrors parse.ts `guessTargetKind`.
+    private static func guessTargetKind(_ text: NSString, _ verb: String) -> String {
+        if test(#"\bchores?\b"#, text) { return "chore" }
+        if test(#"\bgoals?\b"#, text) { return "goal" }
+        if test(#"\breward\b"#, text) { return "reward" }
+        if test(#"\b(appointment|meeting|event|practice|reservation)\b"#, text) { return "event" }
+        if test(#"\b(?:list\s*item|item|list)\b"#, text) || (verb == "complete" && test(#"\boff\b"#, text)) { return "listItem" }
+        return verbDefaultKind[verb] ?? "chore"
+    }
+
+    // Best-effort args (server refines them): a numeric amount for `log` (time units →
+    // hours/minutes), the "to <name>" assignee for `reassign`, and the destination date/time
+    // for `reschedule` (same findDay/findTime the create path uses). Mirrors parse.ts `mutateArgs`.
+    private static func mutateArgs(_ verb: String, _ text: NSString, _ now: Date, _ cal: Calendar) -> [String: JSONValue] {
+        if verb == "log" {
+            if let m = firstMatch(#"(\d+(?:\.\d+)?)\s*([a-z]+)"#, text) {
+                let n = Double(m.groups[1] ?? "") ?? 0
+                let unit = (m.groups[2] ?? "").lowercased() as NSString
+                if test(#"^(?:hours?|hrs?|hr)$"#, unit) { return ["hours": .double(n)] }
+                if test(#"^(?:minutes?|mins?|min)$"#, unit) { return ["minutes": .double(n)] }
+                return ["amount": .double(n)]
+            }
+        }
+        if verb == "reassign" {
+            if let m = firstMatch(#"\bto\s+([A-Za-z][\w'’-]*)"#, text) {
+                return ["personName": .string(m.groups[1] ?? "")]
+            }
+        }
+        if verb == "reschedule" {
+            // The destination phrase after the FIRST "to/for". Lazy `.*?` so a trailing
+            // participant clause ("...to Friday for Wally") can't swallow the spoken date.
+            if let m = firstMatch(#"^.*?\b(?:to|for)\s+(.+)$"#, text) {
+                let dest = (m.groups[1] ?? "") as NSString
+                var args: [String: JSONValue] = [:]
+                if let day = findDay(dest, now, cal) {
+                    args["date"] = .string(String(format: "%04d-%02d-%02d", day.y, day.mo + 1, day.d))
+                }
+                if let t = findTime(dest) {
+                    args["time"] = .string(String(format: "%02d:%02d", t.h, t.m))
+                }
+                return args
+            }
+        }
+        return [:]
+    }
+
+    // Clean a captured noun phrase into a display description: drop a leading amount/unit,
+    // a leading "on/to my/our/the", and a trailing "for <people>". Mirrors parse.ts.
+    private static func mutateDescription(_ raw: String) -> String {
+        var s = tidy(raw as NSString) as NSString
+        if let pre = firstMatch(#" (?:on|to) (?:my |our |the )?"#, s) {
+            s = s.substring(from: min(pre.range.location + pre.range.length, s.length)) as NSString
+        }
+        s = replaceFirst(#"^\s*(?:my |our |the )"#, s, "")
+        s = replaceFirst(#"^\s*\d+(?:\.\d+)?\s+[a-z]+\s+"#, s, "")   // a leading "20 min ", "2 chapters "
+        s = replaceFirst(#"\s+for\s+[a-z].*$"#, s, "")                // trailing "for kevin and wally"
+        // Drop a trailing kind noun ("outside goal" → "outside") so the name drives ranking —
+        // unless that empties the string.
+        let bare = replaceFirst(#"\s+(?:goals?|chores?|rewards?|events?|tasks?|items?)\s*$"#, s, "")
+        if !tidy(bare).isEmpty { s = bare }
+        return tidy(s)
+    }
+
+    private static func detectMutate(_ text: NSString, _ now: Date, _ cal: Calendar) -> CaptureIntent? {
+        for pat in mutatePatterns {
+            guard let m = firstMatch(pat.re, text) else { continue }
+            let description = mutateDescription(m.groups[1] ?? "")   // group 1 is the target phrase
+            if description.isEmpty { continue }
+            return .mutate(verb: pat.verb, targetKind: guessTargetKind(text, pat.verb),
+                           description: description, args: mutateArgs(pat.verb, text, now, cal))
+        }
+        return nil
+    }
+
     // MARK: parse
 
     static func parse(_ raw: String, persons: [String] = [], now: Date = Date(),
@@ -677,6 +790,11 @@ enum CaptureHeuristic {
         let text = trimmed as NSString
 
         let person = findPerson(text, persons)
+
+        // MUTATE — a verb acting on an EXISTING row ("mark … done", "delete …", "log …").
+        // Detected FIRST, before every create branch, returning a non-committable marker so
+        // the bar forces the server path (resolve → pick a candidate → commit).
+        if let mutateIntent = detectMutate(text, now, cal) { return mutateIntent }
 
         // PERSON — "add my son Max" / "add a family member Jane". A specific create phrase,
         // so it wins over the generic grocery/event fallbacks. Minimal: name + memberType.
@@ -848,6 +966,10 @@ enum CaptureHeuristic {
     /// explicit signal EXCEPT the bare-noun grocery fallback (a last resort).
     static func looksConfident(_ intent: CaptureIntent?, text: String) -> Bool {
         guard let intent else { return false }
+        // A mutate marker is never confident — it forces the server path (resolve → pick →
+        // commit) and is never auto-committed offline (mirrors parse.ts). The heuristic guess
+        // still shows as an instant preview if the server is unreachable.
+        if case .mutate = intent { return false }
         if case .grocery = intent {
             let ns = text as NSString
             return test(#"\b(buy|grab|pick(?:ing)?\s*up|purchase)\b"#, ns)
