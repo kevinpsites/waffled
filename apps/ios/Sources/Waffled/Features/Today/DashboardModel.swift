@@ -53,31 +53,40 @@ struct TonightMeal: Sendable {
 /// refreshed on appear, pull-down, the in-app mutation buses (`sync.*Rev`), and on
 /// the app returning to the foreground (changes made elsewhere while backgrounded).
 ///
-/// Loading-state contract the cards rely on: `loaded` / `goalsLoaded` flip true only
-/// after their fetch completes, so a card can tell "still loading" (show a
-/// placeholder) apart from "loaded and empty" (show the empty state). A failed fetch
-/// (offline, expired token) keeps the prior values rather than blanking the cards.
+/// Each domain lives in a shared `RestDomain` (same layer the iPad kiosk uses),
+/// which carries the loading-state contract the cards rely on: `loaded` /
+/// `goalsLoaded` flip true only after their fetch completes, so a card can tell
+/// "still loading" (show a placeholder) apart from "loaded and empty" (show the
+/// empty state). A failed fetch (offline, expired token) keeps the prior values
+/// rather than blanking the cards.
 ///
 /// Fetchers are injectable for the unit tests; the defaults hit `WaffledAPI`,
-/// returning nil on failure so `load` can tell "empty" from "errored".
+/// returning nil on failure so `RestDomain.apply` can tell "empty" from "errored".
 @MainActor
 @Observable
 final class DashboardModel {
-    private(set) var tonight: TonightMeal?
-    private(set) var chores: [WaffledAPI.PersonChoresDTO] = []
-    private(set) var groceryRemaining = 0
+    private let tonightD = RestDomain<TonightMeal?>(nil)
+    private let choresD = RestDomain<[WaffledAPI.PersonChoresDTO]>([])
+    private let groceryD = RestDomain<Int>(0)
+    private let goalsD = RestDomain<[WaffledAPI.Goal]>([])
+    private let recapD = RestDomain<[WaffledAPI.GoalRecapItem]>([])
+    private let suggestionsD = RestDomain<[WaffledAPI.GoalSuggestionItem]>([])
+
+    var tonight: TonightMeal? { tonightD.value }
+    var chores: [WaffledAPI.PersonChoresDTO] { choresD.value }
+    var groceryRemaining: Int { groceryD.value }
     /// Whether the meals/chores/grocery load has completed at least once.
-    private(set) var loaded = false
+    var loaded: Bool { tonightD.loaded && choresD.loaded && groceryD.loaded }
 
     /// Household goals (featured-first) for the Today goals card, plus the
     /// goal-calendar review queues for the "review events" entry card.
-    private(set) var goals: [WaffledAPI.Goal] = []
-    private(set) var reviewRecap: [WaffledAPI.GoalRecapItem] = []
-    private(set) var reviewSuggestions: [WaffledAPI.GoalSuggestionItem] = []
+    var goals: [WaffledAPI.Goal] { goalsD.value }
+    var reviewRecap: [WaffledAPI.GoalRecapItem] { recapD.value }
+    var reviewSuggestions: [WaffledAPI.GoalSuggestionItem] { suggestionsD.value }
     /// Whether the goals load has completed at least once — the goals card must key
     /// its empty state off THIS flag, not `loaded` (the dash fetch usually finishes
     /// first, which used to flash "Set a family goal →" before goals arrived).
-    private(set) var goalsLoaded = false
+    var goalsLoaded: Bool { goalsD.loaded && recapD.loaded && suggestionsD.loaded }
 
     private let fetchMeals: @Sendable (String) async -> [WaffledAPI.WeekEntryDTO]?
     private let fetchChores: @Sendable () async -> [WaffledAPI.PersonChoresDTO]?
@@ -106,22 +115,21 @@ final class DashboardModel {
     var choreTotal: Int { chores.reduce(0) { $0 + $1.total } }
     var choreStars: Int { chores.reduce(0) { $0 + $1.stars } }
 
-    /// Load the meal/chores/grocery domains concurrently. A domain that fails keeps
-    /// its prior value; a domain that succeeds empty clears (e.g. tonight's dinner
-    /// was removed elsewhere → the card returns to "No dinner planned").
+    /// Load the meal/chores/grocery domains concurrently. Per `RestDomain.apply`, a
+    /// domain that fails keeps its prior value; one that succeeds empty clears (e.g.
+    /// tonight's dinner was removed elsewhere → back to "No dinner planned").
     func load(todayKey: String) async {
         async let meals = fetchMeals(todayKey)
         async let people = fetchChores()
         async let grocery = fetchGrocery()
         let (m, c, g) = await (meals, people, grocery)
 
-        if let m {
-            tonight = m.first(where: { $0.mealType == "dinner" && $0.date == todayKey })
+        tonightD.apply(m.map { entries in
+            entries.first(where: { $0.mealType == "dinner" && $0.date == todayKey })
                 .map(TonightMeal.init)
-        }
-        if let c { chores = c.filter { $0.total > 0 } }
-        if let g { groceryRemaining = g.filter { !$0.checked }.count }
-        loaded = true
+        })
+        choresD.apply(c.map { $0.filter { $0.total > 0 } })
+        groceryD.apply(g.map { $0.filter { !$0.checked }.count })
     }
 
     /// Load the goals card + the goal-calendar review queues concurrently (keyed to
@@ -132,9 +140,8 @@ final class DashboardModel {
         async let suggestionRows = fetchSuggestions()
         let (g, r, s) = await (goalRows, recapRows, suggestionRows)
 
-        if let g { goals = g }
-        if let r { reviewRecap = r }
-        if let s { reviewSuggestions = s }
-        goalsLoaded = true
+        goalsD.apply(g)
+        recapD.apply(r)
+        suggestionsD.apply(s)
     }
 }

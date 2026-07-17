@@ -97,6 +97,19 @@ struct KioskDashboard: View {
         .task(id: "\(tz.identifier)|\(sync.groceryRev)") { await model.loadGrocery() }
         .task(id: tz.identifier) { await model.loadWeather() }
         .task(id: sync.goalsRev) { await model.loadGoals() }
+        // Day rollover on the always-on display: sleep to just past each
+        // household-tz midnight, then refetch the day-scoped domains so the wall
+        // iPad doesn't keep showing yesterday's dinner and chores.
+        .task(id: tz.identifier) {
+            while !Task.isCancelled {
+                let wait = Agenda.secondsUntilNextDay(after: Date(), tz: tz)
+                try? await Task.sleep(for: .seconds(wait))
+                guard !Task.isCancelled else { return }
+                async let c: () = model.loadChores()
+                async let m: () = model.loadMeals(todayKey: todayKey)
+                _ = await (c, m)
+            }
+        }
         // Pinned-banner queues: approvals refresh on chore/reward actions; the review
         // queue refreshes whenever a review/goal action bumps the goals bus.
         .task(id: "\(sync.choresRev)|\(sync.rewardsRev)") { await approvals.load() }
@@ -1004,19 +1017,58 @@ struct KioskDashboard: View {
 @MainActor
 @Observable
 final class KioskTodayModel {
-    var chores: [WaffledAPI.PersonChoresDTO] = []
-    var tonight: TonightMeal?
-    var weekDinners: [WaffledAPI.WeekEntryDTO] = []
-    var grocery: [WaffledAPI.ListItemDTO] = []
+    /// Tonight's dinner + the 7-day strip, derived together from one meals fetch so
+    /// a failed refresh keeps (or a successful one replaces) them as a unit.
+    struct Meals: Sendable {
+        var tonight: TonightMeal?
+        var week: [WaffledAPI.WeekEntryDTO] = []
+    }
+
+    // Each domain lives in a shared `RestDomain` (same layer as the phone's
+    // DashboardModel): per-domain loaded flags — a fast fetch can't flash the
+    // slower cards' empty states — and keep-prior-values-on-failure, so a network
+    // blip on the always-on display never blanks it to "All bought ✓" /
+    // "No dinner planned" / "No goals yet" while data exists.
+    private let choresD = RestDomain<[WaffledAPI.PersonChoresDTO]>([])
+    private let mealsD = RestDomain<Meals>(Meals())
+    private let groceryD = RestDomain<[WaffledAPI.ListItemDTO]>([])
+    private let goalsD = RestDomain<[WaffledAPI.Goal]>([])
+
+    var chores: [WaffledAPI.PersonChoresDTO] { choresD.value }
+    var tonight: TonightMeal? { mealsD.value.tonight }
+    var weekDinners: [WaffledAPI.WeekEntryDTO] { mealsD.value.week }
+    var grocery: [WaffledAPI.ListItemDTO] {
+        get { groceryD.value }
+        set { groceryD.value = newValue }   // optimistic check-off mutates in place
+    }
+    var goals: [WaffledAPI.Goal] { goalsD.value }
     var weather: WaffledAPI.Weather?
-    var goals: [WaffledAPI.Goal] = []
-    /// Per-domain "has this fetch completed at least once" flags — each card keys
-    /// its empty state off its own domain so a fast fetch (chores is one call)
-    /// can't flash the slower cards' empty states while they're still loading.
-    var choresLoaded = false
-    var mealsLoaded = false
-    var groceryLoaded = false
-    var goalsLoaded = false
+
+    var choresLoaded: Bool { choresD.loaded }
+    var mealsLoaded: Bool { mealsD.loaded }
+    var groceryLoaded: Bool { groceryD.loaded }
+    var goalsLoaded: Bool { goalsD.loaded }
+
+    /// Injectable for the unit tests (nil on failure, like DashboardModel);
+    /// defaults hit `WaffledAPI`. `api` remains for the grocery mutations.
+    private let fetchChores: @Sendable () async -> [WaffledAPI.PersonChoresDTO]?
+    private let fetchMeals: @Sendable (String) async -> [WaffledAPI.WeekEntryDTO]?
+    private let fetchGrocery: @Sendable () async -> [WaffledAPI.ListItemDTO]?
+    private let fetchGoals: @Sendable () async -> [WaffledAPI.Goal]?
+    private let fetchWeather: @Sendable () async -> WaffledAPI.Weather?
+
+    init(fetchChores: (@Sendable () async -> [WaffledAPI.PersonChoresDTO]?)? = nil,
+         fetchMeals: (@Sendable (String) async -> [WaffledAPI.WeekEntryDTO]?)? = nil,
+         fetchGrocery: (@Sendable () async -> [WaffledAPI.ListItemDTO]?)? = nil,
+         fetchGoals: (@Sendable () async -> [WaffledAPI.Goal]?)? = nil,
+         fetchWeather: (@Sendable () async -> WaffledAPI.Weather?)? = nil) {
+        let api = WaffledAPI()
+        self.fetchChores = fetchChores ?? { try? await api.choresToday() }
+        self.fetchMeals = fetchMeals ?? { try? await api.mealsWeek(start: $0) }
+        self.fetchGrocery = fetchGrocery ?? { (try? await api.groceryBoard())?.items }
+        self.fetchGoals = fetchGoals ?? { try? await api.goalsIn(listId: nil) }
+        self.fetchWeather = fetchWeather ?? { try? await api.weather() }
+    }
 
     private let api = WaffledAPI()
 
@@ -1041,29 +1093,27 @@ final class KioskTodayModel {
     }
 
     func loadGoals() async {
-        goals = (try? await api.goalsIn(listId: nil)) ?? []
-        goalsLoaded = true
+        goalsD.apply(await fetchGoals())
     }
 
     func loadChores() async {
-        chores = ((try? await api.choresToday()) ?? []).filter { $0.total > 0 }
-        choresLoaded = true
+        choresD.apply(await fetchChores().map { $0.filter { $0.total > 0 } })
     }
 
     func loadMeals(todayKey: String) async {
-        let dinners = ((try? await api.mealsWeek(start: todayKey)) ?? []).filter { $0.mealType == "dinner" }
-        tonight = dinners.first(where: { $0.date == todayKey }).map { TonightMeal($0) }
-        weekDinners = dinners.sorted { $0.date < $1.date }
-        mealsLoaded = true
+        mealsD.apply(await fetchMeals(todayKey).map { entries in
+            let dinners = entries.filter { $0.mealType == "dinner" }
+            return Meals(tonight: dinners.first(where: { $0.date == todayKey }).map(TonightMeal.init),
+                         week: dinners.sorted { $0.date < $1.date })
+        })
     }
 
     func loadGrocery() async {
-        grocery = (try? await api.groceryBoard())?.items ?? []
-        groceryLoaded = true
+        groceryD.apply(await fetchGrocery())
     }
 
     func loadWeather() async {
-        weather = try? await api.weather()
+        if let w = await fetchWeather() { weather = w }
     }
 
     /// Quick-add a grocery item from the Today card, then refresh the list. Uses the

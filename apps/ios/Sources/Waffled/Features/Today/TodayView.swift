@@ -14,8 +14,11 @@ struct TodayView: View {
     @State private var scrolled = false   // cards have scrolled under the header → lift it
     @State private var weather: WaffledAPI.Weather?
     /// Pending approvals (reward purchases + chore check-offs), for the parent's
-    /// "Needs your OK" entry card.
-    @State private var approvals = ApprovalsModel()
+    /// "Needs your OK" entry card. Owned by AppRoot (like FamilyView's) so the
+    /// badge, Family tab and this banner share one model — and one fetch per
+    /// trigger: AppRoot reloads it at launch, on the chore/reward buses, and on
+    /// return to the foreground.
+    var approvals: ApprovalsModel
     /// Which goal the card highlights: "mine" (the logged-in member's) or "family"
     /// (a whole-family goal). Per-device preference; defaults to mine.
     @AppStorage("waffled.todayGoalScope") private var goalScope = "mine"
@@ -94,8 +97,10 @@ struct TodayView: View {
                 HubDestination(route: route, path: $path, recipes: recipes)
             }
             .refreshable {
-                await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
-                await dash.loadGoals()
+                // Independent endpoint batches — fetch them concurrently.
+                async let d: () = dash.load(todayKey: Agenda.todayKey(sync.householdTz))
+                async let g: () = dash.loadGoals()
+                _ = await (d, g)
             }
             // Reload when the tz is known and whenever a capture commit bumps a domain.
             .task(id: "\(sync.householdTz.identifier)|\(sync.choresRev)|\(sync.groceryRev)|\(sync.mealsRev)") {
@@ -107,21 +112,35 @@ struct TodayView: View {
             // Goals card + the goal-calendar review queues (refresh whenever a
             // review/log action bumps the goals bus).
             .task(id: sync.goalsRev) { await dash.loadGoals() }
-            // Pending approvals refresh on load + whenever a chore/reward action lands.
-            .task(id: "\(sync.choresRev)|\(sync.rewardsRev)") {
-                await approvals.load()
-            }
+            // Freshen the shared approvals model on each appearance (a tab switch
+            // back to Today). Launch, the chore/reward buses, and foregrounding are
+            // AppRoot's job — it owns the model — so no duplicate fetch per trigger.
+            .task { await approvals.load() }
             // These cards are REST-backed (meals/chores/grocery/goals aren't synced
             // tables), so a change made elsewhere — the web app, another phone —
             // arrives silently. Refetch on return to the foreground, the same trigger
             // AppRoot uses for the approvals badge; in-app edits are already covered
-            // by the `sync.*Rev` buses above.
+            // by the `sync.*Rev` buses above. Only fires while Today is the visible
+            // tab: AppRoot swaps tabs out of the hierarchy, so an offscreen Today has
+            // no scenePhase observer.
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 Task {
+                    async let d: () = dash.load(todayKey: Agenda.todayKey(sync.householdTz))
+                    async let g: () = dash.loadGoals()
+                    _ = await (d, g)
+                }
+            }
+            // Day rollover while the screen stays open: at (household-tz) midnight
+            // "today" changes, so the dinner/chores the cards show are suddenly
+            // yesterday's. Sleep to just past each midnight and refetch; the synced
+            // agenda re-derives itself from the new data's render pass.
+            .task(id: sync.householdTz.identifier) {
+                while !Task.isCancelled {
+                    let wait = Agenda.secondsUntilNextDay(after: Date(), tz: sync.householdTz)
+                    try? await Task.sleep(for: .seconds(wait))
+                    guard !Task.isCancelled else { return }
                     await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
-                    await dash.loadGoals()
-                    await approvals.load()
                 }
             }
             .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
@@ -830,4 +849,4 @@ struct CustomizeTodaySheet: View {
     }
 }
 
-#Preview { TodayView(path: .constant([])).environment(SyncManager()) }
+#Preview { TodayView(approvals: ApprovalsModel(), path: .constant([])).environment(SyncManager()) }

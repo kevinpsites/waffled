@@ -54,6 +54,28 @@ private func event(_ id: String, _ raw: String?, allDay: Bool = false) -> Synced
     }
 }
 
+@Suite struct AgendaRolloverTests {
+    // 2026-07-17T03:00:00Z = 21:00 on the 16th in Denver (UTC-6, summer). The next
+    // Denver midnight is 06:00Z → 3h away; the helper adds a 1s margin past it.
+    @Test func countsToNextMidnightInHouseholdTz() {
+        let instant = EventTime.parse("2026-07-17T03:00:00Z")!
+        let s = Agenda.secondsUntilNextDay(after: instant, tz: denver)
+        #expect(s == 3 * 3600 + 1)
+    }
+
+    @Test func sameInstantDifferentTzDifferentRollover() {
+        let instant = EventTime.parse("2026-07-16T23:30:00Z")!
+        #expect(Agenda.secondsUntilNextDay(after: instant, tz: utc) == 30 * 60 + 1)
+    }
+
+    /// Never zero/negative (a zero sleep would spin), never beyond a day + margin.
+    @Test func alwaysPositiveAndBounded() {
+        let midnight = EventTime.parse("2026-07-17T00:00:00Z")!
+        let s = Agenda.secondsUntilNextDay(after: midnight, tz: utc)
+        #expect(s > 0 && s <= 86_401)
+    }
+}
+
 @Suite struct AgendaTests {
     @Test func timedSortBeforeAllDayThenByStart() {
         let allDay = event("all", "2026-06-16", allDay: true)
