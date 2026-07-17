@@ -125,7 +125,7 @@ writes the address settings for you:
 - **Just this computer (localhost)** — the default; nothing to do.
 - **Other devices on my network** — a tablet/phone/laptop on your LAN. `setup` detects
   this machine's IP and sets `POWERSYNC_PUBLIC_URL` + `PUBLIC_BASE_URL` to it, so the
-  kiosk and iOS app can sync. Open `http://<ip>:8080` on the device. *(Reserve a static
+  kiosk and [iOS app](/features/mobile/) can sync. Open `http://<ip>:8080` on the device. *(Reserve a static
   IP for this machine in your router so the address doesn't drift.)*
 - **A hostname with automatic HTTPS** — `setup` sets `CADDY_SITE_ADDRESS` (Caddy
   auto-TLS) + `PUBLIC_BASE_URL`. Enable the `443` mapping in

@@ -10,8 +10,9 @@ Every Waffled feature and whether it's supported on each surface.
 - **iPhone** — the native iOS app's *personal-planner* experience (`AppRoot` + bottom tab
   bar; one person checking their day).
 - **iPad** — the **same** universal app's *family-hub* experience (`KioskRoot` → a left nav
-  rail + every page, re-laid-out big; runs on the counter). One binary, one App Store
-  listing — the device picks the experience by idiom (`DeviceExperience`).
+  rail + every page, re-laid-out big; runs on the counter). One binary, one
+  [App Store listing](https://apps.apple.com/app/waffled/id6787621452) — the device picks
+  the experience by idiom (`DeviceExperience`).
 - **Status** — where the feature sits on the [roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md).
 
 Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
