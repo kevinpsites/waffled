@@ -395,6 +395,10 @@ export async function addRecipeToGrocery(
     [tenant.householdId, list.id]
   )
   const have = new Map(existing.rows.map((r) => [r.name.trim().toLowerCase(), r]))
+  // names written during THIS call — duplicate ingredient rows in one recipe
+  // (same name in two steps) must still merge with each other, while a repeat
+  // POST for an already-credited recipe must not re-add anything.
+  const touched = new Set<string>()
 
   const added: ListItemRow[] = []
   for (const ing of ingredients) {
@@ -411,23 +415,39 @@ export async function addRecipeToGrocery(
 
     const dupe = have.get(key)
     if (dupe) {
+      // An 'auto' row gains an off-plan stake here, so promote it to 'recipe' or
+      // the next weekly rebuild would wipe it. Hand-added rows stay 'manual'.
+      const source = dupe.source === 'auto' ? 'recipe' : dupe.source
+      if ((dupe.source_recipe_ids ?? []).includes(recipeId) && !touched.has(key)) {
+        // this recipe already contributed to the row (a repeat POST / double-tap)
+        // — re-merging would double the quantity without bound. Just promote.
+        if (source !== dupe.source) {
+          await query(`update list_items set source=$1 where id=$2`, [source, dupe.id])
+          dupe.source = source
+        }
+        continue
+      }
       // already on the list — bump the quantity and credit this recipe too,
-      // rather than silently skipping (so two recipes' limes become "2"). An
-      // 'auto' row gains an off-plan stake here, so promote it to 'recipe' or
-      // the next weekly rebuild would wipe the merged quantity.
+      // rather than silently skipping (so two recipes' limes become "2").
       const mergedQty = mergeQuantity(dupe.quantity, quantity)
       const ids = [...new Set([...(dupe.source_recipe_ids ?? []), recipeId])]
-      const source = dupe.source === 'auto' ? 'recipe' : dupe.source
       await query(`update list_items set quantity=$1, source_recipe_ids=$2, source=$3 where id=$4`, [mergedQty, ids, source, dupe.id])
+      dupe.quantity = mergedQty
+      dupe.source_recipe_ids = ids
+      dupe.source = source
+      touched.add(key)
       continue
     }
-    have.set(key, { id: '', name, quantity, source: 'recipe', source_recipe_ids: [recipeId] })
     const { rows } = await query<ListItemRow>(
       `insert into list_items
          (household_id, list_id, name, quantity, category, source, source_recipe_ids, created_by)
        values ($1,$2,$3,$4,$5,'recipe',$6,$7) returning *`,
       [tenant.householdId, list.id, name, quantity, aisle, [recipeId], tenant.personId]
     )
+    // cache the REAL inserted row (with its id) so a later duplicate name in this
+    // same recipe merges into it instead of 500ing on an empty-id update.
+    have.set(key, rows[0])
+    touched.add(key)
     added.push(rows[0])
   }
   return added
@@ -514,7 +534,16 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
   await ensureDefaultStaples(tenant.householdId)
   const staples = new Set((await listPantryStaples(tenant.householdId)).map((s) => s.name.trim().toLowerCase()))
 
-  type Agg = { name: string; aisle: string | null; unit: string | null; amount: number | null; recipeIds: Set<string> }
+  type Agg = {
+    name: string
+    aisle: string | null
+    unit: string | null
+    amount: number | null
+    recipeIds: Set<string>
+    // per-recipe quantity strings, so the surviving-off-plan-row branch below can
+    // merge exactly the portions of recipes that are NEW to that row.
+    contribs: Array<{ recipeId: string; qty: string | null }>
+  }
   const byName = new Map<string, Agg>()
   for (const { recipe_id, overrides } of dinners.rows) {
     const subs = ((overrides ?? {}) as { subs?: Record<string, string> }).subs ?? {}
@@ -529,13 +558,14 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
       const amt = ing.amount == null ? null : Number(ing.amount)
       let g = byName.get(key)
       if (!g) {
-        g = { name, aisle: row.aisle ?? 'Other', unit: ing.unit, amount: amt, recipeIds: new Set() }
+        g = { name, aisle: row.aisle ?? 'Other', unit: ing.unit, amount: amt, recipeIds: new Set(), contribs: [] }
         byName.set(key, g)
       } else if (amt != null && (ing.unit ?? '') === (g.unit ?? '')) {
         // same unit (or both unit-less, e.g. "1 lime" ×2 → "2")
         g.amount = (g.amount ?? 0) + amt
       }
       g.recipeIds.add(recipe_id)
+      g.contribs.push({ recipeId: recipe_id, qty: amt != null ? `${amt}${ing.unit ? ` ${ing.unit}` : ''}` : null })
     }
   }
 
@@ -553,11 +583,12 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
 
   // Explicit off-plan adds (source='recipe') survive the wipe above. When the
   // week's build needs a name one of them already covers, credit the planned
-  // recipes on that row instead of inserting a duplicate. Quantities are left
-  // alone on purpose: a promoted row already includes the planned amount, and
-  // re-adding it on every rebuild would grow the number without bound.
-  const recipeRows = await query<{ id: string; name: string; source_recipe_ids: string[] | null }>(
-    `select id, name, source_recipe_ids from list_items
+  // recipes on that row instead of inserting a duplicate — and merge in the
+  // portions of recipes NEW to the row (a recipe already credited contributed
+  // its amount when it was added/planned before, so re-merging it on every
+  // rebuild would grow the quantity without bound).
+  const recipeRows = await query<{ id: string; name: string; quantity: string | null; source_recipe_ids: string[] | null }>(
+    `select id, name, quantity, source_recipe_ids from list_items
        where household_id=$1 and list_id=$2 and source='recipe' and deleted_at is null`,
     [tenant.householdId, list.id]
   )
@@ -567,9 +598,13 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
   for (const g of byName.values()) {
     const surviving = offPlanByName.get(g.name.trim().toLowerCase())
     if (surviving) {
+      const prevIds = new Set(surviving.source_recipe_ids ?? [])
+      const newContribs = g.contribs.filter((c) => !prevIds.has(c.recipeId))
       const ids = [...new Set([...(surviving.source_recipe_ids ?? []), ...g.recipeIds])]
-      if (ids.length !== (surviving.source_recipe_ids ?? []).length) {
-        await query(`update list_items set source_recipe_ids=$1 where id=$2`, [ids, surviving.id])
+      if (newContribs.length || ids.length !== prevIds.size) {
+        let qty = surviving.quantity
+        for (const c of newContribs) qty = mergeQuantity(qty, c.qty)
+        await query(`update list_items set quantity=$1, source_recipe_ids=$2 where id=$3`, [qty, ids, surviving.id])
       }
       continue
     }
@@ -637,15 +672,16 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
     aisle: i.category && i.category !== 'Other' ? i.category : aisleFor(i.name, i.quantity),
   }))
 
-  // Recipes explicitly added from their page (source='recipe' rows) that aren't
-  // planned this week — surfaced so the by-meal view can give them their own
-  // section instead of lumping them into "Other items". Only explicit adds count:
-  // derived 'auto' rows from a plan-ahead build or last week's rollover would
-  // otherwise show phantom "Unscheduled" sections. Colors continue the planned
-  // meals' rotation so their dots stay distinct.
+  // Recipes explicitly added from their page that aren't planned this week —
+  // surfaced so the by-meal view can give them their own section instead of
+  // lumping them into "Other items". Explicit adds live on 'recipe' rows OR as
+  // ids merged onto hand-added 'manual' rows; only derived 'auto' rows are
+  // excluded — their ids come from a week build (plan-ahead / last week's
+  // rollover) and would show phantom "Unscheduled" sections. Colors continue
+  // the planned meals' rotation so their dots stay distinct.
   const plannedIds = new Set(mealRows.rows.map((d) => d.recipe_id).filter(Boolean))
   const offPlanIds = [
-    ...new Set(items.filter((i) => i.source === 'recipe').flatMap((i) => i.sourceRecipeIds)),
+    ...new Set(items.filter((i) => i.source !== 'auto').flatMap((i) => i.sourceRecipeIds)),
   ].filter((id) => !plannedIds.has(id))
   const [unscheduledRecipes, staples] = await Promise.all([
     offPlanIds.length

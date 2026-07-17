@@ -77,7 +77,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   [staged plan](../design/healthkit-goals.md); background sync + a rewards tie-in remain — see
   below.)*
 - **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
-  staples, live cross-surface refresh, **item attribution** ("added by …" / "from meal plan").
+  staples, live cross-surface refresh, **item attribution** ("added by …" / from a meal plan
+  or recipe), **add any recipe's ingredients from its page** (no meal-plan entry needed —
+  these survive the weekly rebuild), and **"Unscheduled" sections + week-rail rows** for
+  off-plan recipes in the grocery board's by-meal view.
 - **Meals & recipes** — week/month planners, recipe library, in-app editor (with
   **ingredient sections** + dividers and cross-section drag-drop), paste-markdown
   import, overrides, cook mode, **per-step timers** (set in the editor; a floating

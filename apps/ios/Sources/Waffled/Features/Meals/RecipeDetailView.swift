@@ -24,6 +24,7 @@ struct RecipeDetailView: View {
     /// ingredients to the grocery list.
     @State private var tagsExpanded = false
     @State private var groceryAdded = false
+    @State private var groceryBusy = false
     /// Local check-off (like the web) — tick ingredients as you shop/cook; not persisted.
     @State private var checkedIngredients: Set<String> = []
     @State private var scheduling = false
@@ -71,7 +72,10 @@ struct RecipeDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { scheduling = true } label: { Label("Schedule…", systemImage: "calendar") }
-                    Button { addRecipeToGrocery() } label: { Label("Add to grocery list", systemImage: "cart.badge.plus") }
+                    Button { addRecipeToGrocery() } label: {
+                        Label(groceryAdded ? "Added to grocery ✓" : "Add to grocery list", systemImage: "cart.badge.plus")
+                    }
+                    .disabled(groceryAdded)
                     Button { editing = true } label: { Label("Edit recipe", systemImage: "pencil") }
                     Button(role: .destructive) { confirmingDelete = true } label: {
                         Label("Delete recipe", systemImage: "trash")
@@ -380,8 +384,16 @@ struct RecipeDetailView: View {
     /// `groceryAdded` (which disables the banner button) only flips on success, so
     /// a failed request stays retryable and never reads as "Added ✓".
     private func addRecipeToGrocery() {
-        guard !groceryAdded else { return }
+        if groceryAdded {
+            // the ⋯-menu entry can still fire after the banner shows "Added ✓" —
+            // acknowledge instead of silently no-oping
+            withAnimation { cookedMessage = "Already on your grocery list." }
+            return
+        }
+        guard !groceryBusy else { return }
+        groceryBusy = true
         Task {
+            defer { groceryBusy = false }
             do {
                 let added = try await api.groceryFromRecipe(recipeId: r.id)
                 groceryAdded = true

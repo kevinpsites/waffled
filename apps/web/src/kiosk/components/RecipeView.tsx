@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { groceryApi, mealsApi, pantryApi, useRecipe, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
 import { ScheduleModal } from './ScheduleModal'
@@ -135,6 +135,7 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const [fav, setFav] = useState(false)
   const [scheduling, setScheduling] = useState(false)
   const [addedNote, setAddedNote] = useState<string | null>(null)
+  const addingGrocery = useRef(false) // in-flight guard for addToGrocery
   const [cooked, setCooked] = useState(0)
   const [notes, setNotes] = useState('')
   const [usedMatches, setUsedMatches] = useState<RecipeMatch[] | null>(null)
@@ -234,8 +235,16 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const missing = ingredients.filter((i) => !i.isStaple).map((i) => i.name)
 
   async function addToGrocery() {
-    const { added } = await groceryApi.groceryFromRecipe(recipe!.id)
-    setAddedNote(added > 0 ? `Added ${added} item${added === 1 ? '' : 's'} to this week’s grocery list.` : 'Everything’s already on the list or on hand — nothing to add.')
+    if (addingGrocery.current) return // three controls share this handler — no double-fire
+    addingGrocery.current = true
+    try {
+      const { added } = await groceryApi.groceryFromRecipe(recipe!.id)
+      setAddedNote(added > 0 ? `Added ${added} item${added === 1 ? '' : 's'} to this week’s grocery list.` : 'Everything’s already on the list or on hand — nothing to add.')
+    } catch {
+      setAddedNote('Couldn’t reach the grocery list — try again.')
+    } finally {
+      addingGrocery.current = false
+    }
   }
 
   // Categorical chips are what people scan — show the first few, tuck the rest behind

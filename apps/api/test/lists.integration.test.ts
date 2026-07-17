@@ -604,6 +604,63 @@ describe('off-plan grocery items vs the weekly rebuild', () => {
     expect(b.unscheduled.some((u: { title: string }) => u.title === 'Salmon Bowls')).toBe(true)
     expect(b.unscheduled.some((u: { title: string }) => u.title === 'Test Salmon')).toBe(false)
   })
+
+  it('re-adding the same recipe is idempotent (no unbounded quantity doubling)', async () => {
+    // Salmon Bowls is already credited on the Salmon fillets row at 2.5 lb —
+    // a double-tap / repeat POST must not turn it into 3.5 lb
+    const bowls = (await board()).unscheduled.find((u: { title: string }) => u.title === 'Salmon Bowls')
+    await call('POST', `/api/lists/grocery/from-recipe/${bowls.recipeId}`, kevin)
+    const salmon = (await groceryItems()).filter((i: { name: string }) => i.name === 'Salmon fillets')
+    expect(salmon).toHaveLength(1)
+    expect(salmon[0].quantity).toBe('2.5 lb')
+  })
+
+  it('adds the planned portion onto an off-plan row when the plan comes second', async () => {
+    // reverse ordering of the promote case: off-plan add exists FIRST, then a
+    // planned recipe needs the same ingredient — rebuild must add its amount
+    const herb = await makeRecipe('Herb Chicken', [{ name: 'Chicken thighs', amount: 1, unit: 'lb' }])
+    await call('POST', `/api/lists/grocery/from-recipe/${herb}`, kevin)
+    const roast = await makeRecipe('Roast Chicken Dinner', [{ name: 'Chicken thighs', amount: 1.5, unit: 'lb' }])
+    const planDate = (() => {
+      const d = new Date(week + 'T00:00:00Z')
+      d.setUTCDate(d.getUTCDate() + 3)
+      return d.toISOString().slice(0, 10)
+    })()
+    await call('POST', '/api/meals/plan', kevin, { date: planDate, mealType: 'dinner', recipeId: roast })
+
+    await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
+    let thighs = (await groceryItems()).filter((i: { name: string }) => i.name === 'Chicken thighs')
+    expect(thighs).toHaveLength(1)
+    expect(thighs[0].quantity).toBe('2.5 lb') // 1 (off-plan) + 1.5 (planned)
+    expect(thighs[0].sourceRecipeIds).toEqual(expect.arrayContaining([herb, roast]))
+
+    // rebuilding again must not re-add the planned portion
+    await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
+    thighs = (await groceryItems()).filter((i: { name: string }) => i.name === 'Chicken thighs')
+    expect(thighs[0].quantity).toBe('2.5 lb')
+  })
+
+  it('merges duplicate ingredient names within one recipe instead of erroring', async () => {
+    // two rows normalizing to the same name (e.g. an ingredient used in two steps)
+    const steak = await makeRecipe('Scallion Steak', [
+      { name: 'Scallions', amount: 2, unit: 'count' },
+      { name: 'Scallions', amount: 3, unit: 'count' },
+    ])
+    const res = await call('POST', `/api/lists/grocery/from-recipe/${steak}`, kevin)
+    expect(res.statusCode).toBe(201)
+    const scallions = (await groceryItems()).filter((i: { name: string }) => i.name === 'Scallions')
+    expect(scallions).toHaveLength(1)
+    expect(scallions[0].quantity).toBe('5 count')
+  })
+
+  it('surfaces a recipe as unscheduled even when all its items merged into hand-added rows', async () => {
+    await call('POST', '/api/lists/grocery/items', kevin, { name: 'Mint' })
+    const mojitos = await makeRecipe('Mojitos', [{ name: 'Mint', amount: 1, unit: 'bunch' }])
+    await call('POST', `/api/lists/grocery/from-recipe/${mojitos}`, kevin)
+    const mint = (await groceryItems()).filter((i: { name: string }) => i.name === 'Mint')
+    expect(mint).toHaveLength(1) // merged, not duplicated
+    expect((await board()).unscheduled.some((u: { title: string }) => u.title === 'Mojitos')).toBe(true)
+  })
 })
 
 describe('list templates (mark-as-template converts in place, apply, unmark)', () => {

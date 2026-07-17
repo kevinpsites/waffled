@@ -71,6 +71,16 @@ describe('RecipeView — add ingredients to grocery', () => {
     expect(await screen.findByText(/Added 3 items/)).toBeInTheDocument()
     expect(calls.some((u) => u.includes('/api/lists/grocery/from-recipe/r1'))).toBe(true)
   })
+
+  it('shows an error note when the request fails instead of failing silently', async () => {
+    recipeRef.current = makeDetail({ id: 'r1', title: 'Guacamole' })
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('network down')
+    }) as unknown as typeof fetch
+    renderView()
+    fireEvent.click(screen.getByRole('button', { name: 'Add to grocery' }))
+    expect(await screen.findByText(/Couldn’t reach the grocery list/)).toBeInTheDocument()
+  })
 })
 
 describe('RecipeView — New tag', () => {
