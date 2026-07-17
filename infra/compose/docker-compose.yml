@@ -127,6 +127,11 @@ services:
       # kill-switch: UPDATE_CHECK_ENABLED=false (no outbound call at all).
       UPDATE_CHECK_ENABLED: ${UPDATE_CHECK_ENABLED:-true}
       UPDATE_CHECK_REPO: ${UPDATE_CHECK_REPO:-kevinpsites/waffled}   # GitHub repo slug for the update notifier
+      # --- Outbound email (SMTP creds live per household in the DB; these are the
+      # operational defaults documented in .env.example).
+      EMAIL_DEFAULT_FROM_ADDRESS: ${EMAIL_DEFAULT_FROM_ADDRESS:-}
+      EMAIL_PUBLIC_BASE_URL: ${EMAIL_PUBLIC_BASE_URL:-}
+      WEEKLY_DIGEST_INTERVAL_MS: ${WEEKLY_DIGEST_INTERVAL_MS:-}
       # --- switch to Auth0 (RS256): set these, then restart the api ---
       # AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       # AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
