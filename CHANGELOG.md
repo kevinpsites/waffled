@@ -124,6 +124,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (the web planner was already instant). The app now swaps the two slots on screen the
   moment you let go, saves in the background, and quietly puts things back — with a
   dismissible notice — in the rare case the server says no.
+- **Typing on the grocery list no longer fights the keyboard (iOS).** On iPad, opening
+  the keyboard made the app think the screen had rotated — the page rebuilt itself
+  mid-word, dropping the item you were typing and leaving the add-item field buried
+  behind the keyboard. The layout now only changes on a real rotation, so the field
+  (and your half-typed item) stays visible above the keyboard. On iPhone, the keyboard
+  had no way to be put away on a list; a Done button above the keyboard and
+  drag-down-to-dismiss on the items now tuck it away.
 - **`./waffled upgrade` no longer trips over its own update.** Upgrading from an older
   release could fail mid-way with a cryptic `required variable … is missing a value`
   error, because the still-running old script drove the freshly downloaded configuration
