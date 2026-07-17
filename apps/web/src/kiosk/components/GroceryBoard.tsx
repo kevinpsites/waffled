@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router'
 import { Icon } from '../icons'
 import { useTopbarFull } from '../topbar-slot'
 import { groceryApi, useGroceryBoard, type GroceryBoardItem } from '../../lib/api'
@@ -153,6 +154,7 @@ function aisleSections(items: GroceryBoardItem[]): BoardSection[] {
 
 export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const { board, loading, error, refetch } = useGroceryBoard()
+  const navigate = useNavigate()
   const [view, setView] = useState<'aisle' | 'meal'>('aisle')
   const [draft, setDraft] = useState('')
   const [editStaples, setEditStaples] = useState(false)
@@ -432,11 +434,17 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
               ))}
             </div>
           )}
+          {/* Rows with a linked recipe drill into it — parity with the iOS rail. */}
           {railMeals.map((d) => (
-            <div key={`${d.date}-${d.mealType}-${d.recipeId ?? d.title}`} className="gdinner">
+            <div
+              key={`${d.date}-${d.mealType}-${d.recipeId ?? d.title}`}
+              className={`gdinner ${d.recipeId ? 'link' : ''}`}
+              {...(d.recipeId ? { role: 'button', tabIndex: 0, onClick: () => navigate(`/meals/recipe/${d.recipeId}`) } : {})}
+            >
               <span className="gdinner-c" style={{ background: d.color }} />
               <span className="gdinner-day">{new Date(String(d.date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
               <span className="gdinner-t">{d.title ?? '—'}</span>
+              {d.recipeId && <span className="gdinner-chev">›</span>}
               <span className="gdinner-e" style={{ background: `${d.color}1f` }}>{d.emoji ?? MEAL_EMOJI[d.mealType] ?? '🍽️'}</span>
             </div>
           ))}
@@ -448,9 +456,10 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
               <div className="grocery-rail-div" />
               <div className="grocery-rail-sub">Unscheduled</div>
               {(board.unscheduled ?? []).map((u) => (
-                <div key={u.recipeId} className="gdinner">
+                <div key={u.recipeId} className="gdinner link" role="button" tabIndex={0} onClick={() => navigate(`/meals/recipe/${u.recipeId}`)}>
                   <span className="gdinner-c" style={{ background: u.color }} />
                   <span className="gdinner-t">{u.title}</span>
+                  <span className="gdinner-chev">›</span>
                   <span className="gdinner-e" style={{ background: `${u.color}1f` }}>{u.emoji ?? '🍽️'}</span>
                 </div>
               ))}

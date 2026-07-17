@@ -347,6 +347,16 @@
   padding: 10px 0;
   border-bottom: 1px solid var(--hair-2);
 }
+/* rows that drill into a recipe (parity with the iOS rail) */
+.gdinner.link { cursor: pointer; }
+.gdinner.link:hover .gdinner-t { color: var(--ink); }
+.gdinner-chev {
+  flex: none;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink-3);
+  line-height: 1;
+}
 .gdinner:last-child {
   border-bottom: 0;
 }

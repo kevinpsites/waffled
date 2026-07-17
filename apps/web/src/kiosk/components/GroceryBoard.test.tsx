@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { GroceryBoard } from './GroceryBoard'
 import { TopbarSlotProvider } from '../topbar-slot'
 
@@ -164,5 +164,39 @@ describe('GroceryBoard unscheduled recipes (By meal view)', () => {
     const guac = screen.getAllByText('Guacamole').map((el) => el.closest('.grocery-section')).find(Boolean) as HTMLElement
     expect(guac.textContent).not.toContain('Limes')
     expect(guac.textContent).toContain('Avocados')
+  })
+})
+
+// Rail rows drill into the recipe, matching iOS.
+describe('GroceryBoard rail navigation', () => {
+  function renderWithRecipeRoute() {
+    return render(
+      <MemoryRouter>
+        <TopbarSlotProvider>
+          <Routes>
+            <Route path="/" element={<GroceryBoard onBack={() => {}} />} />
+            <Route path="/meals/recipe/:id" element={<div>recipe-page</div>} />
+          </Routes>
+        </TopbarSlotProvider>
+      </MemoryRouter>
+    )
+  }
+
+  it('opens the recipe when a planned rail meal is clicked', async () => {
+    mockBoardWithUnscheduled()
+    renderWithRecipeRoute()
+    await screen.findByText('Avocados')
+    const rail = document.querySelector('.grocery-railcard') as HTMLElement
+    fireEvent.click(within(rail).getByText('Pasta'))
+    expect(await screen.findByText('recipe-page')).toBeInTheDocument()
+  })
+
+  it('opens the recipe when an unscheduled rail row is clicked', async () => {
+    mockBoardWithUnscheduled()
+    renderWithRecipeRoute()
+    await screen.findByText('Avocados')
+    const rail = document.querySelector('.grocery-railcard') as HTMLElement
+    fireEvent.click(within(rail).getByText('Guacamole'))
+    expect(await screen.findByText('recipe-page')).toBeInTheDocument()
   })
 })
