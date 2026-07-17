@@ -347,14 +347,11 @@ struct ListDetailView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             if model.isTemplate { templateBanner }
         }
+        // An explicit way to put the keyboard away — the add bar keeps focus after
+        // every submit (rapid entry), so without this the keyboard has no Done/✕.
+        // Dropping focus also commits an in-flight inline edit (see onChange(of: focus)).
+        .wfKeyboardDoneToolbar { focus = nil }
         .toolbar {
-            // An explicit way to put the keyboard away — the add bar keeps focus after
-            // every submit (rapid entry), so without this the keyboard has no Done/✕.
-            // Dropping focus also commits an in-flight inline edit (see onChange(of: focus)).
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focus = nil }.fontWeight(.semibold)
-            }
             // Grocery is auto-built, so it has no template/delete menu. A template gets
             // Use / Move to Lists / Delete; a normal list gets Save as template / Delete.
             if !model.isGrocery {
