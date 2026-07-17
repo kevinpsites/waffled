@@ -1,6 +1,6 @@
 ---
 title: Add anything — the capture bar
-description: A single natural-language input that parses a thought into the right event, task, grocery item, meal, or list item — or acts on an existing chore or goal.
+description: A single natural-language input that parses a thought into the right event, task, grocery item, meal, or list item — or acts on what's already there, from chores and goals to events, list items, and rewards.
 ---
 
 The "Add anything" bar is the fast front door to the whole app — one natural-language box where you dump a thought and it lands in the right place. Type "dentist next Tuesday at 3", "milk and eggs", or "taco night Thursday" and the bar figures out whether that's an event, a task, a grocery item, a meal, or a list item. It can also act on what's already there — "mark set the table done for Elaine", "log 30 minutes on my reading goal" — with a quick confirm before anything changes. No navigating, no forms. ✨
@@ -8,7 +8,7 @@ The "Add anything" bar is the fast front door to the whole app — one natural-l
 ## Highlights
 
 - 🧭 **Routes a phrase** → event · task · grocery · meal · list · unsupported, resolving your household-local "now" and family names as it goes.
-- ✅ **Acts on existing things too** — mark a chore done or hand it to someone else, log progress on a goal, straight from the bar; you confirm the exact match before anything commits. See [Acting on existing things](#acting-on-existing-things).
+- ✅ **Acts on existing things too** — mark a chore done, log progress on a goal, cross an item off a list, move or cancel an event, redeem a reward, straight from the bar; you confirm the exact match before anything commits. See [Acting on existing things](#acting-on-existing-things).
 - 🔁 **Understands recurrence** — "lunch every Thursday for a month" parses into an **RRULE**, editable via **Repeats / Ends** right in the preview.
 - 🔌 **Pluggable provider per household** — Anthropic · OpenAI-compatible · Ollama, with a configurable model; the active provider/model is stored per household. See [AI providers](/administration/ai-providers/).
 - ⚡ **Instant, then better** — an on-device parse shows immediately, then upgrades to the LLM with a provider tag (**"improving…"**); on a kind-disagreement you can pick the other take, and it **backfills recurrence** when a weak model drops it.
@@ -21,13 +21,17 @@ The bar isn't just for adding — it can change what's already there:
 - "mark set the table done for Elaine"
 - "give the dishes to Wally"
 - "log 30 minutes on my reading goal"
-- "add 10 hours to our outside goal"
+- "cross off milk"
+- "move soccer to Thursday 4pm"
+- "redeem ice cream night for George"
 
 The parser (your AI provider if configured, otherwise the on-device fallback) proposes **what you meant** — a verb plus a description of the target. Your server then deterministically finds the actual matching item(s) and shows a **pick-one candidate list** before anything commits. The AI only suggests; it never picks database rows.
 
 - 🗓️ **Chore changes apply to today's instance**, not the recurring template — "mark the dishes done" completes today's dishes; next week's schedule is untouched.
+- 📅 **Event changes act on just that occurrence**, never the whole series — "move soccer to Thursday" moves this week's practice; the rest of the schedule stays put. Same for "cancel soccer".
+- ⭐ **Redeeming goes through the shop's rules** — the same star balance check and parent-approval flow as redeeming from the rewards page.
 - 🔒 **Permission-gated where it touches someone else** — handing a chore to another person needs `chore.manage`; logging on someone else's goal needs `goal.manage`. See [Permissions](/concepts/permissions/).
-- 🚧 **Chores and goals for now** — events, list items, and rewards can't be changed from the bar yet (the bar says so when asked).
+- 🚧 **Not every verb on every kind** — the bar completes, logs, moves, reassigns, redeems, and deletes where each makes sense (you can't delete a goal from the bar, for example). When a combination isn't supported, the bar says so plainly instead of pretending to search.
 
 ## Where it works
 

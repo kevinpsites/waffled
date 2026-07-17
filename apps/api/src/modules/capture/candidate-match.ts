@@ -41,10 +41,19 @@ function normalize(s: string): string {
   return tokenize(s).join(' ')
 }
 
+// A description token found only in a row's `keywords` (concept vocabulary, learned
+// synonyms) is weaker evidence than the user's word appearing in the title itself, so
+// it counts at half weight. Without this, a one-word description like "outside" scored
+// a full 1.00 against EVERY row whose keywords contained it — e.g. all goals touching
+// the outdoors concept tied at the top (PR #73 review). Mirrors keywordMatch's
+// title-beats-concept weighting in goal-match.ts (10 vs 5).
+const KEYWORD_WEIGHT = 0.5
+
 // Rank `rows` against a free-text `description`, sorted descending by confidence
 // (0..1). An exact normalized title match scores 1.0; otherwise confidence is the
-// token overlap = shared tokens / description tokens (title tokens ∪ any keywords).
-// Rows below the floor are dropped; a description with no usable tokens yields [].
+// weighted token overlap / description tokens — a token in the row's title counts 1,
+// a token found only via `keywords` counts KEYWORD_WEIGHT. Rows below the floor are
+// dropped; a description with no usable tokens yields [].
 export function rankCandidates(description: string, rows: RankRow[]): Candidate[] {
   const descNorm = normalize(description)
   const descTokens = new Set(tokenize(description))
@@ -57,10 +66,14 @@ export function rankCandidates(description: string, rows: RankRow[]): Candidate[
     if (titleNorm && titleNorm === descNorm) {
       confidence = 1
     } else {
-      const rowTokens = new Set(tokenize(row.title))
-      for (const kw of row.keywords ?? []) for (const t of tokenize(kw)) rowTokens.add(t)
+      const titleTokens = new Set(tokenize(row.title))
+      const kwTokens = new Set<string>()
+      for (const kw of row.keywords ?? []) for (const t of tokenize(kw)) kwTokens.add(t)
       let shared = 0
-      for (const t of descTokens) if (rowTokens.has(t)) shared++
+      for (const t of descTokens) {
+        if (titleTokens.has(t)) shared += 1
+        else if (kwTokens.has(t)) shared += KEYWORD_WEIGHT
+      }
       confidence = shared / descTokens.size
     }
     if (confidence >= FLOOR) {

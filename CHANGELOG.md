@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Quick-add now acts on lists, calendar events, and rewards too.** Tell the capture bar
+  "cross off milk", "move soccer to Thursday 4pm", "cancel the dentist appointment", or
+  "redeem ice cream night for George" and it finds the real item and asks you to confirm —
+  the same pick-one flow chores and goals already have. Event changes move or cancel **just
+  that occurrence**, never the whole series, and redeeming goes through the same star-balance
+  and parent-approval rules as the rewards page.
+- **Smarter goal matching in quick-add.** A vague word like "outside" no longer ranks every
+  outdoors-ish goal as a perfect match — goals whose *title* contains your words now rank
+  above ones that only match by theme, so the right goal lands at the top of the picker.
 - **Swipe between weeks in the iPhone meal planner.** The weekly meal plan now pages with a
   horizontal flick — swipe left for next week, right for the previous one — the same gesture
   the Calendar and Chores screens already use. The arrow buttons and "Jump to this week"

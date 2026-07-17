@@ -13,6 +13,7 @@ import { materializeMaster } from '../calendar/expansion.service'
 import { isValidRrule } from '../calendar/recurrence'
 import { recordMatch, WEIGHT } from '../goals/goal-match-memory'
 import { upsertSeriesMeta } from './event-series-meta'
+import { registerEventCaptureTarget } from './events-capture'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -575,6 +576,9 @@ function localToday(): string {
 }
 
 export function registerEventRoutes(api: Api): void {
+  // Tier 2 capture: events answer /api/capture/{resolve,commit} for reschedule/delete.
+  registerEventCaptureTarget()
+
   api.post('/api/events', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as Partial<CreateEventInput>
     if (!body.title || !body.title.trim()) {

@@ -757,6 +757,41 @@ describe('parseCapture — mutate verbs (Tier 2)', () => {
     expect(m.target.description.toLowerCase()).toContain('ice cream')
   })
 
+  // Fast-follow: on-device reschedule extracts the destination date/time so no-LLM
+  // households can move events end-to-end (server still re-parses when AI is on).
+  it('"move soccer to Thursday 4pm" → reschedule with date+time args', () => {
+    const m = asMutate(p('move soccer to Thursday 4pm'))
+    expect(m.verb).toBe('reschedule')
+    expect(m.targetKind).toBe('event')
+    expect(m.target.description.toLowerCase()).toBe('soccer')
+    // NOW is Thursday Jun 11 2026 — a bare "Thursday" is today.
+    expect(m.args).toEqual({ date: '2026-06-11', time: '16:00' })
+  })
+
+  it('"reschedule the dentist appointment to tomorrow" → date only', () => {
+    const m = asMutate(p('reschedule the dentist appointment to tomorrow'))
+    expect(m.verb).toBe('reschedule')
+    expect(m.args).toEqual({ date: '2026-06-12' })
+  })
+
+  it('"move piano lesson to 3pm" → time only', () => {
+    const m = asMutate(p('move piano lesson to 3pm'))
+    expect(m.verb).toBe('reschedule')
+    expect(m.args).toEqual({ time: '15:00' })
+  })
+
+  it('"push book club to next Friday" → the week-out Friday', () => {
+    const m = asMutate(p('push book club to next Friday'))
+    expect(m.verb).toBe('reschedule')
+    expect(m.args).toEqual({ date: '2026-06-19' })
+  })
+
+  it('a bare "reschedule soccer" still emits empty args (server asks for the when)', () => {
+    const m = asMutate(p('reschedule soccer'))
+    expect(m.verb).toBe('reschedule')
+    expect(m.args).toEqual({})
+  })
+
   it('a mutate marker is NEVER confident (forces the server path, no offline auto-commit)', () => {
     expect(looksConfident(p('mark the trash chore done'), 'mark the trash chore done')).toBe(false)
     expect(looksConfident(p('delete the dentist appointment'), 'delete the dentist appointment')).toBe(false)

@@ -44,6 +44,35 @@ describe('rankCandidates', () => {
     expect(out[0].id).toBe('a')
   })
 
+  // A keyword (concept-vocabulary) match is weaker evidence than the user's words
+  // actually appearing in the row's title — before the weighting, "outside" scored
+  // 1.00 against EVERY goal whose title touched the outdoors concept, so all of them
+  // tied at the top (PR #73 review fast-follow).
+  it('scores a keyword-only match at half a title-token match, never 1.0', () => {
+    const outdoors = ['outside', 'outdoor', 'park', 'nature', 'camping', 'lawn']
+    const goals = [
+      { id: 'camp', title: 'Go camping', keywords: outdoors },
+      { id: 'mow', title: 'Mow the lawn', keywords: outdoors },
+      { id: 'play', title: 'Play outside', keywords: outdoors },
+    ]
+    const out = rankCandidates('outside', goals)
+    const play = out.find((c) => c.id === 'play')!
+    const camp = out.find((c) => c.id === 'camp')!
+    const mow = out.find((c) => c.id === 'mow')!
+    expect(play.confidence).toBe(1) // "outside" is literally in the title
+    expect(camp.confidence).toBe(0.5) // concept vocabulary only
+    expect(mow.confidence).toBe(0.5)
+    expect(out[0].id).toBe('play') // the title match ranks first, not a 3-way tie
+  })
+
+  it('scores a mixed title+keyword match between the two weights', () => {
+    const out = rankCandidates('reading outside', [
+      { id: 'g', title: 'Reading time', keywords: ['outside', 'park'] },
+    ])
+    // "reading" hits the title (1), "outside" only a keyword (0.5) → 1.5/2
+    expect(out[0].confidence).toBe(0.75)
+  })
+
   it('returns [] for gibberish with no overlap', () => {
     expect(rankCandidates('qwerty zxcvb', rows)).toEqual([])
   })
