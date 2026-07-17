@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Waffled is on the App Store.** The native iOS app is now a free public download for
+  iPhone and iPad — [get it on the App Store](https://apps.apple.com/app/waffled/id6787621452).
+  The [waffled.app](https://waffled.app) landing page has a new download section (official
+  badge + a QR code you can scan from the kiosk), and the docs' mobile-app page links
+  straight to the listing.
 - **Quick-add actions now work on iPhone and iPad, not just the web.** Everything the capture
   bar can *do* to things you already have — "mark the trash chore done", "give the dishes to
   Wally", "log 20 min on my reading goal", "move soccer to Thursday 4pm", "cross off milk",

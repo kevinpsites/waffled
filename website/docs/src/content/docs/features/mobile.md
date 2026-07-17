@@ -7,6 +7,12 @@ description: Waffled's native iOS companion — a personal planner on iPhone, a 
 
 Mobile is Waffled's native iOS companion — one universal SwiftUI binary that is a personal planner on your iPhone and a family-hub kiosk on your iPad, chosen automatically by the device. It's built for capture on the go and an always-on counter display, with a calendar that keeps working through network blips. Sign in once, and the app points itself at your own Waffled server. 📱
 
+## Get the app
+
+<a href="https://apps.apple.com/app/waffled/id6787621452" rel="noopener"><img src="/app-store-badge.svg" alt="Download on the App Store" width="168" height="56" /></a>
+
+Waffled is a **free download on the App Store** — one universal app for iPhone and iPad. Install it, enter your server's address (see [Settings](#settings) below), and sign in with your normal Waffled account. The app talks only to *your* server — there's no Waffled cloud account.
+
 ## Highlights
 
 - 📱 **One universal app, two idioms** — iPhone gets the personal-planner idiom (bottom tabs); iPad gets the family-hub idiom (side rail, wide layouts + screensaver) — picked automatically by device idiom, no separate download.
@@ -40,4 +46,4 @@ The app renders native screens for whatever modules are **enabled server-side** 
 - 🌊 **Only the calendar is truly offline** — the events domain reads/writes through blips; everything else needs a connection.
 - 🚧 **Chore reminders are blocked** until chores join the PowerSync schema — chores are REST-only on iOS today, so they can't yet schedule local reminders like [Calendar](/features/calendar/) events do.
 - 🛡️ **Server-side capabilities still apply** — the app shows what your account is allowed to see; see [Permissions](/concepts/permissions/).
-- 🍏 **Distribution** — shipped via the App Store / TestFlight (Xcode Cloud builds). Bundle id `app.waffled`.
+- 🍏 **Distribution** — shipped via the [App Store](https://apps.apple.com/app/waffled/id6787621452) (Xcode Cloud builds; pre-release builds via TestFlight). Bundle id `app.waffled`.

@@ -15,6 +15,8 @@ export default defineConfig({
 			logo: { src: './src/assets/waffled-logo.png', alt: 'Waffled' },
 			favicon: '/favicon.png',
 			customCss: ['./src/styles/docs.css'],
+			// Custom hero: adds the official App Store badge to the homepage action row.
+			components: { Hero: './src/components/Hero.astro' },
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/kevinpsites/waffled' }],
 			sidebar: [
 				{

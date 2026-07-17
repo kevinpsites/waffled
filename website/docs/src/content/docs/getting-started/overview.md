@@ -27,7 +27,7 @@ is opt-in via configuration.
 | --- | --- | --- |
 | **Counter Kiosk** | Always-on tablet (1280×800) in the kitchen | Same web build in fullscreen/PWA mode; ambient screensaver; profile picker + optional PINs |
 | **Web** | Full management & setup dashboard | The React SPA served by Caddy; first-run setup wizard, all admin/settings |
-| **iOS (iPhone + iPad)** | Native universal SwiftUI app — a personal planner on iPhone, a family hub on iPad | Offline-first calendar over PowerSync; native sign-in + local notifications; an iPad can double as the kiosk |
+| **iOS (iPhone + iPad)** | Native universal SwiftUI app — a personal planner on iPhone, a family hub on iPad | [Free on the App Store](https://apps.apple.com/app/waffled/id6787621452); offline-first calendar over PowerSync; native sign-in + local notifications; an iPad can double as the kiosk |
 
 The Kiosk and Web are the **same application** (the "Web / Kiosk" column in the feature
 matrix); iOS is a separate native client — one universal binary whose iPhone and iPad
