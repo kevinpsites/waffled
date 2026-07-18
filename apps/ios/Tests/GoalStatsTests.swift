@@ -59,15 +59,15 @@ import Testing
 
     @Test func totalGoalViewMapping() {
         #expect(GoalStats.defaultView(goalType: "total", timeframe: .long) == .pace)
-        #expect(GoalStats.availableViews(goalType: "total", timeframe: .long) == [.pace, .year, .byPerson, .month, .week, .yearRing])
-        #expect(GoalStats.availableViews(goalType: "total", timeframe: .short) == [.pace, .byPerson, .week])
+        #expect(GoalStats.availableViews(goalType: "total", timeframe: .long) == [.week, .month, .year, .pace, .yearRing, .byPerson])
+        #expect(GoalStats.availableViews(goalType: "total", timeframe: .short) == [.week, .pace, .byPerson])
         #expect(GoalStats.defaultView(goalType: "total", timeframe: .short) == .pace)
     }
 
     @Test func countGoalViewMapping() {
         #expect(GoalStats.defaultView(goalType: "count", timeframe: .long) == .collection)
-        #expect(GoalStats.availableViews(goalType: "count", timeframe: .long) == [.collection, .pace, .month])
-        #expect(GoalStats.availableViews(goalType: "count", timeframe: .short) == [.collection, .pace])
+        #expect(GoalStats.availableViews(goalType: "count", timeframe: .long) == [.month, .pace, .collection])
+        #expect(GoalStats.availableViews(goalType: "count", timeframe: .short) == [.pace, .collection])
     }
 
     @Test func habitGoalViewMapping() {

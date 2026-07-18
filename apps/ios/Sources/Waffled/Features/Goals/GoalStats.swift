@@ -84,8 +84,8 @@ enum GoalStats {
     }
 
     private static let typeViews: [String: [GoalViewKey]] = [
-        "total": [.pace, .year, .byPerson, .month, .week, .yearRing],
-        "count": [.collection, .pace, .month],
+        "total": [.week, .month, .year, .pace, .yearRing, .byPerson],
+        "count": [.month, .pace, .collection],
         "habit": [.consistency, .week],
         "checklist": [],
     ]
