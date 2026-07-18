@@ -42,7 +42,10 @@ struct GoalDataViewSwitcher: View {
                 content
             }
         }
-        .task(id: goal.id) { await load() }
+        // Keyed on more than just goal.id: logging progress changes totalProgress/
+        // recent/streakDays without changing the id, and activity must refetch then
+        // or the charts go stale until the goal is closed and reopened.
+        .task(id: "\(goal.id)|\(goal.totalProgress)|\(goal.recent.count)|\(goal.streakDays)") { await load() }
     }
 
     @ViewBuilder private var content: some View {
