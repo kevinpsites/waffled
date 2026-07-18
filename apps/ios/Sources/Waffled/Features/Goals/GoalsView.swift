@@ -2653,17 +2653,19 @@ struct GoalDetailView: View {
                 if isKiosk {
                     HStack(alignment: .top, spacing: 16) {
                         VStack(spacing: 16) {
-                            if !participants.isEmpty { byPersonCard }
-                            if let ms = model.detail?.milestones, !ms.isEmpty { milestoneCard(ms) }
+                            if let detail = model.detail { GoalDataViewSwitcher(goal: detail) }
                         }
                         .frame(maxWidth: .infinity, alignment: .top)
-                        VStack(spacing: 16) { recentCard }
-                            .frame(maxWidth: .infinity, alignment: .top)
+                        VStack(spacing: 16) {
+                            if let ms = model.detail?.milestones, !ms.isEmpty { milestoneCard(ms) }
+                            recentCard
+                        }
+                        .frame(maxWidth: .infinity, alignment: .top)
                     }
                     deleteButton
                 } else {
+                    if let detail = model.detail { GoalDataViewSwitcher(goal: detail) }
                     if let ms = model.detail?.milestones, !ms.isEmpty { milestoneCard(ms) }
-                    if !participants.isEmpty { byPersonCard }
                     recentCard
                     deleteButton
                 }
@@ -2869,36 +2871,6 @@ struct GoalDetailView: View {
                     }
                     .padding(.vertical, 7)
                     if i < ms.count - 1 { Divider().background(WF.hair) }
-                }
-            }
-        }
-    }
-
-    // MARK: by person
-
-    private var byPersonCard: some View {
-        let maxProg = max(1, participants.map(\.progress).max() ?? 1)
-        return detailCard {
-            Text(unit.map { "\($0.prefix(1).uppercased())\($0.dropFirst()) by person" } ?? "By person")
-                .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
-            VStack(spacing: 11) {
-                ForEach(participants, id: \.personId) { p in
-                    let color = Color(hexString: p.colorHex) ?? FamilyColor.person1.solid
-                    HStack(spacing: 10) {
-                        Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 26)
-                        Text(goalFirstName(p.name)).font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(WF.ink).frame(width: 64, alignment: .leading).lineLimit(1)
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(WF.hair)
-                                Capsule().fill(color).frame(width: geo.size.width * min(p.progress / maxProg, 1))
-                            }
-                        }
-                        .frame(height: 8)
-                        Text("\(goalFmt(p.progress))\(unit.map { " \($0)" } ?? "")")
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
-                            .frame(width: 64, alignment: .trailing).lineLimit(1).minimumScaleFactor(0.7)
-                    }
                 }
             }
         }

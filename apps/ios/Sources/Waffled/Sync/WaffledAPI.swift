@@ -2510,6 +2510,30 @@ struct WaffledAPI: Sendable {
         return try await getJSON("/api/goals/\(id)", as: Resp.self).goal
     }
 
+    /// Day-bucketed log history powering the goal-detail data views (Week/Month/
+    /// Pace/Year/By-person/Year-ring). Days are keyed by household-LOCAL date
+    /// ('YYYY-MM-DD'), bucketed server-side the same way as the goal's streak, so
+    /// anything derived from this matches the streak shown elsewhere. Only days
+    /// with activity appear (sparse) — GoalStats fills the zero gaps.
+    struct GoalActivity: Decodable, Sendable {
+        let startDate: String
+        let endDate: String?
+        let today: String
+        let days: [Day]
+        /// `perMember` may hold a key at 0 (a count_once shared event's attendee —
+        /// present, not credited): key on presence, not amount > 0.
+        struct Day: Decodable, Sendable {
+            let dateKey: String
+            let total: Double
+            let perMember: [String: Double]
+        }
+    }
+
+    /// A goal's day-bucketed activity, for the data-view switcher.
+    func goalActivity(id: String) async throws -> GoalActivity {
+        try await getJSON("/api/goals/\(id)/activity", as: GoalActivity.self)
+    }
+
     /// Delete a goal (soft-delete server-side).
     func deleteGoal(id: String) async throws {
         try await delete("/api/goals/\(id)")
