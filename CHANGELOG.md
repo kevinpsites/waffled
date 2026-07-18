@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **See a goal's progress your way, not just as a number.** Every goal's detail page now
+  offers a switcher of visualizations tailored to what you're tracking: a week or month
+  heatmap strip, a GitHub-style year grid, a pace chart showing where you need to be to hit
+  your target on time, a radial "year in a ring," and stacked by-person bars for family
+  goals — plus a fill-up collection grid for count goals and a hit/miss dot calendar for
+  habits. Only the views that make sense for the goal's type and timeframe are offered, your
+  last pick is remembered per goal, and tapping any day or month opens who logged what.
+  Shipped on web and iPhone/iPad together.
 - **Add any recipe's ingredients to the grocery list — no meal plan needed.** Every recipe
   page (web and iOS) now has a first-class "Add to grocery" action, so a one-off dinner, a
   side, or a snack goes straight to the list: staples you already have are skipped, quantities

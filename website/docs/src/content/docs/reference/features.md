@@ -156,6 +156,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Type-aware **logging** (amount / stepper / once-a-day / tick steps) | ✅ | ✅ | ✅ | ✅ Done |
 | Backdated logs ("When?" picker) | ✅ | ✅ | ✅ | ✅ Done |
 | **Goal detail** read-model (milestone track, hours-by-person, streaks, recent) | ✅ | ✅ | ✅ | ✅ Done |
+| **Goal-detail data views** — swappable progress visualizations (Week/Month heatmap, Year contribution grid, Pace-to-target, Year ring, By-person bars, plus Count's collection grid and Habit's consistency calendar) matched to the goal's type + timeframe, remembers your last pick per goal, tap a day/month for who logged what | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | Checklist **named steps** + per-type **milestones** (text) | ✅ | ✅ | ✅ | ✅ Done |
 | **Person profile** + **Family overview** | ✅ | ✅ | ✅ | ✅ Done (iPad = `KioskFamilyView` grid) |
 | **Calendar → goal** auto-count recap (single events) | ✅ | ✅ | ✅ | ✅ Done (Phase 1) |
