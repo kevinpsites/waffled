@@ -63,4 +63,38 @@ describe('powersync replication setup', () => {
     expect(res.rows.every((r) => r.relreplident === 'f')).toBe(true)
     expect(res.rows).toHaveLength(5)
   })
+
+  it('denormalizes event privacy onto participant rows and keeps it in sync', async () => {
+    await withClient(async (c) => {
+      const h = await c.query<{ id: string }>(
+        `insert into households (name, timezone) values ('Private sync','UTC') returning id`
+      )
+      const p = await c.query<{ id: string }>(
+        `insert into persons (household_id, name, member_type) values ($1,'Owner','adult') returning id`,
+        [h.rows[0].id]
+      )
+      const e = await c.query<{ id: string }>(
+        `insert into events
+           (household_id, title, starts_at, timezone, visibility, owner_person_id)
+         values ($1,'Private event',now(),'UTC','personal',$2) returning id`,
+        [h.rows[0].id, p.rows[0].id]
+      )
+      const ep = await c.query<{ id: string; visibility: string; owner_person_id: string | null }>(
+        `insert into event_participants (household_id, event_id, person_id)
+         values ($1,$2,$3) returning id, visibility, owner_person_id`,
+        [h.rows[0].id, e.rows[0].id, p.rows[0].id]
+      )
+      expect(ep.rows[0]).toMatchObject({ visibility: 'personal', owner_person_id: p.rows[0].id })
+
+      await c.query(
+        `update events set visibility = 'family', owner_person_id = null where id = $1`,
+        [e.rows[0].id]
+      )
+      const updated = await c.query<{ visibility: string; owner_person_id: string | null }>(
+        `select visibility, owner_person_id from event_participants where id = $1`,
+        [ep.rows[0].id]
+      )
+      expect(updated.rows[0]).toEqual({ visibility: 'family', owner_person_id: null })
+    })
+  })
 })
