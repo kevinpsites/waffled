@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Backups can now be restore-tested without touching the live app.** Run
+  `./waffled backup verify` to restore the newest database dump into a disposable Postgres
+  container, fail on archive or SQL errors, confirm the Waffled schema exists, and clean up the
+  test database automatically. A specific dump filename can be supplied when checking an older
+  or retrieved offsite copy.
 - **Add any recipe's ingredients to the grocery list — no meal plan needed.** Every recipe
   page (web and iOS) now has a first-class "Add to grocery" action, so a one-off dinner, a
   side, or a snack goes straight to the list: staples you already have are skipped, quantities

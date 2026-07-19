@@ -61,9 +61,35 @@ After changing any of these: `./waffled up` (recreates the `backup` service with
 ```bash
 ./waffled backup          # run a backup right now (out of band from the schedule)
 ./waffled backup list     # list the dumps currently on disk
+./waffled backup verify   # restore the newest dump into an isolated test database
 ./waffled restore <file>  # restore a dump (DESTRUCTIVE — see below)
 ./waffled doctor          # health report; the "backup" line shows last run + age
 ```
+
+## Verify before you need it
+
+```bash
+./waffled backup verify
+./waffled backup verify waffled-20260701-020000.sql.gz
+```
+
+`backup verify` is a non-destructive restore drill. It checks the gzip archive, starts a
+disposable Postgres container using the same image as your Waffled database, restores the dump
+with errors treated as fatal, checks for the Waffled schema, and removes the test container. It
+does **not** stop the app or connect to the live database. With no filename, it tests the newest
+local database dump.
+
+This command verifies the database dump only. If uploaded-media backups are enabled, also test
+that the matching archive can be read:
+
+```bash
+docker exec waffled-backup sh -c \
+  'tar -tzf /backups/waffled-media-20260701-020000.tar.gz >/dev/null'
+```
+
+An offsite backup is useful only if you can retrieve it. Periodically download one database dump
+and its matching media archive from the offsite destination, place them in your configured backup
+folder, and run the same checks on those copies.
 
 ## Restore
 
@@ -96,5 +122,4 @@ successful one is more than ~48 h old (two missed daily cycles). A failure hint 
 For real safety, keep **3** copies on **2** kinds of media with **1** offsite: the local
 volume/host folder gives you fast local restores; `BACKUP_S3_*` gives you the offsite copy.
 Turn on `BACKUP_INCLUDE_MEDIA` if you rely on uploaded photos/recipe images. Periodically do a
-test `./waffled restore` of a recent dump into a throwaway environment so you know it works before
-you need it.
+`./waffled backup verify` of a recent dump so you know it works before you need it.
