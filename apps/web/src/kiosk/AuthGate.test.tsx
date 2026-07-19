@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import axe from 'axe-core'
 import { MemoryRouter } from 'react-router'
 import { AuthGate } from './AuthGate'
 
@@ -28,6 +29,17 @@ function renderGate() {
   )
 }
 
+async function expectNoAxeViolations(container: HTMLElement) {
+  const results = await axe.run(container, {
+    rules: {
+      // jsdom cannot calculate rendered colors or page-level landmark coverage.
+      'color-contrast': { enabled: false },
+      region: { enabled: false },
+    },
+  })
+  expect(results.violations).toEqual([])
+}
+
 describe('AuthGate accessibility', () => {
   beforeEach(() => {
     mocks.status.mockReset()
@@ -38,7 +50,7 @@ describe('AuthGate accessibility', () => {
   it('labels login fields and focuses an announced sign-in error', async () => {
     mocks.status.mockResolvedValue({ initialized: true, methods: ['password'] })
     mocks.login.mockRejectedValue(new Error('Email or password is incorrect.'))
-    renderGate()
+    const { container } = renderGate()
 
     const email = await screen.findByRole('textbox', { name: 'Email' })
     const password = screen.getByLabelText('Password')
@@ -51,11 +63,12 @@ describe('AuthGate accessibility', () => {
     await waitFor(() => expect(error).toHaveFocus())
     expect(email).toHaveAttribute('aria-describedby', 'login-error')
     expect(password).toHaveAttribute('aria-describedby', 'login-error')
-  })
+    await expectNoAxeViolations(container)
+  }, 30_000)
 
   it('associates setup validation hints with their fields', async () => {
     mocks.status.mockResolvedValue({ initialized: false, methods: ['password'] })
-    renderGate()
+    const { container } = renderGate()
 
     expect(await screen.findByRole('textbox', { name: 'Household name' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Timezone' })).toBeInTheDocument()
@@ -68,5 +81,6 @@ describe('AuthGate accessibility', () => {
     const hint = screen.getByText(/Enter a valid email address/)
     expect(email).toHaveAttribute('aria-invalid', 'true')
     expect(email).toHaveAttribute('aria-describedby', hint.id)
-  })
+    await expectNoAxeViolations(container)
+  }, 30_000)
 })
