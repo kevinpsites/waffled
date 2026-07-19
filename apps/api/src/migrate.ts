@@ -20,7 +20,15 @@ function defaultMigrationsDir(): string {
 export async function runMigrations(
   databaseUrl: string,
   migrationsDir = defaultMigrationsDir(),
-  count = Infinity
+  count = Infinity,
+  // node-pg-migrate takes a *cluster-wide* advisory lock (a fixed lock id) while it
+  // migrates, so two migrate runs against the same Postgres instance serialize even
+  // when they target different databases. That lock guards the live stack (the compose
+  // migrate one-shot could race a restart), so it stays ON by default. But the test
+  // harness gives every file its own freshly-created, single-writer database, so the
+  // lock only throttles parallelism there with nothing to protect — the shared-Postgres
+  // vitest run opts out via WAFFLED_TEST_SHARED_PG so migrations run truly concurrently.
+  noLock = process.env.WAFFLED_TEST_SHARED_PG === '1'
 ): Promise<void> {
   await runner({
     databaseUrl,
@@ -28,6 +36,7 @@ export async function runMigrations(
     direction: 'up',
     migrationsTable: 'pgmigrations',
     count,
+    noLock,
     // Tolerate out-of-order application. Feature branches are developed in parallel,
     // so a DB can legitimately have a later-sorted migration applied while an earlier
     // one is still pending (e.g. two branches each add a migration, then one deploys

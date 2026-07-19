@@ -20,6 +20,7 @@ import {
   assertGoalStepInHousehold,
   assertPersonsInHousehold,
 } from '../../platform/household-refs'
+import { registerEventCaptureTarget } from './events-capture'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -276,7 +277,7 @@ const OCC_SELECT = `
 // events only to their owner. A null viewer (a bare kiosk device with no profile claimed)
 // sees family only — `owner_person_id = NULL` never matches. `alias` is the events /
 // occurrences table alias; `p` is the param placeholder holding the viewer's person id.
-const visibleTo = (alias: string, p: string) =>
+export const visibleTo = (alias: string, p: string) =>
   `and (${alias}.visibility = 'family' or ${alias}.owner_person_id = ${p})`
 
 export async function todayEvents(householdId: string, date: string, viewerPersonId: string | null): Promise<EventRow[]> {
@@ -616,6 +617,9 @@ function localToday(): string {
 }
 
 export function registerEventRoutes(api: Api): void {
+  // Tier 2 capture: events answer /api/capture/{resolve,commit} for reschedule/delete.
+  registerEventCaptureTarget()
+
   api.post('/api/events', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as Partial<CreateEventInput>
     if (!body.title || !body.title.trim()) {

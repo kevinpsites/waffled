@@ -5,6 +5,7 @@ import SwiftUI
 /// Static sample data in Phase 0; PowerSync-backed in Phase 1+.
 struct TodayView: View {
     @Environment(SyncManager.self) private var sync
+    @Environment(\.scenePhase) private var scenePhase
     @State private var dash = DashboardModel()
     @State private var recipes = RecipesModel()   // backs a recipe pushed from tonight's card
     @State private var detailEvent: SyncedEvent?
@@ -12,14 +13,12 @@ struct TodayView: View {
     @State private var dictateOnOpen = false
     @State private var scrolled = false   // cards have scrolled under the header → lift it
     @State private var weather: WaffledAPI.Weather?
-    /// Goal-calendar review queue counts, for the "review events" entry card.
-    @State private var reviewRecap: [WaffledAPI.GoalRecapItem] = []
-    @State private var reviewSuggestions: [WaffledAPI.GoalSuggestionItem] = []
     /// Pending approvals (reward purchases + chore check-offs), for the parent's
-    /// "Needs your OK" entry card.
-    @State private var approvals = ApprovalsModel()
-    /// Household goals (featured-first), for the Today goals card.
-    @State private var goals: [WaffledAPI.Goal] = []
+    /// "Needs your OK" entry card. Owned by AppRoot (like FamilyView's) so the
+    /// badge, Family tab and this banner share one model — and one fetch per
+    /// trigger: AppRoot reloads it at launch, on the chore/reward buses, and on
+    /// return to the foreground.
+    var approvals: ApprovalsModel
     /// Which goal the card highlights: "mine" (the logged-in member's) or "family"
     /// (a whole-family goal). Per-device preference; defaults to mine.
     @AppStorage("waffled.todayGoalScope") private var goalScope = "mine"
@@ -65,7 +64,7 @@ struct TodayView: View {
                     if sync.module(.chores) { ApprovalsBanner(model: approvals) }
                     // The goal-recap review banner (calendar↔goal bridge) — gated with
                     // the goals module so it can't surface for a disabled feature.
-                    if sync.module(.goals), !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
+                    if sync.module(.goals), !dash.reviewRecap.isEmpty || !dash.reviewSuggestions.isEmpty {
                         Button { path.append(.reviewEvents) } label: { reviewCard }.buttonStyle(.plain)
                     }
                     // The rest render in the user's saved order, hidden cards omitted.
@@ -97,28 +96,52 @@ struct TodayView: View {
             .navigationDestination(for: HubRoute.self) { route in
                 HubDestination(route: route, path: $path, recipes: recipes)
             }
-            .refreshable { await dash.load(todayKey: Agenda.todayKey(sync.householdTz)) }
+            .refreshable {
+                // Independent endpoint batches — fetch them concurrently.
+                async let d: () = dash.load(todayKey: Agenda.todayKey(sync.householdTz))
+                async let g: () = dash.loadGoals()
+                _ = await (d, g)
+            }
             // Reload when the tz is known and whenever a capture commit bumps a domain.
             .task(id: "\(sync.householdTz.identifier)|\(sync.choresRev)|\(sync.groceryRev)|\(sync.mealsRev)") {
                 await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
             }
             .task { weather = try? await WaffledAPI().weather() }
-            // Load the goal-calendar review queues for the entry card (refreshes
-            // whenever a review action bumps the goals bus).
             .task { await sync.loadIdentity() }
             .task { await loadLayout() }
-            .task(id: sync.goalsRev) {
-                let api = WaffledAPI()
-                async let r = try? await api.goalRecap()
-                async let s = try? await api.goalSuggestions()
-                async let g = try? await api.goalsIn(listId: nil)
-                reviewRecap = await r ?? []
-                reviewSuggestions = await s ?? []
-                goals = await g ?? []
+            // Goals card + the goal-calendar review queues (refresh whenever a
+            // review/log action bumps the goals bus).
+            .task(id: sync.goalsRev) { await dash.loadGoals() }
+            // Freshen the shared approvals model on each appearance (a tab switch
+            // back to Today). Launch, the chore/reward buses, and foregrounding are
+            // AppRoot's job — it owns the model — so no duplicate fetch per trigger.
+            .task { await approvals.load() }
+            // These cards are REST-backed (meals/chores/grocery/goals aren't synced
+            // tables), so a change made elsewhere — the web app, another phone —
+            // arrives silently. Refetch on return to the foreground, the same trigger
+            // AppRoot uses for the approvals badge; in-app edits are already covered
+            // by the `sync.*Rev` buses above. Only fires while Today is the visible
+            // tab: AppRoot swaps tabs out of the hierarchy, so an offscreen Today has
+            // no scenePhase observer.
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                Task {
+                    async let d: () = dash.load(todayKey: Agenda.todayKey(sync.householdTz))
+                    async let g: () = dash.loadGoals()
+                    _ = await (d, g)
+                }
             }
-            // Pending approvals refresh on load + whenever a chore/reward action lands.
-            .task(id: "\(sync.choresRev)|\(sync.rewardsRev)") {
-                await approvals.load()
+            // Day rollover while the screen stays open: at (household-tz) midnight
+            // "today" changes, so the dinner/chores the cards show are suddenly
+            // yesterday's. Sleep to just past each midnight and refetch; the synced
+            // agenda re-derives itself from the new data's render pass.
+            .task(id: sync.householdTz.identifier) {
+                while !Task.isCancelled {
+                    let wait = Agenda.secondsUntilNextDay(after: Date(), tz: sync.householdTz)
+                    try? await Task.sleep(for: .seconds(wait))
+                    guard !Task.isCancelled else { return }
+                    await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
+                }
             }
             .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
             .sheet(isPresented: $showCapture) {
@@ -182,7 +205,7 @@ struct TodayView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                Avatar(person: .kelly, emoji: "🦊", size: 46)
+                Avatar(person: .person2, emoji: "🦊", size: 46)
             }
         }
     }
@@ -192,7 +215,7 @@ struct TodayView: View {
     /// "N to review · M to link" — a purple-tinted card that opens the review
     /// screen. Purple signals these are goal-progress confirmations.
     private var reviewCard: some View {
-        let nR = reviewRecap.count, nS = reviewSuggestions.count
+        let nR = dash.reviewRecap.count, nS = dash.reviewSuggestions.count
         return HStack(spacing: 13) {
             Image(systemName: "sparkles").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
                 .frame(width: 40, height: 40)
@@ -218,7 +241,7 @@ struct TodayView: View {
     }
 
     private var reviewSubtitle: String {
-        let titles = reviewRecap.map(\.title) + reviewSuggestions.map(\.title)
+        let titles = dash.reviewRecap.map(\.title) + dash.reviewSuggestions.map(\.title)
         let preview = titles.prefix(3).joined(separator: " · ")
         return preview.isEmpty ? "Tap to review & add to goals" : preview
     }
@@ -276,7 +299,7 @@ struct TodayView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("TONIGHT · DINNER")
                         .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                        .foregroundStyle(FamilyColor.lottie.solid)
+                        .foregroundStyle(FamilyColor.person4.solid)
                     Text(meal.title)
                         .font(WF.serif(18)).foregroundStyle(WF.ink)
                     if let sub = mealSubtitle(meal) {
@@ -327,6 +350,7 @@ struct TodayView: View {
     /// goal. Either way featured wins within the bucket, and we never get stuck — a
     /// sub-group goal (e.g. kids-only) only shows if nothing better exists.
     private var featuredGoal: WaffledAPI.Goal? {
+        let goals = dash.goals
         // A specific goal pinned to the card wins, if it still exists.
         if !todayGoalId.isEmpty, let pinned = goals.first(where: { $0.id == todayGoalId }) { return pinned }
         // The token-resolved person if we have it, else the greeting member (first adult).
@@ -356,7 +380,7 @@ struct TodayView: View {
         return goals.first(where: spot) ?? goals.first { $0.isFeatured } ?? goals.first
     }
 
-    private static let goalGreen = Color(hex: 0x2BA45F)
+    private static let goalGreen = WF.success
 
     /// A full-width card showing the featured goal's progress (taps into that goal),
     /// with a "See all" shortcut to the goals hub.
@@ -379,8 +403,11 @@ struct TodayView: View {
                 if let g = featuredGoal {
                     Button { path.append(.goal(g)) } label: { featuredGoalRow(g) }.buttonStyle(.plain)
                 } else {
+                    // Key the empty state off the goals fetch itself — `dash.loaded`
+                    // (meals/chores/grocery) usually finishes first, and used to flash
+                    // "Set a family goal →" at people who have goals.
                     Button { path.append(.goals) } label: {
-                        Text(dash.loaded ? "Set a family goal →" : "Loading…")
+                        Text(dash.goalsLoaded ? "Set a family goal →" : "Loading…")
                             .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -389,16 +416,16 @@ struct TodayView: View {
             }
         }
         .sheet(isPresented: $showingGoalPicker) {
-            TodayGoalPickerSheet(goals: goals, myPersonId: sync.currentPersonId ?? greetingMember?.id, selectedId: todayGoalId) { id in todayGoalId = id }
+            TodayGoalPickerSheet(goals: dash.goals, myPersonId: sync.currentPersonId ?? greetingMember?.id, selectedId: todayGoalId) { id in todayGoalId = id }
         }
     }
 
     /// A small pill-menu to switch the card between the logged-in member's goal and a
     /// whole-family goal. Only shown when there's more than one goal to choose from.
     @ViewBuilder private var scopeMenu: some View {
-        if goals.count > 1 {
+        if dash.goals.count > 1 {
             // The pinned goal's title (if one is pinned and still exists), else the scope name.
-            let pinnedTitle = todayGoalId.isEmpty ? nil : goals.first { $0.id == todayGoalId }?.title
+            let pinnedTitle = todayGoalId.isEmpty ? nil : dash.goals.first { $0.id == todayGoalId }?.title
             Menu {
                 Button { goalScope = "mine"; todayGoalId = "" } label: {
                     Label("My spotlight", systemImage: (todayGoalId.isEmpty && goalScope == "mine") ? "checkmark" : "person")
@@ -548,7 +575,7 @@ struct TodayView: View {
                         Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 30)
                     }
                     if dash.chores.isEmpty {
-                        Avatar(person: .lottie, emoji: "🦄", size: 30).opacity(0.35)
+                        Avatar(person: .person4, emoji: "🦄", size: 30).opacity(0.35)
                     }
                     Spacer(minLength: 0)
                 }
@@ -571,9 +598,14 @@ struct TodayView: View {
         WaffledCard(padding: 15) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Grocery").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
-                Text("\(dash.groceryRemaining)").font(.system(size: 26, weight: .bold)).foregroundStyle(WF.ink)
-                Text(dash.groceryRemaining == 1 ? "item to buy" : "items to buy")
-                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                if dash.loaded {
+                    Text("\(dash.groceryRemaining)").font(.system(size: 26, weight: .bold)).foregroundStyle(WF.ink)
+                    Text(dash.groceryRemaining == 1 ? "item to buy" : "items to buy")
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                } else {
+                    // Don't claim "0 items to buy" while the count is still loading.
+                    Text("Loading…").font(.system(size: 12.5)).foregroundStyle(WF.ink3)
+                }
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -817,4 +849,4 @@ struct CustomizeTodaySheet: View {
     }
 }
 
-#Preview { TodayView(path: .constant([])).environment(SyncManager()) }
+#Preview { TodayView(approvals: ApprovalsModel(), path: .constant([])).environment(SyncManager()) }

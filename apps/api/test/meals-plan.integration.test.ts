@@ -3,7 +3,7 @@
 // suggestions are validated: only empty dinner dates, once each, library recipeId
 // kept only when real. Also: 501 when no provider is configured.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createServer, type Server } from 'node:http'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'

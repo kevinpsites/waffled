@@ -61,7 +61,7 @@ struct PantryItemDetailView: View {
 
     private func photoPanel(_ item: WaffledAPI.PantryItem) -> some View {
         ZStack {
-            Color(hex: 0xF3E8D6).ignoresSafeArea()
+            WF.panel.ignoresSafeArea()
             CachedImage(item.imageUrl, contentMode: .fit) { Text(PantryFood.emoji(for: item.name)).font(.system(size: 72)) }
                 .padding(28)
             VStack {
@@ -75,7 +75,7 @@ struct PantryItemDetailView: View {
                         Image(systemName: "camera.fill").font(.system(size: 13))
                         Text(uploading ? "Uploading…" : "Replace photo").font(.system(size: 14, weight: .semibold))
                     }
-                    .foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 10)
+                    .foregroundStyle(WF.onInk).padding(.horizontal, 14).padding(.vertical, 10)
                     .background(WF.ink).clipShape(Capsule())
                 }
                 .disabled(uploading)
@@ -86,7 +86,7 @@ struct PantryItemDetailView: View {
 
     private func offBadge(_ label: String) -> some View {
         HStack(spacing: 5) {
-            Circle().fill(Color(hex: 0x167A4A)).frame(width: 7, height: 7)
+            Circle().fill(WF.success).frame(width: 7, height: 7)
             Text(label.uppercased()).font(.system(size: 10, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ink2)
         }
         .padding(.horizontal, 9).padding(.vertical, 5).background(WF.card).clipShape(Capsule())
@@ -113,7 +113,7 @@ struct PantryItemDetailView: View {
                 // just carries a name/brand/photo, so word the credit accordingly.
                 let hasFoodDetail = !(item.nutrition?.isEmpty ?? true) || !(item.allergens?.isEmpty ?? true)
                 HStack(spacing: 6) {
-                    Circle().fill(Color(hex: 0x167A4A)).frame(width: 8, height: 8)
+                    Circle().fill(WF.success).frame(width: 8, height: 8)
                     Text("\(hasFoodDetail ? "Nutrition & allergens" : "Product info") from \(label)")
                         .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 }
@@ -187,9 +187,9 @@ struct PantryItemDetailView: View {
 
     private func expiryTag(_ item: WaffledAPI.PantryItem) -> (text: String, color: Color)? {
         guard let d = model.days(item) else { return nil }
-        if d < 0 { return ("Expired", Color(hex: 0xC0392B)) }
-        if d == 0 { return ("Today", Color(hex: 0xB8860B)) }
-        if d <= 3 { return ("\(d) day\(d == 1 ? "" : "s") left", Color(hex: 0xB8860B)) }
+        if d < 0 { return ("Expired", WF.danger) }
+        if d == 0 { return ("Today", WF.warn) }
+        if d <= 3 { return ("\(d) day\(d == 1 ? "" : "s") left", WF.warn) }
         return (item.expiresOn.flatMap(PantryExpiry.shortLabel) ?? "—", WF.ink)
     }
 
@@ -211,7 +211,7 @@ struct PantryItemDetailView: View {
             }
             if !affects.isEmpty {
                 Text("⚠ Affects \(affects.joined(separator: ", "))")
-                    .font(.system(size: 13.5, weight: .bold)).foregroundStyle(Color(hex: 0xC0392B))
+                    .font(.system(size: 13.5, weight: .bold)).foregroundStyle(WF.danger)
             }
         }
     }

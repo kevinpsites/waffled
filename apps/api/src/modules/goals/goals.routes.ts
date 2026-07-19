@@ -27,7 +27,7 @@ import {
   goalExists,
   goalTypeFor,
   goalMetaFor,
-  isTimeUnit,
+  goalLogAmount,
   goalParticipantIds,
   GOAL_TYPES,
   TRACKING_MODES,
@@ -35,8 +35,10 @@ import {
   TARGET_BASES,
   HABIT_PERIODS,
   HEALTH_METRICS,
+  healthMetricFitsGoalType,
   personsInHousehold,
 } from './goals.service'
+import { registerGoalCaptureTarget } from './goals-capture'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -146,6 +148,9 @@ export function registerGoalRoutes(api: Api): void {
     if (body.healthMetric != null && !HEALTH_METRICS.has(String(body.healthMetric))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid healthMetric' })
     }
+    if (body.healthMetric != null && !healthMetricFitsGoalType(String(body.healthMetric), body.goalType)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'healthMetric does not fit this goalType' })
+    }
     if (body.healthDailyTarget != null && !(Number(body.healthDailyTarget) >= 0)) {
       return res.status(400).json({ error: 'BadRequest', message: 'healthDailyTarget must be a non-negative number' })
     }
@@ -212,6 +217,10 @@ export function registerGoalRoutes(api: Api): void {
     if (body.healthMetric != null && !HEALTH_METRICS.has(String(body.healthMetric))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid healthMetric' })
     }
+    // Pairing rides the same effective type as the shape check above.
+    if (body.healthMetric != null && effectiveType && !healthMetricFitsGoalType(String(body.healthMetric), effectiveType)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'healthMetric does not fit this goalType' })
+    }
     if (body.healthDailyTarget != null && !(Number(body.healthDailyTarget) >= 0)) {
       return res.status(400).json({ error: 'BadRequest', message: 'healthDailyTarget must be a non-negative number' })
     }
@@ -256,44 +265,13 @@ export function registerGoalRoutes(api: Api): void {
     if (meta == null) {
       return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
     }
-    // A checklist has no numeric progress — it's driven by ticking steps. Reject a
-    // stray /log so a client can't record a meaningless "1" against it.
-    if (meta.goalType === 'checklist') {
-      return res.status(400).json({ error: 'BadRequest', message: 'checklist goals are updated by ticking steps, not logging progress' })
+    // The body→amount mapping/validation is shared with the capture commit applier
+    // (goalLogAmount) so the two entry points can never diverge.
+    const mapped = goalLogAmount(meta, body)
+    if ('error' in mapped) {
+      return res.status(400).json({ error: 'BadRequest', message: mapped.error })
     }
-    // Time goals may be logged as hours + minutes; the server folds them into the
-    // decimal-hours `amount` so the client never has to (10m -> 0.1666…). Both fields
-    // are optional and either may stand alone (0h 45m, or 2h with no minutes).
-    let amount: number
-    const usesHm = body.hours != null || body.minutes != null
-    if (usesHm) {
-      if (body.amount != null) {
-        return res.status(400).json({ error: 'BadRequest', message: 'send either amount or hours/minutes, not both' })
-      }
-      if (meta.goalType !== 'total' || !isTimeUnit(meta.unit)) {
-        return res.status(400).json({ error: 'BadRequest', message: 'hours and minutes only apply to a time goal (measured in hours)' })
-      }
-      const hours = body.hours == null ? 0 : Number(body.hours)
-      const minutes = body.minutes == null ? 0 : Number(body.minutes)
-      // Whole hours + a 0–59 minute remainder — the same shape both clients enter, reasserted
-      // here so a non-UI caller can't fold e.g. { minutes: 200 } into 3.33h.
-      if (!Number.isInteger(hours) || hours < 0 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
-        return res.status(400).json({ error: 'BadRequest', message: 'hours must be a whole number ≥ 0 and minutes 0–59' })
-      }
-      amount = hours + minutes / 60
-      if (amount === 0) {
-        return res.status(400).json({ error: 'BadRequest', message: 'log some time — hours and minutes cannot both be zero' })
-      }
-    } else {
-      amount = Number(body.amount)
-      if (!Number.isFinite(amount) || amount === 0) {
-        return res.status(400).json({ error: 'BadRequest', message: 'amount must be a non-zero number' })
-      }
-      // A count goal tallies whole things (parks, books) — no fractional amounts.
-      if (meta.goalType === 'count' && !Number.isInteger(amount)) {
-        return res.status(400).json({ error: 'BadRequest', message: 'a count goal is logged in whole numbers' })
-      }
-    }
+    const amount = mapped.amount
     const personIds = Array.isArray(body.personIds) ? body.personIds.filter(Boolean) : body.personId ? [body.personId] : []
     // Every credited person must be a real member of this household — no crediting a stranger.
     if (personIds.length && !(await personsInHousehold(tenant.householdId, personIds))) {
@@ -419,4 +397,8 @@ export function registerGoalRoutes(api: Api): void {
     if (!ok) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
     return res.status(204).send('')
   }))
+
+  // Capture Tier 2: register the 'goal' mutate target (resolve + `log`) into the
+  // capture registry from this startup seam.
+  registerGoalCaptureTarget()
 }

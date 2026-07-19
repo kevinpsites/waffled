@@ -2,7 +2,7 @@
 // A real Postgres (Testcontainers) is migrated from empty, then we assert the
 // schema, constraints, and the updated_at trigger behave as the data model says.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import { runMigrations } from '../src/migrate'
 

@@ -34,6 +34,7 @@ import {
 } from './chores.service'
 import { getProofTtlDays, setProofTtlDays } from './chore-proof-cleanup.service'
 import { assertPersonInHousehold } from '../../platform/household-refs'
+import { registerChoreCaptureTarget } from './chores-capture'
 import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
@@ -256,4 +257,8 @@ export function registerChoreRoutes(api: Api): void {
     if (!inst) return res.status(409).json({ error: 'Conflict', message: 'not awaiting approval' })
     return { instance: presentInstance(inst) }
   }))
+
+  // Register the chores capture target (Tier 2 mutate: complete/reassign) into the
+  // capture registry so /api/capture/{resolve,commit} can dispatch to it.
+  registerChoreCaptureTarget()
 }

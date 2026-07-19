@@ -1,6 +1,6 @@
 // Goals domain — migration + api. Shares one Postgres testcontainer + app.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
@@ -831,5 +831,156 @@ describe('checklist goals reject numeric progress logs', () => {
     const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
     expect((await call('PATCH', `/api/goals/${id}/steps/${detail.steps[0].id}`, kevin, { done: true })).statusCode).toBe(200)
     expect(JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.stepDone).toBe(1)
+  })
+})
+
+// Capture Tier 2 — the 'goal' target (resolve a spoken noun phrase → a goal, then
+// `log` progress). Runs in an ISOLATED household so the many reading-ish goals seeded
+// by earlier tests don't pollute the candidate lists.
+describe('capture — goals target', () => {
+  const capToken = mint('dev|capgoals')
+  let capHh = ''
+  let capPerson = ''
+  let otherPerson = ''
+  let readCountGoal = ''
+  let checklistGoal = ''
+  let pianoTimeGoal = ''
+  let habitGoal = ''
+  let gardenMine = ''
+  let gardenOther = ''
+
+  const resolve = (token: string, body: unknown) => call('POST', '/api/capture/resolve', token, body)
+  const commit = (token: string, body: unknown) => call('POST', '/api/capture/commit', token, body)
+  const goalProgress = async (id: string): Promise<number> =>
+    JSON.parse((await call('GET', `/api/goals/${id}`, capToken)).body).goal.totalProgress
+
+  beforeAll(async () => {
+    await withClient(async (c) => {
+      const h = await c.query<{ id: string }>(
+        `insert into households (name, timezone) values ('CapGoals','America/Chicago') returning id`
+      )
+      capHh = h.rows[0].id
+      const p = await c.query<{ id: string }>(
+        `insert into persons (household_id, name, member_type, is_admin) values ($1,'Cap','adult',true) returning id`,
+        [capHh]
+      )
+      capPerson = p.rows[0].id
+      const o = await c.query<{ id: string }>(
+        `insert into persons (household_id, name, member_type, is_admin) values ($1,'Otto','adult',false) returning id`,
+        [capHh]
+      )
+      otherPerson = o.rows[0].id
+      await c.query(
+        `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|capgoals',true)`,
+        [capHh, capPerson]
+      )
+    })
+    const mk = async (body: Record<string, unknown>): Promise<string> => {
+      const res = await call('POST', '/api/goals', capToken, body)
+      expect(res.statusCode).toBe(201)
+      return JSON.parse(res.body).goal.id
+    }
+    // reading concept: one loggable count goal + one checklist (must be EXCLUDED from `log`).
+    readCountGoal = await mk({ title: 'Read books', goalType: 'count', unit: 'books', targetValue: 20, trackingMode: 'shared_total', participantIds: [capPerson] })
+    checklistGoal = await mk({ title: 'Reading challenge', goalType: 'checklist', trackingMode: 'shared_total', participantIds: [capPerson], steps: [{ label: 'Pick a book' }] })
+    // music concept: a total goal measured in hours → hours/minutes folding.
+    pianoTimeGoal = await mk({ title: 'Piano practice', goalType: 'total', unit: 'hours', targetValue: 100, trackingMode: 'shared_total', participantIds: [capPerson] })
+    // meditation concept: a habit (each completion counts 1).
+    habitGoal = await mk({ title: 'Meditate', goalType: 'habit', trackingMode: 'each_tracks', habitPeriod: 'day', habitTargetPerPeriod: 1, participantIds: [capPerson] })
+    // garden concept: two goals, one the speaker is in, one only the other person is —
+    // for "my …" participant scoping.
+    gardenMine = await mk({ title: 'Garden beds', goalType: 'count', unit: 'beds', targetValue: 10, trackingMode: 'shared_total', participantIds: [capPerson] })
+    gardenOther = await mk({ title: 'Garden weeds', goalType: 'count', unit: 'weeds', targetValue: 10, trackingMode: 'shared_total', participantIds: [otherPerson] })
+  })
+
+  it('resolves "reading" to the count goal (checklist excluded)', async () => {
+    const res = await resolve(capToken, { verb: 'log', targetKind: 'goal', target: { description: 'reading' }, args: {} })
+    expect(res.statusCode).toBe(200)
+    const { candidates } = JSON.parse(res.body)
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0].id).toBe(readCountGoal)
+    expect(candidates.map((c: { id: string }) => c.id)).not.toContain(checklistGoal)
+    // carries the verb extras commit uses
+    expect(candidates[0].meta).toMatchObject({ goalType: 'count', unit: 'books' })
+  })
+
+  it('scopes "my …" to goals the speaker participates in', async () => {
+    const res = await resolve(capToken, { verb: 'log', targetKind: 'goal', target: { description: 'my garden' }, args: {} })
+    expect(res.statusCode).toBe(200)
+    const { candidates } = JSON.parse(res.body)
+    const ids = candidates.map((c: { id: string }) => c.id)
+    expect(ids).toContain(gardenMine)
+    expect(ids).not.toContain(gardenOther)
+    expect(ids).toHaveLength(1)
+  })
+
+  it('commits a log on a count goal (amount rounds to a whole number)', async () => {
+    const before = await goalProgress(readCountGoal)
+    const res = await commit(capToken, { verb: 'log', targetKind: 'goal', targetId: readCountGoal, args: { amount: 2 } })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.ok).toBe(true)
+    expect(body.message).toMatch(/Read books/)
+    expect(await goalProgress(readCountGoal)).toBe(before + 2)
+  })
+
+  it('commits a log on a total+time goal, folding minutes to decimal hours', async () => {
+    const before = await goalProgress(pianoTimeGoal)
+    const res = await commit(capToken, { verb: 'log', targetKind: 'goal', targetId: pianoTimeGoal, args: { minutes: 20 } })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).ok).toBe(true)
+    expect(await goalProgress(pianoTimeGoal)).toBeCloseTo(before + 20 / 60, 3)
+  })
+
+  it('400s a count goal given minutes (same rule as POST /goals/:id/log — no silent 1)', async () => {
+    const before = await goalProgress(readCountGoal)
+    const res = await commit(capToken, { verb: 'log', targetKind: 'goal', targetId: readCountGoal, args: { minutes: 20 } })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/time goal/i)
+    expect(await goalProgress(readCountGoal)).toBe(before) // nothing logged
+  })
+
+  it('logs a bare amount on a time goal as hours (same as the route), not a spurious 400', async () => {
+    const before = await goalProgress(pianoTimeGoal)
+    const res = await commit(capToken, { verb: 'log', targetKind: 'goal', targetId: pianoTimeGoal, args: { amount: 2 } })
+    expect(res.statusCode).toBe(200)
+    expect(await goalProgress(pianoTimeGoal)).toBeCloseTo(before + 2, 3)
+  })
+
+  it('400s minutes outside 0–59 on a time goal (the route’s fold guard applies here too)', async () => {
+    const before = await goalProgress(pianoTimeGoal)
+    const res = await commit(capToken, { verb: 'log', targetKind: 'goal', targetId: pianoTimeGoal, args: { minutes: 200 } })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/minutes 0–59/)
+    expect(await goalProgress(pianoTimeGoal)).toBe(before)
+  })
+
+  it('commits a log on a habit goal (amount forced to 1)', async () => {
+    const res = await commit(capToken, { verb: 'log', targetKind: 'goal', targetId: habitGoal, args: { amount: 5 } })
+    expect(res.statusCode).toBe(200)
+    expect(await goalProgress(habitGoal)).toBe(1)
+  })
+
+  it('rejects a non-log verb', async () => {
+    const res = await commit(capToken, { verb: 'delete', targetKind: 'goal', targetId: readCountGoal, args: {} })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/goal/i)
+  })
+
+  it('returns candidates:[] + disabledReason when Goals is turned off', async () => {
+    await withClient((c) =>
+      c.query(`update households set settings = coalesce(settings,'{}'::jsonb) || '{"modules":{"goals":false}}'::jsonb where id=$1`, [capHh])
+    )
+    try {
+      const res = await resolve(capToken, { verb: 'log', targetKind: 'goal', target: { description: 'reading' }, args: {} })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.body)
+      expect(body.candidates).toEqual([])
+      expect(body.disabledReason).toBe('Goals is turned off.')
+    } finally {
+      await withClient((c) =>
+        c.query(`update households set settings = coalesce(settings,'{}'::jsonb) || '{"modules":{"goals":true}}'::jsonb where id=$1`, [capHh])
+      )
+    }
   })
 })

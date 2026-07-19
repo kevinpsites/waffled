@@ -9,10 +9,16 @@ struct ListSectionGroup: Identifiable {
 }
 
 enum MealGrouping {
-    /// Group items under the first meal (by date) whose recipe needs them; anything
-    /// meal-less falls into a trailing "Staples & extras" group (meal == nil). Each
-    /// item appears once.
-    static func sections(items: [WaffledAPI.ListItemDTO], meals: [WaffledAPI.GroceryBoardDTO.Meal]) -> [MealGroup] {
+    /// Group items under the first meal (by date) whose recipe needs them, then give
+    /// each unscheduled recipe (on the list but not on this week's plan) its own
+    /// group; anything left falls into a trailing "Staples & extras" group
+    /// (meal == nil, unscheduled == nil). Each item appears once — planned meals
+    /// claim shared items first.
+    static func sections(
+        items: [WaffledAPI.ListItemDTO],
+        meals: [WaffledAPI.GroceryBoardDTO.Meal],
+        unscheduled: [WaffledAPI.GroceryBoardDTO.UnscheduledRecipe] = []
+    ) -> [MealGroup] {
         var groups: [MealGroup] = []
         var used = Set<String>()
         for m in meals.sorted(by: { $0.date < $1.date }) {
@@ -21,6 +27,12 @@ enum MealGrouping {
             guard !its.isEmpty else { continue }
             its.forEach { used.insert($0.id) }
             groups.append(MealGroup(meal: m, items: its))
+        }
+        for u in unscheduled {
+            let its = items.filter { !used.contains($0.id) && ($0.sourceRecipeIds ?? []).contains(u.recipeId) }
+            guard !its.isEmpty else { continue }
+            its.forEach { used.insert($0.id) }
+            groups.append(MealGroup(meal: nil, items: its, unscheduled: u))
         }
         let extras = items.filter { !used.contains($0.id) }
         if !extras.isEmpty { groups.append(MealGroup(meal: nil, items: extras)) }

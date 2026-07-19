@@ -3,7 +3,7 @@
 // exchange → authed request. Also covers the not-invited rejection and the
 // password-lockout guard. Fresh container so the instance starts uninitialized.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createServer, type Server } from 'node:http'
 import { generateKeyPairSync, randomUUID, type KeyObject } from 'node:crypto'
 import { AddressInfo } from 'node:net'

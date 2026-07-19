@@ -98,7 +98,7 @@ struct DisplayKioskSettingsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if savedFlash {
-                    Text("✓ Saved").font(.system(size: 13, weight: .bold)).foregroundStyle(Color(hex: 0x25A368))
+                    Text("✓ Saved").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.success)
                 }
             }
         }

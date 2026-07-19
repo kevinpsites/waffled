@@ -72,7 +72,7 @@ export function ScheduleModal({ recipe, onClose, onScheduled }: { recipe: Recipe
               className="sched-day"
               onClick={() => schedule(d)}
               disabled={!!saving}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '10px 0', borderRadius: 12, border: '1px solid var(--hair)', background: saving === ymd(d) ? 'var(--wally)' : 'var(--card-2)', color: saving === ymd(d) ? '#fff' : 'var(--ink)', cursor: 'pointer', font: 'inherit' }}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '10px 0', borderRadius: 12, border: '1px solid var(--hair)', background: saving === ymd(d) ? 'var(--person-3)' : 'var(--card-2)', color: saving === ymd(d) ? 'var(--on-accent)' : 'var(--ink)', cursor: 'pointer', font: 'inherit' }}
             >
               <span className="tiny" style={{ fontWeight: 700 }}>{d.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 2)}</span>
               <span style={{ fontFamily: 'var(--serif)', fontSize: 17, fontWeight: 600 }}>{d.getDate()}</span>

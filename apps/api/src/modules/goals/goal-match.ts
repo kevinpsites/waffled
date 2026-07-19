@@ -71,6 +71,16 @@ const CONCEPT_STEMS: Record<string, Set<string>> = Object.fromEntries(
   Object.entries(CONCEPTS).map(([k, ws]) => [k, new Set(ws.map(stem))])
 )
 
+// Expand a goal title into the vocabulary of every CONCEPT its (stemmed) tokens hit
+// — so a spoken synonym ("reading" → "Read books") can match through the shared
+// candidate ranker, which does plain token overlap with no stemming. Returns the
+// union of the matched concepts' word lists (empty when the title hits no concept).
+export function conceptKeywords(title: string): string[] {
+  const out = new Set<string>()
+  for (const c of conceptsOf(tokenize(title))) for (const w of CONCEPTS[c]) out.add(w)
+  return [...out]
+}
+
 function conceptsOf(tokens: Set<string>): Set<string> {
   const hit = new Set<string>()
   for (const [concept, stems] of Object.entries(CONCEPT_STEMS)) {

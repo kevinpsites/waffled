@@ -45,7 +45,7 @@ function Ring({ value, children }: { value: number; children: ReactNode }) {
 
 function HoursRow({ p, max, unit }: { p: GoalParticipant; max: number; unit: string | null }) {
   const w = max ? Math.round((p.progress / max) * 100) : 0
-  const color = p.colorHex ?? 'var(--kevin)'
+  const color = p.colorHex ?? 'var(--person-1)'
   return (
     <div className="detail-hours-row">
       <div className="av sm" style={{ background: `${p.colorHex ?? '#A6A29B'}22` }}>{p.avatarEmoji ?? '🙂'}</div>
@@ -145,7 +145,7 @@ export function GoalDetail() {
             <button
               className="pill btn-primary"
               disabled={habitDoneToday}
-              style={{ color: '#fff', border: 0, cursor: habitDoneToday ? 'default' : 'pointer', opacity: habitDoneToday ? 0.6 : 1 }}
+              style={{ color: 'var(--on-accent)', border: 0, cursor: habitDoneToday ? 'default' : 'pointer', opacity: habitDoneToday ? 0.6 : 1 }}
               onClick={() => { if (!habitDoneToday) logRef.current() }}
             >
               {logLabel}

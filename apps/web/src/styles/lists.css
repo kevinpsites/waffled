@@ -40,7 +40,7 @@
   background: transparent;
 }
 .list-item .lct.auto {
-  color: var(--ai);
+  color: var(--ai-d);
 }
 /* the Templates group sits under the New-list button, set off by a hairline */
 .lists-rail-tpl {
@@ -55,7 +55,7 @@
   font-weight: 800;
   letter-spacing: 0.05em;
   color: var(--primary);
-  background: var(--primary-t, #f3e2d8);
+  background: var(--primary-t);
   padding: 2px 8px;
   border-radius: 999px;
   vertical-align: middle;
@@ -133,7 +133,7 @@
 }
 .lists-suggest-label {
   font-weight: 700;
-  color: var(--ai);
+  color: var(--ai-d);
 }
 .sug-chip {
   border: 0;
@@ -218,7 +218,7 @@
   z-index: 40;
   background: var(--card);
   border-radius: var(--r-md);
-  box-shadow: var(--sh-2, 0 8px 28px rgba(0, 0, 0, 0.16));
+  box-shadow: var(--sh-2);
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -236,7 +236,7 @@
   font-weight: 600;
   color: var(--ink);
   padding: 8px 10px;
-  border-radius: var(--r-sm, 9px);
+  border-radius: var(--r-sm);
   cursor: pointer;
   text-align: left;
 }
@@ -283,7 +283,7 @@
   padding: 4px 8px;
   border: 1px solid var(--hair);
   border-radius: var(--r-sm);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
 }
 
@@ -352,5 +352,5 @@
    .assign-menu to outrank `.assign-menu button { color: var(--ink) }`. */
 .assign-menu .lists-more-del,
 .assign-menu .lists-more-del:hover {
-  color: var(--danger, #c0392b);
+  color: var(--danger);
 }

@@ -3,7 +3,7 @@
 // switcher and pending-invite prompt after any page reload (today those only ride
 // the login response). account-less callers (kiosk/device) get empty arrays.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { randomBytes } from 'node:crypto'
 import { runMigrations } from '../src/migrate'
 

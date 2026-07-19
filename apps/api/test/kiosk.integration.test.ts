@@ -5,7 +5,7 @@
 // token still hits the admin gate — i.e. attribution + authorization are enforced
 // server-side, not trusted from the client.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { runMigrations } from '../src/migrate'
 
 let pg: StartedPostgreSqlContainer

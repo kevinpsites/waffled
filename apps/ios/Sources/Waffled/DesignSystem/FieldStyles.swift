@@ -21,4 +21,17 @@ extension View {
             .overlay(Capsule().strokeBorder(selected ? tint : WF.hair, lineWidth: selected ? 1.5 : 1))
             .clipShape(Capsule())
     }
+
+    /// The keyboard accessory "Done" button (trailing, semibold) — the ONE way we give
+    /// a keyboard an explicit dismiss when it otherwise has none (decimal pads have no
+    /// return key; rapid-entry bars keep focus after every submit). `dismiss` should
+    /// clear the caller's `@FocusState` (which also commits any in-flight inline edit).
+    func wfKeyboardDoneToolbar(dismiss: @escaping () -> Void) -> some View {
+        toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done", action: dismiss).fontWeight(.semibold)
+            }
+        }
+    }
 }

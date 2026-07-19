@@ -113,7 +113,7 @@ struct AboutSettingsView: View {
                 testResult
                 if let update {
                     HStack(spacing: 6) {
-                        Circle().fill(Color(hex: 0x167A4A)).frame(width: 7, height: 7)
+                        Circle().fill(WF.success).frame(width: 7, height: 7)
                         Text("Server version \(update.current.version)")
                             .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
@@ -133,7 +133,7 @@ struct AboutSettingsView: View {
         switch test {
         case .ok(let code):
             Label("Server responded (HTTP \(code)) — reachable.", systemImage: "checkmark.circle.fill")
-                .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Color(hex: 0x3E9D5B))
+                .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.success)
         case .fail:
             Label("Couldn’t reach that address. Check the IP/port and that the stack is running.", systemImage: "xmark.octagon.fill")
                 .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.primaryD)

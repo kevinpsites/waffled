@@ -1,6 +1,6 @@
 // Lists domain — migration + api. Shares one Postgres testcontainer + app.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
@@ -33,12 +33,14 @@ function call(method: string, path: string, token?: string, body?: unknown) {
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
+  // lambda-api reads query params from queryStringParameters, not the path
+  const [rawPath, qs] = path.split('?')
   return app.run(
     {
       httpMethod: method,
-      path,
+      path: rawPath,
       headers,
-      queryStringParameters: {},
+      queryStringParameters: qs ? Object.fromEntries(new URLSearchParams(qs)) : {},
       body: body !== undefined ? JSON.stringify(body) : null,
       isBase64Encoded: false,
     },
@@ -394,7 +396,7 @@ describe('grocery auto-build from a recipe', () => {
       await withClient((c) => c.query<{ id: string }>(`select id from persons where name='Kevin' limit 1`))
     ).rows[0].id
     const tortillas = items.find((i: { name: string }) => i.name === 'Tortillas')
-    expect(tortillas.source).toBe('auto')
+    expect(tortillas.source).toBe('recipe') // explicit off-plan add — NOT 'auto', so rebuild can't wipe it
     expect(tortillas.sourceRecipeIds).toContain(recipeId)
     expect(tortillas.addedBy).toMatchObject({ personId: kevinId, name: 'Kevin' })
   })
@@ -438,6 +440,23 @@ describe('grocery auto-build from a recipe', () => {
     const names = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.map((i: { name: string }) => i.name)
     expect(names).toContain('Baguette')
     expect(names).not.toContain('Garlic')
+  })
+
+  it('surfaces recipes added off-plan as "unscheduled" on the board', async () => {
+    // Chorizo Tacos was added via from-recipe but never planned this week — the
+    // board should return it under `unscheduled` so the by-meal view can give its
+    // items their own section instead of dumping them into "Other items".
+    const board = JSON.parse((await call('GET', '/api/lists/grocery/board', kevin)).body)
+    const un = board.unscheduled as Array<{ recipeId: string; title: string; emoji: string | null; color: string }>
+    expect(un).toBeDefined()
+    const tacos = un.find((u) => u.recipeId === recipeId)
+    expect(tacos).toMatchObject({ title: 'Chorizo Tacos', emoji: '🌮' })
+    expect(tacos!.color).toMatch(/^#/)
+    // recipes never referenced by a list item stay out of it
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Never Shopped', emoji: '🫥' })
+    const strayId = JSON.parse(r.body).recipe.id
+    const again = JSON.parse((await call('GET', '/api/lists/grocery/board', kevin)).body)
+    expect((again.unscheduled as Array<{ recipeId: string }>).some((u) => u.recipeId === strayId)).toBe(false)
   })
 
   it('shops for the substitution, not the original ingredient', async () => {
@@ -504,6 +523,11 @@ describe('grocery auto-build + pantry staples', () => {
     expect(salmon).toMatchObject({ aisle: 'Meat & Seafood', quantity: '1.5 lb', source: 'auto' })
     expect(salmon.sourceRecipeIds).toContain(recipeId)
     expect(board.meals.some((d: { recipeId: string; mealType: string }) => d.recipeId === recipeId && d.mealType === 'dinner')).toBe(true)
+
+    // planned this week → its items group under the meal, not "unscheduled"
+    expect(board.unscheduled.some((u: { recipeId: string }) => u.recipeId === recipeId)).toBe(false)
+    // ...while the off-plan Chorizo Tacos from the earlier describe stays unscheduled
+    expect(board.unscheduled.some((u: { title: string }) => u.title === 'Chorizo Tacos')).toBe(true)
   })
 
   it('manages pantry staples (defaults, add, delete)', async () => {
@@ -514,6 +538,139 @@ describe('grocery auto-build + pantry staples', () => {
     const id = JSON.parse(add.body).staple.id
     expect((await call('DELETE', `/api/pantry-staples/${id}`, kevin)).statusCode).toBe(204)
     expect((await call('POST', '/api/pantry-staples', kevin, {})).statusCode).toBe(400)
+  })
+})
+
+// Runs after the rebuild describe — exercises how explicit off-plan adds
+// (source='recipe') coexist with the derived weekly build (source='auto').
+describe('off-plan grocery items vs the weekly rebuild', () => {
+  const week = thisSunday()
+  const nextWeek = (() => {
+    const d = new Date(week + 'T00:00:00Z')
+    d.setUTCDate(d.getUTCDate() + 7)
+    return d.toISOString().slice(0, 10)
+  })()
+
+  async function makeRecipe(title: string, ingredients: Array<{ name: string; amount?: number; unit?: string }>) {
+    const r = await call('POST', '/api/recipes', kevin, { title, emoji: '🍛' })
+    const rid = JSON.parse(r.body).recipe.id
+    await call('POST', `/api/recipes/${rid}/ingredients`, kevin, { ingredients })
+    return rid as string
+  }
+  const groceryItems = async () => JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items
+  const board = async () => JSON.parse((await call('GET', `/api/lists/grocery/board?weekStart=${week}`, kevin)).body)
+
+  it('keeps off-plan items (and their deletions) through a rebuild', async () => {
+    const curry = await makeRecipe('Weeknight Curry', [
+      { name: 'Coconut milk', amount: 1, unit: 'can' },
+      { name: 'Curry paste', amount: 2, unit: 'Tbsp' },
+    ])
+    await call('POST', `/api/lists/grocery/from-recipe/${curry}`, kevin)
+
+    // refresh the week — the derived rows recompute, the off-plan rows survive
+    expect((await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)).statusCode).toBe(200)
+    let names = (await groceryItems()).map((i: { name: string }) => i.name)
+    expect(names).toContain('Coconut milk')
+    expect(names).toContain('Curry paste')
+    expect((await board()).unscheduled.some((u: { recipeId: string }) => u.recipeId === curry)).toBe(true)
+
+    // deleting an off-plan item sticks — refresh must not resurrect it
+    const coconut = (await groceryItems()).find((i: { name: string }) => i.name === 'Coconut milk')
+    expect((await call('DELETE', `/api/list-items/${coconut.id}`, kevin)).statusCode).toBe(204)
+    await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
+    names = (await groceryItems()).map((i: { name: string }) => i.name)
+    expect(names).not.toContain('Coconut milk')
+    expect(names).toContain('Curry paste')
+  })
+
+  it("doesn't label recipes planned in a different week as unscheduled", async () => {
+    const roast = await makeRecipe('Next Week Roast', [{ name: 'Pork shoulder', amount: 3, unit: 'lb' }])
+    await call('POST', '/api/meals/plan', kevin, { date: nextWeek, mealType: 'dinner', recipeId: roast })
+    // plan-ahead: build next week's list, then look at the current week's board
+    await call('POST', `/api/lists/grocery/rebuild?weekStart=${nextWeek}`, kevin)
+    expect((await groceryItems()).some((i: { name: string }) => i.name === 'Pork shoulder')).toBe(true)
+    expect((await board()).unscheduled.some((u: { title: string }) => u.title === 'Next Week Roast')).toBe(false)
+  })
+
+  it('merges a shared ingredient into one surviving row instead of duplicating or double-counting', async () => {
+    // restore this week's derived rows (Test Salmon planned earlier → 'Salmon fillets' 1.5 lb)
+    await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
+    const bowls = await makeRecipe('Salmon Bowls', [{ name: 'Salmon fillets', amount: 1, unit: 'lb' }])
+    await call('POST', `/api/lists/grocery/from-recipe/${bowls}`, kevin)
+
+    // merged into the existing auto row, promoted so the rebuild can't wipe the off-plan stake
+    let salmon = (await groceryItems()).filter((i: { name: string }) => i.name === 'Salmon fillets')
+    expect(salmon).toHaveLength(1)
+    expect(salmon[0].quantity).toBe('2.5 lb')
+    expect(salmon[0].source).toBe('recipe')
+
+    // rebuild again: still one row, same quantity (no duplicate, no double-count)
+    await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
+    salmon = (await groceryItems()).filter((i: { name: string }) => i.name === 'Salmon fillets')
+    expect(salmon).toHaveLength(1)
+    expect(salmon[0].quantity).toBe('2.5 lb')
+    expect(salmon[0].sourceRecipeIds).toContain(bowls)
+    // both its recipes surface correctly: planned meal on the board, off-plan under unscheduled
+    const b = await board()
+    expect(b.unscheduled.some((u: { title: string }) => u.title === 'Salmon Bowls')).toBe(true)
+    expect(b.unscheduled.some((u: { title: string }) => u.title === 'Test Salmon')).toBe(false)
+  })
+
+  it('re-adding the same recipe is idempotent (no unbounded quantity doubling)', async () => {
+    // Salmon Bowls is already credited on the Salmon fillets row at 2.5 lb —
+    // a double-tap / repeat POST must not turn it into 3.5 lb
+    const bowls = (await board()).unscheduled.find((u: { title: string }) => u.title === 'Salmon Bowls')
+    await call('POST', `/api/lists/grocery/from-recipe/${bowls.recipeId}`, kevin)
+    const salmon = (await groceryItems()).filter((i: { name: string }) => i.name === 'Salmon fillets')
+    expect(salmon).toHaveLength(1)
+    expect(salmon[0].quantity).toBe('2.5 lb')
+  })
+
+  it('adds the planned portion onto an off-plan row when the plan comes second', async () => {
+    // reverse ordering of the promote case: off-plan add exists FIRST, then a
+    // planned recipe needs the same ingredient — rebuild must add its amount
+    const herb = await makeRecipe('Herb Chicken', [{ name: 'Chicken thighs', amount: 1, unit: 'lb' }])
+    await call('POST', `/api/lists/grocery/from-recipe/${herb}`, kevin)
+    const roast = await makeRecipe('Roast Chicken Dinner', [{ name: 'Chicken thighs', amount: 1.5, unit: 'lb' }])
+    const planDate = (() => {
+      const d = new Date(week + 'T00:00:00Z')
+      d.setUTCDate(d.getUTCDate() + 3)
+      return d.toISOString().slice(0, 10)
+    })()
+    await call('POST', '/api/meals/plan', kevin, { date: planDate, mealType: 'dinner', recipeId: roast })
+
+    await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
+    let thighs = (await groceryItems()).filter((i: { name: string }) => i.name === 'Chicken thighs')
+    expect(thighs).toHaveLength(1)
+    expect(thighs[0].quantity).toBe('2.5 lb') // 1 (off-plan) + 1.5 (planned)
+    expect(thighs[0].sourceRecipeIds).toEqual(expect.arrayContaining([herb, roast]))
+
+    // rebuilding again must not re-add the planned portion
+    await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
+    thighs = (await groceryItems()).filter((i: { name: string }) => i.name === 'Chicken thighs')
+    expect(thighs[0].quantity).toBe('2.5 lb')
+  })
+
+  it('merges duplicate ingredient names within one recipe instead of erroring', async () => {
+    // two rows normalizing to the same name (e.g. an ingredient used in two steps)
+    const steak = await makeRecipe('Scallion Steak', [
+      { name: 'Scallions', amount: 2, unit: 'count' },
+      { name: 'Scallions', amount: 3, unit: 'count' },
+    ])
+    const res = await call('POST', `/api/lists/grocery/from-recipe/${steak}`, kevin)
+    expect(res.statusCode).toBe(201)
+    const scallions = (await groceryItems()).filter((i: { name: string }) => i.name === 'Scallions')
+    expect(scallions).toHaveLength(1)
+    expect(scallions[0].quantity).toBe('5 count')
+  })
+
+  it('surfaces a recipe as unscheduled even when all its items merged into hand-added rows', async () => {
+    await call('POST', '/api/lists/grocery/items', kevin, { name: 'Mint' })
+    const mojitos = await makeRecipe('Mojitos', [{ name: 'Mint', amount: 1, unit: 'bunch' }])
+    await call('POST', `/api/lists/grocery/from-recipe/${mojitos}`, kevin)
+    const mint = (await groceryItems()).filter((i: { name: string }) => i.name === 'Mint')
+    expect(mint).toHaveLength(1) // merged, not duplicated
+    expect((await board()).unscheduled.some((u: { title: string }) => u.title === 'Mojitos')).toBe(true)
   })
 })
 

@@ -22,7 +22,7 @@
   color: var(--ink-2); font: inherit; font-weight: 600; font-size: 14px;
   transition: border-color .12s, background .12s, color .12s;
 }
-.shop-kid.on { background: #F0E9FD; border-color: var(--lottie); color: var(--ink); }
+.shop-kid.on { background: var(--person-4-t); border-color: var(--person-4); color: var(--ink); }
 .shop-kid-name { font-weight: 700; }
 .shop-kid-bal { font-weight: 700; color: var(--gold); }
 .shop-kid.on .shop-kid-bal { color: var(--gold); }
@@ -44,8 +44,8 @@
 /* --- hero: wallet + saving-toward --- */
 .shop-hero {
   display: grid; grid-template-columns: 1.1fr .9fr; gap: 20px;
-  background: linear-gradient(135deg, #8A5CF0, #A47BF5);
-  border-radius: 24px; padding: 24px 26px; color: #fff;
+  background: linear-gradient(135deg, var(--person-4), #A47BF5);
+  border-radius: 24px; padding: 24px 26px; color: var(--on-accent);
   box-shadow: var(--sh-2);
 }
 @media (max-width: 720px) { .shop-hero { grid-template-columns: 1fr; } }
@@ -54,15 +54,15 @@
 .shop-coin {
   width: 72px; height: 72px; border-radius: 999px; flex: none;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(255,255,255,.2); font-size: 34px; color: #FFE58A;
-  box-shadow: inset 0 0 0 3px rgba(255,255,255,.25);
+  background: var(--on-color-track); font-size: 34px; color: var(--gold);
+  box-shadow: inset 0 0 0 3px var(--on-color-track);
 }
 .shop-wallet-label { font-size: 12px; font-weight: 800; letter-spacing: .08em; opacity: .82; }
 .shop-wallet-big { font-size: 30px; font-weight: 800; line-height: 1.1; margin-top: 2px; }
-.shop-wallet-star { color: #FFE58A; }
+.shop-wallet-star { color: var(--gold); }
 .shop-wallet-sub { font-size: 13px; opacity: .85; margin-top: 4px; }
 
-.shop-saving { background: rgba(255,255,255,.16); border-radius: 16px; padding: 16px 18px; }
+.shop-saving { background: var(--on-color-track); border-radius: 16px; padding: 16px 18px; }
 .shop-saving-label { font-size: 11px; font-weight: 800; letter-spacing: .08em; opacity: .82; }
 .shop-saving-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .shop-saving-emo { font-size: 22px; }
@@ -71,9 +71,9 @@
 .shop-saving-empty { margin-top: 10px; font-weight: 600; opacity: .8; }
 
 /* progress bar (white track/fill on the hero; coral variant on locked tiles) */
-.shop-progress { height: 8px; border-radius: 999px; background: rgba(255,255,255,.28); overflow: hidden; }
+.shop-progress { height: 8px; border-radius: 999px; background: var(--on-color-track); overflow: hidden; }
 .shop-progress.sm { height: 6px; background: var(--panel); }
-.shop-progress-fill { height: 100%; border-radius: 999px; background: #fff; transition: width .3s; }
+.shop-progress-fill { height: 100%; border-radius: 999px; background: var(--on-accent); transition: width .3s; }
 .shop-progress-fill.coral { background: var(--primary); }
 
 /* --- category chips --- */
@@ -85,7 +85,7 @@
   color: var(--ink-2); font: inherit; font-weight: 700; font-size: 14px;
   transition: background .12s, color .12s, border-color .12s;
 }
-.shop-cat.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.shop-cat.on { background: var(--ink); border-color: var(--ink); color: var(--on-inverse); }
 
 .shop-manage { display: flex; }
 
@@ -105,23 +105,23 @@
   align-items: center; justify-content: center;
   background: linear-gradient(135deg, #EEDAF7, #CFA9E8);
 }
-.shop-tile.locked .shop-thumb { background: #F4EFE7; }
+.shop-tile.locked .shop-thumb { background: var(--panel); }
 .shop-thumb-emo { font-size: 46px; }
 .shop-tile.locked .shop-thumb-emo { opacity: .5; }
 .shop-lock {
   position: absolute; top: 10px; left: 10px; font-size: 15px;
-  background: rgba(255,255,255,.85); width: 28px; height: 28px;
+  background: var(--gloss); width: 28px; height: 28px;
   display: flex; align-items: center; justify-content: center; border-radius: 999px;
 }
 .shop-price {
   position: absolute; top: 10px; right: 10px;
-  background: rgba(255,255,255,.92); color: var(--ink);
+  background: var(--gloss); color: var(--ink);
   font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 999px;
   box-shadow: var(--sh-1);
 }
 .shop-edit {
   position: absolute; bottom: 10px; right: 10px;
-  background: rgba(255,255,255,.9); border: 0; cursor: pointer;
+  background: var(--gloss); border: 0; cursor: pointer;
   width: 28px; height: 28px; border-radius: 999px; font-size: 13px;
   display: flex; align-items: center; justify-content: center; color: var(--ink-2);
   box-shadow: var(--sh-1);
@@ -173,7 +173,7 @@
 
 .shop-celebrate-pill {
   display: inline-block; margin-top: 14px; padding: 8px 16px; border-radius: 999px;
-  background: var(--wally-t); color: var(--wally); font-weight: 700; font-size: 14px;
+  background: var(--person-3-t); color: var(--person-3); font-weight: 700; font-size: 14px;
 }
 .shop-back { margin-top: 18px; width: 100%; }
 
