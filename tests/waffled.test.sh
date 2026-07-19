@@ -125,6 +125,17 @@ t "ensure_env backfills LOCAL_JWT_SECRET without touching other values" '
   echo "PASS"
 '
 
+# --- 6. user-facing help must point at the published troubleshooting guide ---------
+t "setup links to the published troubleshooting guide" '
+  grep -qF "https://waffled.app/operations/troubleshooting/" "$WAFFLED" ||
+    { echo "FAIL: published troubleshooting URL missing"; exit 0; }
+  if grep -qF "docs/TROUBLESHOOTING.md" "$WAFFLED"; then
+    echo "FAIL: stale repository-local troubleshooting path remains"
+  else
+    echo "PASS"
+  fi
+'
+
 echo
 if [ "$fails" -gt 0 ]; then
   echo "$fails/$runs waffled test(s) FAILED"

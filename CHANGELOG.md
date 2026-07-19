@@ -137,6 +137,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Setup now links to the published troubleshooting guide.** The public-HTTPS
+  PowerSync note no longer points at a repository file that does not exist.
 - **The iOS login screen now offers only the sign-in methods your server allows.** If an
   admin turns off password login (SSO-only), the iPhone/iPad login hides the email and
   password fields and shows just the SSO button — matching the web, which already did

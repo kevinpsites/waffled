@@ -483,7 +483,7 @@ case "$cmd" in
         set_env_var PUBLIC_BASE_URL "https://$host"
         set_env_var POWERSYNC_PUBLIC_URL "https://$host:$ps_port"
         echo "${c_grn}Set for https://$host.${c_reset} Enable the 443 mapping in infra/compose/docker-compose.yml, point DNS at this machine, then run ${c_dim}./waffled up${c_reset}."
-        echo "${c_ylw}Note: PowerSync serves on :$ps_port — for public HTTPS you'll also need to expose/proxy that port with TLS (see docs/TROUBLESHOOTING.md).${c_reset}"
+        echo "${c_ylw}Note: PowerSync serves on :$ps_port — for public HTTPS you'll also need to expose/proxy that port with TLS (see https://waffled.app/operations/troubleshooting/).${c_reset}"
         ;;
       *) echo "${c_red}Unknown choice — run ./waffled setup again.${c_reset}"; exit 1 ;;
     esac
