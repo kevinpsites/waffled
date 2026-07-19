@@ -125,6 +125,31 @@ t "ensure_env backfills LOCAL_JWT_SECRET without touching other values" '
   echo "PASS"
 '
 
+# --- 6. backup warnings surface the two default durability gaps ----------------------
+t "backup_safety_warnings explains the default media and same-host gaps" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  ENV_FILE="$tmp/.env"
+  : > "$ENV_FILE"
+  out="$(backup_safety_warnings)"
+  case "$out" in
+    *"uploaded media is not included"*"same machine"*"https://waffled.app/operations/backup/"*) echo "PASS" ;;
+    *) echo "FAIL: unexpected warning output: $out" ;;
+  esac
+'
+
+t "backup_safety_warnings is quiet when media and offsite copies are configured" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  ENV_FILE="$tmp/.env"
+  {
+    echo "BACKUP_INCLUDE_MEDIA=true"
+    echo "BACKUP_S3_BUCKET=s3://family-backups/waffled"
+  } > "$ENV_FILE"
+  out="$(backup_safety_warnings)"
+  [ -z "$out" ] && echo "PASS" || echo "FAIL: unexpected warning output: $out"
+'
+
 echo
 if [ "$fails" -gt 0 ]; then
   echo "$fails/$runs waffled test(s) FAILED"
