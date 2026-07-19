@@ -137,6 +137,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **The iPhone and iPad apps now reject malformed server addresses before saving.**
+  Server settings require an HTTP(S) origin, explain invalid input in place, normalize
+  trailing slashes, and no longer force-unwrap request URLs.
 - **The iOS login screen now offers only the sign-in methods your server allows.** If an
   admin turns off password login (SSO-only), the iPhone/iPad login hides the email and
   password fields and shows just the SSO button — matching the web, which already did

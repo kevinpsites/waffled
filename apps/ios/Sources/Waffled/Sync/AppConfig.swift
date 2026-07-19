@@ -26,9 +26,10 @@ enum AppConfig {
     /// host Mac on `localhost`. On a real device, set the Server address to the Mac's LAN
     /// IP on that same Caddy port. Override via the Settings sheet or `WAFFLED_API_URL`.
     static var apiBaseURL: String {
-        env("WAFFLED_API_URL")
+        let candidate = env("WAFFLED_API_URL")
             ?? UserDefaults.standard.string(forKey: urlKey)
             ?? defaultBaseURL
+        return normalizedApiBaseURL(candidate) ?? defaultBaseURL
     }
 
     /// Local HS256 session token (mint via `just token` / `waffled token`). The API's
@@ -60,11 +61,44 @@ enum AppConfig {
         return !devToken.isEmpty
     }
 
-    /// Save the server address, or clear it (fall back to `defaultBaseURL`) when blank.
-    static func setApiBaseURL(_ value: String) {
+    /// A Waffled server is an HTTP(S) origin, not an API path or URL with credentials.
+    /// Returns the canonical value without a trailing slash, or nil when malformed.
+    static func normalizedApiBaseURL(_ value: String) -> String? {
         let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if v.isEmpty { UserDefaults.standard.removeObject(forKey: urlKey) }
-        else { UserDefaults.standard.set(v, forKey: urlKey) }
+        guard !v.isEmpty,
+              var components = URLComponents(string: v),
+              let rawScheme = components.scheme,
+              ["http", "https"].contains(rawScheme.lowercased()),
+              let rawHost = components.host, !rawHost.isEmpty,
+              components.user == nil, components.password == nil,
+              components.query == nil, components.fragment == nil,
+              components.path.isEmpty || components.path == "/" else { return nil }
+        components.scheme = rawScheme.lowercased()
+        components.host = rawHost.lowercased()
+        components.path = ""
+        guard let url = components.url else { return nil }
+        return url.absoluteString
+    }
+
+    /// Build a request URL from a validated origin. Kept optional so corrupt legacy
+    /// preferences or launch overrides can never become a force-unwrap crash.
+    static func apiURL(path: String, baseURL: String = apiBaseURL) -> URL? {
+        guard path.hasPrefix("/"), let base = normalizedApiBaseURL(baseURL) else { return nil }
+        return URL(string: base + path)
+    }
+
+    /// Save the server address, or clear it (fall back to `defaultBaseURL`) when blank.
+    /// Invalid non-empty values are rejected without replacing the current server.
+    @discardableResult
+    static func setApiBaseURL(_ value: String) -> Bool {
+        let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if v.isEmpty {
+            UserDefaults.standard.removeObject(forKey: urlKey)
+            return true
+        }
+        guard let normalized = normalizedApiBaseURL(v) else { return false }
+        UserDefaults.standard.set(normalized, forKey: urlKey)
+        return true
     }
 
     /// Save the dev token, or clear it when blank.

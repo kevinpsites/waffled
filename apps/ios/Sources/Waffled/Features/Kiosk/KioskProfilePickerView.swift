@@ -330,6 +330,7 @@ struct KioskPickerEscapeSheet: View {
     let onServerChanged: () -> Void
 
     @State private var serverURL = AppConfig.apiBaseURL
+    @State private var serverError: String?
     @State private var confirmExit = false
 
     var body: some View {
@@ -383,8 +384,17 @@ struct KioskPickerEscapeSheet: View {
                 .keyboardType(.URL)
                 .padding(12).background(WF.panel)
                 .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                .onChange(of: serverURL) { _, _ in serverError = nil }
+            if let serverError {
+                Text(serverError).font(.system(size: 12)).foregroundStyle(WF.primaryD)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Button {
-                AppConfig.setApiBaseURL(serverURL.trimmingCharacters(in: .whitespaces))
+                guard AppConfig.setApiBaseURL(serverURL) else {
+                    serverError = "Enter a full server address beginning with http:// or https://."
+                    return
+                }
+                serverURL = AppConfig.apiBaseURL
                 KioskDeviceAuth.shared.invalidate()   // old base's device token no longer applies
                 onServerChanged()
                 dismiss()
