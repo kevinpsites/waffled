@@ -48,12 +48,7 @@ struct PantrySettingsView: View {
         }
         .background(WF.canvas)
         .navigationTitle("Pantry").navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focus = nil }.fontWeight(.semibold)
-            }
-        }
+        .wfKeyboardDoneToolbar { focus = nil }
         // Commit whichever field just lost focus (decimal-pad has no return key, and
         // a location rename/icon commits on blur to match the web).
         .onChange(of: focus) { old, _ in

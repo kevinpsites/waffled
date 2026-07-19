@@ -36,3 +36,41 @@ describe('captureApi.resolve', () => {
     expect(r.intent?.kind).toBe('event')
   })
 })
+
+// TIER 2 (F1) — a server mutate intent carries the verb args under `args` (older server
+// builds said `mutateArgs`). Both spellings must land on intent.args so the /resolve and
+// /commit calls receive them (dropping them turned "give the dishes to Wally" into a
+// reassign with no assignee).
+describe('captureApi.resolve — mutate args normalization', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const serverMutate = (extra: Record<string, unknown>) => ({
+    ok: true,
+    json: async () => ({
+      intent: { kind: 'mutate', verb: 'reassign', targetKind: 'chore', target: { description: 'dishes' }, ...extra },
+      via: 'anthropic',
+      fallback: false,
+    }),
+  })
+
+  it('keeps a server mutate intent’s `args` on intent.args', async () => {
+    globalThis.fetch = vi.fn(async () => serverMutate({ args: { personName: 'Wally' } })) as unknown as typeof fetch
+    const r = await captureApi.resolve('give the dishes to Wally', ['Wally'])
+    expect(r.via).toBe('anthropic')
+    expect(r.intent).toMatchObject({ kind: 'mutate', verb: 'reassign', args: { personName: 'Wally' } })
+  })
+
+  it('normalizes the legacy `mutateArgs` spelling onto intent.args', async () => {
+    globalThis.fetch = vi.fn(async () => serverMutate({ mutateArgs: { personName: 'Wally' } })) as unknown as typeof fetch
+    const r = await captureApi.resolve('give the dishes to Wally', ['Wally'])
+    expect(r.intent).toMatchObject({ kind: 'mutate', args: { personName: 'Wally' } })
+  })
+
+  it('defaults a server mutate with neither spelling to args {}', async () => {
+    globalThis.fetch = vi.fn(async () => serverMutate({})) as unknown as typeof fetch
+    const r = await captureApi.resolve('give the dishes to Wally', ['Wally'])
+    expect((r.intent as { args?: unknown }).args).toEqual({})
+  })
+})

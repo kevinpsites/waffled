@@ -286,7 +286,14 @@ async function streaksByChore(householdId: string, dueOn: string): Promise<Map<s
   return out
 }
 
-export async function listTodayInstances(householdId: string, dueOn: string, tz = 'UTC'): Promise<TodayInstance[]> {
+// `opts.streaks: false` skips the ~60-day streak scan (streak comes back 0) for
+// callers that never show streaks (e.g. capture candidate matching).
+export async function listTodayInstances(
+  householdId: string,
+  dueOn: string,
+  tz = 'UTC',
+  opts?: { streaks?: boolean }
+): Promise<TodayInstance[]> {
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
             ci.requires_photo, ci.proof_storage_key, ci.had_proof, ci.due_on::text as due_on,
@@ -303,7 +310,7 @@ export async function listTodayInstances(householdId: string, dueOn: string, tz 
       order by p.sort_order nulls last, c.due_time nulls last, c.title`,
     [householdId, dueOn, tz]
   )
-  const streaks = await streaksByChore(householdId, dueOn)
+  const streaks = opts?.streaks === false ? new Map<string, number>() : await streaksByChore(householdId, dueOn)
   return rows.map((r) => ({
     id: r.id,
     choreId: r.chore_id,

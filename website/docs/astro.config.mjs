@@ -15,6 +15,8 @@ export default defineConfig({
 			logo: { src: './src/assets/waffled-logo.png', alt: 'Waffled' },
 			favicon: '/favicon.png',
 			customCss: ['./src/styles/docs.css'],
+			// Custom hero: adds the official App Store badge to the homepage action row.
+			components: { Hero: './src/components/Hero.astro' },
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/kevinpsites/waffled' }],
 			sidebar: [
 				{
@@ -55,6 +57,7 @@ export default defineConfig({
 						{ label: 'Family Night', slug: 'features/family-night' },
 						{ label: 'AI capture bar', slug: 'features/capture' },
 						{ label: 'Kiosk & display', slug: 'features/kiosk' },
+						{ label: 'Appearance & dark mode', slug: 'features/appearance' },
 						{ label: 'Mobile app (iOS)', slug: 'features/mobile' },
 					],
 				},
@@ -91,6 +94,7 @@ export default defineConfig({
 						{ label: 'Add a recipe from a photo or voice', slug: 'guides/ai-recipe-import' },
 						{ label: 'Run AI locally with Ollama', slug: 'guides/local-ai' },
 						{ label: 'Offsite backups (3-2-1)', slug: 'guides/offsite-backups' },
+						{ label: 'Deploy to Oracle Cloud (free)', slug: 'guides/oracle-cloud-terraform' },
 						{ label: 'Move to new hardware', slug: 'guides/moving-hardware' },
 					],
 				},

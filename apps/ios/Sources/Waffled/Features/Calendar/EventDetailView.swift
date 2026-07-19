@@ -286,9 +286,9 @@ struct EventDetailView: View {
                         .foregroundStyle(e.id == event.id ? WF.ink : WF.ink2).lineLimit(1)
                     Spacer(minLength: 6)
                     if e.id == event.id {
-                        Text("this event").font(.system(size: 10, weight: .heavy)).foregroundStyle(FamilyColor.wally.solid)
+                        Text("this event").font(.system(size: 10, weight: .heavy)).foregroundStyle(FamilyColor.person3.solid)
                             .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(FamilyColor.wally.solid.opacity(0.14)).clipShape(Capsule())
+                            .background(FamilyColor.person3.solid.opacity(0.14)).clipShape(Capsule())
                     } else if let g = gapLabel(e.startsAt) {
                         Text(g).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                     }

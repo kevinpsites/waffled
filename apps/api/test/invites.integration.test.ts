@@ -4,7 +4,7 @@
 // invited account sees it on next login and accepts, which creates their membership
 // (a persons row linked to their account). No one is attached without their OK.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { randomBytes } from 'node:crypto'
 import { runMigrations } from '../src/migrate'
 

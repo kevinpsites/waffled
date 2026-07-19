@@ -72,6 +72,7 @@ struct SettingsView: View {
                 // config (admin-only). Always visible so anyone can manage their own
                 // permissions; AI & Capture stays admin-gated.
                 SectionLabel(text: "System").padding(.top, 8)
+                row("🌗", "Appearance", "Light, dark or match system") { path.append(.settingsAppearance) }
                 if isAdmin {
                     row("✨", "AI & Capture", "Provider & model") { path.append(.settingsAI) }
                 }

@@ -119,7 +119,7 @@ export function ChoresCard() {
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             width: '100%', marginTop: 8, padding: '10px 12px', border: 0,
-            background: 'var(--card-2, #faf8f4)', borderRadius: 12, cursor: 'pointer',
+            background: 'var(--card-2)', borderRadius: 12, cursor: 'pointer',
             font: 'inherit', fontSize: 14, fontWeight: 700, color: 'var(--ink-2)',
           }}
         >

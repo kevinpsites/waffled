@@ -2,7 +2,7 @@
 // app, mirroring photos.integration.test.ts. MEDIA_DIR points at a temp dir so the
 // local blob driver writes there; we assert the file lands on disk.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import jwt from 'jsonwebtoken'
 import { readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'

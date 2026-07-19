@@ -11,8 +11,8 @@ const MEMBER_TYPES = [
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
-    <div onClick={onClick} role="switch" aria-checked={on} style={{ width: 44, height: 26, borderRadius: 999, flex: 'none', cursor: 'pointer', background: on ? 'var(--wally)' : 'var(--hair)', position: 'relative', transition: 'background .15s' }}>
-      <div style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: 999, background: '#fff', transition: 'left .15s' }} />
+    <div onClick={onClick} role="switch" aria-checked={on} style={{ width: 44, height: 26, borderRadius: 999, flex: 'none', cursor: 'pointer', background: on ? 'var(--person-3)' : 'var(--hair)', position: 'relative', transition: 'background .15s' }}>
+      <div style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: 999, background: 'var(--on-accent)', transition: 'left .15s' }} />
     </div>
   )
 }
@@ -288,7 +288,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
                       : 'Invited to sign in via SSO (no password set)'}
                 </div>
               </div>
-              {loginSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)' }}>✓ Saved</span>}
+              {loginSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--success)' }}>✓ Saved</span>}
             </div>
 
             <label className="field" style={{ marginBottom: 8 }}>
@@ -301,7 +301,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
             </label>
             {loginErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>{loginErr}</div>}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} disabled={loginBusy || !loginEmail.trim()} onClick={saveLogin}>
+              <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0, cursor: 'pointer' }} disabled={loginBusy || !loginEmail.trim()} onClick={saveLogin}>
                 {loginBusy ? 'Saving…' : hasLoginLocal ? 'Update login' : 'Give a login'}
               </button>
               {hasLoginLocal && !person!.isOwner && (
@@ -326,7 +326,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
                     : 'Optional — set one to protect this profile on the kiosk'}
                 </div>
               </div>
-              {pinSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)' }}>✓ Saved</span>}
+              {pinSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--success)' }}>✓ Saved</span>}
             </div>
             <label className="field" style={{ marginBottom: 8 }}>
               <span>{hasPinLocal ? 'New PIN (4–8 digits)' : 'PIN (4–8 digits)'}</span>
@@ -341,7 +341,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
             </label>
             {pinErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>{pinErr}</div>}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} disabled={pinBusy || pin.length < 4} onClick={savePin}>
+              <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0, cursor: 'pointer' }} disabled={pinBusy || pin.length < 4} onClick={savePin}>
                 {pinBusy ? 'Saving…' : hasPinLocal ? 'Update PIN' : 'Set PIN'}
               </button>
               {hasPinLocal && (
