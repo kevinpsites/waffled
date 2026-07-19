@@ -13,7 +13,8 @@ that your contributions will be licensed under the same
 ## Local setup
 
 Waffled runs as a Docker Compose stack driven by the root `./waffled` bash CLI.
-Requires **Docker** and **Node 20**.
+Requires **Docker** and **Node 24** for source development. The production API
+container remains on Node 20.
 
 ```bash
 git clone <repo-url> waffled
@@ -91,9 +92,10 @@ are expected to follow the `CODE_OF_CONDUCT.md`.
 
 ## CI/CD
 
-- **`.github/workflows/ci.yml`** runs on PRs and on push to `main`. Three jobs on
-  Node 20, running `npm ci` per app directory (no workspace): **typecheck**
-  (api + web), **web-tests**, and **api-tests**.
+- **`.github/workflows/ci.yml`** runs on PRs and on push to `main`. API tests
+  run on Node 20 to match production; web checks run on Node 24 to match the
+  browser toolchain. Separate jobs cover migration hygiene, CLI tests,
+  typechecking, web tests, API integration tests, and API Docker E2E.
 - **`.github/workflows/publish-images.yml`** runs **only on `v*` tags** (or
   manual dispatch). It builds three multi-arch (amd64 + arm64) GHCR images —
   `waffled-api`, `waffled-caddy` (which bakes the web SPA), and `waffled-backup`
