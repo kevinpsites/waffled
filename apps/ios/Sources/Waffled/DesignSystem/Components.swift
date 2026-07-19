@@ -146,6 +146,31 @@ struct WaffledEmptyState: View {
     }
 }
 
+/// A dismissible inline error banner — ⚠️ + a short message + an ✕ that clears it.
+/// The shared surface for "this action didn't stick" errors shown in place (chore
+/// proof uploads, meal-planner drops), mirroring the web's inline error rows.
+struct DismissibleErrorBanner: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 15)).foregroundStyle(WF.primary)
+            Text(message).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
+            Spacer(minLength: 6)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundStyle(WF.ink3)
+            }.buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(WF.primary.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+            .strokeBorder(WF.primary.opacity(0.3), lineWidth: 1))
+    }
+}
+
 /// The "Add anything…" capture bar shown on Today. Tapping it is wired by the
 /// caller (Phase 2 opens the AI capture sheet).
 struct AICaptureBar: View {

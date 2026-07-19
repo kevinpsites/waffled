@@ -120,9 +120,9 @@ struct PantryItemEditor: View {
                                 Image(systemName: "trash")
                                 Text("Delete item").fontWeight(.semibold)
                             }
-                            .font(.system(size: 15)).foregroundStyle(Color(hex: 0xD8443A))
+                            .font(.system(size: 15)).foregroundStyle(WF.danger)
                             .frame(maxWidth: .infinity).padding(.vertical, 13)
-                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(Color(hex: 0xD8443A).opacity(0.4), lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.danger.opacity(0.4), lineWidth: 1))
                         }
                         .buttonStyle(.plain).disabled(saving)
                     }

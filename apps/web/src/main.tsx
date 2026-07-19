@@ -9,6 +9,10 @@ import { AuthGate } from './kiosk/AuthGate'
 import { KioskDisplay } from './kiosk/KioskDisplay'
 import { registerServiceWorker } from './lib/pwa'
 import { connectPowerSync } from './lib/powersync/db'
+import { initTheme } from './lib/theme'
+
+// Apply the saved (or OS-matched) theme before first paint to avoid a flash.
+initTheme()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

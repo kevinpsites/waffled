@@ -5,7 +5,7 @@
 // in later (the sync path). A Waffled-native event (no ical_uid) keeps single-event
 // behavior — no series meta, only itself linked. All against a real Postgres.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client, type Pool } from 'pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'

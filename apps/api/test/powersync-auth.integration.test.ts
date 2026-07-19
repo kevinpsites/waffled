@@ -2,7 +2,7 @@
 // carry the caller's real household_id (resolved from the DB). PowerSync validates
 // those tokens against the JWKS; sync rules scope buckets by the household_id claim.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createPublicKey } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'

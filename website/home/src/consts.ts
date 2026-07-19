@@ -2,9 +2,11 @@
 // (deployed from ../docs); GitHub is the canonical repo.
 export const DOCS = 'https://docs.waffled.app';
 export const GITHUB = 'https://github.com/kevinpsites/waffled';
+export const APP_STORE = 'https://apps.apple.com/app/waffled/id6787621452';
 
 export const LINKS = {
 	docs: DOCS,
+	appStore: APP_STORE,
 	quickStart: `${DOCS}/getting-started/quick-start/`,
 	overview: `${DOCS}/getting-started/overview/`,
 	install: `${DOCS}/install/docker/`,

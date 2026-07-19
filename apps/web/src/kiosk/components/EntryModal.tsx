@@ -104,7 +104,7 @@ export function EntryModal({
                   return (
                     <button key={p.personId} type="button" className={`log-person ${on ? 'on' : ''}`} onClick={() => toggleWho(p.personId)}>
                       <div className="av md" style={{ background: `${p.colorHex ?? '#A6A29B'}22` }}>{p.avatarEmoji ?? '🙂'}</div>
-                      <span className="log-check" style={{ background: on ? 'var(--wally)' : '#fff', borderColor: on ? 'var(--wally)' : 'var(--hair)' }}>{on ? '✓' : ''}</span>
+                      <span className="log-check" style={{ background: on ? 'var(--person-3)' : 'var(--card)', borderColor: on ? 'var(--person-3)' : 'var(--hair)' }}>{on ? '✓' : ''}</span>
                       <span className="tiny" style={{ fontWeight: 700, color: 'var(--ink-2)' }}>{p.name.split(' ')[0]}</span>
                     </button>
                   )

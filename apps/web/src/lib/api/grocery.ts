@@ -149,6 +149,14 @@ export interface PantryStaple {
   id: string
   name: string
 }
+// A recipe whose ingredients are on the list but that isn't planned this week
+// (added straight from a recipe page) — gets its own by-meal section + dot color.
+export interface GroceryUnscheduled {
+  recipeId: string
+  title: string
+  emoji: string | null
+  color: string
+}
 export interface GroceryBoardItem extends ListItem {
   aisle: string
   source: string
@@ -158,6 +166,7 @@ export interface GroceryBoard {
   list: ListSummary
   weekStart: string
   meals: GroceryMeal[]
+  unscheduled?: GroceryUnscheduled[]
   items: GroceryBoardItem[]
   staples: PantryStaple[]
 }

@@ -118,10 +118,10 @@ final class GoalsModel {
 enum GoalStyle {
     static func color(_ key: String?) -> Color {
         switch key {
-        case "physical":     return FamilyColor.wally.solid
-        case "intellectual": return FamilyColor.kevin.solid
-        case "spiritual":    return FamilyColor.lottie.solid
-        case "creative":     return FamilyColor.kelly.solid
+        case "physical":     return FamilyColor.person3.solid
+        case "intellectual": return FamilyColor.person1.solid
+        case "spiritual":    return FamilyColor.person4.solid
+        case "creative":     return FamilyColor.person2.solid
         case "social":       return WF.gold
         default:             return WF.primary
         }
@@ -432,7 +432,7 @@ struct GoalsView: View {
                     ForEach(g.participants, id: \.personId) { contribRow($0, max: maxProg, unit: g.unit) }
                 }
             }
-            logButton(g, fg: Color(hex: 0x1C8A56))
+            logButton(g, fg: WF.success)
         }
         .padding(16)
         .background(Self.heroGreen)
@@ -470,7 +470,7 @@ struct GoalsView: View {
                     }
                 }
             }
-            logButton(g, fg: Color(hex: 0xC9760F))
+            logButton(g, fg: WF.warn)
         }
         .padding(16)
         .background(Self.heroOrange)
@@ -534,9 +534,9 @@ struct GoalsView: View {
                         HStack(spacing: 6) {
                             Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
                             if pinned {
-                                Text("📌 PINNED").font(.system(size: 9, weight: .heavy)).foregroundStyle(Color(hex: 0xB07D1C))
+                                Text("📌 PINNED").font(.system(size: 9, weight: .heavy)).foregroundStyle(WF.warn)
                                     .padding(.horizontal, 6).padding(.vertical, 2)
-                                    .background(Color(hex: 0xFDF2DD)).clipShape(Capsule())
+                                    .background(WF.warnT).clipShape(Capsule())
                             }
                         }
                         Text(goalDescriptor(g)).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
@@ -565,7 +565,7 @@ struct GoalsView: View {
             .overlay {
                 if pinned {
                     RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
-                        .strokeBorder(Color(hex: 0xE2A636).opacity(0.5), lineWidth: 1.5)
+                        .strokeBorder(WF.warn.opacity(0.5), lineWidth: 1.5)
                 }
             }
         }
@@ -607,8 +607,16 @@ struct GoalLogSheet: View {
     @State private var amount: Double
     @State private var amountText: String
     /// Time goals are logged as hours + minutes; the server folds them into decimal hours.
-    @State private var hours: Int
-    @State private var minutes: Int
+    /// The raw text is the single source of truth so a cleared field stays empty while
+    /// editing (value 0) instead of snapping back to the old number — it's only normalized
+    /// (via DurationEntry) when the field loses focus. The logged Ints are derived, never
+    /// stored, so text and value can't drift apart.
+    @State private var hoursText: String
+    @State private var minutesText: String
+    private var hours: Int { DurationEntry.value(of: hoursText) }
+    private var minutes: Int { DurationEntry.value(of: minutesText, cap: 59) }
+    private enum HMField { case hours, minutes }
+    @FocusState private var hmFocus: HMField?
     @State private var who: Set<String>
     @State private var note = ""
     /// A checklist goal's steps (fetched on appear; ticking is the "log" for checklists).
@@ -666,8 +674,8 @@ struct GoalLogSheet: View {
         _amount = State(initialValue: initial)
         _amountText = State(initialValue: goalFmt(initial))
         // A time goal (total measured in hours) starts at 1h 0m and is entered as hours + minutes.
-        _hours = State(initialValue: (goal.goalType != "habit" && goal.goalType != "count" && isHours) ? 1 : 0)
-        _minutes = State(initialValue: 0)
+        _hoursText = State(initialValue: (goal.goalType != "habit" && goal.goalType != "count" && isHours) ? "1" : "0")
+        _minutesText = State(initialValue: "0")
         _who = State(initialValue: goal.participants.count == 1 ? [goal.participants[0].personId] : [])
     }
 
@@ -675,7 +683,12 @@ struct GoalLogSheet: View {
     /// metric, pre-fetch today's total once. Denied/empty reads just leave it nil.
     private func loadHealthSuggestion() async {
         let hk = HealthKitBridge.shared
-        guard hk.isAvailable, let metric = HealthKitBridge.Metric.matching(unit: goal.unit) else { return }
+        // The goal's stored link decides the metric; the unit heuristic is only the
+        // fallback for unlinked goals. (A cycling-distance goal's unit is "mi" too —
+        // matching(unit:) alone would suggest walk+run miles for it.)
+        guard hk.isAvailable,
+              let metric = HealthKitBridge.Metric(key: goal.healthMetric)
+                ?? HealthKitBridge.Metric.matching(unit: goal.unit) else { return }
         try? await hk.requestReadAuthorization()
         if let value = await hk.todayTotal(for: metric), value > 0 {
             healthSuggestion = (metric, value)
@@ -799,8 +812,13 @@ struct GoalLogSheet: View {
                 timeChipRow
                 HStack(spacing: 8) {
                     Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
-                    hmField($hours, unit: "hr")
-                    hmField($minutes, unit: "min", clampTo: 59)
+                    hmField($hoursText, unit: "hr", field: .hours)
+                    hmField($minutesText, unit: "min", field: .minutes)
+                }
+                // Normalize only when a field is left: "" → "0", "07" → "7", 75 min → 59.
+                .onChange(of: hmFocus) { old, _ in
+                    if old == .hours { hoursText = DurationEntry.normalized(hoursText) }
+                    if old == .minutes { minutesText = DurationEntry.normalized(minutesText, cap: 59) }
                 }
             }
         } else {
@@ -816,18 +834,25 @@ struct GoalLogSheet: View {
                         .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                         .frame(width: 110)
-                        .onChange(of: amountText) { _, new in if let v = Double(new) { amount = v } }
+                        // Locale-aware ("2,5" on a comma-decimal pad); empty/unparsable = 0
+                        // (Log disables) — never the stale previous amount, which would
+                        // silently log a number the field no longer shows.
+                        .onChange(of: amountText) { _, new in amount = AmountEntry.value(of: new) }
                     if let u = goal.unit { Text(u).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3) }
                 }
             }
         }
     }
 
-    /// A compact whole-number field for hours or minutes. `clampTo` caps the value
-    /// (minutes at 59); the numeric keypad already blocks negatives.
-    private func hmField(_ value: Binding<Int>, unit: String, clampTo: Int? = nil) -> some View {
+    /// A compact whole-number field for hours or minutes. Text-backed (not an Int
+    /// `format:` binding) so a cleared field stays empty while editing — the old Int
+    /// binding re-materialized the previous value the moment focus moved. The logged
+    /// Ints are *derived* from the text (see `hours`/`minutes`, empty = 0, minutes
+    /// capped at 59); the visible text is only normalized on focus loss (see the
+    /// `.onChange(of: hmFocus)`).
+    private func hmField(_ text: Binding<String>, unit: String, field: HMField) -> some View {
         HStack(spacing: 6) {
-            TextField("0", value: value, format: .number)
+            TextField("0", text: text)
                 .keyboardType(.numberPad)
                 .multilineTextAlignment(.center)
                 .font(.system(size: 16, weight: .semibold))
@@ -835,9 +860,7 @@ struct GoalLogSheet: View {
                 .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                 .frame(width: 64)
-                .onChange(of: value.wrappedValue) { _, v in
-                    if v < 0 { value.wrappedValue = 0 } else if let cap = clampTo, v > cap { value.wrappedValue = cap }
-                }
+                .focused($hmFocus, equals: field)
             Text(unit).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
         }
     }
@@ -861,8 +884,8 @@ struct GoalLogSheet: View {
     }
 
     private func setTimeChip(_ v: Double) {
-        hours = Int(v)
-        minutes = Int((v - Double(Int(v))) * 60 + 0.5)
+        hoursText = String(Int(v))
+        minutesText = String(Int((v - Double(Int(v))) * 60 + 0.5))
     }
 
     private func stepButton(_ icon: String, disabled: Bool, _ action: @escaping () -> Void) -> some View {
@@ -1023,54 +1046,104 @@ struct GoalLogSheet: View {
     }
 }
 
-/// **Tier 2, Piece 1 — "set a goal from your Health data."** Lists every supported Apple
-/// Health metric with the user's *current* value beside it (read live on appear), so they
-/// pick a goal around something real instead of guessing a number. Tapping one hands the
-/// metric back to the editor, which configures type/unit/target. iPhone-only.
+/// **Tier 2 — "track from Apple Health" picker.** The metric list is grouped by the goal
+/// type's shape (mock design): total/count get an "adds up automatically" grouping
+/// (Everyday / Distance / Workouts / …) while a habit gets a "counts qualifying days" one
+/// (rings first, then logged-each-day and workout days). Searchable; each row carries the
+/// user's *current* value (read live on appear) so they pick a goal around something real
+/// instead of guessing a number. Tapping one hands the metric back to the editor, which
+/// configures type/unit/target. iPhone-only.
 private struct HealthDataPickerSheet: View {
+    let goalType: String
+    var selected: HealthKitBridge.Metric? = nil
     let onPick: (HealthKitBridge.Metric) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var values: [String: Double?] = [:]
-    @State private var loading = true
+    @State private var search = ""
+
+    private var isHabit: Bool { goalType == "habit" }
+
+    /// The goal-type sections, filtered down by the search text (on the visible names).
+    private var sections: [(title: String, metrics: [HealthKitBridge.Metric])] {
+        let base = HealthKitBridge.Metric.sections(forGoalType: goalType)
+        let q = search.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return base }
+        return base
+            .map { (title: $0.title, metrics: $0.metrics.filter {
+                $0.chipLabel.lowercased().contains(q) || $0.label.lowercased().contains(q)
+            }) }
+            .filter { !$0.metrics.isEmpty }
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    ForEach(HealthKitBridge.Metric.allCases, id: \.self) { m in
-                        Button { onPick(m) } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(m.chipLabel).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
-                                    Text(loading ? "Reading…" : m.formatCurrent(values[m.key] ?? nil))
-                                        .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
-                            }
+                // The mock's under-title caption: what picking here *means* per goal shape.
+                Section {} footer: {
+                    Text(isHabit ? "Counts qualifying days — pick one habit." : "Adds up automatically — pick one metric.")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2)
+                }
+                ForEach(sections, id: \.title) { section in
+                    Section {
+                        ForEach(section.metrics, id: \.self) { m in row(m) }
+                    } header: {
+                        Text(section.title)
+                    } footer: {
+                        // Discoverability: on a total, workouts can only sum minutes — point
+                        // at the Count goal type, where the same activities count sessions.
+                        if section.title == "Workouts" && goalType == "total" {
+                            Text("Counting workouts instead? Make the goal a **Count** and these track sessions — “swim 12 times this month”.")
                         }
                     }
-                } header: {
-                    Text("Your Health data today")
-                } footer: {
-                    Text("Pick a metric to build a goal around it. Values come from your iPhone and Apple Watch — rings and mood become a daily habit.")
                 }
             }
-            .navigationTitle("From Apple Health")
+            .searchable(text: $search, prompt: "Search metrics")
+            .navigationTitle("Track from Apple Health")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
         .task { await load() }
     }
 
+    private func row(_ m: HealthKitBridge.Metric) -> some View {
+        // A habit lists the sessions measure, but the goal may be linked to the minutes
+        // sibling ("at least 45 min of yoga") — the activity's row is still "its" row.
+        let on = m == selected || (selected != nil && m.workoutSibling == selected)
+        return Button { onPick(m) } label: {
+            HStack(spacing: 12) {
+                WaffledEmojiTile(emoji: m.emoji, size: 17, frame: 34, cornerRadius: 10)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(m.chipLabel).font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(on ? WF.ai : WF.ink)
+                    // "Fills in miles" until THIS row's live read lands (reads fan out
+                    // and publish per-metric), then "3.2 mi today".
+                    Text(values[m.key].map { m.formatCurrent($0) } ?? "Fills in \(isHabit ? "days" : m.label)")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
+                }
+                Spacer()
+                Image(systemName: on ? "checkmark" : "chevron.right")
+                    .font(.system(size: 12, weight: .bold)).foregroundStyle(on ? WF.ai : WF.ink3)
+            }
+        }
+    }
+
     private func load() async {
         _ = try? await HealthKitBridge.shared.requestReadAuthorization()
-        var out: [String: Double?] = [:]
-        for m in HealthKitBridge.Metric.allCases {
-            out[m.key] = await HealthKitBridge.shared.total(for: m, on: Date())
+        let metrics = HealthKitBridge.Metric.sections(forGoalType: goalType).flatMap(\.metrics)
+        // Fan the reads out (rows appear as each lands — total wait is the slowest
+        // query, not the sum) and fetch the day's workouts ONCE: every workout row is
+        // derived from that single list in pure code instead of its own HKSampleQuery.
+        async let workoutDay = HealthKitBridge.shared.workoutsOfDay(Date())
+        await withTaskGroup(of: (String, Double?).self) { group in
+            for m in metrics where !m.isWorkout {
+                group.addTask { (m.key, await HealthKitBridge.shared.total(for: m, on: Date())) }
+            }
+            for await (key, value) in group { values[key] = value }
         }
-        values = out
-        loading = false
+        let day = await workoutDay
+        for m in metrics where m.isWorkout {
+            values[m.key] = day.flatMap { m.workoutValue(fromDay: $0) }
+        }
     }
 }
 
@@ -1451,7 +1524,7 @@ struct GoalCreateSheet: View {
                 Text(isChecklist ? "Finish by a date" : (isHabit ? "Keep it up until" : "Set a deadline"))
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
             }
-            .tint(FamilyColor.wally.solid)
+            .tint(FamilyColor.person3.solid)
             if hasDeadline {
                 DatePicker("Deadline", selection: $deadline, displayedComponents: .date)
                     .datePickerStyle(.compact).labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
@@ -1459,35 +1532,24 @@ struct GoalCreateSheet: View {
         }
     }
 
-    /// Metric chooser revealed when "Auto-fill from Apple Health" is on (Extras). No
-    /// "Manual" chip — off = manual. Each choice fills the unit + a suggested target and
-    /// explains what Apple Health tracks for it.
+    /// The "Counting" card + picker revealed when "Auto-fill from Apple Health" is on
+    /// (Extras). No "Manual" choice — the toggle off = manual. The selected metric shows
+    /// as a tappable row (mock design) that opens the grouped "Track from Apple Health"
+    /// sheet; picking fills the unit + a suggested target automatically.
     private var healthMetricChips: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Only metrics that fit this goal type: rings/mood are habit-only (met/not),
-            // steps/flights/exercise/energy/mindful accumulate on numeric goals too.
-            ChipFlow(spacing: 8, lineSpacing: 8) {
-                ForEach(HealthKitBridge.Metric.allCases.filter { $0.applies(toGoalType: goalType) }, id: \.self) { m in
-                    healthChip(m, m.chipLabel)
-                }
-            }
+            Text(isHabit ? "Waffled fills qualifying days in the background — pick what counts a day."
+                         : "Waffled fills progress in the background — pick what to count.")
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+            countingRow
             if let m = healthMetric {
                 Text(m.explanation)
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
-                // A *quantity* habit counts a day when it clears a daily threshold ("2,000
-                // steps a day"), paired with the "N× a week" cadence above. Boolean metrics
-                // (rings/mood) are inherently met/not-met — nothing to set, so no field.
-                if isHabit && !m.isBoolean {
-                    HStack(spacing: 8) {
-                        Text("Reach").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
-                        numField($healthDailyTarget, width: 90)
-                        Text("\(m.label) a day").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
-                    }
-                    .padding(.top, 2)
-                }
+                if isHabit { habitQualification(m) }
             }
-            // Piece 1 — "set a goal from your Health data": show the live value per metric.
+            // "Set a goal from your Health data": the same sheet, framed as discovery.
             Button { showHealthPicker = true } label: {
                 Text("See your Health data →")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ai)
@@ -1502,19 +1564,74 @@ struct GoalCreateSheet: View {
             }
             .buttonStyle(.plain)
         }
-        // A goal-type switch can strand the selected metric (e.g. a ring on a total goal) —
-        // fall back to steps, which fits every numeric/habit goal.
+        // A goal-type switch can strand the selected metric. A workout pick swaps to its
+        // sibling measure (swim-minutes total → swim-sessions count); anything else falls
+        // back to steps, which fits every numeric/habit goal.
         .onChange(of: goalType) { _, newType in
-            if let m = healthMetric, !m.applies(toGoalType: newType) { selectHealthMetric(.steps) }
+            if let m = healthMetric, !m.applies(toGoalType: newType) {
+                if let sib = m.workoutSibling, sib.applies(toGoalType: newType) { selectHealthMetric(sib) }
+                else { selectHealthMetric(.steps) }
+            }
         }
         .sheet(isPresented: $showHealthPicker) {
-            HealthDataPickerSheet(onPick: pickFromHealth)
+            HealthDataPickerSheet(goalType: goalType, selected: healthMetric, onPick: pickFromHealth)
         }
     }
 
-    private func healthChip(_ m: HealthKitBridge.Metric, _ label: String) -> some View {
-        let on = healthMetric == m
-        return Button { selectHealthMetric(m) } label: {
+    /// The selected-metric card (mock): emoji tile, COUNTING overline, name, what it
+    /// fills in. Tapping opens the picker.
+    private var countingRow: some View {
+        let m = healthMetric ?? .steps
+        return Button { showHealthPicker = true } label: {
+            HStack(spacing: 12) {
+                WaffledEmojiTile(emoji: m.emoji, size: 20, frame: 44, cornerRadius: 12)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("COUNTING").font(.system(size: 10.5, weight: .heavy)).tracking(0.8).foregroundStyle(WF.ink3)
+                    Text(m.chipLabel).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                    Text(isHabit ? "Counts qualifying days" : "Fills in \(m.label) · unit set automatically")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+            }
+            .padding(12)
+            .wfField()
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// How a habit day qualifies. Boolean metrics (rings/mood) are met/not-met — nothing
+    /// to set. A workout picks between its two measures via the sibling keys: any session
+    /// counts the day, or a daily-minutes threshold. Other quantities keep the
+    /// daily-amount field ("2,000 steps a day"), paired with the "N× a week" cadence.
+    @ViewBuilder private func habitQualification(_ m: HealthKitBridge.Metric) -> some View {
+        if m.isWorkout {
+            HStack(spacing: 8) {
+                measurePill("Any workout counts", on: m.workoutMeasure == .sessions) {
+                    if m.workoutMeasure != .sessions, let sib = m.workoutSibling { selectHealthMetric(sib) }
+                }
+                measurePill("At least N minutes", on: m.workoutMeasure == .minutes) {
+                    if m.workoutMeasure != .minutes, let sib = m.workoutSibling { selectHealthMetric(sib) }
+                }
+            }
+            .padding(.top, 2)
+            if m.workoutMeasure == .minutes { reachRow(unitWord: "min") }
+        } else if !m.isBoolean {
+            reachRow(unitWord: m.label)
+        }
+    }
+
+    private func reachRow(unitWord: String) -> some View {
+        HStack(spacing: 8) {
+            Text("Reach").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+            numField($healthDailyTarget, width: 90)
+            Text("\(unitWord) a day").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+        }
+        .padding(.top, 2)
+    }
+
+    private func measurePill(_ label: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             Text(label).font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(on ? .white : WF.ink2)
                 .padding(.horizontal, 12).padding(.vertical, 7)
@@ -1530,12 +1647,25 @@ struct GoalCreateSheet: View {
     /// Boolean metrics (rings/mood) carry an implicit threshold of 1 (met/not).
     private func selectHealthMetric(_ m: HealthKitBridge.Metric) {
         let changed = healthMetric != m
+        // A measure flip on the SAME activity (the habit qualification pills, or tapping
+        // the goal's own activity in the picker) must not wipe a hand-set minutes bar.
+        // Compared against the OUTGOING metric, so it must precede the assignment.
+        let sameWorkoutActivity = changed && m.workout != nil
+            && m.workout?.activity == healthMetric?.workout?.activity
         healthMetric = m
         if isHabit {
             if m.isBoolean {
                 healthDailyTarget = "1"
+            } else if sameWorkoutActivity {
+                // Sessions ignore the field (any workout qualifies; the payload sends 1),
+                // so only top up a missing/degenerate value when flipping TO minutes.
+                if m.workoutMeasure == .minutes, (Int(healthDailyTarget) ?? 0) <= 1 {
+                    healthDailyTarget = String(m.suggestedDailyTarget)
+                }
             } else if changed || healthDailyTarget.trimmingCharacters(in: .whitespaces).isEmpty {
-                healthDailyTarget = String(m.suggestedTarget)
+                // Daily bar, not the goal target: a workout-sessions habit is "any workout
+                // that day" (1); a workout-minutes habit a modest daily 30.
+                healthDailyTarget = String(m.suggestedDailyTarget)
             }
         } else if m.isBoolean {
             // A boolean on a *count* goal accumulates met-days ("close the ring 15×"):
@@ -1554,6 +1684,14 @@ struct GoalCreateSheet: View {
     /// the metric (e.g. a ring on a total), fall to habit; a boolean already on a count goal
     /// stays a count ("close the ring 15×").
     private func pickFromHealth(_ m: HealthKitBridge.Metric) {
+        // The picker lists one row per activity (a habit shows the sessions sibling of a
+        // minutes-configured goal), so tapping the already-linked metric — or its
+        // sibling — is a confirmation, not a measure reset that would wipe the
+        // minutes bar back to a default.
+        if m == healthMetric || (m.workoutSibling != nil && m.workoutSibling == healthMetric) {
+            showHealthPicker = false
+            return
+        }
         if !m.applies(toGoalType: goalType) { goalType = "habit" }
         autoFromHealth = true
         if title.trimmingCharacters(in: .whitespaces).isEmpty { title = m.chipLabel }
@@ -1879,7 +2017,7 @@ struct GoalCreateSheet: View {
                     Text(sub).font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 8)
-                Toggle("", isOn: on.animation()).labelsHidden().tint(FamilyColor.wally.solid)
+                Toggle("", isOn: on.animation()).labelsHidden().tint(FamilyColor.person3.solid)
             }
             .padding(.vertical, 14)
         }
@@ -1933,7 +2071,7 @@ struct GoalCreateSheet: View {
         return HStack(spacing: 13) {
             ZStack {
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(feat ? AnyShapeStyle(Color.white.opacity(0.18)) : AnyShapeStyle(Color(hex: 0xFBE7E1)))
+                    .fill(feat ? AnyShapeStyle(Color.white.opacity(0.18)) : AnyShapeStyle(WF.dangerT))
                 Text("🎯").font(.system(size: 24))
             }
             .frame(width: 46, height: 46)
@@ -2014,7 +2152,7 @@ struct GoalCreateSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 15, style: .continuous).fill(Color(hex: 0xFBE7E1))
+                    RoundedRectangle(cornerRadius: 15, style: .continuous).fill(WF.dangerT)
                     Text("🎯").font(.system(size: 27))
                 }
                 .frame(width: 52, height: 52)
@@ -2185,8 +2323,14 @@ struct GoalCreateSheet: View {
             // turning the toggle off (or switching to an incompatible type) clears it server-side.
             "healthMetric": activeHealthMetric.map { .string($0.key) } ?? .null,
             // Daily threshold only for a health-linked habit; null everywhere else.
+            // A sessions habit qualifies with ANY workout that day (threshold 1); the
+            // text field keeps holding the user's minutes bar so a measure flip
+            // round-trips without losing it.
             "healthDailyTarget": (activeHealthMetric != nil && isHabit)
-                ? (Double(healthDailyTarget).map(JSONValue.double) ?? .null) : .null,
+                ? (activeHealthMetric?.workoutMeasure == .sessions
+                    ? .double(1)
+                    : (Double(healthDailyTarget).map(JSONValue.double) ?? .null))
+                : .null,
             "deadline": hasDeadline ? .string(isoDay(deadline)) : .null,
         ]
         if isHabit {
@@ -2289,7 +2433,9 @@ struct GoalEntryEditSheet: View {
                                         .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                                         .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                                         .frame(width: 120)
-                                        .onChange(of: amountText) { _, new in if let v = Double(new) { amount = v } }
+                                        // Locale-aware ("2,5"); empty/unparsable = 0 (Save disables)
+                                        // — never the stale previous amount the field no longer shows.
+                                        .onChange(of: amountText) { _, new in amount = AmountEntry.value(of: new) }
                                     if let u = unit { Text(u).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3) }
                                 }
                             }
@@ -2351,6 +2497,8 @@ struct GoalEntryEditSheet: View {
                                DateFmt.string(loggedOn, "yyyy-MM-dd", DateFmt.utc))
                         dismiss()
                     }.fontWeight(.semibold)
+                    // A cleared amount is 0 — block saving it rather than writing a 0 entry.
+                    .disabled(numeric && logAmount == 0)
                 }
             }
         }
@@ -2705,9 +2853,9 @@ struct GoalDetailView: View {
                     HStack(spacing: 12) {
                         Text(m.emoji ?? "⛳").font(.system(size: 16))
                             .frame(width: 34, height: 34)
-                            .background(m.reached ? FamilyColor.wally.solid.opacity(0.18) : (isNow ? WF.primary.opacity(0.12) : WF.panel))
+                            .background(m.reached ? FamilyColor.person3.solid.opacity(0.18) : (isNow ? WF.primary.opacity(0.12) : WF.panel))
                             .clipShape(Circle())
-                            .overlay(Circle().strokeBorder(m.reached ? FamilyColor.wally.solid : (isNow ? WF.primary : Color.clear), lineWidth: 1.5))
+                            .overlay(Circle().strokeBorder(m.reached ? FamilyColor.person3.solid : (isNow ? WF.primary : Color.clear), lineWidth: 1.5))
                         Text(m.label ?? goalFmt(m.threshold))
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(m.reached || isNow ? WF.ink : WF.ink2)
@@ -2716,7 +2864,7 @@ struct GoalDetailView: View {
                                 : isNow ? "\(goalFmt(m.threshold - progress)) to go"
                                 : (m.rewardText ?? "—"))
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(m.reached ? FamilyColor.wally.solid : (isNow ? WF.primary : WF.ink3))
+                            .foregroundStyle(m.reached ? FamilyColor.person3.solid : (isNow ? WF.primary : WF.ink3))
                             .lineLimit(1)
                     }
                     .padding(.vertical, 7)
@@ -2735,7 +2883,7 @@ struct GoalDetailView: View {
                 .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
             VStack(spacing: 11) {
                 ForEach(participants, id: \.personId) { p in
-                    let color = Color(hexString: p.colorHex) ?? FamilyColor.kevin.solid
+                    let color = Color(hexString: p.colorHex) ?? FamilyColor.person1.solid
                     HStack(spacing: 10) {
                         Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 26)
                         Text(goalFirstName(p.name)).font(.system(size: 13, weight: .bold))
@@ -2784,7 +2932,7 @@ struct GoalDetailView: View {
                                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                                 Spacer(minLength: 6)
                                 Text("+\(goalFmt(log.amount))\(unit.map { " \($0)" } ?? "")")
-                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(FamilyColor.wally.solid)
+                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(FamilyColor.person3.solid)
                                 if canEditEntries {
                                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
                                 }
@@ -2911,7 +3059,7 @@ struct GoalListCreateSheet: View {
                             Text("Only these members see it").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
                     }
-                    .tint(FamilyColor.wally.solid)
+                    .tint(FamilyColor.person3.solid)
                     .padding(13)
                     .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))

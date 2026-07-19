@@ -70,14 +70,16 @@ struct KioskMoreView: View {
 
     private func descriptor(_ nav: KioskNav) -> (emoji: String, title: String, subtitle: String, accent: Color) {
         switch nav {
-        case .tasks:   return ("✅", "Chores", "Who's doing what today", FamilyColor.wally.tint)
-        case .rewards: return ("⭐", "Rewards", "Stars, jars & redemptions", Color(hex: 0xFDF0D6))
-        case .goals:   return ("🎯", "Goals", "What the family's working toward", Color(hex: 0xE8F0E4))
-        case .lists:   return ("📋", "Lists", "Groceries, packing & to-dos", FamilyColor.kevin.tint)
-        case .pantry:  return ("🥫", "Pantry", "What's on hand", Color(hex: 0xF3E8D6))
-        case .photos:  return ("📷", "Photos", "The family album", Color(hex: 0xDFF0EF))
-        case .meals:   return ("🍽️", "Meals", "This week's plan & recipes", Color(hex: 0xF6E7DE))
-        case .family:  return ("👪", "Family", "People, spotlights & more", Color(hex: 0xEDE7F3))
+        // Tile accents are flipping tokens (dark-aware washes), matching the phone twin
+        // FamilyView so the kiosk "More" grid doesn't show bright pastels among dark washes.
+        case .tasks:   return ("✅", "Chores", "Who's doing what today", FamilyColor.person3.tint)
+        case .rewards: return ("⭐", "Rewards", "Stars, jars & redemptions", WF.warnT)
+        case .goals:   return ("🎯", "Goals", "What the family's working toward", WF.successT)
+        case .lists:   return ("📋", "Lists", "Groceries, packing & to-dos", FamilyColor.person1.tint)
+        case .pantry:  return ("🥫", "Pantry", "What's on hand", WF.warnT)
+        case .photos:  return ("📷", "Photos", "The family album", WF.successT)
+        case .meals:   return ("🍽️", "Meals", "This week's plan & recipes", WF.primaryT)
+        case .family:  return ("👪", "Family", "People, spotlights & more", FamilyColor.person4.tint)
         default:       return ("•", nav.label, "", WF.panel)
         }
     }

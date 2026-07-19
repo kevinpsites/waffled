@@ -103,10 +103,27 @@
   background: var(--panel);
   color: var(--ink-2);
 }
-.meal-badge.mt-breakfast { background: #fdf0d5; color: #9a6b00; }
-.meal-badge.mt-lunch { background: #e6f4ea; color: #1c7a44; }
-.meal-badge.mt-dinner { background: #e8f0fe; color: #1f5fd0; }
-.meal-badge.mt-snack { background: #fce8f3; color: #b83280; }
+.meal-badge.mt-breakfast { background: var(--warn-t); color: var(--warn); }
+.meal-badge.mt-lunch { background: var(--success-t); color: var(--success); }
+.meal-badge.mt-dinner { background: var(--person-1-t); color: var(--person-1-tx); }
+.meal-badge.mt-snack { background: var(--person-2-t); color: var(--person-2-tx); }
+/* recipe on the list but not on this week's plan */
+.meal-badge.mt-unscheduled { background: color-mix(in srgb, var(--ink-3) 14%, transparent); color: var(--ink-2); }
+
+/* rail: divider + caption above the unscheduled recipes (legend for their dots) */
+.grocery-rail-div {
+  height: 1px;
+  background: var(--hair);
+  margin: 12px 0 10px;
+}
+.grocery-rail-sub {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 8px;
+}
 
 /* rail meal-type selector */
 .rail-seg {
@@ -138,14 +155,14 @@
   height: 20px;
   border-radius: 7px;
   border: 2px solid var(--hair);
-  background: #fff;
+  background: var(--card);
   flex: none;
   display: grid;
   place-items: center;
 }
 .gitem.done .gck {
-  background: var(--wally);
-  border-color: var(--wally);
+  background: var(--person-3);
+  border-color: var(--person-3);
 }
 /* name + ambient attribution stack; takes the row's flexible space */
 .gitem-body {
@@ -234,7 +251,7 @@
   background: var(--panel);
 }
 .gact.ok {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--primary);
   opacity: 1;
 }
@@ -330,6 +347,16 @@
   padding: 10px 0;
   border-bottom: 1px solid var(--hair-2);
 }
+/* rows that drill into a recipe (parity with the iOS rail) */
+.gdinner.link { cursor: pointer; }
+.gdinner.link:hover .gdinner-t { color: var(--ink); }
+.gdinner-chev {
+  flex: none;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink-3);
+  line-height: 1;
+}
 .gdinner:last-child {
   border-bottom: 0;
 }
@@ -372,8 +399,8 @@
   cursor: pointer;
 }
 .staple-chip:hover {
-  background: var(--wally-t);
-  color: #167a4a;
+  background: var(--person-3-t);
+  color: var(--success);
 }
 .staple-chip.editable {
   display: inline-flex;

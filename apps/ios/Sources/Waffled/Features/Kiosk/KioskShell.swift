@@ -40,12 +40,25 @@ struct KioskShell: View {
         sync.members.first { $0.id == sync.currentPersonId }
     }
 
+    /// Whether the shell should use the portrait (bottom-bar) layout, judged from the
+    /// FULL container size — safe-area insets added back — not the safe-area-inset
+    /// `geo.size`. The on-screen keyboard insets the *bottom safe area*, so the bare
+    /// `height > width` check collapsed by the keyboard height and a portrait iPad
+    /// "became landscape" the moment a field was focused. That branch switch rebuilt
+    /// the whole page (ConditionalContent), dropping focus and any half-typed text —
+    /// felt as "the keyboard hides what I'm typing" on the grocery list. Adding the
+    /// insets back means only a real rotation flips the layout.
+    static func isPortrait(size: CGSize, safeArea: EdgeInsets) -> Bool {
+        (size.height + safeArea.top + safeArea.bottom)
+            > (size.width + safeArea.leading + safeArea.trailing)
+    }
+
     var body: some View {
         // Landscape (the usual wall/counter mount) keeps the side rail; portrait — for
         // people who stand the iPad up vertically — moves the nav to a bottom bar like the
         // iPhone, with the page filling the space above it. Switches live on rotation.
         GeometryReader { geo in
-            let portrait = geo.size.height > geo.size.width
+            let portrait = Self.isPortrait(size: geo.size, safeArea: geo.safeAreaInsets)
             Group {
                 if portrait {
                     VStack(spacing: 0) {

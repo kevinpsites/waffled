@@ -23,6 +23,41 @@ Only hand-roll when a native/shared option genuinely can't do the job — and sa
 in a comment. (This bit us: a custom pantry swipe-control drifted from the Lists' native
 swipe until it was reworked to `List.swipeActions`.)
 
+### Dark mode & theming — colors are dark-aware tokens, never literals
+
+The app ships a warm dark theme (`Settings → Appearance`). Every color is a **dark-aware
+token** in `DesignSystem/Theme.swift`, built on `Color(light:dark:)` (a dynamic `UIColor`
+UIKit re-resolves on the appearance change). Rules:
+
+1. **Never hardcode `Color(hex: 0x…)` for a theme color.** Use the `WF.*` tokens (surfaces
+   `canvas`/`card`/`panel`, ink `ink`/`ink2`/`ink3`, status `success`/`danger`/`warn`/`info`
+   + their `…T` tint washes, `primary`/`gold`/`ai`). A raw hex won't flip and goes wrong in
+   one theme (a light surface stays light in dark; dark ink text goes invisible on a dark
+   card). **Leave alone:** `Color(hexString:)` (real `persons.color_hex` data) and **identity
+   palettes** that must stay distinct — allergen badges, per-person/per-category coding,
+   reward confetti. Those are fixed by design, not theme surfaces.
+
+2. **Text/icons on a solid `WF.ink` fill must use `WF.onInk`, never a literal `.white`.**
+   `WF.ink` is near-black in light but flips to a *warm off-white* in dark, so a `.white`
+   label becomes white-on-white (invisible). This bit us **twice** (selected filter pills,
+   then the Cook Mode / Replace-photo buttons) — hence the semantic `WF.onInk` token (the
+   inverse of ink). `.white` is only correct on a **colored** fill (coral/AI/green) that
+   stays saturated in both themes.
+
+3. **One source of truth for the scheme.** The theme is pinned by a single app-root
+   `.preferredColorScheme(theme.colorScheme)` from `ThemeStore` (`@AppStorage`-style, key
+   `waffled.theme`, default `system`). Don't force `.preferredColorScheme` in individual
+   views — the only deliberate exception is `ScreensaverView` (always-dark).
+
+4. **Large saturated fills deepen in dark, they don't stay neon.** A hero gradient with
+   light-mode-bright stops reads as garish against the warm charcoal — make it
+   `Color(light:dark:)` so it deepens (see the reward wallet hero). Decorative gradients with
+   a *white* foreground can stay saturated; a gradient behind *flipping* (WF-token) text must
+   flip too, or you get the light-on-light (web) / dark-on-dark clash.
+
+Token values mirror the web `apps/web/src/styles/waffled.css` 1:1 — keep them in sync; the
+full palette + rationale live in `apps/ios/DARK_MODE.md`, locked by `Tests/ThemeTests.swift`.
+
 ### Performance — two traps we've hit repeatedly
 
 1. **Don't use `AsyncImage` for images in a `List` / `LazyVGrid`.** It re-fetches

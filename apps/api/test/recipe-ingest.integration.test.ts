@@ -5,7 +5,7 @@
 // adapters); we cover the deterministic seams: markdown → draft, vision-capability
 // gating, the no-provider route behavior, and the source-photo TTL sweep.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { mkdtempSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

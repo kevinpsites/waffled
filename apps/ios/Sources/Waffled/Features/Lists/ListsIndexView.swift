@@ -197,8 +197,12 @@ struct ListsIndexView: View {
         .sheet(isPresented: $creatingList) {
             NewListSheet(
                 loadTemplates: { await model.templates() },
-                onCreate: { name, emoji in Task { _ = await model.create(name: name, emoji: emoji) } },
-                onApply: { tpl, name in Task { _ = await model.apply(template: tpl, name: name) } },
+                onCreate: { name, emoji in
+                    Task { open(created: await model.create(name: name, emoji: emoji)) }
+                },
+                onApply: { tpl, name in
+                    Task { open(created: await model.apply(template: tpl, name: name)) }
+                },
                 onDeleteTemplate: { tpl in await model.deleteTemplate(tpl) })
         }
     }
@@ -214,6 +218,15 @@ struct ListsIndexView: View {
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3.opacity(0.55))
             }
         }
+    }
+
+    /// Open a just-created list right away (create + create-from-template share this),
+    /// so the user lands in the detail ready to add items instead of having to find
+    /// the new row on the index. The sheet has already dismissed itself. `nil` (the
+    /// create reply couldn't be decoded, though the model still reloaded the index)
+    /// stays on the overview.
+    private func open(created: WaffledAPI.ListSummary?) {
+        if let created { path.append(.list(created)) }
     }
 
     /// Headless verification: WAFFLED_OPEN_LIST=grocery (or a list name) pushes that

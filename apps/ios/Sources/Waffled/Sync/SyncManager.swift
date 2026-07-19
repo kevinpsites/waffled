@@ -281,6 +281,57 @@ final class SyncManager {
     /// Warm the model so the first parse isn't a cold start (fire-and-forget).
     func warmCapture() async { await api.warmCapture() }
 
+    // MARK: capture Tier 2 (mutate — resolve → pick → commit)
+
+    /// Resolve a parsed mutate to candidate rows. Never throws — a network failure becomes
+    /// an `offline` state so the sheet can say "I need a connection for that" instead of a
+    /// raw error. `key` (verb|targetKind|description) is echoed back so the caller can drop a
+    /// stale result when the text changed underneath it.
+    func resolveMutate(verb: String, targetKind: String?, description: String,
+                       args: [String: JSONValue], key: String) async -> MutateResolveState {
+        do {
+            let r = try await api.resolveMutate(verb: verb, targetKind: targetKind,
+                                                description: description, args: args)
+            return MutateResolveState(candidates: r.candidates, disabledReason: r.disabledReason,
+                                      unsupported: r.unsupported ?? false, offline: false, forKey: key)
+        } catch {
+            return MutateResolveState(candidates: [], disabledReason: nil, unsupported: false,
+                                      offline: true, forKey: key)
+        }
+    }
+
+    /// Apply a chosen mutate. Returns `(ok, message)` — on success `message` is the server's
+    /// confirmation to flash; on a domain failure it's the server's friendly reason. After a
+    /// success, bumps the reactive rev for the affected surface so open screens refetch
+    /// (events need none — a server-side reschedule/delete down-syncs through PowerSync).
+    func commitMutate(verb: String, targetKind: String?, targetId: String,
+                      args: [String: JSONValue], meta: [String: JSONValue]?) async -> (ok: Bool, message: String) {
+        do {
+            let message = try await api.commitMutate(verb: verb, targetKind: targetKind,
+                                                     targetId: targetId, args: args, meta: meta)
+            refreshAfterMutate(targetKind)
+            return (true, message)
+        } catch let e as WaffledAPI.CaptureCommitError {
+            return (false, e.message)
+        } catch {
+            lastError = String(describing: error)
+            return (false, "Couldn’t do that — try again.")
+        }
+    }
+
+    /// Bump the reactive rev for the surface a committed mutate touched, mirroring the web
+    /// `MUTATE_TOPIC` bus emit (chore→chores, goal→goals, listItem→lists+grocery, reward→
+    /// rewards; event has no topic — PowerSync down-syncs the calendar change).
+    private func refreshAfterMutate(_ targetKind: String?) {
+        switch targetKind {
+        case "chore": choresRev += 1
+        case "goal": goalsRev += 1
+        case "listItem": listsRev += 1; groceryRev += 1
+        case "reward": rewardsRev += 1
+        default: break
+        }
+    }
+
     /// Commit a captured event by writing it to the local mirror. The resolved
     /// person_id drives server-side calendar routing + the Google push (the phone
     /// never talks to Google). Returns false on failure.
@@ -424,6 +475,63 @@ final class SyncManager {
             )
         }
         if ok { mealsRev += 1 }
+        return ok
+    }
+
+    /// Commit a captured countdown via REST. `date` must be YYYY-MM-DD. The Countdowns
+    /// card reloads on next appearance (no reactive rev — the list is fetch-on-view).
+    func commitCountdown(title: String, date: String, emoji: String?) async -> Bool {
+        await restCommit { _ = try await api.createCountdown(title: title, date: date, emoji: emoji) }
+    }
+
+    /// Commit a captured family member via REST (`POST /api/persons`, admin-only). The
+    /// caller gates on `currentPerson?.isAdmin` first; a non-admin never reaches here.
+    func commitPerson(name: String, memberType: String, avatarEmoji: String?, birthday: String?, isAdmin: Bool) async -> Bool {
+        await restCommit {
+            try await api.createPerson(name: name, memberType: memberType, avatarEmoji: avatarEmoji, birthday: birthday, isAdmin: isAdmin)
+        }
+    }
+
+    /// Commit a captured goal via REST (`POST /api/goals`). The caller gates on the Goals
+    /// module being enabled first; a disabled module never reaches here. The Goals screen
+    /// reloads on next appearance (no reactive rev — the list is fetch-on-view).
+    func commitGoal(title: String, goalType: String, trackingMode: String, targetValue: Double?, unit: String?, deadline: String?, participantIds: [String] = []) async -> Bool {
+        await restCommit {
+            try await api.createGoal(title: title, goalType: goalType, trackingMode: trackingMode,
+                                     targetValue: targetValue, unit: unit, deadline: deadline,
+                                     participantIds: participantIds)
+        }
+    }
+
+    /// Commit a captured pantry item via REST (`POST /api/pantry`). The caller gates on
+    /// the Pantry module being enabled first (it defaults OFF), so a disabled module never
+    /// reaches here. The Pantry screen reloads on next appearance (fetch-on-view).
+    func commitPantry(name: String, amount: String?, unit: String?, location: String, expiresOn: String?, lowAt: Double? = nil) async -> Bool {
+        await restCommit {
+            var body: [String: JSONValue] = ["name": .string(name), "location": .string(location)]
+            if let amount, !amount.isEmpty { body["amount"] = .string(amount) }
+            if let unit, !unit.isEmpty { body["unit"] = .string(unit) }
+            if let expiresOn, !expiresOn.isEmpty { body["expiresOn"] = .string(expiresOn) }
+            // The server keeps `low_at` only for a finite threshold ≥ 0 (mirrors the route).
+            if let lowAt, lowAt >= 0 { body["lowAt"] = .double(lowAt) }
+            _ = try await api.pantryCreate(body)
+        }
+    }
+
+    /// Commit a captured reward via REST (`POST /api/rewards`). The caller gates on BOTH
+    /// rewards being on (`rewardsOn`) and the viewer holding `reward.manage` first, so a
+    /// blocked case never reaches here. Omits `requiresApproval` when nil so the route
+    /// inherits the household default; bumps `rewardsRev` so the reward shop refreshes.
+    @discardableResult
+    func commitReward(title: String, emoji: String?, cost: Int?, requiresApproval: Bool?) async -> Bool {
+        let ok = await restCommit {
+            var body: [String: JSONValue] = ["title": .string(title)]
+            if let cost { body["cost"] = .int(cost) }
+            if let emoji, !emoji.isEmpty { body["emoji"] = .string(emoji) }
+            if let requiresApproval { body["requiresApproval"] = .bool(requiresApproval) }
+            try await api.rewardCreate(body)
+        }
+        if ok { rewardsRev += 1 }
         return ok
     }
 

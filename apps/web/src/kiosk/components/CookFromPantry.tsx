@@ -163,7 +163,7 @@ function CookModal({ items, ready, mains, onClose, onChanged }: { items: PantryI
                           {MEALS.map((mt) => <option key={mt} value={mt}>{MEAL_LABEL[mt]}</option>)}
                         </select>
                         <input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)} aria-label="Day" />
-                        <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => planItem(m)}>Add to plan</button>
+                        <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} onClick={() => planItem(m)}>Add to plan</button>
                       </div>
                     )}
                   </div>

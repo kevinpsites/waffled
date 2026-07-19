@@ -82,7 +82,7 @@ function ContribRow({ p, max, unit }: { p: GoalParticipant; max: number; unit: s
   const w = max ? Math.round((p.progress / max) * 100) : 0
   return (
     <div className="contrib-row">
-      <div className="cn" style={{ color: '#fff' }}>
+      <div className="cn" style={{ color: 'var(--on-accent)' }}>
         {p.avatarEmoji ?? '🙂'} {firstName(p.name)}
       </div>
       <div className="cbar">

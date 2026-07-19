@@ -257,7 +257,7 @@ export function Tasks() {
 
       {tab === 'chores' && proofErr && (
         <div style={{ padding: '0 30px 12px' }}>
-          <div className="card" role="alert" style={{ padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center', borderColor: 'var(--danger, #d9534f)' }}>
+          <div className="card" role="alert" style={{ padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center', borderColor: 'var(--danger)' }}>
             <span style={{ flex: 1, fontSize: 14 }}>{proofErr}</span>
             <button type="button" className="pill" onClick={() => setProofErr(null)}>Dismiss</button>
           </div>

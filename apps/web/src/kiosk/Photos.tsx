@@ -136,7 +136,7 @@ export function Photos() {
           <button
             type="button"
             className="pill"
-            style={{ color: 'var(--danger, #c0392b)', cursor: 'pointer' }}
+            style={{ color: 'var(--danger)', cursor: 'pointer' }}
             disabled={selected.size === 0}
             onClick={() => setConfirmIds([...selected])}
           >
@@ -154,7 +154,7 @@ export function Photos() {
           <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setSaver({ album: albumFilter })} disabled={photos.length === 0}>
             🖼️ Play{albumFilter ? ` “${albumFilter}”` : ''}
           </button>
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => setAdding(true)}>
+          <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0, cursor: 'pointer' }} onClick={() => setAdding(true)}>
             <Icon name="plus" />
             <span>Add photos</span>
           </button>
