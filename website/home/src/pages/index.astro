@@ -125,6 +125,7 @@ import { LINKS, DOCS, FEATURES, HOSTED_FORM_URL } from '../consts';
 						<div>
 							<h3>iOS app</h3>
 							<p>A native SwiftUI app with offline sync, local reminders, and Apple Health goals. Add a chore or check the list from anywhere.</p>
+							<a class="s-link" href={LINKS.appStore} rel="noopener">Download on the App Store →</a>
 						</div>
 					</li>
 					<li>
@@ -135,6 +136,33 @@ import { LINKS, DOCS, FEATURES, HOSTED_FORM_URL } from '../consts';
 						</div>
 					</li>
 				</ul>
+			</div>
+		</div>
+	</section>
+
+	<!-- ── Download the app ─────────────────────────────────────────────── -->
+	<section class="section" id="download">
+		<div class="wrap">
+			<div class="section-head">
+				<span class="eyebrow">Now on the App Store</span>
+				<h2>Take Waffled with you</h2>
+				<p>The native iOS app is a free download. Point it at your server, sign in once, and the whole household rides along in your pocket.</p>
+			</div>
+			<div class="download-card">
+				<div class="download-get">
+					<a class="store-badge" href={LINKS.appStore} rel="noopener">
+						<img src="/app-store-badge.svg" alt="Download on the App Store" width="168" height="56" />
+					</a>
+					<ul class="download-meta">
+						<li>Free — one universal app for iPhone &amp; iPad</li>
+						<li>Talks only to your server, no account with us</li>
+						<li>Offline-first calendar &amp; Apple Health goals</li>
+					</ul>
+				</div>
+				<div class="download-qr">
+					<img src="/qr-app-store.svg" alt="QR code that opens Waffled on the App Store" width="150" height="150" loading="lazy" />
+					<span>Scan with your iPhone camera</span>
+				</div>
 			</div>
 		</div>
 	</section>

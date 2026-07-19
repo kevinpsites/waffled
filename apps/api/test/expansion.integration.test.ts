@@ -3,7 +3,7 @@
 // fields, idempotent re-runs (stable row ids), override move + cancel, and clearing
 // occurrences when a master stops recurring.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import { runMigrations } from '../src/migrate'
 

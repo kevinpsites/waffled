@@ -10,8 +10,9 @@ Every Waffled feature and whether it's supported on each surface.
 - **iPhone** — the native iOS app's *personal-planner* experience (`AppRoot` + bottom tab
   bar; one person checking their day).
 - **iPad** — the **same** universal app's *family-hub* experience (`KioskRoot` → a left nav
-  rail + every page, re-laid-out big; runs on the counter). One binary, one App Store
-  listing — the device picks the experience by idiom (`DeviceExperience`).
+  rail + every page, re-laid-out big; runs on the counter). One binary, one
+  [App Store listing](https://apps.apple.com/app/waffled/id6787621452) — the device picks
+  the experience by idiom (`DeviceExperience`).
 - **Status** — where the feature sits on the [roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md).
 
 Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
@@ -33,11 +34,12 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
 | First-run **setup wizard** (create household + admin) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — **web/server-only by design**, not planned for mobile (mobile shows a "finish setup on the web" notice) |
+| **Dark mode** + Settings → Appearance (Light / Dark / Match system) | ✅ | ✅ | ✅ | ✅ Done — web/kiosk **and** iPhone/iPad share one warm-dark palette (`apps/ios/DARK_MODE.md`) |
 | **Email/password** login (built-in) | ✅ | ✅ | ✅ | ✅ Done |
 | Rotating refresh tokens + transparent 401-refresh | ✅ | ✅ | ✅ | ✅ Done (Keychain token store) |
 | **OIDC SSO** (backend-mediated, invite-gated) | ✅ | ✅ | ✅ | ✅ Done (`ASWebAuthenticationSession`) |
 | Admin-managed OIDC config (Settings, secret encrypted at rest) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — web/server-only admin by design |
-| Disable password login / force SSO (break-glass guard) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — web/server-only admin by design |
+| Disable password login / force SSO (break-glass guard) | ✅ | ✅ | ✅ | ✅ Done — config is web/server-only admin by design; every client's login screen honors it (an SSO-only server hides the email/password form on web **and** iPhone/iPad) |
 | **Member management** — grant a person a login (email ± password) + kiosk PIN | ✅ | ✅ | ✅ | ✅ Done |
 | **Members CRUD** (profiles: name, avatar, color, role, admin, birthday) | ✅ | ✅ | ✅ | ✅ Done |
 | **Role-based permissions** — per-role capability grid (Settings → Family); [model](/concepts/permissions/) | ✅ | ✅ | ✅ | ✅ Done (editable matrix, admin-only) |
@@ -160,7 +162,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Smart "might count toward a goal" suggestions + learning | ✅ | ✅ | ✅ | ✅ Done (Phase B) |
 | Recurring-event goal counting | ✅ | ✅ | ✅ | ✅ Done |
 | **Capability gating** — `goal.manage` for others' / shared goals; own progress stays open | ✅ | ✅ | ✅ | ✅ Done |
-| **Apple Health → goals** auto-fill (steps / flights / exercise / energy / mindful / rings / mood), habit daily thresholds, "set a goal from your Health data" picker, gap catch-up | ❌ N/A | ✅ | ❌ N/A | ✅ Done (iPhone; iPad/web display the synced number) |
+| **Apple Health → goals** auto-fill (steps / flights / exercise / energy / distance — walk + run, cycling, swimming, wheelchair / **workouts by type** — running, cycling, swimming, yoga, strength or any / mindful / rings / mood), habit daily thresholds, grouped + searchable "Track from Apple Health" picker, gap catch-up | ❌ N/A | ✅ | ❌ N/A | ✅ Done (iPhone; iPad/web display the synced number). Distance is fractional in mi/km per device region; workout metrics count minutes on a total, sessions on a count, and any-workout or N-minute days on a habit |
 
 ## Lists & groceries
 
@@ -170,6 +172,8 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Create / rename / delete lists (cascade) | ✅ | ✅ | ✅ | ✅ Done — mobile: **swipe** a list → **Edit** (rename/emoji, `PATCH /api/lists/:id`) + **Delete**; **Delete list** also in the list-detail ⋯ menu |
 | **List templates** — save a list as a reusable template, apply → a fresh unchecked copy, manage (delete) | ✅ | ✅ | ✅ | ✅ Done — mobile: one New-list modal (name + emoji + Create) with an "Or start from a template" picker (**select-then-Create**, name pre-fills from the template); long-press a template to delete |
 | **Auto-built grocery board** from the week's dinners | ✅ | ✅ | ✅ | ✅ Done |
+| **Add a recipe's ingredients to the grocery list from its page** — no meal-plan entry needed (one-off dinners, sides, snacks); staples skipped, quantities merged, items linked back to the recipe | ✅ | ✅ | ✅ | ✅ Done — web: cart icon in the recipe actions (plus the on-hand banner button); mobile: "Add to grocery list" in the recipe ⋯ menu + the banner button |
+| **Unscheduled recipe sections in By-meal view** — off-plan recipes group under their own "Unscheduled" header with their own dot color, instead of lumping into "Other items"; they're also listed in the "This week's meals" card below a divider, completing the dot-color legend | ✅ | ✅ | ✅ | ✅ Done |
 | **Aisle grouping** + **quantity merge** (By aisle / By meal) | ✅ | ✅ | ✅ | ✅ Done |
 | **Pantry staples** (kept off the list; Pantry check) | ✅ | ✅ | ✅ | ✅ Done |
 | Check off / add / delete (persists) | ✅ | ✅ | ✅ | ✅ Done |
@@ -201,7 +205,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Shuffle my week / month** — no-AI fallback for Plan my week & month | ✅ | ✅ | ✅ | ✅ Done — when no LLM provider is configured, `Plan my week` and `Plan my month` fill the empty dinner slots with random library recipes instead of erroring: skip recipes already planned in that window or cooked in the last ~14 days, leave filled slots untouched, degrade gracefully when the library is small, and return `via:"shuffle"`. Transparent to every client |
 | **Try New Recipe** — nudge the AI week toward novelty / list specific dishes to try | ✅ | ✅ | ✅ | ✅ Done — mobile: "Try something new" toggle + "Dishes to try" chips in the Plan-my-week sheet (sent on the initial full draft) |
 | AI **metadata auto-fill** (cuisine, protein, vegetables, tags) | ✅ | ✅ | ✅ | ✅ Done (debounced "✨ Thinking…" in the editor; fills empty fields / suggestion chips) |
-| **AI recipe import** — **photo → recipe** and **describe-it** (speech/free-form → recipe) | ✅ | 🚧 | 🚧 | ✅ Done (web) — in "New recipe": read photos of a physical recipe with a vision model, or dictate/type a loose description; both prefill the editor for review before saving. Source photos auto-delete after a short window. Photo needs a vision provider (Claude / OpenAI / vision Ollama); describe works with any. iOS parity (camera + Apple-Speech) planned |
+| **AI recipe import** — **photo → recipe** and **describe-it** (speech/free-form → recipe) | ✅ | ✅ | ✅ | ✅ Done (web + iOS) — in "New recipe": read photos of a physical recipe with a vision model, or dictate/type a loose description; both prefill the editor for review before saving. Source photos auto-delete after a short window. Photo needs a vision provider (Claude / OpenAI / vision Ollama); describe works with any. iOS uses the device camera / photo library and on-device Apple Speech dictation; the two import buttons appear only when the household's provider supports them |
 | **Conversational recipe edits** ("make it gluten-free", "double it") | 🚧 | 🚧 | 🚧 | 🚧 Planned |
 
 ## Photos & memories
@@ -225,7 +229,13 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
-| Natural-language capture → event / task / grocery / meal | ✅ | ✅ | ✅ | ✅ Done |
+| Natural-language capture → event / task / grocery / meal / list | ✅ | ✅ | ✅ | ✅ Done |
+| Capture a **countdown** ("12 days until Disney", "countdown for the beach party on Aug 25", "countdown for Thanksgiving") | ✅ | ✅ | ✅ | ✅ Done (always-on; resolves the target day — incl. holidays by name — editable in the preview; any detected emoji is carried through) |
+| Capture a **family member** ("add my son Max", "add a family member named Robin") | ✅ | ✅ | ✅ | ✅ Done (admin-only; infers adult / teen / kid, editable in the preview; non-admins get a friendly "ask an adult" note) |
+| Capture a **goal** ("set a goal to read 20 books this year", "I want to get in shape") | ✅ | ✅ | ✅ | ✅ Done (infers count / total / habit / checklist + target, unit, deadline — all editable; gated on the Goals module) |
+| Capture a **pantry item** ("add milk to the pantry", "put 2 cans of beans in the fridge") | ✅ | ✅ | ✅ | ✅ Done (distinguished from grocery by an explicit pantry / fridge / freezer target; offered only when the Pantry module is on) |
+| Capture a **reward** ("add a reward: ice cream night for 50 stars") | ✅ | ✅ | ✅ | ✅ Done (parses the star/point cost, editable; needs Rewards enabled **and** the `reward.manage` capability — kids see "ask a parent") |
+| **Do things**, not just add ("mark the trash chore done", "give the dishes to Wally", "log 20 min on my reading goal", "move soccer to Thursday 4pm", "cross off milk", "redeem movie night") | ✅ | ✅ | ✅ | ✅ Done (Tier 2 mutate verbs, all surfaces). Resolves the thing by description (pick-one when ambiguous), server-only, destructive actions confirm. Verbs: **complete / reassign a chore**, **log goal progress**, **reschedule / cancel an event** (one occurrence, never the whole series), **check off / remove a list item**, and **redeem a reward**. **Best with an AI provider** — without one the on-device parser handles common phrasings only (the preview flags it). Not every verb works on every kind yet |
 | Capture parses **event recurrence** + edit Repeats/Ends in the preview | ✅ | ✅ | ✅ | ✅ Done ("lunch every Thursday for a month" → RRULE) |
 | **Pluggable provider** (Anthropic / OpenAI-compatible / Ollama), per household | ✅ | ✅ | ✅ | ✅ Done |
 | Instant on-device parse, then **upgrade to LLM** with a provider tag | ✅ | ✅ | ✅ | ✅ Done (instant guess + "improving…"; **pick** the other take on a kind-disagreement; **recurrence backfill** when a weak LLM drops it) |

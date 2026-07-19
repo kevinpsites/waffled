@@ -14,7 +14,7 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "0.7.0"
+    MARKETING_VERSION: "0.8.0"
     CURRENT_PROJECT_VERSION: "1"
     # Swift 5 language mode for the scaffold — avoids strict-concurrency churn while
     # we stand the app up. Bump to 6 once the sync layer settles.
@@ -84,7 +84,7 @@ targets:
         # WRITE to Health at runtime — but App Store static analysis (ITMS-90683) requires
         # BOTH purpose strings the moment the HealthKit entitlement is present, regardless
         # of whether the write APIs are ever called, so we must ship the Update string too.
-        NSHealthShareUsageDescription: Waffled reads your step, flight, exercise, and energy totals from Apple Health so a goal can fill in its own progress.
+        NSHealthShareUsageDescription: Waffled reads your step, flight, exercise, energy, and distance totals (walking, cycling, swimming, wheelchair), plus your workouts (type and duration), from Apple Health so a goal can fill in its own progress.
         NSHealthUpdateUsageDescription: Waffled does not write any data to Apple Health; this access is not used.
         # Dev only: allow plain-HTTP to localhost/the tailnet (no TLS in local stack).
         NSAppTransportSecurity:
@@ -94,6 +94,11 @@ targets:
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: app.waffled.ingredient-row
             UTTypeDescription: Waffled recipe ingredient row
+            UTTypeConformsTo:
+              - public.data
+          # Same non-text trick for dragging a planned meal between week-planner slots.
+          - UTTypeIdentifier: app.waffled.meal-slot
+            UTTypeDescription: Waffled planned meal slot
             UTTypeConformsTo:
               - public.data
     # HealthKit capability. Required for the read-authorization prompt to work at runtime

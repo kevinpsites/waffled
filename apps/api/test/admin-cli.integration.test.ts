@@ -5,7 +5,7 @@
 // LOCAL_JWT_SECRET + TOKEN_ENCRYPTION_KEY must be set BEFORE importing the app or
 // the admin module (both build their pool/config at import).
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { randomBytes } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'

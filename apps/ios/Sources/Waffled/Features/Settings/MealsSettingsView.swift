@@ -160,7 +160,7 @@ struct MealsSettingsView: View {
             }
             .buttonStyle(.plain).disabled(!dirty || saving)
             if saved {
-                Text("✓ Saved · existing meals updated").font(.system(size: 12, weight: .bold)).foregroundStyle(Color(hex: 0x167A4A))
+                Text("✓ Saved · existing meals updated").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.success)
             }
             Spacer()
         }

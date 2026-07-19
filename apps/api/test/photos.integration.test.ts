@@ -2,7 +2,7 @@
 // mirroring goals.integration.test.ts. Photos are household-scoped + soft-deleted;
 // a photo is either an image URL or an emoji + color tile (no blob storage yet).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
 import { stat, rm } from 'node:fs/promises'

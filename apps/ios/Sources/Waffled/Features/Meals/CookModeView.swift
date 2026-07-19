@@ -179,7 +179,7 @@ struct CookModeView: View {
         VStack(alignment: .leading, spacing: 24) {
             Text("STEP \(step?.stepNumber ?? store.index + 1) OF \(steps.count)")
                 .font(.system(size: 14, weight: .heavy)).tracking(1.4)
-                .foregroundStyle(Color(hex: 0x167A4A))
+                .foregroundStyle(WF.success)
             Text(step?.instruction ?? "")
                 .font(WF.serif(instructionSize, .semibold)).foregroundStyle(WF.ink)
                 .multilineTextAlignment(.leading)
@@ -225,7 +225,7 @@ struct CookModeView: View {
                         .padding(.bottom, 4)
                     ForEach(igs, id: \.self) { ig in
                         HStack(alignment: .top, spacing: 10) {
-                            Circle().fill(Color(hex: 0x167A4A).opacity(0.5))
+                            Circle().fill(WF.success.opacity(0.5))
                                 .frame(width: 6, height: 6).padding(.top, 8)
                             Text(ig)
                                 .font(.system(size: 17, weight: .medium))
@@ -235,7 +235,7 @@ struct CookModeView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .padding(.horizontal, 12).padding(.vertical, 9)
-                        .background(Color(hex: 0x167A4A).opacity(0.10))
+                        .background(WF.success.opacity(0.10))
                         .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                     }
                 }
@@ -251,9 +251,9 @@ struct CookModeView: View {
         ChipFlow(spacing: 8, lineSpacing: 8, alignment: .leading) {
             ForEach(igs, id: \.self) { ig in
                 Text(ig).font(.system(size: isKiosk ? 18 : 15, weight: .medium))
-                    .foregroundStyle(Color(hex: 0x167A4A))
+                    .foregroundStyle(WF.success)
                     .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(Color(hex: 0x167A4A).opacity(0.12))
+                    .background(WF.success.opacity(0.12))
                     .clipShape(Capsule())
             }
         }
@@ -330,7 +330,7 @@ struct CookModeView: View {
 
                 VStack(spacing: 10) {
                     Button { jumpTo(t) } label: {
-                        Text("Jump to \(t.label)").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                        Text("Jump to \(t.label)").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.onInk)
                             .frame(maxWidth: .infinity).padding(.vertical, 14)
                             .background(WF.ink).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }.buttonStyle(.plain)
@@ -476,7 +476,7 @@ struct CookModeView: View {
                 .buttonStyle(.plain)
             } else {
                 Button { withAnimation { store.index = min(steps.count - 1, store.index + 1) } } label: {
-                    Text("Next").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                    Text("Next").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.onInk)
                         .frame(maxWidth: .infinity).padding(.vertical, 15)
                         .background(WF.ink).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                 }
@@ -539,9 +539,9 @@ struct CookModeView: View {
         let isCurrent = i == store.index
         return HStack(alignment: .top, spacing: 12) {
             Text("\(st.stepNumber)")
-                .font(.system(size: 14, weight: .heavy)).foregroundStyle(isCurrent ? .white : Color(hex: 0x167A4A))
+                .font(.system(size: 14, weight: .heavy)).foregroundStyle(isCurrent ? .white : WF.success)
                 .frame(width: 28, height: 28)
-                .background(isCurrent ? Color(hex: 0x167A4A) : Color(hex: 0x167A4A).opacity(0.12)).clipShape(Circle())
+                .background(isCurrent ? WF.success : WF.success.opacity(0.12)).clipShape(Circle())
             Text(st.instruction).font(.system(size: 16, weight: isCurrent ? .semibold : .regular))
                 .foregroundStyle(WF.ink).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)

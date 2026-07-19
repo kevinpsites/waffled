@@ -280,7 +280,7 @@ struct RewardsView: View {
                             Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 26)
                             Text(p.name ?? "—").font(.system(size: 14, weight: .bold))
                         }
-                        .foregroundStyle(on ? .white : WF.ink)
+                        .foregroundStyle(on ? WF.onInk : WF.ink)
                         .padding(.leading, 6).padding(.trailing, 13).padding(.vertical, 6)
                         .background(on ? WF.ink : WF.card)
                         .clipShape(Capsule())
@@ -676,7 +676,11 @@ struct RewardShopView: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LinearGradient(colors: [Color(hex: 0x9169EA), Color(hex: 0x7B54E8)],
+        // Wallet hero — a violet gradient. In dark it deepens to a calm royal purple (the
+        // AI-violet "richer/darker in dark" rule) instead of staying light-mode neon-bright,
+        // which read as garish against the warm charcoal. White foreground stays readable.
+        .background(LinearGradient(colors: [Color(light: 0x9169EA, dark: 0x6E56CF),
+                                            Color(light: 0x7B54E8, dark: 0x574299)],
                                    startPoint: .topLeading, endPoint: .bottomTrailing))
         .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
     }
@@ -698,7 +702,7 @@ struct RewardShopView: View {
                 if let emoji { Text(emoji).font(.system(size: 13)) }
                 Text(label).font(.system(size: 14, weight: .bold))
             }
-            .foregroundStyle(on ? .white : WF.ink)
+            .foregroundStyle(on ? WF.onInk : WF.ink)
             .padding(.horizontal, 14).padding(.vertical, 8)
             .background(on ? WF.ink : WF.card)
             .clipShape(Capsule())

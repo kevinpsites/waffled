@@ -1,6 +1,6 @@
 // Pantry module CRUD + the module gate, against a real Postgres (Testcontainers).
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 

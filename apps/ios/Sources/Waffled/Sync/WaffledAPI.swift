@@ -10,8 +10,10 @@ struct CrudOpDTO: Encodable {
 }
 
 /// A minimal JSON value so a single body dict can mix strings, ints, and explicit
-/// nulls (the server distinguishes "absent" from `null` for some fields).
-enum JSONValue: Encodable {
+/// nulls (the server distinguishes "absent" from `null` for some fields). It's also
+/// `Decodable`, so free-form server JSON (a capture `args` map, a `Candidate.meta`
+/// blob) round-trips through the app unchanged and back into the commit body.
+enum JSONValue: Codable, Equatable, Sendable {
     case string(String), int(Int), double(Double), bool(Bool), null
     case array([JSONValue]), object([String: JSONValue])
 
@@ -25,6 +27,23 @@ enum JSONValue: Encodable {
         case .null: try c.encodeNil()
         case let .array(a): try c.encode(a)
         case let .object(o): try c.encode(o)
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        // Bool before Int so a JSON `true` isn't coerced to a number; Int before Double
+        // so a whole number stays integral (and re-encodes without a trailing `.0`).
+        if c.decodeNil() { self = .null }
+        else if let b = try? c.decode(Bool.self) { self = .bool(b) }
+        else if let i = try? c.decode(Int.self) { self = .int(i) }
+        else if let d = try? c.decode(Double.self) { self = .double(d) }
+        else if let s = try? c.decode(String.self) { self = .string(s) }
+        else if let a = try? c.decode([JSONValue].self) { self = .array(a) }
+        else if let o = try? c.decode([String: JSONValue].self) { self = .object(o) }
+        else {
+            throw DecodingError.dataCorruptedError(
+                in: c, debugDescription: "Unsupported JSON value")
         }
     }
 }
@@ -62,6 +81,24 @@ struct WaffledAPI: Sendable {
         let methods: [String]
         let oidc: OIDC?
         struct OIDC: Decodable, Sendable { let buttonLabel: String? }
+
+        // Which sign-in affordances the login screen may offer — the same rules as
+        // the web's `AuthGate` (apps/web/src/kiosk/AuthGate.tsx). Static over an
+        // optional because "no status yet" has defined behavior of its own.
+
+        /// With no status yet (unreachable server / still probing) the password form
+        /// stays available so the screen is never stranded without inputs; once the
+        /// server answers, it alone decides (OIDC-only servers omit "password").
+        static func allowsPassword(_ status: AuthStatus?) -> Bool {
+            guard let status else { return true }
+            return status.methods.contains("password")
+        }
+
+        /// SSO needs both the method flag and the `oidc` config payload.
+        static func allowsSSO(_ status: AuthStatus?) -> Bool {
+            guard let status else { return false }
+            return status.oidc != nil && status.methods.contains("oidc")
+        }
     }
     struct Session: Decodable, Sendable {
         let accessToken: String
@@ -242,6 +279,82 @@ struct WaffledAPI: Sendable {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = "{}".data(using: .utf8)
         _ = try? await URLSession.shared.data(for: req)
+    }
+
+    // MARK: capture Tier 2 (mutate — resolve → commit)
+
+    /// A single row a mutate could act on, returned by `/api/capture/resolve`. `meta` is a
+    /// free-form blob the resolver attaches (e.g. an event's `{seriesId, occurrenceStart}`)
+    /// that MUST be passed back into `/commit` unchanged. Byte-identical to the web `Candidate`.
+    struct Candidate: Decodable, Identifiable, Sendable, Equatable {
+        let id: String
+        let title: String
+        let subtitle: String?
+        let confidence: Double
+        let meta: [String: JSONValue]?
+    }
+
+    /// `/api/capture/resolve` response. Three "empty" cases are distinguished only by
+    /// `unsupported` + `disabledReason` (all HTTP 200 — see the server handler): an
+    /// unregistered kind / unsupported verb → `unsupported: true` + a reason; a disabled
+    /// module → a reason with no `unsupported`; a genuine no-match → bare `candidates: []`.
+    struct ResolveResponse: Decodable, Sendable {
+        let candidates: [Candidate]
+        let disabledReason: String?
+        let unsupported: Bool?
+    }
+
+    /// The friendly server message a failed `/commit` carries (`{ error, message }`) — thrown
+    /// so its `errorDescription` is the message the user should see (mirrors the web rethrow).
+    struct CaptureCommitError: LocalizedError { let message: String; var errorDescription: String? { message } }
+    private struct CommitResult: Decodable { let message: String }
+    private struct ServerError: Decodable { let error: String?; let message: String? }
+
+    /// Resolve a parsed mutate to candidate rows. Body mirrors the web `resolveCandidates`
+    /// call: `{ verb, targetKind, target: { description }, args }`.
+    func resolveMutate(verb: String, targetKind: String?, description: String,
+                       args: [String: JSONValue]) async throws -> ResolveResponse {
+        var req = URLRequest(url: url("/api/capture/resolve"))
+        req.httpMethod = "POST"
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: JSONValue] = [
+            "verb": .string(verb),
+            "targetKind": targetKind.map(JSONValue.string) ?? .null,
+            "target": .object(["description": .string(description)]),
+            "args": .object(args),
+        ]
+        req.httpBody = try JSONEncoder().encode(body)
+        let (data, resp) = try await perform(req)
+        try check(resp, data)
+        return try Self.decoder.decode(ResolveResponse.self, from: data)
+    }
+
+    /// Apply a chosen mutate. Body = the web `MutateCommand`: `{ verb, targetKind, targetId,
+    /// args, meta? }`. Returns the server's success message; on a 4xx/5xx throws a
+    /// `CaptureCommitError` carrying the server's friendly `message`.
+    func commitMutate(verb: String, targetKind: String?, targetId: String,
+                      args: [String: JSONValue], meta: [String: JSONValue]?) async throws -> String {
+        var req = URLRequest(url: url("/api/capture/commit"))
+        req.httpMethod = "POST"
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: JSONValue] = [
+            "verb": .string(verb),
+            "targetKind": targetKind.map(JSONValue.string) ?? .null,
+            "targetId": .string(targetId),
+            "args": .object(args),
+        ]
+        if let meta { body["meta"] = .object(meta) }
+        req.httpBody = try JSONEncoder().encode(body)
+        let (data, resp) = try await perform(req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if (200..<300).contains(code) {
+            return try Self.decoder.decode(CommitResult.self, from: data).message
+        }
+        let msg = (try? Self.decoder.decode(ServerError.self, from: data)).flatMap { $0.message ?? $0.error }
+            ?? "Couldn’t do that — try again."
+        throw CaptureCommitError(message: msg)
     }
 
     // MARK: capture commits (non-synced tables go over REST)
@@ -577,6 +690,31 @@ struct WaffledAPI: Sendable {
     }
     func parseRecipeMarkdown(_ markdown: String) async throws -> ParsedRecipe {
         try await sendReturning("POST", "/api/recipes/parse-markdown", body: ["markdown": .string(markdown)], as: ParsedRecipe.self)
+    }
+
+    /// Which AI recipe-import paths this household can use right now (mirrors web
+    /// `ingestConfig`): `text` (speech/free-form → recipe) needs any non-heuristic
+    /// provider; `vision` (photo → recipe) needs a vision-capable model. The editor
+    /// uses this to show/hide the "Describe it" / "From a photo" import buttons.
+    struct RecipeIngestConfig: Decodable, Sendable { let text: Bool; let vision: Bool }
+    func recipeIngestConfig() async throws -> RecipeIngestConfig {
+        try await getJSON("/api/recipes/ingest/config", as: RecipeIngestConfig.self)
+    }
+
+    /// Speech/free-form text → recipe draft (mirrors web `ingestVoice`). The text is
+    /// dictated (SFSpeechRecognizer) or typed client-side; the server's LLM turns it
+    /// into our markdown → structured draft. Does NOT save — the editor hydrates from
+    /// this, the user reviews, then saves. The response's extra `via` key is ignored.
+    func ingestRecipeVoice(text: String) async throws -> ParsedRecipe {
+        try await sendReturning("POST", "/api/recipes/ingest/voice", body: ["text": .string(text)], as: ParsedRecipe.self)
+    }
+
+    /// Photo(s) → recipe draft (mirrors web `ingestPhoto`). One or more base64 JPEGs of a
+    /// physical/printed recipe → vision LLM → our markdown → structured draft. Does NOT
+    /// save. The response's extra `via`/`photoKeys` keys are ignored.
+    func ingestRecipePhotos(images: [(data: String, contentType: String)]) async throws -> ParsedRecipe {
+        let imgs = images.map { JSONValue.object(["data": .string($0.data), "contentType": .string($0.contentType)]) }
+        return try await sendReturning("POST", "/api/recipes/ingest/photo", body: ["images": .array(imgs)], as: ParsedRecipe.self)
     }
 
     // MARK: Today dashboard reads (non-synced domains, fetched over REST)
@@ -1772,6 +1910,11 @@ struct WaffledAPI: Sendable {
     // MARK: rewards catalog admin
 
     /// Create a reward (admins). Returns the new reward.
+    /// Create a reward from a raw body (`POST /api/rewards`, `reward.manage`) — used by the
+    /// capture bar, which omits fields (currency/category/requiresApproval) so the route
+    /// applies the household defaults. Mirrors the typed `createReward` for the full form.
+    func rewardCreate(_ body: [String: JSONValue]) async throws { try await send("POST", "/api/rewards", body: body) }
+
     func createReward(title: String, emoji: String?, cost: Int, currency: String, category: String?, requiresApproval: Bool) async throws -> Reward {
         struct Resp: Decodable { let reward: Reward }
         var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency), "requiresApproval": .bool(requiresApproval)]
@@ -2021,12 +2164,36 @@ struct WaffledAPI: Sendable {
     // MARK: Lists (index + generic detail)
 
     /// A list in the household's index (Grocery, packing lists, …).
+    ///
+    /// Two server shapes decode into this: the index endpoints (GET /api/lists,
+    /// GET templates) attach a live `itemCount`, but every *mutate* reply (create,
+    /// apply-template, save-as-/unmark-template, PATCH rename) is bare
+    /// `presentList(...)` JSON **without** it — so `itemCount` defaults to 0
+    /// instead of failing the whole decode (which silently broke create → open,
+    /// template convert/use, and capture's create-on-the-fly against every server).
+    /// The 0 is honest for a just-created list, and cosmetic elsewhere: consumers
+    /// reload the index (counted) or open the detail (loads real items).
     struct ListSummary: Decodable, Identifiable, Hashable, Sendable {
         let id: String
         let name: String
         let emoji: String?
         let listType: String
         let itemCount: Int
+
+        init(id: String, name: String, emoji: String?, listType: String, itemCount: Int) {
+            self.id = id; self.name = name; self.emoji = emoji
+            self.listType = listType; self.itemCount = itemCount
+        }
+
+        private enum CodingKeys: String, CodingKey { case id, name, emoji, listType, itemCount }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            name = try c.decode(String.self, forKey: .name)
+            emoji = try c.decodeIfPresent(String.self, forKey: .emoji)
+            listType = try c.decode(String.self, forKey: .listType)
+            itemCount = try c.decodeIfPresent(Int.self, forKey: .itemCount) ?? 0
+        }
     }
 
     /// One row in a list detail — section (aisle for grocery), quantity, assignee.
@@ -2054,6 +2221,10 @@ struct WaffledAPI: Sendable {
     struct GroceryBoardDTO: Decodable, Sendable {
         let weekStart: String
         let meals: [Meal]
+        /// Recipes whose ingredients are on the list but that aren't planned this
+        /// week (added straight from a recipe page). Optional so older servers
+        /// without the field still decode.
+        let unscheduled: [UnscheduledRecipe]?
         let items: [ListItemDTO]
         let staples: [Staple]
         struct Meal: Decodable, Sendable, Identifiable {
@@ -2065,6 +2236,13 @@ struct WaffledAPI: Sendable {
             let mealType: String?
             var id: String { (recipeId ?? "") + "|" + date + "|" + (mealType ?? "") }
         }
+        struct UnscheduledRecipe: Decodable, Sendable, Identifiable {
+            let recipeId: String
+            let title: String
+            let emoji: String?
+            let color: String
+            var id: String { recipeId }
+        }
         struct Staple: Decodable, Sendable, Identifiable {
             let id: String
             let name: String
@@ -2074,6 +2252,16 @@ struct WaffledAPI: Sendable {
     /// The grocery board (aisle groupings + meal dots + this week's meals + staples).
     func groceryBoard() async throws -> GroceryBoardDTO {
         try await getJSON("/api/lists/grocery/board", as: GroceryBoardDTO.self)
+    }
+
+    /// Add a recipe's ingredients straight to the grocery list — no meal-plan entry
+    /// needed. The server skips pantry staples, merges quantities into rows already
+    /// on the list, and links every item back to the recipe (so it groups under the
+    /// recipe in the by-meal view). Returns how many new rows were added (merges
+    /// into existing rows don't count).
+    func groceryFromRecipe(recipeId: String) async throws -> Int {
+        struct Resp: Decodable { let added: Int }
+        return try await sendJSON("POST", "/api/lists/grocery/from-recipe/\(recipeId)", as: Resp.self).added
     }
 
     /// Pantry staples (assumed in-house, left off the list) — the editable master list,
@@ -2677,6 +2865,31 @@ struct WaffledAPI: Sendable {
         if let c = color, !c.isEmpty { body["color"] = .string(c) }
         struct Resp: Decodable { let id: String }
         return try await sendReturning("POST", "/api/countdowns", body: body, as: Resp.self).id
+    }
+
+    /// Create a household member (`POST /api/persons`, admin-only). Mirrors the web
+    /// `createPerson`; the capture bar gates on the viewer's admin state before calling.
+    func createPerson(name: String, memberType: String, avatarEmoji: String?, birthday: String?, isAdmin: Bool) async throws {
+        var body: [String: JSONValue] = ["name": .string(name), "memberType": .string(memberType), "isAdmin": .bool(isAdmin)]
+        if let e = avatarEmoji, !e.isEmpty { body["avatarEmoji"] = .string(e) }
+        if let b = birthday, !b.isEmpty { body["birthday"] = .string(b) }
+        try await send("POST", "/api/persons", body: body)
+    }
+
+    /// Create a goal (`POST /api/goals`). Mirrors the web `createGoal`; the capture bar
+    /// gates on the Goals module being enabled before calling. A count target is sent as
+    /// a whole number, a total as-is.
+    func createGoal(title: String, goalType: String, trackingMode: String, targetValue: Double?, unit: String?, deadline: String?, participantIds: [String] = []) async throws {
+        var body: [String: JSONValue] = ["title": .string(title), "goalType": .string(goalType), "trackingMode": .string(trackingMode)]
+        if let t = targetValue {
+            body["targetValue"] = goalType == "count" ? .int(Int(t.rounded())) : .double(t)
+        }
+        if let u = unit, !u.isEmpty { body["unit"] = .string(u) }
+        if let d = deadline, !d.isEmpty { body["deadline"] = .string(d) }
+        // Who the goal is for. Empty = the route scopes it to the caller; a non-empty list
+        // is the picked participants (only assigning others needs goal.manage server-side).
+        if !participantIds.isEmpty { body["participantIds"] = .array(participantIds.map { .string($0) }) }
+        try await send("POST", "/api/goals", body: body)
     }
 
     /// Patch a standalone countdown (any subset of title/date/emoji/color).

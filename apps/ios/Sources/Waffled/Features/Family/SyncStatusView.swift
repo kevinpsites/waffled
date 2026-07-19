@@ -145,7 +145,7 @@ struct SyncStatusView: View {
 
     private var statusColor: Color {
         switch sync.status {
-        case .connected: return FamilyColor.wally.solid
+        case .connected: return FamilyColor.person3.solid
         case .connecting: return WF.gold
         case .offline, .idle: return WF.ink3
         }

@@ -187,12 +187,12 @@ struct CalendarView: View {
                 } else {
                     // "Everyone" — a family glyph so the chip matches the person chips' size.
                     Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(on ? .white : WF.ink2)
+                        .foregroundStyle(on ? WF.onInk : WF.ink2)
                         .frame(width: 24, height: 24)
-                        .background(on ? Color.white.opacity(0.22) : WF.panel).clipShape(Circle())
+                        .background(on ? WF.onInk.opacity(0.22) : WF.panel).clipShape(Circle())
                 }
                 Text(label).font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(on ? .white : WF.ink2)
+                    .foregroundStyle(on ? WF.onInk : WF.ink2)
             }
             .padding(.leading, 6).padding(.trailing, 14).padding(.vertical, 7)
             .background(on ? WF.ink : WF.card)
@@ -250,11 +250,11 @@ struct CalendarView: View {
                 if let cds = countdowns.byDate[cell.key], let first = cds.first {
                     HStack(spacing: 2) {
                         Text(first.emoji ?? "⏳").font(.system(size: 8))
-                        Text(CountdownFormat.short(first.daysLeft)).font(.system(size: 8, weight: .heavy)).foregroundStyle(Color(hex: 0x8A6D3B))
+                        Text(CountdownFormat.short(first.daysLeft)).font(.system(size: 8, weight: .heavy)).foregroundStyle(WF.warn)
                         if cds.count > 1 { Text("+\(cds.count - 1)").font(.system(size: 8, weight: .bold)).foregroundStyle(WF.ink3) }
                     }
                     .padding(.horizontal, 3).padding(.vertical, 1)
-                    .background(Color(hex: 0xF4ECD8)).clipShape(Capsule())
+                    .background(WF.warnT).clipShape(Capsule())
                 } else {
                     HStack(spacing: 2) {
                         ForEach(Array(dotColors(cell.key).prefix(3).enumerated()), id: \.offset) { _, hex in
@@ -689,7 +689,7 @@ struct EventEditSheet: View {
                     Toggle(isOn: $allDay.animation()) {
                         Text("All day").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                     }
-                    .tint(FamilyColor.wally.solid)
+                    .tint(FamilyColor.person3.solid)
                     .padding(14).cardBox()
 
                     // Countdown flag — surfaces this event in the "N days until…" list.
@@ -699,7 +699,7 @@ struct EventEditSheet: View {
                             Text("Build anticipation with “N days until…”").font(.system(size: 12)).foregroundStyle(WF.ink3)
                         }
                     }
-                    .tint(FamilyColor.wally.solid)
+                    .tint(FamilyColor.person3.solid)
                     .padding(14).cardBox()
 
                     repeatSection
@@ -1162,7 +1162,7 @@ struct EventEditSheet: View {
                     Text(Self.chipDay[code] ?? code)
                         .font(.system(size: 13, weight: .bold))
                         .frame(width: 38, height: 36)
-                        .wfChip(selected: on, tint: FamilyColor.wally.solid)
+                        .wfChip(selected: on, tint: FamilyColor.person3.solid)
                 }
                 .buttonStyle(.plain)
             }

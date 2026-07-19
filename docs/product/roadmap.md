@@ -17,6 +17,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **Dark mode (web/kiosk + iPhone/iPad)** — a warm dark theme alongside light, chosen from
+  **Settings → Appearance** (Light / Dark / Match system), saved per device and applied instantly,
+  on every surface. Built on a consolidated design-token layer (web: one canonical `:root` + a
+  `[data-theme="dark"]` override; iOS: dark-aware `Color(light:dark:)` tokens re-resolved by UIKit
+  on the appearance change), with a shared palette and semantic success/danger/warn/info tokens so
+  the two platforms read identically with the lights off.
 - **Self-host packaging** — one-command `./waffled up` (pulls multi-arch GHCR images by
   default; `--build` for source), in-container migrations, and one-command `./waffled
   upgrade` (repo fast-forward + version bump + DB snapshot + pull + migrate).
@@ -49,14 +55,20 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   detail read-model, person + family overview, **calendar → goal** auto-count (single
   and recurring events) with learned suggestions.
 - **Apple Health → goals (iPhone)** — link a goal to an Apple Health / Apple Watch metric
-  (steps, flights climbed, exercise minutes, active energy, **mindful minutes**, **activity
-  rings** — Move/Exercise/Stand or all three — and **mood**, iOS 17+) and its progress
-  auto-fills: numeric goals accumulate each day's total, a **habit** counts a day whenever it
-  clears a daily threshold ("2,000 steps a day, 5×/week"), and rings/mood count a day when the
-  ring closes or a mood is logged. Ring/mood links also work on a **count** goal — each met day
-  adds one, so "close my Exercise ring 15× this month" or "log my mood 20 days" accumulate
-  toward the target (open days add nothing; a later correction self-adjusts). A **"set a goal
-  from your Health data"** picker shows your
+  (steps, flights climbed, exercise minutes, active energy, **distance** — walking + running,
+  cycling, swimming, wheelchair; fractional, mi/km per device region — **workouts by type** —
+  running / cycling / swimming / yoga / strength training, or any workout — plus **mindful
+  minutes**, **activity rings** — Move/Exercise/Stand or all three — and **mood**, iOS 17+) and
+  its progress auto-fills: numeric goals accumulate each day's total, a **habit** counts a day
+  whenever it clears a daily threshold ("2,000 steps a day, 5×/week"), and rings/mood count a
+  day when the ring closes or a mood is logged. Ring/mood links also work on a **count** goal —
+  each met day adds one, so "close my Exercise ring 15× this month" or "log my mood 20 days"
+  accumulate toward the target (open days add nothing; a later correction self-adjusts).
+  **Workout metrics read your actual `HKWorkout` sessions** (a different query shape from the
+  cumulative totals) and pick the measure that fits the goal — **minutes** on a total, **sessions**
+  on a count, and for a habit either "any workout counts the day" or an at-least-N-minutes bar.
+  The **"Track from Apple Health" picker** is grouped by goal shape (adds-up metrics for
+  total/count vs qualifying-day habits, rings first), searchable, and shows your
   live value per metric so you pick something real. Opening the app **catches up every missed
   day** since the last sync (bounded at the goal's creation date, so it never back-fills from
   before the goal existed). Opt-in per goal in the editor's **Extras** (next to calendar
@@ -65,7 +77,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   [staged plan](../design/healthkit-goals.md); background sync + a rewards tie-in remain — see
   below.)*
 - **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
-  staples, live cross-surface refresh, **item attribution** ("added by …" / "from meal plan").
+  staples, live cross-surface refresh, **item attribution** ("added by …" / from a meal plan
+  or recipe), **add any recipe's ingredients from its page** (no meal-plan entry needed —
+  these survive the weekly rebuild), and **"Unscheduled" sections + week-rail rows** for
+  off-plan recipes in the grocery board's by-meal view.
 - **Meals & recipes** — week/month planners, recipe library, in-app editor (with
   **ingredient sections** + dividers and cross-section drag-drop), paste-markdown
   import, overrides, cook mode, **per-step timers** (set in the editor; a floating
@@ -77,7 +92,18 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   select bulk move/delete, screensaver + per-album screensaver source, crossfade
   slideshow, recipe hero images.
 - **AI capture** — pluggable provider (Claude / OpenAI-compatible / Ollama), instant
-  heuristic → LLM upgrade, offline fallback.
+  heuristic → LLM upgrade, offline fallback. The "Add anything" bar now **creates** across
+  the app: events, tasks/chores, grocery, meals, custom lists, countdowns (incl. holidays by
+  name), **family members** (admin-only), **goals**, **pantry items**, and **rewards** — each
+  gated on the relevant module/permission and confirmed in an editable preview before it
+  commits. The full "Add anything → Do anything" plan (mutate / settings / query / multi-action
+  tiers) is in [`capture-expansion.md`](./capture-expansion.md), with the build plan in
+  [`capture-tier2-plan.md`](./capture-tier2-plan.md); the create tier (Tier 1) is done, and the
+  **mutate tier (Tier 2) is done on every surface (web, kiosk, iPhone, iPad)** — completing/reassigning
+  chores, logging goal progress, rescheduling/cancelling an event (one occurrence, never the series),
+  checking off/removing a list item, and redeeming a reward, via a parse → resolve-candidate → commit
+  flow with module-owned resolvers. On iOS the same on-device parser mirror detects the verb and the
+  sheet shows a pick-one candidate list before committing.
 - **Weather** — Open-Meteo on the topbar (no key).
 - **Extensibility — optional modules + public API** — a **pluggable optional-module
   framework** (registry + per-household `settings.modules` toggle, a **Settings → Modules**
@@ -178,9 +204,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   authorship — no capability needed to volunteer or reassign a cook).
 
 - **Apple Health → goals — remaining follow-ons (iPhone).** Tiers 0–2 shipped (see **Done** —
-  the full metric set incl. rings/mindful/mood, habit thresholds, ring/mood **count** goals
-  ("close the ring 15×"), the "set a goal from your Health data" picker, and gap catch-up).
-  What's left is deliberately deferred:
+  the full metric set incl. rings/mindful/mood, the **four distance metrics** (walk + run,
+  cycling, swimming, wheelchair — fractional, mi/km per device region), **workout-type metrics**
+  (`HKWorkout` by activity; minutes / sessions / workout-day habits), habit thresholds,
+  ring/mood **count** goals ("close the ring 15×"), the grouped + searchable "Track from Apple
+  Health" picker, and gap catch-up). What's left is deliberately deferred:
   - **Graduated ring goals ("I hit 75% of my Move ring").** Apple's `HKActivitySummary`
     exposes each ring's **value *and* the user's personal goal**, not just closed/not — so the
     ring is really a numerator/denominator we currently collapse to a boolean at 100%. We could
@@ -257,11 +285,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   API-key follow-ups: per-user (non-admin) issuance, an OpenAPI/published contract, and a CORS
   posture for cross-origin integrations.
 - **Conversational recipe AI** — **photo → recipe and describe-it (speech/free-form → recipe)
-  SHIPPED (web)** in the "New recipe" editor: photos of a physical recipe are read by a
+  SHIPPED (web + iOS)** in the "New recipe" editor: photos of a physical recipe are read by a
   vision model, and a rambly spoken/typed description is organized into ingredients + steps;
   both prefill the editor for review before saving, and source photos auto-delete after a
-  short window. Still planned: **instruction-driven edits** ("make it vegetarian", "double
-  it") and **iOS parity** (native camera + Apple-Speech dictation → the same endpoints).
+  short window. iOS reached parity using the native camera / photo library and on-device
+  Apple-Speech dictation against the same `/api/recipes/ingest/*` endpoints, with the two
+  import buttons gated on the household's provider. Still planned: **instruction-driven edits**
+  ("make it vegetarian", "double it").
 - **Shared album import** for Photos (Google Photos / iCloud).
 - **Server-side fuzzy person resolution** for capture (nicknames/aliases).
 - **Milestone reward payouts** — deferred by design (needs idempotency + attribution rules).
