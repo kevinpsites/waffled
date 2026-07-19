@@ -32,7 +32,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$ROOT/infra/compose/docker-compose.yml"
 ENV_FILE="$ROOT/infra/compose/.env"
-DC=(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE")
+
+# Optional compose overrides, layered on top of the base file so a deployment can add
+# published ports / mounts without editing tracked files (e.g. the OCI cloud deploy).
+# Opt-in ONLY via explicit `--override <file>` flags (parsed just below) — nothing is
+# auto-loaded, so normal installs are never affected.
+COMPOSE_OVERRIDES=()
 
 # Services we expect to be running, in startup order.
 SERVICES=(postgres api powersync caddy backup)
@@ -191,9 +196,12 @@ services_ready() {
 # checks pass. Wait briefly so first-run users see the settled state, not a false alarm.
 wait_for_services() {
   local remaining="${WAFFLED_HEALTH_ATTEMPTS:-30}"
-  local requested=("$@") targets=() service arg
+  local targets=() service arg
+  # Keep only args that name services (compose flags like --build fall through).
+  # Iterate "$@" directly: copying it into a named array and expanding that crashes
+  # bash < 4.4 (macOS /bin/bash is 3.2) under set -u when no services were named.
   for service in "${SERVICES[@]}"; do
-    for arg in "${requested[@]}"; do
+    for arg in "$@"; do
       if [ "$arg" = "$service" ]; then
         targets+=("$service")
         break
@@ -234,6 +242,22 @@ update_repo_for_upgrade() {
     echo "Resolve the repository state, then re-run './waffled upgrade'. No images were changed."
     return 1
   fi
+}
+
+# The upgrade's fast-forward can replace ./waffled while bash is still executing the
+# OLD copy — which then drives the NEW tree/compose with old logic. That is exactly
+# how upgrading 0.7.0 → 0.8.0 broke: the old ensure_env couldn't backfill the newly
+# required secrets, so compose died on "required variable" mid-upgrade. If the script
+# changed on disk, hand the rest of the upgrade to the new copy exactly once
+# (WAFFLED_UPGRADE_REEXEC breaks the recursion).
+script_checksum() { cksum < "$ROOT/waffled"; }
+maybe_reexec_upgrade() {
+  local before="$1"; shift
+  if [ -n "${WAFFLED_UPGRADE_REEXEC:-}" ] || [ "$(script_checksum)" = "$before" ]; then
+    return 0
+  fi
+  echo "${c_dim}./waffled was updated — restarting the upgrade with the new version…${c_reset}"
+  WAFFLED_UPGRADE_REEXEC=1 exec "$ROOT/waffled" upgrade "$@"
 }
 
 run_pre_upgrade_backup() {
@@ -327,6 +351,24 @@ next_steps() {
   fi
 }
 
+# Pull global `--override <file>` flags out of the args (position-independent) and
+# build the final compose invocation once the full override list is known.
+_wf_args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --override)   shift; [ -n "${1:-}" ] || { echo "${c_red}✗ --override needs a file path.${c_reset}"; exit 1; }; COMPOSE_OVERRIDES+=("$1") ;;
+    --override=*) COMPOSE_OVERRIDES+=("${1#--override=}") ;;
+    *)            _wf_args+=("$1") ;;
+  esac
+  shift
+done
+set -- ${_wf_args[@]+"${_wf_args[@]}"}
+
+DC=(docker compose -f "$COMPOSE_FILE")
+for _ovr in ${COMPOSE_OVERRIDES[@]+"${COMPOSE_OVERRIDES[@]}"}; do DC+=(-f "$_ovr"); done
+DC+=(--env-file "$ENV_FILE")
+[ ${#COMPOSE_OVERRIDES[@]} -gt 0 ] && echo "${c_dim}Compose override(s): ${COMPOSE_OVERRIDES[*]}${c_reset}" >&2
+
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   up)
@@ -366,7 +408,11 @@ case "$cmd" in
     ensure_env
     ensure_powersync_proxy_env
     ensure_google_callback_env
+    script_before="$(script_checksum)"
     update_repo_for_upgrade || exit 1
+    # If the update replaced this script, restart the upgrade under the new copy NOW —
+    # before the backup/pin/pull — so ensure_env and compose logic match the new tree.
+    maybe_reexec_upgrade "$script_before" "$@"
     # Snapshot the DB BEFORE changing the version pin or swapping images.
     # Migrations are forward-only, so a missing rollback point is fatal unless
     # the operator explicitly accepts it.

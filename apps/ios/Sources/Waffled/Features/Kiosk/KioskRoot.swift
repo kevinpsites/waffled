@@ -48,7 +48,8 @@ struct KioskRoot: View {
     }
 
     private var booting: Bool {
-        sync.members.isEmpty && (sync.status == .idle || sync.status == .connecting)
+        if DemoHooks.skipBootCover { return false }
+        return sync.members.isEmpty && (sync.status == .idle || sync.status == .connecting)
     }
 }
 

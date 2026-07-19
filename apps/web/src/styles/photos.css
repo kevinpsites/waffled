@@ -8,7 +8,7 @@
 
 /* "NEW MEMORY — N photos" banner */
 .ph-banner { margin: 0 30px 16px; display: flex; align-items: center; gap: 14px;
-  padding: 16px 20px; border-radius: var(--r-lg); background: linear-gradient(120deg,#efeafc,#f4eefe); }
+  padding: 16px 20px; border-radius: var(--r-lg); background: linear-gradient(120deg,var(--ai-t),var(--ai-t)); }
 .ph-banner-tile { width: 56px; height: 56px; border-radius: 14px; display: grid;
   place-items: center; font-size: 28px; flex: none; overflow: hidden; }
 .ph-banner-tile img { width: 100%; height: 100%; object-fit: cover; }
@@ -37,7 +37,7 @@
 /* tile delete affordance on the wall — always visible so it works on touch
    (was hover-only); a tap opens a confirm dialog rather than deleting outright. */
 .ph-del { position: absolute; top: 9px; left: 10px; width: 30px; height: 30px; border: 0;
-  border-radius: 999px; background: rgba(0,0,0,.42); color: #fff; font-size: 18px; line-height: 1;
+  border-radius: 999px; background: rgba(0,0,0,.42); color: var(--on-accent); font-size: 18px; line-height: 1;
   display: grid; place-items: center; cursor: pointer; backdrop-filter: blur(4px);
   opacity: .85; transition: opacity .12s, background .12s; }
 .ph-tile:hover .ph-del { opacity: 1; }
@@ -47,19 +47,19 @@
 .ph-tile.selecting { cursor: pointer; }
 .ph-tile.selected { box-shadow: 0 0 0 3px var(--primary); }
 .ph-check { position: absolute; top: 9px; left: 10px; width: 28px; height: 28px; border-radius: 999px;
-  border: 2px solid #fff; background: rgba(0,0,0,.35); color: #fff; display: grid; place-items: center;
+  border: 2px solid #fff; background: rgba(0,0,0,.35); color: var(--on-accent); display: grid; place-items: center;
   font-size: 16px; font-weight: 800; line-height: 1; box-shadow: 0 1px 5px rgba(0,0,0,.35); }
 .ph-tile.selected .ph-check { background: var(--primary); }
 
 /* ---- album filter chips (above the wall) ---------------------- */
 .ph-filter { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 30px 14px; }
 .ph-chip { font-size: 14px; padding: 8px 14px; cursor: pointer; }
-.ph-chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.ph-chip.on { background: var(--ink); color: var(--on-inverse); border-color: var(--ink); }
 
 /* per-album action bar (shown under the chips when an album is selected) */
 .ph-album-actions { display: flex; align-items: center; gap: 12px; padding: 0 30px 14px; }
 .ph-album-actions .pill { font-size: 13.5px; padding: 8px 14px; cursor: pointer; }
-.ph-album-actions .pill.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+.ph-album-actions .pill.on { background: var(--primary); color: var(--on-accent); border-color: var(--primary); }
 
 /* ---- add-photos overlay --------------------------------------- */
 /* The stage centers everything; the dropzone is the hero, the staged card
@@ -73,8 +73,8 @@
 .ap-pick { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; }
 .ap-drop { width: min(640px, 100%); min-height: 340px; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 6px; text-align: center;
-  background: rgba(255,255,255,.5); border: 2px dashed var(--line, rgba(0,0,0,.18));
-  border-radius: var(--r-xl, 22px); padding: 40px; cursor: pointer; color: var(--ink);
+  background: rgba(255,255,255,.5); border: 2px dashed var(--line);
+  border-radius: var(--r-xl); padding: 40px; cursor: pointer; color: var(--ink);
   transition: border-color .15s, background .15s, transform .15s; }
 .ap-drop:hover { border-color: var(--primary); background: rgba(255,255,255,.72); }
 .ap-drop.over { border-color: var(--primary); border-style: solid; background: rgba(208,107,79,.08);
@@ -85,7 +85,7 @@
 .ap-drop-sub { font-size: 15px; color: var(--ink-3); }
 .ap-drop-link { color: var(--primary); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .ap-drop-meta { margin-top: 14px; }
-.ap-err { color: var(--danger, #c0392b); font-weight: 700; }
+.ap-err { color: var(--danger); font-weight: 700; }
 
 /* staged state: a "Album for all" bar over a list of per-photo rows */
 .ap-batch { width: min(720px, 100%); display: flex; flex-direction: column; gap: 14px; }
@@ -97,17 +97,17 @@
 .ap-uploading { font-weight: 700; }
 
 .ap-list { display: flex; flex-direction: column; gap: 12px; }
-.ap-row { display: flex; gap: 14px; align-items: flex-start; background: #fff;
+.ap-row { display: flex; gap: 14px; align-items: flex-start; background: var(--card);
   border-radius: var(--r-md); box-shadow: var(--sh-1); padding: 12px; }
-.ap-row-thumb { flex: none; width: 104px; height: 104px; border-radius: var(--r-sm, 12px);
-  overflow: hidden; background: rgba(0,0,0,.05); }
+.ap-row-thumb { flex: none; width: 104px; height: 104px; border-radius: var(--r-sm);
+  overflow: hidden; background: var(--overlay-hover); }
 .ap-row-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .ap-row-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .ap-row-meta { display: flex; gap: 10px; align-items: center; }
 .ap-row-album { flex: 1; min-width: 0; }
 .ap-row-del { flex: none; width: 34px; height: 34px; border-radius: 999px; border: 0;
-  background: rgba(0,0,0,.06); color: var(--ink-3); font-size: 22px; line-height: 1; cursor: pointer; }
-.ap-row-del:hover { background: rgba(192,57,43,.12); color: var(--danger, #c0392b); }
+  background: var(--overlay-hover); color: var(--ink-3); font-size: 22px; line-height: 1; cursor: pointer; }
+.ap-row-del:hover { background: rgba(192,57,43,.12); color: var(--danger); }
 
 .ap-field-label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 700;
   color: var(--ink-3); letter-spacing: .02em; }
@@ -125,7 +125,7 @@
 .pd-stage { border-radius: var(--r-xl); display: grid; place-items: center; font-size: 170px;
   box-shadow: var(--sh-2); position: relative; overflow: hidden; }
 .pd-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.pd-stage-cap { position: absolute; left: 24px; bottom: 22px; color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,.4); }
+.pd-stage-cap { position: absolute; left: 24px; bottom: 22px; color: var(--on-accent); text-shadow: 0 2px 12px rgba(0,0,0,.4); }
 .pd-stage-cap .wf-serif { font-size: 30px; font-weight: 600; }
 .pd-stage-sub { font-size: 14px; font-weight: 600; opacity: .92; }
 .pd-side { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
@@ -138,20 +138,20 @@
 /* compact "view the rest of this album" CTA (content-sized, not full width/height) */
 .pd-album-cta { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px;
   padding: 11px 16px; border: 0; border-radius: var(--r-md); cursor: pointer;
-  background: var(--panel, rgba(0,0,0,.05)); color: var(--ink); font-size: 13.5px; font-weight: 700; }
-.pd-album-cta:hover { background: rgba(0,0,0,.09); }
+  background: var(--panel); color: var(--ink); font-size: 13.5px; font-weight: 700; }
+.pd-album-cta:hover { background: var(--overlay-hover); }
 .pd-album-cta span[aria-hidden] { color: var(--ink-3); font-size: 16px; }
 
 /* ---- screensaver (full-screen takeover) ----------------------- */
 .ph-saver { position: fixed; inset: 0; z-index: 1000; overflow: hidden; cursor: pointer;
-  display: grid; place-items: center; color: #fff; }
+  display: grid; place-items: center; color: var(--on-accent); }
 .ph-saver-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 /* the incoming photo fades in over the outgoing one (crossfade, no hard cut) */
 .ph-saver-img-top { animation: ph-saver-fade 1100ms ease both; }
 @keyframes ph-saver-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .ph-saver-img-top { animation-duration: 1ms; } }
 .ph-saver-scrim { position: absolute; inset: 0;
-  background: radial-gradient(120% 120% at 70% 20%, rgba(0,0,0,0), rgba(0,0,0,.42)); }
+  background: radial-gradient(120% 120% at 70% 20%, rgba(0,0,0,0), var(--scrim)); }
 .ph-saver-clock { position: absolute; top: 46px; left: 54px; text-shadow: 0 2px 16px rgba(0,0,0,.35); }
 .ph-saver-time { font-size: 120px; font-weight: 600; line-height: .9; }
 .ph-saver-date { font-size: 26px; font-weight: 600; margin-top: 6px; opacity: .95; }
@@ -162,7 +162,7 @@
 .ph-saver-meta .wf-serif { font-size: 34px; font-weight: 600; }
 .ph-saver-meta-sub { font-size: 16px; font-weight: 600; opacity: .9; }
 .ph-saver-next { position: absolute; right: 54px; bottom: 84px; font-size: 20px; font-weight: 700;
-  color: #fff; opacity: .95; text-shadow: 0 2px 14px rgba(0,0,0,.4); }
+  color: var(--on-accent); opacity: .95; text-shadow: 0 2px 14px rgba(0,0,0,.4); }
 .ph-saver-thumbs { position: absolute; left: 50%; bottom: 36px; transform: translateX(-50%);
   display: flex; gap: 12px; align-items: center; }
 .ph-saver-thumb { width: 54px; height: 54px; border-radius: 12px; display: grid; place-items: center;

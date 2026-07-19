@@ -77,7 +77,7 @@ export function TradeModal({
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
           <button type="button" className="pill" onClick={onClose}>Cancel</button>
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={busy || !afford} onClick={go}>{busy ? 'Trading…' : 'Trade'}</button>
+          <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={busy || !afford} onClick={go}>{busy ? 'Trading…' : 'Trade'}</button>
         </div>
       </div>
     </div>

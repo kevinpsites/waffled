@@ -51,9 +51,9 @@ struct DietaryChip: View {
     var body: some View {
         Text(PantryDietary.label(key))
             .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(Color(hex: 0x1C7A44))
+            .foregroundStyle(WF.success)
             .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(Color(hex: 0xE6F4EA)).clipShape(Capsule())
+            .background(WF.successT).clipShape(Capsule())
     }
 }
 
@@ -69,7 +69,7 @@ struct DietaryChips: View {
     }
 }
 
-private let avoidRed = Color(hex: 0xC0392B)
+private let avoidRed = WF.danger
 
 /// One colored allergen letter-badge. `avoid` adds a red ring; `trace` renders it
 /// outlined (lighter — "may contain").

@@ -36,28 +36,29 @@
 .pp-bal-label { font-size: 12px; font-weight: 700; margin-top: 2px; }
 .pp-bal-count { font-size: 11px; font-weight: 600; color: var(--ink-3); }
 
-.cat-physical { stroke: #ec6049; }
-.cat-intellectual { stroke: #2f7fed; }
-.cat-spiritual { stroke: #8b5cf6; }
-.cat-creative { stroke: #e0a500; }
-.cat-social { stroke: #25a368; }
+/* Category colors — canonical map lives in kiosk/categories.ts; keep these in sync. */
+.cat-physical { stroke: var(--person-3); }     /* green */
+.cat-intellectual { stroke: var(--person-1); } /* blue */
+.cat-spiritual { stroke: var(--person-4); }    /* purple */
+.cat-creative { stroke: var(--person-2); }     /* pink */
+.cat-social { stroke: var(--gold); }           /* gold */
 
 /* insight */
 .pp-insight {
   display: flex; gap: 12px; align-items: flex-start;
   padding: 14px 16px; border-radius: var(--r-lg);
-  background: linear-gradient(120deg, #efeafc, #f4eefe);
+  background: linear-gradient(120deg, var(--ai-t), var(--ai-t));
 }
 .pp-insight .ai-spark { width: 32px; height: 32px; flex: none; }
-.pp-insight-t { font-size: 14.5px; font-weight: 700; color: var(--ai); }
+.pp-insight-t { font-size: 14.5px; font-weight: 700; color: var(--ai-d); }
 .pp-insight-s { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-top: 4px; }
 .pp-suggest {
-  font: inherit; font-size: 13px; font-weight: 700; color: var(--ai);
+  font: inherit; font-size: 13px; font-weight: 700; color: var(--ai-d);
   background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline;
 }
 /* Same idea, but for viewers who can't create a goal for this person: the
    suggestion stays a gentle nudge, just not a clickable shortcut. */
-.pp-suggest-text { font: inherit; font-size: 13px; font-weight: 700; color: var(--ai); }
+.pp-suggest-text { font: inherit; font-size: 13px; font-weight: 700; color: var(--ai-d); }
 
 /* goal rows */
 .pp-goal { display: flex; align-items: center; gap: 13px; padding: 11px 6px; border-bottom: 1px solid var(--hair-2);
@@ -74,26 +75,26 @@
   font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
   background: var(--panel); color: var(--ink-2); text-transform: capitalize;
 }
-.pp-cat-chip.cat-physical { background: #fdeae6; color: #c0432c; stroke: none; }
-.pp-cat-chip.cat-intellectual { background: var(--kevin-t); color: #1559b8; }
-.pp-cat-chip.cat-spiritual { background: var(--lottie-t); color: #6a3fc4; }
-.pp-cat-chip.cat-creative { background: #fbf1d6; color: #9a7400; }
-.pp-cat-chip.cat-social { background: var(--wally-t); color: #167a4a; }
-.pp-goal-streak { font-size: 12px; font-weight: 800; color: #d9650a; }
+.pp-cat-chip.cat-physical { background: var(--person-3-t); color: var(--person-3-tx); stroke: none; }
+.pp-cat-chip.cat-intellectual { background: var(--person-1-t); color: var(--person-1-tx); }
+.pp-cat-chip.cat-spiritual { background: var(--person-4-t); color: var(--person-4-tx); }
+.pp-cat-chip.cat-creative { background: var(--person-2-t); color: var(--person-2-tx); }
+.pp-cat-chip.cat-social { background: var(--gold-t); color: var(--gold-d); }
+.pp-goal-streak { font-size: 12px; font-weight: 800; color: var(--gold-d); }
 .pp-goal-bar { height: 7px; border-radius: 999px; background: var(--panel); margin-top: 7px; overflow: hidden; }
-.pp-goal-bar span { display: block; height: 100%; background: var(--wally); border-radius: 999px; }
+.pp-goal-bar span { display: block; height: 100%; background: var(--person-3); border-radius: 999px; }
 .pp-goal-num { flex: none; font-size: 14px; text-align: right; }
 .pp-goal-num b { font-size: 16px; }
 
 /* stars & chores */
-.pp-star-big { font-size: 30px; font-weight: 800; color: var(--lottie); }
+.pp-star-big { font-size: 30px; font-weight: 800; color: var(--person-4); }
 /* All currencies equal: one wrapping row, same large size, no priority. */
 .pp-wallet { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 22px; }
 .pp-wallet-cur { font-size: 30px; font-weight: 800; line-height: 1; }
 .pp-ledger { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--hair-2); font-size: 14px; }
 .pp-ledger:last-child { border-bottom: 0; }
 .pp-ledger-amt { width: 44px; flex: none; font-weight: 800; }
-.pp-ledger-amt.pos { color: #167a4a; }
+.pp-ledger-amt.pos { color: var(--success); }
 .pp-ledger-amt.neg { color: var(--primary); }
 .pp-ledger-r { color: var(--ink-2); font-weight: 600; }
 
@@ -103,10 +104,10 @@
 .pp-redeem-emo { font-size: 20px; }
 .pp-redeem-t { flex: 1; font-weight: 600; font-size: 14px; }
 .pp-redeem-status { font-size: 11px; font-weight: 800; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
-.st-pending { background: #fff5e0; color: #b07d00; }
-.st-approved { background: var(--wally-t); color: #167a4a; }
+.st-pending { background: var(--warn-t); color: var(--warn); }
+.st-approved { background: var(--person-3-t); color: var(--success); }
 .st-denied { background: var(--panel); color: var(--ink-3); }
-.pp-redeem-cost { font-size: 13px; font-weight: 800; color: var(--lottie); }
+.pp-redeem-cost { font-size: 13px; font-weight: 800; color: var(--person-4); }
 
 @media (max-width: 1000px) {
   .person-profile { grid-template-columns: 1fr; }
@@ -131,18 +132,18 @@
 .fam-av { width: 46px; height: 46px; border-radius: 999px; flex: none; display: grid; place-items: center; font-size: 24px; }
 .fam-name-wrap { flex: 1; min-width: 0; }
 .fam-name { font-weight: 700; font-size: 17px; }
-.fam-streak { font-size: 13px; font-weight: 800; color: #d9650a; }
+.fam-streak { font-size: 13px; font-weight: 800; color: var(--gold-d); }
 .fam-stats { display: flex; justify-content: space-between; }
 .fam-stat { text-align: center; }
 .fam-stat-n { font-size: 20px; font-weight: 800; }
 .fam-stat-l { font-size: 11px; font-weight: 600; color: var(--ink-3); }
 .fam-bar { height: 7px; border-radius: 999px; background: var(--panel); overflow: hidden; }
-.fam-bar span { display: block; height: 100%; background: var(--wally); border-radius: 999px; }
+.fam-bar span { display: block; height: 100%; background: var(--person-3); border-radius: 999px; }
 @media (max-width: 600px) { .family-overview { padding: 6px 16px 22px; } }
 
 /* trade-currencies action in the person profile's balance card */
 .pp-trade { font: inherit; font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 999px;
-  border: 1px solid var(--hair); background: var(--card-2); color: var(--ai); cursor: pointer;
+  border: 1px solid var(--hair); background: var(--card-2); color: var(--ai-d); cursor: pointer;
   text-transform: none; letter-spacing: 0; }
 .pp-trade:hover { border-color: var(--ai); }
 
@@ -159,7 +160,7 @@
 .pp-shop { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .pp-shop-card { position: relative; border: 1px solid var(--hair); border-radius: 14px; padding: 12px 10px 10px;
   text-align: center; background: var(--card-2); }
-.pp-shop-card.pinned { border-color: var(--wally); box-shadow: 0 0 0 1px var(--wally) inset; }
+.pp-shop-card.pinned { border-color: var(--person-3); box-shadow: 0 0 0 1px var(--person-3) inset; }
 .pp-shop-pin { position: absolute; top: 6px; right: 6px; border: 0; background: none; cursor: pointer;
   font-size: 13px; opacity: .3; filter: grayscale(1); transition: opacity .12s; padding: 2px; }
 .pp-shop-pin:hover { opacity: .7; }
@@ -168,7 +169,7 @@
 .pp-shop-title { font-weight: 700; font-size: 13px; }
 .pp-shop-cost { font-weight: 800; font-size: 13px; margin: 2px 0 8px; }
 .pp-shop-redeem { font: inherit; font-weight: 700; font-size: 12px; width: 100%; padding: 6px; border-radius: 999px;
-  border: 0; background: var(--primary); color: #fff; cursor: pointer; }
+  border: 0; background: var(--primary); color: var(--on-accent); cursor: pointer; }
 .pp-shop-redeem:hover { filter: brightness(1.05); }
 .pp-shop-togo { font-size: 12px; font-weight: 700; color: var(--ink-3); padding: 6px; }
 
@@ -180,12 +181,12 @@
 /* Streak card */
 .pp-streak-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
 .pp-streak-days { font-weight: 800; font-size: 17px; }
-.pp-streak-cheer { font-size: 12px; font-weight: 700; color: var(--wally); margin-left: auto; }
+.pp-streak-cheer { font-size: 12px; font-weight: 700; color: var(--person-3); margin-left: auto; }
 .pp-streak-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .pp-streak-day { display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 8px 0; border-radius: 10px; background: var(--card-2); }
-.pp-streak-day.on { background: color-mix(in srgb, var(--wally) 16%, transparent); }
-.pp-streak-day.today { box-shadow: 0 0 0 2px var(--wally) inset; }
+.pp-streak-day.on { background: color-mix(in srgb, var(--person-3) 16%, transparent); }
+.pp-streak-day.today { box-shadow: 0 0 0 2px var(--person-3) inset; }
 .pp-streak-day.future { opacity: 0.45; }
 .pp-streak-icon { font-size: 16px; line-height: 1; }
 .pp-streak-day:not(.on) .pp-streak-icon { color: var(--ink-3); }

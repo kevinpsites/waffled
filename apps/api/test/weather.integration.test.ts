@@ -2,7 +2,7 @@
 // conditions from Open-Meteo, against an in-process stub. Covers the unconfigured
 // case, a full lookup (code→label/emoji, rounding), and forecast caching.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createServer, type Server } from 'node:http'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'

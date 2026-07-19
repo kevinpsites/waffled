@@ -229,7 +229,7 @@ describe('Settings screen', () => {
     expect(await screen.findByText('Kiosk Devices')).toBeInTheDocument()
   })
 
-  it('hides admin-only tabs from non-admins (only About + Sign out)', async () => {
+  it('hides admin-only tabs from non-admins (Appearance + About + Sign out)', async () => {
     // Same data, but the signed-in person is not an admin.
     globalThis.fetch = vi.fn(async (url: string) => {
       if (String(url).includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
@@ -239,9 +239,11 @@ describe('Settings screen', () => {
     }) as unknown as typeof fetch
     renderSettings()
 
-    expect(await screen.findByText('Waffled — Family Hub')).toBeInTheDocument() // About panel content
+    expect(await screen.findByText('Waffled — Family Hub')).toBeInTheDocument() // About panel content (default landing)
     expect(screen.getByText('About', { selector: '.set-navitem' })).toBeInTheDocument()
     expect(screen.getByText(/Sign out/, { selector: '.set-signout' })).toBeInTheDocument()
+    // Appearance is a per-device preference — available to everyone, not admin-gated.
+    expect(screen.getByText('Appearance', { selector: '.set-navitem' })).toBeInTheDocument()
     expect(screen.queryByText('Family & People')).not.toBeInTheDocument()
     expect(screen.queryByText('Sign-in & Security')).not.toBeInTheDocument()
   })

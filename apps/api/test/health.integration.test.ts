@@ -1,7 +1,7 @@
 // Deep health endpoint — migration + api + admin gating, over the in-process app
 // against a real Postgres testcontainer. Mirrors the harness in chores.integration.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import { tmpdir } from 'node:os'
 import { mkdtempSync } from 'node:fs'

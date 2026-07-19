@@ -5,7 +5,7 @@
 // the accept flow lands in P2. Tests assert the schema, FKs, defaults, and that the
 // partial index's "pending" predicate (not accepted, not revoked) is well-formed.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import { runMigrations } from '../src/migrate'
 

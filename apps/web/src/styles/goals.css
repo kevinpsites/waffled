@@ -15,7 +15,7 @@
 
 .topbar-new {
   cursor: pointer;
-  color: #fff;
+  color: var(--on-accent);
   border: 0;
 }
 
@@ -111,14 +111,14 @@ button.goal-listhead-link:hover {
 }
 /* Featured band — a hair more prominent than a "More" row, with a Featured tag. */
 .featured-goal {
-  border: 1.5px solid color-mix(in srgb, #e2a636 55%, var(--hair));
-  box-shadow: 0 2px 10px color-mix(in srgb, #e2a636 12%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--gold) 55%, var(--hair));
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--gold) 12%, transparent);
 }
 .featured-goal .gc-t { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .feat-tag {
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 10px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
-  color: #b07d1c; background: #fdf2dd; padding: 3px 8px; border-radius: 999px;
+  color: var(--warn); background: var(--warn-t); padding: 3px 8px; border-radius: 999px;
 }
 /* Quick pin/unpin — a muted pushpin that brightens on hover; solid when pinned. */
 .goal-pin {
@@ -180,8 +180,8 @@ button.goal-listhead-link:hover {
   margin-top: 2px;
 }
 .hero-pill {
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: var(--on-color-track);
+  color: var(--on-accent);
 }
 .hero-title {
   font-size: 29px;
@@ -199,12 +199,12 @@ button.goal-listhead-link:hover {
   max-width: 400px;
 }
 .hero-streak {
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: var(--on-color-track);
+  color: var(--on-accent);
 }
 .hero-log {
-  background: #fff;
-  color: #2f7d4f;
+  background: var(--card);
+  color: var(--success);
 }
 
 /* each-tracks variant — warm gradient, "TOGETHER x/y" */
@@ -215,7 +215,7 @@ button.goal-listhead-link:hover {
   width: 56px;
   height: 56px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--on-color-track);
   display: grid;
   place-items: center;
   font-size: 30px;
@@ -308,7 +308,7 @@ button.goal-listhead-link:hover {
 .ge-who { display: flex; gap: 8px; flex-wrap: wrap; }
 .ge-who-chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 15px 7px 7px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--hair); cursor: pointer; font: inherit; font-size: 14px; font-weight: 650; color: var(--ink); box-shadow: var(--sh-1); transition: all .13s; }
 .ge-who-chip:hover { border-color: var(--ink-3); }
-.ge-who-chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.ge-who-chip.on { background: var(--ink); color: var(--on-inverse); border-color: var(--ink); }
 .ge-who-chip.dashed { border-style: dashed; border-color: var(--hair); box-shadow: none; background: transparent; color: var(--ink-3); font-weight: 700; padding: 7px 14px; }
 .ge-who-chip.dashed:hover { color: var(--ink-2); border-color: var(--ink-3); }
 .ge-avstack { display: inline-flex; }
@@ -319,7 +319,7 @@ button.goal-listhead-link:hover {
 /* shared / each segmented control */
 .ge-share { display: inline-flex; background: var(--panel); border-radius: 999px; padding: 4px; margin-top: 14px; }
 .ge-share button { border: 0; background: transparent; font: inherit; font-size: 13.5px; font-weight: 650; color: var(--ink-2); padding: 8px 16px; border-radius: 999px; cursor: pointer; }
-.ge-share button.on { background: #fff; color: var(--ink); box-shadow: var(--sh-1); font-weight: 700; }
+.ge-share button.on { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); font-weight: 700; }
 .ge-share.ge-share-3 { display: flex; margin-top: 0; }
 .ge-share.ge-share-3 button { flex: 1; text-align: center; white-space: nowrap; }
 
@@ -334,13 +334,13 @@ button.goal-listhead-link:hover {
 .ge-rowopt .rbd { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .ge-rowopt .rt { font-size: 14.5px; font-weight: 750; }
 .ge-rowopt .rex { font-size: 12px; color: var(--ink-2); font-weight: 600; margin-top: 3px; line-height: 1.35; }
-.ge-rowopt .rex b { color: var(--wally); font-weight: 800; }
+.ge-rowopt .rex b { color: var(--person-3); font-weight: 800; }
 .ge-rowopt .rrk { width: 20px; height: 20px; border-radius: 999px; border: 2px solid var(--hair); flex: none; position: relative; }
 .ge-rowopt.on { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent); }
 .ge-rowopt.on .rrk { background: var(--primary); border-color: var(--primary); }
-.ge-rowopt.on .rrk::after { content: ""; position: absolute; left: 6px; top: 3px; width: 5px; height: 9px; border: 2px solid #fff; border-top: 0; border-left: 0; transform: rotate(43deg); }
+.ge-rowopt.on .rrk::after { content: ""; position: absolute; left: 6px; top: 3px; width: 5px; height: 9px; border: 2px solid var(--on-accent); border-top: 0; border-left: 0; transform: rotate(43deg); }
 .ge-worked { margin-top: 14px; background: var(--card-2); border: 1px solid var(--hair-2); border-radius: var(--r-md); padding: 13px 15px; display: flex; align-items: center; gap: 12px; }
-.ge-worked .wi { width: 34px; height: 34px; border-radius: 10px; background: var(--wally-t); display: grid; place-items: center; font-size: 17px; flex: none; }
+.ge-worked .wi { width: 34px; height: 34px; border-radius: 10px; background: var(--person-3-t); display: grid; place-items: center; font-size: 17px; flex: none; }
 .ge-worked .wt { font-size: 12.5px; font-weight: 650; color: var(--ink-2); line-height: 1.4; }
 .ge-worked .wt b { color: var(--ink); font-weight: 800; }
 
@@ -395,7 +395,7 @@ button.goal-listhead-link:hover {
 
 /* shared add button (steps + milestones) */
 .ge-add { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; border: 0; background: var(--panel); font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); padding: 9px 15px; border-radius: 999px; cursor: pointer; margin-top: 4px; }
-.ge-add:hover { background: #e9e2d6; }
+.ge-add:hover { background: var(--rail); }
 
 /* extras rows */
 .ge-extra { display: flex; align-items: center; gap: 13px; padding: 15px 0; border-top: 1px solid var(--hair-2); }
@@ -409,8 +409,8 @@ button.goal-listhead-link:hover {
 .ge-ms { padding: 4px 0 8px 47px; display: flex; flex-direction: column; gap: 8px; }
 .ge-ms-hint { font-size: 11.5px; color: var(--ink-3); font-weight: 550; margin: 2px 0 4px; }
 .ge-ms-row { display: flex; align-items: center; gap: 10px; background: var(--card-2); border: 1px solid var(--hair-2); border-radius: var(--r-md); padding: 8px 10px; }
-.ge-ms-emoji { width: 40px; text-align: center; border: 1px solid var(--hair-2); background: #fff; border-radius: 8px; padding: 7px 2px; font: inherit; font-size: 16px; outline: none; flex: none; }
-.ge-ms-n { display: inline-flex; align-items: center; background: #fff; border: 1px solid var(--hair); border-radius: 9px; overflow: hidden; }
+.ge-ms-emoji { width: 40px; text-align: center; border: 1px solid var(--hair-2); background: var(--card); border-radius: 8px; padding: 7px 2px; font: inherit; font-size: 16px; outline: none; flex: none; }
+.ge-ms-n { display: inline-flex; align-items: center; background: var(--card); border: 1px solid var(--hair); border-radius: 9px; overflow: hidden; }
 .ge-ms-n input { width: 56px; border: 0; outline: none; text-align: center; font: inherit; font-size: 14px; font-weight: 700; padding: 7px 2px; color: var(--ink); }
 .ge-ms-r { flex: 1; border: 0; background: transparent; outline: none; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); min-width: 0; }
 .ge-ms-r::placeholder { color: var(--ink-3); font-weight: 550; }
@@ -421,18 +421,18 @@ button.goal-listhead-link:hover {
 .ge-foot b { color: var(--ink-2); font-weight: 700; }
 
 /* ---- live-preview renders ---- */
-.ge-pv-hero { border-radius: var(--r-xl); padding: 24px 26px; color: #fff; position: relative; overflow: hidden; background: linear-gradient(135deg, #ef6a52, var(--primary-d)); box-shadow: var(--sh-3); }
+.ge-pv-hero { border-radius: var(--r-xl); padding: 24px 26px; color: var(--on-accent); position: relative; overflow: hidden; background: linear-gradient(135deg, #ef6a52, var(--primary-d)); box-shadow: var(--sh-3); }
 .ge-pv-hero::after { content: ""; position: absolute; right: -50px; top: -60px; width: 220px; height: 220px; border-radius: 999px; background: rgba(255,255,255,.09); }
 .ge-pv-hero .hrow { position: relative; z-index: 1; display: flex; align-items: center; gap: 18px; }
-.ge-pv-hero .hicon { width: 60px; height: 60px; border-radius: 17px; background: rgba(255,255,255,.18); display: grid; place-items: center; font-size: 30px; flex: none; }
-.ge-pv-hero .htag { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; background: rgba(255,255,255,.2); padding: 3px 9px; border-radius: 999px; }
+.ge-pv-hero .hicon { width: 60px; height: 60px; border-radius: 17px; background: var(--on-color-track); display: grid; place-items: center; font-size: 30px; flex: none; }
+.ge-pv-hero .htag { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; background: var(--on-color-track); padding: 3px 9px; border-radius: 999px; }
 .ge-pv-hero .htitle { font-family: var(--serif); font-size: 23px; font-weight: 600; letter-spacing: -.01em; line-height: 1.1; margin: 8px 0 3px; text-transform: capitalize; }
 .ge-pv-hero .hsub { font-size: 12.5px; font-weight: 600; opacity: .92; }
 .ge-pv-hero .hring { flex: none; margin-left: auto; }
 
 .ge-pv-card { background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-2); padding: 20px 22px; }
 .ge-pv-card .crow { display: flex; align-items: flex-start; gap: 14px; }
-.ge-pv-card .cicon { width: 52px; height: 52px; border-radius: 15px; background: #fbe7e1; display: grid; place-items: center; font-size: 27px; flex: none; }
+.ge-pv-card .cicon { width: 52px; height: 52px; border-radius: 15px; background: var(--primary-t); display: grid; place-items: center; font-size: 27px; flex: none; }
 .ge-pv-card .ctag { font-size: 11px; font-weight: 800; color: var(--ink-3); text-transform: uppercase; letter-spacing: .03em; }
 .ge-pv-card .ctitle { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -.01em; line-height: 1.12; margin: 4px 0 3px; text-transform: capitalize; }
 .ge-pv-card .csub { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
@@ -460,7 +460,7 @@ button.goal-listhead-link:hover {
 .ge-title { font-family: var(--serif); font-size: 30px; font-weight: 600; color: var(--ink); }
 .ge-cancel { font: inherit; font-size: 14.5px; font-weight: 650; color: var(--ink-2); background: transparent; border: 0; cursor: pointer; padding: 9px 12px; border-radius: 999px; }
 .ge-cancel:hover { background: var(--panel); }
-.ge-create { font: inherit; font-size: 14.5px; font-weight: 700; color: #fff; background: var(--primary); border: 0; cursor: pointer; padding: 10px 20px; border-radius: 999px; box-shadow: var(--sh-1); transition: opacity .15s, transform .1s; }
+.ge-create { font: inherit; font-size: 14.5px; font-weight: 700; color: var(--on-accent); background: var(--primary); border: 0; cursor: pointer; padding: 10px 20px; border-radius: 999px; box-shadow: var(--sh-1); transition: opacity .15s, transform .1s; }
 .ge-create:disabled { opacity: .4; cursor: default; }
 .ge-create:not(:disabled):active { transform: scale(.97); }
 .gc-form {
@@ -531,7 +531,7 @@ button.goal-listhead-link:hover {
 }
 .gc-chip.on {
   background: var(--ink);
-  color: #fff;
+  color: var(--on-inverse);
   border-color: var(--ink);
 }
 .gc-seg button {
@@ -551,7 +551,7 @@ button.goal-listhead-link:hover {
   height: 22px;
   border-radius: 999px;
   background: var(--primary);
-  color: #fff;
+  color: var(--on-accent);
   display: grid;
   place-items: center;
   font-size: 13px;
@@ -796,10 +796,10 @@ button.goal-listhead-link:hover {
 }
 .log-step-box {
   width: 24px; height: 24px; flex: none; border-radius: 7px;
-  border: 1.5px solid var(--hair); background: #fff;
-  display: grid; place-items: center; font-size: 14px; font-weight: 800; color: #fff;
+  border: 1.5px solid var(--hair); background: var(--card);
+  display: grid; place-items: center; font-size: 14px; font-weight: 800; color: var(--on-accent);
 }
-.log-step-row.done .log-step-box { background: var(--wally); border-color: var(--wally); }
+.log-step-row.done .log-step-box { background: var(--person-3); border-color: var(--person-3); }
 .log-step-label { font-size: 15px; font-weight: 600; }
 .log-step-row.done .log-step-label { text-decoration: line-through; color: var(--ink-3); }
 
@@ -846,8 +846,8 @@ button.goal-listhead-link:hover {
   transition: background 0.12s, color 0.12s;
 }
 .log-chip.on {
-  background: var(--wally);
-  color: #fff;
+  background: var(--person-3);
+  color: var(--on-accent);
 }
 .log-custom {
   display: flex;
@@ -891,10 +891,10 @@ button.goal-listhead-link:hover {
   place-items: center;
   font-size: 11px;
   font-weight: 800;
-  color: #fff;
+  color: var(--on-accent);
 }
 .log-person.on .av {
-  box-shadow: 0 0 0 2px var(--wally);
+  box-shadow: 0 0 0 2px var(--person-3);
 }
 .log-note {
   width: 100%;
@@ -923,8 +923,8 @@ button.goal-listhead-link:hover {
   cursor: pointer;
 }
 .log-act:hover {
-  background: var(--wally-t);
-  color: #167a4a;
+  background: var(--person-3-t);
+  color: var(--success);
 }
 
 /* milestone editor rows (create/edit) */
@@ -977,7 +977,7 @@ button.goal-listhead-link:hover {
   width: 40px; height: 40px; border-radius: 12px; flex: none; display: grid; place-items: center;
   background: linear-gradient(135deg, var(--ai-2), var(--ai));
 }
-.recap-bar-ico svg { width: 19px; height: 19px; fill: #fff; stroke: #fff; }
+.recap-bar-ico svg { width: 19px; height: 19px; fill: var(--on-accent); stroke: var(--on-accent); }
 .recap-bar-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .recap-bar-title { font-size: 15.5px; font-weight: 700; color: var(--ink); }
 .recap-bar-sub {
@@ -985,7 +985,7 @@ button.goal-listhead-link:hover {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .recap-bar-cta {
-  flex: none; font-size: 14px; font-weight: 700; color: #fff; background: var(--primary);
+  flex: none; font-size: 14px; font-weight: 700; color: var(--on-accent); background: var(--primary);
   border-radius: 999px; padding: 9px 16px; white-space: nowrap;
 }
 .recap-bar:hover .recap-bar-cta { background: var(--primary-d); }
@@ -997,7 +997,7 @@ button.goal-listhead-link:hover {
 
 /* Review slide-over — scrim + right panel over Today. */
 .review-scrim {
-  position: fixed; inset: 0; z-index: 60; background: rgba(12, 11, 10, 0.34);
+  position: fixed; inset: 0; z-index: 60; background: var(--scrim);
   backdrop-filter: blur(2px); display: flex; justify-content: flex-end;
   animation: review-fade 0.16s ease;
 }
@@ -1031,7 +1031,7 @@ button.goal-listhead-link:hover {
   width: 38px; height: 38px; border-radius: 11px; flex: none; display: grid; place-items: center;
   background: linear-gradient(135deg, var(--ai-2), var(--ai));
 }
-.recap-card-ico svg { width: 18px; height: 18px; fill: #fff; stroke: #fff; }
+.recap-card-ico svg { width: 18px; height: 18px; fill: var(--on-accent); stroke: var(--on-accent); }
 .recap-card-txt { flex: 1; min-width: 0; }
 .recap-card-title { font-size: 16px; font-weight: 800; color: var(--ink); }
 .recap-card-sub { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-top: 2px; }
@@ -1062,7 +1062,7 @@ button.goal-listhead-link:hover {
 }
 .recap-stepchip {
   display: inline-flex; align-items: center; gap: 5px; font-weight: 700;
-  color: var(--ai); background: color-mix(in srgb, var(--ai) 10%, #fff);
+  color: var(--ai-d); background: color-mix(in srgb, var(--ai) 10%, var(--card));
   border-radius: 999px; padding: 3px 10px; margin-top: 1px;
 }
 
@@ -1098,12 +1098,12 @@ button.goal-listhead-link:hover {
   font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink-2); cursor: pointer;
   border: 1px solid var(--hair); background: var(--card-2);
 }
-.recap-chip.on { border-color: var(--ai); color: var(--ai); background: color-mix(in srgb, var(--ai) 10%, #fff); }
+.recap-chip.on { border-color: var(--ai); color: var(--ai-d); background: color-mix(in srgb, var(--ai) 10%, var(--card)); }
 
 /* Actions: coral Confirm on top, quiet "Didn't happen" below. */
 .recap-act { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 132px; }
 .recap-confirm {
-  font: inherit; font-size: 14px; font-weight: 700; color: #fff; background: var(--primary);
+  font: inherit; font-size: 14px; font-weight: 700; color: var(--on-accent); background: var(--primary);
   border: 0; border-radius: 999px; padding: 9px 14px; cursor: pointer; white-space: nowrap;
 }
 .recap-confirm:hover:not(:disabled) { background: var(--primary-d); }

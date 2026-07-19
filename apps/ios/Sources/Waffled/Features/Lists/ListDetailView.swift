@@ -4,12 +4,14 @@ import Observation
 /// Grocery board view modes.
 enum GroceryViewMode: Hashable { case aisle, meal }
 
-/// A run of items under one meal in "By meal" mode (`meal == nil` is the trailing
-/// "Staples & extras" group).
+/// A run of items under one meal in "By meal" mode. `unscheduled` set = a recipe
+/// on the list but not on this week's plan; both nil = the trailing
+/// "Staples & extras" group.
 struct MealGroup: Identifiable {
     let meal: WaffledAPI.GroceryBoardDTO.Meal?
     let items: [WaffledAPI.ListItemDTO]
-    var id: String { meal?.id ?? "__extras__" }
+    var unscheduled: WaffledAPI.GroceryBoardDTO.UnscheduledRecipe? = nil
+    var id: String { meal?.id ?? unscheduled.map { "unscheduled|\($0.recipeId)" } ?? "__extras__" }
 }
 
 /// One list's items — works for any list (Grocery included). Tapping the circle
@@ -31,6 +33,9 @@ final class ListDetailModel {
 
     /// This week's meals (grocery board only) — drive the meal grouping + dots.
     private(set) var meals: [WaffledAPI.GroceryBoardDTO.Meal] = []
+    /// Recipes on the list but not on this week's plan (added straight from a
+    /// recipe page) — get their own by-meal sections + dot colors.
+    private(set) var unscheduled: [WaffledAPI.GroceryBoardDTO.UnscheduledRecipe] = []
     /// Pantry staples (assumed in-house, left off the list) — tap to add anyway.
     private(set) var staples: [WaffledAPI.GroceryBoardDTO.Staple] = []
     /// The week the board covers (YYYY-MM-DD) — passed to rebuild.
@@ -76,16 +81,20 @@ final class ListDetailModel {
     /// "By meal" grouping: each active item under its first matching dinner (by
     /// date), with a trailing "Staples & extras" group for anything meal-less.
     func mealSections() -> [MealGroup] {
-        MealGrouping.sections(items: activeItems, meals: meals)
+        MealGrouping.sections(items: activeItems, meals: meals, unscheduled: unscheduled)
     }
 
     /// One meal-color dot per *distinct recipe* the item belongs to (a recipe planned
-    /// in two slots is the same dot, not two).
+    /// in two slots is the same dot, not two). Unscheduled recipes get dots too.
     func dotColors(for item: WaffledAPI.ListItemDTO) -> [String] {
         var seen = Set<String>()
         var colors: [String] = []
         for rid in (item.sourceRecipeIds ?? []) where seen.insert(rid).inserted {
-            if let m = meals.first(where: { $0.recipeId == rid }) { colors.append(m.color) }
+            if let m = meals.first(where: { $0.recipeId == rid }) {
+                colors.append(m.color)
+            } else if let u = unscheduled.first(where: { $0.recipeId == rid }) {
+                colors.append(u.color)
+            }
         }
         return colors
     }
@@ -100,6 +109,7 @@ final class ListDetailModel {
             if isGrocery {
                 let board = try await api.groceryBoard()
                 meals = board.meals
+                unscheduled = board.unscheduled ?? []
                 staples = board.staples
                 weekStart = board.weekStart
                 items = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
@@ -227,6 +237,7 @@ final class ListDetailModel {
         do {
             let board = try await api.rebuildGrocery(weekStart: weekStart)
             meals = board.meals
+            unscheduled = board.unscheduled ?? []
             staples = board.staples
             weekStart = board.weekStart
             settling = []
@@ -337,6 +348,15 @@ struct ListDetailView: View {
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
 
+    /// The kiosk column's global bottom edge (measured in `kioskBody`), used with the
+    /// real keyboard position to compute how far the add bar must ride up to clear
+    /// the keys — see the comment in `kioskBody`.
+    @State private var columnBottom: CGFloat = 0
+    private var addBarShift: CGFloat {
+        KeyboardState.barShift(columnBottom: columnBottom,
+                               keyboardTop: KeyboardState.shared.topInWindow)
+    }
+
     var body: some View {
         Group {
             if isKiosk { kioskBody } else { phoneBody }
@@ -347,6 +367,10 @@ struct ListDetailView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             if model.isTemplate { templateBanner }
         }
+        // An explicit way to put the keyboard away — the add bar keeps focus after
+        // every submit (rapid entry), so without this the keyboard has no Done/✕.
+        // Dropping focus also commits an in-flight inline edit (see onChange(of: focus)).
+        .wfKeyboardDoneToolbar { focus = nil }
         .toolbar {
             // Grocery is auto-built, so it has no template/delete menu. A template gets
             // Use / Move to Lists / Delete; a normal list gets Save as template / Delete.
@@ -399,6 +423,10 @@ struct ListDetailView: View {
                 didAutoDetails = true
                 detailItem = first
             }
+            if DemoHooks.focusAdd {
+                try? await Task.sleep(for: .seconds(1))
+                focus = .add
+            }
         }
         .refreshable { await model.load() }
         .onChange(of: sync.groceryRev) { _, _ in if model.isGrocery { Task { await model.load() } } }
@@ -439,7 +467,7 @@ struct ListDetailView: View {
     /// iPhone: items with the meals recap + staples inline in the list.
     private var phoneBody: some View {
         List {
-            if model.isGrocery && !model.meals.isEmpty && !searchActive {
+            if model.isGrocery && (!model.meals.isEmpty || !model.unscheduled.isEmpty) && !searchActive {
                 summaryPanel
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .listRowSeparator(.hidden).listRowBackground(Color.clear)
@@ -453,6 +481,9 @@ struct ListDetailView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        // Drag down through the items to tuck the keyboard away (the add bar's field
+        // otherwise keeps it up with no way to dismiss on iPhone).
+        .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .top, spacing: 0) { topControls }
         .safeAreaInset(edge: .bottom, spacing: 0) { addBar }
     }
@@ -461,12 +492,29 @@ struct ListDetailView: View {
     /// staples (the web grocery layout). The side panel shows only for grocery.
     private var kioskBody: some View {
         HStack(spacing: 0) {
-            List { itemRows }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .safeAreaInset(edge: .top, spacing: 0) { topControls }
-                .safeAreaInset(edge: .bottom, spacing: 0) { addBar }
-                .frame(maxWidth: .infinity)
+            // topControls and addBar are plain rows here, NOT `.safeAreaInset`s like on
+            // iPhone: a List drags inset-pinned chrome down into the window's keyboard
+            // safe-area region, which iPadOS under-reports in landscape (accessory +
+            // predictive rows uncounted) — burying "Add item" under the keys. The bar
+            // additionally rides up by `addBarShift`: the measured distance it would
+            // still sit below the REAL keyboard top (`KeyboardState`). An `.offset` is a
+            // pure render-time translation, so it can't re-enter the safe-area math that
+            // caused the burial — and it self-corrects to 0 whenever the system's own
+            // avoidance put the column in the right place.
+            VStack(spacing: 0) {
+                topControls
+                List { itemRows }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
+                    // The lifted bar is drawn OVER the List's bottom (offset is
+                    // render-only), so grow the scrollable range by the same amount —
+                    // otherwise the last rows would rest behind the bar, unreachable.
+                    .contentMargins(.bottom, addBarShift, for: .scrollContent)
+                addBar.offset(y: -addBarShift)
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { columnBottom = $0 }
+            .frame(maxWidth: .infinity)
             if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.staples.isEmpty) {
                 Rectangle().fill(WF.hair).frame(width: 1)
                 ScrollView(showsIndicators: false) {
@@ -648,6 +696,18 @@ struct ListDetailView: View {
                         .font(.system(size: 11, weight: .heavy)).tracking(0.5)
                         .foregroundStyle(WF.ink3)
                         .lineLimit(1)
+                } else if let recipe = group.unscheduled {
+                    let color = Color(hexString: recipe.color) ?? WF.ink3
+                    Text("UNSCHEDULED")
+                        .font(.system(size: 9.5, weight: .heavy)).tracking(0.4)
+                        .foregroundStyle(color)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(color.opacity(0.15))
+                        .clipShape(Capsule())
+                    Text(recipe.title.uppercased())
+                        .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                        .foregroundStyle(WF.ink3)
+                        .lineLimit(1)
                 } else {
                     Text("STAPLES & EXTRAS")
                         .font(.system(size: 11, weight: .heavy)).tracking(0.5)
@@ -726,9 +786,45 @@ struct ListDetailView: View {
             VStack(spacing: 8) {
                 ForEach(railMeals) { meal in mealRecapRow(meal) }
             }
+
+            // Off-plan recipes added from their pages — below a divider so the card
+            // stays a complete legend for the item dot colors. Unaffected by the
+            // meal-type segment (they belong to no slot).
+            if !model.unscheduled.isEmpty {
+                Rectangle().fill(WF.hair).frame(height: 1)
+                Text("UNSCHEDULED")
+                    .font(.system(size: 10, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
+                VStack(spacing: 8) {
+                    ForEach(model.unscheduled) { recipe in unscheduledRecapRow(recipe) }
+                }
+            }
         }
         .padding(14)
         .wfField()
+    }
+
+    /// A rail row for an unscheduled recipe — same shape as the meal rows minus the
+    /// day label; taps through to the recipe like they do.
+    @ViewBuilder private func unscheduledRecapRow(_ recipe: WaffledAPI.GroceryBoardDTO.UnscheduledRecipe) -> some View {
+        let color = Color(hexString: recipe.color) ?? WF.ink3
+        Button {
+            openRecipe(.placeholder(id: recipe.recipeId, title: recipe.title, emoji: recipe.emoji,
+                                    category: nil, cookTimeMinutes: nil, servings: nil))
+        } label: {
+            HStack(spacing: 10) {
+                Circle().fill(color).frame(width: 9, height: 9)
+                Text(recipe.title)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 6)
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
+                Text(recipe.emoji ?? "🍽️")
+                    .font(.system(size: 14))
+                    .frame(width: 28, height: 28)
+                    .background(color.opacity(0.12)).clipShape(Circle())
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder private func mealRecapRow(_ meal: WaffledAPI.GroceryBoardDTO.Meal) -> some View {

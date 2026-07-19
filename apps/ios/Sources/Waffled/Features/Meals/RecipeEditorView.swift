@@ -54,11 +54,15 @@ struct RecipeEditorView: View {
     @FocusState private var focused: Field?
     // Notes
     @State private var notes = ""
-    // Paste-markdown import (create only)
+    // Import (create only): paste-markdown + the AI photo/describe paths (web parity).
     @State private var showPaste = false
     @State private var markdown = ""
     @State private var parsing = false
     @State private var parseErr: String?
+    // Which AI import paths this household can use (nil until fetched); gates the buttons.
+    @State private var ingestConfig: WaffledAPI.RecipeIngestConfig?
+    @State private var showPhotoImport = false
+    @State private var showDescribe = false
     // Save
     @State private var saving = false
     @State private var errorText: String?
@@ -157,25 +161,44 @@ struct RecipeEditorView: View {
             }
             // Global look at the household's existing section names (for autocomplete).
             .task { usedSections = (try? await api.recipeSections()) ?? [] }
+            // Which AI import paths this household can use (new recipes only). Failure →
+            // nil, so only "Paste markdown" shows (graceful when no provider is set).
+            .task { if editingId == nil { ingestConfig = try? await api.recipeIngestConfig() } }
             .onChange(of: photoItem) { _, item in Task { await loadPhoto(item) } }
             .sheet(isPresented: $showPaste) { pasteSheet }
+            .sheet(isPresented: $showPhotoImport) { PhotoImportSheet { applyParsed($0) } }
+            .sheet(isPresented: $showDescribe) { DescribeRecipeSheet { applyParsed($0) } }
         }
     }
 
     // MARK: paste-markdown import
 
-    /// A one-line "or paste markdown" affordance above the form (new recipes only).
+    /// "Build it by hand, or start from…" — the import shortcuts above the form (new
+    /// recipes only). Paste-markdown is always offered; the AI photo/describe paths appear
+    /// when the household's provider supports them (gated by `ingestConfig`, web parity).
     private var pasteBar: some View {
-        HStack(spacing: 10) {
-            Text("Build it by hand, or").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
-            Button { showPaste = true } label: {
-                Label("Paste markdown", systemImage: "doc.on.clipboard")
-                    .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink)
-                    .padding(.horizontal, 13).padding(.vertical, 8).background(WF.card).clipShape(Capsule())
-                    .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
-            }.buttonStyle(.plain)
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Build it by hand, or start from…")
+                .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
+            ChipFlow(spacing: 8, lineSpacing: 8) {
+                if ingestConfig?.vision == true {
+                    importButton("From a photo", "camera") { showPhotoImport = true }
+                }
+                if ingestConfig?.text == true {
+                    importButton("Describe it", "mic") { showDescribe = true }
+                }
+                importButton("Paste markdown", "doc.on.clipboard") { showPaste = true }
+            }
         }
+    }
+
+    private func importButton(_ label: String, _ icon: String, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            Label(label, systemImage: icon)
+                .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink)
+                .padding(.horizontal, 13).padding(.vertical, 8).background(WF.card).clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
+        }.buttonStyle(.plain)
     }
 
     private var pasteSheet: some View {
@@ -1210,7 +1233,7 @@ struct StepTagSection: View {
     let onRemove: (UUID) -> Void
     @State private var showPopover = false
 
-    private static let green = Color(hex: 0x25A368)
+    private static let green = WF.success
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

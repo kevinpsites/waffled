@@ -478,7 +478,7 @@ struct ChoresView: View {
                 let allDone = !col.items.isEmpty && col.done == col.items.count
                 HStack(spacing: 3) {
                     Image(systemName: allDone ? "checkmark.circle.fill" : "checkmark.circle")
-                        .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.wally.solid : WF.ink3)
+                        .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.person3.solid : WF.ink3)
                     Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
                 }
             }
@@ -544,23 +544,11 @@ struct ChoresView: View {
     }
 
     /// A dismissible inline error for a failed photo upload / the 422 "needs a photo"
-    /// guard — mirrors web's `proofErr` banner.
+    /// guard — mirrors web's `proofErr` banner (shared `DismissibleErrorBanner` chrome).
     @ViewBuilder
     private var proofErrorBanner: some View {
         if let msg = model.proofError {
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 15)).foregroundStyle(WF.primary)
-                Text(msg).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
-                Spacer(minLength: 6)
-                Button { withAnimation { model.proofError = nil } } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundStyle(WF.ink3)
-                }.buttonStyle(.plain)
-            }
-            .padding(12)
-            .background(WF.primary.opacity(0.10))
-            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.primary.opacity(0.3), lineWidth: 1))
+            DismissibleErrorBanner(message: msg) { withAnimation { model.proofError = nil } }
         }
     }
 
@@ -722,7 +710,7 @@ struct ChoresView: View {
                     let allDone = !col.items.isEmpty && col.done == col.items.count
                     HStack(spacing: 3) {
                         Image(systemName: allDone ? "checkmark.circle.fill" : "checkmark.circle")
-                            .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.wally.solid : WF.ink3)
+                            .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.person3.solid : WF.ink3)
                         Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
                     }
                     DisclosureChevron(isOpen: !isCollapsed)
@@ -914,7 +902,7 @@ struct ChoresView: View {
             Button { Task { await model.approve(inst.id); sync.bumpChores() } } label: {
                 Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 10)
-                    .background(FamilyColor.wally.solid).clipShape(Capsule())
+                    .background(FamilyColor.person3.solid).clipShape(Capsule())
             }.buttonStyle(.plain)
         }
     }
@@ -924,7 +912,7 @@ struct ChoresView: View {
             if isAwaiting {
                 Text("⏳").font(.system(size: 16)).frame(width: 26, height: 26)
             } else if isDone {
-                Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(FamilyColor.wally.solid)
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(FamilyColor.person3.solid)
             } else if needsPhoto && !isGrabs {
                 // 📷 affordance, matching web: a photo-required chore shows the camera
                 // on its incomplete tick so it's clear a snapshot is needed to finish.
@@ -1124,7 +1112,7 @@ struct ChoreEditSheet: View {
                                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                             }
                         }
-                        .tint(FamilyColor.wally.solid)
+                        .tint(FamilyColor.person3.solid)
                         .padding(13).cardField()
                         if hasDueTime {
                             DatePicker("Due time", selection: $dueTime, displayedComponents: .hourAndMinute)
@@ -1191,7 +1179,7 @@ struct ChoreEditSheet: View {
                                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                             }
                         }
-                        .tint(FamilyColor.wally.solid)
+                        .tint(FamilyColor.person3.solid)
                         .padding(13).cardField()
                     }
 
@@ -1202,7 +1190,7 @@ struct ChoreEditSheet: View {
                                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
                     }
-                    .tint(FamilyColor.wally.solid)
+                    .tint(FamilyColor.person3.solid)
                     .padding(13).cardField()
 
                     // A photo on its own attaches to the finished chore but doesn't pause

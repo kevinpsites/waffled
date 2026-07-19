@@ -261,7 +261,7 @@ struct PersonView: View {
             statCard(title: "Today’s chores",
                      big: model.chores.isEmpty ? "None" : "\(model.choresDone) of \(model.chores.count)",
                      frac: model.chores.isEmpty ? 0 : Double(model.choresDone) / Double(model.chores.count),
-                     tint: FamilyColor.wally.solid) { path.append(.chores) }
+                     tint: FamilyColor.person3.solid) { path.append(.chores) }
             if let g = model.overview?.goals.first {
                 statCard(title: g.title,
                          big: "\(fmt(g.progress))/\(fmt(g.target))",
@@ -346,7 +346,7 @@ struct PersonView: View {
             HStack(spacing: 12) {
                 Image(systemName: awaiting ? "hourglass.circle.fill" : (done ? "checkmark.circle.fill" : "circle"))
                     .font(.system(size: 22))
-                    .foregroundStyle(done ? FamilyColor.wally.solid : (awaiting ? WF.gold : WF.ink3))
+                    .foregroundStyle(done ? FamilyColor.person3.solid : (awaiting ? WF.gold : WF.ink3))
                 Text("\(ch.emoji.map { "\($0) " } ?? "")\(ch.choreTitle)")
                     .font(.system(size: 15, weight: .semibold))
                     .strikethrough(done, color: WF.ink3)
@@ -481,7 +481,7 @@ struct PersonView: View {
                         HStack(spacing: 8) {
                             Text("\(e.amount >= 0 ? "+" : "")\(e.amount)")
                                 .font(.system(size: 13, weight: .heavy))
-                                .foregroundStyle(e.amount >= 0 ? FamilyColor.wally.solid : WF.primary)
+                                .foregroundStyle(e.amount >= 0 ? FamilyColor.person3.solid : WF.primary)
                                 .frame(width: 38, alignment: .leading)
                             Text(symbol(for: e.currency)).font(.system(size: 11))
                             Text(e.label)
@@ -505,9 +505,9 @@ struct PersonView: View {
                         Text(r.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                         Spacer(minLength: 6)
                         Text(r.status.capitalized).font(.system(size: 10, weight: .heavy))
-                            .foregroundStyle(r.status == "approved" ? FamilyColor.wally.solid : WF.ink3)
+                            .foregroundStyle(r.status == "approved" ? FamilyColor.person3.solid : WF.ink3)
                             .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background((r.status == "approved" ? FamilyColor.wally.solid : WF.ink3).opacity(0.14)).clipShape(Capsule())
+                            .background((r.status == "approved" ? FamilyColor.person3.solid : WF.ink3).opacity(0.14)).clipShape(Capsule())
                         HStack(spacing: 2) {
                             Text(symbol(for: r.currency)).font(.system(size: 11))
                             Text("\(r.cost)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
@@ -689,7 +689,7 @@ struct TradeSheet: View {
                         HStack(spacing: 10) {
                             Text("−\(cost) \(c.from.symbol ?? "•")").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.primary)
                             Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
-                            Text("+\(gain) \(c.to.symbol ?? "•")").font(.system(size: 16, weight: .heavy)).foregroundStyle(FamilyColor.wally.solid)
+                            Text("+\(gain) \(c.to.symbol ?? "•")").font(.system(size: 16, weight: .heavy)).foregroundStyle(FamilyColor.person3.solid)
                             Spacer()
                             Text("has \(have) \(c.from.symbol ?? "•")").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                         }

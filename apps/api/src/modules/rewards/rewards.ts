@@ -7,6 +7,7 @@ import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { rewardsRoutes, moduleRoutes } from '../../platform/route-guards'
+import { registerRewardCaptureTarget } from './rewards-capture'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
 type Api = ReturnType<typeof createAPI>
@@ -446,4 +447,8 @@ export function registerRewardRoutes(api: Api): void {
     if ('error' in result) return res.status(409).json({ error: 'Conflict', message: result.error })
     return res.status(200).json({ redemption: presentRedemption(result.redemption) })
   }
+
+  // Register the reward capture target (Tier 2 mutate: redeem) into the capture
+  // registry so /api/capture/{resolve,commit} can dispatch to it.
+  registerRewardCaptureTarget()
 }

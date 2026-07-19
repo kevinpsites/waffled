@@ -2,7 +2,7 @@
 // migration sets that up: a `powersync` publication covering the synced tables,
 // each with REPLICA IDENTITY FULL (so updates/deletes carry the whole old row).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import { runMigrations } from '../src/migrate'
 
