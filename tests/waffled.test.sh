@@ -170,7 +170,7 @@ t "release_repository_ready rejects main when origin has advanced" '
   git -C "$tmp/work" add .
   git -C "$tmp/work" commit -qm "test fixture"
   git -C "$tmp/work" push -qu origin main
-  git clone -q "$tmp/origin.git" "$tmp/other"
+  git clone -q --branch main "$tmp/origin.git" "$tmp/other"
   git -C "$tmp/other" config user.email test@example.com
   git -C "$tmp/other" config user.name "Waffled Test"
   printf "%s\n" "new remote work" > "$tmp/other/remote-change"
