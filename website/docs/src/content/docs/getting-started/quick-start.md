@@ -165,8 +165,8 @@ images from GHCR, pinned to `WAFFLED_VERSION` in `infra/compose/.env`. Two alter
   ```
 
 Images are multi-arch (amd64 + arm64), so they run on x86 or an ARM SBC (e.g. Raspberry
-Pi). They're published by `.github/workflows/publish-images.yml` when you cut a release
-tag (`git tag vX.Y.Z && git push origin vX.Y.Z`).
+Pi). They're published by `.github/workflows/publish-images.yml` when a maintainer cuts
+and pushes a release with `./waffled release X.Y.Z`.
 
 ## Kiosk mode (the always-on tablet)
 
