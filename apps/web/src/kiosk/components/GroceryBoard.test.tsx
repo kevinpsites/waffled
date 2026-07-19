@@ -1,7 +1,11 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { GroceryBoard } from './GroceryBoard'
-import { TopbarSlotProvider } from '../topbar-slot'
+import { TopbarSlotProvider, useTopbarSlots } from '../topbar-slot'
+
+function TopbarProbe() {
+  return <>{useTopbarSlots().full}</>
+}
 
 const kelly = { personId: 'p2', name: 'Kelly', avatarEmoji: '🦊', colorHex: '#EC6049' }
 
@@ -58,6 +62,7 @@ function renderBoard() {
   return render(
     <MemoryRouter>
       <TopbarSlotProvider>
+        <TopbarProbe />
         <GroceryBoard onBack={() => {}} />
       </TopbarSlotProvider>
     </MemoryRouter>
@@ -65,6 +70,15 @@ function renderBoard() {
 }
 
 describe('GroceryBoard item attribution', () => {
+  it('does not present actions that have no implementation', async () => {
+    mockBoard()
+    renderBoard()
+
+    await screen.findByText('Cookies')
+    expect(screen.queryByRole('button', { name: /Send to phone/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Order online/i })).not.toBeInTheDocument()
+  })
+
   it('shows "added by {name}" for a manual item but not for an auto item', async () => {
     mockBoard()
     renderBoard()
