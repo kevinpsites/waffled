@@ -38,6 +38,16 @@ function mockApi() {
 }
 
 describe('Settings screen', () => {
+  it('offers a compact section menu for narrow layouts', async () => {
+    mockApi()
+    renderSettings()
+    await screen.findByText('Kevin')
+
+    const menu = screen.getByLabelText('Settings section')
+    fireEvent.change(menu, { target: { value: 'appearance' } })
+    expect(screen.getByText('Match system')).toBeInTheDocument()
+  })
+
   it('renders the sub-nav and Family & people with member role lines', async () => {
     mockApi()
     renderSettings()

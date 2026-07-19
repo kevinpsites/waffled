@@ -17,6 +17,9 @@
   gap: 2px;
   min-width: 0;
 }
+.set-mobile-nav {
+  display: none;
+}
 .set-navgroup {
   font-size: 11px;
   font-weight: 700;
@@ -393,6 +396,46 @@ select.sel {
 @media (max-width: 900px) {
   .settings-screen {
     grid-template-columns: 1fr;
+  }
+  .set-nav {
+    display: none;
+  }
+  .set-mobile-nav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--hair);
+  }
+  .set-mobile-nav select {
+    min-width: 0;
+    flex: 1;
+    height: 42px;
+    border: 1px solid var(--hair);
+    border-radius: 8px;
+    padding: 0 11px;
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 650;
+  }
+  .set-mobile-signout {
+    min-height: 42px;
+    flex: none;
+    border: 1px solid var(--hair);
+    border-radius: 8px;
+    padding: 0 11px;
+    background: var(--card);
+    color: var(--primary);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
   }
 }
 @media (max-width: 720px) {

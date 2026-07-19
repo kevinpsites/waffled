@@ -32,6 +32,187 @@ body {
   overflow-y: auto;
 }
 
+.mobile-header,
+.mobile-nav-scrim {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .wf-kiosk {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 58px;
+    padding: max(8px, env(safe-area-inset-top)) 12px 8px 14px;
+    background: var(--card);
+    border-bottom: 1px solid var(--hair);
+    z-index: 100;
+  }
+
+  .mobile-brand {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    gap: 10px;
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 17px;
+    font-weight: 750;
+  }
+
+  .mobile-brand img {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    object-fit: cover;
+  }
+
+  .mobile-menu-button {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    flex: none;
+    border: 1px solid var(--hair);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .mobile-menu-button svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .mobile-nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 210;
+    border: 0;
+    background: var(--scrim);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 160ms ease, visibility 160ms ease;
+  }
+
+  .mobile-nav-scrim.open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .rail {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 220;
+    width: min(300px, 84vw);
+    align-items: stretch;
+    gap: 3px;
+    padding: max(18px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom));
+    overflow-y: auto;
+    box-shadow: var(--sh-3);
+    transform: translateX(-102%);
+    visibility: hidden;
+    transition: transform 180ms ease, visibility 180ms ease;
+  }
+
+  .rail.mobile-open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .rail-logo {
+    width: 44px;
+    height: 44px;
+    margin: 0 0 12px 8px;
+    border-radius: 10px;
+  }
+
+  .rail-new {
+    display: none;
+  }
+
+  .rail-item {
+    width: 100%;
+    min-height: 46px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    font-size: 14px;
+    font-weight: 650;
+  }
+
+  .rail-item svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .rail-spacer {
+    min-height: 14px;
+  }
+
+  .rail-switch {
+    width: 100%;
+    min-height: 46px;
+    margin: 0;
+    padding: 8px 12px;
+    flex-direction: row;
+    gap: 12px;
+    font-size: 14px;
+    text-align: left;
+  }
+
+  .rail-switch-label {
+    max-width: none;
+    letter-spacing: 0;
+  }
+
+  .kiosk-main {
+    min-height: 0;
+  }
+
+  .topbar {
+    gap: 8px 10px;
+    padding: 13px 16px 10px;
+  }
+
+  .tb-date {
+    font-size: 21px;
+  }
+
+  .tb-time {
+    font-size: 16px;
+  }
+
+  .tb-right {
+    width: 100%;
+    min-width: 0;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  .rail,
+  .mobile-nav-scrim {
+    transition: none;
+  }
+}
+
 /* Offline strip (PWA 7.1) — shown only when the network drops. */
 .offline-banner {
   background: var(--offline);

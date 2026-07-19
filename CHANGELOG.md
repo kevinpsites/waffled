@@ -137,6 +137,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Web navigation now fits phones.** Narrow screens use a compact app header and
+  accessible slide-out destination menu, while Settings replaces its long stacked
+  index with a section picker and nearby sign-out action.
 - **The iOS login screen now offers only the sign-in methods your server allows.** If an
   admin turns off password login (SSO-only), the iPhone/iPad login hides the email and
   password fields and shows just the SSO button — matching the web, which already did
