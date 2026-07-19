@@ -1058,7 +1058,14 @@ is for users and operators, not a commit log — **synthesize** related commits 
 feature-level entry, grouped by product area, and **omit pure-internal churn** (docs,
 tests, tooling, and refactors with no user-visible effect).
 
-**To cut a release:** run **`./waffled release X.Y.Z`** locally on `main`. In one commit it:
+**Before cutting a release:** run **`./waffled release check`** on `main`. It refuses a dirty,
+diverged, or stale checkout; checks that the current API, web, Compose, and iOS versions agree;
+requires user-facing notes under `[Unreleased]`; and runs the CLI, migration, API, web, browser
+(when configured), docs, Docker E2E, and locally available iOS checks. It does not bump versions,
+commit, or tag anything; build tools may refresh ignored local artifacts.
+
+**To cut a release:** run **`./waffled release X.Y.Z`** locally on `main`. It repeats the checks
+before changing anything, then in one commit it:
 1. Reviews the `[Unreleased]` notes with you (**requires at least one entry**), dates the
    section `## [X.Y.Z] - YYYY-MM-DD`, opens a fresh `## [Unreleased]` above it, and adds the
    compare link.

@@ -125,6 +125,98 @@ t "ensure_env backfills LOCAL_JWT_SECRET without touching other values" '
   echo "PASS"
 '
 
+# --- 6. release checks require a clean, synchronized main branch --------------------
+t "release_repository_ready accepts a clean main synchronized with origin" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  git init --bare -q "$tmp/origin.git"
+  git clone -q "$tmp/origin.git" "$tmp/work"
+  git -C "$tmp/work" config user.email test@example.com
+  git -C "$tmp/work" config user.name "Waffled Test"
+  git -C "$tmp/work" switch -q -c main
+  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" "$tmp/work/infra/compose"
+  printf "%s\n" "## [Unreleased]" "" "### Added" "- Ready to ship" "" "## [0.8.0]" > "$tmp/work/CHANGELOG.md"
+  printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/api/package.json"
+  printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/web/package.json"
+  printf "%s\n" "WAFFLED_VERSION=0.8.0" > "$tmp/work/infra/compose/.env.example"
+  printf "%s\n" "  MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/ios/project.yml"
+  git -C "$tmp/work" add .
+  git -C "$tmp/work" commit -qm "test fixture"
+  git -C "$tmp/work" push -qu origin main
+  ROOT="$tmp/work"
+  out="$(release_repository_ready "0.9.0" 2>&1)" || {
+    echo "FAIL: synchronized main was rejected: $out"; exit 0;
+  }
+  case "$out" in
+    *"Release repository checks passed"*) echo "PASS" ;;
+    *) echo "FAIL: missing success message: $out" ;;
+  esac
+'
+
+t "release_repository_ready rejects main when origin has advanced" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  git init --bare -q "$tmp/origin.git"
+  git clone -q "$tmp/origin.git" "$tmp/work"
+  git -C "$tmp/work" config user.email test@example.com
+  git -C "$tmp/work" config user.name "Waffled Test"
+  git -C "$tmp/work" switch -q -c main
+  mkdir -p "$tmp/work/apps/api" "$tmp/work/apps/web" "$tmp/work/apps/ios" "$tmp/work/infra/compose"
+  printf "%s\n" "## [Unreleased]" "" "### Added" "- Ready to ship" "" "## [0.8.0]" > "$tmp/work/CHANGELOG.md"
+  printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/api/package.json"
+  printf "%s\n" "{\"version\":\"0.8.0\"}" > "$tmp/work/apps/web/package.json"
+  printf "%s\n" "WAFFLED_VERSION=0.8.0" > "$tmp/work/infra/compose/.env.example"
+  printf "%s\n" "  MARKETING_VERSION: \"0.8.0\"" > "$tmp/work/apps/ios/project.yml"
+  git -C "$tmp/work" add .
+  git -C "$tmp/work" commit -qm "test fixture"
+  git -C "$tmp/work" push -qu origin main
+  git clone -q "$tmp/origin.git" "$tmp/other"
+  git -C "$tmp/other" config user.email test@example.com
+  git -C "$tmp/other" config user.name "Waffled Test"
+  printf "%s\n" "new remote work" > "$tmp/other/remote-change"
+  git -C "$tmp/other" add remote-change
+  git -C "$tmp/other" commit -qm "advance remote"
+  git -C "$tmp/other" push -q origin main
+  ROOT="$tmp/work"
+  set +e
+  out="$(release_repository_ready "0.9.0" 2>&1)"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || { echo "FAIL: stale main was accepted"; exit 0; }
+  case "$out" in
+    *"behind origin/main"*) echo "PASS" ;;
+    *) echo "FAIL: stale-main guidance missing: $out" ;;
+  esac
+'
+
+t "run_release_api_step strips ambient AI provider configuration" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  ROOT="$tmp"
+  mkdir -p "$ROOT/apps/api"
+  printf "%s\n" \
+    "#!/bin/sh" \
+    "[ -z \"\${ANTHROPIC_API_KEY:-}\" ] || exit 1" \
+    "[ -z \"\${ANTHROPIC_MODEL:-}\" ] || exit 1" \
+    "[ -z \"\${OPENAI_API_KEY:-}\" ] || exit 1" \
+    "[ -z \"\${OPENAI_BASE_URL:-}\" ] || exit 1" \
+    "[ -z \"\${OPENAI_MODEL:-}\" ] || exit 1" \
+    "[ -z \"\${OLLAMA_HOST:-}\" ] || exit 1" \
+    "[ -z \"\${OLLAMA_MODEL:-}\" ] || exit 1" \
+    "echo CLEAN" > "$tmp/check-env"
+  chmod +x "$tmp/check-env"
+  export ANTHROPIC_API_KEY=secret ANTHROPIC_MODEL=model
+  export OPENAI_API_KEY=secret OPENAI_BASE_URL=http://localhost OPENAI_MODEL=model
+  export OLLAMA_HOST=http://localhost OLLAMA_MODEL=model
+  out="$(run_release_api_step "credential check" "$tmp/check-env" 2>&1)" || {
+    echo "FAIL: provider configuration leaked into release tests: $out"; exit 0;
+  }
+  case "$out" in
+    *CLEAN*) echo "PASS" ;;
+    *) echo "FAIL: sanitized command did not run: $out" ;;
+  esac
+'
+
 echo
 if [ "$fails" -gt 0 ]; then
   echo "$fails/$runs waffled test(s) FAILED"
