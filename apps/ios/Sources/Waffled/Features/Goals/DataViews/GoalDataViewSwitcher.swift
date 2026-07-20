@@ -85,28 +85,30 @@ struct GoalDataViewSwitcher: View {
         }
     }
 
-    // `.fixedSize()` keeps every label (incl. "Year ring" / "By person") fully
-    // readable instead of being squeezed to illegible slivers — but with 6 offered
-    // views that's wider than an iPhone screen, so it's wrapped in its own
-    // horizontal ScrollView: that contains the overflow to the control itself
-    // instead of forcing the whole page layout sideways.
+    // A segmented control tops out around 4-5 short labels (HIG); this goal type
+    // can offer up to 6 (incl. "Year ring" / "By person"), which doesn't fit an
+    // iPhone width. A horizontal-scroll wrapper was tried first, but hiding the
+    // scrollbar left no visual cue that more options existed off-screen — it read
+    // as broken, not scrollable. A menu scales to any option count with no
+    // overflow and no hidden gesture.
     private var segControl: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                Picker("View", selection: Binding(
-                    get: { view ?? offered[0] },
-                    set: { v in view = v; GoalViewPreference.set(goal.id, v) }
-                )) {
-                    ForEach(offered, id: \.self) { v in Text(Self.label(v)).tag(v) }
+        Menu {
+            ForEach(offered, id: \.self) { v in
+                Button {
+                    view = v
+                    GoalViewPreference.set(goal.id, v)
+                } label: {
+                    if v == view { Label(Self.label(v), systemImage: "checkmark") } else { Text(Self.label(v)) }
                 }
-                .pickerStyle(.segmented)
-                .fixedSize()
-                .id("picker")
             }
-            // Without this, a selection past the first couple segments (e.g. the
-            // default Pace on a "total" goal) is scrolled out of view — the
-            // control shows Week/Month with no visible selection at all.
-            .onAppear { proxy.scrollTo("picker", anchor: .center) }
+        } label: {
+            HStack(spacing: 4) {
+                Text(Self.label(view ?? offered[0])).font(.system(size: 13, weight: .bold))
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .bold))
+            }
+            .foregroundStyle(WF.ink2)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(WF.panel, in: Capsule())
         }
     }
 
