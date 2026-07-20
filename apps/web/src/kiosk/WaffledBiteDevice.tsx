@@ -196,13 +196,44 @@ export function WaffledBiteDevice() {
           )}
         </Card>
 
-        <Card title="Send a nudge">
-          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 10 }}>Plays aloud and shows a banner on the device.</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {['Time to clean up', '5 more minutes', 'Come give hugs', 'Dinner is ready'].map((msg) => (
-              <button key={msg} type="button" className="btn btn-ghost" onClick={() => waffledBitesApi.nudge(device.id, msg)}>{msg}</button>
-            ))}
-          </div>
+        <Card title="Nightlight">
+          <Toggle on={night.on} onChange={(v) => patchSettings({ night: { ...night, on: v } })} label={night.on ? 'On' : 'Off'} />
+          {night.on && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 12 }}>
+                {NIGHT_COLORS.map(([id, hex]) => (
+                  <button key={id} type="button" aria-label={id} onClick={() => patchSettings({ night: { ...night, color: id } })}
+                    style={{ width: 30, height: 30, borderRadius: 999, background: hex, border: night.color === id ? '3px solid var(--ink)' : '2px solid #fff', boxShadow: '0 0 0 1px var(--hair)', cursor: 'pointer' }} />
+                ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="tiny muted" style={{ fontWeight: 700 }}>Brightness</span>
+                <Stepper value={night.brightness} step={10} min={10} max={100} format={(v) => `${v}%`} onChange={(v) => patchSettings({ night: { ...night, brightness: v } })} />
+              </div>
+            </div>
+          )}
+        </Card>
+
+        <Card title="Sound machine">
+          <Toggle on={sound.on} onChange={(v) => patchSettings({ sound: { ...sound, on: v } })} label={sound.on ? 'Playing' : 'Off'} />
+          {sound.on && (
+            <div style={{ marginTop: 12 }}>
+              <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Sound</div>
+              <ChipPicker options={SOUNDS} value={sound.sound} onChange={(id) => patchSettings({ sound: { ...sound, sound: id } })} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0' }}>
+                <span className="tiny muted" style={{ fontWeight: 700 }}>Volume</span>
+                <Stepper value={sound.volume} step={5} min={0} max={100} format={(v) => `${v}%`} onChange={(v) => patchSettings({ sound: { ...sound, volume: v } })} />
+              </div>
+              <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Sleep timer</div>
+              <div style={{ display: 'flex', gap: 7 }}>
+                {SLEEP_TIMERS.map((m) => (
+                  <button key={m} type="button" className={`rw-cur-chip ${sound.timerMin === m ? 'on' : ''}`} onClick={() => patchSettings({ sound: { ...sound, timerMin: m } })}>
+                    {m === 0 ? 'Off' : m >= 60 ? `${m / 60}h` : `${m}m`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
       </div>
 
@@ -235,24 +266,6 @@ export function WaffledBiteDevice() {
           <button type="button" className="btn btn-ghost" onClick={() => patchSettings({ schedules: [...schedules, { days: [], wakeMin: 7 * 60, leadMin: 10 }] })}>＋ Add another schedule</button>
         </Card>
 
-        <Card title="Nightlight">
-          <Toggle on={night.on} onChange={(v) => patchSettings({ night: { ...night, on: v } })} label={night.on ? 'On' : 'Off'} />
-          {night.on && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 12 }}>
-                {NIGHT_COLORS.map(([id, hex]) => (
-                  <button key={id} type="button" aria-label={id} onClick={() => patchSettings({ night: { ...night, color: id } })}
-                    style={{ width: 30, height: 30, borderRadius: 999, background: hex, border: night.color === id ? '3px solid var(--ink)' : '2px solid #fff', boxShadow: '0 0 0 1px var(--hair)', cursor: 'pointer' }} />
-                ))}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span className="tiny muted" style={{ fontWeight: 700 }}>Brightness</span>
-                <Stepper value={night.brightness} step={10} min={10} max={100} format={(v) => `${v}%`} onChange={(v) => patchSettings({ night: { ...night, brightness: v } })} />
-              </div>
-            </div>
-          )}
-        </Card>
-
         <Card title="Morning alarm">
           <Toggle on={alarm.on} onChange={(v) => patchSettings({ alarm: { ...alarm, on: v } })} label={alarm.on ? 'On' : 'Off'} />
           {alarm.on && (
@@ -266,28 +279,6 @@ export function WaffledBiteDevice() {
               </label>
               <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Alarm sound</div>
               <ChipPicker options={ALARM_TONES.map((t) => [t, t] as [string, string])} value={alarm.tone} onChange={(t) => patchSettings({ alarm: { ...alarm, tone: t } })} />
-            </div>
-          )}
-        </Card>
-
-        <Card title="Sound machine">
-          <Toggle on={sound.on} onChange={(v) => patchSettings({ sound: { ...sound, on: v } })} label={sound.on ? 'Playing' : 'Off'} />
-          {sound.on && (
-            <div style={{ marginTop: 12 }}>
-              <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Sound</div>
-              <ChipPicker options={SOUNDS} value={sound.sound} onChange={(id) => patchSettings({ sound: { ...sound, sound: id } })} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0' }}>
-                <span className="tiny muted" style={{ fontWeight: 700 }}>Volume</span>
-                <Stepper value={sound.volume} step={5} min={0} max={100} format={(v) => `${v}%`} onChange={(v) => patchSettings({ sound: { ...sound, volume: v } })} />
-              </div>
-              <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Sleep timer</div>
-              <div style={{ display: 'flex', gap: 7 }}>
-                {SLEEP_TIMERS.map((m) => (
-                  <button key={m} type="button" className={`rw-cur-chip ${sound.timerMin === m ? 'on' : ''}`} onClick={() => patchSettings({ sound: { ...sound, timerMin: m } })}>
-                    {m === 0 ? 'Off' : m >= 60 ? `${m / 60}h` : `${m}m`}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
         </Card>

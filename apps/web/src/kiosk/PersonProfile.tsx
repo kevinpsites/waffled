@@ -8,38 +8,25 @@ import { WaffledBitePairModal } from './components/WaffledBitePairModal'
 import { rewardsEnabled, moduleEnabled } from '../lib/modules'
 import './../styles/overview.css'
 
-function fmtMMSS(sec: number): string {
-  const s = Math.max(0, Math.round(sec))
-  return `${Math.floor(s / 60)}:${s % 60 < 10 ? '0' : ''}${s % 60}`
-}
-
-// Paired-device status card, or a pair CTA when this kid has none yet. The full
-// control panel (quiet time, night light, wake schedule, alarm, sound, display) is
-// its own page — this card is just the Family-tab-facing summary + entry point.
-function WaffledBiteCard({ personId, personName }: { personId: string; personName: string }) {
+// A single chip in the hero row (next to the name), not a whole card — pair CTA
+// when this kid has no device yet, or a link into the full control panel (its own
+// page: quiet time, night light, wake schedule, alarm, sound, display) once paired.
+function WaffledBiteChip({ personId, personName }: { personId: string; personName: string }) {
   const navigate = useNavigate()
   const { device, loading, refetch } = useWaffledBiteDevice(personId)
   const [pairing, setPairing] = useState(false)
   if (loading) return null
 
   return (
-    <div className="card pp-card">
-      <div className="card-h" style={{ marginBottom: 10 }}>🧇 Waffled-Bite</div>
-      {device ? (
-        <>
-          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
-            {device.runtimeState.quiet.active
-              ? `Quiet time — ${fmtMMSS(device.runtimeState.quiet.remainingSec)} ${device.runtimeState.quiet.running ? 'left' : 'left · paused'}`
-              : 'Paired and ready'}
-          </div>
-          <button type="button" className="pp-trade" onClick={() => navigate(`/person/${personId}/waffled-bite`)}>Open control panel</button>
-        </>
-      ) : (
-        <>
-          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>No device paired yet.</div>
-          <button type="button" className="pp-trade" onClick={() => setPairing(true)}>Pair a Waffled-Bite</button>
-        </>
-      )}
+    <>
+      <button
+        type="button"
+        className="pill"
+        style={{ marginLeft: 'auto', cursor: 'pointer', flex: 'none' }}
+        onClick={() => (device ? navigate(`/person/${personId}/waffled-bite`) : setPairing(true))}
+      >
+        🧇 {device ? 'Open Waffled-Bite controls' : 'Pair a Waffled-Bite'}
+      </button>
       {pairing && (
         <WaffledBitePairModal
           personId={personId}
@@ -48,7 +35,7 @@ function WaffledBiteCard({ personId, personName }: { personId: string; personNam
           onPaired={() => { setPairing(false); refetch() }}
         />
       )}
-    </div>
+    </>
   )
 }
 
@@ -298,6 +285,7 @@ export function PersonProfile() {
             <div className="wf-serif pp-name">{person.name}</div>
             <div className="pp-sub">{subBits.join(' · ')}</div>
           </div>
+          {waffledBitesOn && <WaffledBiteChip personId={person.id} personName={person.name ?? 'this kid'} />}
         </div>
 
         <div className="card pp-card">
@@ -339,7 +327,6 @@ export function PersonProfile() {
       </div>
 
       <div className="pp-right">
-        {waffledBitesOn && <WaffledBiteCard personId={person.id} personName={person.name ?? 'this kid'} />}
         <StreakCard streak={data.streak} />
 
         {rewardsOn && (
