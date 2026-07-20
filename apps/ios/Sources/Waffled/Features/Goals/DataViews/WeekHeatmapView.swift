@@ -20,9 +20,14 @@ struct WeekHeatmapView: View {
     // that trap: flexible columns always claim the parent's full width
     // regardless of what size its children ask for.
     @State private var gridWidth: CGFloat = 280
-    private static let cellSpacing: CGFloat = 8
+    // Spacing and floor match MonthHeatmapView's exactly (not just "close") — with
+    // both views measuring the same card width via this identical formula, their
+    // cells come out pixel-identical instead of just similar. A higher floor here
+    // than Month's would also let Week force an overflow past the card's padding
+    // at narrower widths where Month's lower floor still fits without one.
+    private static let cellSpacing: CGFloat = 6
     private static let columns = Array(repeating: GridItem(.flexible(), spacing: cellSpacing), count: 7)
-    private var cellSize: CGFloat { max(32, (gridWidth - Self.cellSpacing * 6) / 7) }
+    private var cellSize: CGFloat { max(24, (gridWidth - Self.cellSpacing * 6) / 7) }
 
     private var today: String { ctx.stats.today }
     private var windowEnd: String { GoalDateKey.addDays(today, weekOffset * 7) }
