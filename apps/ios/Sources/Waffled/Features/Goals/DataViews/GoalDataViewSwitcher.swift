@@ -91,15 +91,22 @@ struct GoalDataViewSwitcher: View {
     // horizontal ScrollView: that contains the overflow to the control itself
     // instead of forcing the whole page layout sideways.
     private var segControl: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            Picker("View", selection: Binding(
-                get: { view ?? offered[0] },
-                set: { v in view = v; GoalViewPreference.set(goal.id, v) }
-            )) {
-                ForEach(offered, id: \.self) { v in Text(Self.label(v)).tag(v) }
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                Picker("View", selection: Binding(
+                    get: { view ?? offered[0] },
+                    set: { v in view = v; GoalViewPreference.set(goal.id, v) }
+                )) {
+                    ForEach(offered, id: \.self) { v in Text(Self.label(v)).tag(v) }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .id("picker")
             }
-            .pickerStyle(.segmented)
-            .fixedSize()
+            // Without this, a selection past the first couple segments (e.g. the
+            // default Pace on a "total" goal) is scrolled out of view — the
+            // control shows Week/Month with no visible selection at all.
+            .onAppear { proxy.scrollTo("picker", anchor: .center) }
         }
     }
 

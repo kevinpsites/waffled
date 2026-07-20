@@ -46,8 +46,15 @@ struct YearGridView: View {
                 headerRight
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                gridCanvas
+            // Cells before the goal's own start date are drawn as nothing (by
+            // design — see gridCanvas), so a goal that didn't start Jan 1 would
+            // default-open on a blank leading stretch of the scroll view unless
+            // we jump to the trailing (most-recent) edge on appear.
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    gridCanvas.id("grid")
+                }
+                .onAppear { proxy.scrollTo("grid", anchor: .trailing) }
             }
 
             HStack(spacing: 20) {
