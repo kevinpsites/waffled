@@ -122,7 +122,11 @@ export function WaffledBiteDevice() {
   }
 
   if (!enabled) return <div className="muted" style={{ padding: 30 }}>The Waffled-Bites module is off — turn it on in Settings → Modules.</div>
-  if (loading || !person) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
+  // Only show the full-page loader on the very first fetch — every mutation below
+  // (pause/resume/settings patch/etc.) calls refetch(), which flips `loading` back
+  // to true; blanking the whole page on each one was a distracting flash. Once we
+  // have a device, keep rendering it (slightly stale) until the refetch resolves.
+  if ((loading && !device) || !person) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
 
   if (!device) {
     return (
@@ -235,6 +239,14 @@ export function WaffledBiteDevice() {
             </div>
           )}
         </Card>
+
+        <Card title="Screen & display">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <span className="tiny muted" style={{ fontWeight: 700 }}>Brightness</span>
+            <Stepper value={display.brightness} step={10} min={10} max={100} format={(v) => `${v}%`} onChange={(v) => patchSettings({ display: { ...display, brightness: v } })} />
+          </div>
+          <Toggle on={display.nightDim} onChange={(v) => patchSettings({ display: { ...display, nightDim: v } })} label="Screen goes dark at night" />
+        </Card>
       </div>
 
       <div className="pp-right">
@@ -281,14 +293,6 @@ export function WaffledBiteDevice() {
               <ChipPicker options={ALARM_TONES.map((t) => [t, t] as [string, string])} value={alarm.tone} onChange={(t) => patchSettings({ alarm: { ...alarm, tone: t } })} />
             </div>
           )}
-        </Card>
-
-        <Card title="Screen & display">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <span className="tiny muted" style={{ fontWeight: 700 }}>Brightness</span>
-            <Stepper value={display.brightness} step={10} min={10} max={100} format={(v) => `${v}%`} onChange={(v) => patchSettings({ display: { ...display, brightness: v } })} />
-          </div>
-          <Toggle on={display.nightDim} onChange={(v) => patchSettings({ display: { ...display, nightDim: v } })} label="Screen goes dark at night" />
         </Card>
 
         <button

@@ -134,6 +134,11 @@ export function registerWaffledBiteRoutes(api: Api): void {
     const owns = await query(`select 1 from persons where id = $1 and household_id = $2 and deleted_at is null`, [personId, tenant.householdId])
     if (!owns.rows.length) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
     const code = genCode()
+    // Opportunistic cleanup: a code a parent minted then abandoned (closed the
+    // pairing modal, never claimed it) would otherwise sit forever — sweep any
+    // code past its TTL every time a new one is minted, so the table never grows
+    // with dead rows. Cheap (this table stays tiny) and needs no separate job.
+    await query(`delete from waffled_bite_pairing_codes where created_at < now() - ($1 || ' minutes')::interval`, [String(CODE_TTL_MIN)])
     await query(
       `insert into waffled_bite_pairing_codes (code, household_id, person_id, created_by) values ($1, $2, $3, $4)`,
       [code, tenant.householdId, personId, tenant.personId]

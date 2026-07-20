@@ -12,6 +12,7 @@ let pg: StartedPostgreSqlContainer
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let app: any
 let closePool: () => Promise<void>
+let query: typeof import('../src/platform/db').query
 
 interface RunResult { statusCode: number; body: string }
 function call(method: string, path: string, body?: unknown, token?: string) {
@@ -33,6 +34,7 @@ beforeAll(async () => {
   delete process.env.AUTH0_DOMAIN
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
+  query = (await import('../src/platform/db')).query
 }, 120_000)
 afterAll(async () => {
   await closePool?.()
@@ -85,6 +87,26 @@ describe('waffled-bites device pairing + parent control panel', () => {
     const code = json(await call('POST', `/api/persons/${kid}/waffled-bite/pairing-code`, {}, admin)).code
     const r = await call('POST', '/api/waffled-bites/pair', { code })
     expect(r.statusCode).toBe(409)
+  })
+
+  // ── abandoned pairing codes don't accumulate forever ────────────────────────
+  it('sweeps expired, never-claimed pairing codes the next time one is minted', async () => {
+    // A code a parent minted and then abandoned (closed the pairing modal without
+    // pairing) would otherwise sit in the table forever. Simulate one aging past
+    // its TTL, then mint a fresh code and confirm the stale one is gone.
+    const householdId = json(await call('GET', '/api/household', undefined, admin)).household.id
+    await query(
+      `insert into waffled_bite_pairing_codes (code, household_id, person_id, created_by, created_at)
+       values ('STALE1', $1, $2, $2, now() - interval '11 minutes')`,
+      [householdId, otherKid]
+    )
+    const before = await query(`select 1 from waffled_bite_pairing_codes where code = 'STALE1'`)
+    expect(before.rows.length).toBe(1)
+
+    await call('POST', `/api/persons/${otherKid}/waffled-bite/pairing-code`, {}, admin)
+
+    const after = await query(`select 1 from waffled_bite_pairing_codes where code = 'STALE1'`)
+    expect(after.rows.length).toBe(0)
   })
 
   it('exchanges the device secret for a short-lived device token; rejects a bad secret', async () => {
