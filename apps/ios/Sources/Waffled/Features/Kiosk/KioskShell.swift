@@ -190,7 +190,7 @@ struct KioskShell: View {
     }
 
     private func railItem(_ item: KioskNav) -> some View {
-        let on = selection == item
+        let on = KioskRail.isHighlighted(item, selection: selection, pinned: pinnedRailItems)
         return Button { tapRail(item) } label: {
             VStack(spacing: 5) {
                 Image(systemName: item.icon).font(.system(size: 21, weight: .semibold))
@@ -277,7 +277,7 @@ struct KioskShell: View {
     }
 
     private func barItem(_ item: KioskNav) -> some View {
-        let on = selection == item
+        let on = KioskRail.isHighlighted(item, selection: selection, pinned: pinnedRailItems)
         return Button { tapRail(item) } label: {
             VStack(spacing: 3) {
                 Image(systemName: item.icon).font(.system(size: 20, weight: .semibold))
