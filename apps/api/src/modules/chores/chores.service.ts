@@ -292,7 +292,7 @@ export async function listTodayInstances(
   householdId: string,
   dueOn: string,
   tz = 'UTC',
-  opts?: { streaks?: boolean }
+  opts?: { streaks?: boolean; personId?: string }
 ): Promise<TodayInstance[]> {
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
@@ -307,8 +307,9 @@ export async function listTodayInstances(
              or (ci.due_on < $2::date and ci.status = 'pending' and c.rrule is null and c.rollover)
              or (ci.due_on > $2::date and ci.status = 'pending' and c.rrule is null
                  and (ci.created_at at time zone $3)::date <= $2::date))
+        and ($4::uuid is null or ci.person_id = $4::uuid)
       order by p.sort_order nulls last, c.due_time nulls last, c.title`,
-    [householdId, dueOn, tz]
+    [householdId, dueOn, tz, opts?.personId ?? null]
   )
   const streaks = opts?.streaks === false ? new Map<string, number>() : await streaksByChore(householdId, dueOn)
   return rows.map((r) => ({

@@ -44,6 +44,7 @@ import { listMemberships, pendingInvitesForEmail } from './modules/auth/accounts
 import { registerInviteRoutes } from './modules/auth/invites'
 import { registerOidcRoutes } from './modules/auth/oidc'
 import { registerKioskRoutes } from './modules/kiosk/kiosk'
+import { registerWaffledBiteRoutes } from './modules/waffledBites/waffledBites'
 import { registerTodayLayoutRoutes } from './modules/layout/today-layout'
 import { registerMobileTodayLayoutRoutes } from './modules/layout/mobile-today-layout'
 import { registerPhotoRoutes } from './modules/photos/photos'
@@ -86,6 +87,9 @@ const PUBLIC_PATHS = new Set([
   // Kiosk pairing: both authenticate via a code/secret in the body, pre-session.
   '/api/kiosk/pair',
   '/api/kiosk/device/token',
+  // Waffled-Bites pairing: same shape, pre-session.
+  '/api/waffled-bites/pair',
+  '/api/waffled-bites/device/token',
 ])
 
 // Auth gate — authenticates every non-public route. An `x-api-key` header takes the
@@ -249,6 +253,9 @@ registerOidcRoutes(api)
 
 // Kiosk device pairing + profile tokens (/api/kiosk/*)
 registerKioskRoutes(api)
+
+// Waffled-Bites device pairing + parent control panel (/api/waffled-bites/*)
+registerWaffledBiteRoutes(api)
 
 // Person + family overviews (/api/persons/:id/overview, /api/family/overview)
 registerOverviewRoutes(api)

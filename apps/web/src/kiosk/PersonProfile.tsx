@@ -1,11 +1,56 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { usePersonOverview, useConversions, usePersons, useHousehold, useGoalLists, can, personsApi, rewardsApi, fmtGoalNum, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
+import { usePersonOverview, useConversions, usePersons, useHousehold, useGoalLists, can, personsApi, rewardsApi, fmtGoalNum, useWaffledBiteDevice, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
 import { TradeModal } from './components/TradeModal'
 import { SpotAwardModal } from './components/SpotAwardModal'
-import { rewardsEnabled } from '../lib/modules'
+import { WaffledBitePairModal } from './components/WaffledBitePairModal'
+import { rewardsEnabled, moduleEnabled } from '../lib/modules'
 import './../styles/overview.css'
+
+function fmtMMSS(sec: number): string {
+  const s = Math.max(0, Math.round(sec))
+  return `${Math.floor(s / 60)}:${s % 60 < 10 ? '0' : ''}${s % 60}`
+}
+
+// Paired-device status card, or a pair CTA when this kid has none yet. The full
+// control panel (quiet time, night light, wake schedule, alarm, sound, display) is
+// its own page — this card is just the Family-tab-facing summary + entry point.
+function WaffledBiteCard({ personId, personName }: { personId: string; personName: string }) {
+  const navigate = useNavigate()
+  const { device, loading, refetch } = useWaffledBiteDevice(personId)
+  const [pairing, setPairing] = useState(false)
+  if (loading) return null
+
+  return (
+    <div className="card pp-card">
+      <div className="card-h" style={{ marginBottom: 10 }}>🧇 Waffled-Bite</div>
+      {device ? (
+        <>
+          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
+            {device.runtimeState.quiet.active
+              ? `Quiet time — ${fmtMMSS(device.runtimeState.quiet.remainingSec)} ${device.runtimeState.quiet.running ? 'left' : 'left · paused'}`
+              : 'Paired and ready'}
+          </div>
+          <button type="button" className="pp-trade" onClick={() => navigate(`/person/${personId}/waffled-bite`)}>Open control panel</button>
+        </>
+      ) : (
+        <>
+          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>No device paired yet.</div>
+          <button type="button" className="pp-trade" onClick={() => setPairing(true)}>Pair a Waffled-Bite</button>
+        </>
+      )}
+      {pairing && (
+        <WaffledBitePairModal
+          personId={personId}
+          personName={personName}
+          onClose={() => setPairing(false)}
+          onPaired={() => { setPairing(false); refetch() }}
+        />
+      )}
+    </div>
+  )
+}
 
 const CAT_CLASS: Record<string, string> = {
   physical: 'cat-physical', intellectual: 'cat-intellectual', spiritual: 'cat-spiritual', creative: 'cat-creative', social: 'cat-social',
@@ -183,6 +228,7 @@ export function PersonProfile() {
   // The spend side of the economy (jar + redemptions) hides when rewards is off;
   // the earn side (wallet/ledger, fed by chores) stays.
   const rewardsOn = rewardsEnabled(household)
+  const waffledBitesOn = moduleEnabled(household, 'waffledBites')
   const { lists: goalLists } = useGoalLists()
   const [trading, setTrading] = useState(false)
   const [awarding, setAwarding] = useState(false)
@@ -293,6 +339,7 @@ export function PersonProfile() {
       </div>
 
       <div className="pp-right">
+        {waffledBitesOn && <WaffledBiteCard personId={person.id} personName={person.name ?? 'this kid'} />}
         <StreakCard streak={data.streak} />
 
         {rewardsOn && (
