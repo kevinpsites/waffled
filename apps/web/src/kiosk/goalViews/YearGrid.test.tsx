@@ -39,4 +39,22 @@ describe('YearGrid', () => {
     expect(screen.getByText(/longest streak/)).toBeInTheDocument()
     expect(screen.getAllByText(/active days/).length).toBeGreaterThan(0)
   })
+
+  it('scopes "active days" and "% of days" to the year shown, not the goal\'s lifetime', () => {
+    // Goal has been running since 2025 with lots of activity last year, but the
+    // Year grid only covers Jan 1 - today of the CURRENT year. Using the lifetime
+    // activeDays count against the in-year day span produced a >100% "of days"
+    // and an "active days" figure that didn't match what's actually plotted.
+    const longDays: DayEntry[] = [
+      ...Array.from({ length: 30 }, (_, i) => ({ dateKey: `2025-12-${String(i + 1).padStart(2, '0')}`, total: 1, perMember: {} })),
+      { dateKey: '2026-01-02', total: 1, perMember: {} },
+      { dateKey: '2026-01-04', total: 1, perMember: {} },
+    ]
+    const longStats = computeGoalStats({ today: '2026-01-05', startDate: '2025-01-01', endDate: null, target: 1000, days: longDays })
+    render(<YearGrid goal={makeGoal()} stats={longStats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    // In-view (Jan 1 - Jan 5, 2026): 2 active days out of 5 -> 40%, not the
+    // lifetime 32-active-day count against a 5-day span (640%).
+    expect(screen.getByText('40%')).toBeInTheDocument()
+    expect(screen.getByText(/^2 active days/)).toBeInTheDocument()
+  })
 })

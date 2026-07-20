@@ -65,9 +65,14 @@ export function GoalDataViews({ goal }: { goal: GoalDetailT }) {
 
   const personMap = useMemo(() => new Map(goal.participants.map((p) => [p.personId, p])), [goal.participants])
 
+  // loading/error must be checked BEFORE "offered is empty": offered derives from
+  // timeframe, which is null until activity resolves, so it's [] during loading
+  // and on error too — checking it first made both of those branches dead code
+  // and rendered a blank card instead of a loading state or an error message.
+  if (loading) return <div className="card detail-card gdv-loading tiny muted">Loading…</div>
+  if (error) return <div className="card detail-card tiny muted" style={{ padding: 20 }}>Couldn't load this goal's activity — try reloading.</div>
   if (offered.length === 0) return null // checklist: the existing steps card covers it
-  if (loading || !stats || !view) return <div className="card detail-card gdv-loading tiny muted">Loading…</div>
-  if (error) return null
+  if (!stats || !view) return <div className="card detail-card gdv-loading tiny muted">Loading…</div>
 
   function selectView(v: ViewKey) {
     setView(v)

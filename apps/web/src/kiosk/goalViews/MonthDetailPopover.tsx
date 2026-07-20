@@ -25,9 +25,13 @@ export function MonthDetailPopover({
   const total = stats.byMonth[month] ?? 0
   const perMember = stats.byMonthPerMember[month] ?? {}
   const memberIds = Object.keys(perMember).filter((id) => perMember[id] > 0)
+  // Parsed directly out of the household-tz dateKey string — NOT `new
+  // Date(r.loggedAt)`, which reads the year/month in the viewing device's own
+  // timezone and could disagree with which month the entry is actually bucketed
+  // under (the same mismatch DayDetailPopover had).
   const matches = goal.recent.filter((r) => {
-    const d = new Date(r.loggedAt)
-    return d.getFullYear() === year && d.getMonth() === month
+    const [y, m] = r.dateKey.split('-').map(Number)
+    return y === year && m - 1 === month
   })
 
   return (
@@ -60,7 +64,7 @@ export function MonthDetailPopover({
             </div>
           ))}
 
-        {memberIds.length > 0 && (
+        {matches.length === 0 && memberIds.length > 0 && (
           <div>
             {memberIds.map((pid) => {
               const p = personMap.get(pid)
@@ -72,11 +76,9 @@ export function MonthDetailPopover({
                 </div>
               )
             })}
-            {matches.length === 0 && (
-              <div className="tiny muted" style={{ marginTop: 10 }}>
-                Individual entries aren't kept in the recent log this far back — showing the month's totals only.
-              </div>
-            )}
+            <div className="tiny muted" style={{ marginTop: 10 }}>
+              Individual entries aren't kept in the recent log this far back — showing the month's totals only.
+            </div>
           </div>
         )}
       </div>

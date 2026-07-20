@@ -28,12 +28,23 @@ export function PaceChart({ goal, stats, onDayClick, headerRight }: DataViewProp
   const x = (dateKey: string) => PAD_L + (diffDaysKey(dateKey, startDate) / totalSpan) * pw
   const y = (v: number) => PAD_T + (1 - clamp01(target ? v / target : 0)) * ph
 
+  // Walking every calendar day (potentially years' worth) to emit one SVG vertex
+  // apiece is wasted work: between logged days `cum` never changes, so those
+  // interior points are collinear and contribute nothing to the visible line.
+  // `stats.byDay` only holds days that actually have a log (sparse), so instead
+  // we walk just those, emitting a flat point just before each jump (holding the
+  // previous value right up to the day before) and the jump point itself — the
+  // same rendered staircase shape, without visiting every no-op day in between.
   let cum = 0
-  const points: Array<[number, number]> = []
-  for (let d = startDate; d <= today; d = addDaysKey(d, 1)) {
+  const points: Array<[number, number]> = [[x(startDate), y(0)]]
+  const activeDates = [...stats.byDay.keys()].filter((d) => d >= startDate && d <= today).sort()
+  for (const d of activeDates) {
+    const dayBefore = addDaysKey(d, -1)
+    if (dayBefore >= startDate) points.push([x(dayBefore), y(cum)])
     cum += stats.dayEntry(d).total
     points.push([x(d), y(cum)])
   }
+  points.push([x(today), y(cum)])
   const total = cum
   const linePath = points.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')
   const areaPath = points.length

@@ -31,7 +31,7 @@ const detail = {
     { id: 'm1', threshold: 100, emoji: '🌱', label: '100 hrs', rewardText: 'reached', reached: true },
     { id: 'm2', threshold: 500, emoji: '⛺', label: '500 hrs', rewardText: 'camp', reached: false },
   ],
-  recent: [{ id: 'r1', amount: 102, loggedAt: '2026-05-30T10:00:00Z', note: 'Creek hike', participants: [{ personId: 'p1', name: 'Wally', avatarEmoji: '🐢', colorHex: '#25A368' }] }],
+  recent: [{ id: 'r1', amount: 102, loggedAt: '2026-05-30T10:00:00Z', dateKey: '2026-05-30', note: 'Creek hike', participants: [{ personId: 'p1', name: 'Wally', avatarEmoji: '🐢', colorHex: '#25A368' }] }],
   thisWeek: 14.5,
 }
 

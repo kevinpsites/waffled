@@ -2490,6 +2490,11 @@ struct WaffledAPI: Sendable {
             let id: String
             let amount: Double
             let loggedAt: String
+            /// Household-timezone day (YYYY-MM-DD), matching the /activity endpoint's
+            /// day bucketing exactly. Use this to match an entry to a day/month cell —
+            /// NOT a re-parse of `loggedAt`, which would bucket by the device's own
+            /// timezone instead of the household's.
+            let dateKey: String
             let note: String?
             /// Split-pool logs collapse to one entry: `amount` is the summed total and
             /// `participants` lists everyone credited (empty for a family/shared log).

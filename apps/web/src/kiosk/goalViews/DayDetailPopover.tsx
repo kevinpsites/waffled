@@ -4,7 +4,7 @@
 // breakdown from the day-bucketed activity instead of raw entries.
 import type { GoalDetail, GoalParticipant } from '../../lib/api'
 import { fmtGoalNum } from '../../lib/api'
-import { toLocalDateKey, type DayEntry } from '../../lib/goalStats'
+import type { DayEntry } from '../../lib/goalStats'
 
 export function DayDetailPopover({
   dateKey,
@@ -20,7 +20,10 @@ export function DayDetailPopover({
   onClose: () => void
 }) {
   const label = new Date(dateKey + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-  const matches = goal.recent.filter((r) => toLocalDateKey(new Date(r.loggedAt)) === dateKey)
+  // `dateKey` on each entry is the household-timezone day (matching the total
+  // shown above, which comes from the same household-tz bucketing server-side) —
+  // NOT re-derived from `loggedAt` in the viewing device's own timezone.
+  const matches = goal.recent.filter((r) => r.dateKey === dateKey)
   const memberIds = Object.keys(dayEntry.perMember)
 
   return (

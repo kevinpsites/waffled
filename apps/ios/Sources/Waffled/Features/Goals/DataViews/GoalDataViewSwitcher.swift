@@ -149,11 +149,11 @@ struct GoalDayDetailSheet: View {
     let personMap: [String: WaffledAPI.Goal.Participant]
 
     private var label: String { DateFmt.string(GoalDateKey.parse(dateKey), "EEEE, MMMM d", .current) }
+    // Matched on `entry.dateKey` (household-timezone, server-computed) — not a
+    // re-parse of `entry.loggedAt` in this device's own timezone, which could
+    // disagree with the day bucketing `dayEntry.total` above already reflects.
     private var matches: [WaffledAPI.GoalDetail.LogEntry] {
-        goal.recent.filter { entry in
-            guard let d = HealthKitBridge.parseTimestamp(entry.loggedAt) else { return false }
-            return GoalDateKey.toKey(d) == dateKey
-        }
+        goal.recent.filter { $0.dateKey == dateKey }
     }
 
     var body: some View {
@@ -219,11 +219,16 @@ struct GoalMonthDetailSheet: View {
 
     private var total: Double { stats.byMonth[month] }
     private var perMember: [String: Double] { stats.byMonthPerMember[month] }
+    // Parsed directly out of the household-tz `dateKey` string (format
+    // YYYY-MM-DD) — not `HealthKitBridge.parseTimestamp(entry.loggedAt)` +
+    // `Calendar.current`, which reads the year/month in this device's own
+    // timezone and could disagree with which month the entry is actually
+    // bucketed under.
     private var matches: [WaffledAPI.GoalDetail.LogEntry] {
         goal.recent.filter { entry in
-            guard let d = HealthKitBridge.parseTimestamp(entry.loggedAt) else { return false }
-            let c = GoalDateKey.calendar.dateComponents([.year, .month], from: d)
-            return c.year == year && (c.month ?? 0) - 1 == month
+            let parts = entry.dateKey.split(separator: "-")
+            guard parts.count == 3, let y = Int(parts[0]), let m = Int(parts[1]) else { return false }
+            return y == year && m - 1 == month
         }
     }
 
@@ -253,7 +258,7 @@ struct GoalMonthDetailSheet: View {
                         }
                     }
 
-                    if !perMember.isEmpty {
+                    if matches.isEmpty, !perMember.isEmpty {
                         ForEach(Array(perMember.keys.filter { (perMember[$0] ?? 0) > 0 }), id: \.self) { pid in
                             let p = personMap[pid]
                             HStack(spacing: 10) {
@@ -263,10 +268,8 @@ struct GoalMonthDetailSheet: View {
                                 Text("\(GoalViewFmt.num(perMember[pid] ?? 0))\(goal.unit.map { " \($0)" } ?? "")").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
                             }
                         }
-                        if matches.isEmpty {
-                            Text("Individual entries aren't kept in the recent log this far back — showing the month's totals only.")
-                                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(WF.ink3)
-                        }
+                        Text("Individual entries aren't kept in the recent log this far back — showing the month's totals only.")
+                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
                 }
                 .padding(16)

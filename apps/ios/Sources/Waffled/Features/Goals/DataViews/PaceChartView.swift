@@ -18,15 +18,25 @@ struct PaceChartView: View {
         return GoalDateKey.addDays(ctx.stats.today, 14)
     }
 
+    // Walking every calendar day (potentially years' worth) to emit one chart
+    // point apiece is wasted work: between logged days the cumulative total never
+    // changes, so those interior points are collinear and contribute nothing to
+    // the visible line. `ctx.stats.byDay` only holds days that actually have a
+    // log (sparse), so instead we walk just those, emitting a flat point just
+    // before each jump (holding the previous value right up to the day before)
+    // and the jump point itself — the same rendered staircase shape, without
+    // visiting every no-op day in between.
     private var points: [(date: Date, cumulative: Double)] {
         var cum = 0.0
-        var result: [(Date, Double)] = []
-        var d = ctx.stats.startDate
-        while d <= ctx.stats.today {
+        var result: [(Date, Double)] = [(GoalDateKey.parse(ctx.stats.startDate), 0)]
+        let activeDates = ctx.stats.byDay.keys.filter { $0 >= ctx.stats.startDate && $0 <= ctx.stats.today }.sorted()
+        for d in activeDates {
+            let dayBefore = GoalDateKey.addDays(d, -1)
+            if dayBefore >= ctx.stats.startDate { result.append((GoalDateKey.parse(dayBefore), cum)) }
             cum += ctx.stats.dayEntry(d).total
             result.append((GoalDateKey.parse(d), cum))
-            d = GoalDateKey.addDays(d, 1)
         }
+        result.append((GoalDateKey.parse(ctx.stats.today), cum))
         return result
     }
     private var total: Double { points.last?.1 ?? 0 }

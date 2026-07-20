@@ -126,6 +126,11 @@ export interface GoalLogEntry {
   id: string
   amount: number
   loggedAt: string
+  // Household-timezone day (YYYY-MM-DD), matching the /activity endpoint's day
+  // bucketing exactly. Use this to match an entry to a day/month cell — NOT a
+  // client-side re-parse of `loggedAt`, which would bucket by the viewing
+  // device's own timezone instead of the household's.
+  dateKey: string
   note: string | null
   // Split-pool logs write one row per person but collapse to a single entry here —
   // `amount` is the summed total and `participants` lists everyone credited.
@@ -280,9 +285,21 @@ export function useGoalActivity(id: string | null): GoalActivityState {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [nonce, setNonce] = useState(0)
+  const idRef = useRef(id)
   useEffect(() => {
     if (!id) return
     let alive = true
+    // Clear the previous goal's activity on an actual id change (not a same-id
+    // refetch, e.g. a log elsewhere bumping the bus — that stays silent, no
+    // flash, matching useGoalDetail's convention above). Otherwise the old
+    // goal's day data would keep rendering — computeGoalStats mixing stale
+    // days with the NEW goal's target — under the new goal's header for as
+    // long as its fetch takes, not just a single frame.
+    if (idRef.current !== id) {
+      idRef.current = id
+      setActivity(null)
+      setError(false)
+    }
     setLoading(true)
     goalsApi
       .activity(id)

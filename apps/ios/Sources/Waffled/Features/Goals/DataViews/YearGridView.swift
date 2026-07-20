@@ -31,15 +31,23 @@ struct YearGridView: View {
         return result
     }
     private var yearMax: Double { max(1, ctx.stats.yearMax) }
+    // ctx.stats.activeDays is a lifetime count (no lower date bound on the query
+    // behind it), but this grid only spans the current calendar year — using the
+    // lifetime count against an in-year day span could push "% of days" past
+    // 100% and made the header's "N active days" describe a bigger number than
+    // what's actually plotted here.
+    private var activeDaysInViewCount: Int {
+        weeks.flatMap { $0 }.filter { $0 >= viewStart && $0 <= today }.filter { ctx.stats.dayEntry($0).total > 0 }.count
+    }
     private var activeDaysInView: Int { max(1, GoalDateKey.diffDays(today, viewStart) + 1) }
-    private var pct: Int { Int((Double(ctx.stats.activeDays) / Double(activeDaysInView)) * 100) }
+    private var pct: Int { Int((Double(activeDaysInViewCount) / Double(activeDaysInView)) * 100) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("The whole year").font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
-                    Text("\(ctx.stats.activeDays) active days · every square is a day")
+                    Text("\(activeDaysInViewCount) active days · every square is a day")
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 Spacer()
@@ -60,7 +68,7 @@ struct YearGridView: View {
             HStack(spacing: 20) {
                 statColumn("🔥 \(ctx.stats.currentStreak)", "current streak", WF.primary)
                 statColumn("\(ctx.stats.longestStreak)", "longest streak", WF.ink)
-                statColumn("\(ctx.stats.activeDays)", "active days", WF.ink)
+                statColumn("\(activeDaysInViewCount)", "active days", WF.ink)
                 statColumn("\(pct)%", "of days", WF.ink)
                 Spacer()
             }

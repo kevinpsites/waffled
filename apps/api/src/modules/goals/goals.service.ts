@@ -689,10 +689,14 @@ export async function goalDetail(householdId: string, id: string) {
   // row groups by its own id, so it stays one entry exactly as before. Grouping (not the
   // raw rows) is limited to 12 so a split action counts as one line.
   const recent = (
-    await query<{ id: string; amount: string; loggedAt: string; note: string | null; participants: Array<{ personId: string | null; name: string | null; avatarEmoji: string | null; colorHex: string | null }> }>(
+    await query<{ id: string; amount: string; loggedAt: string; dateKey: string; note: string | null; participants: Array<{ personId: string | null; name: string | null; avatarEmoji: string | null; colorHex: string | null }> }>(
       `select coalesce(gl.batch_id, gl.id)::text as id,
               coalesce(sum(gl.amount) filter (where gl.counts_total), 0) as amount,
               min(gl.logged_at) as "loggedAt",
+              -- Household-timezone day, matching goalActivity's bucketing exactly —
+              -- so the day drill-down's entry list agrees with the day cell's total
+              -- regardless of which timezone the VIEWING device happens to be in.
+              (min(gl.logged_at) at time zone h.timezone)::date::text as "dateKey",
               gl.note,
               coalesce(
                 json_agg(json_build_object(
@@ -701,11 +705,13 @@ export async function goalDetail(householdId: string, id: string) {
                 ) order by p.name) filter (where gl.person_id is not null),
                 '[]'::json
               ) as participants
-         from goal_logs gl left join persons p on p.id = gl.person_id
-        where gl.goal_id=$1 and gl.deleted_at is null
-        group by coalesce(gl.batch_id, gl.id), gl.note
+         from goal_logs gl
+         join households h on h.id = gl.household_id
+         left join persons p on p.id = gl.person_id
+        where gl.goal_id=$1 and gl.household_id=$2 and gl.deleted_at is null
+        group by coalesce(gl.batch_id, gl.id), gl.note, h.timezone
         order by min(gl.logged_at) desc limit 12`,
-      [id]
+      [id, householdId]
     )
   ).rows.map((r) => ({ ...r, amount: Number(r.amount) }))
 

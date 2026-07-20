@@ -19,8 +19,8 @@ function makeGoal(recent: GoalLogEntry[]): GoalDetail {
 describe('DayDetailPopover', () => {
   it('lists matching recent entries for the tapped day', () => {
     const goal = makeGoal([
-      { id: 'r1', amount: 2.5, loggedAt: '2026-07-17T14:00:00Z', note: 'Creek hike', participants: [{ personId: 'p1', name: 'Wally', avatarEmoji: '🐢', colorHex: '#25A368' }] },
-      { id: 'r2', amount: 4, loggedAt: '2026-06-01T14:00:00Z', note: 'Old entry', participants: [] },
+      { id: 'r1', amount: 2.5, loggedAt: '2026-07-17T14:00:00Z', dateKey: '2026-07-17', note: 'Creek hike', participants: [{ personId: 'p1', name: 'Wally', avatarEmoji: '🐢', colorHex: '#25A368' }] },
+      { id: 'r2', amount: 4, loggedAt: '2026-06-01T14:00:00Z', dateKey: '2026-06-01', note: 'Old entry', participants: [] },
     ])
     render(
       <DayDetailPopover
@@ -48,6 +48,27 @@ describe('DayDetailPopover', () => {
     )
     expect(screen.getByText('Wally')).toBeInTheDocument()
     expect(screen.getByText(/kept in the recent log/)).toBeInTheDocument()
+  })
+
+  it('matches entries by the household-tz dateKey, not a re-parse of loggedAt in the viewer\'s own timezone', () => {
+    // The raw UTC instant here (2026-01-02T05:30:00Z) is late evening Jan 1 in most
+    // US timezones, but its `dateKey` (computed server-side in household tz) says
+    // Jan 1. A device-tz re-parse of `loggedAt` could easily land on Jan 2 instead
+    // (e.g. a viewer whose OS timezone happens to be ahead of the household's) and
+    // miss the match entirely — this must match on `dateKey` alone.
+    const goal = makeGoal([
+      { id: 'r1', amount: 1, loggedAt: '2026-01-02T05:30:00Z', dateKey: '2026-01-01', note: 'Late one', participants: [] },
+    ])
+    render(
+      <DayDetailPopover
+        dateKey="2026-01-01"
+        dayEntry={{ dateKey: '2026-01-01', total: 1, perMember: { p1: 1 } }}
+        goal={goal}
+        personMap={personMap}
+        onClose={() => {}}
+      />
+    )
+    expect(screen.getByText('Late one')).toBeInTheDocument()
   })
 
   it('shows a quiet empty state for a zero day', () => {

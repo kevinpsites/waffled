@@ -44,15 +44,20 @@ export function YearGrid({ goal, stats, onDayClick, headerRight }: DataViewProps
   const gw = weeks.length * (CELL + GAP)
   const gh = 7 * (CELL + GAP)
 
+  // stats.activeDays is a lifetime count (no lower date bound on the query behind
+  // it) but this grid only spans the current calendar year — using the lifetime
+  // count against an in-year day span could push "% of days" past 100% and made
+  // the header's "N active days" describe a number bigger than what's plotted.
+  const activeDaysInViewCount = squares.filter((s) => s.total > 0).length
   const activeDaysInView = Math.max(1, diffDaysKey(today, viewStart) + 1)
-  const pct = Math.round((stats.activeDays / activeDaysInView) * 100)
+  const pct = Math.round((activeDaysInViewCount / activeDaysInView) * 100)
 
   return (
     <div>
       <div className="gdv-head">
         <div>
           <div className="gdv-head-t">The whole year</div>
-          <div className="gdv-head-sub">{stats.activeDays} active days · every square is a day</div>
+          <div className="gdv-head-sub">{activeDaysInViewCount} active days · every square is a day</div>
         </div>
         {headerRight && <div className="gdv-head-grow">{headerRight}</div>}
       </div>
@@ -83,7 +88,7 @@ export function YearGrid({ goal, stats, onDayClick, headerRight }: DataViewProps
       <div className="gdv-footer">
         <div className="gdv-stat"><div className="wf-serif gdv-stat-v" style={{ color: 'var(--primary)' }}>🔥 {stats.currentStreak}</div><div className="gdv-stat-l">current streak</div></div>
         <div className="gdv-stat"><div className="wf-serif gdv-stat-v">{stats.longestStreak}</div><div className="gdv-stat-l">longest streak</div></div>
-        <div className="gdv-stat"><div className="wf-serif gdv-stat-v">{stats.activeDays}</div><div className="gdv-stat-l">active days</div></div>
+        <div className="gdv-stat"><div className="wf-serif gdv-stat-v">{activeDaysInViewCount}</div><div className="gdv-stat-l">active days</div></div>
         <div className="gdv-stat"><div className="wf-serif gdv-stat-v">{pct}%</div><div className="gdv-stat-l">of days</div></div>
         <div className="gdv-footer-right gdv-legend-row">
           <span className="tiny muted">Less</span>

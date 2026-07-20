@@ -41,11 +41,35 @@ describe('MonthDetailPopover', () => {
 
   it('lists recent entries that fall within the month, excluding entries from other months', () => {
     const goal = makeGoal([
-      { id: 'r1', amount: 4, loggedAt: '2026-02-05T14:00:00Z', note: 'Feb hike', participants: [] },
-      { id: 'r2', amount: 9, loggedAt: '2026-03-01T14:00:00Z', note: 'March hike', participants: [] },
+      { id: 'r1', amount: 4, loggedAt: '2026-02-05T14:00:00Z', dateKey: '2026-02-05', note: 'Feb hike', participants: [] },
+      { id: 'r2', amount: 9, loggedAt: '2026-03-01T14:00:00Z', dateKey: '2026-03-01', note: 'March hike', participants: [] },
     ])
     render(<MonthDetailPopover year={2026} month={1} goal={goal} stats={stats} personMap={personMap} onClose={() => {}} />)
     expect(screen.getByText('Feb hike')).toBeInTheDocument()
     expect(screen.queryByText('March hike')).not.toBeInTheDocument()
+  })
+
+  it('matches entries by the household-tz dateKey, not a re-parse of loggedAt in the viewer\'s own timezone', () => {
+    // dateKey says Jan 31 (household tz), but the raw UTC instant is already Feb 1
+    // — a device-tz re-parse of loggedAt could easily land on the wrong month.
+    const goal = makeGoal([
+      { id: 'r1', amount: 4, loggedAt: '2026-02-01T05:30:00Z', dateKey: '2026-01-31', note: 'Late Jan', participants: [] },
+    ])
+    render(<MonthDetailPopover year={2026} month={0} goal={goal} stats={stats} personMap={personMap} onClose={() => {}} />)
+    expect(screen.getByText('Late Jan')).toBeInTheDocument()
+  })
+
+  it('does not repeat the per-member totals once matching entries are already listed', () => {
+    // Feb 5 and Feb 20 both have real logged entries below AND per-member totals
+    // in `stats` — the per-member block is a fallback for entries older than the
+    // kept `recent` log, not a redundant summary alongside entries already shown.
+    const goal = makeGoal([
+      { id: 'r1', amount: 4, loggedAt: '2026-02-05T14:00:00Z', dateKey: '2026-02-05', note: 'Feb hike', participants: [] },
+      { id: 'r2', amount: 6, loggedAt: '2026-02-20T14:00:00Z', dateKey: '2026-02-20', note: 'Another hike', participants: [] },
+    ])
+    render(<MonthDetailPopover year={2026} month={1} goal={goal} stats={stats} personMap={personMap} onClose={() => {}} />)
+    expect(screen.getByText('Feb hike')).toBeInTheDocument()
+    expect(screen.queryByText('Wally')).not.toBeInTheDocument()
+    expect(screen.queryByText(/kept in the recent log/)).not.toBeInTheDocument()
   })
 })

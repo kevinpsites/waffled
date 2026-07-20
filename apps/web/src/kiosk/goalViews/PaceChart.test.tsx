@@ -42,6 +42,29 @@ describe('PaceChart (fixed end date)', () => {
   })
 })
 
+describe('PaceChart (long sparse history)', () => {
+  it('emits a point only where cumulative progress actually changes, not one per calendar day', () => {
+    // A year-plus-old goal with only 3 logged days should NOT walk (and emit an SVG
+    // vertex for) every one of the ~400 days in between — most of them are a
+    // no-op (cum unchanged), and the visible line is flat across those gaps
+    // regardless of how many redundant collinear points fill it in.
+    const days: DayEntry[] = [
+      { dateKey: '2025-01-05', total: 100, perMember: {} },
+      { dateKey: '2025-06-15', total: 50, perMember: {} },
+      { dateKey: '2026-01-01', total: 25, perMember: {} },
+    ]
+    const goal = makeGoal({ deadline: null, target: 1000 })
+    const stats = computeGoalStats({ today: '2026-01-20', startDate: '2025-01-01', endDate: null, target: 1000, days })
+    const { container } = render(<PaceChart goal={goal} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const linePath = container.querySelector('path[stroke="#1c9160"]')
+    const commandCount = (linePath?.getAttribute('d') ?? '').match(/[ML]/g)?.length ?? 0
+    // 3 logged days -> at most ~8 vertices (start + before/after each jump + today),
+    // nowhere near the ~385 calendar days spanned.
+    expect(commandCount).toBeLessThan(15)
+    expect(screen.getByText(/175/)).toBeInTheDocument() // 100+50+25 cumulative total, unaffected
+  })
+})
+
 describe('PaceChart (open-ended)', () => {
   it('hides the "vs pace" pill and pace-line legend; shows a target line + projection instead', () => {
     const days: DayEntry[] = Array.from({ length: 10 }, (_, i) => ({

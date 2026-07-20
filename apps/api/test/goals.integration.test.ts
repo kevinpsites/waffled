@@ -13,6 +13,7 @@ let url: string
 let app: any
 let closePool: () => Promise<void>
 let kevinId = ''
+let householdId = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
@@ -55,7 +56,7 @@ beforeAll(async () => {
   })
   expect(setup.statusCode).toBe(201)
   kevinId = JSON.parse(setup.body).person.id
-  const householdId = JSON.parse(setup.body).household.id
+  householdId = JSON.parse(setup.body).household.id
   // Seed an identity so the legacy mint('dev|kevin') token resolves to the owner.
   await withClient((c) =>
     c.query(
@@ -243,6 +244,33 @@ describe('goal lists + detail', () => {
     expect(detail.milestoneReached).toBe(1)
 
     expect((await call('GET', '/api/goals/00000000-0000-0000-0000-000000000000', kevin)).statusCode).toBe(404)
+  })
+
+  it('tags recent entries with a household-timezone dateKey, not the raw UTC date', async () => {
+    // Household is America/Chicago (UTC-6 in January, no DST). A log at
+    // 2026-01-02T05:30:00Z is 2026-01-01 23:30 local — the household-tz day is
+    // Jan 1, but a naive read of the raw UTC timestamp's date would say Jan 2.
+    // The goal-detail data views' day drill-down needs this field to match
+    // entries against the SAME day bucketing /activity uses, regardless of the
+    // viewing device's own timezone.
+    const add = await call('POST', '/api/goals', kevin, {
+      title: 'Tz check', goalType: 'total', unit: 'hours', targetValue: 100,
+      trackingMode: 'shared_total', participantIds: [kevinId],
+    })
+    const id = JSON.parse(add.body).goal.id
+    await withClient((c) =>
+      c.query(
+        `insert into goal_logs (household_id, goal_id, person_id, amount, note, counts_total, logged_at)
+         values ($1,$2,$3,1,'Late one','t','2026-01-02T05:30:00Z')`,
+        [householdId, id, kevinId]
+      )
+    )
+
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.recent[0]).toMatchObject({ note: 'Late one', dateKey: '2026-01-01' })
+
+    const activity = JSON.parse((await call('GET', `/api/goals/${id}/activity`, kevin)).body)
+    expect(activity.days.find((d: { dateKey: string }) => d.dateKey === '2026-01-01')).toBeTruthy()
   })
 
   it('logs a time goal in hours and minutes, converting to decimal hours server-side', async () => {
