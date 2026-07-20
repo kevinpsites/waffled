@@ -298,7 +298,9 @@ struct GoalsView: View {
         .task {
             if model.lists.isEmpty { await model.loadLists() }
             await model.syncHealth()
-            if DemoHooks.openGoal, !Self.didOpenGoal, let f = model.spotlight ?? model.visibleGoals.first {
+            // path.isEmpty: skip when something already deep-linked a goal (e.g. the
+            // Today card's openGoal hook landed here with the detail pushed).
+            if DemoHooks.openGoal, !Self.didOpenGoal, path.isEmpty, let f = model.spotlight ?? model.visibleGoals.first {
                 Self.didOpenGoal = true; path.append(.goal(f))
             }
             if DemoHooks.newGoal, !Self.didOpenGoal { Self.didOpenGoal = true; creating = true }

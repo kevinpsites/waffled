@@ -309,7 +309,9 @@ struct KioskShell: View {
     @ViewBuilder private var detail: some View {
         switch selection {
         case .today:
-            KioskDashboard(navigate: { selection = $0 }).id(navReset)
+            KioskDashboard(navigate: { selection = $0 },
+                           openGoal: { g in goalsPath = [.goal(g)]; selection = .goals })
+                .id(navReset)
         case .more:
             KioskMoreView(navigate: { selection = $0 }).id(navReset)
         case .calendar:
