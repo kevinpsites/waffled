@@ -23,7 +23,7 @@ const SOUNDS: Array<[string, string]> = [
 const ALARM_TONES = ['Sunrise chime', 'Birdsong', 'Soft harp', 'Gentle bells', 'Ocean tide', 'Twinkle stars']
 const SLEEP_TIMERS = [0, 15, 30, 60, 120]
 const DOW: Array<[number, string]> = [[0, 'S'], [1, 'M'], [2, 'T'], [3, 'W'], [4, 'T'], [5, 'F'], [6, 'S']]
-const QUIET_PRESETS = [10, 15, 20, 30]
+const QUIET_PRESETS = [10, 15, 20, 30, 60]
 
 function pad(n: number): string { return n < 10 ? `0${n}` : `${n}` }
 function minToHHMM(min: number): string { const h = Math.floor(min / 60) % 24; return `${pad(h)}:${pad(min % 60)}` }
@@ -100,6 +100,8 @@ export function WaffledBiteDevice() {
   const person = persons.find((p) => p.id === id)
   const { device, loading, refetch } = useWaffledBiteDevice(id ?? null)
   const [pairing, setPairing] = useState(false)
+  const [customQuietH, setCustomQuietH] = useState(0)
+  const [customQuietM, setCustomQuietM] = useState(5)
   const settingsRef = useRef<WaffledBiteSettings>({})
   if (device) settingsRef.current = device.settings
 
@@ -191,10 +193,31 @@ export function WaffledBiteDevice() {
           ) : (
             <>
               <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 10 }}>Start a calm stay-in-room countdown on the device.</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
                 {QUIET_PRESETS.map((m) => (
-                  <button key={m} type="button" className="btn btn-ghost" onClick={() => waffledBitesApi.quietStart(device.id, m * 60).then(refetch)}>{m}m</button>
+                  <button key={m} type="button" className="btn btn-ghost" onClick={() => waffledBitesApi.quietStart(device.id, m * 60).then(refetch)}>
+                    {m >= 60 ? `${m / 60}h` : `${m}m`}
+                  </button>
                 ))}
+              </div>
+              <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Or a custom length</div>
+              <div className="field-row" style={{ alignItems: 'flex-end' }}>
+                <label className="field" style={{ flex: 1 }}>
+                  <span>Hours</span>
+                  <input type="number" min={0} max={1} value={customQuietH} onChange={(e) => setCustomQuietH(Math.max(0, Math.min(1, Number(e.target.value) || 0)))} />
+                </label>
+                <label className="field" style={{ flex: 1 }}>
+                  <span>Minutes</span>
+                  <input type="number" min={0} max={59} value={customQuietM} onChange={(e) => setCustomQuietM(Math.max(0, Math.min(59, Number(e.target.value) || 0)))} />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={customQuietH * 60 + customQuietM <= 0}
+                  onClick={() => waffledBitesApi.quietStart(device.id, (customQuietH * 3600) + (customQuietM * 60)).then(refetch)}
+                >
+                  Start
+                </button>
               </div>
             </>
           )}
