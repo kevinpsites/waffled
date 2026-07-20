@@ -769,7 +769,12 @@ button.goal-listhead-link:hover {
 .gdv-head-sub { font-size: 12px; color: var(--ink-3); font-weight: 600; }
 .gdv-head-grow { margin-left: auto; }
 .gdv-head-grow-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.gdv-seg { flex: none; }
+/* Goals with 6 offered views (e.g. Total) can be wider than the card on
+   narrower layouts — scroll instead of clipping, so every option stays
+   reachable rather than silently unselectable past the card's edge. */
+.gdv-seg { flex: none; max-width: 100%; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.gdv-seg::-webkit-scrollbar { display: none; }
+.gdv-seg button { white-space: nowrap; }
 .gdv-loading { display: flex; align-items: center; justify-content: center; min-height: 120px; }
 
 .gdv-week { display: flex; gap: 8px; }
