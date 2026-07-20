@@ -32,11 +32,19 @@ struct GoalDataViewSwitcher: View {
         Dictionary(uniqueKeysWithValues: goal.participants.map { ($0.personId, $0) })
     }
 
+    // `loading` is checked before `offered.isEmpty` so the very first render (before
+    // `activity` has loaded) never resolves to `EmptyView()` — SwiftUI's `.task`/
+    // `.onAppear` don't fire on a modifier host whose content IS `EmptyView`, which
+    // would otherwise deadlock the load that's supposed to populate `offered`.
+    // Attaching `.task` to a concrete `VStack` (not a bare `Group`) is the second
+    // half of the same guarantee: the host always exists regardless of branch.
     var body: some View {
-        Group {
-            if offered.isEmpty {
+        VStack(alignment: .leading, spacing: 0) {
+            if loading {
+                ProgressView().tint(WF.ink3).frame(maxWidth: .infinity, minHeight: 140)
+            } else if offered.isEmpty {
                 EmptyView() // checklist: the existing steps card covers it
-            } else if loading || stats == nil || view == nil {
+            } else if stats == nil || view == nil {
                 ProgressView().tint(WF.ink3).frame(maxWidth: .infinity, minHeight: 140)
             } else {
                 content
@@ -77,15 +85,22 @@ struct GoalDataViewSwitcher: View {
         }
     }
 
+    // `.fixedSize()` keeps every label (incl. "Year ring" / "By person") fully
+    // readable instead of being squeezed to illegible slivers — but with 6 offered
+    // views that's wider than an iPhone screen, so it's wrapped in its own
+    // horizontal ScrollView: that contains the overflow to the control itself
+    // instead of forcing the whole page layout sideways.
     private var segControl: some View {
-        Picker("View", selection: Binding(
-            get: { view ?? offered[0] },
-            set: { v in view = v; GoalViewPreference.set(goal.id, v) }
-        )) {
-            ForEach(offered, id: \.self) { v in Text(Self.label(v)).tag(v) }
+        ScrollView(.horizontal, showsIndicators: false) {
+            Picker("View", selection: Binding(
+                get: { view ?? offered[0] },
+                set: { v in view = v; GoalViewPreference.set(goal.id, v) }
+            )) {
+                ForEach(offered, id: \.self) { v in Text(Self.label(v)).tag(v) }
+            }
+            .pickerStyle(.segmented)
+            .fixedSize()
         }
-        .pickerStyle(.segmented)
-        .fixedSize()
     }
 
     private static func label(_ v: GoalViewKey) -> String {
