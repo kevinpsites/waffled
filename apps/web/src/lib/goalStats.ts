@@ -95,8 +95,11 @@ const TYPE_VIEWS: Record<string, ViewKey[]> = {
   checklist: [],
 }
 
+// "total"'s signature is the rhythm view (Month, falling back to Week for goals
+// too short to have a meaningful month view — see FALLBACK_ORDER), not Pace: a
+// goal-detail page should open on "what did we actually do," not a pace projection.
 const SIGNATURE_VIEW: Record<string, ViewKey | null> = {
-  total: 'pace',
+  total: 'month',
   count: 'collection',
   habit: 'consistency',
   checklist: null,
@@ -114,7 +117,7 @@ export function availableViews(goalType: string, timeframe: Timeframe): ViewKey[
 
 // Default to the goal type's signature view when it still fits this timeframe;
 // otherwise fall back to the largest timeframe-appropriate view that does.
-const FALLBACK_ORDER: ViewKey[] = ['year', 'month', 'consistency', 'pace', 'byPerson', 'collection', 'week', 'yearRing']
+const FALLBACK_ORDER: ViewKey[] = ['year', 'month', 'consistency', 'week', 'byPerson', 'collection', 'pace', 'yearRing']
 
 export function defaultView(goalType: string, timeframe: Timeframe): ViewKey | null {
   const offered = availableViews(goalType, timeframe)

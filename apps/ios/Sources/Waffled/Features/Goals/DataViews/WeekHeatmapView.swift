@@ -11,11 +11,18 @@ struct WeekHeatmapView: View {
     // real proposed height to compare against, and this row's height is otherwise
     // just "whatever the content needs" — so .fit *and* .fill both collapsed to
     // content size (pill-shaped for a bare "·", oversized for a wrapped number).
-    // Measuring the row's actual width and setting an explicit width==height frame
-    // sidesteps that ambiguity entirely.
-    @State private var rowWidth: CGFloat = 280
+    // A plain HStack has the same problem one level up: once each cell has an
+    // explicit fixed frame instead of `maxWidth: .infinity`, the HStack itself
+    // stops requesting the parent's full width and just self-sizes to content,
+    // so a background GeometryReader measuring it gets stuck at whatever narrow
+    // size it started from. A LazyVGrid of flexible columns (matching
+    // MonthHeatmapView's identical, verified-working cell sizing) doesn't have
+    // that trap: flexible columns always claim the parent's full width
+    // regardless of what size its children ask for.
+    @State private var gridWidth: CGFloat = 280
     private static let cellSpacing: CGFloat = 8
-    private var cellSize: CGFloat { max(32, (rowWidth - Self.cellSpacing * 6) / 7) }
+    private static let columns = Array(repeating: GridItem(.flexible(), spacing: cellSpacing), count: 7)
+    private var cellSize: CGFloat { max(32, (gridWidth - Self.cellSpacing * 6) / 7) }
 
     private var today: String { ctx.stats.today }
     private var windowEnd: String { GoalDateKey.addDays(today, weekOffset * 7) }
@@ -51,7 +58,7 @@ struct WeekHeatmapView: View {
                 headerRight
             }
 
-            HStack(spacing: Self.cellSpacing) {
+            LazyVGrid(columns: Self.columns, spacing: Self.cellSpacing) {
                 ForEach(weekKeys, id: \.self) { dateKey in
                     let entry = ctx.stats.dayEntry(dateKey)
                     let intensity = entry.total > 0 ? entry.total / weekMax : 0
@@ -88,8 +95,8 @@ struct WeekHeatmapView: View {
             .background(
                 GeometryReader { geo in
                     Color.clear
-                        .onAppear { rowWidth = geo.size.width }
-                        .onChange(of: geo.size.width) { rowWidth = $0 }
+                        .onAppear { gridWidth = geo.size.width }
+                        .onChange(of: geo.size.width) { gridWidth = $0 }
                 }
             )
 

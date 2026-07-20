@@ -70,11 +70,11 @@ describe('classifyTimeframe', () => {
 })
 
 describe('goal-type -> view mapping', () => {
-  it('total: signature is Pace; year/month/yearRing drop for a short window', () => {
-    expect(defaultView('total', 'long')).toBe('pace')
+  it('total: signature is Month; year/month/yearRing drop for a short window', () => {
+    expect(defaultView('total', 'long')).toBe('month')
     expect(availableViews('total', 'long')).toEqual(['week', 'month', 'year', 'pace', 'yearRing', 'byPerson'])
     expect(availableViews('total', 'short')).toEqual(['week', 'pace', 'byPerson'])
-    expect(defaultView('total', 'short')).toBe('pace') // still fits
+    expect(defaultView('total', 'short')).toBe('week') // signature (month) doesn't fit -> largest that does
   })
 
   it('count: signature is the Collection grid', () => {

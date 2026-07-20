@@ -31,10 +31,10 @@ beforeEach(() => {
 })
 
 describe('GoalDataViews', () => {
-  it('defaults to the type\'s signature view (Pace for a total goal) and offers the type\'s view list', async () => {
+  it('defaults to the type\'s signature view (Month for a total goal) and offers the type\'s view list', async () => {
     render(<GoalDataViews goal={goal} />)
     await waitFor(() => expect(screen.queryByText(/Loading/)).not.toBeInTheDocument())
-    expect(screen.getByText('Path to 1,000')).toBeInTheDocument() // Pace's title
+    expect(screen.getByText('July')).toBeInTheDocument() // Month's title
     for (const label of ['Week', 'Month', 'Pace', 'Year', 'By person', 'Year ring']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }

@@ -90,8 +90,12 @@ enum GoalStats {
         "checklist": [],
     ]
 
+    // "total"'s signature is the rhythm view (Month, falling back to Week for
+    // goals too short to have a meaningful month view — see fallbackOrder), not
+    // Pace: a goal-detail page should open on "what did we actually do," not a
+    // pace projection.
     private static let signatureView: [String: GoalViewKey] = [
-        "total": .pace,
+        "total": .month,
         "count": .collection,
         "habit": .consistency,
     ]
@@ -104,7 +108,7 @@ enum GoalStats {
         return base.filter { !dropsForShortWindow.contains($0) }
     }
 
-    private static let fallbackOrder: [GoalViewKey] = [.year, .month, .consistency, .pace, .byPerson, .collection, .week, .yearRing]
+    private static let fallbackOrder: [GoalViewKey] = [.year, .month, .consistency, .week, .byPerson, .collection, .pace, .yearRing]
 
     static func defaultView(goalType: String, timeframe: GoalTimeframe) -> GoalViewKey? {
         let offered = availableViews(goalType: goalType, timeframe: timeframe)

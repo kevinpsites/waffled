@@ -58,10 +58,11 @@ import Testing
     // MARK: goal-type -> view mapping
 
     @Test func totalGoalViewMapping() {
-        #expect(GoalStats.defaultView(goalType: "total", timeframe: .long) == .pace)
+        #expect(GoalStats.defaultView(goalType: "total", timeframe: .long) == .month)
         #expect(GoalStats.availableViews(goalType: "total", timeframe: .long) == [.week, .month, .year, .pace, .yearRing, .byPerson])
         #expect(GoalStats.availableViews(goalType: "total", timeframe: .short) == [.week, .pace, .byPerson])
-        #expect(GoalStats.defaultView(goalType: "total", timeframe: .short) == .pace)
+        // Signature (month) doesn't fit a short window -> falls back to Week.
+        #expect(GoalStats.defaultView(goalType: "total", timeframe: .short) == .week)
     }
 
     @Test func countGoalViewMapping() {
