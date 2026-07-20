@@ -6,6 +6,12 @@ struct MonthHeatmapView: View {
     let ctx: GoalDataContext
     var headerRight: AnyView?
     @State private var monthOffset = 0
+    // See WeekHeatmapView's identical fix: aspectRatio(1, .fit/.fill) can't reliably
+    // square a grid cell when nothing else pins its height, so measure the grid's
+    // actual width and set an explicit width==height frame instead.
+    @State private var gridWidth: CGFloat = 280
+    private static let gridSpacing: CGFloat = 6
+    private var cellSize: CGFloat { max(24, (gridWidth - Self.gridSpacing * 6) / 7) }
 
     private static let weekdayHeads = ["S", "M", "T", "W", "T", "F", "S"]
     private static let heatStops: [Double] = [0.12, 0.35, 0.6, 0.85, 1]
@@ -85,8 +91,7 @@ struct MonthHeatmapView: View {
                             }
                         }
                         .padding(5)
-                        .frame(maxWidth: .infinity)
-                        .aspectRatio(1, contentMode: .fit)
+                        .frame(width: cellSize, height: cellSize)
                         .background(info.future ? Color.clear : (info.total > 0 ? Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255) : WF.panel))
                         .overlay(info.future ? RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(WF.hair, style: StrokeStyle(lineWidth: 1, dash: [3, 3])) : nil)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -95,6 +100,13 @@ struct MonthHeatmapView: View {
                     .disabled(info.future)
                 }
             }
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { gridWidth = geo.size.width }
+                        .onChange(of: geo.size.width) { gridWidth = $0 }
+                }
+            )
 
             HStack(spacing: 10) {
                 Text("Less").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)

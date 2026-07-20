@@ -7,6 +7,15 @@ struct WeekHeatmapView: View {
     let ctx: GoalDataContext
     var headerRight: AnyView?
     @State private var weekOffset = 0
+    // `aspectRatio(1, contentMode:)` can't reliably square a cell here: it needs a
+    // real proposed height to compare against, and this row's height is otherwise
+    // just "whatever the content needs" — so .fit *and* .fill both collapsed to
+    // content size (pill-shaped for a bare "·", oversized for a wrapped number).
+    // Measuring the row's actual width and setting an explicit width==height frame
+    // sidesteps that ambiguity entirely.
+    @State private var rowWidth: CGFloat = 280
+    private static let cellSpacing: CGFloat = 8
+    private var cellSize: CGFloat { max(32, (rowWidth - Self.cellSpacing * 6) / 7) }
 
     private var today: String { ctx.stats.today }
     private var windowEnd: String { GoalDateKey.addDays(today, weekOffset * 7) }
@@ -42,7 +51,7 @@ struct WeekHeatmapView: View {
                 headerRight
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: Self.cellSpacing) {
                 ForEach(weekKeys, id: \.self) { dateKey in
                     let entry = ctx.stats.dayEntry(dateKey)
                     let intensity = entry.total > 0 ? entry.total / weekMax : 0
@@ -65,8 +74,7 @@ struct WeekHeatmapView: View {
                                     }
                                 }
                             }
-                            .frame(maxWidth: .infinity)
-                            .aspectRatio(1, contentMode: .fit)
+                            .frame(width: cellSize, height: cellSize)
                             .background(entry.total > 0 ? Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255) : WF.panel)
                             .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                             Text(GoalViewFmt.weekday(dateKey))
@@ -77,6 +85,13 @@ struct WeekHeatmapView: View {
                     .buttonStyle(.plain)
                 }
             }
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { rowWidth = geo.size.width }
+                        .onChange(of: geo.size.width) { rowWidth = $0 }
+                }
+            )
 
             (Text(GoalViewFmt.num(weekTotal)).font(WF.serif(15, .semibold)).foregroundStyle(WF.ink)
                 + Text(ctx.goal.unit.map { " \($0)" } ?? "").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
