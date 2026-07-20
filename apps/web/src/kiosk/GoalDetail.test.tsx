@@ -36,7 +36,7 @@ const detail = {
 }
 
 describe('GoalDetail', () => {
-  it('renders the hero, milestones, the data-view switcher (defaulting to Pace) and recent activity', async () => {
+  it('renders the hero, milestones, the data-view switcher (defaulting to Month) and recent activity', async () => {
     globalThis.fetch = vi.fn(async (url: string) => {
       // /activity is checked first — its URL also contains "/api/goals/g1".
       if (String(url).includes('/activity')) {
@@ -57,7 +57,7 @@ describe('GoalDetail', () => {
     expect(await screen.findByText('1,000 Hours Outside')).toBeInTheDocument()
     expect(screen.getByText(/9-day streak/)).toBeInTheDocument()
     expect(screen.getByText('100 hrs')).toBeInTheDocument() // milestone
-    expect(await screen.findByText('Path to 1,000')).toBeInTheDocument() // data-view switcher, defaulted to Pace
+    expect(await screen.findByText('July')).toBeInTheDocument() // data-view switcher, defaulted to Month
     expect(screen.getByText('Creek hike')).toBeInTheDocument() // recent activity
   })
 })
