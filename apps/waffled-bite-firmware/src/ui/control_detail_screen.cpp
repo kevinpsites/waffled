@@ -40,6 +40,16 @@ static void wb_ctx_delete_cb(lv_event_t *e)
   delete ctx;
 }
 
+// WbOptionChipCtx's own delete callback (wb_option_chip_delete_cb, below) is
+// attached to each chip itself, a real child of `parent` that IS destroyed
+// on every lv_obj_clean(parent) — no leak there. WbControlCtx's callback
+// must NOT be attached to `parent`: this screen is a persistent singleton
+// (main.cpp's detail_scr) that's only ever lv_obj_clean()'d, never
+// lv_obj_delete()'d, so a callback on `parent` itself would never fire and
+// every tile tap would leak one ctx. Attached to `sw` (the toggle switch)
+// instead, below — a fresh child created every rebuild, same pattern
+// quiet_screen.cpp's WbQuietCtx already uses correctly.
+
 static void wb_toggle_changed_cb(lv_event_t *e)
 {
   WbControlCtx *ctx = (WbControlCtx *)lv_event_get_user_data(e);
@@ -120,7 +130,6 @@ void wb_build_control_detail_screen(
   lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
   WbControlCtx *ctx = new WbControlCtx{on, optionKey, sliderValue, onChange, nullptr, nullptr};
-  lv_obj_add_event_cb(parent, wb_ctx_delete_cb, LV_EVENT_DELETE, ctx);
 
   // ── top bar: back button + title, same shape as the other screens' ──────
   lv_obj_t *top = lv_obj_create(parent);
@@ -204,6 +213,7 @@ void wb_build_control_detail_screen(
     lv_obj_add_state(sw, LV_STATE_CHECKED);
   lv_obj_set_style_bg_color(sw, WB_COLOR_TILE_ACTIVE, LV_PART_INDICATOR | LV_STATE_CHECKED);
   lv_obj_add_event_cb(sw, wb_toggle_changed_cb, LV_EVENT_VALUE_CHANGED, ctx);
+  lv_obj_add_event_cb(sw, wb_ctx_delete_cb, LV_EVENT_DELETE, ctx);
 
   // ── option chips (tone/color — whichever this tile is for) ─────────────────
   if (optionCount > 0)
