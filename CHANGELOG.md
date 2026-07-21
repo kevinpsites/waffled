@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   you're planning. Event-based countdowns are tappable and open their event.
 
 ### Fixed
+- **Countdowns on the Today page are now tappable.** Tap a countdown to jump straight to
+  what it's counting down to — an event-based countdown opens that event, while a trip or
+  birthday countdown opens the calendar on its day.
 - **Checked-off list items now have somewhere to go.** On the web custom-list view, items
   you check off no longer linger in place — they tuck into a collapsible "Completed" section
   at the bottom (matching the grocery board), with a brief grace window so an accidental tap

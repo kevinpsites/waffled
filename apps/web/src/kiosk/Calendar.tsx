@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { Icon } from './icons'
 import { EventModal } from './components/EventModal'
 import { MonthView } from './components/MonthView'
@@ -61,11 +61,24 @@ function periodLabel(view: View, anchor: Date): string {
   return `${start} – ${end}`
 }
 
+// A `?date=YYYY-MM-DD` present in the URL wins over the remembered state — it's how
+// deep-links (e.g. tapping a countdown on Today) land the calendar on a given day.
+const VIEWS: View[] = ['month', 'week', 'day', 'agenda']
+
 export function Calendar() {
   const navigate = useNavigate()
-  const [view, setView] = useState<View>(() => lastCalState.view)
-  const [anchor, setAnchor] = useState(() => new Date(lastCalState.anchorTime))
-  const [selectedDay, setSelectedDay] = useState(() => defaultDayForMonth(new Date(lastCalState.anchorTime)))
+  const [searchParams] = useSearchParams()
+  const paramDate = searchParams.get('date')
+  const paramView = searchParams.get('view')
+  const [view, setView] = useState<View>(() =>
+    paramView && VIEWS.includes(paramView as View) ? (paramView as View) : lastCalState.view
+  )
+  const [anchor, setAnchor] = useState(() =>
+    paramDate && /^\d{4}-\d{2}-\d{2}$/.test(paramDate) ? new Date(`${paramDate}T12:00:00`) : new Date(lastCalState.anchorTime)
+  )
+  const [selectedDay, setSelectedDay] = useState(() =>
+    paramDate && /^\d{4}-\d{2}-\d{2}$/.test(paramDate) ? paramDate : defaultDayForMonth(new Date(lastCalState.anchorTime))
+  )
   const [modal, setModal] = useState<{ date?: string; time?: string } | null>(null)
 
   // Persist view + anchor so returning from an event detail restores this spot.
