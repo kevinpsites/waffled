@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   you're planning. Event-based countdowns are tappable and open their event.
 
 ### Fixed
+- **"Add anything" events now default to you.** When you type an event into the AI capture
+  bar without naming anyone ("dentist Tuesday at 3"), it's now assigned to the logged-in
+  member instead of nobody. Naming someone ("dentist for George") still assigns them.
 - **Countdowns on the Today page are now tappable.** Tap a countdown to jump straight to
   what it's counting down to — an event-based countdown opens that event, while a trip or
   birthday countdown opens the calendar on its day.
