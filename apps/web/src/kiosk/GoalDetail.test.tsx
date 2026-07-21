@@ -31,13 +31,17 @@ const detail = {
     { id: 'm1', threshold: 100, emoji: '🌱', label: '100 hrs', rewardText: 'reached', reached: true },
     { id: 'm2', threshold: 500, emoji: '⛺', label: '500 hrs', rewardText: 'camp', reached: false },
   ],
-  recent: [{ id: 'r1', amount: 102, loggedAt: '2026-05-30T10:00:00Z', note: 'Creek hike', participants: [{ personId: 'p1', name: 'Wally', avatarEmoji: '🐢', colorHex: '#25A368' }] }],
+  recent: [{ id: 'r1', amount: 102, loggedAt: '2026-05-30T10:00:00Z', dateKey: '2026-05-30', note: 'Creek hike', participants: [{ personId: 'p1', name: 'Wally', avatarEmoji: '🐢', colorHex: '#25A368' }] }],
   thisWeek: 14.5,
 }
 
 describe('GoalDetail', () => {
-  it('renders the hero, milestones, hours-by-person and recent activity', async () => {
+  it('renders the hero, milestones, the data-view switcher (defaulting to Month) and recent activity', async () => {
     globalThis.fetch = vi.fn(async (url: string) => {
+      // /activity is checked first — its URL also contains "/api/goals/g1".
+      if (String(url).includes('/activity')) {
+        return { ok: true, json: async () => ({ startDate: '2026-01-01', endDate: null, today: '2026-07-17', days: [] }) }
+      }
       if (String(url).includes('/api/goals/g1')) return { ok: true, json: async () => ({ goal: detail }) }
       return { ok: false, status: 404, json: async () => ({}) }
     }) as unknown as typeof fetch
@@ -53,7 +57,7 @@ describe('GoalDetail', () => {
     expect(await screen.findByText('1,000 Hours Outside')).toBeInTheDocument()
     expect(screen.getByText(/9-day streak/)).toBeInTheDocument()
     expect(screen.getByText('100 hrs')).toBeInTheDocument() // milestone
-    expect(screen.getByText('Wally')).toBeInTheDocument() // hours-by-person
+    expect(await screen.findByText('July')).toBeInTheDocument() // data-view switcher, defaulted to Month
     expect(screen.getByText('Creek hike')).toBeInTheDocument() // recent activity
   })
 })

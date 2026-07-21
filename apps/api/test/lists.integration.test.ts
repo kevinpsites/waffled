@@ -12,6 +12,7 @@ let url: string
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let app: any
 let closePool: () => Promise<void>
+let foreignPersonId = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, {
@@ -79,6 +80,7 @@ beforeAll(async () => {
     [kHid]
   )
   const kPid = kp.rows[0].id
+  foreignPersonId = kPid
   await query(
     `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified)
      values ($1,$2,'password','dev|kelly','kelly@example.com',true)`,
@@ -339,6 +341,15 @@ describe('list items — sections, quantity, assignee', () => {
     expect(
       (await call('POST', `/api/lists/00000000-0000-0000-0000-000000000000/items`, kevin, { name: 'X' })).statusCode
     ).toBe(404)
+  })
+
+  it('rejects assignees from another household on create and patch', async () => {
+    expect((await call('POST', `/api/lists/${listId}/items`, kevin, {
+      name: 'Unsafe assignee', assignedTo: foreignPersonId,
+    })).statusCode).toBe(404)
+    expect((await call('PATCH', `/api/list-items/${itemId}`, kevin, {
+      assignedTo: foreignPersonId,
+    })).statusCode).toBe(404)
   })
 
   it('patches an item: reassign + re-quantity, then clears the assignee', async () => {
