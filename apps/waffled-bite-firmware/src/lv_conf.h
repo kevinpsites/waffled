@@ -26,8 +26,11 @@
 /*Color depth: 1 (1 byte per pixel), 8 (RGB332), 16 (RGB565), 32 (ARGB8888)*/
 #define LV_COLOR_DEPTH 16
 
-/*Swap the 2 bytes of RGB565 color. Useful if the display has an 8-bit interface (e.g. SPI)*/
-#define LV_COLOR_16_SWAP 1
+/*Swap the 2 bytes of RGB565 color. Useful if the display has an 8-bit interface (e.g. SPI).
+ *Left at 0 here — LovyanGFX's pushImageDMA() expects standard (non-swapped) RGB565 and
+ *handles any panel-interface byte-swapping internally; feeding it pre-swapped pixels from
+ *LVGL corrupted every color channel (visible as rainbow/chromatic fringing on text).*/
+#define LV_COLOR_16_SWAP 0
 
 /*Enable more complex drawing routines to manage screens transparency.
  *Can be used if the UI is above another layer, e.g. an OSD menu or video player.
