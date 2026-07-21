@@ -13,6 +13,9 @@ let url: string
 let app: any
 let closePool: () => Promise<void>
 let kevinId = ''
+let foreignPersonId = ''
+let foreignGoalListId = ''
+let householdId = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
@@ -55,7 +58,7 @@ beforeAll(async () => {
   })
   expect(setup.statusCode).toBe(201)
   kevinId = JSON.parse(setup.body).person.id
-  const householdId = JSON.parse(setup.body).household.id
+  householdId = JSON.parse(setup.body).household.id
   // Seed an identity so the legacy mint('dev|kevin') token resolves to the owner.
   await withClient((c) =>
     c.query(
@@ -63,6 +66,19 @@ beforeAll(async () => {
       [householdId, kevinId]
     )
   )
+  await withClient(async (c) => {
+    const h = await c.query<{ id: string }>(
+      `insert into households (name, timezone) values ('Other goals','UTC') returning id`
+    )
+    foreignPersonId = (await c.query<{ id: string }>(
+      `insert into persons (household_id, name, member_type) values ($1,'Outsider','adult') returning id`,
+      [h.rows[0].id]
+    )).rows[0].id
+    foreignGoalListId = (await c.query<{ id: string }>(
+      `insert into goal_lists (household_id, name) values ($1,'Foreign list') returning id`,
+      [h.rows[0].id]
+    )).rows[0].id
+  })
 })
 
 afterAll(async () => {
@@ -133,6 +149,37 @@ describe('goals api', () => {
     expect((await call('POST', '/api/goals', kevin, { goalType: 'count', trackingMode: 'shared_total' })).statusCode).toBe(400)
     expect((await call('POST', '/api/goals', kevin, { title: 'X', trackingMode: 'shared_total' })).statusCode).toBe(400)
     expect((await call('POST', '/api/goals', kevin, { title: 'X', goalType: 'count' })).statusCode).toBe(400)
+  })
+
+  it('rejects foreign list members, goal participants, list links, and log targets', async () => {
+    expect((await call('POST', '/api/goal-lists', kevin, {
+      name: 'Unsafe list', memberIds: [foreignPersonId],
+    })).statusCode).toBe(404)
+
+    const list = await call('POST', '/api/goal-lists', kevin, { name: 'Boundary list', memberIds: [kevinId] })
+    expect(list.statusCode).toBe(201)
+    const listId = JSON.parse(list.body).list.id as string
+    expect((await call('PATCH', `/api/goal-lists/${listId}`, kevin, {
+      memberIds: [foreignPersonId],
+    })).statusCode).toBe(404)
+
+    const base = { title: 'Boundary goal', goalType: 'count', trackingMode: 'shared_total', targetValue: 5 }
+    expect((await call('POST', '/api/goals', kevin, {
+      ...base, participantIds: [foreignPersonId],
+    })).statusCode).toBe(404)
+    expect((await call('POST', '/api/goals', kevin, {
+      ...base, title: 'Foreign list goal', goalListId: foreignGoalListId,
+    })).statusCode).toBe(404)
+
+    const goal = await call('POST', '/api/goals', kevin, { ...base, participantIds: [kevinId] })
+    expect(goal.statusCode).toBe(201)
+    const goalId = JSON.parse(goal.body).goal.id as string
+    expect((await call('PATCH', `/api/goals/${goalId}`, kevin, {
+      participantIds: [foreignPersonId],
+    })).statusCode).toBe(404)
+    expect((await call('POST', `/api/goals/${goalId}/log`, kevin, {
+      amount: 1, personIds: [foreignPersonId],
+    })).statusCode).toBe(400)
   })
 
   it('creates a shared goal, logs progress, and derives totals', async () => {
@@ -243,6 +290,33 @@ describe('goal lists + detail', () => {
     expect(detail.milestoneReached).toBe(1)
 
     expect((await call('GET', '/api/goals/00000000-0000-0000-0000-000000000000', kevin)).statusCode).toBe(404)
+  })
+
+  it('tags recent entries with a household-timezone dateKey, not the raw UTC date', async () => {
+    // Household is America/Chicago (UTC-6 in January, no DST). A log at
+    // 2026-01-02T05:30:00Z is 2026-01-01 23:30 local — the household-tz day is
+    // Jan 1, but a naive read of the raw UTC timestamp's date would say Jan 2.
+    // The goal-detail data views' day drill-down needs this field to match
+    // entries against the SAME day bucketing /activity uses, regardless of the
+    // viewing device's own timezone.
+    const add = await call('POST', '/api/goals', kevin, {
+      title: 'Tz check', goalType: 'total', unit: 'hours', targetValue: 100,
+      trackingMode: 'shared_total', participantIds: [kevinId],
+    })
+    const id = JSON.parse(add.body).goal.id
+    await withClient((c) =>
+      c.query(
+        `insert into goal_logs (household_id, goal_id, person_id, amount, note, counts_total, logged_at)
+         values ($1,$2,$3,1,'Late one','t','2026-01-02T05:30:00Z')`,
+        [householdId, id, kevinId]
+      )
+    )
+
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.recent[0]).toMatchObject({ note: 'Late one', dateKey: '2026-01-01' })
+
+    const activity = JSON.parse((await call('GET', `/api/goals/${id}/activity`, kevin)).body)
+    expect(activity.days.find((d: { dateKey: string }) => d.dateKey === '2026-01-01')).toBeTruthy()
   })
 
   it('logs a time goal in hours and minutes, converting to decimal hours server-side', async () => {
