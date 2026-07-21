@@ -105,6 +105,13 @@ static lv_obj_t *detail_scr; // rebuilt fresh each time the Sounds/Nightlight ti
 static lv_obj_t *quiet_scr;  // force-shown whenever the poll reports quiet time active — see wb_do_poll
 static bool onboarding_built = false;
 static bool g_quietWasActive = false;
+// Home/settings get one full lv_obj_clean+rebuild per (re-)pairing session —
+// the mock-data build in wb_enter_app(), then the first real poll after it —
+// and are only ever synced-in-place after that (see wb_do_poll). Reset to
+// false in wb_enter_app() so a re-pairing session gets its own fresh build,
+// pointing settings_screen.cpp's WbOpenDetailCtx at the new session's
+// `liveState` rather than syncing widgets that no longer exist post-rebuild.
+static bool g_liveScreensBuilt = false;
 
 static std::string g_serverUrl;
 static std::string g_deviceSecret;
@@ -181,13 +188,28 @@ static void wb_do_poll()
   static WbDeviceState liveState;
   if (wb_state_from_json(doc, liveState))
   {
-    lv_obj_clean(home_scr);
-    wb_build_home_screen(home_scr, liveState, settings_scr, tasks_scr, wb_complete_task);
-    // Settings previously only got mock data once at boot and never refreshed —
-    // rebuilt here too now that its Sounds/Nightlight tiles show live values
-    // (volume/tone/color/brightness), same as home already did.
-    lv_obj_clean(settings_scr);
-    wb_build_settings_screen(settings_scr, liveState, home_scr, detail_scr, wb_patch_settings);
+    // Full clean+rebuild only ONCE per (re-)pairing session — the first real
+    // poll after wb_enter_app()'s mock-data build. Every poll after that
+    // used to lv_obj_clean+rebuild both screens unconditionally, even while
+    // the kid was actively looking at / tapping into one of them, which
+    // could tear a fade-in animation or an in-flight tap out from under
+    // itself — that's what caused Settings to "freeze" (couldn't tap Back,
+    // Sounds, or Nightlight) after sitting on it a few seconds. Now, once
+    // built, later polls call wb_sync_*_screen to push live values into the
+    // existing widgets in place — no clean, no rebuild, no reload.
+    if (!g_liveScreensBuilt)
+    {
+      lv_obj_clean(home_scr);
+      wb_build_home_screen(home_scr, liveState, settings_scr, tasks_scr, wb_complete_task);
+      lv_obj_clean(settings_scr);
+      wb_build_settings_screen(settings_scr, liveState, home_scr, detail_scr, wb_patch_settings);
+      g_liveScreensBuilt = true;
+    }
+    else
+    {
+      wb_sync_home_screen(home_scr, liveState);
+      wb_sync_settings_screen(settings_scr, liveState);
+    }
 
     // Quiet time is parent-triggered only (no on-device start/stop) and
     // takes priority over whatever screen was showing — force it in
@@ -302,6 +324,7 @@ static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &opt
 // real data, and (re)starts the 5s poll timer.
 static void wb_enter_app()
 {
+  g_liveScreensBuilt = false; // next wb_do_poll() does one real full build, not a sync
   lv_obj_clean(home_scr);
   lv_obj_clean(settings_scr);
   wb_build_home_screen(home_scr, wb_mock_state(), settings_scr, tasks_scr, wb_complete_task);

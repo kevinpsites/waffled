@@ -22,7 +22,11 @@ static void wb_go_home_cb(lv_event_t *e)
 // NULL — moon, stopwatch, and bed have no built-in LV_SYMBOL_* match yet;
 // a custom icon font is deferred (see the firmware README), so those render
 // label-only rather than with a mismatched icon standing in.
-static lv_obj_t *make_control_tile(lv_obj_t *parent, const char *icon, const char *label, const char *sub, bool active)
+// `out_label_lbl`/`out_sub_lbl` optionally hand back the two labels whose
+// color (and the sub-label's text) change when `active` flips — so
+// wb_sync_settings_screen can restyle them in place without a rebuild.
+static lv_obj_t *make_control_tile(lv_obj_t *parent, const char *icon, const char *label, const char *sub, bool active,
+                                    lv_obj_t **out_label_lbl = nullptr, lv_obj_t **out_sub_lbl = nullptr)
 {
   lv_obj_t *tile = lv_obj_create(parent);
   lv_obj_remove_style_all(tile);
@@ -51,6 +55,8 @@ static lv_obj_t *make_control_tile(lv_obj_t *parent, const char *icon, const cha
   lv_label_set_text(lbl, label);
   lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(lbl, fg, 0);
+  if (out_label_lbl)
+    *out_label_lbl = lbl;
 
   if (sub && sub[0])
   {
@@ -58,6 +64,8 @@ static lv_obj_t *make_control_tile(lv_obj_t *parent, const char *icon, const cha
     lv_label_set_text(sub_lbl, sub);
     lv_obj_set_style_text_font(sub_lbl, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(sub_lbl, sub_fg, 0);
+    if (out_sub_lbl)
+      *out_sub_lbl = sub_lbl;
   }
 
   return tile;
@@ -79,17 +87,19 @@ static const WbControlOption WB_NIGHT_OPTIONS[] = {
 };
 
 // Owns what a tap on the Sounds/Nightlight tile needs to open the shared
-// detail screen with the right data. Heap-allocated per tile per rebuild,
-// freed on LV_EVENT_DELETE — same rationale as home_screen.cpp's
-// WbOpenTasksCtx (this screen isn't rebuilt on every poll today, but it
-// will be once main.cpp starts refreshing it live, so treat it the same).
+// detail screen with the right data. Heap-allocated per tile, freed on
+// LV_EVENT_DELETE — same rationale as home_screen.cpp's WbOpenTasksCtx.
+// Holds a POINTER to the live WbDeviceState (main.cpp always passes the
+// same `liveState` by address) rather than copied on/optionKey/sliderValue
+// — this screen is built once now, not rebuilt every poll (see
+// wb_sync_settings_screen), so a copy taken at build time would go stale
+// the moment a parent changed a setting from the web app; reading through
+// the pointer at tap time is always current instead.
 struct WbOpenDetailCtx
 {
   const char *title;
   WbSettingsKey key;
-  bool on;
-  std::string optionKey;
-  int sliderValue;
+  const WbDeviceState *state;
   const WbControlOption *options;
   int optionCount;
   const char *sliderLabel;
@@ -108,10 +118,27 @@ static void wb_open_detail_cb(lv_event_t *e)
   WbOpenDetailCtx *ctx = (WbOpenDetailCtx *)lv_event_get_user_data(e);
   WbSettingsKey key = ctx->key;
   WbSettingsChangeCallback onChange = ctx->onChange;
+
+  bool on;
+  std::string optionKey;
+  int sliderValue;
+  if (key == WbSettingsKey::Sound)
+  {
+    on = ctx->state->sound.on;
+    optionKey = ctx->state->sound.tone;
+    sliderValue = ctx->state->sound.volume;
+  }
+  else
+  {
+    on = ctx->state->night.on;
+    optionKey = ctx->state->night.color;
+    sliderValue = ctx->state->night.brightness;
+  }
+
   lv_obj_clean(ctx->detail_scr);
   wb_build_control_detail_screen(
       ctx->detail_scr, ctx->title, ctx->settings_scr,
-      ctx->on, ctx->optionKey, ctx->sliderValue,
+      on, optionKey, sliderValue,
       ctx->options, ctx->optionCount, ctx->sliderLabel,
       [key, onChange](bool on, const std::string &optionKey, int sliderValue) {
         return onChange ? onChange(key, on, optionKey, sliderValue) : false;
@@ -124,13 +151,48 @@ static void wb_open_detail_cb(lv_event_t *e)
 
 // Attaches the open-detail-screen tap handler to a tile that's already
 // clickable (lv_obj_create's default flags include CLICKABLE).
-static void wb_wire_open_detail(lv_obj_t *tile, const char *title, WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue,
+static void wb_wire_open_detail(lv_obj_t *tile, const char *title, WbSettingsKey key, const WbDeviceState *state,
                                  const WbControlOption *options, int optionCount, const char *sliderLabel,
                                  lv_obj_t *detail_scr, lv_obj_t *settings_scr, WbSettingsChangeCallback onChange)
 {
-  WbOpenDetailCtx *ctx = new WbOpenDetailCtx{title, key, on, optionKey, sliderValue, options, optionCount, sliderLabel, detail_scr, settings_scr, onChange};
+  WbOpenDetailCtx *ctx = new WbOpenDetailCtx{title, key, state, options, optionCount, sliderLabel, detail_scr, settings_scr, onChange};
   lv_obj_add_event_cb(tile, wb_open_detail_cb, LV_EVENT_CLICKED, ctx);
   lv_obj_add_event_cb(tile, wb_open_detail_ctx_delete_cb, LV_EVENT_DELETE, ctx);
+}
+
+// Widgets wb_sync_settings_screen updates in place on every poll after the
+// first, without a rebuild. Stashed on `parent` via lv_obj_set_user_data;
+// the delete callback is attached to `row` (a genuine child destroyed by
+// lv_obj_clean(parent) on a real rebuild, e.g. re-pairing), not to `parent`
+// itself — same leak-avoidance rule as home_screen.cpp's WbHomeSyncCtx.
+struct WbSettingsSyncCtx
+{
+  lv_obj_t *sound_sub_lbl;
+  lv_obj_t *night_tile;
+  lv_obj_t *night_label_lbl;
+  lv_obj_t *night_sub_lbl;
+};
+
+static void wb_settings_sync_ctx_delete_cb(lv_event_t *e)
+{
+  delete (WbSettingsSyncCtx *)lv_event_get_user_data(e);
+}
+
+void wb_sync_settings_screen(lv_obj_t *parent, const WbDeviceState &state)
+{
+  WbSettingsSyncCtx *ctx = (WbSettingsSyncCtx *)lv_obj_get_user_data(parent);
+  if (!ctx)
+    return; // not built yet
+
+  lv_label_set_text(ctx->sound_sub_lbl, state.sound.on ? "On" : "Off");
+
+  bool nightOn = state.night.on;
+  lv_obj_set_style_bg_color(ctx->night_tile, nightOn ? WB_COLOR_TILE_ACTIVE : WB_COLOR_TILE, 0);
+  lv_color_t fg = nightOn ? lv_color_white() : WB_COLOR_INK;
+  lv_color_t sub_fg = nightOn ? lv_color_hex(0xC9C4BC) : WB_COLOR_MUTED;
+  lv_obj_set_style_text_color(ctx->night_label_lbl, fg, 0);
+  lv_obj_set_style_text_color(ctx->night_sub_lbl, sub_fg, 0);
+  lv_label_set_text(ctx->night_sub_lbl, nightOn ? "On" : "Off");
 }
 
 void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *home_scr, lv_obj_t *detail_scr, WbSettingsChangeCallback onChange)
@@ -200,16 +262,24 @@ void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_o
   lv_obj_set_style_pad_column(row, 16, 0);
   lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t *sound_tile = make_control_tile(row, LV_SYMBOL_VOLUME_MAX, "Sounds", state.sound.on ? "On" : "Off", false);
-  wb_wire_open_detail(sound_tile, "Sounds", WbSettingsKey::Sound, state.sound.on, std::string(state.sound.tone), state.sound.volume,
+  lv_obj_t *sound_sub_lbl = nullptr;
+  lv_obj_t *sound_tile = make_control_tile(row, LV_SYMBOL_VOLUME_MAX, "Sounds", state.sound.on ? "On" : "Off", false, nullptr, &sound_sub_lbl);
+  wb_wire_open_detail(sound_tile, "Sounds", WbSettingsKey::Sound, &state,
                        WB_SOUND_OPTIONS, sizeof(WB_SOUND_OPTIONS) / sizeof(WB_SOUND_OPTIONS[0]), "Volume",
                        detail_scr, parent, onChange);
 
-  lv_obj_t *night_tile = make_control_tile(row, NULL, "Nightlight", state.night.on ? "On" : "Off", state.night.on);
-  wb_wire_open_detail(night_tile, "Nightlight", WbSettingsKey::Night, state.night.on, std::string(state.night.color), state.night.brightness,
+  lv_obj_t *night_label_lbl = nullptr, *night_sub_lbl = nullptr;
+  lv_obj_t *night_tile = make_control_tile(row, NULL, "Nightlight", state.night.on ? "On" : "Off", state.night.on, &night_label_lbl, &night_sub_lbl);
+  wb_wire_open_detail(night_tile, "Nightlight", WbSettingsKey::Night, &state,
                        WB_NIGHT_OPTIONS, sizeof(WB_NIGHT_OPTIONS) / sizeof(WB_NIGHT_OPTIONS[0]), "Brightness",
                        detail_scr, parent, onChange);
 
   make_control_tile(row, NULL, "Set a timer", "", false);
   make_control_tile(row, NULL, "Bedtime", "", false);
+
+  // Stash the pieces wb_sync_settings_screen updates in place on later
+  // polls — see WbSettingsSyncCtx's comment for the leak-avoidance rule.
+  WbSettingsSyncCtx *sync_ctx = new WbSettingsSyncCtx{sound_sub_lbl, night_tile, night_label_lbl, night_sub_lbl};
+  lv_obj_add_event_cb(row, wb_settings_sync_ctx_delete_cb, LV_EVENT_DELETE, sync_ctx);
+  lv_obj_set_user_data(parent, sync_ctx);
 }

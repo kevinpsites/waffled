@@ -31,3 +31,14 @@ using WbSettingsChangeCallback = std::function<bool(WbSettingsKey key, bool on, 
 // tapped (same convention as home_screen.h's tasks_scr); `onChange` is
 // forwarded straight through to whichever detail screen opens.
 void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *home_scr, lv_obj_t *detail_scr, WbSettingsChangeCallback onChange);
+
+// Pushes updated Sounds/Nightlight on-off + Nightlight's active styling into
+// an ALREADY-BUILT settings screen (main.cpp calls this on every poll after
+// the first, instead of rebuilding) — no lv_obj_clean+rebuild, so a tap or
+// the fade-in animation into the detail screen never gets torn out from
+// under itself. No-op if `parent` hasn't been built yet. The Sounds/
+// Nightlight tiles' tap targets don't need their own sync path: their
+// WbOpenDetailCtx holds a pointer to the same WbDeviceState main.cpp always
+// passes by the same address, so they read live tone/volume/color/
+// brightness at tap time without any extra plumbing.
+void wb_sync_settings_screen(lv_obj_t *parent, const WbDeviceState &state);
