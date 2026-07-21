@@ -39,6 +39,8 @@ struct WbDeviceState
   WbRoutine evening;
   WbRoutine chores; // unscheduled/general — no due time
   WbQuietState quiet;
+  bool soundsOn;
+  bool nightlightOn;
 };
 
 // Stand-in for the real poll until networking exists (see the firmware README's

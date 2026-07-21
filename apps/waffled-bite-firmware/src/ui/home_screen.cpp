@@ -1,17 +1,27 @@
 #include "home_screen.h"
 #include <cstdio>
 
-// Palette — warm cream/ink, echoing the web app's theme. No icon/emoji glyphs yet
-// (LVGL's default fonts don't include them; baking a custom font with the specific
-// glyphs the mockup uses is follow-up work, not attempted here) — text labels
-// stand in for now.
+// Palette — warm cream/ink, echoing the web app's theme, plus one tint per
+// routine tile matching the latest mocks. No custom icon font yet (see the
+// firmware README's icons note) — LV_SYMBOL_* built-ins stand in wherever
+// they actually match (checkmark, gear); everything else (sun/moon/lightning)
+// is text-only for now rather than a fabricated mismatched icon.
 #define WB_COLOR_BG lv_color_hex(0xF5EFE1)
 #define WB_COLOR_CARD lv_color_hex(0xFFFDF8)
+#define WB_COLOR_GREET_CARD lv_color_hex(0xE7E1D6)
 #define WB_COLOR_INK lv_color_hex(0x1C1A18)
 #define WB_COLOR_MUTED lv_color_hex(0x8A8074)
 #define WB_COLOR_GOLD lv_color_hex(0xC98A1E)
-#define WB_COLOR_DONE lv_color_hex(0x2E8B57)
-#define WB_COLOR_TRACK lv_color_hex(0xE7DFCE)
+#define WB_COLOR_STARS_BG lv_color_hex(0xFBEFD6)
+
+#define WB_COLOR_MORNING lv_color_hex(0xDCC981)
+#define WB_COLOR_MORNING_TEXT lv_color_hex(0x6B551C)
+#define WB_COLOR_AFTERNOON lv_color_hex(0xCC9E70)
+#define WB_COLOR_AFTERNOON_TEXT lv_color_hex(0x6B3F1B)
+#define WB_COLOR_EVENING lv_color_hex(0xACA8DC)
+#define WB_COLOR_EVENING_TEXT lv_color_hex(0x362F73)
+#define WB_COLOR_CHORES lv_color_hex(0xA7C9AC)
+#define WB_COLOR_CHORES_TEXT lv_color_hex(0x2C5A34)
 
 static int routine_done_count(const WbRoutine &r)
 {
@@ -33,83 +43,196 @@ static lv_obj_t *make_card(lv_obj_t *parent)
   return card;
 }
 
-// One of the four routine tiles: name, a progress bar, and an X/Y count.
-static lv_obj_t *make_routine_tile(lv_obj_t *parent, const char *name, const WbRoutine &r)
+// A small rounded pill for counts/status ("1 / 3", "24 stars"). Sized to hug
+// its label — every caller must NOT also set an explicit size, or it falls
+// back to LVGL's 100x100 default object size (bit us once already).
+static lv_obj_t *make_badge(lv_obj_t *parent, const char *text, lv_color_t bg, lv_color_t fg)
 {
-  lv_obj_t *tile = make_card(parent);
-  lv_obj_set_size(tile, lv_pct(48), lv_pct(48));
+  lv_obj_t *pill = lv_obj_create(parent);
+  lv_obj_remove_style_all(pill);
+  lv_obj_set_size(pill, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_color(pill, bg, 0);
+  lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(pill, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_pad_hor(pill, 10, 0);
+  lv_obj_set_style_pad_ver(pill, 4, 0);
+  lv_obj_clear_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *lbl = lv_label_create(pill);
+  lv_label_set_text(lbl, text);
+  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(lbl, fg, 0);
+  return pill;
+}
+
+// A colored circle standing in for a real avatar image until per-person
+// avatar art is baked in (bitmap assets, not a font glyph — see the icons
+// discussion in the PR). Just the child's initial, centered.
+static lv_obj_t *make_avatar_circle(lv_obj_t *parent, char initial, lv_coord_t diameter)
+{
+  lv_obj_t *circle = lv_obj_create(parent);
+  lv_obj_remove_style_all(circle);
+  lv_obj_set_size(circle, diameter, diameter);
+  lv_obj_set_style_radius(circle, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(circle, WB_COLOR_GOLD, 0);
+  lv_obj_set_style_bg_opa(circle, LV_OPA_COVER, 0);
+  lv_obj_set_flex_flow(circle, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(circle, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(circle, LV_OBJ_FLAG_SCROLLABLE);
+
+  char buf[2] = {initial, '\0'};
+  lv_obj_t *lbl = lv_label_create(circle);
+  lv_label_set_text(lbl, buf);
+  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_24, 0);
+  lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+  return circle;
+}
+
+// One of the three scheduled routine tiles: a colored card with a status
+// badge pinned top-right and the name + progress bar pinned to the bottom.
+static lv_obj_t *make_routine_tile(lv_obj_t *parent, const char *name, const WbRoutine &r, lv_color_t bg, lv_color_t fg)
+{
+  lv_obj_t *tile = lv_obj_create(parent);
+  lv_obj_remove_style_all(tile);
+  lv_obj_set_style_bg_color(tile, bg, 0);
+  lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(tile, 20, 0);
+  lv_obj_set_style_pad_all(tile, 16, 0);
+  lv_obj_set_flex_grow(tile, 1);
+  lv_obj_set_size(tile, LV_SIZE_CONTENT, lv_pct(100));
   lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(tile, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-
-  lv_obj_t *title = lv_label_create(tile);
-  lv_label_set_text(title, name);
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(title, WB_COLOR_INK, 0);
+  lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
 
   int done = routine_done_count(r);
   bool all_done = r.count > 0 && done == r.count;
 
-  lv_obj_t *bar = lv_bar_create(tile);
-  lv_obj_set_size(bar, lv_pct(100), 10);
+  lv_obj_t *top_row = lv_obj_create(tile);
+  lv_obj_remove_style_all(top_row);
+  lv_obj_set_size(top_row, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(top_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(top_row, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(top_row, LV_OBJ_FLAG_SCROLLABLE);
+
+  char badge_buf[24];
+  if (all_done)
+    snprintf(badge_buf, sizeof(badge_buf), "%d %s", done, LV_SYMBOL_OK);
+  else
+    snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, r.count);
+  make_badge(top_row, badge_buf, lv_color_white(), fg);
+
+  lv_obj_t *bottom = lv_obj_create(tile);
+  lv_obj_remove_style_all(bottom);
+  lv_obj_set_size(bottom, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(bottom, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(bottom, 8, 0);
+  lv_obj_clear_flag(bottom, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *title = lv_label_create(bottom);
+  lv_label_set_text(title, name);
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(title, fg, 0);
+
+  lv_obj_t *bar = lv_bar_create(bottom);
+  lv_obj_set_size(bar, lv_pct(100), 8);
   lv_bar_set_range(bar, 0, r.count > 0 ? r.count : 1);
   lv_bar_set_value(bar, done, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(bar, WB_COLOR_TRACK, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(bar, all_done ? WB_COLOR_DONE : WB_COLOR_GOLD, LV_PART_INDICATOR);
-  lv_obj_set_style_radius(bar, 5, LV_PART_MAIN);
-  lv_obj_set_style_radius(bar, 5, LV_PART_INDICATOR);
-
-  lv_obj_t *count = lv_label_create(tile);
-  char buf[24];
-  if (all_done)
-  {
-    snprintf(buf, sizeof(buf), "Done! %d/%d", done, r.count);
-  }
-  else
-  {
-    snprintf(buf, sizeof(buf), "%d of %d", done, r.count);
-  }
-  lv_label_set_text(count, buf);
-  lv_obj_set_style_text_font(count, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(count, all_done ? WB_COLOR_DONE : WB_COLOR_MUTED, 0);
+  lv_obj_set_style_bg_color(bar, lv_color_white(), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(bar, LV_OPA_40, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(bar, fg, LV_PART_INDICATOR);
+  lv_obj_set_style_radius(bar, 4, LV_PART_MAIN);
+  lv_obj_set_style_radius(bar, 4, LV_PART_INDICATOR);
 
   return tile;
 }
 
-static lv_obj_t *make_dock_button(lv_obj_t *parent, const char *label, const char *sub)
+// The unscheduled "Chores" bucket — a full-width bar below the three tiles.
+static lv_obj_t *make_chores_bar(lv_obj_t *parent, const WbRoutine &r)
 {
-  lv_obj_t *btn = make_card(parent);
-  lv_obj_set_flex_grow(btn, 1);
-  lv_obj_set_height(btn, lv_pct(100));
-  lv_obj_set_flex_flow(btn, LV_FLEX_FLOW_COLUMN);
+  lv_obj_t *bar_card = lv_obj_create(parent);
+  lv_obj_remove_style_all(bar_card);
+  lv_obj_set_style_bg_color(bar_card, WB_COLOR_CHORES, 0);
+  lv_obj_set_style_bg_opa(bar_card, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(bar_card, 20, 0);
+  lv_obj_set_style_pad_hor(bar_card, 20, 0);
+  lv_obj_set_style_pad_column(bar_card, 16, 0);
+  lv_obj_set_size(bar_card, lv_pct(100), 96);
+  lv_obj_set_flex_flow(bar_card, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(bar_card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(bar_card, LV_OBJ_FLAG_SCROLLABLE);
+
+  int done = routine_done_count(r);
+  bool all_done = r.count > 0 && done == r.count;
+
+  lv_obj_t *title = lv_label_create(bar_card);
+  lv_label_set_text(title, "Chores");
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(title, WB_COLOR_CHORES_TEXT, 0);
+
+  lv_obj_t *bar = lv_bar_create(bar_card);
+  lv_obj_set_flex_grow(bar, 1);
+  lv_obj_set_height(bar, 8);
+  lv_bar_set_range(bar, 0, r.count > 0 ? r.count : 1);
+  lv_bar_set_value(bar, done, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(bar, lv_color_white(), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(bar, LV_OPA_40, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(bar, WB_COLOR_CHORES_TEXT, LV_PART_INDICATOR);
+  lv_obj_set_style_radius(bar, 4, LV_PART_MAIN);
+  lv_obj_set_style_radius(bar, 4, LV_PART_INDICATOR);
+
+  char badge_buf[24];
+  if (all_done)
+    snprintf(badge_buf, sizeof(badge_buf), "%d %s", done, LV_SYMBOL_OK);
+  else
+    snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, r.count);
+  make_badge(bar_card, badge_buf, lv_color_white(), WB_COLOR_CHORES_TEXT);
+
+  return bar_card;
+}
+
+static void wb_open_settings_cb(lv_event_t *e)
+{
+  lv_obj_t *settings_scr = (lv_obj_t *)lv_event_get_user_data(e);
+  lv_scr_load_anim(settings_scr, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+
+static lv_obj_t *make_gear_button(lv_obj_t *parent, lv_obj_t *settings_scr)
+{
+  lv_obj_t *btn = lv_obj_create(parent);
+  lv_obj_remove_style_all(btn);
+  lv_obj_set_size(btn, 48, 48);
+  lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(btn, WB_COLOR_CARD, 0);
+  lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+  lv_obj_set_flex_flow(btn, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t *l = lv_label_create(btn);
-  lv_label_set_text(l, label);
-  lv_obj_set_style_text_font(l, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(l, WB_COLOR_INK, 0);
+  lv_obj_t *icon = lv_label_create(btn);
+  lv_label_set_text(icon, LV_SYMBOL_SETTINGS);
+  lv_obj_set_style_text_font(icon, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(icon, WB_COLOR_INK, 0);
 
-  if (sub && sub[0])
-  {
-    lv_obj_t *s = lv_label_create(btn);
-    lv_label_set_text(s, sub);
-    lv_obj_set_style_text_font(s, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(s, WB_COLOR_MUTED, 0);
-  }
+  // lv_obj_create's default flags already include CLICKABLE.
+  lv_obj_add_event_cb(btn, wb_open_settings_cb, LV_EVENT_CLICKED, settings_scr);
   return btn;
 }
 
-void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state)
+void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *settings_scr)
 {
   lv_obj_set_style_bg_color(parent, WB_COLOR_BG, 0);
   lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_all(parent, 0, 0);
+  lv_obj_set_style_pad_all(parent, 20, 0);
+  lv_obj_set_style_pad_row(parent, 16, 0);
   lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
-  // ── top bar ──────────────────────────────────────────────────────────────
+  char stars_buf[24];
+  snprintf(stars_buf, sizeof(stars_buf), "%d stars", state.stars);
+
+  // ── top bar: clock/date, stars, settings gear ───────────────────────────
   lv_obj_t *top = lv_obj_create(parent);
   lv_obj_remove_style_all(top);
-  lv_obj_set_size(top, lv_pct(100), 76);
-  lv_obj_set_style_pad_hor(top, 20, 0);
+  lv_obj_set_size(top, lv_pct(100), 56);
   lv_obj_set_flex_flow(top, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(top, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(top, LV_OBJ_FLAG_SCROLLABLE);
@@ -117,43 +240,47 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state)
   lv_obj_t *clock_col = lv_obj_create(top);
   lv_obj_remove_style_all(clock_col);
   lv_obj_set_size(clock_col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(clock_col, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_flow(clock_col, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(clock_col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
+  lv_obj_set_style_pad_column(clock_col, 8, 0);
   lv_obj_clear_flag(clock_col, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_t *clock_lbl = lv_label_create(clock_col);
-  lv_label_set_text(clock_lbl, "4:12 PM"); // placeholder — no RTC/NTP wired up yet
+  lv_label_set_text(clock_lbl, "4:13"); // placeholder — no RTC/NTP wired up yet
   lv_obj_set_style_text_font(clock_lbl, &lv_font_montserrat_24, 0);
   lv_obj_set_style_text_color(clock_lbl, WB_COLOR_INK, 0);
   lv_obj_t *date_lbl = lv_label_create(clock_col);
   lv_label_set_text(date_lbl, "Wed, Oct 15");
-  lv_obj_set_style_text_font(date_lbl, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_font(date_lbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(date_lbl, WB_COLOR_MUTED, 0);
 
-  lv_obj_t *stars_chip = make_card(top);
-  lv_obj_set_size(stars_chip, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-  lv_obj_set_style_bg_color(stars_chip, lv_color_hex(0xFBEFD6), 0);
-  char stars_buf[24];
-  snprintf(stars_buf, sizeof(stars_buf), "%d stars", state.stars);
-  lv_obj_t *stars_lbl = lv_label_create(stars_chip);
-  lv_label_set_text(stars_lbl, stars_buf);
-  lv_obj_set_style_text_font(stars_lbl, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(stars_lbl, WB_COLOR_GOLD, 0);
+  lv_obj_t *top_right = lv_obj_create(top);
+  lv_obj_remove_style_all(top_right);
+  lv_obj_set_size(top_right, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(top_right, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(top_right, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(top_right, 10, 0);
+  lv_obj_clear_flag(top_right, LV_OBJ_FLAG_SCROLLABLE);
 
-  // ── middle: greeting + the four routine tiles ───────────────────────────
+  make_badge(top_right, stars_buf, WB_COLOR_STARS_BG, WB_COLOR_GOLD);
+  make_gear_button(top_right, settings_scr);
+
+  // ── middle: greeting card + the three routine tiles + chores bar ────────
   lv_obj_t *middle = lv_obj_create(parent);
   lv_obj_remove_style_all(middle);
-  lv_obj_set_size(middle, lv_pct(100), lv_pct(100));
+  lv_obj_set_size(middle, lv_pct(100), LV_SIZE_CONTENT);
   lv_obj_set_flex_grow(middle, 1);
-  lv_obj_set_style_pad_all(middle, 20, 0);
   lv_obj_set_flex_flow(middle, LV_FLEX_FLOW_ROW);
-  lv_obj_set_style_pad_column(middle, 24, 0);
+  lv_obj_set_style_pad_column(middle, 20, 0);
   lv_obj_clear_flag(middle, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t *greet = lv_obj_create(middle);
-  lv_obj_remove_style_all(greet);
-  lv_obj_set_size(greet, 260, lv_pct(100));
+  lv_obj_t *greet = make_card(middle);
+  lv_obj_set_style_bg_color(greet, WB_COLOR_GREET_CARD, 0);
+  lv_obj_set_size(greet, 280, lv_pct(100));
   lv_obj_set_flex_flow(greet, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(greet, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(greet, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_pad_row(greet, 6, 0);
+
+  make_avatar_circle(greet, state.personName[0], 72);
 
   char hi_buf[40];
   snprintf(hi_buf, sizeof(hi_buf), "Hi, %s!", state.personName);
@@ -161,46 +288,35 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state)
   lv_label_set_text(hi_lbl, hi_buf);
   lv_obj_set_style_text_font(hi_lbl, &lv_font_montserrat_32, 0);
   lv_obj_set_style_text_color(hi_lbl, WB_COLOR_INK, 0);
+  lv_obj_set_style_pad_top(hi_lbl, 8, 0);
 
   lv_obj_t *sub_lbl = lv_label_create(greet);
   lv_label_set_text(sub_lbl, "Let's have a great day");
   lv_obj_set_style_text_font(sub_lbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(sub_lbl, WB_COLOR_MUTED, 0);
-  lv_obj_set_style_pad_bottom(sub_lbl, 10, 0);
+  lv_obj_set_style_pad_bottom(sub_lbl, 4, 0);
 
-  lv_obj_t *stars_big = lv_label_create(greet);
-  lv_label_set_text(stars_big, stars_buf);
-  lv_obj_set_style_text_font(stars_big, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(stars_big, WB_COLOR_GOLD, 0);
+  make_badge(greet, stars_buf, WB_COLOR_STARS_BG, WB_COLOR_GOLD);
 
-  lv_obj_t *tiles = lv_obj_create(middle);
-  lv_obj_remove_style_all(tiles);
-  lv_obj_set_flex_grow(tiles, 1);
-  lv_obj_set_size(tiles, lv_pct(100), lv_pct(100));
-  lv_obj_set_flex_flow(tiles, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_set_style_pad_column(tiles, 12, 0);
-  lv_obj_set_style_pad_row(tiles, 12, 0);
-  lv_obj_clear_flag(tiles, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *right_col = lv_obj_create(middle);
+  lv_obj_remove_style_all(right_col);
+  lv_obj_set_flex_grow(right_col, 1);
+  lv_obj_set_size(right_col, LV_SIZE_CONTENT, lv_pct(100));
+  lv_obj_set_flex_flow(right_col, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(right_col, 16, 0);
+  lv_obj_clear_flag(right_col, LV_OBJ_FLAG_SCROLLABLE);
 
-  make_routine_tile(tiles, "Morning", state.morning);
-  make_routine_tile(tiles, "Afternoon", state.afternoon);
-  make_routine_tile(tiles, "Evening", state.evening);
-  make_routine_tile(tiles, "Chores", state.chores);
+  lv_obj_t *tiles_row = lv_obj_create(right_col);
+  lv_obj_remove_style_all(tiles_row);
+  lv_obj_set_size(tiles_row, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_grow(tiles_row, 1);
+  lv_obj_set_flex_flow(tiles_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(tiles_row, 14, 0);
+  lv_obj_clear_flag(tiles_row, LV_OBJ_FLAG_SCROLLABLE);
 
-  // ── bottom dock ──────────────────────────────────────────────────────────
-  lv_obj_t *dock = lv_obj_create(parent);
-  lv_obj_remove_style_all(dock);
-  lv_obj_set_size(dock, lv_pct(100), 84);
-  lv_obj_set_style_pad_all(dock, 12, 0);
-  lv_obj_set_style_pad_column(dock, 10, 0);
-  lv_obj_set_flex_flow(dock, LV_FLEX_FLOW_ROW);
-  lv_obj_clear_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
+  make_routine_tile(tiles_row, "Morning", state.morning, WB_COLOR_MORNING, WB_COLOR_MORNING_TEXT);
+  make_routine_tile(tiles_row, "Afternoon", state.afternoon, WB_COLOR_AFTERNOON, WB_COLOR_AFTERNOON_TEXT);
+  make_routine_tile(tiles_row, "Evening", state.evening, WB_COLOR_EVENING, WB_COLOR_EVENING_TEXT);
 
-  // Sub-screens for these don't exist yet — dock is display-only for now, not
-  // wired to navigation (that's the same "next" as networking: nothing to show
-  // without live state to control).
-  make_dock_button(dock, "Sounds", state.quiet.active ? "Playing" : "Off");
-  make_dock_button(dock, "Nightlight", "Off");
-  make_dock_button(dock, "Timer", "");
-  make_dock_button(dock, "Bedtime", "");
+  make_chores_bar(right_col, state.chores);
 }

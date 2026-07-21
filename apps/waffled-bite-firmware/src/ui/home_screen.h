@@ -1,12 +1,14 @@
-// The device's home screen: greeting + stars, the four routine tiles
-// (morning/afternoon/evening/chores), and the bottom dock (sounds/nightlight/
-// timer/bedtime). Mirrors the mockup's buddy-device.js `home()`.
+// The device's home screen: top bar (clock/date, stars, settings gear),
+// greeting card with an avatar placeholder, the three scheduled routine
+// tiles (morning/afternoon/evening), and the unscheduled Chores bar.
+// Mirrors the mockup's buddy-device.js `home()`.
 #pragma once
 
 #include <lvgl.h>
 #include "../wb_state.h"
 
-// Builds the screen onto `parent` (pass lv_scr_act()) from `state`. Safe to call
-// again later with fresh state once networking exists — for now it's built once
-// with wb_mock_state() and never updates, since there's nothing yet to poll.
-void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state);
+// Builds the screen onto `parent` (pass a fresh lv_obj_create(NULL), not
+// lv_scr_act() — home and settings are two real LVGL screens now, swapped via
+// lv_scr_load on gear/back taps). `settings_scr` is the screen the gear
+// button navigates to.
+void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *settings_scr);

@@ -15,6 +15,8 @@ const WbDeviceState &wb_mock_state(void)
       {{{"Feed the dog", true, 1}, {"Clothes in hamper", false, 1}, {"Tidy playroom", false, 1}}, 3},
       // quiet
       {false, false, 0, 0},
+      false, // soundsOn
+      true,  // nightlightOn
   };
   return state;
 }

@@ -1,11 +1,13 @@
-// Milestone 2: the home screen, fed mock data (wb_state.h/.cpp) — no networking
-// yet, so it never changes after boot. Wiring it to the real
-// GET /api/waffled-bites/device/state poll is next; the screen code shouldn't
-// need to change when that happens, only what feeds wb_build_home_screen().
+// Milestone 2: home + settings screens, fed mock data (wb_state.h/.cpp) — no
+// networking yet, so state never changes after boot. Wiring the poll to
+// GET /api/waffled-bites/device/state is next; the screen code shouldn't
+// need to change when that happens, only what feeds the wb_build_*_screen()
+// calls below.
 #include <lvgl.h>
 #include "lgfx_device.h"
 #include "wb_state.h"
 #include "ui/home_screen.h"
+#include "ui/settings_screen.h"
 
 #if defined(ARDUINO)
 #include <Wire.h>
@@ -100,7 +102,13 @@ void setup()
   indev_drv.read_cb = touchpad_read;
   lv_indev_drv_register(&indev_drv);
 
-  wb_build_home_screen(lv_scr_act(), wb_mock_state());
+  // Two real LVGL screens (not lv_scr_act()'s default), swapped via
+  // lv_scr_load on gear/back taps — see wb_open_settings_cb/wb_go_home_cb.
+  static lv_obj_t *home_scr = lv_obj_create(NULL);
+  static lv_obj_t *settings_scr = lv_obj_create(NULL);
+  wb_build_home_screen(home_scr, wb_mock_state(), settings_scr);
+  wb_build_settings_screen(settings_scr, wb_mock_state(), home_scr);
+  lv_scr_load(home_scr);
 }
 
 void loop()
