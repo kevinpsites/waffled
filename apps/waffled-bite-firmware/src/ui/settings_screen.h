@@ -1,11 +1,33 @@
 // The "Grown-up controls" screen: back-to-home button, title, a locked chip,
 // and a row of control tiles (Sounds/Nightlight/Set a timer/Bedtime).
 // Mirrors the mockup's buddy-phone.js grown-up-controls page.
+//
+// Sounds and Nightlight are real now — tapping either opens
+// control_detail_screen.h's shared toggle+picker+slider screen. Set a timer
+// and Bedtime are still non-functional placeholders (need real design —
+// see the firmware README's "What's not done").
 #pragma once
 
 #include <lvgl.h>
+#include <functional>
+#include <string>
 #include "../wb_state.h"
 
+// Which settings sub-object a change applies to — main.cpp uses this to
+// build the right PATCH body ({sound:{...}} vs {night:{...}}).
+enum class WbSettingsKey
+{
+  Sound,
+  Night,
+};
+
+// Optimistic-update contract, same shape as tasks_screen.h's
+// WbTaskCompleteCallback: return true only on a confirmed 200.
+using WbSettingsChangeCallback = std::function<bool(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue)>;
+
 // Builds the screen onto `parent` (a fresh lv_obj_create(NULL)). `home_scr`
-// is the screen the back button navigates to.
-void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *home_scr);
+// is the screen the back button navigates to. `detail_scr` is a fifth
+// screen object, reused/rebuilt each time the Sounds or Nightlight tile is
+// tapped (same convention as home_screen.h's tasks_scr); `onChange` is
+// forwarded straight through to whichever detail screen opens.
+void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *home_scr, lv_obj_t *detail_scr, WbSettingsChangeCallback onChange);

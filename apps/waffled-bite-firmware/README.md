@@ -12,11 +12,13 @@ An earlier board (ELECROW CrowPanel Basic 7", ESP32-S3, 800×480 RGB-parallel) w
 targeted first and is gone from this repo — superseded before it ever arrived. See
 git history if that context is ever needed again.
 
-**Status: milestone 5.** Home + settings ("Grown-up controls") + a tasks screen are
+**Status: milestone 6.** Home + settings ("Grown-up controls") + a tasks screen are
 built, the firmware talks to the real backend (onboarding → pairing → a 5s live poll
-that rebuilds the home screen, token refresh, tap-to-complete on tasks), and it's
-been ported to **LVGL 9.2** + **1024×600** for the new board. Verified end-to-end against a real running backend
-on `native` (paired, exchanged tokens, polled real routine/stars data for a demo
+that rebuilds home *and* settings, token refresh, tap-to-complete on tasks, and now
+real Sounds/Nightlight controls that PATCH the backend), and it's been ported to
+**LVGL 9.2** + **1024×600** for the new board. Verified end-to-end against a real
+running backend on `native` (paired, exchanged tokens, polled real routine/stars
+data, completed a task, changed sound/nightlight settings, all for a demo
 household's kid — see git history). `esp32-p4` compiles clean against the real
 production silicon's toolchain, but nothing has run on actual hardware yet — see
 "What's not done" below.
@@ -91,9 +93,32 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 
 ## What's not done
 
-- **Only the home + settings screens exist.** Quiet time, night light, wake light,
-  sound machine, and rewards from the mockup are still just the (non-functional)
-  control tiles on the settings screen — tapping them does nothing yet.
+- **Sounds and Nightlight are done.** Tapping either tile on the Grown-up controls
+  screen opens a shared toggle+picker+slider detail screen (`src/ui/control_detail_screen.cpp` —
+  one screen parameterized for both, since they're the same shape: on/off, pick a
+  tone/color, a volume/brightness slider). Wired to a **new** device-authed route,
+  `PATCH /api/waffled-bites/device/settings` (`waffledBites.ts`) — the existing parent-side
+  `PATCH /api/waffled-bites/:id/settings` is `adminRoute`-gated and rejects a device's own
+  access token (confirmed by the existing test suite), so the on-device screen needed its
+  own write path. Allowlisted to just the `sound`/`night` keys so a device can't rewrite
+  parent-only settings (schedules, alarm) it has no UI for; TDD'd
+  (`waffled-bites.integration.test.ts`) before being implemented. `main.cpp`'s poll now
+  rebuilds the settings screen too (previously it only rebuilt home, so Sounds/Nightlight
+  never reflected a change made from the parent web app either). Added `wb_http_patch`
+  (native: libcurl `CURLOPT_CUSTOMREQUEST`; esp32-p4: `HTTPClient::PATCH`) since this is the
+  first PATCH the firmware makes. Verified against the real demo backend: PATCHed both
+  sound and night with a real device token (the exact body `wb_patch_settings` in `main.cpp`
+  builds), confirmed both persisted on a follow-up poll, confirmed a smuggled non-whitelisted
+  key (`alarm`) was silently dropped, confirmed an admin token still gets 403 on the new
+  device route; ran the actual compiled `native` binary through a real pair→token→poll cycle
+  against the same backend to confirm the port didn't regress. Full `apps/api` suite (880
+  tests) and `tsc --noEmit` both clean. What's still open: no on-screen tap-gesture
+  verification (same SDL-headless caveat as tasks), and **Set a timer + Bedtime are still
+  non-functional placeholders** — no backend concept exists yet for either (see the research
+  this milestone did: quiet-time's start/pause/resume/end + computed-on-read pattern is the
+  closest reusable primitive for a kid-facing timer, but a true one needs real design; Bedtime
+  has no dedicated data model at all, just adjacent wake-schedule/alarm fields and the
+  generic evening chore bucket).
 - **Tap-to-complete on tasks is done.** Tapping a routine tile or the Chores bar opens
   a task list (`src/ui/tasks_screen.cpp`) with a checkbox per task; tapping an undone
   row calls `POST /api/waffled-bites/device/tasks/:instanceId/complete` with the

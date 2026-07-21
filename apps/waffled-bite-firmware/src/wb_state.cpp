@@ -17,8 +17,8 @@ const WbDeviceState &wb_mock_state(void)
       {{{"", "Feed the dog", true, 1}, {"", "Clothes in hamper", false, 1}, {"", "Tidy playroom", false, 1}}, 3},
       // quiet
       {false, false, 0, 0},
-      false, // soundsOn
-      true,  // nightlightOn
+      {false, "white", 50, 0},  // sound: off, defaults picked to match apps/web's own fallback UI state
+      {true, "amber", 40},      // night: on, matching the pre-settings-screen mock's nightlightOn=true
   };
   return state;
 }
@@ -72,10 +72,20 @@ bool wb_state_from_json(JsonDocument &doc, WbDeviceState &out)
   out.quiet.durationSec = rt["durationSec"] | 0;
 
   // Real settings keys are "night"/"sound" (not "nightlight"/"sounds") —
-  // confirmed against apps/web/src/kiosk/WaffledBiteDevice.tsx.
+  // confirmed against apps/web/src/kiosk/WaffledBiteDevice.tsx. Both are
+  // optional (a never-configured device has neither key at all), so every
+  // field falls back to a sensible default rather than a zeroed struct.
   JsonObjectConst settings = doc["settings"];
-  out.nightlightOn = settings["night"]["on"] | false;
-  out.soundsOn = settings["sound"]["on"] | false;
+  JsonObjectConst sound = settings["sound"];
+  out.sound.on = sound["on"] | false;
+  copyField(out.sound.tone, WB_TONE_LEN, sound["sound"], "white");
+  out.sound.volume = sound["volume"] | 50;
+  out.sound.timerMin = sound["timerMin"] | 0;
+
+  JsonObjectConst night = settings["night"];
+  out.night.on = night["on"] | false;
+  copyField(out.night.color, WB_COLOR_LEN, night["color"], "amber");
+  out.night.brightness = night["brightness"] | 40;
 
   return true;
 }

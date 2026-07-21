@@ -25,7 +25,7 @@ static void ensureCurlInit()
   }
 }
 
-static WbHttpResponse perform(const char *url, const char *jsonBody /* nullptr for GET */, const char *bearer)
+static WbHttpResponse perform(const char *url, const char *jsonBody /* nullptr for GET */, const char *bearer, const char *method = nullptr /* nullptr = GET or plain POST, inferred from jsonBody */)
 {
   ensureCurlInit();
   WbHttpResponse resp{false, 0, ""};
@@ -51,6 +51,8 @@ static WbHttpResponse perform(const char *url, const char *jsonBody /* nullptr f
   curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L); // don't let a dead server hang the LVGL loop
   if (jsonBody)
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, jsonBody);
+  if (method)
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method);
 
   CURLcode res = curl_easy_perform(curl);
   if (res == CURLE_OK)
@@ -75,4 +77,9 @@ WbHttpResponse wb_http_get(const char *url, const char *bearer)
 WbHttpResponse wb_http_post(const char *url, const char *jsonBody, const char *bearer)
 {
   return perform(url, jsonBody, bearer);
+}
+
+WbHttpResponse wb_http_patch(const char *url, const char *jsonBody, const char *bearer)
+{
+  return perform(url, jsonBody, bearer, "PATCH");
 }

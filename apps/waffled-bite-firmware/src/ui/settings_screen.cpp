@@ -1,4 +1,5 @@
 #include "settings_screen.h"
+#include "control_detail_screen.h"
 #include <cstdio>
 
 // Palette — kept in sync with home_screen.cpp's by eye; duplicated rather
@@ -62,7 +63,71 @@ static lv_obj_t *make_control_tile(lv_obj_t *parent, const char *icon, const cha
   return tile;
 }
 
-void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *home_scr)
+// Matches apps/web/src/kiosk/WaffledBiteDevice.tsx's SOUNDS/NIGHT_COLORS
+// key lists exactly, so the device and the parent web app agree on what a
+// given settings.sound.sound / settings.night.color value means.
+static const WbControlOption WB_SOUND_OPTIONS[] = {
+    {"white", "White noise"}, {"ocean", "Ocean waves"}, {"rain", "Gentle rain"},
+    {"fan", "Box fan"}, {"heartbeat", "Heartbeat"}, {"lullaby", "Lullaby"}, {"forest", "Forest"},
+};
+static const WbControlOption WB_NIGHT_OPTIONS[] = {
+    {"amber", "Amber"}, {"peach", "Peach"}, {"blush", "Blush"},
+    {"lilac", "Lilac"}, {"ocean", "Ocean"}, {"mint", "Mint"},
+};
+
+// Owns what a tap on the Sounds/Nightlight tile needs to open the shared
+// detail screen with the right data. Heap-allocated per tile per rebuild,
+// freed on LV_EVENT_DELETE — same rationale as home_screen.cpp's
+// WbOpenTasksCtx (this screen isn't rebuilt on every poll today, but it
+// will be once main.cpp starts refreshing it live, so treat it the same).
+struct WbOpenDetailCtx
+{
+  const char *title;
+  WbSettingsKey key;
+  bool on;
+  std::string optionKey;
+  int sliderValue;
+  const WbControlOption *options;
+  int optionCount;
+  const char *sliderLabel;
+  lv_obj_t *detail_scr;
+  lv_obj_t *settings_scr;
+  WbSettingsChangeCallback onChange;
+};
+
+static void wb_open_detail_ctx_delete_cb(lv_event_t *e)
+{
+  delete (WbOpenDetailCtx *)lv_event_get_user_data(e);
+}
+
+static void wb_open_detail_cb(lv_event_t *e)
+{
+  WbOpenDetailCtx *ctx = (WbOpenDetailCtx *)lv_event_get_user_data(e);
+  WbSettingsKey key = ctx->key;
+  WbSettingsChangeCallback onChange = ctx->onChange;
+  lv_obj_clean(ctx->detail_scr);
+  wb_build_control_detail_screen(
+      ctx->detail_scr, ctx->title, ctx->settings_scr,
+      ctx->on, ctx->optionKey, ctx->sliderValue,
+      ctx->options, ctx->optionCount, ctx->sliderLabel,
+      [key, onChange](bool on, const std::string &optionKey, int sliderValue) {
+        return onChange ? onChange(key, on, optionKey, sliderValue) : false;
+      });
+  lv_scr_load_anim(ctx->detail_scr, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+
+// Attaches the open-detail-screen tap handler to a tile that's already
+// clickable (lv_obj_create's default flags include CLICKABLE).
+static void wb_wire_open_detail(lv_obj_t *tile, const char *title, WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue,
+                                 const WbControlOption *options, int optionCount, const char *sliderLabel,
+                                 lv_obj_t *detail_scr, lv_obj_t *settings_scr, WbSettingsChangeCallback onChange)
+{
+  WbOpenDetailCtx *ctx = new WbOpenDetailCtx{title, key, on, optionKey, sliderValue, options, optionCount, sliderLabel, detail_scr, settings_scr, onChange};
+  lv_obj_add_event_cb(tile, wb_open_detail_cb, LV_EVENT_CLICKED, ctx);
+  lv_obj_add_event_cb(tile, wb_open_detail_ctx_delete_cb, LV_EVENT_DELETE, ctx);
+}
+
+void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *home_scr, lv_obj_t *detail_scr, WbSettingsChangeCallback onChange)
 {
   lv_obj_set_style_bg_color(parent, WB_COLOR_BG, 0);
   lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
@@ -129,8 +194,16 @@ void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_o
   lv_obj_set_style_pad_column(row, 16, 0);
   lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
-  make_control_tile(row, LV_SYMBOL_VOLUME_MAX, "Sounds", state.soundsOn ? "On" : "Off", false);
-  make_control_tile(row, NULL, "Nightlight", state.nightlightOn ? "On" : "Off", state.nightlightOn);
+  lv_obj_t *sound_tile = make_control_tile(row, LV_SYMBOL_VOLUME_MAX, "Sounds", state.sound.on ? "On" : "Off", false);
+  wb_wire_open_detail(sound_tile, "Sounds", WbSettingsKey::Sound, state.sound.on, std::string(state.sound.tone), state.sound.volume,
+                       WB_SOUND_OPTIONS, sizeof(WB_SOUND_OPTIONS) / sizeof(WB_SOUND_OPTIONS[0]), "Volume",
+                       detail_scr, parent, onChange);
+
+  lv_obj_t *night_tile = make_control_tile(row, NULL, "Nightlight", state.night.on ? "On" : "Off", state.night.on);
+  wb_wire_open_detail(night_tile, "Nightlight", WbSettingsKey::Night, state.night.on, std::string(state.night.color), state.night.brightness,
+                       WB_NIGHT_OPTIONS, sizeof(WB_NIGHT_OPTIONS) / sizeof(WB_NIGHT_OPTIONS[0]), "Brightness",
+                       detail_scr, parent, onChange);
+
   make_control_tile(row, NULL, "Set a timer", "", false);
   make_control_tile(row, NULL, "Bedtime", "", false);
 }

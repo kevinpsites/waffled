@@ -1,6 +1,6 @@
-// esp32-s3/Arduino backend for wb_http.h — Arduino's HTTPClient.
+// esp32-p4/Arduino backend for wb_http.h — Arduino's HTTPClient.
 // UNVERIFIED — no board in hand yet (same caveat as lgfx_device.h and
-// platformio.ini's esp32-s3 section). Uses HTTPClient::begin(const String&)
+// platformio.ini's esp32-p4 section). Uses HTTPClient::begin(const String&)
 // (the single-argument overload), which auto-detects http:// vs https://
 // and manages its own internal WiFiClient/WiFiClientSecure — this avoids
 // hand-constructing a WiFiClientSecure ourselves and hitting API
@@ -19,7 +19,7 @@
 // plain http:// for this device anyway, so this hasn't been forced yet;
 // revisit if/when a real deployment needs https from the device.
 
-static WbHttpResponse perform(const char *url, const char *jsonBody /* nullptr for GET */, const char *bearer)
+static WbHttpResponse perform(const char *url, const char *jsonBody /* nullptr for GET */, const char *bearer, bool isPatch = false)
 {
   WbHttpResponse resp{false, 0, ""};
 
@@ -32,7 +32,7 @@ static WbHttpResponse perform(const char *url, const char *jsonBody /* nullptr f
   if (bearer)
     http.addHeader("Authorization", String("Bearer ") + bearer);
 
-  int code = jsonBody ? http.POST(String(jsonBody)) : http.GET();
+  int code = !jsonBody ? http.GET() : (isPatch ? http.PATCH(String(jsonBody)) : http.POST(String(jsonBody)));
 
   // Arduino's HTTPClient returns negative HTTPC_ERROR_* values on a
   // transport-level failure (DNS/connect/timeout) before any HTTP status
@@ -54,4 +54,9 @@ WbHttpResponse wb_http_get(const char *url, const char *bearer)
 WbHttpResponse wb_http_post(const char *url, const char *jsonBody, const char *bearer)
 {
   return perform(url, jsonBody, bearer);
+}
+
+WbHttpResponse wb_http_patch(const char *url, const char *jsonBody, const char *bearer)
+{
+  return perform(url, jsonBody, bearer, true);
 }

@@ -301,6 +301,23 @@ export function registerWaffledBiteRoutes(api: Api): void {
     }
   })
 
+  // The on-device "Grown-up controls" screen only has the device's own access
+  // token available (no admin login flow on-device) — a separate, narrower write
+  // path than the parent-side route below. Allowlisted to sound/night only, so a
+  // device can't rewrite parent-only settings (schedules, alarm) it has no UI for.
+  const DEVICE_WRITABLE_SETTINGS_KEYS = ['sound', 'night'] as const
+  api.patch('/api/waffled-bites/device/settings', async (req: Request, res: Response) => {
+    const device = await requireWaffledBiteDevice(req)
+    const patch = (req.body ?? {}) as Record<string, unknown>
+    const filtered: Record<string, unknown> = {}
+    for (const key of DEVICE_WRITABLE_SETTINGS_KEYS) if (key in patch) filtered[key] = patch[key]
+    const deviceRow = await loadDeviceRow(device.householdId, device.deviceId)
+    if (!deviceRow) return res.status(404).json({ error: 'NotFound', message: 'device not found' })
+    const next = deepMerge(deviceRow.settings ?? {}, filtered)
+    await query(`update waffled_bite_devices set settings = $2::jsonb where id = $1`, [device.deviceId, JSON.stringify(next)])
+    return { settings: next }
+  })
+
   // ── settings (parent side, admin) ───────────────────────────────────────────
   api.patch('/api/waffled-bites/:id/settings', adminRoute(async (tenant, req: Request, res: Response) => {
     const device = await loadDeviceRow(tenant.householdId, req.params.id ?? '')

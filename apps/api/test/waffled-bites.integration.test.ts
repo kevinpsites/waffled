@@ -211,6 +211,34 @@ describe('waffled-bites device pairing + parent control panel', () => {
     expect(state.settings.night).toMatchObject({ on: true, color: 'amber', brightness: 40 })
   })
 
+  // The on-device "Grown-up controls" screen has only the device's own access
+  // token available (no admin login flow on-device) — it needs its own write
+  // path, distinct from the parent-side admin route above. Scoped to just
+  // sound/night so a device can't rewrite parent-only settings (schedules,
+  // alarm) it has no UI for.
+  it('lets the device itself patch its sound/night settings, but not other keys, and rejects a tenant token', async () => {
+    const r = await call('PATCH', '/api/waffled-bites/device/settings', {
+      sound: { on: true, sound: 'rain', volume: 60, timerMin: 30 },
+    }, deviceToken)
+    expect(r.statusCode).toBe(200)
+    expect(json(r).settings.sound).toMatchObject({ on: true, sound: 'rain', volume: 60, timerMin: 30 })
+    // Previously-set night settings (patched by the parent above) survive a sound-only patch.
+    expect(json(r).settings.night).toMatchObject({ on: true, color: 'amber', brightness: 40 })
+
+    const state = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
+    expect(state.settings.sound).toMatchObject({ on: true, sound: 'rain', volume: 60, timerMin: 30 })
+
+    // A non-whitelisted key (e.g. a parent-only schedule) is silently dropped, not applied.
+    const smuggled = await call('PATCH', '/api/waffled-bites/device/settings', {
+      schedules: [{ days: [1, 2, 3, 4, 5], wakeMin: 360, leadMin: 15 }],
+    }, deviceToken)
+    expect(smuggled.statusCode).toBe(200)
+    expect(json(smuggled).settings.schedules).toBeUndefined()
+
+    // Only this route's own device token works here — a parent/admin token is not a device.
+    expect((await call('PATCH', '/api/waffled-bites/device/settings', { sound: { on: false } }, admin)).statusCode).toBe(403)
+  })
+
   // ── the split: a device token is not a tenant, and vice versa ──────────────────
   it('rejects a device token on a normal tenant route, and a tenant token on a device route', async () => {
     expect((await call('POST', '/api/persons', { name: 'Nope', memberType: 'kid' }, deviceToken)).statusCode).toBe(403)

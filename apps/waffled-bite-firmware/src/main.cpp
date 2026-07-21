@@ -99,7 +99,8 @@ static void touchpad_read(lv_indev_t * /*indev*/, lv_indev_data_t *data)
 static lv_obj_t *home_scr;
 static lv_obj_t *settings_scr;
 static lv_obj_t *onboarding_scr;
-static lv_obj_t *tasks_scr; // rebuilt fresh each time a routine tile is tapped — see home_screen.cpp
+static lv_obj_t *tasks_scr;  // rebuilt fresh each time a routine tile is tapped — see home_screen.cpp
+static lv_obj_t *detail_scr; // rebuilt fresh each time the Sounds/Nightlight tile is tapped — see settings_screen.cpp
 static bool onboarding_built = false;
 
 static std::string g_serverUrl;
@@ -111,6 +112,7 @@ static lv_timer_t *g_pollTimer = nullptr;
 static void wb_show_onboarding();
 static void wb_enter_app();
 static bool wb_complete_task(const std::string &taskId);
+static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue);
 
 // Mints (or refreshes) a short-lived access token from the stored device
 // secret. On 401 (waffledBites.ts: revoked device) clears the stored
@@ -178,6 +180,11 @@ static void wb_do_poll()
   {
     lv_obj_clean(home_scr);
     wb_build_home_screen(home_scr, liveState, settings_scr, tasks_scr, wb_complete_task);
+    // Settings previously only got mock data once at boot and never refreshed —
+    // rebuilt here too now that its Sounds/Nightlight tiles show live values
+    // (volume/tone/color/brightness), same as home already did.
+    lv_obj_clean(settings_scr);
+    wb_build_settings_screen(settings_scr, liveState, home_scr, detail_scr, wb_patch_settings);
   }
 }
 
@@ -212,6 +219,47 @@ static bool wb_complete_task(const std::string &taskId)
   return ok;
 }
 
+// The settings detail screen's onChange callback (settings_screen.h).
+// Synchronous, same pattern as wb_complete_task: refreshes the token first
+// if due, PATCHes the whole sub-object (device/settings only merges keys
+// present in the body — see waffledBites.ts's deepMerge — so leaving
+// timerMin out here doesn't clobber it), and on success runs an immediate
+// poll so the tile's own On/Off subtitle and any other open screen catch up
+// without waiting up to 5s.
+static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue)
+{
+  if (wb_tick_ms() >= g_tokenExpiresAtMs)
+  {
+    if (!wb_refresh_access_token())
+      return false;
+  }
+
+  JsonDocument reqDoc;
+  if (key == WbSettingsKey::Sound)
+  {
+    JsonObject sound = reqDoc["sound"].to<JsonObject>();
+    sound["on"] = on;
+    sound["sound"] = optionKey;
+    sound["volume"] = sliderValue;
+  }
+  else
+  {
+    JsonObject night = reqDoc["night"].to<JsonObject>();
+    night["on"] = on;
+    night["color"] = optionKey;
+    night["brightness"] = sliderValue;
+  }
+  std::string body;
+  serializeJson(reqDoc, body);
+
+  std::string url = g_serverUrl + "/api/waffled-bites/device/settings";
+  WbHttpResponse resp = wb_http_patch(url.c_str(), body.c_str(), g_accessToken.c_str());
+  bool ok = resp.ok && resp.status == 200;
+  if (ok)
+    wb_do_poll();
+  return ok;
+}
+
 // Builds home/settings from mock data as an immediate placeholder (so
 // lv_scr_load never shows a blank screen), shows home, then does one
 // synchronous poll right away rather than waiting up to 5s for the first
@@ -221,7 +269,7 @@ static void wb_enter_app()
   lv_obj_clean(home_scr);
   lv_obj_clean(settings_scr);
   wb_build_home_screen(home_scr, wb_mock_state(), settings_scr, tasks_scr, wb_complete_task);
-  wb_build_settings_screen(settings_scr, wb_mock_state(), home_scr);
+  wb_build_settings_screen(settings_scr, wb_mock_state(), home_scr, detail_scr, wb_patch_settings);
   lv_scr_load(home_scr);
 
   wb_do_poll();
@@ -303,6 +351,7 @@ void setup()
   settings_scr = lv_obj_create(NULL);
   onboarding_scr = lv_obj_create(NULL);
   tasks_scr = lv_obj_create(NULL);
+  detail_scr = lv_obj_create(NULL);
 
   g_deviceSecret = wb_store_get("deviceSecret");
   g_serverUrl = wb_store_get("serverUrl");
