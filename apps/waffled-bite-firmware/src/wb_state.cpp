@@ -19,6 +19,7 @@ const WbDeviceState &wb_mock_state(void)
       {false, false, 0, 0},
       {false, "white", 50, 0},  // sound: off, defaults picked to match apps/web's own fallback UI state
       {true, "amber", 40},      // night: on, matching the pre-settings-screen mock's nightlightOn=true
+      -1, -1,                   // nowHour/nowMin: unavailable — mock quiet is always inactive, unused
   };
   return state;
 }
@@ -32,6 +33,23 @@ static void copyField(char *dst, size_t dstLen, JsonVariantConst v, const char *
   const char *s = v.is<const char *>() ? v.as<const char *>() : fallback;
   strncpy(dst, s, dstLen - 1);
   dst[dstLen - 1] = '\0';
+}
+
+// Pulls hour/minute out of an ISO-8601 "YYYY-MM-DDTHH:MM:SS.sssZ" string
+// without pulling in a date library — offsets are fixed since the server
+// (`new Date().toISOString()`) always emits this exact shape. Sets both to
+// -1 if the field is missing or doesn't look like the expected shape.
+static void parseNow(JsonVariantConst nowVal, int &outHour, int &outMin)
+{
+  outHour = -1;
+  outMin = -1;
+  if (!nowVal.is<const char *>())
+    return;
+  const char *s = nowVal.as<const char *>();
+  if (strlen(s) < 16 || s[10] != 'T' || s[13] != ':')
+    return;
+  outHour = (s[11] - '0') * 10 + (s[12] - '0');
+  outMin = (s[14] - '0') * 10 + (s[15] - '0');
 }
 
 static void parseRoutine(JsonArrayConst arr, WbRoutine &out)
@@ -86,6 +104,8 @@ bool wb_state_from_json(JsonDocument &doc, WbDeviceState &out)
   out.night.on = night["on"] | false;
   copyField(out.night.color, WB_COLOR_LEN, night["color"], "amber");
   out.night.brightness = night["brightness"] | 40;
+
+  parseNow(doc["now"], out.nowHour, out.nowMin);
 
   return true;
 }

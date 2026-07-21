@@ -21,6 +21,7 @@
 #include "ui/home_screen.h"
 #include "ui/settings_screen.h"
 #include "ui/onboarding_screen.h"
+#include "ui/quiet_screen.h"
 #include <ArduinoJson.h>
 #include <string>
 
@@ -101,7 +102,9 @@ static lv_obj_t *settings_scr;
 static lv_obj_t *onboarding_scr;
 static lv_obj_t *tasks_scr;  // rebuilt fresh each time a routine tile is tapped — see home_screen.cpp
 static lv_obj_t *detail_scr; // rebuilt fresh each time the Sounds/Nightlight tile is tapped — see settings_screen.cpp
+static lv_obj_t *quiet_scr;  // force-shown whenever the poll reports quiet time active — see wb_do_poll
 static bool onboarding_built = false;
+static bool g_quietWasActive = false;
 
 static std::string g_serverUrl;
 static std::string g_deviceSecret;
@@ -185,6 +188,26 @@ static void wb_do_poll()
     // (volume/tone/color/brightness), same as home already did.
     lv_obj_clean(settings_scr);
     wb_build_settings_screen(settings_scr, liveState, home_scr, detail_scr, wb_patch_settings);
+
+    // Quiet time is parent-triggered only (no on-device start/stop) and
+    // takes priority over whatever screen was showing — force it in
+    // regardless of current navigation state, same "computed on read"
+    // trust as the rest of this state. Rebuilding+reloading every poll
+    // while active (not just once on entry) keeps the countdown's 5s
+    // resync working, matching quiet_screen.h's documented contract.
+    if (liveState.quiet.active)
+    {
+      lv_obj_clean(quiet_scr);
+      wb_build_quiet_screen(quiet_scr, liveState.quiet, liveState.nowHour, liveState.nowMin);
+      lv_scr_load(quiet_scr);
+      g_quietWasActive = true;
+    }
+    else if (g_quietWasActive)
+    {
+      // A parent ended it from the web app — hand control back to home.
+      lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, false);
+      g_quietWasActive = false;
+    }
   }
 }
 
@@ -352,6 +375,7 @@ void setup()
   onboarding_scr = lv_obj_create(NULL);
   tasks_scr = lv_obj_create(NULL);
   detail_scr = lv_obj_create(NULL);
+  quiet_scr = lv_obj_create(NULL);
 
   g_deviceSecret = wb_store_get("deviceSecret");
   g_serverUrl = wb_store_get("serverUrl");
