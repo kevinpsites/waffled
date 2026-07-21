@@ -118,7 +118,31 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   this milestone did: quiet-time's start/pause/resume/end + computed-on-read pattern is the
   closest reusable primitive for a kid-facing timer, but a true one needs real design; Bedtime
   has no dedicated data model at all, just adjacent wake-schedule/alarm fields and the
-  generic evening chore bucket).
+  generic evening chore bucket). Nightlight's color chips now show a real swatch (a small
+  circle per option plus a larger live preview that updates as you tap through) using the
+  exact hex values `apps/web/src/kiosk/WaffledBiteDevice.tsx`'s `NIGHT_COLORS` already uses,
+  not invented ones. Opening either detail screen now fades in/out
+  (`LV_SCR_LOAD_ANIM_FADE_IN`) instead of sliding, at the user's request — every other
+  transition in the app (home↔settings, home↔tasks) still slides.
+- **Quiet time has a full-screen, non-exitable device UI** (`src/ui/quiet_screen.cpp`) —
+  dark navy background, a countdown ring (`lv_arc`) ticking down once a second locally
+  and resyncing to the server-computed value on every 5s poll, "Stay cozy until H:MM"
+  below it. Parent-triggered only (`POST /api/waffled-bites/:id/quiet/{start,end}` etc.
+  from the web app — no on-device start/stop); `main.cpp`'s poll force-loads this screen
+  the moment `runtimeState.quiet.active` is true, overriding whatever screen the kid was
+  on, and there is deliberately no back button, gesture handler, or clickable element on
+  it anywhere — that absence, not a lock flag, is what makes it non-exitable. Verified by
+  starting a real quiet session against the demo backend, confirming the poll response
+  and the actual compiled `native` binary picked it up (`lastSeenAt` advanced through a
+  real pair→poll cycle while quiet was active), and by code review that the screen has
+  zero navigation callbacks. Two things worth flagging: (1) "Stay cozy until" is computed
+  from the poll's `now` field, which is the server's plain UTC time — the device has no
+  RTC or timezone database, so this reads as UTC, not the household's actual local time,
+  until real timezone plumbing lands (same gap as the home screen's still-hardcoded
+  placeholder clock, `"4:13"`/`"Wed, Oct 15"` in `home_screen.cpp`, unrelated to this
+  milestone but worth knowing about together); (2) no moon icon in the mockup made it in —
+  no built-in `LV_SYMBOL_*` match, so the title stands alone rather than pairing with a
+  mismatched glyph, same "built-in symbols for now" convention as everywhere else.
 - **Tap-to-complete on tasks is done.** Tapping a routine tile or the Chores bar opens
   a task list (`src/ui/tasks_screen.cpp`) with a checkbox per task; tapping an undone
   row calls `POST /api/waffled-bites/device/tasks/:instanceId/complete` with the

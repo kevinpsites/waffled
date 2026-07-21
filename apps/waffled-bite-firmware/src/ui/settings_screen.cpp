@@ -70,9 +70,12 @@ static const WbControlOption WB_SOUND_OPTIONS[] = {
     {"white", "White noise"}, {"ocean", "Ocean waves"}, {"rain", "Gentle rain"},
     {"fan", "Box fan"}, {"heartbeat", "Heartbeat"}, {"lullaby", "Lullaby"}, {"forest", "Forest"},
 };
+// Hex values copied verbatim from WaffledBiteDevice.tsx's NIGHT_COLORS const
+// (not invented) so the device's swatches match what the parent web app
+// already shows for the same six colors.
 static const WbControlOption WB_NIGHT_OPTIONS[] = {
-    {"amber", "Amber"}, {"peach", "Peach"}, {"blush", "Blush"},
-    {"lilac", "Lilac"}, {"ocean", "Ocean"}, {"mint", "Mint"},
+    {"amber", "Amber", true, 0xF0A94B}, {"peach", "Peach", true, 0xF28E6B}, {"blush", "Blush", true, 0xEF7FA6},
+    {"lilac", "Lilac", true, 0xA98BE8}, {"ocean", "Ocean", true, 0x5AA7E0}, {"mint", "Mint", true, 0x5BC98B},
 };
 
 // Owns what a tap on the Sounds/Nightlight tile needs to open the shared
@@ -113,7 +116,10 @@ static void wb_open_detail_cb(lv_event_t *e)
       [key, onChange](bool on, const std::string &optionKey, int sliderValue) {
         return onChange ? onChange(key, on, optionKey, sliderValue) : false;
       });
-  lv_scr_load_anim(ctx->detail_scr, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+  // Fade rather than the slide used everywhere else in this app — the user
+  // asked for this one transition specifically to feel like it "pops open"
+  // rather than sliding in from the side; home<->settings/tasks keep sliding.
+  lv_scr_load_anim(ctx->detail_scr, LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, false);
 }
 
 // Attaches the open-detail-screen tap handler to a tile that's already

@@ -11,8 +11,10 @@
 
 struct WbControlOption
 {
-  const char *key;   // sent to onChange / the PATCH body, e.g. "ocean"
-  const char *label; // shown on the chip, e.g. "Ocean waves"
+  const char *key;            // sent to onChange / the PATCH body, e.g. "ocean"
+  const char *label;          // shown on the chip, e.g. "Ocean waves"
+  bool hasSwatch = false;     // true for color options (Nightlight) — Sounds tones leave this false
+  uint32_t swatchHex = 0;     // 0xRRGGBB, only meaningful when hasSwatch is true
 };
 
 // Optimistic-update contract, same shape as tasks_screen.h's

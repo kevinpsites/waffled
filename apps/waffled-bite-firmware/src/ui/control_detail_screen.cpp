@@ -13,7 +13,9 @@
 static void wb_go_back_cb(lv_event_t *e)
 {
   lv_obj_t *back_scr = (lv_obj_t *)lv_event_get_user_data(e);
-  lv_scr_load_anim(back_scr, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+  // Fade to match the fade-in used to open this screen (settings_screen.cpp)
+  // — every other screen pair in this app still slides.
+  lv_scr_load_anim(back_scr, LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, false);
 }
 
 // Owns everything the interactive controls need to report a change: the
@@ -28,7 +30,8 @@ struct WbControlCtx
   std::string optionKey;
   int sliderValue;
   WbControlChangeCallback onChange;
-  lv_obj_t *value_lbl; // slider's live numeric readout
+  lv_obj_t *value_lbl;      // slider's live numeric readout
+  lv_obj_t *preview_circle; // big swatch at the top; null when this tile has no color options (Sounds)
 };
 
 static void wb_ctx_delete_cb(lv_event_t *e)
@@ -54,6 +57,8 @@ struct WbOptionChipCtx
   WbControlCtx *shared;
   std::string key;
   lv_obj_t *row;
+  bool hasSwatch;
+  uint32_t swatchHex;
 };
 
 static void wb_option_chip_delete_cb(lv_event_t *e)
@@ -76,6 +81,8 @@ static void wb_option_chip_clicked_cb(lv_event_t *e)
   }
 
   chip->shared->optionKey = chip->key;
+  if (chip->hasSwatch && chip->shared->preview_circle)
+    lv_obj_set_style_bg_color(chip->shared->preview_circle, lv_color_hex(chip->swatchHex), 0);
   if (chip->shared->onChange)
     chip->shared->onChange(chip->shared->on, chip->shared->optionKey, chip->shared->sliderValue);
 }
@@ -112,7 +119,7 @@ void wb_build_control_detail_screen(
   lv_obj_set_style_pad_row(parent, 24, 0);
   lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
-  WbControlCtx *ctx = new WbControlCtx{on, optionKey, sliderValue, onChange, nullptr};
+  WbControlCtx *ctx = new WbControlCtx{on, optionKey, sliderValue, onChange, nullptr, nullptr};
   lv_obj_add_event_cb(parent, wb_ctx_delete_cb, LV_EVENT_DELETE, ctx);
 
   // ── top bar: back button + title, same shape as the other screens' ──────
@@ -143,6 +150,41 @@ void wb_build_control_detail_screen(
   lv_label_set_text(title_lbl, title);
   lv_obj_set_style_text_font(title_lbl, &lv_font_montserrat_24, 0);
   lv_obj_set_style_text_color(title_lbl, WB_COLOR_INK, 0);
+
+  // ── color preview (Nightlight only — Sounds' tone options have no swatch) ──
+  // The user couldn't tell what "Amber"/"Peach"/etc. actually looked like
+  // from text-only chips — this shows the currently-picked color at a glance,
+  // updated live as chips below are tapped (see wb_option_chip_clicked_cb).
+  bool anySwatch = false;
+  uint32_t initialHex = 0;
+  for (int i = 0; i < optionCount; i++)
+  {
+    if (!options[i].hasSwatch)
+      continue;
+    anySwatch = true;
+    if (optionKey == options[i].key)
+      initialHex = options[i].swatchHex;
+  }
+  if (anySwatch && initialHex == 0)
+  {
+    // optionKey didn't match any known option (e.g. a stale/unknown value) —
+    // fall back to the first swatch rather than showing black.
+    for (int i = 0; i < optionCount; i++)
+      if (options[i].hasSwatch) { initialHex = options[i].swatchHex; break; }
+  }
+  if (anySwatch)
+  {
+    lv_obj_t *preview = lv_obj_create(parent);
+    lv_obj_remove_style_all(preview);
+    lv_obj_set_size(preview, 64, 64);
+    lv_obj_set_style_radius(preview, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(preview, lv_color_hex(initialHex), 0);
+    lv_obj_set_style_bg_opa(preview, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(preview, 3, 0);
+    lv_obj_set_style_border_color(preview, WB_COLOR_CARD, 0);
+    lv_obj_clear_flag(preview, LV_OBJ_FLAG_SCROLLABLE);
+    ctx->preview_circle = preview;
+  }
 
   // ── on/off toggle ─────────────────────────────────────────────────────────
   lv_obj_t *toggle_row = lv_obj_create(parent);
@@ -185,14 +227,32 @@ void wb_build_control_detail_screen(
       lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, 0);
       lv_obj_set_style_pad_hor(chip, 16, 0);
       lv_obj_set_style_pad_ver(chip, 10, 0);
+      lv_obj_set_flex_flow(chip, LV_FLEX_FLOW_ROW);
+      lv_obj_set_flex_align(chip, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+      lv_obj_set_style_pad_column(chip, 8, 0);
       lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
 
+      // Label stays child index 0 regardless of whether a swatch follows it —
+      // wb_option_chip_clicked_cb's re-highlight loop reads index 0 for the
+      // label's text color, so this ordering must not change.
       lv_obj_t *chip_lbl = lv_label_create(chip);
       lv_label_set_text(chip_lbl, options[i].label);
       lv_obj_set_style_text_font(chip_lbl, &lv_font_montserrat_14, 0);
       lv_obj_set_style_text_color(chip_lbl, selected ? lv_color_white() : WB_COLOR_INK, 0);
 
-      WbOptionChipCtx *chip_ctx = new WbOptionChipCtx{ctx, options[i].key, chip_row};
+      if (options[i].hasSwatch)
+      {
+        lv_obj_t *swatch = lv_obj_create(chip);
+        lv_obj_remove_style_all(swatch);
+        lv_obj_set_size(swatch, 18, 18);
+        lv_obj_set_style_radius(swatch, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(swatch, lv_color_hex(options[i].swatchHex), 0);
+        lv_obj_set_style_bg_opa(swatch, LV_OPA_COVER, 0);
+        lv_obj_clear_flag(swatch, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(swatch, LV_OBJ_FLAG_CLICKABLE);
+      }
+
+      WbOptionChipCtx *chip_ctx = new WbOptionChipCtx{ctx, options[i].key, chip_row, options[i].hasSwatch, options[i].swatchHex};
       lv_obj_add_event_cb(chip, wb_option_chip_clicked_cb, LV_EVENT_CLICKED, chip_ctx);
       lv_obj_add_event_cb(chip, wb_option_chip_delete_cb, LV_EVENT_DELETE, chip_ctx);
     }
