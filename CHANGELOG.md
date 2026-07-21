@@ -153,6 +153,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Production dependency audits now run in CI.** The API's transitive `protobufjs`
+  dependency is updated past its schema-name denial-of-service advisory, and future
+  moderate-or-higher production advisories fail the build for both API and web.
 - **Sign-in and first-run setup forms now work better with assistive technology.**
   Labels are associated with their fields, validation messages identify the affected
   input, and server errors are announced and focused instead of silently appearing.
