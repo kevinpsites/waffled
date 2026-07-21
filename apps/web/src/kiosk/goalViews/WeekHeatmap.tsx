@@ -3,7 +3,7 @@
 // Navigable back/forth — clamped so you can't page past the current week.
 import { useState } from 'react'
 import { fmtGoalNum } from '../../lib/api'
-import { addDaysKey, heat, HEAT_DARK_THRESHOLD, parseLocalDateKey } from '../../lib/goalStats'
+import { addDaysKey, heat, HEAT_DARK_THRESHOLD, parseLocalDateKey, startOfWeekKey } from '../../lib/goalStats'
 import type { DataViewProps } from './types'
 
 const WEEKDAY = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
@@ -15,13 +15,16 @@ function fmtMonthDay(dateKey: string): string {
 export function WeekHeatmap({ goal, stats, personMap, onDayClick, headerRight }: DataViewProps) {
   const [weekOffset, setWeekOffset] = useState(0)
   const today = stats.today
-  const windowEnd = addDaysKey(today, weekOffset * 7)
-  const weekKeys = Array.from({ length: 7 }, (_, i) => addDaysKey(windowEnd, i - 6))
+  // Anchor to the fixed calendar week (Sun–Sat) that contains today (± weekOffset
+  // weeks), NOT a rolling 7-day window ending today.
+  const weekStart = startOfWeekKey(addDaysKey(today, weekOffset * 7))
+  const weekEnd = addDaysKey(weekStart, 6)
+  const weekKeys = Array.from({ length: 7 }, (_, i) => addDaysKey(weekStart, i))
   const canGoForward = weekOffset < 0
   let weekMax = 1
   for (const k of weekKeys) weekMax = Math.max(weekMax, stats.dayEntry(k).total)
   const weekTotal = weekKeys.reduce((s, k) => s + stats.dayEntry(k).total, 0)
-  const prevWeekKeys = Array.from({ length: 7 }, (_, i) => addDaysKey(windowEnd, i - 13))
+  const prevWeekKeys = Array.from({ length: 7 }, (_, i) => addDaysKey(weekStart, i - 7))
   const prevWeekTotal = prevWeekKeys.reduce((s, k) => s + stats.dayEntry(k).total, 0)
   const delta = Math.round((weekTotal - prevWeekTotal) * 10) / 10
 
@@ -32,7 +35,7 @@ export function WeekHeatmap({ goal, stats, personMap, onDayClick, headerRight }:
           <button type="button" className="gdv-month-navbtn" aria-label="Previous week" onClick={() => setWeekOffset((o) => o - 1)}>‹</button>
           <div>
             <div className="gdv-head-t">{weekOffset === 0 ? 'This week' : 'That week'}</div>
-            <div className="gdv-head-sub">{fmtMonthDay(weekKeys[0])} – {fmtMonthDay(windowEnd)} · the rhythm of your week</div>
+            <div className="gdv-head-sub">{fmtMonthDay(weekKeys[0])} – {fmtMonthDay(weekEnd)} · the rhythm of your week</div>
           </div>
           <button type="button" className="gdv-month-navbtn" aria-label="Next week" disabled={!canGoForward} onClick={() => setWeekOffset((o) => Math.min(0, o + 1))}>›</button>
         </div>

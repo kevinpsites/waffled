@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **The goal "week" chart is now the actual calendar week.** It showed a rolling last-7-days
+  window ending today; it now always shows the current week Sunday–Saturday (and paging back
+  steps whole calendar weeks), on web and iPhone/iPad.
 - **The goal "year" grid shows the whole year again.** A goal created partway through the
   year collapsed its GitHub-style square grid to just the current month; it now paints every
   day from January 1 to today, with the days before the goal started simply sitting empty

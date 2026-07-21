@@ -30,8 +30,11 @@ struct WeekHeatmapView: View {
     private var cellSize: CGFloat { max(24, (gridWidth - Self.cellSpacing * 6) / 7) }
 
     private var today: String { ctx.stats.today }
-    private var windowEnd: String { GoalDateKey.addDays(today, weekOffset * 7) }
-    private var weekKeys: [String] { (0..<7).map { GoalDateKey.addDays(windowEnd, $0 - 6) } }
+    // Anchor to the fixed calendar week (Sun–Sat) containing today (± weekOffset
+    // weeks), NOT a rolling 7-day window ending today.
+    private var weekStart: String { GoalDateKey.startOfWeek(GoalDateKey.addDays(today, weekOffset * 7)) }
+    private var weekEnd: String { GoalDateKey.addDays(weekStart, 6) }
+    private var weekKeys: [String] { (0..<7).map { GoalDateKey.addDays(weekStart, $0) } }
     private var canGoForward: Bool { weekOffset < 0 }
 
     private var weekMax: Double {
@@ -41,7 +44,7 @@ struct WeekHeatmapView: View {
         weekKeys.reduce(0) { $0 + ctx.stats.dayEntry($1).total }
     }
     private var prevWeekTotal: Double {
-        (0..<7).map { GoalDateKey.addDays(windowEnd, $0 - 13) }.reduce(0) { $0 + ctx.stats.dayEntry($1).total }
+        (0..<7).map { GoalDateKey.addDays(weekStart, $0 - 7) }.reduce(0) { $0 + ctx.stats.dayEntry($1).total }
     }
     private var delta: Double { ((weekTotal - prevWeekTotal) * 10).rounded() / 10 }
 
@@ -53,7 +56,7 @@ struct WeekHeatmapView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(weekOffset == 0 ? "This week" : "That week")
                         .font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
-                    Text("\(GoalViewFmt.monthDay(weekKeys[0])) – \(GoalViewFmt.monthDay(windowEnd)) · the rhythm of your week")
+                    Text("\(GoalViewFmt.monthDay(weekKeys[0])) – \(GoalViewFmt.monthDay(weekEnd)) · the rhythm of your week")
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 8)
