@@ -98,6 +98,15 @@
   display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; border-right: 1px solid var(--hair); }
 .dv-allday-cell { padding: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
 .dv-allday-ev { font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 8px; cursor: pointer; }
+/* Countdown chips in the day/week all-day strips — a dashed edge distinguishes a
+   "days until" countdown from a real all-day event. */
+.cal-cd-ev { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700;
+  padding: 3px 8px; border-radius: 7px; max-width: 100%; border: 1px dashed currentColor;
+  white-space: nowrap; overflow: hidden; }
+.cal-cd-ev.clickable { cursor: pointer; }
+.cal-cd-ev .cal-cd-emo { flex: none; }
+.cal-cd-ev .cal-cd-t { overflow: hidden; text-overflow: ellipsis; }
+.cal-cd-ev .cal-cd-n { flex: none; opacity: 0.75; font-weight: 800; }
 .dv-body { flex: 1; overflow-y: auto; padding-top: 10px; }
 .dv-grid { display: grid; grid-template-columns: var(--dv-rail) 1fr; position: relative; }
 .dv-rail { position: relative; }

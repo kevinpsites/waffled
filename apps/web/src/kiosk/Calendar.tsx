@@ -104,6 +104,9 @@ export function Calendar() {
     if (view === 'month') setSelectedDay(ymd(now))
   }
   const openEvent = (e: AgendaEvent) => navigate(eventDetailPath(e))
+  // An event-sourced countdown carries its event id, so opening it deep-links to
+  // that event's detail page (standalone/birthday sources have no event to open).
+  const openCountdown = (c: Countdown) => { if (c.source === 'event') navigate(`/calendar/event/${c.id}`) }
   const jumpToWeek = (d: Date) => {
     setAnchor(d)
     setView('week')
@@ -165,7 +168,9 @@ export function Calendar() {
           weekStart={startOfWeek(anchor)}
           events={events}
           tz={tz}
+          countdownsByDate={countdownsByDate}
           onOpenEvent={openEvent}
+          onOpenCountdown={openCountdown}
           onCreate={(date, time) => setModal({ date, time })}
           onPickDay={(d) => jumpToDay(d)}
         />
@@ -175,7 +180,9 @@ export function Calendar() {
           day={anchor}
           events={events}
           tz={tz}
+          countdownsByDate={countdownsByDate}
           onOpenEvent={openEvent}
+          onOpenCountdown={openCountdown}
           onCreate={(date, time) => setModal({ date, time })}
         />
       )}

@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- **Countdowns now show up on the calendar, not just the Today card.** In the calendar's
+  day and week views, each countdown appears as an all-day chip on its target date (the
+  month grid already showed a badge), so "12 days until Hawaii" is visible right where
+  you're planning. Event-based countdowns are tappable and open their event.
 
 ### Fixed
 - **Checked-off list items now have somewhere to go.** On the web custom-list view, items
