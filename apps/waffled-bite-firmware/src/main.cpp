@@ -1,9 +1,11 @@
-// Milestone 1: prove the toolchain end to end (PlatformIO + LovyanGFX + LVGL +
-// SDL2 on the native/simulator target, same app code targeting the real esp32-s3
-// panel) with a placeholder screen. Real screens (routines, quiet time, wake
-// light, ...) and the Waffled-Bites API client come next, once this renders.
+// Milestone 2: the home screen, fed mock data (wb_state.h/.cpp) — no networking
+// yet, so it never changes after boot. Wiring it to the real
+// GET /api/waffled-bites/device/state poll is next; the screen code shouldn't
+// need to change when that happens, only what feeds wb_build_home_screen().
 #include <lvgl.h>
 #include "lgfx_device.h"
+#include "wb_state.h"
+#include "ui/home_screen.h"
 
 #if defined(ARDUINO)
 #include <Wire.h>
@@ -61,17 +63,6 @@ static void touchpad_read(lv_indev_drv_t * /*indev_drv*/, lv_indev_data_t *data)
 #endif
 }
 
-static void build_placeholder_ui(void)
-{
-  lv_obj_t *scr = lv_scr_act();
-  lv_obj_set_style_bg_color(scr, lv_color_hex(0xF5EFE1), 0); // Waffled's cream background
-  lv_obj_t *label = lv_label_create(scr);
-  lv_label_set_text(label, "Waffled-Bite\nsimulator OK");
-  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_color(label, lv_color_hex(0x1C1A18), 0);
-  lv_obj_center(label);
-}
-
 void setup()
 {
 #if defined(ARDUINO)
@@ -109,7 +100,7 @@ void setup()
   indev_drv.read_cb = touchpad_read;
   lv_indev_drv_register(&indev_drv);
 
-  build_placeholder_ui();
+  wb_build_home_screen(lv_scr_act(), wb_mock_state());
 }
 
 void loop()
