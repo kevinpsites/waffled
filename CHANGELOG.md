@@ -41,6 +41,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   year collapsed its GitHub-style square grid to just the current month; it now paints every
   day from January 1 to today, with the days before the goal started simply sitting empty
   (web + iPhone/iPad).
+- **Reorganize list items into other sections.** On web you can now drag an item from one
+  section onto another to refile it; on iPhone/iPad a long-press "Move to section" does the
+  same. (True finger-drag between sections on iOS is a fast-follow.)
+- **Flag list items as important or urgent.** Every list item now has a priority — normal,
+  important, or urgent — set from the item editor on web and iPhone/iPad. Marked items get a
+  flag on the row and float to the top of their list, so what matters most is easy to spot.
+- **Swipe up while adding a list item (iPhone/iPad) to fill in the details.** Mid-add, an
+  upward swipe on the add bar commits what you typed and opens its full editor — assignee,
+  section, and priority — without hunting for the swipe action afterward.
+
+### Changed
+- **Countdowns now show up on the calendar, not just the Today card.** In the calendar's
+  day and week views, each countdown appears as an all-day chip on its target date (the
+  month grid already showed a badge), so "12 days until Hawaii" is visible right where
+  you're planning. Event-based countdowns are tappable and open their event.
+
+### Fixed
+- **Adding a grocery/list item on iPhone/iPad is easier to tap.** The add-item bar now
+  raises the keyboard when you tap anywhere on it — the icon and padding, not just the tiny
+  text glyphs — so it's no longer a fiddly target.
+- **A half-typed list item is no longer lost when you leave.** If you type an item into the
+  add bar on iPhone/iPad and navigate away without hitting return, it's now saved instead of
+  discarded.
+- **"Add anything" events now default to you.** When you type an event into the AI capture
+  bar without naming anyone ("dentist Tuesday at 3"), it's now assigned to the logged-in
+  member instead of nobody. Naming someone ("dentist for George") still assigns them.
+- **Countdowns on the Today page are now tappable.** Tap a countdown to jump straight to
+  what it's counting down to — an event-based countdown opens that event, while a trip or
+  birthday countdown opens the calendar on its day.
+- **Checked-off list items now have somewhere to go.** On the web custom-list view, items
+  you check off no longer linger in place — they tuck into a collapsible "Completed" section
+  at the bottom (matching the grocery board), with a brief grace window so an accidental tap
+  is easy to undo. Un-checking an item puts it back on the list.
 
 ## [0.9.0] - 2026-07-20
 

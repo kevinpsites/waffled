@@ -123,21 +123,25 @@ final class ListDetailModel {
         loading = false
     }
 
-    func add(name rawName: String, quantity rawQty: String, section rawSection: String? = nil) async {
+    @discardableResult
+    func add(name rawName: String, quantity rawQty: String, section rawSection: String? = nil) async -> WaffledAPI.ListItemDTO? {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
+        guard !name.isEmpty else { return nil }
         let qty = rawQty.trimmingCharacters(in: .whitespacesAndNewlines)
         let section = rawSection?.trimmingCharacters(in: .whitespacesAndNewlines)
         let sec = (section?.isEmpty == false) ? section : nil
         do {
+            let created: WaffledAPI.ListItemDTO
             if isGrocery {
-                try await api.addGroceryItem(name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
+                created = try await api.addGroceryItem(name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
             } else {
-                try await api.addListItem(listId: list.id, name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
+                created = try await api.addListItem(listId: list.id, name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
             }
             await load()
+            return created
         } catch {
             self.error = true
+            return nil
         }
     }
 
@@ -194,7 +198,7 @@ final class ListDetailModel {
     /// Optimistic full-detail edit (name / quantity / assignee / section); revert on
     /// failure. `member` is the chosen assignee (nil = unassigned).
     func editDetails(_ id: String, name rawName: String, quantity rawQty: String,
-                     member: SyncedMember?, section rawSection: String) async {
+                     member: SyncedMember?, section rawSection: String, priority: Int) async {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
@@ -204,11 +208,28 @@ final class ListDetailModel {
         items[idx].name = name
         items[idx].quantity = qty.isEmpty ? nil : qty
         items[idx].section = section.isEmpty ? nil : section
+        items[idx].priority = priority
         items[idx].assignee = member.map { .init(name: $0.name, avatarEmoji: $0.emoji, colorHex: $0.colorHex) }
         do {
-            try await api.updateItemDetails(id: id, name: name, quantity: qty, assignedTo: member?.id, section: section)
+            try await api.updateItemDetails(id: id, name: name, quantity: qty, assignedTo: member?.id, section: section, priority: priority)
         } catch {
             if let i = items.firstIndex(where: { $0.id == id }) { items[i] = prev }
+        }
+    }
+
+    /// Move an item to a different section (drag-and-drop / "Move to section"),
+    /// PATCHing just its category. Optimistic; reverts on failure.
+    func setSection(_ id: String, to rawSection: String?) async {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        let section = rawSection?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let target = (section?.isEmpty == false) ? section : nil
+        guard items[idx].section != target else { return }
+        let prev = items[idx]
+        withAnimation { items[idx].section = target }
+        do {
+            try await api.patchListItem(id: id, section: target ?? "")
+        } catch {
+            if let i = items.firstIndex(where: { $0.id == id }) { withAnimation { items[i] = prev } }
         }
     }
 
@@ -446,9 +467,17 @@ struct ListDetailView: View {
             if editingId != nil, new != .editName, new != .editQty { commitEdit() }
         }
         .onChange(of: query) { _, q in model.searchQuery = q }
+        .onDisappear {
+            // Don't lose a typed-but-unsubmitted item when navigating away — commit it.
+            if !draftName.trimmingCharacters(in: .whitespaces).isEmpty {
+                let name = draftName, qty = draftQty, section = draftSection
+                draftName = ""; draftQty = ""
+                Task { await model.add(name: name, quantity: qty, section: section) }
+            }
+        }
         .sheet(item: $detailItem) { item in
-            ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section in
-                Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section) }
+            ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section, priority in
+                Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section, priority: priority) }
             }
         }
         .confirmationDialog("Delete “\(model.list.name)”?", isPresented: $confirmingDelete, titleVisibility: .visible) {
@@ -627,6 +656,31 @@ struct ListDetailView: View {
                 } label: { Label("Details", systemImage: "slider.horizontal.3") }
                     .tint(WF.ai)
             }
+            // Reorganize into another section without opening the full editor. (A
+            // long-press menu is the reliable native path; true finger-drag between
+            // sections is a fast-follow that needs on-device QA.)
+            .contextMenu {
+                let targets = moveTargets(for: item)
+                if !targets.isEmpty {
+                    Menu {
+                        ForEach(targets, id: \.self) { s in
+                            Button(s) { Task { await model.setSection(item.id, to: s) } }
+                        }
+                        if item.section != nil {
+                            Button("No section") { Task { await model.setSection(item.id, to: nil) } }
+                        }
+                    } label: { Label("Move to section", systemImage: "tray.and.arrow.down") }
+                }
+                Button {
+                    if editingId != nil { commitEdit() }
+                    detailItem = item
+                } label: { Label("Details…", systemImage: "slider.horizontal.3") }
+            }
+    }
+
+    /// Sections this item could move to — the suggestion list minus its own section.
+    private func moveTargets(for item: WaffledAPI.ListItemDTO) -> [String] {
+        sectionSuggestions.filter { $0.caseInsensitiveCompare(item.section ?? "") != .orderedSame }
     }
 
     @ViewBuilder private func sectionHeader(_ group: ListSectionGroup) -> some View {
@@ -1014,6 +1068,11 @@ struct ListDetailView: View {
             } else {
                 Button { startEdit(item) } label: {
                     HStack(spacing: 8) {
+                        if ListItemPriority.meta(item.priority).value != 0 {
+                            Text(ListItemPriority.meta(item.priority).icon)
+                                .font(.system(size: 13))
+                                .accessibilityLabel(ListItemPriority.meta(item.priority).label)
+                        }
                         Text(item.name)
                             .font(.system(size: 16, weight: .semibold))
                             .strikethrough(item.checked, color: WF.ink3)
@@ -1078,6 +1137,20 @@ struct ListDetailView: View {
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
             .wfField()
+            // The whole bar (icon + padding, not just the field glyphs) raises the
+            // keyboard — the bare TextField hit target was a too-small tap.
+            .contentShape(Rectangle())
+            .onTapGesture { focus = .add }
+            // Swipe up on the composer to open the full details editor (assignee,
+            // section, priority) for what you're adding — it commits the draft, then
+            // opens that item's editor. Simultaneous so it doesn't block tap/typing.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 24).onEnded { value in
+                    guard value.translation.height < -30,
+                          !draftName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                    openDraftDetails()
+                }
+            )
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -1146,6 +1219,19 @@ struct ListDetailView: View {
         refocusAdd()
     }
 
+    /// Swipe-up on the composer: commit the current draft, then open the just-created
+    /// item's full details editor (assignee / section / priority).
+    private func openDraftDetails() {
+        let name = draftName, qty = draftQty, section = draftSection
+        draftName = ""; draftQty = ""
+        focus = nil
+        Task {
+            if let created = await model.add(name: name, quantity: qty, section: section) {
+                detailItem = created
+            }
+        }
+    }
+
     /// Put the cursor back in the "Add item" field after a submit, so you can hit Return
     /// and keep adding item after item. Deferred to the next runloop: SwiftUI clears focus
     /// as part of handling the submit, so a synchronous re-set here would just be undone.
@@ -1181,6 +1267,18 @@ struct ListDetailView: View {
     }
 }
 
+/// List-item priority: a small closed scale (0 normal, 1 important, 2 urgent) shared
+/// by the detail editor's chips and the row flag. Mirrors the web `priority.tsx`.
+enum ListItemPriority {
+    struct Option { let value: Int; let label: String; let icon: String }
+    static let all: [Option] = [
+        .init(value: 0, label: "Normal", icon: ""),
+        .init(value: 1, label: "Important", icon: "⚑"),
+        .init(value: 2, label: "Urgent", icon: "‼️"),
+    ]
+    static func meta(_ p: Int?) -> Option { all.first { $0.value == (p ?? 0) } ?? all[0] }
+}
+
 /// The fuller "Details" editor reached by swiping a row — name, quantity, assignee,
 /// and section. The 90% case stays on the inline row editor; this is for the rest.
 /// Styled to match the app (WF cards on canvas) rather than the stock iOS Form.
@@ -1189,15 +1287,16 @@ struct ItemDetailEditor: View {
     let originalName: String
     let members: [SyncedMember]
     let suggestions: [String]
-    let onSave: (String, String, SyncedMember?, String) -> Void
+    let onSave: (String, String, SyncedMember?, String, Int) -> Void
 
     @State private var name: String
     @State private var quantity: String
     @State private var assigneeId: String?
     @State private var section: String
+    @State private var priority: Int
 
     init(item: WaffledAPI.ListItemDTO, members: [SyncedMember], suggestions: [String],
-         onSave: @escaping (String, String, SyncedMember?, String) -> Void) {
+         onSave: @escaping (String, String, SyncedMember?, String, Int) -> Void) {
         self.originalName = item.name
         self.members = members
         self.suggestions = suggestions
@@ -1205,6 +1304,7 @@ struct ItemDetailEditor: View {
         _name = State(initialValue: item.name)
         _quantity = State(initialValue: item.quantity ?? "")
         _section = State(initialValue: item.section ?? "")
+        _priority = State(initialValue: item.priority ?? 0)
         // The item's assignee carries no id, so resolve it to a member by name.
         let assigneeName = item.assignee?.name
         _assigneeId = State(initialValue: members.first { $0.name == assigneeName }?.id)
@@ -1216,6 +1316,11 @@ struct ItemDetailEditor: View {
                 VStack(alignment: .leading, spacing: 20) {
                     field("Name") { TextField("Item", text: $name).textInputAutocapitalization(.words) }
                     field("Quantity") { TextField("e.g. 2 lb", text: $quantity) }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Priority")
+                        priorityRow
+                    }
 
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: "Assigned to")
@@ -1241,7 +1346,7 @@ struct ItemDetailEditor: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        onSave(name, quantity, members.first { $0.id == assigneeId }, section)
+                        onSave(name, quantity, members.first { $0.id == assigneeId }, section, priority)
                         dismiss()
                     }
                     .fontWeight(.semibold)
@@ -1267,6 +1372,25 @@ struct ItemDetailEditor: View {
             .padding(.horizontal, 15).padding(.vertical, 13)
             .frame(maxWidth: .infinity, alignment: .leading)
             .wfField()
+    }
+
+    /// Normal / Important / Urgent chips — mirrors the web item editor's priority pills.
+    private var priorityRow: some View {
+        HStack(spacing: 8) {
+            ForEach(ListItemPriority.all, id: \.value) { p in
+                let selected = priority == p.value
+                Button { priority = p.value } label: {
+                    HStack(spacing: 5) {
+                        if !p.icon.isEmpty { Text(p.icon).font(.system(size: 12)) }
+                        Text(p.label).font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(selected ? WF.ink : WF.ink2)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .wfChip(selected: selected)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private var assigneeRow: some View {

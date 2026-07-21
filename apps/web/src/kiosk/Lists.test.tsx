@@ -114,13 +114,49 @@ describe('Lists screen', () => {
     expect(screen.getByText('Waffled suggests:')).toBeInTheDocument()
     expect(screen.getByText('Bug spray')).toBeInTheDocument()
 
-    // sectioned items with strikethrough on the checked one (titles uppercased via CSS)
+    // active sectioned items render; the checked one is tucked into a collapsed
+    // Completed section rather than lingering inline in its original section
     expect(await screen.findByText('Clothes')).toBeInTheDocument()
     expect(screen.getByText('Gear')).toBeInTheDocument()
     expect(screen.getByText('Swimsuits')).toBeInTheDocument()
     expect(screen.getByText('×4')).toBeInTheDocument()
-    const pjs = screen.getByText('PJs & socks').closest('.litem')!
-    expect(pjs).toHaveClass('done')
+    expect(screen.queryByText('PJs & socks')).toBeNull()
+    expect(screen.getByRole('button', { name: /Completed/i })).toHaveTextContent('1')
+  })
+
+  it('tucks checked items into a collapsible Completed section, out of their original section', async () => {
+    mockApi({ lists: [grocery, packing], items: packItems })
+    renderScreen()
+    await exitBoard()
+
+    // the checked item (PJs & socks, section Clothes) no longer sits in Clothes…
+    const clothes = (await screen.findByText('Clothes')).closest('.lists-section') as HTMLElement
+    expect(within(clothes).queryByText('PJs & socks')).toBeNull()
+    expect(within(clothes).getByText('Swimsuits')).toBeInTheDocument()
+
+    // …it's counted in a collapsed Completed section; expanding reveals it
+    const completed = screen.getByRole('button', { name: /Completed/i })
+    expect(completed).toHaveTextContent('1')
+    fireEvent.click(completed)
+    expect(await screen.findByText('PJs & socks')).toBeInTheDocument()
+  })
+
+  it('drags an item into another section and PATCHes its category', async () => {
+    const sent: Sent[] = []
+    mockApi({ lists: [grocery, packing], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+
+    // Sunscreen lives in Gear; drag it onto the Clothes section
+    const sunscreen = (await screen.findByText('Sunscreen')).closest('.litem') as HTMLElement
+    const clothes = (await screen.findByText('Clothes')).closest('.lists-section') as HTMLElement
+    fireEvent.dragStart(sunscreen)
+    fireEvent.dragOver(clothes)
+    fireEvent.drop(clothes)
+
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH' && /\/api\/list-items\/i3$/.test(s.url))).toBe(true))
+    const patch = sent.find((s) => s.method === 'PATCH' && /\/api\/list-items\/i3$/.test(s.url))!
+    expect(patch.body).toMatchObject({ category: 'Clothes' })
   })
 
   it('toggles an item via its checkbox and PATCHes checked state', async () => {

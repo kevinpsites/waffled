@@ -365,6 +365,39 @@ describe('list items — sections, quantity, assignee', () => {
   })
 })
 
+describe('list item priority', () => {
+  let listId = ''
+
+  beforeAll(async () => {
+    listId = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Errands' })).body).list.id
+  })
+
+  it('defaults new items to priority 0 and accepts a priority on create', async () => {
+    const plain = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Milk' })).body).item
+    expect(plain.priority).toBe(0)
+    const urgent = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Passport', priority: 2 })).body).item
+    expect(urgent.priority).toBe(2)
+  })
+
+  it('patches an item priority and rejects out-of-range values', async () => {
+    const id = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Batteries' })).body).item.id
+    const up = await call('PATCH', `/api/list-items/${id}`, kevin, { priority: 1 })
+    expect(up.statusCode).toBe(200)
+    expect(JSON.parse(up.body).item.priority).toBe(1)
+    expect((await call('PATCH', `/api/list-items/${id}`, kevin, { priority: 9 })).statusCode).toBe(400)
+    expect((await call('PATCH', `/api/list-items/${id}`, kevin, { priority: 'high' })).statusCode).toBe(400)
+  })
+
+  it('sorts higher-priority (unchecked) items first in the list detail', async () => {
+    const fresh = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Trip prep' })).body).list.id
+    await call('POST', `/api/lists/${fresh}/items`, kevin, { name: 'Snacks' }) // priority 0
+    await call('POST', `/api/lists/${fresh}/items`, kevin, { name: 'Tickets', priority: 2 })
+    await call('POST', `/api/lists/${fresh}/items`, kevin, { name: 'Sunhat', priority: 1 })
+    const items = JSON.parse((await call('GET', `/api/lists/${fresh}`, kevin)).body).items as Array<{ name: string; priority: number }>
+    expect(items.map((i) => i.name)).toEqual(['Tickets', 'Sunhat', 'Snacks'])
+  })
+})
+
 describe('grocery auto-build from a recipe', () => {
   let recipeId = ''
 
