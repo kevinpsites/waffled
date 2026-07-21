@@ -99,6 +99,7 @@ static void touchpad_read(lv_indev_t * /*indev*/, lv_indev_data_t *data)
 static lv_obj_t *home_scr;
 static lv_obj_t *settings_scr;
 static lv_obj_t *onboarding_scr;
+static lv_obj_t *tasks_scr; // rebuilt fresh each time a routine tile is tapped — see home_screen.cpp
 static bool onboarding_built = false;
 
 static std::string g_serverUrl;
@@ -109,6 +110,7 @@ static lv_timer_t *g_pollTimer = nullptr;
 
 static void wb_show_onboarding();
 static void wb_enter_app();
+static bool wb_complete_task(const std::string &taskId);
 
 // Mints (or refreshes) a short-lived access token from the stored device
 // secret. On 401 (waffledBites.ts: revoked device) clears the stored
@@ -175,13 +177,39 @@ static void wb_do_poll()
   if (wb_state_from_json(doc, liveState))
   {
     lv_obj_clean(home_scr);
-    wb_build_home_screen(home_scr, liveState, settings_scr);
+    wb_build_home_screen(home_scr, liveState, settings_scr, tasks_scr, wb_complete_task);
   }
 }
 
 static void wb_poll_timer_cb(lv_timer_t * /*timer*/)
 {
   wb_do_poll();
+}
+
+// The tasks screen's tap-to-complete callback (tasks_screen.h). Synchronous,
+// same as wb_do_poll/wb_refresh_access_token — refreshes the token first if
+// due, same pattern as wb_do_poll, since a tap can land well after the last
+// poll refreshed it. On success, runs an immediate poll so stars/progress
+// update everywhere (home screen tiles, greeting badge) without waiting up
+// to 5s for the next timer tick — the tapped row itself already updated
+// optimistically in tasks_screen.cpp before this was even called.
+static bool wb_complete_task(const std::string &taskId)
+{
+  if (taskId.empty()) // mock/placeholder tasks have no real instance id
+    return false;
+
+  if (wb_tick_ms() >= g_tokenExpiresAtMs)
+  {
+    if (!wb_refresh_access_token())
+      return false;
+  }
+
+  std::string url = g_serverUrl + "/api/waffled-bites/device/tasks/" + taskId + "/complete";
+  WbHttpResponse resp = wb_http_post(url.c_str(), "{}", g_accessToken.c_str());
+  bool ok = resp.ok && resp.status == 200;
+  if (ok)
+    wb_do_poll();
+  return ok;
 }
 
 // Builds home/settings from mock data as an immediate placeholder (so
@@ -192,7 +220,7 @@ static void wb_enter_app()
 {
   lv_obj_clean(home_scr);
   lv_obj_clean(settings_scr);
-  wb_build_home_screen(home_scr, wb_mock_state(), settings_scr);
+  wb_build_home_screen(home_scr, wb_mock_state(), settings_scr, tasks_scr, wb_complete_task);
   wb_build_settings_screen(settings_scr, wb_mock_state(), home_scr);
   lv_scr_load(home_scr);
 
@@ -274,6 +302,7 @@ void setup()
   home_scr = lv_obj_create(NULL);
   settings_scr = lv_obj_create(NULL);
   onboarding_scr = lv_obj_create(NULL);
+  tasks_scr = lv_obj_create(NULL);
 
   g_deviceSecret = wb_store_get("deviceSecret");
   g_serverUrl = wb_store_get("serverUrl");

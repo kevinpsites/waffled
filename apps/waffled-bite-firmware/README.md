@@ -12,10 +12,10 @@ An earlier board (ELECROW CrowPanel Basic 7", ESP32-S3, 800×480 RGB-parallel) w
 targeted first and is gone from this repo — superseded before it ever arrived. See
 git history if that context is ever needed again.
 
-**Status: milestone 4.** Home + settings ("Grown-up controls") screens are built,
-the firmware talks to the real backend (onboarding → pairing → a 5s live poll that
-rebuilds the home screen, token refresh), and it's been ported to **LVGL 9.2** +
-**1024×600** for the new board. Verified end-to-end against a real running backend
+**Status: milestone 5.** Home + settings ("Grown-up controls") + a tasks screen are
+built, the firmware talks to the real backend (onboarding → pairing → a 5s live poll
+that rebuilds the home screen, token refresh, tap-to-complete on tasks), and it's
+been ported to **LVGL 9.2** + **1024×600** for the new board. Verified end-to-end against a real running backend
 on `native` (paired, exchanged tokens, polled real routine/stars data for a demo
 household's kid — see git history). `esp32-p4` compiles clean against the real
 production silicon's toolchain, but nothing has run on actual hardware yet — see
@@ -94,10 +94,21 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 - **Only the home + settings screens exist.** Quiet time, night light, wake light,
   sound machine, and rewards from the mockup are still just the (non-functional)
   control tiles on the settings screen — tapping them does nothing yet.
-- **No tap-to-complete on tasks.** The poll shows live routine/chore data, but there's
-  no per-task list UI to tap, so `POST /api/waffled-bites/device/tasks/:instanceId/complete`
-  is never called. `WbTask.id` is already plumbed through from the real payload for
-  when this lands.
+- **Tap-to-complete on tasks is done.** Tapping a routine tile or the Chores bar opens
+  a task list (`src/ui/tasks_screen.cpp`) with a checkbox per task; tapping an undone
+  row calls `POST /api/waffled-bites/device/tasks/:instanceId/complete` with the
+  device's access token, optimistically marks the row done, and reverts it if the
+  request fails (network error, or a photo-proof-required chore this device can't
+  satisfy yet — `ProofRequiredError` on the backend). A successful complete triggers
+  an immediate poll so stars/progress update everywhere without waiting up to 5s.
+  Verified against the real demo backend: paired a real device, hit the exact
+  complete endpoint with a real device token (the same request `wb_complete_task` in
+  `main.cpp` builds), confirmed the reward posted (`stars` went 42→48) and the
+  instance flipped to `status: "done"` on a follow-up poll; separately ran the actual
+  compiled `native` binary through a full pair→token→poll cycle to confirm nothing in
+  the port broke the runtime. What's still open: no undo/uncomplete from the device,
+  no animation on complete, and mock/placeholder tasks (empty `id`, shown before the
+  first real poll lands) render but aren't tappable, by design.
 - **No WiFi provisioning UI.** `esp32-p4` connects with hardcoded credentials
   (`WB_WIFI_SSID`/`WB_WIFI_PASS` in `platformio.ini`, both `"CHANGE_ME"`) — a real
   captive-portal/BLE setup flow is deferred.

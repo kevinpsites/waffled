@@ -196,6 +196,47 @@ static void wb_open_settings_cb(lv_event_t *e)
   lv_scr_load_anim(settings_scr, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
 }
 
+// Bundles what a tapped routine tile/chores bar needs to open the tasks
+// screen: which routine to show, and the screens/callback to hand
+// wb_build_tasks_screen. `routine` points into the WbDeviceState this
+// wb_build_home_screen call was given — always static storage in practice
+// (wb_mock_state()'s function-static, or main.cpp's `static WbDeviceState
+// liveState`), so it safely outlives this context. Heap-allocated per tile
+// per rebuild and freed on LV_EVENT_DELETE — see tasks_screen.cpp's
+// WbTaskRowCtx comment for why (this screen gets rebuilt on every poll, so
+// "never freed" like onboarding's context would leak).
+struct WbOpenTasksCtx
+{
+  const char *title;
+  const WbRoutine *routine;
+  lv_obj_t *tasks_scr;
+  lv_obj_t *home_scr;
+  WbTaskCompleteCallback onComplete;
+};
+
+static void wb_open_tasks_ctx_delete_cb(lv_event_t *e)
+{
+  WbOpenTasksCtx *ctx = (WbOpenTasksCtx *)lv_event_get_user_data(e);
+  delete ctx;
+}
+
+static void wb_open_tasks_cb(lv_event_t *e)
+{
+  WbOpenTasksCtx *ctx = (WbOpenTasksCtx *)lv_event_get_user_data(e);
+  lv_obj_clean(ctx->tasks_scr);
+  wb_build_tasks_screen(ctx->tasks_scr, ctx->title, *ctx->routine, ctx->home_scr, ctx->onComplete);
+  lv_scr_load_anim(ctx->tasks_scr, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+
+// Attaches the open-tasks-screen tap handler to a tile/bar that's already
+// clickable (lv_obj_create's default flags include CLICKABLE).
+static void wb_wire_open_tasks(lv_obj_t *tile, const char *title, const WbRoutine &routine, lv_obj_t *tasks_scr, lv_obj_t *home_scr, WbTaskCompleteCallback onComplete)
+{
+  WbOpenTasksCtx *ctx = new WbOpenTasksCtx{title, &routine, tasks_scr, home_scr, onComplete};
+  lv_obj_add_event_cb(tile, wb_open_tasks_cb, LV_EVENT_CLICKED, ctx);
+  lv_obj_add_event_cb(tile, wb_open_tasks_ctx_delete_cb, LV_EVENT_DELETE, ctx);
+}
+
 static lv_obj_t *make_gear_button(lv_obj_t *parent, lv_obj_t *settings_scr)
 {
   lv_obj_t *btn = lv_obj_create(parent);
@@ -218,7 +259,7 @@ static lv_obj_t *make_gear_button(lv_obj_t *parent, lv_obj_t *settings_scr)
   return btn;
 }
 
-void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *settings_scr)
+void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *settings_scr, lv_obj_t *tasks_scr, WbTaskCompleteCallback onComplete)
 {
   lv_obj_set_style_bg_color(parent, WB_COLOR_BG, 0);
   lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
@@ -314,9 +355,13 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   lv_obj_set_style_pad_column(tiles_row, 14, 0);
   lv_obj_clear_flag(tiles_row, LV_OBJ_FLAG_SCROLLABLE);
 
-  make_routine_tile(tiles_row, "Morning", state.morning, WB_COLOR_MORNING, WB_COLOR_MORNING_TEXT);
-  make_routine_tile(tiles_row, "Afternoon", state.afternoon, WB_COLOR_AFTERNOON, WB_COLOR_AFTERNOON_TEXT);
-  make_routine_tile(tiles_row, "Evening", state.evening, WB_COLOR_EVENING, WB_COLOR_EVENING_TEXT);
+  lv_obj_t *morning_tile = make_routine_tile(tiles_row, "Morning", state.morning, WB_COLOR_MORNING, WB_COLOR_MORNING_TEXT);
+  lv_obj_t *afternoon_tile = make_routine_tile(tiles_row, "Afternoon", state.afternoon, WB_COLOR_AFTERNOON, WB_COLOR_AFTERNOON_TEXT);
+  lv_obj_t *evening_tile = make_routine_tile(tiles_row, "Evening", state.evening, WB_COLOR_EVENING, WB_COLOR_EVENING_TEXT);
+  wb_wire_open_tasks(morning_tile, "Morning", state.morning, tasks_scr, parent, onComplete);
+  wb_wire_open_tasks(afternoon_tile, "Afternoon", state.afternoon, tasks_scr, parent, onComplete);
+  wb_wire_open_tasks(evening_tile, "Evening", state.evening, tasks_scr, parent, onComplete);
 
-  make_chores_bar(right_col, state.chores);
+  lv_obj_t *chores_bar = make_chores_bar(right_col, state.chores);
+  wb_wire_open_tasks(chores_bar, "Chores", state.chores, tasks_scr, parent, onComplete);
 }
