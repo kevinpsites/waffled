@@ -5,6 +5,13 @@
 // data each time. wb_mock_state() is still used as the immediate placeholder
 // while the very first poll is in flight, and as onboarding's fallback if
 // this ever needs to demo offline.
+//
+// Milestone 4: ported to LVGL 9.2 + 1024x600 for the new target board
+// (ELECROW CrowPanel Advanced 7", ESP32-P4 — the CrowPanel Basic 7"/ESP32-S3
+// this was originally built against was superseded before it arrived). The
+// display/indev registration below is v9's API (lv_display_create/
+// lv_indev_create), not v8's lv_disp_drv_t/lv_indev_drv_t — see the plan
+// doc / commit history for the full v8→v9 delta if this looks unfamiliar.
 #include <lvgl.h>
 #include "lgfx_device.h"
 #include "wb_state.h"
@@ -21,9 +28,9 @@
 #include <Wire.h>
 #include <TAMC_GT911.h>
 #include <WiFi.h>
-static TAMC_GT911 ts = TAMC_GT911(WB_TOUCH_SDA, WB_TOUCH_SCL, -1, -1, 800, 480);
+static TAMC_GT911 ts = TAMC_GT911(WB_TOUCH_SDA, WB_TOUCH_SCL, WB_TOUCH_INT, WB_TOUCH_RST, 1024, 600);
 #ifndef WB_WIFI_SSID
-#define WB_WIFI_SSID "" // set via platformio.ini's esp32-s3 build_flags
+#define WB_WIFI_SSID "" // set via platformio.ini's esp32-p4 build_flags
 #endif
 #ifndef WB_WIFI_PASS
 #define WB_WIFI_PASS ""
@@ -39,23 +46,24 @@ static TAMC_GT911 ts = TAMC_GT911(WB_TOUCH_SDA, WB_TOUCH_SCL, -1, -1, 800, 480);
 
 static LGFX lcd;
 
-static lv_disp_draw_buf_t draw_buf;
-// A partial buffer (40 rows) is plenty for LVGL's chunked flush — the full
-// 800x480 framebuffer lives in the panel driver, not here.
-static lv_color_t buf1[800 * 40];
-static lv_disp_drv_t disp_drv;
+// A partial buffer (40 rows at the panel's full width) is plenty for LVGL's
+// chunked flush — the full 1024x600 framebuffer lives in the panel driver,
+// not here. Raw bytes (not lv_color_t[]) because v9's lv_display_set_buffers
+// takes the size in bytes and flush_cb now hands back a raw uint8_t*, not a
+// typed color pointer — see disp_flush below.
+static uint8_t buf1[1024 * 40 * 2]; // *2: 2 bytes/pixel at RGB565
 
-static void disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
+static void disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
   uint32_t w = area->x2 - area->x1 + 1;
   uint32_t h = area->y2 - area->y1 + 1;
-  lcd.pushImageDMA(area->x1, area->y1, w, h, (lgfx::rgb565_t *)&color_p->full);
-  lv_disp_flush_ready(disp);
+  lcd.pushImageDMA(area->x1, area->y1, w, h, (lgfx::rgb565_t *)px_map);
+  lv_display_flush_ready(disp);
 }
 
 // Native: LovyanGFX's SDL panel reports mouse clicks as touches through the same
 // getTouch() call real touch panels use. Hardware: the GT911 over I2C.
-static void touchpad_read(lv_indev_drv_t * /*indev_drv*/, lv_indev_data_t *data)
+static void touchpad_read(lv_indev_t * /*indev*/, lv_indev_data_t *data)
 {
 #if defined(ARDUINO)
   ts.read();
@@ -237,20 +245,19 @@ void setup()
 #endif
 
   lv_init();
-  lv_disp_draw_buf_init(&draw_buf, buf1, NULL, 800 * 40);
+  // v9 dropped LV_TICK_CUSTOM from lv_conf.h in favor of this runtime call —
+  // wb_tick_ms's signature (uint32_t(*)(void)) already matches lv_tick_get_cb_t
+  // exactly, so wb_tick_hal.h/.cpp themselves needed no changes.
+  lv_tick_set_cb(wb_tick_ms);
 
-  lv_disp_drv_init(&disp_drv);
-  disp_drv.hor_res = 800;
-  disp_drv.ver_res = 480;
-  disp_drv.flush_cb = disp_flush;
-  disp_drv.draw_buf = &draw_buf;
-  lv_disp_drv_register(&disp_drv);
+  lv_display_t *disp = lv_display_create(1024, 600);
+  lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
+  lv_display_set_flush_cb(disp, disp_flush);
+  lv_display_set_buffers(disp, buf1, NULL, sizeof(buf1), LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-  static lv_indev_drv_t indev_drv;
-  lv_indev_drv_init(&indev_drv);
-  indev_drv.type = LV_INDEV_TYPE_POINTER;
-  indev_drv.read_cb = touchpad_read;
-  lv_indev_drv_register(&indev_drv);
+  lv_indev_t *indev = lv_indev_create();
+  lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+  lv_indev_set_read_cb(indev, touchpad_read);
 
 #if defined(ARDUINO)
   // Hardcoded credentials until real WiFi provisioning exists (deferred —

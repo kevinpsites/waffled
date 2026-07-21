@@ -5,101 +5,100 @@
 // pushImageDMA()/getTouch()), so app code never branches on target — only this
 // file does.
 //
-// The hardware pin mapping, RGB bus timing, and touch wiring below are copied
-// verbatim from Elecrow's own working example for this exact board (not derived —
-// sourced from their public repo, since getting RGB-panel timing wrong is the kind
-// of thing that "looks plausible" but doesn't actually drive the panel):
-// github.com/Elecrow-RD/CrowPanel-7.0-HMI-ESP32-Display-800x480,
-// example/V3.0/Arduino/Course/LVGL_Arduino7.0/{LVGL_Arduino7.0.ino,touch.h}
-// UNVERIFIED ON REAL HARDWARE — the board hasn't arrived yet. Confirm on first
-// bring-up before trusting this beyond "it's what the vendor shipped."
+// Pin mapping, DSI bus/DPI timing, and touch wiring below are copied verbatim
+// from Elecrow's own working example for this exact board (not derived —
+// sourced from their public repo, matching the "verify against the vendor's
+// real source, not guessed" rule this codebase already learned the hard way
+// on the earlier ESP32-S3 config):
+// github.com/Elecrow-RD/CrowPanel-Advanced-7inch-ESP32-P4-HMI-AI-Display-1024x600-IPS-Touch-Screen,
+// example/V1.2/Arduino_Code/Lesson07-Turn_on_the_screen/{board_config.h,esp_panel_board_custom_conf.h}.
+//
+// IMPORTANT DEVIATION FROM THE VENDOR'S OWN EXAMPLE, flagged for whoever
+// picks this up at real hardware bring-up: Elecrow's own proven Arduino
+// example does NOT use LovyanGFX at all — it uses Espressif's own
+// `ESP32_Display_Panel` library (+ `ESP32_IO_Expander`) bundled with LVGL
+// 8.3.11 (their repo's own top-level spec table claims LVGL 9.2, but the
+// actual working example code — filenames literally say `lvgl_v8_port.cpp`
+// — is v8; the table is stale, trust the code, not the table). This file
+// instead uses LovyanGFX's Bus_DSI + Panel_EK79007 (a real, non-experimental
+// class — added via an actual LovyanGFX PR, its init sequence lifted
+// directly from Espressif's own esp_lcd_ek79007 component) to keep the same
+// LGFX_Device abstraction main.cpp/native already share, rather than fork
+// the whole app onto a second, unrelated display-driver architecture. This
+// is a deliberate choice to preserve the existing codebase shape, not proof
+// it's the safer bet for first bring-up — if this doesn't drive the real
+// panel, the vendor's own ESP32_Display_Panel-based approach (their
+// Lesson07 example) is the documented, vendor-proven fallback.
+// UNVERIFIED ON REAL HARDWARE — the board hasn't arrived yet.
 #pragma once
 
 #include <LovyanGFX.hpp>
 
 #if defined(ARDUINO)
-// ── esp32-s3 target: the real panel ─────────────────────────────────────────
-#include <lgfx/v1/platforms/esp32s3/Bus_RGB.hpp>
-#include <lgfx/v1/platforms/esp32s3/Panel_RGB.hpp>
+// ── esp32-p4 target: the real panel (ELECROW CrowPanel Advanced 7", MIPI-DSI) ──
+#include <lgfx/v1/platforms/esp32p4/Bus_DSI.hpp>
+#include <lgfx/v1/platforms/esp32p4/Panel_EK79007.hpp>
 
 class LGFX : public lgfx::LGFX_Device
 {
 public:
-  lgfx::Bus_RGB _bus_instance;
-  lgfx::Panel_RGB _panel_instance;
+  lgfx::Bus_DSI _bus_instance;
+  lgfx::Panel_EK79007 _panel_instance;
 
   LGFX(void)
   {
     {
       auto cfg = _bus_instance.config();
-      cfg.panel = &_panel_instance;
-
-      // clang-format off
-      cfg.pin_d0  = GPIO_NUM_15; // B0
-      cfg.pin_d1  = GPIO_NUM_7;  // B1
-      cfg.pin_d2  = GPIO_NUM_6;  // B2
-      cfg.pin_d3  = GPIO_NUM_5;  // B3
-      cfg.pin_d4  = GPIO_NUM_4;  // B4
-
-      cfg.pin_d5  = GPIO_NUM_9;  // G0
-      cfg.pin_d6  = GPIO_NUM_46; // G1
-      cfg.pin_d7  = GPIO_NUM_3;  // G2
-      cfg.pin_d8  = GPIO_NUM_8;  // G3
-      cfg.pin_d9  = GPIO_NUM_16; // G4
-      cfg.pin_d10 = GPIO_NUM_1;  // G5
-
-      cfg.pin_d11 = GPIO_NUM_14; // R0
-      cfg.pin_d12 = GPIO_NUM_21; // R1
-      cfg.pin_d13 = GPIO_NUM_47; // R2
-      cfg.pin_d14 = GPIO_NUM_48; // R3
-      cfg.pin_d15 = GPIO_NUM_45; // R4
-      // clang-format on
-
-      cfg.pin_henable = GPIO_NUM_41;
-      cfg.pin_vsync = GPIO_NUM_40;
-      cfg.pin_hsync = GPIO_NUM_39;
-      cfg.pin_pclk = GPIO_NUM_0;
-      cfg.freq_write = 15000000;
-
-      cfg.hsync_polarity = 0;
-      cfg.hsync_front_porch = 40;
-      cfg.hsync_pulse_width = 48;
-      cfg.hsync_back_porch = 40;
-
-      cfg.vsync_polarity = 0;
-      cfg.vsync_front_porch = 1;
-      cfg.vsync_pulse_width = 31;
-      cfg.vsync_back_porch = 13;
-
-      cfg.pclk_active_neg = 1;
-      cfg.de_idle_high = 0;
-      cfg.pclk_idle_high = 0;
-
+      cfg.lane_num = 2;      // ESP_PANEL_BOARD_LCD_MIPI_DSI_LANE_NUM
+      cfg.lane_mbps = 1000;  // ESP_PANEL_BOARD_LCD_MIPI_DSI_LANE_RATE_MBPS
+      // DSI PHY power: Elecrow's own config sets
+      // ESP_PANEL_BOARD_LCD_MIPI_PHY_LDO_ID to -1 ("not used" — this board's
+      // DSI PHY isn't powered through the P4's internal LDO channel), but
+      // Bus_DSI::config_t has no "disabled" value for ldo_chan_id, only a
+      // default channel (3). Left at the LovyanGFX default here —
+      // UNVERIFIED whether that conflicts with how this board actually
+      // powers the DSI PHY; needs real hardware to resolve either way.
       _bus_instance.config(cfg);
     }
     {
       auto cfg = _panel_instance.config();
-      cfg.memory_width = 800;
-      cfg.memory_height = 480;
-      cfg.panel_width = 800;
-      cfg.panel_height = 480;
-      cfg.offset_x = 0;
-      cfg.offset_y = 0;
+      cfg.memory_width = 1024;
+      cfg.memory_height = 600;
+      cfg.panel_width = 1024;
+      cfg.panel_height = 600;
+      cfg.pin_rst = 41; // LCD_GPIO_RST
       _panel_instance.config(cfg);
+
+      auto cfg_detail = _panel_instance.config_detail();
+      cfg_detail.dpi_freq_mhz = 51;       // LCD_CLK_MHZ
+      cfg_detail.hsync_pulse_width = 70;  // LCD_HPW
+      cfg_detail.hsync_back_porch = 160;  // LCD_HBP
+      cfg_detail.hsync_front_porch = 160; // LCD_HFP
+      cfg_detail.vsync_pulse_width = 10;  // LCD_VPW
+      cfg_detail.vsync_back_porch = 23;   // LCD_VBP
+      cfg_detail.vsync_front_porch = 21;  // LCD_VFP
+      _panel_instance.config_detail(cfg_detail);
     }
     _panel_instance.setBus(&_bus_instance);
     setPanel(&_panel_instance);
   }
 };
 
-// Backlight PWM pin (ledc), separate from the LGFX bus config above.
-#define WB_BACKLIGHT_PIN 2
-// Touch (GT911, I2C) shares a bus with the onboard DHT20 + PCA9557 — SDA/SCL only,
-// no INT/RST wired on this board variant. Handled by a separate library (TAMC_GT911)
-// rather than LovyanGFX's own touch support, matching the vendor example — LovyanGFX
-// wasn't confirmed to have a ready-made profile for this touch wiring.
-#define WB_TOUCH_SDA 19
-#define WB_TOUCH_SCL 20
+// Backlight: IO31, PWM ~30kHz, active-high (LCD_GPIO_BLIGHT/BLIGHT_PWM_Hz/
+// BLIGHT_ON_LEVEL in Elecrow's board_config.h) — handled in main.cpp, same
+// as the retired S3 config, not part of the LGFX class itself.
+#define WB_BACKLIGHT_PIN 31
+#define WB_BACKLIGHT_PWM_HZ 30000
+// Touch: GT911 over I2C1 — same chip family/library (TAMC_GT911) as the
+// retired S3 board, just different pins, and RST/INT ARE wired on this board
+// (they weren't on the old one — main.cpp's TAMC_GT911 constructor call
+// currently passes -1,-1 for those and 800,480 for resolution; both need
+// updating to WB_TOUCH_RST/WB_TOUCH_INT and 1024,600 — that's a main.cpp
+// change, out of scope for this file).
+#define WB_TOUCH_SDA 45
+#define WB_TOUCH_SCL 46
+#define WB_TOUCH_RST 40
+#define WB_TOUCH_INT 42
 
 #else
 // ── native target: LovyanGFX's own SDL2 panel, sized/scaled like the real device.
@@ -117,10 +116,10 @@ public:
   LGFX(void)
   {
     auto cfg = _panel_instance.config();
-    cfg.memory_width = 800;
-    cfg.panel_width = 800;
-    cfg.memory_height = 480;
-    cfg.panel_height = 480;
+    cfg.memory_width = 1024;
+    cfg.panel_width = 1024;
+    cfg.memory_height = 600;
+    cfg.panel_height = 600;
     _panel_instance.config(cfg);
     _panel_instance.setScaling(1, 1);
     setPanel(&_panel_instance);
