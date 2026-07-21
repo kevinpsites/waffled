@@ -116,6 +116,7 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state)
 
   lv_obj_t *clock_col = lv_obj_create(top);
   lv_obj_remove_style_all(clock_col);
+  lv_obj_set_size(clock_col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(clock_col, LV_FLEX_FLOW_COLUMN);
   lv_obj_clear_flag(clock_col, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_t *clock_lbl = lv_label_create(clock_col);
@@ -128,6 +129,7 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state)
   lv_obj_set_style_text_color(date_lbl, WB_COLOR_MUTED, 0);
 
   lv_obj_t *stars_chip = make_card(top);
+  lv_obj_set_size(stars_chip, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
   lv_obj_set_style_bg_color(stars_chip, lv_color_hex(0xFBEFD6), 0);
   char stars_buf[24];
   snprintf(stars_buf, sizeof(stars_buf), "%d stars", state.stars);
