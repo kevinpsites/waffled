@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **The goal "year" grid shows the whole year again.** A goal created partway through the
+  year collapsed its GitHub-style square grid to just the current month; it now paints every
+  day from January 1 to today, with the days before the goal started simply sitting empty
+  (web + iPhone/iPad).
 
 ## [0.9.0] - 2026-07-20
 

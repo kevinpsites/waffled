@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Year — Contribution grid (GitHub-style). Consistency at a glance for the
-/// current calendar year so far, clipped to the goal's own start if it began
-/// later in the year.
+/// Year — Contribution grid (GitHub-style). Consistency at a glance for the whole
+/// current calendar year so far: every day Jan 1 → today gets a square, even the
+/// ones before a mid-year-created goal existed (those just sit empty). `viewStart`
+/// (the goal's own start) scopes only the "% of days" denominator.
 struct YearGridView: View {
     let ctx: GoalDataContext
     var headerRight: AnyView?
@@ -102,7 +103,8 @@ struct YearGridView: View {
             }
             for (ci, col) in ws.enumerated() {
                 for (ri, dateKey) in col.enumerated() {
-                    guard dateKey >= viewStart, dateKey <= today else { continue }
+                    // Paint the whole year so far (Jan 1 → today); pre-goal days sit empty.
+                    guard dateKey >= jan1Key, dateKey <= today else { continue }
                     let total = ctx.stats.dayEntry(dateKey).total
                     let x = CGFloat(ci) * (Self.cell + Self.gap)
                     let y = Self.labelRowH + CGFloat(ri) * (Self.cell + Self.gap)
@@ -125,7 +127,7 @@ struct YearGridView: View {
                 let ri = Int((value.location.y - Self.labelRowH) / (Self.cell + Self.gap))
                 guard ci >= 0, ci < ws.count, ri >= 0, ri < 7 else { return }
                 let dateKey = ws[ci][ri]
-                guard dateKey >= viewStart, dateKey <= today else { return }
+                guard dateKey >= jan1Key, dateKey <= today else { return }
                 ctx.onDayTap(dateKey)
             }
         )
