@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Flag list items as important or urgent.** Every list item now has a priority — normal,
+  important, or urgent — set from the item editor. Marked items get a flag on the row and
+  float to the top of their list, so what matters most is easy to spot and act on. (Web and
+  API now; the iPhone/iPad editor gains the same control alongside the other iOS list fixes.)
 
 ### Changed
 - **Countdowns now show up on the calendar, not just the Today card.** In the calendar's

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Icon } from './icons'
 import { ListsModal } from './components/ListsModal'
 import { ListItemModal } from './components/ListItemModal'
+import { PriorityFlag } from './components/priority'
 import { GroceryBoard } from './components/GroceryBoard'
 import {
   groceryApi,
@@ -91,6 +92,7 @@ function ItemRow({
         {item.checked ? CHECK : null}
       </button>
       <button type="button" className="lnm lnm-btn" aria-label={`Edit ${item.name}`} onClick={() => onEdit(item)}>
+        <PriorityFlag priority={item.priority} />
         <span className="lnm-text">{item.name}</span>
         {addedBy?.name && (
           <span className="gattr gattr-by">

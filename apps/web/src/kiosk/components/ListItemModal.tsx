@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { groceryApi, type ListItem, type Person } from '../../lib/api'
+import { PRIORITY_OPTIONS } from './priority'
 
 // Add or edit a list item — name, quantity (free text like "1 lb" / "×4"),
 // section, and assignee. Touch-friendly (a real form, not a hover affordance).
@@ -23,6 +24,7 @@ export function ListItemModal({
   const [quantity, setQuantity] = useState(item?.quantity ?? '')
   const [section, setSection] = useState(item?.section ?? '')
   const [assignedTo, setAssignedTo] = useState<string>(item?.assignee?.personId ?? '')
+  const [priority, setPriority] = useState<number>(item?.priority ?? 0)
   const [saving, setSaving] = useState(false)
 
   async function submit(e: FormEvent) {
@@ -34,6 +36,7 @@ export function ListItemModal({
       quantity: quantity.trim() || null,
       section: section.trim() || null,
       assignedTo: assignedTo || null,
+      priority,
     }
     try {
       if (editing) await groceryApi.patchListItem(item!.id, payload)
@@ -72,6 +75,26 @@ export function ListItemModal({
               ))}
             </datalist>
           </label>
+
+          <div className="field">
+            <span>Priority</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {PRIORITY_OPTIONS.map((o) => {
+                const on = priority === o.value
+                return (
+                  <button
+                    type="button"
+                    key={o.value}
+                    aria-pressed={on}
+                    onClick={() => setPriority(o.value)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, border: on ? '1.5px solid var(--ink)' : '1px solid var(--hair)', background: on ? 'var(--panel)' : 'var(--card-2)', font: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    {o.icon && <span aria-hidden>{o.icon}</span>} {o.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
           <div className="field">
             <span>Assign to (optional)</span>

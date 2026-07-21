@@ -38,6 +38,11 @@ const { tenantRoute } = moduleRoutes('lists')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// Priority is a small, closed scale: 0 = normal, 1 = important, 2 = urgent.
+function isValidPriority(v: unknown): v is 0 | 1 | 2 {
+  return v === 0 || v === 1 || v === 2
+}
+
 export function registerListRoutes(api: Api): void {
   // ---- the household's lists (sidebar) --------------------------------------
   api.get('/api/lists', tenantRoute(async (tenant) => {
@@ -142,9 +147,12 @@ export function registerListRoutes(api: Api): void {
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
     const list = await getList(tenant.householdId, id)
     if (!list) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
-    const body = (req.body ?? {}) as { name?: string; quantity?: string; category?: string; assignedTo?: string }
+    const body = (req.body ?? {}) as { name?: string; quantity?: string; category?: string; assignedTo?: string; priority?: number }
     if (!body.name || !body.name.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
+    }
+    if ('priority' in body && !isValidPriority(body.priority)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'priority must be 0, 1 or 2' })
     }
     if (body.assignedTo != null) await assertPersonInHousehold(tenant.householdId, body.assignedTo)
     const item = await addItem(tenant, id, {
@@ -152,6 +160,7 @@ export function registerListRoutes(api: Api): void {
       quantity: body.quantity ?? null,
       category: body.category ?? null,
       assignedTo: body.assignedTo ?? null,
+      priority: body.priority,
     })
     return res.status(201).json({ item: presentListItem(item) })
   }))
@@ -183,12 +192,15 @@ export function registerListRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
     const body = (req.body ?? {}) as PatchItemInput
-    const known = ['checked', 'assignedTo', 'quantity', 'category', 'name']
+    const known = ['checked', 'assignedTo', 'quantity', 'category', 'priority', 'name']
     if (!known.some((k) => k in body)) {
       return res.status(400).json({ error: 'BadRequest', message: 'no patchable fields provided' })
     }
     if ('checked' in body && typeof body.checked !== 'boolean') {
       return res.status(400).json({ error: 'BadRequest', message: 'checked must be a boolean' })
+    }
+    if ('priority' in body && !isValidPriority(body.priority)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'priority must be 0, 1 or 2' })
     }
     if (body.assignedTo != null) await assertPersonInHousehold(tenant.householdId, body.assignedTo)
     const item = await patchItem(tenant, id, body)

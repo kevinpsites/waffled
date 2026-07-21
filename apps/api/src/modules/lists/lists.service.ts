@@ -240,7 +240,7 @@ export async function listItems(householdId: string, listId: string): Promise<Li
        left join persons p on p.id = i.assigned_to and p.deleted_at is null
        left join persons cb on cb.id = i.created_by and cb.deleted_at is null
       where i.household_id = $1 and i.list_id = $2 and i.deleted_at is null
-      order by i.checked, i.sort_order nulls last, i.created_at`,
+      order by i.checked, i.priority desc, i.sort_order nulls last, i.created_at`,
     [householdId, listId]
   )
   return rows
@@ -249,12 +249,12 @@ export async function listItems(householdId: string, listId: string): Promise<Li
 export async function addItem(
   tenant: Tenant,
   listId: string,
-  input: { name: string; quantity?: string | null; category?: string | null; assignedTo?: string | null }
+  input: { name: string; quantity?: string | null; category?: string | null; assignedTo?: string | null; priority?: number }
 ): Promise<ListItemRow> {
   const { rows } = await query<ListItemRow>(
     `with ins as (
-       insert into list_items (household_id, list_id, name, quantity, category, assigned_to, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7)
+       insert into list_items (household_id, list_id, name, quantity, category, assigned_to, priority, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
        returning *
      )
      select ins.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
@@ -269,6 +269,7 @@ export async function addItem(
       input.quantity ?? null,
       input.category ?? null,
       input.assignedTo ?? null,
+      input.priority ?? 0,
       tenant.personId,
     ]
   )
@@ -327,6 +328,10 @@ export async function patchItem(
   if ('category' in patch) {
     sets.push(`category = $${i++}`)
     vals.push(patch.category ?? null)
+  }
+  if (typeof patch.priority === 'number') {
+    sets.push(`priority = $${i++}`)
+    vals.push(patch.priority)
   }
   if (typeof patch.name === 'string') {
     sets.push(`name = $${i++}`)
@@ -728,6 +733,7 @@ export function presentListItem(i: ListItemRow) {
     checked: i.checked,
     checkedAt: i.checked_at,
     section: i.category,
+    priority: i.priority ?? 0,
     sortOrder: i.sort_order,
     source: i.source,
     sourceRecipeIds: i.source_recipe_ids ?? [],

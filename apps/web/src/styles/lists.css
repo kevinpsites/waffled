@@ -196,6 +196,12 @@
   gap: 6px;
   padding-top: 4px;
 }
+.lpri {
+  flex: none;
+  margin-right: 5px;
+  font-size: 13px;
+  line-height: 1;
+}
 .litem {
   cursor: pointer;
 }

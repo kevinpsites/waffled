@@ -18,6 +18,7 @@ export interface ListItemRow extends QueryResultRow {
   checked: boolean
   checked_at: Date | null
   category: string | null
+  priority: number
   sort_order: number | null
   assigned_to: string | null
   assignee_name?: string | null
@@ -44,5 +45,6 @@ export interface PatchItemInput {
   assignedTo?: string | null
   quantity?: string | null
   category?: string | null
+  priority?: number
   name?: string
 }
