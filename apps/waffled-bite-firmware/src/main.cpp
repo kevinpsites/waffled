@@ -20,6 +20,7 @@
 #include "wb_tick_hal.h"
 #include "ui/home_screen.h"
 #include "ui/settings_screen.h"
+#include "ui/control_detail_screen.h"
 #include "ui/onboarding_screen.h"
 #include "ui/quiet_screen.h"
 #include <ArduinoJson.h>
@@ -209,6 +210,31 @@ static void wb_do_poll()
     {
       wb_sync_home_screen(home_scr, liveState);
       wb_sync_settings_screen(settings_scr, liveState);
+
+      // The Sounds/Nightlight detail screen only gets built at tap time
+      // (see wb_open_detail_cb) — without this, a parent flipping a setting
+      // from the web app while a kid is sitting on this exact screen didn't
+      // show up until they backed out and back in.
+      if (lv_screen_active() == detail_scr)
+      {
+        WbSettingsKey openKey = wb_open_detail_current_key();
+        bool on;
+        std::string optionKey;
+        int sliderValue;
+        if (openKey == WbSettingsKey::Sound)
+        {
+          on = liveState.sound.on;
+          optionKey = liveState.sound.tone;
+          sliderValue = liveState.sound.volume;
+        }
+        else
+        {
+          on = liveState.night.on;
+          optionKey = liveState.night.color;
+          sliderValue = liveState.night.brightness;
+        }
+        wb_sync_control_detail_screen(detail_scr, on, optionKey, sliderValue);
+      }
     }
 
     // Quiet time is parent-triggered only (no on-device start/stop) and

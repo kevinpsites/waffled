@@ -113,11 +113,19 @@ static void wb_open_detail_ctx_delete_cb(lv_event_t *e)
   delete (WbOpenDetailCtx *)lv_event_get_user_data(e);
 }
 
+static WbSettingsKey g_openDetailKey = WbSettingsKey::Sound;
+
+WbSettingsKey wb_open_detail_current_key()
+{
+  return g_openDetailKey;
+}
+
 static void wb_open_detail_cb(lv_event_t *e)
 {
   WbOpenDetailCtx *ctx = (WbOpenDetailCtx *)lv_event_get_user_data(e);
   WbSettingsKey key = ctx->key;
   WbSettingsChangeCallback onChange = ctx->onChange;
+  g_openDetailKey = key;
 
   bool on;
   std::string optionKey;

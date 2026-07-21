@@ -28,6 +28,19 @@ production silicon's toolchain, but nothing has run on actual hardware yet — s
 - **`native`** — a desktop build. [LovyanGFX](https://github.com/lovyan03/LovyanGFX)'s
   own SDL2 panel simulates the display and reports mouse clicks as touches through the
   exact same `getTouch()` call a real touch panel uses. No hardware needed.
+  **Known simulator-only gotcha:** LovyanGFX's `Panel_sdl.cpp` binds `L`/`R` (rotate) and
+  `1`–`6` (scale) as debug keyboard shortcuts on the SDL window (`_event_proc` in that
+  file, vendored — not our code). Pressing one by accident (easy to do while the window
+  has focus) skews the mouse→touch coordinate transform in a way that does **not** fully
+  self-correct even after rotating back, so taps land on the wrong widget or stop
+  registering entirely — this cost a long debugging session that initially looked like a
+  real app freeze (see git history around the "settings button doesn't work" investigation:
+  a live `lldb` capture showed touch coordinates frozen at one fixed point across many real
+  clicks, and `lv_screen_active()` was correct throughout — the bug was in the vendor
+  simulator's SDL-event→touch-point math, not LVGL or app code). Only affects `native`; a
+  real touchscreen has no keyboard to trigger this. If clicks stop landing right in the
+  simulator, close the window and re-run `pio run -e native -t exec` rather than debugging
+  the app.
 - **`esp32-p4`** — the real board. **Unverified** — no board in hand yet (ordered);
   compiles clean against the real toolchain, that's as far as this has been proven.
 
@@ -118,12 +131,19 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   this milestone did: quiet-time's start/pause/resume/end + computed-on-read pattern is the
   closest reusable primitive for a kid-facing timer, but a true one needs real design; Bedtime
   has no dedicated data model at all, just adjacent wake-schedule/alarm fields and the
-  generic evening chore bucket). Nightlight's color chips now show a real swatch (a small
-  circle per option plus a larger live preview that updates as you tap through) using the
-  exact hex values `apps/web/src/kiosk/WaffledBiteDevice.tsx`'s `NIGHT_COLORS` already uses,
-  not invented ones. Opening either detail screen now fades in/out
-  (`LV_SCR_LOAD_ANIM_FADE_IN`) instead of sliding, at the user's request — every other
-  transition in the app (home↔settings, home↔tasks) still slides.
+  generic evening chore bucket). Nightlight's color options render as plain color circles
+  with no text label at all — a swatch was added first (small circle next to a text name
+  like "Amber"), then the name was dropped once the swatch made it redundant; selection
+  shows as a border ring + a larger live preview above the row, using the exact hex values
+  `apps/web/src/kiosk/WaffledBiteDevice.tsx`'s `NIGHT_COLORS` already uses, not invented
+  ones. Sounds' tone options keep text chips (no color to show). The detail screen also now
+  syncs live on every poll while it's the active screen (`wb_sync_control_detail_screen`) —
+  previously a parent flipping a setting from the web app while a kid was sitting on this
+  exact screen didn't show up until they backed out and back in. Opening either detail
+  screen is an instant cut (`LV_SCR_LOAD_ANIM_NONE`), **not** a fade — a fade was tried
+  first per an earlier request ("pop open" feel) but root-caused to a genuine LVGL 9.2.2
+  hang (see `wb_open_detail_cb`'s comment in `settings_screen.cpp`); every other transition
+  in the app (home↔settings, home↔tasks) still slides.
 - **Quiet time has a full-screen, non-exitable device UI** (`src/ui/quiet_screen.cpp`) —
   dark navy background, a countdown ring (`lv_arc`) ticking down once a second locally
   and resyncing to the server-computed value on every 5s poll, "Stay cozy until H:MM"

@@ -33,3 +33,12 @@ void wb_build_control_detail_screen(
     bool on, const std::string &optionKey, int sliderValue,
     const WbControlOption *options, int optionCount, const char *sliderLabel,
     WbControlChangeCallback onChange);
+
+// Pushes an updated on/optionKey/sliderValue into an ALREADY-BUILT detail
+// screen (main.cpp calls this on every poll while this screen is the active
+// one, instead of rebuilding) — same "sync in place" contract as
+// settings_screen.h's wb_sync_settings_screen, added because a parent
+// flipping the nightlight from the web app while a kid is sitting on this
+// exact screen previously didn't show up until they backed out and back in.
+// No-op if `parent` hasn't been built yet.
+void wb_sync_control_detail_screen(lv_obj_t *parent, bool on, const std::string &optionKey, int sliderValue);

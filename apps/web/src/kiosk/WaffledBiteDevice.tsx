@@ -227,11 +227,26 @@ export function WaffledBiteDevice() {
           <Toggle on={night.on} onChange={(v) => patchSettings({ night: { ...night, on: v } })} label={night.on ? 'On' : 'Off'} />
           {night.on && (
             <div style={{ marginTop: 12 }}>
-              <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 12 }}>
-                {NIGHT_COLORS.map(([id, hex]) => (
-                  <button key={id} type="button" aria-label={id} onClick={() => patchSettings({ night: { ...night, color: id } })}
-                    style={{ width: 30, height: 30, borderRadius: 999, background: hex, border: night.color === id ? '3px solid var(--ink)' : '2px solid #fff', boxShadow: '0 0 0 1px var(--hair)', cursor: 'pointer' }} />
-                ))}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                {NIGHT_COLORS.map(([id, hex]) => {
+                  const selected = night.color === id
+                  return (
+                    <button
+                      key={id} type="button" aria-label={id} aria-pressed={selected}
+                      onClick={() => patchSettings({ night: { ...night, color: id } })}
+                      style={{
+                        width: 32, height: 32, borderRadius: 999, background: hex, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        border: selected ? '3px solid var(--ink)' : '2px solid var(--panel)',
+                        boxShadow: selected ? '0 0 0 2px var(--ink), 0 2px 6px rgba(0,0,0,.3)' : '0 0 0 1px var(--hair)',
+                        transform: selected ? 'scale(1.12)' : 'scale(1)',
+                        transition: 'transform .12s ease, box-shadow .12s ease',
+                      }}
+                    >
+                      {selected && <span style={{ color: '#fff', fontWeight: 900, fontSize: 15, lineHeight: 1, textShadow: '0 1px 2px rgba(0,0,0,.55)' }}>✓</span>}
+                    </button>
+                  )
+                })}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span className="tiny muted" style={{ fontWeight: 700 }}>Brightness</span>

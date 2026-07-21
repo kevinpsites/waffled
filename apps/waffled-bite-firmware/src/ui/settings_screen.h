@@ -42,3 +42,11 @@ void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_o
 // passes by the same address, so they read live tone/volume/color/
 // brightness at tap time without any extra plumbing.
 void wb_sync_settings_screen(lv_obj_t *parent, const WbDeviceState &state);
+
+// Which control (Sound/Night) the shared detail screen was most recently
+// opened for — main.cpp needs this to know which half of WbDeviceState to
+// read when syncing an already-open detail screen on a later poll (see
+// control_detail_screen.h's wb_sync_control_detail_screen). Meaningless
+// before the first tile tap; main.cpp only consults it while detail_scr is
+// the active screen, which can't happen before then.
+WbSettingsKey wb_open_detail_current_key();

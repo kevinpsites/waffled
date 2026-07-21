@@ -31,8 +31,14 @@ struct WbControlCtx
   std::string optionKey;
   int sliderValue;
   WbControlChangeCallback onChange;
-  lv_obj_t *value_lbl;      // slider's live numeric readout
-  lv_obj_t *preview_circle; // big swatch at the top; null when this tile has no color options (Sounds)
+  lv_obj_t *value_lbl = nullptr;      // slider's live numeric readout
+  lv_obj_t *preview_circle = nullptr; // big swatch at the top; null when this tile has no color options (Sounds)
+  // The rest are stashed so wb_sync_control_detail_screen can push a later
+  // poll's values into this exact screen without a rebuild — same reason
+  // settings_screen.cpp's WbSettingsSyncCtx exists (see its comment).
+  lv_obj_t *sw = nullptr;
+  lv_obj_t *chip_row = nullptr;
+  lv_obj_t *slider = nullptr;
 };
 
 static void wb_ctx_delete_cb(lv_event_t *e)
@@ -77,6 +83,25 @@ static void wb_option_chip_delete_cb(lv_event_t *e)
   delete (WbOptionChipCtx *)lv_event_get_user_data(e);
 }
 
+// Applies the "selected" look to one option chip. Swatch chips (Nightlight)
+// have no label — the color itself is the label, see the build function's
+// comment — so selection shows as a border ring on the circle instead of a
+// bg/text recolor. Text chips (Sounds) keep the original pill recolor.
+static void wb_style_option_chip(lv_obj_t *chip, bool hasSwatch, bool selected)
+{
+  if (hasSwatch)
+  {
+    lv_obj_set_style_border_width(chip, selected ? 4 : 2, 0);
+    lv_obj_set_style_border_color(chip, selected ? WB_COLOR_TILE_ACTIVE : WB_COLOR_CARD, 0);
+  }
+  else
+  {
+    lv_obj_set_style_bg_color(chip, selected ? WB_COLOR_TILE_ACTIVE : WB_COLOR_CARD, 0);
+    lv_obj_t *lbl = lv_obj_get_child(chip, 0);
+    lv_obj_set_style_text_color(lbl, selected ? lv_color_white() : WB_COLOR_INK, 0);
+  }
+}
+
 static void wb_option_chip_clicked_cb(lv_event_t *e)
 {
   WbOptionChipCtx *chip = (WbOptionChipCtx *)lv_event_get_user_data(e);
@@ -86,9 +111,8 @@ static void wb_option_chip_clicked_cb(lv_event_t *e)
   for (uint32_t i = 0; i < n; i++)
   {
     lv_obj_t *sibling = lv_obj_get_child(chip->row, i);
-    lv_obj_set_style_bg_color(sibling, sibling == tapped ? WB_COLOR_TILE_ACTIVE : WB_COLOR_CARD, 0);
-    lv_obj_t *lbl = lv_obj_get_child(sibling, 0);
-    lv_obj_set_style_text_color(lbl, sibling == tapped ? lv_color_white() : WB_COLOR_INK, 0);
+    WbOptionChipCtx *sib_ctx = (WbOptionChipCtx *)lv_obj_get_user_data(sibling);
+    wb_style_option_chip(sibling, sib_ctx && sib_ctx->hasSwatch, sibling == tapped);
   }
 
   chip->shared->optionKey = chip->key;
@@ -130,7 +154,7 @@ void wb_build_control_detail_screen(
   lv_obj_set_style_pad_row(parent, 24, 0);
   lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
-  WbControlCtx *ctx = new WbControlCtx{on, optionKey, sliderValue, onChange, nullptr, nullptr};
+  WbControlCtx *ctx = new WbControlCtx{on, optionKey, sliderValue, onChange};
 
   // ── top bar: back button + title, same shape as the other screens' ──────
   lv_obj_t *top = lv_obj_create(parent);
@@ -215,6 +239,7 @@ void wb_build_control_detail_screen(
   lv_obj_set_style_bg_color(sw, WB_COLOR_TILE_ACTIVE, LV_PART_INDICATOR | LV_STATE_CHECKED);
   lv_obj_add_event_cb(sw, wb_toggle_changed_cb, LV_EVENT_VALUE_CHANGED, ctx);
   lv_obj_add_event_cb(sw, wb_ctx_delete_cb, LV_EVENT_DELETE, ctx);
+  ctx->sw = sw;
 
   // ── option chips (tone/color — whichever this tile is for) ─────────────────
   if (optionCount > 0)
@@ -226,46 +251,48 @@ void wb_build_control_detail_screen(
     lv_obj_set_style_pad_column(chip_row, 10, 0);
     lv_obj_set_style_pad_row(chip_row, 10, 0);
     lv_obj_clear_flag(chip_row, LV_OBJ_FLAG_SCROLLABLE);
+    ctx->chip_row = chip_row;
 
     for (int i = 0; i < optionCount; i++)
     {
       bool selected = optionKey == options[i].key;
       lv_obj_t *chip = lv_obj_create(chip_row);
       lv_obj_remove_style_all(chip);
-      lv_obj_set_size(chip, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-      lv_obj_set_style_bg_color(chip, selected ? WB_COLOR_TILE_ACTIVE : WB_COLOR_CARD, 0);
-      lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
-      lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, 0);
-      lv_obj_set_style_pad_hor(chip, 16, 0);
-      lv_obj_set_style_pad_ver(chip, 10, 0);
-      lv_obj_set_flex_flow(chip, LV_FLEX_FLOW_ROW);
-      lv_obj_set_flex_align(chip, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-      lv_obj_set_style_pad_column(chip, 8, 0);
       lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
-
-      // Label stays child index 0 regardless of whether a swatch follows it —
-      // wb_option_chip_clicked_cb's re-highlight loop reads index 0 for the
-      // label's text color, so this ordering must not change.
-      lv_obj_t *chip_lbl = lv_label_create(chip);
-      lv_label_set_text(chip_lbl, options[i].label);
-      lv_obj_set_style_text_font(chip_lbl, &lv_font_montserrat_14, 0);
-      lv_obj_set_style_text_color(chip_lbl, selected ? lv_color_white() : WB_COLOR_INK, 0);
 
       if (options[i].hasSwatch)
       {
-        lv_obj_t *swatch = lv_obj_create(chip);
-        lv_obj_remove_style_all(swatch);
-        lv_obj_set_size(swatch, 18, 18);
-        lv_obj_set_style_radius(swatch, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(swatch, lv_color_hex(options[i].swatchHex), 0);
-        lv_obj_set_style_bg_opa(swatch, LV_OPA_COVER, 0);
-        lv_obj_clear_flag(swatch, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_clear_flag(swatch, LV_OBJ_FLAG_CLICKABLE);
+        // Color IS the label here — the user couldn't tell what a named
+        // color ("Amber", "Peach"...) actually looked like before a swatch
+        // was added; now that the color shows, the name is redundant, so
+        // this is just a big tappable circle with a selection ring, no text.
+        lv_obj_set_size(chip, 44, 44);
+        lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(chip, lv_color_hex(options[i].swatchHex), 0);
+        lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
       }
+      else
+      {
+        lv_obj_set_size(chip, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+        lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_pad_hor(chip, 16, 0);
+        lv_obj_set_style_pad_ver(chip, 10, 0);
+        lv_obj_set_flex_flow(chip, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(chip, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+        lv_obj_t *chip_lbl = lv_label_create(chip);
+        lv_label_set_text(chip_lbl, options[i].label);
+        lv_obj_set_style_text_font(chip_lbl, &lv_font_montserrat_14, 0);
+      }
+      wb_style_option_chip(chip, options[i].hasSwatch, selected);
 
       WbOptionChipCtx *chip_ctx = new WbOptionChipCtx{ctx, options[i].key, chip_row, options[i].hasSwatch, options[i].swatchHex};
       lv_obj_add_event_cb(chip, wb_option_chip_clicked_cb, LV_EVENT_CLICKED, chip_ctx);
       lv_obj_add_event_cb(chip, wb_option_chip_delete_cb, LV_EVENT_DELETE, chip_ctx);
+      // wb_sync_control_detail_screen's way to re-derive each chip's key/
+      // swatch without re-deriving from the raw WbControlOption array.
+      lv_obj_set_user_data(chip, chip_ctx);
     }
   }
 
@@ -298,4 +325,51 @@ void wb_build_control_detail_screen(
   lv_obj_set_style_bg_color(slider, WB_COLOR_TILE_ACTIVE, LV_PART_KNOB);
   lv_obj_add_event_cb(slider, wb_slider_value_changed_cb, LV_EVENT_VALUE_CHANGED, ctx);
   lv_obj_add_event_cb(slider, wb_slider_released_cb, LV_EVENT_RELEASED, ctx);
+  ctx->slider = slider;
+
+  lv_obj_set_user_data(parent, ctx); // wb_sync_control_detail_screen's way back to this ctx
+}
+
+void wb_sync_control_detail_screen(lv_obj_t *parent, bool on, const std::string &optionKey, int sliderValue)
+{
+  WbControlCtx *ctx = (WbControlCtx *)lv_obj_get_user_data(parent);
+  if (!ctx)
+    return; // not built yet
+
+  ctx->on = on;
+  ctx->optionKey = optionKey;
+  ctx->sliderValue = sliderValue;
+
+  if (ctx->sw)
+  {
+    if (on)
+      lv_obj_add_state(ctx->sw, LV_STATE_CHECKED);
+    else
+      lv_obj_remove_state(ctx->sw, LV_STATE_CHECKED);
+  }
+
+  if (ctx->chip_row)
+  {
+    uint32_t n = lv_obj_get_child_count(ctx->chip_row);
+    for (uint32_t i = 0; i < n; i++)
+    {
+      lv_obj_t *chip = lv_obj_get_child(ctx->chip_row, i);
+      WbOptionChipCtx *chip_ctx = (WbOptionChipCtx *)lv_obj_get_user_data(chip);
+      if (!chip_ctx)
+        continue;
+      bool selected = chip_ctx->key == optionKey;
+      wb_style_option_chip(chip, chip_ctx->hasSwatch, selected);
+      if (selected && chip_ctx->hasSwatch && ctx->preview_circle)
+        lv_obj_set_style_bg_color(ctx->preview_circle, lv_color_hex(chip_ctx->swatchHex), 0);
+    }
+  }
+
+  if (ctx->slider)
+    lv_slider_set_value(ctx->slider, sliderValue, LV_ANIM_OFF);
+  if (ctx->value_lbl)
+  {
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d%%", sliderValue);
+    lv_label_set_text(ctx->value_lbl, buf);
+  }
 }
