@@ -231,6 +231,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Postgres and direct API diagnostics now bind to loopback, while device-facing
+  PowerSync and Google OAuth callbacks enter through Caddy. This preserves local
+  and LAN setup while avoiding raw service exposure.
 - The container API now rejects oversized request bodies before buffering them
   and throttles repeated login, setup, OIDC, kiosk pairing, refresh, and media
   upload attempts with retry guidance. Caddy normalizes the client address used
