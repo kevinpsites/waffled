@@ -15,9 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Flag list items as important or urgent.** Every list item now has a priority — normal,
-  important, or urgent — set from the item editor. Marked items get a flag on the row and
-  float to the top of their list, so what matters most is easy to spot and act on. (Web and
-  API now; the iPhone/iPad editor gains the same control alongside the other iOS list fixes.)
+  important, or urgent — set from the item editor on web and iPhone/iPad. Marked items get a
+  flag on the row and float to the top of their list, so what matters most is easy to spot.
+- **Swipe up while adding a list item (iPhone/iPad) to fill in the details.** Mid-add, an
+  upward swipe on the add bar commits what you typed and opens its full editor — assignee,
+  section, and priority — without hunting for the swipe action afterward.
 
 ### Changed
 - **Countdowns now show up on the calendar, not just the Today card.** In the calendar's
@@ -26,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   you're planning. Event-based countdowns are tappable and open their event.
 
 ### Fixed
+- **Adding a grocery/list item on iPhone/iPad is easier to tap.** The add-item bar now
+  raises the keyboard when you tap anywhere on it — the icon and padding, not just the tiny
+  text glyphs — so it's no longer a fiddly target.
+- **A half-typed list item is no longer lost when you leave.** If you type an item into the
+  add bar on iPhone/iPad and navigate away without hitting return, it's now saved instead of
+  discarded.
 - **"Add anything" events now default to you.** When you type an event into the AI capture
   bar without naming anyone ("dentist Tuesday at 3"), it's now assigned to the logged-in
   member instead of nobody. Naming someone ("dentist for George") still assigns them.
