@@ -157,6 +157,27 @@ function ItemRow({
   )
 }
 
+// A just-checked item lingers in place this long (undo window) before tucking
+// into the Completed section — mirrors the grocery board so the two list views
+// behave the same.
+const COMPLETE_GRACE_MS = 2000
+
+// Split items into active (still on the list) and completed (checked off, past
+// the grace window). Checked items are pulled OUT of their section into a single
+// Completed group so they visibly "go somewhere" instead of lingering inline.
+export function partitionListItems(
+  items: ListItem[],
+  recent: Set<string>
+): { active: ListItem[]; completed: ListItem[] } {
+  const active: ListItem[] = []
+  const completed: ListItem[] = []
+  for (const it of items) {
+    if (it.checked && !recent.has(it.id)) completed.push(it)
+    else active.push(it)
+  }
+  return { active, completed }
+}
+
 // Group items into ordered sections (null section → "Other"), preserving the
 // API's order (unchecked first, then checked) within each section.
 function groupBySection(items: ListItem[]): Array<{ title: string; key: string; items: ListItem[] }> {
@@ -210,6 +231,10 @@ export function Lists() {
   const [filterMenu, setFilterMenu] = useState(false)
   const [itemModal, setItemModal] = useState<{ item: ListItem | null } | null>(null)
   const [groceryOpen, setGroceryOpen] = useState(false)
+  // Just-checked items lingering in place during the undo grace window.
+  const [recent, setRecent] = useState<Set<string>>(new Set())
+  // Completed section is collapsed by default (checked items tuck away).
+  const [showDone, setShowDone] = useState(false)
   // Header overflow (⋯) menu: rename / save-as-template (or move-to-lists) / delete.
   const [actionsMenu, setActionsMenu] = useState(false)
   const actionsRef = useRef<HTMLDivElement>(null)
@@ -274,9 +299,16 @@ export function Lists() {
     []
   )
 
-  // Optimistic check toggle.
+  // Optimistic check toggle. A freshly-checked item lingers in place for a short
+  // grace window (easy undo) before it tucks into the Completed section.
   async function toggle(item: ListItem) {
     const next = !item.checked
+    if (next) {
+      setRecent((s) => new Set(s).add(item.id))
+      setTimeout(() => setRecent((s) => { const n = new Set(s); n.delete(item.id); return n }), COMPLETE_GRACE_MS)
+    } else {
+      setRecent((s) => { const n = new Set(s); n.delete(item.id); return n })
+    }
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, checked: next } : i)))
     try {
       const updated = await groceryApi.patchListItem(item.id, { checked: next })
@@ -393,7 +425,8 @@ export function Lists() {
   }
 
   const visibleItems = filterPerson ? items.filter((i) => i.assignee?.personId === filterPerson) : items
-  const sections = groupBySection(visibleItems)
+  const { active: activeItems, completed: completedItems } = partitionListItems(visibleItems, recent)
+  const sections = groupBySection(activeItems)
   const [leftCol, rightCol] = splitColumns(sections)
 
   return (
@@ -567,20 +600,50 @@ export function Lists() {
             ) : visibleItems.length === 0 ? (
               <div className="lists-empty">Nothing assigned to {persons.find((p) => p.id === filterPerson)?.name ?? 'them'} here.</div>
             ) : (
-              <div className="lists-grid">
-                {[leftCol, rightCol].map((col, ci) => (
-                  <div key={ci} className="lists-col">
-                    {col.map((sec) => (
-                      <div key={sec.key} className="lists-section">
-                        <div className="lists-section-title">{sec.title}</div>
-                        {sec.items.map((it) => (
-                          <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} onEdit={(i) => setItemModal({ item: i })} onDelete={remove} />
+              <>
+                {activeItems.length > 0 && (
+                  <div className="lists-grid">
+                    {[leftCol, rightCol].map((col, ci) => (
+                      <div key={ci} className="lists-col">
+                        {col.map((sec) => (
+                          <div key={sec.key} className="lists-section">
+                            <div className="lists-section-title">{sec.title}</div>
+                            {sec.items.map((it) => (
+                              <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} onEdit={(i) => setItemModal({ item: i })} onDelete={remove} />
+                            ))}
+                          </div>
                         ))}
                       </div>
                     ))}
                   </div>
-                ))}
-              </div>
+                )}
+                {activeItems.length === 0 && completedItems.length > 0 && (
+                  <div className="lists-empty">All done — everything’s checked off. 🎉</div>
+                )}
+                {/* Completed — checked items tuck here; collapsible, un-check to restore. */}
+                {completedItems.length > 0 && (
+                  <div className="lists-section lists-completed">
+                    <div
+                      className="lists-completed-h"
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={showDone}
+                      onClick={() => setShowDone((v) => !v)}
+                    >
+                      <span className={`cal-chev ${showDone ? 'open' : ''}`} aria-hidden>›</span>
+                      <span>Completed</span>
+                      <span className="ga-n">{completedItems.length}</span>
+                    </div>
+                    {showDone && (
+                      <div className="lists-completed-list">
+                        {completedItems.map((it) => (
+                          <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} onEdit={(i) => setItemModal({ item: i })} onDelete={remove} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

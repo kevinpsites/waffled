@@ -173,6 +173,29 @@
   color: var(--ink-2);
   margin: 2px 2px 9px;
 }
+/* Completed section (checked items tuck here — collapsible, matches the grocery board). */
+.lists-completed {
+  margin-top: 10px;
+  grid-column: 1 / -1;
+}
+.lists-completed-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 4px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink-2);
+  border-top: 1px solid var(--hair-2);
+}
+.lists-completed-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 6px;
+  padding-top: 4px;
+}
 .litem {
   cursor: pointer;
 }

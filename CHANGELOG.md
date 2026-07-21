@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Checked-off list items now have somewhere to go.** On the web custom-list view, items
+  you check off no longer linger in place — they tuck into a collapsible "Completed" section
+  at the bottom (matching the grocery board), with a brief grace window so an accidental tap
+  is easy to undo. Un-checking an item puts it back on the list.
 
 ## [0.9.0] - 2026-07-20
 
