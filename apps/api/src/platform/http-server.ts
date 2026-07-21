@@ -4,6 +4,11 @@ import { log } from './logger'
 
 export const DEFAULT_BODY_LIMIT_BYTES = 1024 * 1024
 export const MEDIA_BODY_LIMIT_BYTES = 14 * 1024 * 1024
+// Recipe photo-import posts up to MAX_INGEST_PHOTOS (6) base64 images in one JSON
+// body, each up to the same ~10 MB decoded cap as /api/media. Six media envelopes
+// covers that worst case with room for the JSON wrapper. Kept in sync by hand with
+// MAX_INGEST_PHOTOS in modules/meals — platform must not import from a module.
+export const INGEST_BODY_LIMIT_BYTES = 6 * MEDIA_BODY_LIMIT_BYTES
 
 interface RunResult {
   statusCode: number
@@ -16,7 +21,9 @@ interface ApiRunner {
 }
 
 function bodyLimit(path: string): number {
-  return path === '/api/media' ? MEDIA_BODY_LIMIT_BYTES : DEFAULT_BODY_LIMIT_BYTES
+  if (path === '/api/media') return MEDIA_BODY_LIMIT_BYTES
+  if (path === '/api/recipes/ingest/photo') return INGEST_BODY_LIMIT_BYTES
+  return DEFAULT_BODY_LIMIT_BYTES
 }
 
 function payloadTooLarge(res: http.ServerResponse, limit: number): void {

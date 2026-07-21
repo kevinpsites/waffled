@@ -5,6 +5,7 @@ import {
   createHttpServer,
   DEFAULT_BODY_LIMIT_BYTES,
   MEDIA_BODY_LIMIT_BYTES,
+  INGEST_BODY_LIMIT_BYTES,
 } from '../src/platform/http-server'
 
 interface CapturedEvent {
@@ -81,6 +82,25 @@ describe('Node HTTP request body limits', () => {
     expect(allowed.routeCalls).toBe(1)
 
     const rejected = await post('/api/media', Buffer.alloc(MEDIA_BODY_LIMIT_BYTES + 1, 'a'))
+    expect(rejected.status).toBe(413)
+    expect(rejected.routeCalls).toBe(0)
+  })
+
+  it('allows the multi-photo recipe-ingest envelope but still caps it', async () => {
+    // Recipe photo-import bundles up to MAX_INGEST_PHOTOS base64 images in one
+    // JSON body, so it legitimately exceeds the 1 MB default. Regression guard: a
+    // >1 MB ingest body must reach the route, not 413 like an ordinary request.
+    const allowed = await post(
+      '/api/recipes/ingest/photo',
+      Buffer.alloc(DEFAULT_BODY_LIMIT_BYTES + 1, 'a')
+    )
+    expect(allowed.status).toBe(200)
+    expect(allowed.routeCalls).toBe(1)
+
+    const rejected = await post(
+      '/api/recipes/ingest/photo',
+      Buffer.alloc(INGEST_BODY_LIMIT_BYTES + 1, 'a')
+    )
     expect(rejected.status).toBe(413)
     expect(rejected.routeCalls).toBe(0)
   })
