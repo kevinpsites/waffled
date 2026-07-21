@@ -17,6 +17,7 @@ import { randomBytes } from 'node:crypto'
 import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { adminRoute } from '../../platform/route-guards'
+import { assertPersonInHousehold } from '../../platform/household-refs'
 import { encryptSecret, encryptionAvailable } from '../../platform/crypto'
 import {
   googleConfigured,
@@ -313,6 +314,7 @@ export function registerCalendarRoutes(api: Api): void {
     if ('visibility' in body && body.visibility !== 'family' && body.visibility !== 'personal') {
       return res.status(400).json({ error: 'BadRequest', message: "visibility must be 'family' or 'personal'" })
     }
+    if (body.personId != null) await assertPersonInHousehold(tenant.householdId, body.personId)
 
     const sets: string[] = []
     const values: unknown[] = []
