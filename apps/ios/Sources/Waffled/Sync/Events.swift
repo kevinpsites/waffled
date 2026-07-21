@@ -126,18 +126,29 @@ enum Agenda {
         events.filter { dayKey($0, tz) == day }.sorted(by: before)
     }
 
+    /// All events grouped by their household-local day key, each day's items ordered
+    /// (timed before all-day, then by start). Built once per data change in
+    /// `SyncManager.rebuildEventIndex()` so views can O(1)-look a day up per render
+    /// instead of re-scanning every event; events with no resolvable day are dropped.
+    static func byDay(_ events: [SyncedEvent], _ tz: TimeZone) -> [String: [SyncedEvent]] {
+        var grouped: [String: [SyncedEvent]] = [:]
+        for e in events {
+            let key = dayKey(e, tz)
+            guard !key.isEmpty else { continue }
+            grouped[key, default: []].append(e)
+        }
+        return grouped.mapValues { $0.sorted(by: before) }
+    }
+
+    /// `upcoming` over a prebuilt `byDay` index: days ≥ `from` ascending, items in the
+    /// index's (already sorted) order.
+    static func upcoming(byDay: [String: [SyncedEvent]], from: String) -> [(day: String, items: [SyncedEvent])] {
+        byDay.keys.filter { $0 >= from }.sorted().map { ($0, byDay[$0] ?? []) }
+    }
+
     /// Upcoming events (dayKey ≥ `from`) grouped by day, days ascending and items
     /// ordered within each day.
     static func upcoming(_ events: [SyncedEvent], from: String, tz: TimeZone) -> [(day: String, items: [SyncedEvent])] {
-        let future = events
-            .map { (key: dayKey($0, tz), event: $0) }
-            .filter { !$0.key.isEmpty && $0.key >= from }
-        var order: [String] = []
-        var byDay: [String: [SyncedEvent]] = [:]
-        for item in future {
-            if byDay[item.key] == nil { order.append(item.key) }
-            byDay[item.key, default: []].append(item.event)
-        }
-        return order.sorted().map { ($0, (byDay[$0] ?? []).sorted(by: before)) }
+        upcoming(byDay: byDay(events, tz), from: from)
     }
 }
