@@ -156,6 +156,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Production dependency audits now run in CI.** The API's transitive `protobufjs`
   dependency is updated past its schema-name denial-of-service advisory, and future
   moderate-or-higher production advisories fail the build for both API and web.
+- **Sign-in and first-run setup forms now work better with assistive technology.**
+  Labels are associated with their fields, validation messages identify the affected
+  input, and server errors are announced and focused instead of silently appearing.
 - **The iPad calendar is much snappier.** Opening the Calendar tab and tapping days in the
   month view used to re-scan and re-bucket every synced event (including every occurrence of
   recurring events) on each tap, which felt sluggish on a busy household calendar. The app
