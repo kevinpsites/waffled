@@ -20,7 +20,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"          # reachable on localhost / tailnet for psql + tools
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432" # local psql/tools only; containers use the private network
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
@@ -205,8 +205,6 @@ services:
       PS_STORAGE_SOURCE_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/powersync_storage
       # JWKS our api serves; clients present tokens minted by /api/powersync/token.
       PS_JWKS_URL: ${PS_JWKS_URL:-http://api:3000/api/auth/keys}
-    ports:
-      - "${POWERSYNC_PORT:-8090}:8080"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8080/probes/liveness').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
       interval: 5s
@@ -227,12 +225,17 @@ services:
         condition: service_healthy
       api:
         condition: service_started
+      powersync:
+        condition: service_healthy
     ports:
       - "${HTTP_PORT:-8080}:80"
+      - "${POWERSYNC_PORT:-8090}:8090"          # Caddy-fronted PowerSync (HTTP locally, TLS in hostname mode)
       # - "443:443"                              # enable for tailnet/prod TLS (later)
     environment:
       # unset locally → ":80" (plain HTTP); set to your MagicDNS name for auto-TLS
       CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
+      # Separate listener for PowerSync; hostname mode uses https://host:8090.
+      POWERSYNC_CADDY_ADDRESS: ${POWERSYNC_CADDY_ADDRESS:-:8090}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro   # web build is baked into the image at /srv
       - waffled_media:/data/media:ro                   # serve uploaded blobs directly (read-only)
