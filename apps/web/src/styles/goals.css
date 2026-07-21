@@ -187,7 +187,6 @@ button.goal-listhead-link:hover {
   font-size: 29px;
   font-weight: 600;
   margin: 9px 0 3px;
-  text-transform: capitalize;
 }
 .hero-sub {
   font-size: 13px;
@@ -426,7 +425,7 @@ button.goal-listhead-link:hover {
 .ge-pv-hero .hrow { position: relative; z-index: 1; display: flex; align-items: center; gap: 18px; }
 .ge-pv-hero .hicon { width: 60px; height: 60px; border-radius: 17px; background: var(--on-color-track); display: grid; place-items: center; font-size: 30px; flex: none; }
 .ge-pv-hero .htag { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; background: var(--on-color-track); padding: 3px 9px; border-radius: 999px; }
-.ge-pv-hero .htitle { font-family: var(--serif); font-size: 23px; font-weight: 600; letter-spacing: -.01em; line-height: 1.1; margin: 8px 0 3px; text-transform: capitalize; }
+.ge-pv-hero .htitle { font-family: var(--serif); font-size: 23px; font-weight: 600; letter-spacing: -.01em; line-height: 1.1; margin: 8px 0 3px; }
 .ge-pv-hero .hsub { font-size: 12.5px; font-weight: 600; opacity: .92; }
 .ge-pv-hero .hring { flex: none; margin-left: auto; }
 
@@ -434,7 +433,7 @@ button.goal-listhead-link:hover {
 .ge-pv-card .crow { display: flex; align-items: flex-start; gap: 14px; }
 .ge-pv-card .cicon { width: 52px; height: 52px; border-radius: 15px; background: var(--primary-t); display: grid; place-items: center; font-size: 27px; flex: none; }
 .ge-pv-card .ctag { font-size: 11px; font-weight: 800; color: var(--ink-3); text-transform: uppercase; letter-spacing: .03em; }
-.ge-pv-card .ctitle { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -.01em; line-height: 1.12; margin: 4px 0 3px; text-transform: capitalize; }
+.ge-pv-card .ctitle { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -.01em; line-height: 1.12; margin: 4px 0 3px; }
 .ge-pv-card .csub { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
 .ge-pv-card .cbar { height: 9px; border-radius: 99px; background: var(--panel); overflow: hidden; margin-top: 18px; }
 .ge-pv-card .cbar > div { height: 100%; border-radius: 99px; background: var(--primary); }
@@ -510,7 +509,6 @@ button.goal-listhead-link:hover {
   padding: 14px 16px;
   border: 2px solid var(--primary);
   background: var(--card);
-  text-transform: capitalize;
 }
 .gc-input-title::placeholder {
   text-transform: none;
@@ -680,7 +678,6 @@ button.goal-listhead-link:hover {
   font-size: 32px;
   font-weight: 600;
   margin: 9px 0 4px;
-  text-transform: capitalize;
 }
 .detail-hero-sub {
   font-size: 13.5px;
