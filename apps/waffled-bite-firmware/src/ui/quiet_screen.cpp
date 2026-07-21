@@ -11,18 +11,25 @@
 #define WB_QUIET_INK lv_color_hex(0xF5EFE1)
 #define WB_QUIET_MUTED lv_color_hex(0x9AA3C4)
 
-// Owns the 1s local countdown ticker. `parent` (the quiet screen itself) is
-// a persistent singleton created once in main.cpp's setup() and only ever
-// lv_obj_clean()'d before a rebuild — never itself deleted — so this ctx
-// (and its timer) is attached to `arc`, a genuine child that DOES get
-// deleted on every lv_obj_clean(quiet_scr), not to `parent`. Attaching to
-// `parent` here would leak a new 1Hz timer every ~5s poll while quiet time
-// is active, unlike the slower per-tap leaks elsewhere in this codebase.
+// Owns the 1s local countdown ticker + everything a later poll's sync needs
+// to update without a full rebuild. `parent` (the quiet screen itself) is a
+// persistent singleton created once in main.cpp's setup() and only ever
+// lv_obj_clean()'d before a rebuild — never itself deleted — so this ctx (and
+// its timer) is attached to `arc`, a genuine child that DOES get deleted on
+// every lv_obj_clean(parent), not to `parent`. Attaching to `parent` would
+// leak a new 1Hz timer every poll while quiet time is active (this screen
+// used to rebuild every poll — see main.cpp's history — that's now fixed,
+// but the ctx lifetime rule stays the same regardless). `parent` also holds
+// a raw pointer to this ctx via lv_obj_set_user_data so wb_sync_quiet_screen
+// (called every poll once this screen is already showing) can reach it
+// without a rebuild.
 struct WbQuietCtx
 {
   int remainingSec;
+  bool running; // false while paused — the 1s ticker holds still until this flips back
   lv_obj_t *arc;
   lv_obj_t *time_lbl;
+  lv_obj_t *until_lbl;
   lv_timer_t *tick_timer;
 };
 
@@ -33,9 +40,33 @@ static void wb_quiet_ctx_delete_cb(lv_event_t *e)
   delete ctx;
 }
 
+// Shared by the initial build and every later sync so "Stay cozy until" is
+// computed identically in both places.
+static void formatUntilText(char *buf, size_t len, int remainingSec, int nowHour, int nowMin)
+{
+  if (nowHour < 0)
+  {
+    snprintf(buf, len, "Stay cozy for a bit longer");
+    return;
+  }
+  int totalMin = nowHour * 60 + nowMin + (remainingSec + 59) / 60; // round up to the next minute
+  totalMin %= (24 * 60);
+  int h24 = totalMin / 60;
+  int m = totalMin % 60;
+  int h12 = h24 % 12;
+  if (h12 == 0)
+    h12 = 12;
+  snprintf(buf, len, "Stay cozy until %d:%02d %s", h12, m, h24 < 12 ? "AM" : "PM");
+}
+
+// Only counts down while `running` — paused (active but not running, e.g. a
+// parent hit pause from the web app) holds the display still instead of
+// ticking down locally against a server value that isn't actually moving.
 static void wb_quiet_tick_cb(lv_timer_t *timer)
 {
   WbQuietCtx *ctx = (WbQuietCtx *)lv_timer_get_user_data(timer);
+  if (!ctx->running)
+    return;
   if (ctx->remainingSec > 0)
     ctx->remainingSec--;
   lv_arc_set_value(ctx->arc, ctx->remainingSec);
@@ -94,27 +125,34 @@ void wb_build_quiet_screen(lv_obj_t *parent, const WbQuietState &quiet, int nowH
   lv_obj_set_style_text_font(until_lbl, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(until_lbl, WB_QUIET_MUTED, 0);
   lv_obj_set_style_pad_top(until_lbl, 8, 0);
-  if (nowHour >= 0)
-  {
-    int totalMin = nowHour * 60 + nowMin + (remainingSec + 59) / 60; // round up to the next minute
-    totalMin %= (24 * 60);
-    int h24 = totalMin / 60;
-    int m = totalMin % 60;
-    int h12 = h24 % 12;
-    if (h12 == 0)
-      h12 = 12;
-    char until_buf[48];
-    // NOTE: nowHour/nowMin are UTC (see wb_state.h) — this reads as the
-    // household's local time only once real timezone plumbing lands.
-    snprintf(until_buf, sizeof(until_buf), "Stay cozy until %d:%02d %s", h12, m, h24 < 12 ? "AM" : "PM");
-    lv_label_set_text(until_lbl, until_buf);
-  }
-  else
-  {
-    lv_label_set_text(until_lbl, "Stay cozy for a bit longer");
-  }
+  char until_buf[48];
+  formatUntilText(until_buf, sizeof(until_buf), remainingSec, nowHour, nowMin);
+  lv_label_set_text(until_lbl, until_buf);
 
-  WbQuietCtx *ctx = new WbQuietCtx{remainingSec, arc, time_lbl, nullptr};
+  WbQuietCtx *ctx = new WbQuietCtx{remainingSec, quiet.running, arc, time_lbl, until_lbl, nullptr};
   ctx->tick_timer = lv_timer_create(wb_quiet_tick_cb, 1000, ctx);
   lv_obj_add_event_cb(arc, wb_quiet_ctx_delete_cb, LV_EVENT_DELETE, ctx);
+  lv_obj_set_user_data(parent, ctx); // wb_sync_quiet_screen's way back to this ctx
+}
+
+void wb_sync_quiet_screen(lv_obj_t *parent, const WbQuietState &quiet, int nowHour, int nowMin)
+{
+  WbQuietCtx *ctx = (WbQuietCtx *)lv_obj_get_user_data(parent);
+  if (!ctx)
+    return; // not built yet — main.cpp only calls this after a build, but don't crash if that ever changes
+
+  ctx->remainingSec = quiet.remainingSec > 0 ? quiet.remainingSec : 0;
+  ctx->running = quiet.running;
+
+  int durationSec = quiet.durationSec > 0 ? quiet.durationSec : 1;
+  lv_arc_set_range(ctx->arc, 0, durationSec); // a parent could add-time mid-session, changing the total
+  lv_arc_set_value(ctx->arc, ctx->remainingSec);
+
+  char time_buf[8];
+  snprintf(time_buf, sizeof(time_buf), "%d:%02d", ctx->remainingSec / 60, ctx->remainingSec % 60);
+  lv_label_set_text(ctx->time_lbl, time_buf);
+
+  char until_buf[48];
+  formatUntilText(until_buf, sizeof(until_buf), ctx->remainingSec, nowHour, nowMin);
+  lv_label_set_text(ctx->until_lbl, until_buf);
 }

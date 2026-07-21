@@ -18,3 +18,14 @@
 // known UTC-vs-household-timezone caveat this screen's "Stay cozy until"
 // line inherits.
 void wb_build_quiet_screen(lv_obj_t *parent, const WbQuietState &quiet, int nowHour, int nowMin);
+
+// Pushes updated server state into an ALREADY-BUILT quiet screen (main.cpp
+// calls this on every poll after the first, instead of rebuilding) — updates
+// the countdown, the paused/running flag the local ticker checks, and the
+// "Stay cozy until" text, without a lv_obj_clean+rebuild+lv_scr_load cycle.
+// That cycle used to run unconditionally every 5s poll, which both reset the
+// countdown visibly every tick and re-forced navigation onto this screen
+// even when the kid had (illegitimately) wandered elsewhere — this function
+// is what lets subsequent polls update in place instead. No-ops if `parent`
+// hasn't been built yet (see wb_build_quiet_screen's lv_obj_set_user_data).
+void wb_sync_quiet_screen(lv_obj_t *parent, const WbQuietState &quiet, int nowHour, int nowMin);

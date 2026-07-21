@@ -192,14 +192,27 @@ static void wb_do_poll()
     // Quiet time is parent-triggered only (no on-device start/stop) and
     // takes priority over whatever screen was showing — force it in
     // regardless of current navigation state, same "computed on read"
-    // trust as the rest of this state. Rebuilding+reloading every poll
-    // while active (not just once on entry) keeps the countdown's 5s
-    // resync working, matching quiet_screen.h's documented contract.
+    // trust as the rest of this state. Build+load only ONCE, on the
+    // false→true transition (g_quietWasActive false here); while it's
+    // already showing, sync the existing screen's values instead of
+    // rebuilding+reloading every poll — that used to run unconditionally
+    // every 5s, which broke pause (the local ticker has no server-driven
+    // reason to hold still if it gets torn down and recreated every poll
+    // regardless of paused state) and re-forced navigation onto this
+    // screen even during a pause, when `active` is still true but
+    // `running` is false. See quiet_screen.h for the sync contract.
     if (liveState.quiet.active)
     {
-      lv_obj_clean(quiet_scr);
-      wb_build_quiet_screen(quiet_scr, liveState.quiet, liveState.nowHour, liveState.nowMin);
-      lv_scr_load(quiet_scr);
+      if (!g_quietWasActive)
+      {
+        lv_obj_clean(quiet_scr);
+        wb_build_quiet_screen(quiet_scr, liveState.quiet, liveState.nowHour, liveState.nowMin);
+        lv_scr_load(quiet_scr);
+      }
+      else
+      {
+        wb_sync_quiet_screen(quiet_scr, liveState.quiet, liveState.nowHour, liveState.nowMin);
+      }
       g_quietWasActive = true;
     }
     else if (g_quietWasActive)
