@@ -143,10 +143,22 @@ static void wb_open_detail_cb(lv_event_t *e)
       [key, onChange](bool on, const std::string &optionKey, int sliderValue) {
         return onChange ? onChange(key, on, optionKey, sliderValue) : false;
       });
-  // Fade rather than the slide used everywhere else in this app — the user
-  // asked for this one transition specifically to feel like it "pops open"
-  // rather than sliding in from the side; home<->settings/tasks keep sliding.
-  lv_scr_load_anim(ctx->detail_scr, LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, false);
+  // NOT LV_SCR_LOAD_ANIM_FADE_IN, despite that being what was originally
+  // asked for here ("pop open" rather than the slide used everywhere else
+  // in this app). Root-caused a real freeze to this exact call: fading a
+  // FULL 1024x600 screen requires LVGL to composite it through a semi-
+  // transparent "layer" (see lv_conf.h's LV_DRAW_LAYER_SIMPLE_BUF_SIZE
+  // comment), and that path hits a genuine infinite loop in this LVGL
+  // 9.2.2 build's draw-dispatch/layer-chunking logic at this resolution —
+  // confirmed via `sample` on the hung process: 100% CPU, flat RSS (so not
+  // a leak), the whole app pinned inside ONE lv_display_refr_timer call,
+  // repeatedly allocating+freeing draw-layer buffers without ever
+  // finishing. Bumping LV_DRAW_LAYER_SIMPLE_BUF_SIZE 10x did NOT fix it
+  // (still hangs identically), ruling out "buffer too small" as the cause.
+  // LV_SCR_LOAD_ANIM_NONE (instant cut, no compositing needed at all) is
+  // the safe substitute — closer to "pop" than the slide, without the
+  // fade's opacity blending. home<->settings/tasks still slide, unchanged.
+  lv_scr_load_anim(ctx->detail_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
 }
 
 // Attaches the open-detail-screen tap handler to a tile that's already

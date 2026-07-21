@@ -240,7 +240,10 @@ static void wb_do_poll()
     else if (g_quietWasActive)
     {
       // A parent ended it from the web app — hand control back to home.
-      lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, false);
+      // NOT a fade — full-screen FADE_IN hangs LVGL 9.2.2's layer-compositing
+      // path at this resolution; see the detailed root-cause comment in
+      // settings_screen.cpp's wb_open_detail_cb. Instant cut instead.
+      lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
       g_quietWasActive = false;
     }
   }

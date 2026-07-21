@@ -13,9 +13,10 @@
 static void wb_go_back_cb(lv_event_t *e)
 {
   lv_obj_t *back_scr = (lv_obj_t *)lv_event_get_user_data(e);
-  // Fade to match the fade-in used to open this screen (settings_screen.cpp)
-  // — every other screen pair in this app still slides.
-  lv_scr_load_anim(back_scr, LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, false);
+  // NOT a fade — see wb_open_detail_cb's comment in settings_screen.cpp for
+  // why. Instant cut, no animation; closer to "pop" than the slide used
+  // elsewhere without hitting the same freeze.
+  lv_scr_load_anim(back_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
 }
 
 // Owns everything the interactive controls need to report a change: the
