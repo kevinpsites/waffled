@@ -7,10 +7,15 @@ from the parent web app's Family tab. This firmware talks to the API that shippe
 `POST /api/waffled-bites/device/token`, and polling `GET /api/waffled-bites/device/state`
 every ~5s (no WebSockets — see that PR's context for why).
 
-**Status: milestone 1 only.** The toolchain is proven end to end — it builds, LVGL
-renders, and the simulator actually runs — but there's no real screen yet (just a
-placeholder), no networking, and no hardware to test against. See "What's not done"
-below before assuming more works than does.
+**Status: milestone 3.** Home + settings ("Grown-up controls") screens are built,
+and the firmware talks to the real backend: an onboarding screen (server address +
+pairing code) shown when nothing's paired yet, real pairing via `POST
+/api/waffled-bites/pair`, a 5s poll of `GET /api/waffled-bites/device/state` that
+rebuilds the home screen from live data, and token refresh via `POST
+/api/waffled-bites/device/token`. Verified end-to-end against a real running
+backend (paired, exchanged tokens, and polled real routine/stars data for a demo
+household's kid — see git history for the session that did this). Still no
+hardware to test on, though — see "What's not done" below.
 
 ## Two environments, one app
 
@@ -36,6 +41,17 @@ pio run -e native -t exec
 pio run -e esp32-s3 -t upload
 ```
 
+## Networking + pairing (native dev)
+
+The `native` build defaults to `WB_API_BASE_URL=http://localhost:8081` (set in
+`platformio.ini`), matching the local `./waffled-demo` stack. On first launch with
+no stored pairing, it shows the onboarding screen — enter a server address and a
+pairing code minted from the parent web app (Family → tap a kid → Waffled-Bite →
+Pair). A successful pair is cached in `.wb_pairing.json` next to the binary (dev
+convenience only, gitignored, plaintext — not modeling real device security) so
+relaunching the simulator doesn't force re-pairing every run; delete that file to
+force onboarding again. `esp32-s3` uses real NVS (`Preferences`) instead.
+
 ## Where the hardware config came from
 
 `src/lgfx_device.h`'s pin mapping, RGB bus timing, and GT911 touch wiring for the
@@ -54,21 +70,40 @@ before any of it has run on real hardware.
 
 ## What's not done
 
-- **No real screens yet** — `main.cpp` renders a static placeholder label to prove
-  the pipeline works. Porting the actual mockup screens (home/routines, quiet time,
-  night light, wake light, sound machine, rewards, first-run Wi-Fi + pairing) is
-  next, likely via [SquareLine Studio](https://squareline.io/) for layout.
-- **No networking** — no HTTP client, no pairing flow, no polling loop. The `native`
-  target has no Arduino `HTTPClient`; a cross-platform HTTP approach (or a small
-  abstraction with a native and an Arduino implementation) is needed before this can
-  talk to the real API.
-- **No WiFi provisioning UI** — device-side captive-portal/BLE Wi-Fi setup.
+- **Only the home + settings screens exist.** Quiet time, night light, wake light,
+  sound machine, and rewards from the mockup are still just the (non-functional)
+  control tiles on the settings screen — tapping them does nothing yet.
+- **No tap-to-complete on tasks.** The poll shows live routine/chore data, but there's
+  no per-task list UI to tap, so `POST /api/waffled-bites/device/tasks/:instanceId/complete`
+  is never called. `WbTask.id` is already plumbed through from the real payload for
+  when this lands.
+- **No WiFi provisioning UI.** `esp32-s3` connects with hardcoded credentials
+  (`WB_WIFI_SSID`/`WB_WIFI_PASS` in `platformio.ini`, both `"CHANGE_ME"`) — a real
+  captive-portal/BLE setup flow is deferred.
+- **No TLS certificate validation** for `https://` server addresses on `esp32-s3`
+  (see the `TODO(hardware bring-up)` comment in `wb_http_esp32.cpp`) — a self-hosted
+  household's server is assumed to be plain `http://` on the local LAN for now.
+- **No custom icons yet** — the mockup's sun/moon/timer/bed/lightning/star glyphs
+  have no LVGL built-in equivalent, so those spots are text-only; gear/speaker/back-
+  chevron/checkmark use LVGL's built-in `LV_SYMBOL_*` set. Real per-kid avatars
+  (the mockup's turtle emoji) are a colored initial-circle placeholder — a real
+  avatar needs a baked bitmap asset, not a font glyph.
 - **No OTA** — worth having before this ships to an actual kid's room.
-- **esp32-s3 environment is unverified** — builds cleanly (`pio run -e esp32-s3`),
-  but nothing has run on real silicon. In particular: confirm PSRAM is actually
-  detected (`psramFound()`) once a board arrives — the `qio_opi` memory_type +
-  4MB flash_size + `default.csv` partitions overrides in `platformio.ini` are
-  reasoned from the module's N4R8 designation, not confirmed against the chip.
+- **Flash headroom is getting tight on `esp32-s3`**: adding ArduinoJson + WiFi +
+  HTTPClient + Preferences pushed flash usage from 48% to **95.8%** of the 4MB
+  N4R8 partition (`pio run -e esp32-s3` prints the exact number). The custom icon
+  font and avatar bitmaps above will eat into what's left — worth checking budget
+  before adding either, and revisiting partition scheme / trimmed dependencies if
+  it gets close to the limit.
+- **esp32-s3 environment is unverified on real silicon** — builds cleanly, and the
+  networking code is the same file across both targets (proven live against a real
+  backend on `native`), but nothing has run on the actual board yet (still ordered,
+  not in hand). In particular: confirm PSRAM is actually detected (`psramFound()`)
+  — the `qio_opi` memory_type + 4MB flash_size + `default.csv` partitions overrides
+  in `platformio.ini` are reasoned from the module's N4R8 designation, not confirmed
+  against the chip — and confirm `HTTPClient::begin(String)` actually handles both
+  `http://` and `https://` end-to-end on this specific arduino-esp32 core version
+  (see `wb_http_esp32.cpp`).
 - **Backlight is on/off, not dimmable** — the arduino-esp32 LEDC PWM API differs
   across core versions; picked the boring, version-stable option for now (see the
   comment in `main.cpp`). Needed once Screen & display's brightness setting should
