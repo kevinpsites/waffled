@@ -98,6 +98,8 @@ export const groceryApi = {
   deleteItem: (id: string) => apiDelete(`/api/list-items/${id}`).then(tap('grocery')),
   groceryFromRecipe: (recipeId: string) =>
     apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}`).then(tap('grocery')),
+  removeRecipeFromGrocery: (recipeId: string) =>
+    apiDelete(`/api/lists/grocery/from-recipe/${recipeId}`).then(tap('grocery')),
 
   // lists (the Lists screen)
   lists: () => apiGet<{ lists: ListSummary[] }>('/api/lists'),

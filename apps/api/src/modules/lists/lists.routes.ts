@@ -17,6 +17,7 @@ import {
   patchItem,
   softDeleteItem,
   addRecipeToGrocery,
+  removeRecipeFromGrocery,
   convertToTemplate,
   convertToList,
   applyTemplate,
@@ -212,6 +213,16 @@ export function registerListRoutes(api: Api): void {
     const added = await addRecipeToGrocery(tenant, recipeId)
     if (added === null) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     return res.status(201).json({ added: added.length, items: added.map(presentListItem) })
+  }))
+
+  // Take a recipe's ingredients back off the grocery list (undo the off-plan add;
+  // removes it from the by-meal "Unscheduled" group).
+  api.delete('/api/lists/grocery/from-recipe/:recipeId', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const recipeId = req.params.recipeId ?? ''
+    if (!UUID_RE.test(recipeId)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    const removed = await removeRecipeFromGrocery(tenant, recipeId)
+    if (removed === null) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    return res.status(200).json({ removed })
   }))
 
   // ---- grocery board + auto-build + pantry staples --------------------------

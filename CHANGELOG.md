@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Take a recipe back off the grocery list.** A recipe you added off-plan from its page
+  shows under "Unscheduled" in the by-meal view — now you can remove it in one tap (web: a
+  **Remove** button on the section; iPhone/iPad: long-press the section → **Remove from
+  list**). Items shared with another recipe stay put; only this recipe's are cleared.
 - **Backups can now be restore-tested without touching the live app.** Run
   `./waffled backup verify` to restore the newest database dump into a disposable Postgres
   container, fail on archive or SQL errors, confirm the Waffled schema exists, and clean up the

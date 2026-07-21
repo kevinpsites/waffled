@@ -2264,6 +2264,15 @@ struct WaffledAPI: Sendable {
         return try await sendJSON("POST", "/api/lists/grocery/from-recipe/\(recipeId)", as: Resp.self).added
     }
 
+    /// Take a recipe's ingredients back off the grocery list (undo the off-plan add;
+    /// removes it from the by-meal "Unscheduled" group). Keeps rows shared with
+    /// another recipe. Returns how many rows were removed.
+    @discardableResult
+    func removeRecipeFromGrocery(recipeId: String) async throws -> Int {
+        struct Resp: Decodable { let removed: Int }
+        return try await sendJSON("DELETE", "/api/lists/grocery/from-recipe/\(recipeId)", as: Resp.self).removed
+    }
+
     /// Pantry staples (assumed in-house, left off the list) — the editable master list,
     /// shared with the Meals settings tab. Add/remove mirror the web's staples modal.
     func pantryStaples() async throws -> [GroceryBoardDTO.Staple] {

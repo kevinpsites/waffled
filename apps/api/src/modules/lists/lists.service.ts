@@ -453,6 +453,38 @@ export async function addRecipeToGrocery(
   return added
 }
 
+// Undo an off-plan "add recipe to grocery": take that recipe's ingredients back
+// off the list. Rows that exist ONLY for this recipe (source='recipe' crediting
+// just this id) are soft-deleted; rows shared with another recipe or hand-added
+// keep living — we only strip this recipe's credit (array_remove). Returns the
+// number of rows removed, or null if the recipe isn't in this household.
+export async function removeRecipeFromGrocery(
+  tenant: Tenant,
+  recipeId: string
+): Promise<number | null> {
+  const recipe = await getRecipe(tenant.householdId, recipeId)
+  if (!recipe) return null
+  const list = await getOrCreateGroceryList(tenant)
+
+  // Delete rows solely owned by this recipe (an explicit off-plan add with no
+  // other stake) — exactly [recipeId], and not a hand-added 'manual' row.
+  const del = await query(
+    `update list_items set deleted_at = now()
+       where household_id = $1 and list_id = $2 and deleted_at is null
+         and source = 'recipe' and source_recipe_ids = ARRAY[$3]::uuid[]`,
+    [tenant.householdId, list.id, recipeId]
+  )
+  // Strip this recipe's credit from rows that survive (shared with another recipe,
+  // or a 'manual' row this recipe had merged onto).
+  await query(
+    `update list_items set source_recipe_ids = array_remove(source_recipe_ids, $3::uuid)
+       where household_id = $1 and list_id = $2 and deleted_at is null
+         and $3 = ANY(source_recipe_ids)`,
+    [tenant.householdId, list.id, recipeId]
+  )
+  return del.rowCount ?? 0
+}
+
 // Combine two freeform grocery quantities. Same unit (or both unit-less) → sum
 // the numbers ("1 lb" + "0.5 lb" → "1.5 lb", "1" + "1" → "2"). Otherwise keep
 // both ("1 cup" + "2 tbsp" → "1 cup + 2 tbsp").

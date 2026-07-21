@@ -134,6 +134,7 @@ interface BoardSection {
   items: GroceryBoardItem[]
   mealType?: string
   unscheduled?: boolean
+  recipeId?: string
 }
 
 // Group items into ordered aisle sections; manual/uncategorized items lead, ungrouped.
@@ -232,6 +233,12 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     await Promise.all(completedItems.map((i) => groceryApi.deleteItem(i.id)))
     refetch()
   }
+  // Undo an off-plan "add recipe to grocery" — removes that recipe's items (keeping
+  // any shared with another recipe) so it drops out of the Unscheduled shelf.
+  async function removeUnscheduled(recipeId: string) {
+    await groceryApi.removeRecipeFromGrocery(recipeId)
+    refetch()
+  }
   async function addItem(name: string) {
     const n = name.trim()
     if (!n) return
@@ -288,7 +295,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           // their own sections after the planned meals — the "unscheduled" shelf.
           for (const u of board.unscheduled ?? []) {
             const items = claim(u.recipeId)
-            if (items.length) perMeal.push({ key: `un|${u.recipeId}`, aisle: u.title ?? 'Recipe', items, unscheduled: true })
+            if (items.length) perMeal.push({ key: `un|${u.recipeId}`, aisle: u.title ?? 'Recipe', items, unscheduled: true, recipeId: u.recipeId })
           }
           // Anything not claimed by a planned or unscheduled recipe — hand-added
           // items — still needs a home, or it would vanish in the By-meal view.
@@ -319,6 +326,18 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
             {view === 'meal' && sec.unscheduled && <span className="meal-badge mt-unscheduled">Unscheduled</span>}
             {sec.aisle}
             <span className="ga-n">{sec.items.length}</span>
+            {/* Take an off-plan recipe back off the list (undo "add to grocery"). */}
+            {sec.unscheduled && sec.recipeId && (
+              <button
+                type="button"
+                className="linkbtn"
+                style={{ marginLeft: 'auto' }}
+                title="Remove this recipe's items from the list"
+                onClick={(e) => { e.stopPropagation(); removeUnscheduled(sec.recipeId!) }}
+              >
+                Remove
+              </button>
+            )}
           </div>
         )}
         {!isCollapsed && sec.items.map((it) => (

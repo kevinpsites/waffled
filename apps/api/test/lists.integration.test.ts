@@ -477,6 +477,51 @@ describe('grocery auto-build from a recipe', () => {
   })
 })
 
+describe('remove a recipe from the grocery list', () => {
+  const addRecipe = async (title: string, ingredients: Array<{ name: string; amount?: number; unit?: string }>) => {
+    const r = await call('POST', '/api/recipes', kevin, { title, emoji: '🍲' })
+    const rid = JSON.parse(r.body).recipe.id
+    await call('POST', `/api/recipes/${rid}/ingredients`, kevin, { ingredients })
+    await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin)
+    return rid
+  }
+  const groceryItems = async () => JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items as Array<{ name: string; sourceRecipeIds: string[] }>
+  const unscheduled = async () => JSON.parse((await call('GET', '/api/lists/grocery/board', kevin)).body).unscheduled as Array<{ recipeId: string }>
+
+  it('removes items that belong only to that recipe and drops it from unscheduled', async () => {
+    const rid = await addRecipe('Solo Soup', [{ name: 'Miso paste', amount: 1, unit: 'cup' }, { name: 'Silken tofu', amount: 1 }])
+    expect((await groceryItems()).some((i) => i.name === 'Miso paste')).toBe(true)
+    expect((await unscheduled()).some((u) => u.recipeId === rid)).toBe(true)
+
+    const del = await call('DELETE', `/api/lists/grocery/from-recipe/${rid}`, kevin)
+    expect(del.statusCode).toBe(200)
+    expect(JSON.parse(del.body).removed).toBe(2)
+
+    const items = await groceryItems()
+    expect(items.some((i) => i.name === 'Miso paste')).toBe(false)
+    expect(items.some((i) => i.name === 'Silken tofu')).toBe(false)
+    expect((await unscheduled()).some((u) => u.recipeId === rid)).toBe(false)
+  })
+
+  it('keeps an item shared with another recipe, dropping only the removed recipe’s credit', async () => {
+    const a = await addRecipe('Scallion A', [{ name: 'Fresh scallions', amount: 1, unit: 'bunch' }])
+    const b = await addRecipe('Scallion B', [{ name: 'Fresh scallions', amount: 1, unit: 'bunch' }])
+
+    await call('DELETE', `/api/lists/grocery/from-recipe/${a}`, kevin)
+
+    const scallions = (await groceryItems()).find((i) => i.name === 'Fresh scallions')
+    expect(scallions).toBeDefined() // still on the list — it's also recipe B's
+    expect(scallions!.sourceRecipeIds).toContain(b)
+    expect(scallions!.sourceRecipeIds).not.toContain(a)
+  })
+
+  it('404s an unknown recipe', async () => {
+    expect(
+      (await call('DELETE', '/api/lists/grocery/from-recipe/00000000-0000-0000-0000-000000000000', kevin)).statusCode
+    ).toBe(404)
+  })
+})
+
 function thisSunday(): string {
   const d = new Date()
   d.setHours(0, 0, 0, 0)

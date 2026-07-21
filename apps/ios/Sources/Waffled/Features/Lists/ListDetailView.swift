@@ -258,6 +258,16 @@ final class ListDetailModel {
         }
     }
 
+    /// Take an off-plan recipe back off the grocery list (undo "add to grocery"),
+    /// removing it from the by-meal "Unscheduled" group. Reloads (it can touch
+    /// several rows and strip shared credits server-side).
+    func removeRecipe(_ recipeId: String) async {
+        do {
+            try await api.removeRecipeFromGrocery(recipeId: recipeId)
+            await load()
+        } catch { self.error = true }
+    }
+
     /// Turn this list into a reusable template — converts it in place (it leaves the
     /// rail and becomes the template) and unchecks its items. Flips this view into
     /// template mode. Returns true on success.
@@ -716,6 +726,14 @@ struct ListDetailView: View {
                 Spacer(minLength: 6)
                 Text("\(group.items.count)")
                     .font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
+            }
+        }
+        // Long-press an Unscheduled recipe's header to take it back off the list.
+        .contextMenu {
+            if let recipe = group.unscheduled {
+                Button(role: .destructive) {
+                    Task { await model.removeRecipe(recipe.recipeId) }
+                } label: { Label("Remove from list", systemImage: "trash") }
             }
         }
     }
