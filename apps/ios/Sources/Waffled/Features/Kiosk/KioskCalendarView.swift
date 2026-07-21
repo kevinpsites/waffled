@@ -24,11 +24,19 @@ struct KioskCalendarView: View {
 
     private var tz: TimeZone { sync.householdTz }
 
-    private var filtered: [SyncedEvent] {
-        guard let p = filterPerson else { return sync.events }
-        return sync.events.filter { $0.personId == p || $0.participantIds.contains(p) }
+    /// The shared prebuilt day index (`SyncManager.eventsByDay`), person-filtered.
+    /// With no filter chip this is the index verbatim (no copy, no scan); with one
+    /// it's a single pass — either way no per-cell re-scan of the full event list.
+    private var filteredByDay: [String: [SyncedEvent]] {
+        guard let p = filterPerson else { return sync.eventsByDay }
+        var out: [String: [SyncedEvent]] = [:]
+        for (day, items) in sync.eventsByDay {
+            let kept = items.filter { $0.personId == p || $0.participantIds.contains(p) }
+            if !kept.isEmpty { out[day] = kept }
+        }
+        return out
     }
-    private var selectedItems: [SyncedEvent] { Agenda.forDay(filtered, day: selectedDay, tz: tz) }
+    private var selectedItems: [SyncedEvent] { filteredByDay[selectedDay] ?? [] }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,31 +59,34 @@ struct KioskCalendarView: View {
         .task {
             guard DemoHooks.kioskOpenEvent || DemoHooks.kioskOpenEdit else { return }
             for _ in 0..<40 { if !sync.events.isEmpty { break }; try? await Task.sleep(nanoseconds: 150_000_000) }
-            let ev = selectedItems.first ?? filtered.sorted { ($0.startsAt ?? .distantFuture) < ($1.startsAt ?? .distantFuture) }.first
+            let ev = selectedItems.first ?? sync.events.sorted { ($0.startsAt ?? .distantFuture) < ($1.startsAt ?? .distantFuture) }.first
             if DemoHooks.kioskOpenEdit, let ev { editing = .edit(ev) }
             else if detailEvent == nil, let ev { detailEvent = ev }
         }
     }
 
     @ViewBuilder private var content: some View {
+        // Materialize the (possibly person-filtered) index once per render and hand it
+        // down, so month cells / day columns / agenda all share the same lookup.
+        let byDay = filteredByDay
         switch mode {
         case .month:
             HStack(alignment: .top, spacing: 20) {
-                monthGrid.frame(maxWidth: .infinity, maxHeight: .infinity)
-                dayPanel.frame(width: 340)
+                monthGrid(byDay).frame(maxWidth: .infinity, maxHeight: .infinity)
+                dayPanel(byDay[selectedDay] ?? []).frame(width: 340)
             }
         case .week:
-            CalTimeGrid(days: weekDays(selectedDay), tz: tz, events: filtered,
+            CalTimeGrid(days: weekDays(selectedDay), tz: tz, byDay: byDay,
                         showDayHeaders: true, selectedDay: selectedDay,
                         onTapEvent: { detailEvent = $0 }, onAddAt: { editing = .new($0) },
                         onPickDay: { day in withAnimation { selectedDay = day; mode = .day } })
         case .day:
-            CalTimeGrid(days: [selectedDay], tz: tz, events: filtered,
+            CalTimeGrid(days: [selectedDay], tz: tz, byDay: byDay,
                         showDayHeaders: false, selectedDay: selectedDay,
                         onTapEvent: { detailEvent = $0 }, onAddAt: { editing = .new($0) },
                         onPickDay: { _ in })
         case .agenda:
-            agendaContent
+            agendaContent(byDay)
         }
     }
 
@@ -197,11 +208,8 @@ struct KioskCalendarView: View {
 
     // MARK: month grid
 
-    private var monthGrid: some View {
+    private func monthGrid(_ byDay: [String: [SyncedEvent]]) -> some View {
         let cells = monthCells(monthAnchor)
-        // Group events by day ONCE per render, not once per cell — otherwise each of the
-        // 42 cells re-filters the full event list (O(events × 42)).
-        let byDay = eventsByDay
         let today = Agenda.todayKey(tz)
         return VStack(spacing: 6) {
             HStack(spacing: 6) {
@@ -222,13 +230,6 @@ struct KioskCalendarView: View {
             }
         }
         .frame(maxHeight: .infinity)
-    }
-
-    /// `filtered` grouped by day key and ordered — built once per render and shared by
-    /// the month grid and the mini-calendar so neither re-scans per cell.
-    private var eventsByDay: [String: [SyncedEvent]] {
-        Dictionary(grouping: filtered, by: { Agenda.dayKey($0, tz) })
-            .mapValues { $0.sorted(by: Agenda.before) }
     }
 
     private func monthCell(_ cell: CalendarView.MonthCell, items: [SyncedEvent], today: String) -> some View {
@@ -286,7 +287,7 @@ struct KioskCalendarView: View {
 
     // MARK: day panel (month mode)
 
-    private var dayPanel: some View {
+    private func dayPanel(_ selectedItems: [SyncedEvent]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Text(relativeLabel(selectedDay)).font(WF.serif(24)).foregroundStyle(WF.ink)
@@ -321,12 +322,12 @@ struct KioskCalendarView: View {
 
     // MARK: agenda (upcoming list + mini-month + heads-up + busy bars)
 
-    private var agendaContent: some View {
+    private func agendaContent(_ byDay: [String: [SyncedEvent]]) -> some View {
         HStack(alignment: .top, spacing: 20) {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("What's coming up").font(WF.serif(28)).foregroundStyle(WF.ink)
-                    let groups = Agenda.upcoming(filtered, from: Agenda.todayKey(tz), tz: tz)
+                    let groups = Agenda.upcoming(byDay: byDay, from: Agenda.todayKey(tz))
                     if groups.isEmpty {
                         Text("Nothing upcoming.").font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 14)
                     } else {
@@ -346,7 +347,7 @@ struct KioskCalendarView: View {
             .frame(maxWidth: .infinity)
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 16) { miniMonth; headsUpCard; busyCard }
+                VStack(spacing: 16) { miniMonth(byDay); headsUpCard; busyCard(byDay) }
                 .padding(.bottom, 20)
             }
             .frame(width: 360)
@@ -359,9 +360,8 @@ struct KioskCalendarView: View {
         return DateFmt.string(d, "EEE · MMM d", tz)
     }
 
-    private var miniMonth: some View {
+    private func miniMonth(_ byDay: [String: [SyncedEvent]]) -> some View {
         let cells = monthCells(miniAnchor)
-        let byDay = eventsByDay
         let today = Agenda.todayKey(tz)
         return VStack(spacing: 8) {
             HStack {
@@ -431,8 +431,8 @@ struct KioskCalendarView: View {
         .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.ai.opacity(0.2), lineWidth: 1))
     }
 
-    @ViewBuilder private var busyCard: some View {
-        let rows = busyRows
+    @ViewBuilder private func busyCard(_ byDay: [String: [SyncedEvent]]) -> some View {
+        let rows = busyRows(byDay)
         if !rows.isEmpty {
             let maxCount = rows.map(\.count).max() ?? 1
             VStack(alignment: .leading, spacing: 12) {
@@ -461,14 +461,14 @@ struct KioskCalendarView: View {
         }
     }
 
-    private var busyRows: [(member: SyncedMember, count: Int)] {
-        let week = Set(weekDays(Agenda.todayKey(tz)))
+    private func busyRows(_ byDay: [String: [SyncedEvent]]) -> [(member: SyncedMember, count: Int)] {
         var counts: [String: Int] = [:]
-        for e in filtered {
-            guard week.contains(Agenda.dayKey(e, tz)) else { continue }
-            var ids = Set(e.participantIds)
-            if let p = e.personId { ids.insert(p) }
-            for id in ids { counts[id, default: 0] += 1 }
+        for day in weekDays(Agenda.todayKey(tz)) {
+            for e in byDay[day] ?? [] {
+                var ids = Set(e.participantIds)
+                if let p = e.personId { ids.insert(p) }
+                for id in ids { counts[id, default: 0] += 1 }
+            }
         }
         return sync.members.compactMap { m in counts[m.id].map { (member: m, count: $0) } }
             .filter { $0.count > 0 }
@@ -547,7 +547,10 @@ struct KioskCalendarView: View {
 struct CalTimeGrid: View {
     let days: [String]
     let tz: TimeZone
-    let events: [SyncedEvent]
+    /// Prebuilt day → ordered events index (`SyncManager.eventsByDay`, possibly
+    /// person-filtered) — each column reads only its own day instead of re-scanning
+    /// and re-bucketing the full event list per render.
+    let byDay: [String: [SyncedEvent]]
     let showDayHeaders: Bool
     let selectedDay: String
     let onTapEvent: (SyncedEvent) -> Void
@@ -558,11 +561,11 @@ struct CalTimeGrid: View {
     private let gutter: CGFloat = 56
 
     private func timed(_ key: String) -> [SyncedEvent] {
-        events.filter { Agenda.dayKey($0, tz) == key && !$0.allDay && $0.startsAt != nil }
+        (byDay[key] ?? []).filter { !$0.allDay && $0.startsAt != nil }
             .sorted { ($0.startsAt ?? .distantPast) < ($1.startsAt ?? .distantPast) }
     }
     private func allDay(_ key: String) -> [SyncedEvent] {
-        events.filter { Agenda.dayKey($0, tz) == key && $0.allDay }
+        (byDay[key] ?? []).filter(\.allDay)
     }
     private var hasAllDay: Bool { days.contains { !allDay($0).isEmpty } }
 

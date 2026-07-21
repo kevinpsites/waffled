@@ -17,6 +17,7 @@ import {
   createGoal,
   listGoals,
   goalDetail,
+  goalActivity,
   updateGoal,
   softDeleteGoal,
   toggleGoalStep,
@@ -184,6 +185,16 @@ export function registerGoalRoutes(api: Api): void {
     const goal = await goalDetail(tenant.householdId, id)
     if (!goal) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
     return { goal }
+  }))
+
+  // Day-bucketed log history powering the goal-detail data views (Week/Month/Pace/
+  // Year/By-person/Year-ring). See goalActivity for the bucketing rules.
+  api.get('/api/goals/:id/activity', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    const activity = await goalActivity(tenant.householdId, id)
+    if (!activity) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    return activity
   }))
 
   api.patch('/api/goals/:id', tenantRoute(async (tenant, req: Request, res: Response) => {

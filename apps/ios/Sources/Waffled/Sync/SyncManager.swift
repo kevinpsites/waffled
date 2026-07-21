@@ -22,16 +22,31 @@ final class SyncManager {
     private(set) var status: Status = .idle
     private(set) var members: [SyncedMember] = []
     /// Every synced event (PowerSync streams the whole household, incl. personal ones).
-    private(set) var allEvents: [SyncedEvent] = []
+    /// The visible slice + day index are rebuilt in `didSet`, NOT computed per read —
+    /// the calendar/Today views read them several times per render (see CLAUDE.md's
+    /// "precompute in the model" rule; recomputing per read janked the iPad calendar).
+    private(set) var allEvents: [SyncedEvent] = [] { didSet { rebuildEventIndex() } }
     /// What this device may show right now: family events + the signed-in person's own
     /// personal-calendar events. A personal event owned by someone else is hidden even
-    /// though it's synced to the device (mirrors the web's per-viewer filter). Computed
-    /// so it re-derives when either the events or the current person changes.
-    var events: [SyncedEvent] {
-        let me = currentPersonId
-        return allEvents.filter { $0.visibility != "personal" || ($0.ownerPersonId != nil && $0.ownerPersonId == me) }
+    /// though it's synced to the device (mirrors the web's per-viewer filter).
+    private(set) var events: [SyncedEvent] = []
+    /// `events` grouped by household-local day (each day ordered) — the O(1) per-day
+    /// lookup behind the month/week/day grids and the Today "This week" agenda.
+    private(set) var eventsByDay: [String: [SyncedEvent]] = [:]
+
+    /// The per-viewer visibility filter as a pure function: family events for everyone,
+    /// personal events only for their owner (an unowned personal event is hidden).
+    nonisolated static func visibleEvents(_ all: [SyncedEvent], me: String?) -> [SyncedEvent] {
+        all.filter { $0.visibility != "personal" || ($0.ownerPersonId != nil && $0.ownerPersonId == me) }
     }
-    private(set) var householdTz: TimeZone = .current
+
+    /// Re-derive `events` + `eventsByDay`. Runs from the `didSet`s of its three inputs
+    /// (allEvents, currentPerson, householdTz) so no mutation site can forget it.
+    private func rebuildEventIndex() {
+        events = Self.visibleEvents(allEvents, me: currentPersonId)
+        eventsByDay = Agenda.byDay(events, householdTz)
+    }
+    private(set) var householdTz: TimeZone = .current { didSet { rebuildEventIndex() } }
     private(set) var personCount = 0
     private(set) var eventCount = 0
     private(set) var pendingUploads = 0
@@ -55,7 +70,7 @@ final class SyncManager {
     /// The logged-in person — id plus household role & capabilities (so "my" goals
     /// respect who's signed in, and management/approval controls only show when the
     /// server would allow the action). Loaded once.
-    private(set) var currentPerson: WaffledAPI.CurrentPerson?
+    private(set) var currentPerson: WaffledAPI.CurrentPerson? { didSet { rebuildEventIndex() } }
     /// The logged-in person's id (convenience; nil until identity loads).
     var currentPersonId: String? { currentPerson?.id }
     func loadIdentity() async {
@@ -932,7 +947,9 @@ final class SyncManager {
             sql: "SELECT timezone FROM households LIMIT 1", parameters: [],
             mapper: { try $0.getStringOptional(name: "timezone") }
         ), let id = tz, let zone = TimeZone(identifier: id) {
-            householdTz = zone
+            // Only assign on a real change — this runs on every sync-status tick, and
+            // householdTz's didSet rebuilds the whole event index.
+            if zone.identifier != householdTz.identifier { householdTz = zone }
         }
     }
 }
