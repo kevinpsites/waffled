@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Reorganize list items into other sections.** On web you can now drag an item from one
+  section onto another to refile it; on iPhone/iPad a long-press "Move to section" does the
+  same. (True finger-drag between sections on iOS is a fast-follow.)
 - **Flag list items as important or urgent.** Every list item now has a priority — normal,
   important, or urgent — set from the item editor on web and iPhone/iPad. Marked items get a
   flag on the row and float to the top of their list, so what matters most is easy to spot.

@@ -141,6 +141,24 @@ describe('Lists screen', () => {
     expect(await screen.findByText('PJs & socks')).toBeInTheDocument()
   })
 
+  it('drags an item into another section and PATCHes its category', async () => {
+    const sent: Sent[] = []
+    mockApi({ lists: [grocery, packing], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+
+    // Sunscreen lives in Gear; drag it onto the Clothes section
+    const sunscreen = (await screen.findByText('Sunscreen')).closest('.litem') as HTMLElement
+    const clothes = (await screen.findByText('Clothes')).closest('.lists-section') as HTMLElement
+    fireEvent.dragStart(sunscreen)
+    fireEvent.dragOver(clothes)
+    fireEvent.drop(clothes)
+
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH' && /\/api\/list-items\/i3$/.test(s.url))).toBe(true))
+    const patch = sent.find((s) => s.method === 'PATCH' && /\/api\/list-items\/i3$/.test(s.url))!
+    expect(patch.body).toMatchObject({ category: 'Clothes' })
+  })
+
   it('toggles an item via its checkbox and PATCHes checked state', async () => {
     const sent: Sent[] = []
     mockApi({ lists: [grocery, packing], items: packItems, sent })

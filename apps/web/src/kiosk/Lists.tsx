@@ -65,6 +65,8 @@ function ItemRow({
   onAssign,
   onEdit,
   onDelete,
+  onDragStart,
+  onDragEnd,
 }: {
   item: ListItem
   people: Person[]
@@ -72,6 +74,8 @@ function ItemRow({
   onAssign: (item: ListItem, personId: string | null) => void
   onEdit: (item: ListItem) => void
   onDelete: (item: ListItem) => void
+  onDragStart?: (item: ListItem) => void
+  onDragEnd?: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const a = item.assignee
@@ -80,7 +84,12 @@ function ItemRow({
   const addedBy = item.source !== 'auto' ? item.addedBy : null
 
   return (
-    <div className={`litem ${item.checked ? 'done' : ''}`}>
+    <div
+      className={`litem ${item.checked ? 'done' : ''}`}
+      draggable={!!onDragStart}
+      onDragStart={onDragStart ? () => onDragStart(item) : undefined}
+      onDragEnd={onDragEnd}
+    >
       {/* Only the checkbox toggles; tapping the name opens the editor. */}
       <button
         type="button"
@@ -237,6 +246,10 @@ export function Lists() {
   const [recent, setRecent] = useState<Set<string>>(new Set())
   // Completed section is collapsed by default (checked items tuck away).
   const [showDone, setShowDone] = useState(false)
+  // Drag-to-reorganize: the item being dragged (ref, not state, so the drop
+  // handler reads it synchronously) + the section highlighted as a drop target.
+  const dragId = useRef<string | null>(null)
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null)
   // Header overflow (⋯) menu: rename / save-as-template (or move-to-lists) / delete.
   const [actionsMenu, setActionsMenu] = useState(false)
   const actionsRef = useRef<HTMLDivElement>(null)
@@ -317,6 +330,23 @@ export function Lists() {
       setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)))
     } catch {
       setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, checked: item.checked } : i)))
+    }
+  }
+
+  // Move a dragged item into a different section (optimistic; PATCHes category).
+  // Section key '__other__' means the null/"Items" section.
+  async function moveToSection(id: string, sectionKey: string) {
+    const item = items.find((i) => i.id === id)
+    if (!item) return
+    const target = sectionKey === '__other__' ? null : sectionKey
+    if ((item.section ?? null) === target) return
+    const snapshot = items
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, section: target } : i)))
+    try {
+      const updated = await groceryApi.patchListItem(id, { section: target })
+      setItems((prev) => prev.map((i) => (i.id === id ? updated : i)))
+    } catch {
+      setItems(snapshot)
     }
   }
 
@@ -608,10 +638,31 @@ export function Lists() {
                     {[leftCol, rightCol].map((col, ci) => (
                       <div key={ci} className="lists-col">
                         {col.map((sec) => (
-                          <div key={sec.key} className="lists-section">
+                          <div
+                            key={sec.key}
+                            className={`lists-section${dragOverKey === sec.key ? ' drag-over' : ''}`}
+                            onDragOver={(e) => { if (dragId.current) { e.preventDefault(); setDragOverKey(sec.key) } }}
+                            onDragLeave={() => setDragOverKey((k) => (k === sec.key ? null : k))}
+                            onDrop={() => {
+                              const id = dragId.current
+                              dragId.current = null
+                              setDragOverKey(null)
+                              if (id) moveToSection(id, sec.key)
+                            }}
+                          >
                             <div className="lists-section-title">{sec.title}</div>
                             {sec.items.map((it) => (
-                              <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} onEdit={(i) => setItemModal({ item: i })} onDelete={remove} />
+                              <ItemRow
+                                key={it.id}
+                                item={it}
+                                people={persons}
+                                onToggle={toggle}
+                                onAssign={assign}
+                                onEdit={(i) => setItemModal({ item: i })}
+                                onDelete={remove}
+                                onDragStart={(i) => { dragId.current = i.id }}
+                                onDragEnd={() => { dragId.current = null; setDragOverKey(null) }}
+                              />
                             ))}
                           </div>
                         ))}

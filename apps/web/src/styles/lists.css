@@ -164,6 +164,19 @@
 }
 .lists-section {
   margin-bottom: 14px;
+  border-radius: 12px;
+  transition: box-shadow 0.12s ease, background 0.12s ease;
+}
+/* Drop target highlight while dragging an item over a section. */
+.lists-section.drag-over {
+  background: var(--panel);
+  box-shadow: inset 0 0 0 2px var(--accent, #8A7DBE);
+}
+.litem[draggable='true'] {
+  cursor: grab;
+}
+.litem[draggable='true']:active {
+  cursor: grabbing;
 }
 .lists-section-title {
   font-size: 13px;
