@@ -25,8 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or retrieved offsite copy.
 
 ### Changed
+- **The web nav rail no longer shows a permanent "New" badge.** A "New" pill sat under the
+  Waffled logo on every screen with nothing to announce; it's been removed.
 
 ### Fixed
+- **Goal names now read exactly as you typed them, everywhere.** A goal called
+  "10 hours at the gym" appeared title-cased ("10 Hours At The Gym") on the Goals page, the
+  goal detail, the name field, and the editor preview, but as-entered on a person's profile —
+  the same name looked different from screen to screen. Names now render as-typed in all of
+  those places (web).
 - **The goal "week" chart is now the actual calendar week.** It showed a rolling last-7-days
   window ending today; it now always shows the current week Sunday–Saturday (and paging back
   steps whole calendar weeks), on web and iPhone/iPad.
