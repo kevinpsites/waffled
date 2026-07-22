@@ -879,24 +879,32 @@ struct ListDetailView: View {
     /// day label; taps through to the recipe like they do.
     @ViewBuilder private func unscheduledRecapRow(_ recipe: WaffledAPI.GroceryBoardDTO.UnscheduledRecipe) -> some View {
         let color = Color(hexString: recipe.color) ?? WF.ink3
-        Button {
+        // Not a Button: the row taps through to the recipe via `onTapGesture`, so the
+        // trailing × can be its own Button and remove the recipe from the list (these
+        // recap rows live in a VStack, not a List, so native swipe-to-delete isn't
+        // available — a visible × mirrors the web's Unscheduled rail).
+        HStack(spacing: 10) {
+            Circle().fill(color).frame(width: 9, height: 9)
+            Text(recipe.title)
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                .lineLimit(1)
+            Spacer(minLength: 6)
+            Button { Task { await model.removeRecipe(recipe.recipeId) } } label: {
+                Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(WF.ink3)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(recipe.title) from list")
+            Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
+            Text(recipe.emoji ?? "🍽️")
+                .font(.system(size: 14))
+                .frame(width: 28, height: 28)
+                .background(color.opacity(0.12)).clipShape(Circle())
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
             openRecipe(.placeholder(id: recipe.recipeId, title: recipe.title, emoji: recipe.emoji,
                                     category: nil, cookTimeMinutes: nil, servings: nil))
-        } label: {
-            HStack(spacing: 10) {
-                Circle().fill(color).frame(width: 9, height: 9)
-                Text(recipe.title)
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
-                    .lineLimit(1)
-                Spacer(minLength: 6)
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
-                Text(recipe.emoji ?? "🍽️")
-                    .font(.system(size: 14))
-                    .frame(width: 28, height: 28)
-                    .background(color.opacity(0.12)).clipShape(Circle())
-            }
         }
-        .buttonStyle(.plain)
     }
 
     @ViewBuilder private func mealRecapRow(_ meal: WaffledAPI.GroceryBoardDTO.Meal) -> some View {
@@ -1134,6 +1142,18 @@ struct ListDetailView: View {
                     .focused($focus, equals: .addQty)
                     .submitLabel(.done)
                     .onSubmit(submit)
+                // Explicit "details" affordance (the swipe-up gesture was unreliable next
+                // to the text fields): commits what you've typed, then opens its full
+                // editor as a half-sheet — assignee, section, priority.
+                Button {
+                    if draftName.trimmingCharacters(in: .whitespaces).isEmpty { focus = .add }
+                    else { openDraftDetails() }
+                } label: {
+                    Image(systemName: "slider.horizontal.3").font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(WF.ink3)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add with details")
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
             .wfField()
@@ -1141,16 +1161,6 @@ struct ListDetailView: View {
             // keyboard — the bare TextField hit target was a too-small tap.
             .contentShape(Rectangle())
             .onTapGesture { focus = .add }
-            // Swipe up on the composer to open the full details editor (assignee,
-            // section, priority) for what you're adding — it commits the draft, then
-            // opens that item's editor. Simultaneous so it doesn't block tap/typing.
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 24).onEnded { value in
-                    guard value.translation.height < -30,
-                          !draftName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                    openDraftDetails()
-                }
-            )
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -1358,7 +1368,7 @@ struct ItemDetailEditor: View {
                 }
             }
         }
-        .presentationDetents([.large])
+        .presentationDetents([.medium, .large])
     }
 
     // MARK: pieces
@@ -1380,20 +1390,24 @@ struct ItemDetailEditor: View {
 
     /// Normal / Important / Urgent chips — mirrors the web item editor's priority pills.
     private var priorityRow: some View {
-        HStack(spacing: 8) {
-            ForEach(ListItemPriority.all, id: \.value) { p in
-                let selected = priority == p.value
-                Button { priority = p.value } label: {
-                    HStack(spacing: 5) {
-                        if !p.icon.isEmpty { Text(p.icon).font(.system(size: 12)) }
-                        Text(p.label).font(.system(size: 13, weight: .semibold))
+        // Horizontal scroll (like the Assigned-to row) so the five 1–5 pills never wrap.
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(ListItemPriority.all, id: \.value) { p in
+                    let selected = priority == p.value
+                    Button { priority = p.value } label: {
+                        HStack(spacing: 5) {
+                            if !p.icon.isEmpty { Text(p.icon).font(.system(size: 12)) }
+                            Text(p.label).font(.system(size: 13, weight: .semibold)).fixedSize()
+                        }
+                        .foregroundStyle(selected ? WF.ink : WF.ink2)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .wfChip(selected: selected)
                     }
-                    .foregroundStyle(selected ? WF.ink : WF.ink2)
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .wfChip(selected: selected)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
+            .padding(.vertical, 1)
         }
     }
 
