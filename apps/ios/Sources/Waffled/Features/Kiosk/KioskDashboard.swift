@@ -15,6 +15,10 @@ struct KioskDashboard: View {
 
     /// Switch the shell's nav rail to another page (injected by `KioskShell`).
     var navigate: (KioskNav) -> Void = { _ in }
+    /// Open one goal's detail on the Goals page (injected by `KioskShell`, which owns
+    /// the Goals navigation path) — tapping the Family Goal card body lands on the
+    /// goal itself, not just the Goals index.
+    var openGoal: (WaffledAPI.Goal) -> Void = { _ in }
 
     @State private var model = KioskTodayModel()
     @State private var recipes = RecipesModel()
@@ -36,6 +40,10 @@ struct KioskDashboard: View {
     /// Quick-add field on the Today grocery card.
     @State private var groceryDraft = ""
     @FocusState private var groceryFocused: Bool
+    /// Bottom of the grocery card in window space — with `KeyboardState`, lifts the add
+    /// row clear of the under-reported iPad landscape keyboard (same fix as the Lists
+    /// page add bar; see KeyboardState.swift).
+    @State private var groceryCardBottom: CGFloat = 0
     /// The chosen Today layout (persisted) — see `DashLayout`.
     @AppStorage("waffled.kioskDashLayout") private var layoutRaw = DashLayout.balanced.rawValue
     private var layout: DashLayout { DashLayout(rawValue: layoutRaw) ?? .balanced }
@@ -45,24 +53,30 @@ struct KioskDashboard: View {
     @AppStorage("waffled.kioskGoalId") private var kioskGoalId = ""
     @State private var logGoal: WaffledAPI.Goal?
 
-    /// The goal the Goal-focused layout features: the pinned one if it still exists, else
-    /// the featured goal, else a whole-family goal, else the first goal.
-    private var kioskGoal: WaffledAPI.Goal? {
-        if !kioskGoalId.isEmpty, let g = model.goals.first(where: { $0.id == kioskGoalId }) { return g }
-        if let f = model.goals.first(where: { $0.isSpotlight ?? false }) ?? model.goals.first(where: { $0.isFeatured }) { return f }
-        let everyone = Set(sync.members.map(\.id))
-        if everyone.count > 1,
-           let fam = model.goals.first(where: { everyone.isSubset(of: Set($0.participants.map(\.personId))) }) {
+    /// The card's pick order as a pure function (tested in KioskGoalPickTests): pinned
+    /// if it still exists → Spotlight → Pinned tier (isFeatured) → a whole-family goal
+    /// (multi-member households) → the first goal.
+    nonisolated static func featuredGoal(_ goals: [WaffledAPI.Goal], pinnedId: String,
+                                         memberIds: Set<String>) -> WaffledAPI.Goal? {
+        if !pinnedId.isEmpty, let g = goals.first(where: { $0.id == pinnedId }) { return g }
+        if let f = goals.first(where: { $0.isSpotlight ?? false }) ?? goals.first(where: { $0.isFeatured }) { return f }
+        if memberIds.count > 1,
+           let fam = goals.first(where: { memberIds.isSubset(of: Set($0.participants.map(\.personId))) }) {
             return fam
         }
-        return model.goals.first
+        return goals.first
+    }
+
+    /// The goal the Goal-focused layout features — see `featuredGoal` for the pick order.
+    private var kioskGoal: WaffledAPI.Goal? {
+        Self.featuredGoal(model.goals, pinnedId: kioskGoalId, memberIds: Set(sync.members.map(\.id)))
     }
 
     private var tz: TimeZone { sync.householdTz }
     private var todayKey: String { Agenda.todayKey(tz) }
 
     private var week: [(day: String, items: [SyncedEvent])] {
-        Array(Agenda.upcoming(sync.events, from: todayKey, tz: tz).prefix(7))
+        Array(Agenda.upcoming(byDay: sync.eventsByDay, from: todayKey).prefix(7))
     }
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
@@ -96,7 +110,24 @@ struct KioskDashboard: View {
         .task(id: "\(tz.identifier)|\(sync.mealsRev)") { await model.loadMeals(todayKey: todayKey) }
         .task(id: "\(tz.identifier)|\(sync.groceryRev)") { await model.loadGrocery() }
         .task(id: tz.identifier) { await model.loadWeather() }
-        .task(id: sync.goalsRev) { await model.loadGoals() }
+        .task(id: sync.goalsRev) {
+            await model.loadGoals()
+            // Headless check of the card-tap wiring: launched onto Today with
+            // WAFFLED_OPEN_GOAL=1, "tap" the Family Goal card once goals are in.
+            if DemoHooks.openGoal, DemoHooks.kioskPage == "today", let g = kioskGoal { openGoal(g) }
+        }
+        // Focus the grocery quick-add for keyboard-lift verification (the Today twin
+        // of the Lists page's WAFFLED_FOCUS_ADD hook).
+        .task {
+            if DemoHooks.focusAdd, DemoHooks.kioskPage == "today" {
+                // Retry a few times: focusing mid-rotation (forced-landscape
+                // verification) gets dropped, so keep re-asserting until it sticks.
+                for attempt in 0..<5 {
+                    try? await Task.sleep(for: .seconds(attempt == 0 ? 2 : 2.5))
+                    groceryFocused = true
+                }
+            }
+        }
         // Day rollover on the always-on display: sleep to just past each
         // household-tz midnight, then refetch the day-scoped domains so the wall
         // iPad doesn't keep showing yesterday's dinner and chores.
@@ -518,6 +549,10 @@ struct KioskDashboard: View {
             .background(Self.heroGreen)
             .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
             .wfShadow1()
+            // The card body opens the goal's detail; the inner Buttons/Menu (chevron,
+            // Log, switcher) sit above this gesture so they keep their own actions.
+            .contentShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+            .onTapGesture { openGoal(g) }
         } else {
             KioskCard {
                 VStack(alignment: .leading, spacing: 18) {
@@ -881,7 +916,15 @@ struct KioskDashboard: View {
     // MARK: grocery (named list + checkboxes)
 
     private var groceryCard: some View {
-        KioskCard {
+        // iPadOS under-reports the docked landscape keyboard's safe-area inset, so the
+        // system compression leaves the add row buried under the keys. Lift it by the
+        // measured shortfall — a render-time offset (can't feed back into layout), with
+        // a matching scroll margin so the last items stay reachable above the lifted
+        // row. Read KeyboardState here in the body, not inside a Geometry closure,
+        // so @Observable tracks it. Same pattern as ListDetailView's kiosk add bar.
+        let shift = KeyboardState.barShift(columnBottom: groceryCardBottom,
+                                           keyboardTop: KeyboardState.shared.topInWindow)
+        return KioskCard {
             VStack(alignment: .leading, spacing: 12) {
                 cardHeader("Grocery", trailing: "\(model.groceryActive.count) to buy", chevron: true) { navigate(.lists) }
                 if model.groceryActive.isEmpty {
@@ -900,10 +943,14 @@ struct KioskDashboard: View {
                             }
                         }
                     }
+                    .contentMargins(.bottom, shift, for: .scrollContent)
                 }
                 groceryAddRow
+                    .background(WF.card)   // stays legible when lifted over the rows
+                    .offset(y: -shift)
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { groceryCardBottom = $0 }
     }
 
     /// Inline "add to grocery" field — type an item and hit return (or Add) without

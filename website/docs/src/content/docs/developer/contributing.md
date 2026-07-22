@@ -108,17 +108,18 @@ are expected to follow the `CODE_OF_CONDUCT.md`.
 `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/) and
 [SemVer](https://semver.org/). To cut a release:
 
-1. Move the notes from `[Unreleased]` into a new version section in
-   `CHANGELOG.md`.
-2. Tag and push:
+1. Make sure every user-facing change is described under `[Unreleased]` in
+   `CHANGELOG.md`, then start from a clean `main` checkout.
+2. Run the release command with the version you want:
 
    ```bash
-   git tag vX.Y.Z
-   git push origin vX.Y.Z
+   ./waffled release X.Y.Z
    ```
 
-The `v*` tag triggers `publish-images.yml`, which builds the GHCR images and
-cuts the GitHub Release.
+The command reviews and finalizes the changelog, bumps every version file,
+creates the release commit and annotated `v*` tag, then asks before pushing.
+The pushed tag triggers `publish-images.yml`, which builds the GHCR images and
+creates the GitHub Release.
 
 ## See also
 

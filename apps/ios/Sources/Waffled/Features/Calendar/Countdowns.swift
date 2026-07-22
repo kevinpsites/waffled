@@ -36,7 +36,12 @@ enum CountdownFormat {
 @MainActor
 @Observable
 final class CountdownsModel {
-    private(set) var items: [WaffledAPI.Countdown] = []
+    private(set) var items: [WaffledAPI.Countdown] = [] {
+        didSet { byDate = Dictionary(grouping: items, by: \.date) }
+    }
+    /// Countdowns grouped by their `YYYY-MM-DD` date, for month-grid badges. Stored
+    /// (rebuilt when `items` changes) so 42 month cells don't each regroup it per render.
+    private(set) var byDate: [String: [WaffledAPI.Countdown]] = [:]
     private(set) var sleeps = false
     private(set) var loaded = false
     private let api = WaffledAPI()
@@ -55,8 +60,6 @@ final class CountdownsModel {
         items.removeAll { $0.id == c.id }
         try? await api.deleteCountdown(id: c.id)
     }
-    /// Countdowns grouped by their `YYYY-MM-DD` date, for month-grid badges.
-    var byDate: [String: [WaffledAPI.Countdown]] { Dictionary(grouping: items, by: \.date) }
 }
 
 // MARK: - Today card
