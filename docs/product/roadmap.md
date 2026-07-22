@@ -53,7 +53,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   ("Trade"), saving-toward jar/bar.
 - **Goals** — types (count/total/habit/checklist), shared vs each-tracks, create/edit/
   detail read-model, person + family overview, **calendar → goal** auto-count (single
-  and recurring events) with learned suggestions.
+  and recurring events) with learned suggestions, **swappable data views** on the goal-detail
+  page (heatmaps, year grid, pace-to-target, year ring, by-person bars, collection grid,
+  consistency calendar) matched to goal type + timeframe.
 - **Apple Health → goals (iPhone)** — link a goal to an Apple Health / Apple Watch metric
   (steps, flights climbed, exercise minutes, active energy, **distance** — walking + running,
   cycling, swimming, wheelchair; fractional, mi/km per device region — **workouts by type** —
@@ -148,6 +150,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   choice.
 
 ## Planned 🚧
+
+- **List sharing.** Let a household invite specific people to a list, choose whether
+  they can view or edit it, and revoke access later.
 
 - **Recurring-edit scope — give chores the calendar's model, and close two calendar gaps.**
   Calendar events already ship the full **this event / this-and-following / all events** picker

@@ -109,6 +109,7 @@ describe('Lists screen', () => {
     // header: name + "3 items · 1 packed" + filter
     await waitFor(() => expect(screen.getByText('3 items · 1 packed')).toBeInTheDocument())
     expect(screen.getByText('Everyone')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Share list' })).not.toBeInTheDocument()
 
     // suggestions
     expect(screen.getByText('Waffled suggests:')).toBeInTheDocument()
