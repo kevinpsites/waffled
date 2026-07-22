@@ -14,6 +14,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Backups can now be restore-tested without touching the live app.** Run
+  `./waffled backup verify` to restore the newest database dump into a disposable Postgres
+  container, fail on archive or SQL errors, confirm the Waffled schema exists, and clean up the
+  test database automatically. A specific dump filename can be supplied when checking an older
+  or retrieved offsite copy.
+
+### Changed
+
+### Fixed
+
+### Security
+- **Patched a high-severity advisory in a bundled telemetry dependency.** Updated the
+  OpenTelemetry Node packages so they pull in the fixed `@opentelemetry/propagator-jaeger`
+  (≥ 2.9.0), clearing GHSA-45rx-2jwx-cxfr (a denial-of-service via a malformed Jaeger trace
+  header). Telemetry stays off by default, so this only mattered when the OTLP exporter was
+  enabled — updated regardless.
+
+## [0.9.0] - 2026-07-20
+
+### Added
+- **See a goal's progress your way, not just as a number.** Every goal's detail page now
+  offers a switcher of visualizations tailored to what you're tracking: a week or month
+  heatmap strip, a GitHub-style year grid, a pace chart showing where you need to be to hit
+  your target on time, a radial "year in a ring," and stacked by-person bars for family
+  goals — plus a fill-up collection grid for count goals and a hit/miss dot calendar for
+  habits. Only the views that make sense for the goal's type and timeframe are offered, your
+  last pick is remembered per goal, and tapping any day or month opens who logged what.
+  Shipped on web and iPhone/iPad together.
 - **Add any recipe's ingredients to the grocery list — no meal plan needed.** Every recipe
   page (web and iOS) now has a first-class "Add to grocery" action, so a one-off dinner, a
   side, or a snack goes straight to the list: staples you already have are skipped, quantities
@@ -137,6 +165,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **The iPhone and iPad apps now reject malformed server addresses before saving.**
+  Server settings require an HTTP(S) origin, explain invalid input in place, normalize
+  trailing slashes, and no longer force-unwrap request URLs.
+- **Production dependency audits now run in CI.** The API's transitive `protobufjs`
+  dependency is updated past its schema-name denial-of-service advisory, and future
+  moderate-or-higher production advisories fail the build for both API and web.
+- **Sign-in and first-run setup forms now work better with assistive technology.**
+  Labels are associated with their fields, validation messages identify the affected
+  input, and server errors are announced and focused instead of silently appearing.
+- **The iPad calendar is much snappier.** Opening the Calendar tab and tapping days in the
+  month view used to re-scan and re-bucket every synced event (including every occurrence of
+  recurring events) on each tap, which felt sluggish on a busy household calendar. The app
+  now indexes events by day once when the data actually changes, so switching to the
+  calendar, picking a day, and flipping between Month/Week/Day are simple lookups. The
+  Today screen's "This week" agenda uses the same index.
+- **Tapping the Family Goal card on the iPad Today screen now opens that goal.** The card
+  only responded on its little arrow (which went to the Goals index) and the Log button —
+  tapping the goal itself did nothing. Tapping anywhere else on the card now lands directly
+  on that goal's detail page; the arrow and Log button keep doing what they did.
+- **The Today screen's grocery quick-add no longer hides under the iPad keyboard.** The same
+  sideways-keyboard quirk fixed on the Lists page also buried the "Add an item" row on the
+  Today grocery card. It now lifts itself clear of the keyboard while you type, and the last
+  few items stay scrollable above it.
+- **The iPad nav always shows where you are.** Opening a page from the **More** grid —
+  like Goals, Lists, or Photos when they aren't pinned to the rail — used to leave the
+  side rail (and the portrait bottom bar) with nothing highlighted. The More tile now
+  lights up whenever the current page doesn't have a tile of its own.
 - **The iOS login screen now offers only the sign-in methods your server allows.** If an
   admin turns off password login (SSO-only), the iPhone/iPad login hides the email and
   password fields and shows just the SSO button — matching the web, which already did
@@ -197,6 +252,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Run the API and backup scheduler as unprivileged image users. A short-lived startup job
+  safely updates ownership on volumes created by earlier root-running releases.
+- Postgres and direct API diagnostics now bind to loopback, while device-facing
+  PowerSync and Google OAuth callbacks enter through Caddy. This preserves local
+  and LAN setup while avoiding raw service exposure.
+- The container API now rejects oversized request bodies before buffering them
+  and throttles repeated login, setup, OIDC, kiosk pairing, refresh, and media
+  upload attempts with retry guidance. Caddy normalizes the client address used
+  by those limits, and direct API access is restricted to the Docker host.
 - **Member logins now respect account ownership.** An administrator can update the login
   already linked to a household profile, but an account owned by a different person must
   join through the explicit invitation and acceptance flow.
@@ -206,6 +270,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
   attachments now reject malformed or cross-household keys, and local storage prevents
   paths from escaping the configured media directory.
+- **Household links now stay inside the family they belong to.** Chore assignees,
+  currency conversions, calendar events, offline writes, goal participants, list
+  assignees, calendar owners, and meal references reject IDs from another household.
 - **Installation-wide login settings now have one recoverable owner.** Global login and
   SSO configuration no longer accepts changes from administrators of any household;
   ownership persists across household changes and can be recovered from the host admin CLI.
@@ -1102,7 +1169,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/kevinpsites/waffled/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/kevinpsites/waffled/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kevinpsites/waffled/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/kevinpsites/waffled/compare/v0.6.0...v0.6.1

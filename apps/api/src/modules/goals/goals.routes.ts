@@ -3,6 +3,11 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { requireCapability } from '../../platform/permissions'
 import { moduleRoutes } from '../../platform/route-guards'
+import {
+  InvalidReferenceError,
+  assertGoalListInHousehold,
+  assertPersonsInHousehold,
+} from '../../platform/household-refs'
 import type { CreateGoalListInput, UpdateGoalListInput, CreateGoalInput } from './goals.types'
 import {
   listGoalLists,
@@ -12,6 +17,7 @@ import {
   createGoal,
   listGoals,
   goalDetail,
+  goalActivity,
   updateGoal,
   softDeleteGoal,
   toggleGoalStep,
@@ -84,6 +90,12 @@ export function registerGoalRoutes(api: Api): void {
     if (!body.name || !body.name.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
     }
+    if (body.memberIds !== undefined) {
+      if (!Array.isArray(body.memberIds) || body.memberIds.some((id) => typeof id !== 'string')) {
+        throw new InvalidReferenceError('invalid member ids')
+      }
+      await assertPersonsInHousehold(tenant.householdId, body.memberIds)
+    }
     const list = await createGoalList(tenant, { ...body, name: body.name.trim() } as CreateGoalListInput)
     return res.status(201).json({ list })
   }))
@@ -94,6 +106,12 @@ export function registerGoalRoutes(api: Api): void {
     const body = (req.body ?? {}) as UpdateGoalListInput
     if (body.name !== undefined && !String(body.name).trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'name cannot be empty' })
+    }
+    if (body.memberIds !== undefined) {
+      if (!Array.isArray(body.memberIds) || body.memberIds.some((personId) => typeof personId !== 'string')) {
+        throw new InvalidReferenceError('invalid member ids')
+      }
+      await assertPersonsInHousehold(tenant.householdId, body.memberIds)
     }
     const patch: UpdateGoalListInput = { ...body }
     if (patch.name !== undefined) patch.name = String(patch.name).trim()
@@ -139,6 +157,13 @@ export function registerGoalRoutes(api: Api): void {
     }
     const shapeErr = goalShapeError(body, body.goalType)
     if (shapeErr) return res.status(400).json({ error: 'BadRequest', message: shapeErr })
+    if (body.goalListId != null) await assertGoalListInHousehold(tenant.householdId, body.goalListId)
+    if (body.participantIds !== undefined) {
+      if (!Array.isArray(body.participantIds) || body.participantIds.some((personId) => typeof personId !== 'string')) {
+        throw new InvalidReferenceError('invalid participant ids')
+      }
+      await assertPersonsInHousehold(tenant.householdId, body.participantIds)
+    }
     // Carve-out: a goal that assigns no one else (nobody, or only the caller) is
     // self-scoped. Assigning another participant takes goal.manage.
     const assigned = Array.isArray(body.participantIds) ? body.participantIds.filter(Boolean) : []
@@ -162,10 +187,24 @@ export function registerGoalRoutes(api: Api): void {
     return { goal }
   }))
 
+  // Day-bucketed log history powering the goal-detail data views (Week/Month/Pace/
+  // Year/By-person/Year-ring). See goalActivity for the bucketing rules.
+  api.get('/api/goals/:id/activity', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    const activity = await goalActivity(tenant.householdId, id)
+    if (!activity) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    return activity
+  }))
+
   api.patch('/api/goals/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const body = (req.body ?? {}) as { goalType?: string; trackingMode?: string; participantMode?: string; targetBasis?: string; healthMetric?: unknown; healthDailyTarget?: unknown }
+    const body = (req.body ?? {}) as {
+      goalType?: string; trackingMode?: string; participantMode?: string; targetBasis?: string
+      healthMetric?: unknown; healthDailyTarget?: unknown
+      goalListId?: string | null; participantIds?: string[]
+    }
     if (body.goalType && !GOAL_TYPES.has(body.goalType)) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid goalType' })
     }
@@ -196,6 +235,13 @@ export function registerGoalRoutes(api: Api): void {
     if (body.healthDailyTarget != null && !(Number(body.healthDailyTarget) >= 0)) {
       return res.status(400).json({ error: 'BadRequest', message: 'healthDailyTarget must be a non-negative number' })
     }
+    if (body.goalListId != null) await assertGoalListInHousehold(tenant.householdId, body.goalListId)
+    if (body.participantIds !== undefined) {
+      if (!Array.isArray(body.participantIds) || body.participantIds.some((personId) => typeof personId !== 'string')) {
+        throw new InvalidReferenceError('invalid participant ids')
+      }
+      await assertPersonsInHousehold(tenant.householdId, body.participantIds)
+    }
     // Carve-out: a goal whose sole participant is the caller is their own personal
     // goal — editable freely. Anything else (shared, others', or a family goal with
     // no/other participants) takes goal.manage. Confirm the goal exists first so an
@@ -205,7 +251,8 @@ export function registerGoalRoutes(api: Api): void {
     }
     const editParticipants = await goalParticipantIds(tenant.householdId, id)
     const editIsSelfOnly = editParticipants.length === 1 && editParticipants[0] === tenant.personId
-    if (!editIsSelfOnly) {
+    const assignsAnother = body.participantIds?.some((personId) => personId !== tenant.personId) ?? false
+    if (!editIsSelfOnly || assignsAnother) {
       await requireCapability(tenant, 'goal.manage')
     }
     const ok = await updateGoal(tenant, id, req.body ?? {})

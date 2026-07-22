@@ -49,6 +49,8 @@ const me = (capabilities: string[], isAdmin = false) => ({ id: 'p1', name: 'Wall
 function mockApi(goal: unknown, person: unknown) {
   globalThis.fetch = vi.fn(async (url: string) => {
     const u = String(url)
+    // Checked first — its URL also contains "/api/goals/g1".
+    if (u.includes('/activity')) return { ok: true, json: async () => ({ startDate: '2026-01-01', endDate: null, today: '2026-07-17', days: [] }) }
     if (u.includes('/api/goals/g1')) return { ok: true, json: async () => ({ goal }) }
     if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household: { id: 'h', name: 'Home', timezone: 'UTC', weekStart: 'sunday' }, person }) }
     return { ok: false, status: 404, json: async () => ({}) }
