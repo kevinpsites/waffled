@@ -337,6 +337,20 @@ export function WaffledBiteDevice() {
 
       <div className="pp-right">
         <Card title="Wake-light schedule">
+          {device.runtimeState.wakeLight.state !== 'none' && (
+            <div
+              className="tiny"
+              style={{
+                fontWeight: 700, marginBottom: 10, padding: '6px 10px', borderRadius: 999, display: 'inline-block',
+                background: device.runtimeState.wakeLight.state === 'wake' ? '#DFF3E4' : device.runtimeState.wakeLight.state === 'warn' ? '#FBEFD6' : '#E7E1F0',
+                color: device.runtimeState.wakeLight.state === 'wake' ? '#2E7D4F' : device.runtimeState.wakeLight.state === 'warn' ? '#9A6B12' : '#4A3F73',
+              }}
+            >
+              {device.runtimeState.wakeLight.state === 'sleep' && '🌙 Asleep right now'}
+              {device.runtimeState.wakeLight.state === 'warn' && '🟡 Almost time to wake'}
+              {device.runtimeState.wakeLight.state === 'wake' && '🟢 Awake — can exit the wake screen'}
+            </div>
+          )}
           <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 10 }}>Tap the days each rule covers.</div>
           {schedules.map((sch, i) => (
             <div key={i} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: i < schedules.length - 1 ? '1px solid var(--hair)' : 'none' }}>
@@ -348,6 +362,14 @@ export function WaffledBiteDevice() {
               </div>
               <div className="field-row">
                 <label className="field">
+                  <span>🌙 Bedtime (the night before)</span>
+                  <input
+                    type="time"
+                    value={sch.bedtimeMin != null ? minToHHMM(sch.bedtimeMin) : ''}
+                    onChange={(e) => updateSchedule(i, { bedtimeMin: e.target.value ? hhmmToMin(e.target.value) : undefined })}
+                  />
+                </label>
+                <label className="field">
                   <span>🟢 Okay to get up</span>
                   <input type="time" value={minToHHMM(sch.wakeMin)} onChange={(e) => updateSchedule(i, { wakeMin: hhmmToMin(e.target.value) })} />
                 </label>
@@ -355,6 +377,11 @@ export function WaffledBiteDevice() {
                   <span>🟡 Yellow warning (min before)</span>
                   <input type="number" min={0} max={30} value={sch.leadMin} onChange={(e) => updateSchedule(i, { leadMin: Number(e.target.value) || 0 })} />
                 </label>
+              </div>
+              <div className="tiny muted" style={{ marginTop: 6 }}>
+                {sch.bedtimeMin != null
+                  ? `The device locks into nightlight mode at bedtime and stays locked (yellow, then green) until wake-up — not exitable until green.`
+                  : `No bedtime set — this rule shows the day toggle above but never locks the device.`}
               </div>
               {schedules.length > 1 && (
                 <button type="button" className="btn btn-ghost" style={{ marginTop: 6 }} onClick={() => patchSettings({ schedules: schedules.filter((_, idx) => idx !== i) })}>Remove</button>

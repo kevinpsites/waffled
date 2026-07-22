@@ -107,10 +107,40 @@ static lv_obj_t *tasks_scr;  // rebuilt fresh each time a routine tile is tapped
 static lv_obj_t *detail_scr;  // rebuilt fresh each time the Sounds/Nightlight tile is tapped — see settings_screen.cpp
 static lv_obj_t *quiet_scr;   // force-shown whenever the poll reports quiet time active — see wb_do_poll
 static lv_obj_t *timer_scr;   // picker <-> countdown, kept correctly built by every poll — see wb_do_poll
-static lv_obj_t *bedtime_scr; // synced (color/brightness) by every poll while it happens to be showing
+static lv_obj_t *bedtime_scr; // plain preview OR wake-light sleep/warn/wake — see wb_bedtime_claim_of
 static bool onboarding_built = false;
 static bool g_quietWasActive = false;
 static bool g_timerWasActive = false; // tracks timer_scr's built shape (picker vs countdown), same role as g_quietWasActive
+
+// What's currently claiming bedtime_scr — used only to detect the edges
+// wb_do_poll force-navigates on (see its wake-light block). The actual
+// visual comes from wb_glow_spec_for_device_state (bedtime_screen.h); this
+// only tracks enough to know when to rebuild+force-load vs. just sync.
+enum class WbBedtimeClaim
+{
+  Preview, // no wake-light lock active (or quiet time is active instead) — tap-only, never auto-shown
+  Sleep,
+  Warn,
+  Wake,
+};
+static WbBedtimeClaim wb_bedtime_claim_of(const WbDeviceState &s)
+{
+  if (s.quiet.active)
+    return WbBedtimeClaim::Preview; // quiet time wins — see bedtime_screen.h's header comment
+  switch (s.wakeLight.state)
+  {
+  case WbWakeLightState::Sleep:
+    return WbBedtimeClaim::Sleep;
+  case WbWakeLightState::Warn:
+    return WbBedtimeClaim::Warn;
+  case WbWakeLightState::Wake:
+    return WbBedtimeClaim::Wake;
+  default:
+    return WbBedtimeClaim::Preview;
+  }
+}
+static WbBedtimeClaim g_bedtimeClaim = WbBedtimeClaim::Preview;
+static bool g_bedtimeScrBuilt = false;
 // Home/settings get one full lv_obj_clean+rebuild per (re-)pairing session —
 // the mock-data build in wb_enter_app(), then the first real poll after it —
 // and are only ever synced-in-place after that (see wb_do_poll). Reset to
@@ -211,8 +241,6 @@ static void wb_do_poll()
       wb_build_home_screen(home_scr, liveState, settings_scr, tasks_scr, wb_complete_task);
       lv_obj_clean(settings_scr);
       wb_build_settings_screen(settings_scr, liveState, home_scr, detail_scr, timer_scr, bedtime_scr, wb_patch_settings);
-      lv_obj_clean(bedtime_scr);
-      wb_build_bedtime_screen(bedtime_scr, liveState.night, settings_scr);
       lv_obj_clean(timer_scr);
       wb_build_timer_screen(timer_scr, liveState.timer, settings_scr, wb_start_timer, wb_end_timer);
       g_timerWasActive = liveState.timer.active;
@@ -222,7 +250,6 @@ static void wb_do_poll()
     {
       wb_sync_home_screen(home_scr, liveState);
       wb_sync_settings_screen(settings_scr, liveState);
-      wb_sync_bedtime_screen(bedtime_scr, liveState.night);
 
       // timer_scr has two SHAPES (picker vs countdown), not just values to
       // push — only rebuild on the active/inactive transition (mirrors
@@ -301,6 +328,34 @@ static void wb_do_poll()
       // settings_screen.cpp's wb_open_detail_cb. Instant cut instead.
       lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
       g_quietWasActive = false;
+    }
+
+    // Wake-light schedule (bedtime -> yellow warning -> green wake) and the
+    // Bedtime tile's plain preview share bedtime_scr — see WbBedtimeClaim's
+    // comment for why. Rebuild+force-load on any claim EDGE (this must be
+    // an edge check, not "was it previously none": Preview->Sleep on a
+    // SECOND night is a non-none->non-none transition by a naive check, but
+    // is still a real edge that must re-lock the screen), sync in place
+    // otherwise. Force-loads with plain lv_scr_load (no anim), same as
+    // quiet_scr above, and only when not already showing it — avoid
+    // reloading a screen that's already active given this app's history
+    // with animated transitions hanging LVGL (see settings_screen.cpp's
+    // wb_open_detail_cb).
+    WbBedtimeClaim claim = wb_bedtime_claim_of(liveState);
+    WbGlowSpec spec = wb_glow_spec_for_device_state(liveState);
+    if (!g_bedtimeScrBuilt || claim != g_bedtimeClaim)
+    {
+      lv_obj_clean(bedtime_scr);
+      lv_obj_t *back = (claim == WbBedtimeClaim::Preview) ? settings_scr : home_scr;
+      wb_build_bedtime_screen(bedtime_scr, spec, back);
+      if (claim != WbBedtimeClaim::Preview && lv_screen_active() != bedtime_scr)
+        lv_scr_load(bedtime_scr);
+      g_bedtimeScrBuilt = true;
+      g_bedtimeClaim = claim;
+    }
+    else
+    {
+      wb_sync_bedtime_screen(bedtime_scr, spec);
     }
   }
 }

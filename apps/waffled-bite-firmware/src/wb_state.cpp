@@ -19,6 +19,8 @@ const WbDeviceState &wb_mock_state(void)
       {false, false, 0, 0},
       // timer
       {false, false, 0, 0},
+      // wakeLight
+      {WbWakeLightState::None, -1, -1},
       {false, "white", 50, 0},  // sound: off, defaults picked to match apps/web's own fallback UI state
       {true, "amber", 40},      // night: on, matching the pre-settings-screen mock's nightlightOn=true
       -1, -1,                   // nowHour/nowMin: unavailable — mock quiet is always inactive, unused
@@ -96,6 +98,19 @@ bool wb_state_from_json(JsonDocument &doc, WbDeviceState &out)
   out.timer.running = timerRt["running"] | false;
   out.timer.remainingSec = timerRt["remainingSec"] | 0;
   out.timer.durationSec = timerRt["durationSec"] | 0;
+
+  JsonObjectConst wakeLightRt = doc["runtimeState"]["wakeLight"];
+  const char *wlState = wakeLightRt["state"].is<const char *>() ? wakeLightRt["state"].as<const char *>() : "none";
+  if (strcmp(wlState, "sleep") == 0)
+    out.wakeLight.state = WbWakeLightState::Sleep;
+  else if (strcmp(wlState, "warn") == 0)
+    out.wakeLight.state = WbWakeLightState::Warn;
+  else if (strcmp(wlState, "wake") == 0)
+    out.wakeLight.state = WbWakeLightState::Wake;
+  else
+    out.wakeLight.state = WbWakeLightState::None;
+  out.wakeLight.wakeAtHour = wakeLightRt["wakeAtHour"] | -1;
+  out.wakeLight.wakeAtMinute = wakeLightRt["wakeAtMinute"] | -1;
 
   // Real settings keys are "night"/"sound" (not "nightlight"/"sounds") —
   // confirmed against apps/web/src/kiosk/WaffledBiteDevice.tsx. Both are

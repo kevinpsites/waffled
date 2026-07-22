@@ -1,12 +1,23 @@
 #include "bedtime_screen.h"
+#include <cstdio>
 #include <cstring>
 
 #define WB_BEDTIME_BG lv_color_hex(0x05050A)
+#define WB_BEDTIME_INK lv_color_hex(0xF5EFE1)
+#define WB_BEDTIME_MUTED lv_color_hex(0x9AA3C4)
 
-// Color key -> hex. Same six keys/values as settings_screen.cpp's
-// WB_NIGHT_OPTIONS (itself copied verbatim from apps/web's NIGHT_COLORS) —
-// duplicated here rather than shared, same convention as this app's other
-// small per-file reference tables (see WB_NIGHT_OPTIONS' own comment).
+// warn/wake use fixed system colors (not the parent's chosen nightlight
+// color) — they're a status signal, not an aesthetic choice. WB_WARN_HEX
+// deliberately doesn't reuse any of WB_BEDTIME_COLORS' six nightlight
+// options below. WB_WAKE_HEX matches settings_screen.cpp/control_detail_
+// screen.cpp's WB_COLOR_DONE green (same "done"/positive meaning).
+#define WB_WARN_HEX 0xE8B23D
+#define WB_WAKE_HEX 0x4C9A6A
+
+// Color key -> hex, for the plain nightlight preview. Same six keys/values
+// as settings_screen.cpp's WB_NIGHT_OPTIONS (itself copied verbatim from
+// apps/web's NIGHT_COLORS) — duplicated here rather than shared, same
+// convention as this app's other small per-file reference tables.
 struct WbColorEntry
 {
   const char *key;
@@ -25,16 +36,35 @@ static uint32_t wb_bedtime_hex(const char *colorKey)
   return WB_BEDTIME_COLORS[0].hex; // unknown/stale key — fall back rather than show black
 }
 
-// Owns the three glow rings + close button so wb_sync_bedtime_screen can
-// push a later color/brightness change into an already-showing screen
-// without a rebuild. Attached to `close_btn` (a genuine per-rebuild child),
-// not `parent` (the persistent singleton) — same leak-avoidance rule as
-// every other screen's sync ctx in this app.
+WbGlowSpec wb_glow_spec_for_device_state(const WbDeviceState &state)
+{
+  // Quiet time wins if both are somehow active at once — see this file's
+  // header comment.
+  if (!state.quiet.active)
+  {
+    if (state.wakeLight.state == WbWakeLightState::Sleep)
+      return {wb_bedtime_hex(state.night.color), state.night.brightness, nullptr, false, true, -1, -1};
+    if (state.wakeLight.state == WbWakeLightState::Warn)
+      return {WB_WARN_HEX, 80, "Almost time to wake up", false, true, state.wakeLight.wakeAtHour, state.wakeLight.wakeAtMinute};
+    if (state.wakeLight.state == WbWakeLightState::Wake)
+      return {WB_WAKE_HEX, 80, "Time to get up!", true, true, state.wakeLight.wakeAtHour, state.wakeLight.wakeAtMinute};
+  }
+  // Plain preview — what the Bedtime tile always showed, before the wake-light schedule existed.
+  return {wb_bedtime_hex(state.night.color), state.night.brightness, nullptr, true, false, -1, -1};
+}
+
+// Owns the three glow rings + optional label/until text so
+// wb_sync_bedtime_screen can push a later spec change into an already-
+// showing screen without a rebuild. Attached to a genuine per-rebuild
+// child (see wb_build_bedtime_screen), not `parent` — same leak-avoidance
+// rule as every other screen's sync ctx in this app.
 struct WbBedtimeCtx
 {
   lv_obj_t *glow_outer;
   lv_obj_t *glow_mid;
   lv_obj_t *glow_core;
+  lv_obj_t *label_lbl;  // null if this build had no label (the plain preview)
+  lv_obj_t *until_lbl;  // null if this build had no wake time to show
 };
 
 static void wb_bedtime_ctx_delete_cb(lv_event_t *e)
@@ -50,10 +80,10 @@ static void wb_bedtime_close_cb(lv_event_t *e)
 
 // Brightness (0-100) scales both how big and how strong the glow reads —
 // a dim nightlight should look dim here too, not just tint the same glow.
-static void wb_apply_glow(WbBedtimeCtx *ctx, uint32_t hex, int brightness)
+static void wb_apply_glow(WbBedtimeCtx *ctx, const WbGlowSpec &spec)
 {
-  float b = (brightness <= 0 ? 5 : brightness) / 100.0f; // never fully invisible, even at a very low setting
-  lv_color_t color = lv_color_hex(hex);
+  float b = (spec.brightness <= 0 ? 5 : spec.brightness) / 100.0f; // never fully invisible, even at a very low setting
+  lv_color_t color = lv_color_hex(spec.colorHex);
 
   lv_obj_set_style_bg_color(ctx->glow_outer, color, 0);
   lv_obj_set_style_bg_opa(ctx->glow_outer, (lv_opa_t)(60 * b), 0);
@@ -69,6 +99,25 @@ static void wb_apply_glow(WbBedtimeCtx *ctx, uint32_t hex, int brightness)
   lv_obj_set_style_bg_opa(ctx->glow_core, (lv_opa_t)(220 * b), 0);
   int coreSize = (int)(140 * (0.7f + 0.3f * b));
   lv_obj_set_size(ctx->glow_core, coreSize, coreSize);
+
+  if (ctx->label_lbl)
+    lv_label_set_text(ctx->label_lbl, spec.label ? spec.label : "");
+  if (ctx->until_lbl)
+  {
+    if (spec.wakeAtHour >= 0)
+    {
+      int h12 = spec.wakeAtHour % 12;
+      if (h12 == 0)
+        h12 = 12;
+      char buf[32];
+      snprintf(buf, sizeof(buf), "Until %d:%02d %s", h12, spec.wakeAtMinute, spec.wakeAtHour < 12 ? "AM" : "PM");
+      lv_label_set_text(ctx->until_lbl, buf);
+    }
+    else
+    {
+      lv_label_set_text(ctx->until_lbl, "");
+    }
+  }
 }
 
 static lv_obj_t *wb_make_glow_ring(lv_obj_t *parent)
@@ -83,7 +132,7 @@ static lv_obj_t *wb_make_glow_ring(lv_obj_t *parent)
   return ring;
 }
 
-void wb_build_bedtime_screen(lv_obj_t *parent, const WbNightSettings &night, lv_obj_t *back_scr)
+void wb_build_bedtime_screen(lv_obj_t *parent, const WbGlowSpec &spec, lv_obj_t *back_scr)
 {
   lv_obj_set_style_bg_color(parent, WB_BEDTIME_BG, 0);
   lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
@@ -92,31 +141,62 @@ void wb_build_bedtime_screen(lv_obj_t *parent, const WbNightSettings &night, lv_
   ctx->glow_outer = wb_make_glow_ring(parent);
   ctx->glow_mid = wb_make_glow_ring(parent);
   ctx->glow_core = wb_make_glow_ring(parent);
-  wb_apply_glow(ctx, wb_bedtime_hex(night.color), night.brightness);
+  ctx->label_lbl = nullptr;
+  ctx->until_lbl = nullptr;
 
-  lv_obj_t *close_btn = lv_obj_create(parent);
-  lv_obj_remove_style_all(close_btn);
-  lv_obj_set_size(close_btn, 44, 44);
-  lv_obj_set_style_bg_color(close_btn, lv_color_hex(0x2A2A32), 0);
-  lv_obj_set_style_bg_opa(close_btn, LV_OPA_70, 0);
-  lv_obj_set_style_radius(close_btn, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_flex_flow(close_btn, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(close_btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(close_btn, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -20, 20);
-  lv_obj_t *close_lbl = lv_label_create(close_btn);
-  lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
-  lv_obj_set_style_text_color(close_lbl, lv_color_white(), 0);
-  lv_obj_add_event_cb(close_btn, wb_bedtime_close_cb, LV_EVENT_CLICKED, back_scr);
-  lv_obj_add_event_cb(close_btn, wb_bedtime_ctx_delete_cb, LV_EVENT_DELETE, ctx);
+  if (spec.label)
+  {
+    lv_obj_t *label_lbl = lv_label_create(parent);
+    lv_obj_set_style_text_font(label_lbl, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(label_lbl, WB_BEDTIME_INK, 0);
+    lv_obj_align(label_lbl, LV_ALIGN_TOP_MID, 0, 60);
+    ctx->label_lbl = label_lbl;
 
+    lv_obj_t *until_lbl = lv_label_create(parent);
+    lv_obj_set_style_text_font(until_lbl, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(until_lbl, WB_BEDTIME_MUTED, 0);
+    lv_obj_align_to(until_lbl, label_lbl, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
+    ctx->until_lbl = until_lbl;
+  }
+
+  // No back button, no gesture handler, nothing clickable below that
+  // navigates anywhere, when NOT exitable — this is the actual "not
+  // exitable" mechanism, same as quiet_screen.cpp.
+  if (spec.exitable)
+  {
+    lv_obj_t *close_btn = lv_obj_create(parent);
+    lv_obj_remove_style_all(close_btn);
+    lv_obj_set_size(close_btn, 44, 44);
+    lv_obj_set_style_bg_color(close_btn, lv_color_hex(0x2A2A32), 0);
+    lv_obj_set_style_bg_opa(close_btn, LV_OPA_70, 0);
+    lv_obj_set_style_radius(close_btn, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_flex_flow(close_btn, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(close_btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(close_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -20, 20);
+    lv_obj_t *close_lbl = lv_label_create(close_btn);
+    lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
+    lv_obj_set_style_text_color(close_lbl, lv_color_white(), 0);
+    lv_obj_add_event_cb(close_btn, wb_bedtime_close_cb, LV_EVENT_CLICKED, back_scr);
+    lv_obj_add_event_cb(close_btn, wb_bedtime_ctx_delete_cb, LV_EVENT_DELETE, ctx);
+  }
+  else
+  {
+    // No clickable child exists to own the ctx's delete callback in this
+    // branch — attach it to a genuine (invisible, non-interactive) child
+    // instead of `parent` itself (the persistent singleton), same rule as
+    // every other screen's sync ctx.
+    lv_obj_add_event_cb(ctx->glow_core, wb_bedtime_ctx_delete_cb, LV_EVENT_DELETE, ctx);
+  }
+
+  wb_apply_glow(ctx, spec);
   lv_obj_set_user_data(parent, ctx); // wb_sync_bedtime_screen's way back to this ctx
 }
 
-void wb_sync_bedtime_screen(lv_obj_t *parent, const WbNightSettings &night)
+void wb_sync_bedtime_screen(lv_obj_t *parent, const WbGlowSpec &spec)
 {
   WbBedtimeCtx *ctx = (WbBedtimeCtx *)lv_obj_get_user_data(parent);
   if (!ctx)
     return; // not built yet
-  wb_apply_glow(ctx, wb_bedtime_hex(night.color), night.brightness);
+  wb_apply_glow(ctx, spec);
 }

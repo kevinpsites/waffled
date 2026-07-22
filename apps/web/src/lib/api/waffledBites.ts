@@ -28,9 +28,17 @@ export interface WaffledBiteQuiet {
 export type WaffledBiteTimer = WaffledBiteQuiet
 
 export interface WaffledBiteSchedule {
-  days: number[] // 0 (Sun) – 6 (Sat)
+  days: number[] // 0 (Sun) – 6 (Sat) — the WAKE morning; bedtimeMin is the evening BEFORE this day
   wakeMin: number // minutes since midnight the light turns green
   leadMin: number // minutes before wakeMin the light turns yellow
+  bedtimeMin?: number // minutes since midnight, the night before wakeMin, sleep starts (undefined = this rule never force-locks the device)
+}
+
+export type WaffledBiteWakeLightState = 'none' | 'sleep' | 'warn' | 'wake'
+export interface WaffledBiteWakeLight {
+  state: WaffledBiteWakeLightState
+  wakeAtHour?: number
+  wakeAtMinute?: number
 }
 
 export interface WaffledBiteSettings {
@@ -45,7 +53,7 @@ export interface WaffledBiteDevice {
   id: string
   label: string
   settings: WaffledBiteSettings
-  runtimeState: { quiet: WaffledBiteQuiet; timer: WaffledBiteTimer }
+  runtimeState: { quiet: WaffledBiteQuiet; timer: WaffledBiteTimer; wakeLight: WaffledBiteWakeLight }
   lastSeenAt: string | null
   createdAt: string
 }

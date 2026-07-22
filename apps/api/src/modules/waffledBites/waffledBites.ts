@@ -111,6 +111,115 @@ function countdownView(q: CountdownState | undefined) {
   return { active: true, running, remainingSec, durationSec: q.durationSec }
 }
 
+// ── wake-light schedule (bedtime -> yellow warning -> green wake) ──────────
+// The schedule (`settings.schedules`) has been stored and shown on the
+// parent web app since day one, but until `bedtimeMin` was added, nothing —
+// backend or device — ever computed a state from it; wakeMin/leadMin drove
+// nothing. This is the first thing that reads it.
+export interface WaffledBiteSchedule {
+  days: number[] // 0 (Sun) - 6 (Sat) — the WAKE morning (see the day-attribution note below), not the bedtime evening
+  wakeMin: number // minutes since local midnight the light turns green
+  leadMin: number // minutes before wakeMin the light turns yellow
+  bedtimeMin?: number // minutes since local midnight, the EVENING BEFORE wakeMin, sleep starts — absent on schedules created before this field existed, which simply never force-lock
+}
+
+export type WakeLightState = 'none' | 'sleep' | 'warn' | 'wake'
+export interface WakeLightView {
+  state: WakeLightState
+  wakeAtHour?: number
+  wakeAtMinute?: number
+}
+
+// How long the 'wake' (green, exitable) state holds after the actual wake
+// instant before reverting to 'none' — bounded and write-free (no "kid
+// tapped X" flag needed) so the schedule cleanly reverts to unforced for the
+// rest of the day, and the NEXT night's bedtime re-locks from a 'none' start.
+const WAKE_GRACE_MIN = 60
+
+// Household-local {y,m,d,dow (0=Sun..6=Sat),minuteOfDay} for a given
+// instant. Deliberately takes `now` as a parameter (not always `new Date()`,
+// unlike chores.service's todayDate) so this — and everything built on it —
+// can be tested at exact instants (8pm, 11:59pm, 12:01am), not just "close
+// enough" real-clock windows.
+function localParts(now: Date, tz: string) {
+  const parts: Record<string, string> = {}
+  for (const p of new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short',
+  }).formatToParts(now)) parts[p.type] = p.value
+  const WEEKDAY: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+  // Some ICU builds render midnight as "24" with hour12:false — normalize.
+  const hour = parts.hour === '24' ? 0 : Number(parts.hour)
+  return {
+    y: Number(parts.year), m: Number(parts.month), d: Number(parts.day),
+    dow: WEEKDAY[parts.weekday], minuteOfDay: hour * 60 + Number(parts.minute),
+  }
+}
+
+// Pure calendar-date arithmetic (UTC-anchored, no wall-clock/DST concerns —
+// this is just "what date and weekday is N days from this date").
+function addDays(y: number, m: number, d: number, days: number) {
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() + days)
+  return { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate(), dow: dt.getUTCDay() }
+}
+
+// The tz's UTC offset (minutes) at a given instant — used by localToUtcMs's
+// two-pass correction below. DST-transition-second precision isn't a real
+// concern for a bedtime clock at minute granularity.
+function offsetMinutesAt(utcGuessMs: number, tz: string): number {
+  const parts: Record<string, string> = {}
+  for (const p of new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date(utcGuessMs))) parts[p.type] = p.value
+  const asUtc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second))
+  return (asUtc - utcGuessMs) / 60_000
+}
+
+// Converts a household-local wall-clock date+time to the actual UTC instant.
+function localToUtcMs(y: number, m: number, d: number, minuteOfDay: number, tz: string): number {
+  const naiveUtc = Date.UTC(y, m - 1, d, Math.floor(minuteOfDay / 60), minuteOfDay % 60)
+  return naiveUtc - offsetMinutesAt(naiveUtc, tz) * 60_000
+}
+
+// For each schedule, tries each of the 3 candidate wake-dates around `now`'s
+// local calendar date (yesterday/today/tomorrow) — this sidesteps ever
+// having to decide "which single day is 'today's governing wake-day'" by
+// hand: whichever candidate's bedtime->wake range actually contains `now`,
+// if any, wins. `days` marks the WAKE morning (matches the parent web app's
+// "🟢 Okay to get up" label), so a schedule's Sunday-night bedtime is
+// governed by Monday being in `days`, not Sunday — a real decision, not an
+// oversight; a parent picking "school days" (Mon-Fri) is choosing Sun-Thu
+// nights, which the web app's field hint should say explicitly.
+export function wakeLightView(schedules: WaffledBiteSchedule[], now: Date, tz: string): WakeLightView {
+  const nowMs = now.getTime()
+  const local = localParts(now, tz)
+
+  for (const sch of schedules) {
+    if (sch.bedtimeMin == null) continue
+    for (const dayOffset of [-1, 0, 1]) {
+      const wakeDate = addDays(local.y, local.m, local.d, dayOffset)
+      if (!sch.days.includes(wakeDate.dow)) continue
+      const bedDate = addDays(wakeDate.y, wakeDate.m, wakeDate.d, -1)
+      const bedtimeMs = localToUtcMs(bedDate.y, bedDate.m, bedDate.d, sch.bedtimeMin, tz)
+      const warnMs = localToUtcMs(wakeDate.y, wakeDate.m, wakeDate.d, Math.max(0, sch.wakeMin - sch.leadMin), tz)
+      const wakeMs = localToUtcMs(wakeDate.y, wakeDate.m, wakeDate.d, sch.wakeMin, tz)
+      const graceEndMs = wakeMs + WAKE_GRACE_MIN * 60_000
+
+      const wakeAt = { wakeAtHour: Math.floor(sch.wakeMin / 60), wakeAtMinute: sch.wakeMin % 60 }
+      if (nowMs >= bedtimeMs && nowMs < warnMs) return { state: 'sleep', ...wakeAt }
+      if (nowMs >= warnMs && nowMs < wakeMs) return { state: 'warn', ...wakeAt }
+      if (nowMs >= wakeMs && nowMs < graceEndMs) return { state: 'wake', ...wakeAt }
+    }
+  }
+  return { state: 'none' }
+}
+
+function schedulesOf(settings: unknown): WaffledBiteSchedule[] {
+  const s = (settings ?? {}) as { schedules?: unknown }
+  return Array.isArray(s.schedules) ? (s.schedules as WaffledBiteSchedule[]) : []
+}
+
 async function loadDeviceRow(householdId: string, deviceId: string) {
   const { rows } = await query<{ id: string; person_id: string; settings: unknown; runtime_state: RuntimeState }>(
     `select id, person_id, settings, runtime_state from waffled_bite_devices
@@ -161,17 +270,21 @@ export function registerWaffledBiteRoutes(api: Api): void {
       [personId, tenant.householdId]
     )
     const d = rows[0]
+    if (!d) return { device: null }
+    const tz = await householdTz(tenant.householdId)
     return {
-      device: d
-        ? {
-            id: d.id,
-            label: d.label,
-            settings: d.settings,
-            runtimeState: { quiet: countdownView(d.runtime_state?.quiet), timer: countdownView(d.runtime_state?.timer) },
-            lastSeenAt: d.last_seen_at,
-            createdAt: d.created_at,
-          }
-        : null,
+      device: {
+        id: d.id,
+        label: d.label,
+        settings: d.settings,
+        runtimeState: {
+          quiet: countdownView(d.runtime_state?.quiet),
+          timer: countdownView(d.runtime_state?.timer),
+          wakeLight: wakeLightView(schedulesOf(d.settings), new Date(), tz),
+        },
+        lastSeenAt: d.last_seen_at,
+        createdAt: d.created_at,
+      },
     }
   }))
 
@@ -272,7 +385,11 @@ export function registerWaffledBiteRoutes(api: Api): void {
       stars: Number(balance.rows[0]?.balance ?? 0),
       routines,
       settings: deviceRow?.settings ?? {},
-      runtimeState: { quiet: countdownView(deviceRow?.runtime_state?.quiet), timer: countdownView(deviceRow?.runtime_state?.timer) },
+      runtimeState: {
+        quiet: countdownView(deviceRow?.runtime_state?.quiet),
+        timer: countdownView(deviceRow?.runtime_state?.timer),
+        wakeLight: wakeLightView(schedulesOf(deviceRow?.settings), new Date(), tz),
+      },
       nudge,
     }
   })

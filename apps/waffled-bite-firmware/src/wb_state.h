@@ -64,6 +64,28 @@ struct WbQuietState
 // directly on the device too, and isn't full-screen-locked.
 using WbTimerState = WbQuietState;
 
+// The wake-light schedule's computed state — the server does all the
+// timezone/day-of-week math (see waffledBites.ts's wakeLightView); the
+// device just renders whatever it's told. `sleep`/`warn` are forced
+// (non-exitable, force-navigated the same way quiet time is); `wake` is
+// forced-navigated too but exitable (a close button, per direct user
+// feedback). See bedtime_screen.h for how this drives the shared glow
+// screen's visual.
+enum class WbWakeLightState
+{
+  None,
+  Sleep,
+  Warn,
+  Wake,
+};
+
+struct WbWakeLightInfo
+{
+  WbWakeLightState state;
+  int wakeAtHour;   // -1 if not applicable (state == None)
+  int wakeAtMinute;
+};
+
 struct WbDeviceState
 {
   char personName[WB_NAME_LEN];
@@ -74,6 +96,7 @@ struct WbDeviceState
   WbRoutine chores; // unscheduled/general — no due time
   WbQuietState quiet;
   WbTimerState timer;
+  WbWakeLightInfo wakeLight;
   WbSoundSettings sound;
   WbNightSettings night;
   // Wall-clock hour/minute parsed from the poll's top-level "now" (server's

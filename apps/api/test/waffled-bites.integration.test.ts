@@ -252,6 +252,31 @@ describe('waffled-bites device pairing + parent control panel', () => {
     expect(state.settings.night).toMatchObject({ on: true, color: 'amber', brightness: 40 })
   })
 
+  // ── wake-light schedule (bedtime -> yellow warning -> green wake) ──────────
+  // Exact boundary behavior (midnight-crossing, day-attribution) is covered by
+  // wake-light.unit.test.ts's injected-clock tests; this just proves the real
+  // HTTP wiring (household tz lookup, settings.schedules parsing) actually
+  // reaches wakeLightView. Spans nearly the whole day so it's 'sleep'
+  // regardless of the real wall-clock time this test happens to run at.
+  it("computes the wake-light state from the household's real schedule + timezone on both the device poll and the parent view", async () => {
+    await call('PATCH', `/api/waffled-bites/${deviceId}/settings`, {
+      schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], wakeMin: 23 * 60 + 59, leadMin: 0, bedtimeMin: 0 }],
+    }, admin)
+
+    const state = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
+    expect(state.runtimeState.wakeLight.state).toBe('sleep')
+
+    const parentView = json(await call('GET', `/api/persons/${kid}/waffled-bite`, undefined, admin)).device.runtimeState.wakeLight
+    expect(parentView.state).toBe('sleep')
+
+    // A schedule with no bedtimeMin at all (pre-existing wake-only schedules) never force-locks.
+    await call('PATCH', `/api/waffled-bites/${deviceId}/settings`, {
+      schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], wakeMin: 23 * 60 + 59, leadMin: 0 }],
+    }, admin)
+    const none = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
+    expect(none.runtimeState.wakeLight.state).toBe('none')
+  })
+
   // The on-device "Grown-up controls" screen has only the device's own access
   // token available (no admin login flow on-device) — it needs its own write
   // path, distinct from the parent-side admin route above. Scoped to just
@@ -269,12 +294,15 @@ describe('waffled-bites device pairing + parent control panel', () => {
     const state = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
     expect(state.settings.sound).toMatchObject({ on: true, sound: 'rain', volume: 60, timerMin: 30 })
 
-    // A non-whitelisted key (e.g. a parent-only schedule) is silently dropped, not applied.
+    // A non-whitelisted key (e.g. a parent-only schedule) is silently dropped, not applied —
+    // whatever schedules already existed (or didn't) survives unchanged, not overwritten by
+    // the smuggled value.
+    const before = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken)).settings.schedules
     const smuggled = await call('PATCH', '/api/waffled-bites/device/settings', {
       schedules: [{ days: [1, 2, 3, 4, 5], wakeMin: 360, leadMin: 15 }],
     }, deviceToken)
     expect(smuggled.statusCode).toBe(200)
-    expect(json(smuggled).settings.schedules).toBeUndefined()
+    expect(json(smuggled).settings.schedules).toEqual(before)
 
     // Only this route's own device token works here — a parent/admin token is not a device.
     expect((await call('PATCH', '/api/waffled-bites/device/settings', { sound: { on: false } }, admin)).statusCode).toBe(403)

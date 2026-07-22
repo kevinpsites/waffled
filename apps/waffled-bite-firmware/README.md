@@ -12,16 +12,19 @@ An earlier board (ELECROW CrowPanel Basic 7", ESP32-S3, 800×480 RGB-parallel) w
 targeted first and is gone from this repo — superseded before it ever arrived. See
 git history if that context is ever needed again.
 
-**Status: milestone 7.** Home + settings ("Grown-up controls") + a tasks screen are
+**Status: milestone 8.** Home + settings ("Grown-up controls") + a tasks screen are
 built, the firmware talks to the real backend (onboarding → pairing → a 5s live poll
-that keeps every screen in sync, token refresh, tap-to-complete on tasks), and all
-four Grown-up controls tiles are real: Sounds, Nightlight, Set a timer, and Bedtime.
-Ported to **LVGL 9.2** + **1024×600** for the new board. Verified end-to-end against a
-real running backend on `native` (paired, exchanged tokens, polled real routine/stars
-data, completed a task, changed sound/nightlight settings, started/ended a timer from
-both the device and the parent side, all for a demo household's kid — see git
-history). `esp32-p4` compiles clean against the real production silicon's toolchain,
-but nothing has run on actual hardware yet — see "What's not done" below.
+that keeps every screen in sync, token refresh, tap-to-complete on tasks), all four
+Grown-up controls tiles are real (Sounds, Nightlight, Set a timer, Bedtime), and the
+wake-light schedule now actually locks the device overnight (sleep → yellow warning →
+green wake), not just stores unused data. Ported to **LVGL 9.2** + **1024×600** for the
+new board. Verified end-to-end against a real running backend on `native` (paired,
+exchanged tokens, polled real routine/stars data, completed a task, changed sound/
+nightlight settings, started/ended a timer from both the device and the parent side,
+computed a live wake-light state from a real schedule + household timezone, all for a
+demo household's kid — see git history). `esp32-p4` compiles clean against the real
+production silicon's toolchain, but nothing has run on actual hardware yet — see
+"What's not done" below.
 
 ## Two environments, one app
 
@@ -192,6 +195,48 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   - Both tiles' taps are pure navigation (no rebuild-on-tap) — `wb_do_poll` keeps
     `timer_scr`/`bedtime_scr` correctly built/synced every cycle regardless of which
     screen is currently showing, same pattern as `home_scr`/`settings_scr`.
+- **The wake-light schedule now actually does something.** Until this pass, `settings.
+  schedules` (`days`/`wakeMin`/`leadMin`) was stored and shown on the parent web app's
+  "Wake-light schedule" card but drove nothing at all — not on the backend, not on the
+  device; `wb_state.h` didn't even parse it. Direct user feedback specified the real
+  behavior: a parent sets a bedtime; at that time the device locks into nightlight mode
+  (not exitable), switches to a yellow "almost time" warning at the configured lead time
+  (also not exitable), then green at the actual wake time, where a close button finally
+  appears. This needed a genuinely new field (`bedtimeMin`, absent = this rule never
+  locks — old wake-only schedules stay inert, no migration needed since `schedules` is
+  jsonb) and the schedule's first real consumer, both backend and device:
+  - **Backend** (`waffledBites.ts`): `wakeLightView(schedules, now, tz)` is a pure function
+    — `now` is an injected parameter, not `Date.now()` internally, specifically so the exact
+    midnight-crossing boundaries (8pm bedtime, 11:59pm, 12:01am, the lead-time cutoff, the
+    wake instant) could be asserted in `wake-light.unit.test.ts` (TDD'd first, 7 tests) rather
+    than trusted to a real-clock test's tolerances. `days` marks the WAKE morning (matches
+    the "🟢 Okay to get up" label already on that field) — a school-days (Mon-Fri) rule
+    therefore covers Sun-Thu **nights**, not Fri/Sat; the web app's new bedtime field says
+    "the night before" so this isn't a silent surprise. For each schedule, checked against
+    3 candidate wake-dates (yesterday/today/tomorrow, via real calendar-date arithmetic, not
+    modular minute-of-day wraparound) rather than hand-deciding which single day "today"
+    governs. `wake` holds for a 60-minute grace window after the actual wake instant, then
+    reverts to `none` with no stored "acknowledged" flag needed. Exposed as
+    `runtimeState.wakeLight` on both the device poll and the parent's profile view; new
+    `wake-bites.integration.test.ts` case proves the real HTTP wiring (household tz lookup,
+    `settings.schedules` parsing) actually reaches it. Verified live against the real demo
+    backend (paired a throwaway test device, set a schedule spanning the whole day, confirmed
+    `state: 'sleep'` on both the device poll and parent view, cleaned up after).
+  - **Device** (`bedtime_screen.cpp`): the Bedtime tile's plain exitable preview and the
+    wake-light's forced sleep/warn/wake are now one shared parameterized "glow screen"
+    (`WbGlowSpec`: color, brightness, optional label + "until H:MM" text, exitable or not) —
+    not three separate screens. `main.cpp` force-navigates on any `WbBedtimeClaim` EDGE
+    (`Preview`/`Sleep`/`Warn`/`Wake`) — deliberately an edge check, not "was it previously
+    none," since `Preview -> Sleep` on a **second** night is a non-none-to-non-none
+    transition a naive check would miss and fail to re-lock for. Quiet time wins if both are
+    somehow active at once (an explicit, in-the-moment parent action over a passive
+    schedule). `sleep`/`warn` render with zero clickable elements (same "absence, not a lock
+    flag" mechanism as `quiet_screen.cpp`); `wake` gets a close button to `home_scr`. `warn`
+    uses a fixed amber, `wake` a fixed green — status colors, not the parent's chosen
+    nightlight color; `sleep` reuses the actual configured nightlight color/brightness.
+  - **Parent web app**: added the missing bedtime `<input type="time">` per schedule (with
+    the "the night before" hint), plus a live status pill on the card
+    ("🌙 Asleep right now" / "🟡 Almost time to wake" / "🟢 Awake").
 - **Tap-to-complete on tasks is done.** Tapping a routine tile or the Chores bar opens
   a task list (`src/ui/tasks_screen.cpp`) with a checkbox per task; tapping an undone
   row calls `POST /api/waffled-bites/device/tasks/:instanceId/complete` with the
