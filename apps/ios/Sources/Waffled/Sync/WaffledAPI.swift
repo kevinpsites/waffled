@@ -2208,7 +2208,7 @@ struct WaffledAPI: Sendable {
         var quantity: String?
         var checked: Bool
         var section: String?
-        /// 0 = normal, 1 = important, 2 = urgent. Optional so older servers decode.
+        /// 1–5 urgency (1 = not urgent, 3 = normal/default, 5 = urgent). Optional so older servers decode.
         var priority: Int?
         var assignee: Assignee?
         var aisle: String?

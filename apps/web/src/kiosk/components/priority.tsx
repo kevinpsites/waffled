@@ -1,7 +1,8 @@
 // List-item priority: a 1–5 urgency scale shared by the row marker and the edit
-// modal's selector. 1 = not urgent, 3 = normal (default), 5 = urgent. Higher
-// priority sorts first (the API orders items by it); above-normal items (4–5) get
-// a flag on the row so the important ones stand out.
+// modal's selector. 1 = not urgent, 3 = normal (default), 5 = urgent. The list's
+// "Sort: By priority" toggle orders highest-first (client-side; the API does not
+// sort by priority — it returns items by section/order); above-normal items (4–5)
+// get a flag on the row so the important ones stand out.
 
 export type PriorityValue = 1 | 2 | 3 | 4 | 5
 
