@@ -101,27 +101,17 @@ static void wb_apply_glow(WbBedtimeCtx *ctx, const WbGlowSpec &spec)
   uint8_t coreMix = (uint8_t)(90 + 165 * b);
   lv_color_t coreColor = lv_color_mix(base, lv_color_black(), coreMix);
 
-  // warn/wake (spec.label set) are status SIGNALS, not mood lighting — they
-  // should read as unambiguously green/yellow at a glance, so only a thin
-  // strip up top (behind the label) fades to background; the rest of the
-  // screen is solid. sleep/the plain preview (no label) keep the fuller
+  // warn/wake (spec.label set) are status SIGNALS, not mood lighting — flat
+  // solid green/yellow reads unambiguously at a glance; the label sits in
+  // its own dark chip (see wb_build_bedtime_screen) for contrast instead of
+  // leaning on a gradient. sleep/the plain preview (no label) keep the
   // ambient falloff — ties visually to a real nightlight, not an alert.
   bool statusSolid = spec.label != nullptr;
-  const float fadeFrac = 0.3f; // top 30% of the screen transitions; bottom 70% is solid when statusSolid
 
   for (int i = 0; i < WB_GLOW_BAND_COUNT; i++)
   {
     float t = (float)i / (WB_GLOW_BAND_COUNT - 1); // 0 = top band, 1 = bottom band
-    float eased;
-    if (statusSolid)
-    {
-      float within = t < fadeFrac ? t / fadeFrac : 1.0f;
-      eased = within * within;
-    }
-    else
-    {
-      eased = t * t; // keeps the glow concentrated near the bottom, fading fast toward the top
-    }
+    float eased = statusSolid ? 1.0f : t * t; // keeps the ambient glow concentrated near the bottom, fading fast toward the top
     lv_color_t bandColor = lv_color_mix(coreColor, WB_BEDTIME_BG, (uint8_t)(eased * 255));
     lv_obj_set_style_bg_color(ctx->bands[i], bandColor, 0);
   }
@@ -183,16 +173,31 @@ void wb_build_bedtime_screen(lv_obj_t *parent, const WbGlowSpec &spec, lv_obj_t 
 
   if (spec.label)
   {
-    lv_obj_t *label_lbl = lv_label_create(parent);
+    // A solid dark chip behind the label, not a gradient — reads clearly
+    // against the now-flat green/yellow background (see wb_apply_glow's
+    // statusSolid branch) without relying on a fade to separate it.
+    lv_obj_t *box = lv_obj_create(parent);
+    lv_obj_remove_style_all(box);
+    lv_obj_set_style_bg_color(box, lv_color_hex(0x14140F), 0);
+    lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(box, 16, 0);
+    lv_obj_set_style_pad_hor(box, 24, 0);
+    lv_obj_set_style_pad_ver(box, 14, 0);
+    lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(box, 6, 0);
+    lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_align(box, LV_ALIGN_TOP_MID, 0, 50);
+
+    lv_obj_t *label_lbl = lv_label_create(box);
     lv_obj_set_style_text_font(label_lbl, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(label_lbl, WB_BEDTIME_INK, 0);
-    lv_obj_align(label_lbl, LV_ALIGN_TOP_MID, 0, 60);
     ctx->label_lbl = label_lbl;
 
-    lv_obj_t *until_lbl = lv_label_create(parent);
+    lv_obj_t *until_lbl = lv_label_create(box);
     lv_obj_set_style_text_font(until_lbl, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(until_lbl, WB_BEDTIME_MUTED, 0);
-    lv_obj_align_to(until_lbl, label_lbl, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
     ctx->until_lbl = until_lbl;
   }
 
