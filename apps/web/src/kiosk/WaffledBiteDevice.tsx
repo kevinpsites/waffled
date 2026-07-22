@@ -161,7 +161,6 @@ export function WaffledBiteDevice() {
   const person = persons.find((p) => p.id === id)
   const { device, loading, refetch } = useWaffledBiteDevice(id ?? null)
   const [pairing, setPairing] = useState(false)
-  const [customQuietH, setCustomQuietH] = useState(0)
   const [customQuietM, setCustomQuietM] = useState(5)
   const [customTimerM, setCustomTimerM] = useState(10)
   const [customTimerOpen, setCustomTimerOpen] = useState(false)
@@ -280,18 +279,17 @@ export function WaffledBiteDevice() {
               <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Or a custom length</div>
               <div className="field-row" style={{ alignItems: 'flex-end' }}>
                 <label className="field" style={{ flex: 1 }}>
-                  <span>Hours</span>
-                  <input type="number" min={0} max={1} value={customQuietH} onChange={(e) => setCustomQuietH(Math.max(0, Math.min(1, Number(e.target.value) || 0)))} />
-                </label>
-                <label className="field" style={{ flex: 1 }}>
                   <span>Minutes</span>
-                  <input type="number" min={0} max={59} value={customQuietM} onChange={(e) => setCustomQuietM(Math.max(0, Math.min(59, Number(e.target.value) || 0)))} />
+                  {/* Capped at 90 — the server clamps quiet-time duration to 1-90 min
+                      regardless (see quiet/start's Math.min(90*60, ...)), so a wider
+                      range here would silently get truncated with no feedback. */}
+                  <input type="number" min={1} max={90} value={customQuietM} onChange={(e) => setCustomQuietM(Math.max(1, Math.min(90, Number(e.target.value) || 0)))} />
                 </label>
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={customQuietH * 60 + customQuietM <= 0}
-                  onClick={() => waffledBitesApi.quietStart(device.id, (customQuietH * 3600) + (customQuietM * 60)).then(refetch)}
+                  disabled={customQuietM <= 0}
+                  onClick={() => waffledBitesApi.quietStart(device.id, customQuietM * 60).then(refetch)}
                 >
                   Start
                 </button>
