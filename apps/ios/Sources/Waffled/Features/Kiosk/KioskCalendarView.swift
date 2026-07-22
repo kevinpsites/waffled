@@ -99,12 +99,16 @@ struct KioskCalendarView: View {
             CalTimeGrid(days: weekDays(selectedDay), tz: tz, byDay: byDay,
                         showDayHeaders: true, selectedDay: selectedDay,
                         onTapEvent: { detailEvent = $0 }, onAddAt: { editing = .new($0) },
-                        onPickDay: { day in withAnimation { selectedDay = day; mode = .day } })
+                        onPickDay: { day in withAnimation { selectedDay = day; mode = .day } },
+                        countdownsByDay: countdowns.byDate,
+                        onTapCountdown: { openCountdown($0) })
         case .day:
             CalTimeGrid(days: [selectedDay], tz: tz, byDay: byDay,
                         showDayHeaders: false, selectedDay: selectedDay,
                         onTapEvent: { detailEvent = $0 }, onAddAt: { editing = .new($0) },
-                        onPickDay: { _ in })
+                        onPickDay: { _ in },
+                        countdownsByDay: countdowns.byDate,
+                        onTapCountdown: { openCountdown($0) })
         case .agenda:
             agendaContent(byDay)
         }
@@ -590,6 +594,10 @@ struct CalTimeGrid: View {
     let onTapEvent: (SyncedEvent) -> Void
     let onAddAt: (Date) -> Void
     let onPickDay: (String) -> Void
+    /// Countdowns keyed by day — rendered as chips in the all-day row (Week/Day parity
+    /// with the month badge + day panel). Defaulted so non-countdown callers are unaffected.
+    var countdownsByDay: [String: [WaffledAPI.Countdown]] = [:]
+    var onTapCountdown: (WaffledAPI.Countdown) -> Void = { _ in }
 
     private let hourHeight: CGFloat = 56
     private let gutter: CGFloat = 56
@@ -598,10 +606,11 @@ struct CalTimeGrid: View {
         (byDay[key] ?? []).filter { !$0.allDay && $0.startsAt != nil }
             .sorted { ($0.startsAt ?? .distantPast) < ($1.startsAt ?? .distantPast) }
     }
+    private func countdowns(_ key: String) -> [WaffledAPI.Countdown] { countdownsByDay[key] ?? [] }
     private func allDay(_ key: String) -> [SyncedEvent] {
         (byDay[key] ?? []).filter(\.allDay)
     }
-    private var hasAllDay: Bool { days.contains { !allDay($0).isEmpty } }
+    private var hasAllDay: Bool { days.contains { !allDay($0).isEmpty || !countdowns($0).isEmpty } }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -694,6 +703,10 @@ struct CalTimeGrid: View {
                 .frame(width: gutter, alignment: .trailing).padding(.trailing, 6)
             ForEach(Array(days.enumerated()), id: \.element) { idx, key in
                 VStack(spacing: 3) {
+                    // Countdowns first, then all-day events — same order as the day panel.
+                    ForEach(countdowns(key)) { c in
+                        Button { onTapCountdown(c) } label: { countdownChip(c) }.buttonStyle(.plain)
+                    }
                     ForEach(allDay(key)) { ev in
                         Button { onTapEvent(ev) } label: { miniChip(ev) }.buttonStyle(.plain)
                     }
@@ -711,10 +724,23 @@ struct CalTimeGrid: View {
         .padding(.vertical, 6).padding(.bottom, 4)
     }
 
-    /// Uniform height for the all-day separators — the tallest day's chip stack.
+    /// Uniform height for the all-day separators — the tallest day's chip stack (countdowns + all-day events).
     private var allDayContentHeight: CGFloat {
-        let n = max(1, days.map { allDay($0).count }.max() ?? 1)
+        let n = max(1, days.map { allDay($0).count + countdowns($0).count }.max() ?? 1)
         return CGFloat(n) * 24 + CGFloat(n - 1) * 3
+    }
+
+    /// A countdown as an all-day chip (warm-tinted, emoji + title + days-left).
+    private func countdownChip(_ c: WaffledAPI.Countdown) -> some View {
+        HStack(spacing: 4) {
+            Text(c.emoji ?? "⏳").font(.system(size: 10))
+            Text(c.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+            Spacer(minLength: 0)
+            Text(CountdownFormat.short(c.daysLeft)).font(.system(size: 10, weight: .heavy)).foregroundStyle(WF.warn)
+        }
+        .padding(.horizontal, 6).padding(.vertical, 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WF.warnT).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
     private func miniChip(_ ev: SyncedEvent) -> some View {
