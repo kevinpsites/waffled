@@ -240,6 +240,10 @@ export function Lists() {
   const addInputRef = useRef<HTMLInputElement>(null)
   const [filterPerson, setFilterPerson] = useState<string | null>(null)
   const [filterMenu, setFilterMenu] = useState(false)
+  // Opt-in "By priority" view. Off by default so changing an item's priority never
+  // reorders the list (the manual/section order is preserved); on, it flattens the
+  // sections into one list ordered highest-priority first.
+  const [sortByPriority, setSortByPriority] = useState(false)
   const [itemModal, setItemModal] = useState<{ item: ListItem | null } | null>(null)
   const [groceryOpen, setGroceryOpen] = useState(false)
   // Just-checked items lingering in place during the undo grace window.
@@ -460,6 +464,8 @@ export function Lists() {
   const { active: activeItems, completed: completedItems } = partitionListItems(visibleItems, recent)
   const sections = groupBySection(activeItems)
   const [leftCol, rightCol] = splitColumns(sections)
+  // Flattened, highest-priority-first view (stable — ties keep manual order).
+  const prioritySorted = [...activeItems].sort((a, b) => (b.priority ?? 3) - (a.priority ?? 3))
 
   return (
     <div className="lists-home">
@@ -556,6 +562,15 @@ export function Lists() {
                   </div>
                 )}
               </div>
+              <button
+                type="button"
+                className={`pill filter-pill${sortByPriority ? ' on' : ''}`}
+                aria-pressed={sortByPriority}
+                title="Sort this list by priority (highest first)"
+                onClick={() => setSortByPriority((v) => !v)}
+              >
+                <Icon name="filter" /> {sortByPriority ? 'By priority' : 'Sort: manual'}
+              </button>
               {isTemplate && (
                 <button type="button" className="pill btn-primary" style={{ cursor: 'pointer' }} title="Create a new list from this template (current items, unchecked)" onClick={useSelectedTemplate}>
                   ▶ Use template
@@ -633,7 +648,23 @@ export function Lists() {
               <div className="lists-empty">Nothing assigned to {persons.find((p) => p.id === filterPerson)?.name ?? 'them'} here.</div>
             ) : (
               <>
-                {activeItems.length > 0 && (
+                {activeItems.length > 0 && sortByPriority && (
+                  <div className="lists-section">
+                    <div className="lists-section-title">By priority</div>
+                    {prioritySorted.map((it) => (
+                      <ItemRow
+                        key={it.id}
+                        item={it}
+                        people={persons}
+                        onToggle={toggle}
+                        onAssign={assign}
+                        onEdit={(i) => setItemModal({ item: i })}
+                        onDelete={remove}
+                      />
+                    ))}
+                  </div>
+                )}
+                {activeItems.length > 0 && !sortByPriority && (
                   <div className="lists-grid">
                     {[leftCol, rightCol].map((col, ci) => (
                       <div key={ci} className="lists-col">

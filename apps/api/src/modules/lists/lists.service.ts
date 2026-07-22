@@ -240,7 +240,7 @@ export async function listItems(householdId: string, listId: string): Promise<Li
        left join persons p on p.id = i.assigned_to and p.deleted_at is null
        left join persons cb on cb.id = i.created_by and cb.deleted_at is null
       where i.household_id = $1 and i.list_id = $2 and i.deleted_at is null
-      order by i.checked, i.priority desc, i.sort_order nulls last, i.created_at`,
+      order by i.checked, i.sort_order nulls last, i.created_at`,
     [householdId, listId]
   )
   return rows

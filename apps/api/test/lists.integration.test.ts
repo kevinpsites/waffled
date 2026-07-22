@@ -389,13 +389,17 @@ describe('list item priority', () => {
     expect((await call('PATCH', `/api/list-items/${id}`, kevin, { priority: 'high' })).statusCode).toBe(400)
   })
 
-  it('sorts higher-priority (unchecked) items first in the list detail', async () => {
+  it('keeps items in manual (insertion) order — priority is stored/returned but does NOT reorder', async () => {
     const fresh = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Trip prep' })).body).list.id
     await call('POST', `/api/lists/${fresh}/items`, kevin, { name: 'Snacks' }) // priority 3 (normal)
     await call('POST', `/api/lists/${fresh}/items`, kevin, { name: 'Tickets', priority: 5 })
     await call('POST', `/api/lists/${fresh}/items`, kevin, { name: 'Sunhat', priority: 4 })
     const items = JSON.parse((await call('GET', `/api/lists/${fresh}`, kevin)).body).items as Array<{ name: string; priority: number }>
-    expect(items.map((i) => i.name)).toEqual(['Tickets', 'Sunhat', 'Snacks'])
+    // insertion order preserved (changing priority no longer jumps items around) —
+    // priority-first ordering is now an opt-in client-side view.
+    expect(items.map((i) => i.name)).toEqual(['Snacks', 'Tickets', 'Sunhat'])
+    // ...but priority is still persisted and returned so the client can flag/sort it
+    expect(items.map((i) => i.priority)).toEqual([3, 5, 4])
   })
 })
 

@@ -302,4 +302,30 @@ describe('Lists screen', () => {
     await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/api\/lists\/templates\/tpl\/apply$/.test(s.url))).toBe(true))
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('applied'))
   })
+
+  it('flattens into a highest-priority-first view when "By priority" is toggled on', async () => {
+    const items = [
+      { id: 'a', name: 'Low item', quantity: null, checked: false, checkedAt: null, section: 'Clothes', sortOrder: 0, assignee: null, priority: 2 },
+      { id: 'b', name: 'Urgent item', quantity: null, checked: false, checkedAt: null, section: 'Gear', sortOrder: 1, assignee: null, priority: 5 },
+      { id: 'c', name: 'Normal item', quantity: null, checked: false, checkedAt: null, section: 'Clothes', sortOrder: 2, assignee: null, priority: 3 },
+    ]
+    mockApi({ lists: [grocery, packing], items })
+    const { container } = renderScreen()
+    await exitBoard()
+    await screen.findByText('Urgent item')
+
+    // default (manual) view keeps the section grouping — no priority reordering
+    expect(screen.getByText('Clothes')).toBeInTheDocument()
+
+    // toggle on → flat, highest-priority first, section titles gone
+    fireEvent.click(screen.getByRole('button', { name: /Sort: manual/i }))
+    await waitFor(() => expect(screen.queryByText('Clothes')).not.toBeInTheDocument())
+    const titles = [...container.querySelectorAll('.lists-section-title')].map((el) => el.textContent)
+    expect(titles).toEqual(['By priority'])
+
+    const rows = [...container.querySelectorAll('.litem')].map((el) => el.textContent ?? '')
+    const idx = (name: string) => rows.findIndex((t) => t.includes(name))
+    expect(idx('Urgent item')).toBeLessThan(idx('Normal item'))
+    expect(idx('Normal item')).toBeLessThan(idx('Low item'))
+  })
 })
