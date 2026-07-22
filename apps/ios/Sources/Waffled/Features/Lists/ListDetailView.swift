@@ -346,6 +346,8 @@ struct ListDetailView: View {
     @State private var editQty = ""
     @State private var showCompleted = false
     @State private var detailItem: WaffledAPI.ListItemDTO?
+    @State private var showAddDetail = false
+    @State private var addDetailName = ""
     @State private var didAutoDetails = false
     @State private var mode: GroceryViewMode = .aisle
     @State private var railMeal = "dinner"
@@ -478,6 +480,17 @@ struct ListDetailView: View {
         .sheet(item: $detailItem) { item in
             ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section, priority in
                 Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section, priority: priority) }
+            }
+        }
+        // The "Add item with details" sheet (from the add bar's sliders button): create the
+        // item, then apply assignee/section/priority in one go.
+        .sheet(isPresented: $showAddDetail) {
+            ItemDetailEditor(newItemName: addDetailName, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section, priority in
+                Task {
+                    if let created = await model.add(name: name, quantity: qty, section: section) {
+                        await model.editDetails(created.id, name: name, quantity: qty, member: member, section: section, priority: priority)
+                    }
+                }
             }
         }
         .confirmationDialog("Delete “\(model.list.name)”?", isPresented: $confirmingDelete, titleVisibility: .visible) {
@@ -1142,18 +1155,19 @@ struct ListDetailView: View {
                     .focused($focus, equals: .addQty)
                     .submitLabel(.done)
                     .onSubmit(submit)
-                // Explicit "details" affordance (the swipe-up gesture was unreliable next
-                // to the text fields): commits what you've typed, then opens its full
-                // editor as a half-sheet — assignee, section, priority.
+                // Tap for the full "Add item" sheet — assignee, section, priority — seeded
+                // with whatever's already typed. (The old swipe-up gesture was unreliable
+                // next to the text fields.)
                 Button {
-                    if draftName.trimmingCharacters(in: .whitespaces).isEmpty { focus = .add }
-                    else { openDraftDetails() }
+                    addDetailName = draftName
+                    draftName = ""; draftQty = ""; focus = nil
+                    showAddDetail = true
                 } label: {
                     Image(systemName: "slider.horizontal.3").font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(WF.ink3)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Add with details")
+                .accessibilityLabel("Add item with details")
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
             .wfField()
@@ -1229,19 +1243,6 @@ struct ListDetailView: View {
         refocusAdd()
     }
 
-    /// Swipe-up on the composer: commit the current draft, then open the just-created
-    /// item's full details editor (assignee / section / priority).
-    private func openDraftDetails() {
-        let name = draftName, qty = draftQty, section = draftSection
-        draftName = ""; draftQty = ""
-        focus = nil
-        Task {
-            if let created = await model.add(name: name, quantity: qty, section: section) {
-                detailItem = created
-            }
-        }
-    }
-
     /// Put the cursor back in the "Add item" field after a submit, so you can hit Return
     /// and keep adding item after item. Deferred to the next runloop: SwiftUI clears focus
     /// as part of handling the submit, so a synchronous re-set here would just be undone.
@@ -1299,6 +1300,7 @@ enum ListItemPriority {
 struct ItemDetailEditor: View {
     @Environment(\.dismiss) private var dismiss
     let originalName: String
+    let isNew: Bool
     let members: [SyncedMember]
     let suggestions: [String]
     let onSave: (String, String, SyncedMember?, String, Int) -> Void
@@ -1308,10 +1310,12 @@ struct ItemDetailEditor: View {
     @State private var assigneeId: String?
     @State private var section: String
     @State private var priority: Int
+    @FocusState private var nameFocused: Bool
 
     init(item: WaffledAPI.ListItemDTO, members: [SyncedMember], suggestions: [String],
          onSave: @escaping (String, String, SyncedMember?, String, Int) -> Void) {
         self.originalName = item.name
+        self.isNew = false
         self.members = members
         self.suggestions = suggestions
         self.onSave = onSave
@@ -1324,11 +1328,27 @@ struct ItemDetailEditor: View {
         _assigneeId = State(initialValue: members.first { $0.name == assigneeName }?.id)
     }
 
+    /// Add mode — a blank "Add item" sheet (optionally seeded with a name already typed in
+    /// the add bar) so you can set assignee / section / priority up front, then add.
+    init(newItemName: String, members: [SyncedMember], suggestions: [String],
+         onSave: @escaping (String, String, SyncedMember?, String, Int) -> Void) {
+        self.originalName = ""
+        self.isNew = true
+        self.members = members
+        self.suggestions = suggestions
+        self.onSave = onSave
+        _name = State(initialValue: newItemName)
+        _quantity = State(initialValue: "")
+        _section = State(initialValue: "")
+        _priority = State(initialValue: ListItemPriority.normal)
+        _assigneeId = State(initialValue: nil)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    field("Name") { TextField("Item", text: $name).textInputAutocapitalization(.words) }
+                    field("Name") { TextField("Item", text: $name).textInputAutocapitalization(.words).focused($nameFocused) }
                     field("Quantity") { TextField("e.g. 2 lb", text: $quantity) }
 
                     VStack(alignment: .leading, spacing: 9) {
@@ -1354,12 +1374,13 @@ struct ItemDetailEditor: View {
                 .padding(20)
             }
             .background(WF.canvas)
-            .navigationTitle("Edit \(originalName)")
+            .navigationTitle(isNew ? "Add item" : "Edit \(originalName)")
             .navigationBarTitleDisplayMode(.inline)
+            .task { if isNew, name.isEmpty { nameFocused = true } }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(isNew ? "Add" : "Save") {
                         onSave(name, quantity, members.first { $0.id == assigneeId }, section, priority)
                         dismiss()
                     }
