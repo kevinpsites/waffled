@@ -27,6 +27,7 @@
 #include "ui/bedtime_screen.h"
 #include <ArduinoJson.h>
 #include <string>
+#include <cstring>
 
 #if defined(ARDUINO)
 #include <Wire.h>
@@ -477,6 +478,21 @@ static bool wb_complete_task(const std::string &taskId)
   WbHttpResponse resp = wb_http_post(url.c_str(), "{}", g_accessToken.c_str());
   bool ok = resp.ok && resp.status == 200;
   if (ok)
+  {
+    // A photo-proof/approval-required chore still answers HTTP 200, but with
+    // instance.status "awaiting", not "done" — treat that as NOT a completed
+    // tap (the row should revert to its un-tapped state via the caller's
+    // existing failure-revert path) instead of leaving it optimistically
+    // checked until the next poll silently un-checks it with no explanation.
+    JsonDocument doc;
+    if (!deserializeJson(doc, resp.body))
+    {
+      const char *status = doc["instance"]["status"].is<const char *>() ? doc["instance"]["status"].as<const char *>() : "";
+      if (strcmp(status, "done") != 0)
+        ok = false;
+    }
+  }
+  if (ok)
     wb_do_poll();
   return ok;
 }
@@ -660,6 +676,25 @@ void setup()
   lv_indev_set_read_cb(indev, touchpad_read);
 
 #if defined(ARDUINO)
+  // Show something before the (up to 15s) WiFi wait below — previously the
+  // very first screen wasn't built until after this block, so a slow/absent
+  // network left the panel showing an undefined framebuffer for the whole
+  // wait with zero feedback. This screen is a one-time throwaway (never
+  // referenced again after lv_scr_load below switches away from it).
+  lv_obj_t *boot_scr = lv_obj_create(NULL);
+  lv_obj_set_style_bg_color(boot_scr, lv_color_hex(0xF5EFE1), 0);
+  lv_obj_set_style_bg_opa(boot_scr, LV_OPA_COVER, 0);
+  lv_obj_set_flex_flow(boot_scr, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(boot_scr, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_t *boot_title = lv_label_create(boot_scr);
+  lv_label_set_text(boot_title, "Waffled");
+  lv_obj_set_style_text_font(boot_title, &lv_font_montserrat_24, 0);
+  lv_obj_t *boot_sub = lv_label_create(boot_scr);
+  lv_label_set_text(boot_sub, "Connecting...");
+  lv_obj_set_style_text_color(boot_sub, lv_color_hex(0x8A8478), 0);
+  lv_scr_load(boot_scr);
+  lv_timer_handler(); // flush this frame before the blocking wait below
+
   // Hardcoded credentials until real WiFi provisioning exists (deferred —
   // see the firmware README); blocking wait at boot only, a connection lost
   // later just makes every wb_http call fail until it comes back, which
@@ -668,7 +703,10 @@ void setup()
   WiFi.begin(WB_WIFI_SSID, WB_WIFI_PASS);
   uint32_t wifiStart = wb_tick_ms();
   while (WiFi.status() != WL_CONNECTED && wb_tick_ms() - wifiStart < 15000)
-    delay(200);
+  {
+    lv_timer_handler(); // keep the display/touch pipeline alive during the wait, not frozen
+    delay(5);
+  }
 #endif
 
   home_scr = lv_obj_create(NULL);

@@ -26,6 +26,7 @@ static WbHttpResponse perform(const char *url, const char *jsonBody /* nullptr f
   HTTPClient http;
   if (!http.begin(String(url)))
     return resp;
+  http.setTimeout(10000); // don't let a dead/unreachable server hang the LVGL loop — matches wb_http_native.cpp's CURLOPT_TIMEOUT
 
   if (jsonBody)
     http.addHeader("Content-Type", "application/json");
