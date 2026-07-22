@@ -569,11 +569,14 @@ struct ListDetailView: View {
             }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { columnBottom = $0 }
             .frame(maxWidth: .infinity)
-            if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.staples.isEmpty) {
+            if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.unscheduled.isEmpty || !model.staples.isEmpty) {
                 Rectangle().fill(WF.hair).frame(width: 1)
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        if !model.meals.isEmpty { summaryPanel }
+                        // Match the phone gate: the summary card also carries the Unscheduled
+                        // recap, so show it whenever there are planned OR unscheduled recipes
+                        // (a week with only off-plan adds still needs the side panel).
+                        if !model.meals.isEmpty || !model.unscheduled.isEmpty { summaryPanel }
                         if !model.staples.isEmpty { staplesPanel }
                     }
                     .padding(16)
