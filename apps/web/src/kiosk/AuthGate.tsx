@@ -102,6 +102,11 @@ function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcErr
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(oidcError)
   const [pairing, setPairing] = useState(false)
+  const errorRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (error) errorRef.current?.focus()
+  }, [error])
 
   if (pairing) return <PairDevice onCancel={() => setPairing(false)} />
 
@@ -125,7 +130,11 @@ function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcErr
 
   return (
     <AuthShell title="Welcome back" sub="Sign in to your family's Waffled.">
-      {error && <div className="auth-error" style={{ marginBottom: 12 }}>{error}</div>}
+      {error && (
+        <div ref={errorRef} id="login-error" className="auth-error" style={{ marginBottom: 12 }} role="alert" tabIndex={-1}>
+          {error}
+        </div>
+      )}
       {showOidc && (
         <button type="button" className="btn auth-submit auth-sso" style={{ marginTop: 0 }} onClick={() => authApi.startOidc()}>
           {status!.oidc!.buttonLabel}
@@ -134,10 +143,10 @@ function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcErr
       {showOidc && showPassword && <div className="auth-or">or</div>}
       {showPassword && (
         <form onSubmit={submit} className="auth-form">
-          <label className="auth-label">Email</label>
-          <input className="auth-input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required />
-          <label className="auth-label">Password</label>
-          <input className="auth-input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <label className="auth-label" htmlFor="login-email">Email</label>
+          <input id="login-email" className="auth-input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} aria-describedby={error ? 'login-error' : undefined} autoFocus required />
+          <label className="auth-label" htmlFor="login-password">Password</label>
+          <input id="login-password" className="auth-input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-describedby={error ? 'login-error' : undefined} required />
           <button type="submit" className="btn btn-primary auth-submit" disabled={busy || !email || !password}>
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
@@ -187,6 +196,7 @@ function SetupWizard() {
   const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const errorRef = useRef<HTMLDivElement>(null)
   // Only surface a field's validation hint when the user leaves it still-invalid —
   // and hide it again the moment they resume typing. Never yell mid-keystroke.
   const [showErr, setShowErr] = useState<{ email?: boolean; password?: boolean; confirm?: boolean }>({})
@@ -198,6 +208,10 @@ function SetupWizard() {
   const passwordLongEnough = password.length >= 8
   const passwordsMatch = password === confirm
   const valid = !!(householdName.trim() && timezone.trim() && name.trim() && emailValid && passwordLongEnough && passwordsMatch)
+
+  useEffect(() => {
+    if (error) errorRef.current?.focus()
+  }, [error])
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -224,28 +238,28 @@ function SetupWizard() {
     <AuthShell title="Welcome to Waffled" sub="Let's set up your household and your admin account.">
       <form onSubmit={submit} className="auth-form">
         <div className="auth-section">Your household</div>
-        <label className="auth-label">Household name</label>
-        <input className="auth-input" value={householdName} onChange={(e) => setHouseholdName(e.target.value)} placeholder="The Sites Family" autoFocus required />
-        <label className="auth-label">Timezone</label>
-        <select className="auth-input auth-select" value={timezone} onChange={(e) => setTimezone(e.target.value)} required>
+        <label className="auth-label" htmlFor="setup-household">Household name</label>
+        <input id="setup-household" className="auth-input" value={householdName} onChange={(e) => setHouseholdName(e.target.value)} placeholder="The Sites Family" autoFocus required />
+        <label className="auth-label" htmlFor="setup-timezone">Timezone</label>
+        <select id="setup-timezone" className="auth-input auth-select" value={timezone} onChange={(e) => setTimezone(e.target.value)} required>
           {tzOptions.map((tz) => (
             <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
           ))}
         </select>
 
         <div className="auth-section" style={{ marginTop: 14 }}>Admin account</div>
-        <label className="auth-label">Your name</label>
-        <input className="auth-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="John Doe" required />
-        <label className="auth-label">Email</label>
-        <input className="auth-input" type="email" autoComplete="username" value={email} onChange={(e) => { setEmail(e.target.value); clearErr('email') }} onBlur={() => setShowErr((s) => ({ ...s, email: !!email.trim() && !emailValid }))} placeholder="you@example.com" required />
-        {showErr.email && <div className="auth-error">Enter a valid email address (e.g. you@example.com).</div>}
-        <label className="auth-label">Password</label>
-        <input className="auth-input" type="password" autoComplete="new-password" value={password} onChange={(e) => { setPassword(e.target.value); clearErr('password') }} onBlur={() => setShowErr((s) => ({ ...s, password: !!password && !passwordLongEnough }))} placeholder="At least 8 characters" required />
-        {showErr.password && <div className="auth-error">Password must be at least 8 characters.</div>}
-        <label className="auth-label">Confirm password</label>
-        <input className="auth-input" type="password" autoComplete="new-password" value={confirm} onChange={(e) => { setConfirm(e.target.value); clearErr('confirm') }} onBlur={() => setShowErr((s) => ({ ...s, confirm: !!password && !!confirm && !passwordsMatch }))} required />
-        {showErr.confirm && <div className="auth-error">Passwords don't match.</div>}
-        {error && <div className="auth-error">{error}</div>}
+        <label className="auth-label" htmlFor="setup-name">Your name</label>
+        <input id="setup-name" className="auth-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="John Doe" required />
+        <label className="auth-label" htmlFor="setup-email">Email</label>
+        <input id="setup-email" className="auth-input" type="email" autoComplete="username" value={email} onChange={(e) => { setEmail(e.target.value); clearErr('email') }} onBlur={() => setShowErr((s) => ({ ...s, email: !!email.trim() && !emailValid }))} aria-invalid={showErr.email || undefined} aria-describedby={showErr.email ? 'setup-email-error' : undefined} placeholder="you@example.com" required />
+        {showErr.email && <div id="setup-email-error" className="auth-error">Enter a valid email address (e.g. you@example.com).</div>}
+        <label className="auth-label" htmlFor="setup-password">Password</label>
+        <input id="setup-password" className="auth-input" type="password" autoComplete="new-password" value={password} onChange={(e) => { setPassword(e.target.value); clearErr('password') }} onBlur={() => setShowErr((s) => ({ ...s, password: !!password && !passwordLongEnough }))} aria-invalid={showErr.password || undefined} aria-describedby={showErr.password ? 'setup-password-error' : undefined} placeholder="At least 8 characters" required />
+        {showErr.password && <div id="setup-password-error" className="auth-error">Password must be at least 8 characters.</div>}
+        <label className="auth-label" htmlFor="setup-confirm">Confirm password</label>
+        <input id="setup-confirm" className="auth-input" type="password" autoComplete="new-password" value={confirm} onChange={(e) => { setConfirm(e.target.value); clearErr('confirm') }} onBlur={() => setShowErr((s) => ({ ...s, confirm: !!password && !!confirm && !passwordsMatch }))} aria-invalid={showErr.confirm || undefined} aria-describedby={showErr.confirm ? 'setup-confirm-error' : undefined} required />
+        {showErr.confirm && <div id="setup-confirm-error" className="auth-error">Passwords don't match.</div>}
+        {error && <div ref={errorRef} className="auth-error" role="alert" tabIndex={-1}>{error}</div>}
         <button type="submit" className="btn btn-primary auth-submit" disabled={busy || !valid}>
           {busy ? 'Creating…' : 'Create household'}
         </button>
