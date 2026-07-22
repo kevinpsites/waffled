@@ -231,6 +231,7 @@ struct WbOpenTasksCtx
   lv_obj_t *tasks_scr;
   lv_obj_t *home_scr;
   WbTaskCompleteCallback onComplete;
+  WbTaskCompleteCallback onUncomplete;
 };
 
 static void wb_open_tasks_ctx_delete_cb(lv_event_t *e)
@@ -243,15 +244,16 @@ static void wb_open_tasks_cb(lv_event_t *e)
 {
   WbOpenTasksCtx *ctx = (WbOpenTasksCtx *)lv_event_get_user_data(e);
   lv_obj_clean(ctx->tasks_scr);
-  wb_build_tasks_screen(ctx->tasks_scr, ctx->title, *ctx->routine, ctx->home_scr, ctx->onComplete);
+  wb_build_tasks_screen(ctx->tasks_scr, ctx->title, *ctx->routine, ctx->home_scr, ctx->onComplete, ctx->onUncomplete);
   lv_scr_load_anim(ctx->tasks_scr, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
 }
 
 // Attaches the open-tasks-screen tap handler to a tile/bar that's already
 // clickable (lv_obj_create's default flags include CLICKABLE).
-static void wb_wire_open_tasks(lv_obj_t *tile, const char *title, const WbRoutine &routine, lv_obj_t *tasks_scr, lv_obj_t *home_scr, WbTaskCompleteCallback onComplete)
+static void wb_wire_open_tasks(lv_obj_t *tile, const char *title, const WbRoutine &routine, lv_obj_t *tasks_scr, lv_obj_t *home_scr,
+                                WbTaskCompleteCallback onComplete, WbTaskCompleteCallback onUncomplete)
 {
-  WbOpenTasksCtx *ctx = new WbOpenTasksCtx{title, &routine, tasks_scr, home_scr, onComplete};
+  WbOpenTasksCtx *ctx = new WbOpenTasksCtx{title, &routine, tasks_scr, home_scr, onComplete, onUncomplete};
   lv_obj_add_event_cb(tile, wb_open_tasks_cb, LV_EVENT_CLICKED, ctx);
   lv_obj_add_event_cb(tile, wb_open_tasks_ctx_delete_cb, LV_EVENT_DELETE, ctx);
 }
@@ -337,7 +339,8 @@ void wb_sync_home_screen(lv_obj_t *parent, const WbDeviceState &state)
   sync_routine_widgets(ctx->chores_badge_lbl, ctx->chores_bar_obj, state.chores);
 }
 
-void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *settings_scr, lv_obj_t *tasks_scr, WbTaskCompleteCallback onComplete)
+void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *settings_scr, lv_obj_t *tasks_scr,
+                           WbTaskCompleteCallback onComplete, WbTaskCompleteCallback onUncomplete)
 {
   lv_obj_set_style_bg_color(parent, WB_COLOR_BG, 0);
   lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
@@ -441,13 +444,13 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   lv_obj_t *morning_tile = make_routine_tile(tiles_row, "Morning", state.morning, WB_COLOR_MORNING, WB_COLOR_MORNING_TEXT, &morning_badge_lbl, &morning_bar);
   lv_obj_t *afternoon_tile = make_routine_tile(tiles_row, "Afternoon", state.afternoon, WB_COLOR_AFTERNOON, WB_COLOR_AFTERNOON_TEXT, &afternoon_badge_lbl, &afternoon_bar);
   lv_obj_t *evening_tile = make_routine_tile(tiles_row, "Evening", state.evening, WB_COLOR_EVENING, WB_COLOR_EVENING_TEXT, &evening_badge_lbl, &evening_bar);
-  wb_wire_open_tasks(morning_tile, "Morning", state.morning, tasks_scr, parent, onComplete);
-  wb_wire_open_tasks(afternoon_tile, "Afternoon", state.afternoon, tasks_scr, parent, onComplete);
-  wb_wire_open_tasks(evening_tile, "Evening", state.evening, tasks_scr, parent, onComplete);
+  wb_wire_open_tasks(morning_tile, "Morning", state.morning, tasks_scr, parent, onComplete, onUncomplete);
+  wb_wire_open_tasks(afternoon_tile, "Afternoon", state.afternoon, tasks_scr, parent, onComplete, onUncomplete);
+  wb_wire_open_tasks(evening_tile, "Evening", state.evening, tasks_scr, parent, onComplete, onUncomplete);
 
   lv_obj_t *chores_badge_lbl = nullptr, *chores_bar_obj = nullptr;
   lv_obj_t *chores_bar = make_chores_bar(right_col, state.chores, &chores_badge_lbl, &chores_bar_obj);
-  wb_wire_open_tasks(chores_bar, "Chores", state.chores, tasks_scr, parent, onComplete);
+  wb_wire_open_tasks(chores_bar, "Chores", state.chores, tasks_scr, parent, onComplete, onUncomplete);
 
   // Stash the pieces wb_sync_home_screen updates in place on later polls —
   // see WbHomeSyncCtx's comment for the leak-avoidance rule (delete cb on

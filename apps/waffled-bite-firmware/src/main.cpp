@@ -180,13 +180,12 @@ static void wb_mark_poll_ok()
 static void wb_show_onboarding();
 static void wb_enter_app();
 
-// Clears the local pairing and falls back to onboarding — shared by (1) the
-// server telling us we're revoked (401 on a token refresh OR now on a live
-// poll — see wb_do_poll) and (2) the on-device "Forget this device" confirm
-// screen (settings_screen.cpp's 5-tap sequence into forget_confirm_screen.h).
-// Deliberately does NOT call the server: a device-initiated forget is
-// purely local (the parent web app's own "Unpair" button already handles
-// the server side, independently).
+// Clears the local pairing and falls back to onboarding. Does NOT itself
+// touch the server — used as-is when the SERVER already told us we're
+// revoked (401 on a token refresh or a live poll — see wb_do_poll), where
+// there's nothing left to tell it. wb_forget_pairing_and_unpair (below)
+// wraps this with the actual server call for the case where the DEVICE is
+// the one initiating the forget.
 static void wb_forget_pairing()
 {
   wb_store_clear("deviceSecret");
@@ -199,7 +198,26 @@ static void wb_forget_pairing()
   wb_mark_poll_ok(); // hide any stale "Offline" badge before onboarding takes over
   wb_show_onboarding();
 }
+
+// The on-device "Forget this device" confirm screen (settings_screen.cpp's
+// 5-tap sequence into forget_confirm_screen.h) — the DEVICE is initiating
+// this, unlike wb_forget_pairing's other caller, so tell the server first
+// (POST /device/unpair, same revocation the parent web app's own "Unpair"
+// button triggers) so the device is ACTUALLY unpaired, not just locally
+// forgetful of its own secret. Best-effort: a network hiccup shouldn't
+// block forgetting locally — the local clear always happens regardless.
+static void wb_forget_pairing_and_unpair()
+{
+  if (!g_accessToken.empty())
+  {
+    std::string url = g_serverUrl + "/api/waffled-bites/device/unpair";
+    wb_http_post(url.c_str(), "{}", g_accessToken.c_str());
+  }
+  wb_forget_pairing();
+}
+
 static bool wb_complete_task(const std::string &taskId);
+static bool wb_uncomplete_task(const std::string &taskId);
 static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue);
 static bool wb_start_timer(int durationSec);
 static bool wb_end_timer();
@@ -294,9 +312,9 @@ static void wb_do_poll()
     if (!g_liveScreensBuilt)
     {
       lv_obj_clean(home_scr);
-      wb_build_home_screen(home_scr, liveState, settings_scr, tasks_scr, wb_complete_task);
+      wb_build_home_screen(home_scr, liveState, settings_scr, tasks_scr, wb_complete_task, wb_uncomplete_task);
       lv_obj_clean(settings_scr);
-      wb_build_settings_screen(settings_scr, liveState, home_scr, detail_scr, timer_scr, bedtime_scr, forget_scr, wb_patch_settings, wb_forget_pairing);
+      wb_build_settings_screen(settings_scr, liveState, home_scr, detail_scr, timer_scr, bedtime_scr, forget_scr, wb_patch_settings, wb_forget_pairing_and_unpair);
       lv_obj_clean(timer_scr);
       wb_build_timer_screen(timer_scr, liveState.timer, settings_scr, wb_start_timer, wb_end_timer);
       g_timerWasActive = liveState.timer.active;
@@ -451,6 +469,27 @@ static bool wb_complete_task(const std::string &taskId)
   return ok;
 }
 
+// tasks_screen.h's onUncomplete — un-tapping an already-done row. Mirrors
+// wb_complete_task exactly, just POSTing .../uncomplete instead.
+static bool wb_uncomplete_task(const std::string &taskId)
+{
+  if (taskId.empty())
+    return false;
+
+  if (wb_tick_ms() >= g_tokenExpiresAtMs)
+  {
+    if (!wb_refresh_access_token())
+      return false;
+  }
+
+  std::string url = g_serverUrl + "/api/waffled-bites/device/tasks/" + taskId + "/uncomplete";
+  WbHttpResponse resp = wb_http_post(url.c_str(), "{}", g_accessToken.c_str());
+  bool ok = resp.ok && resp.status == 200;
+  if (ok)
+    wb_do_poll();
+  return ok;
+}
+
 // The settings detail screen's onChange callback (settings_screen.h).
 // Synchronous, same pattern as wb_complete_task: refreshes the token first
 // if due, PATCHes the whole sub-object (device/settings only merges keys
@@ -541,8 +580,8 @@ static void wb_enter_app()
   g_liveScreensBuilt = false; // next wb_do_poll() does one real full build, not a sync
   lv_obj_clean(home_scr);
   lv_obj_clean(settings_scr);
-  wb_build_home_screen(home_scr, wb_mock_state(), settings_scr, tasks_scr, wb_complete_task);
-  wb_build_settings_screen(settings_scr, wb_mock_state(), home_scr, detail_scr, timer_scr, bedtime_scr, forget_scr, wb_patch_settings, wb_forget_pairing);
+  wb_build_home_screen(home_scr, wb_mock_state(), settings_scr, tasks_scr, wb_complete_task, wb_uncomplete_task);
+  wb_build_settings_screen(settings_scr, wb_mock_state(), home_scr, detail_scr, timer_scr, bedtime_scr, forget_scr, wb_patch_settings, wb_forget_pairing_and_unpair);
   lv_scr_load(home_scr);
 
   wb_do_poll(); // also does timer_scr/bedtime_scr's real first build — see wb_do_poll's g_liveScreensBuilt branch

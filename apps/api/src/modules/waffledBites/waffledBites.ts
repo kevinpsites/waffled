@@ -23,6 +23,7 @@ import {
   todayDate,
   householdTz,
   completeInstance,
+  uncompleteInstance,
   presentInstance,
   ProofRequiredError,
 } from '../chores/chores.service'
@@ -422,6 +423,31 @@ export function registerWaffledBiteRoutes(api: Api): void {
     }
   })
 
+  // Un-tap: reverses an accidental (or since-changed-their-mind) tap, same
+  // action the kiosk's own uncomplete already offers any household member —
+  // the device route was just never wired up for it. Mirrors /complete
+  // above exactly (same ownership check, same synthetic tenant).
+  api.post('/api/waffled-bites/device/tasks/:instanceId/uncomplete', async (req: Request, res: Response) => {
+    const device = await requireWaffledBiteDevice(req)
+    const instanceId = req.params.instanceId ?? ''
+    if (!UUID_RE.test(instanceId)) return res.status(404).json({ error: 'NotFound', message: 'task not found' })
+    const owns = await query(
+      `select 1 from chore_instances where id = $1 and household_id = $2 and person_id = $3 and deleted_at is null`,
+      [instanceId, device.householdId, device.personId]
+    )
+    if (!owns.rows.length) return res.status(404).json({ error: 'NotFound', message: 'task not found' })
+    const syntheticTenant: Tenant = {
+      sub: `waffled-bite-device:${device.deviceId}`,
+      personId: device.personId,
+      householdId: device.householdId,
+      isAdmin: false,
+      memberType: 'kid',
+    }
+    const inst = await uncompleteInstance(syntheticTenant, instanceId)
+    if (!inst) return res.status(404).json({ error: 'NotFound', message: 'task not found' })
+    return { instance: presentInstance(inst) }
+  })
+
   // The on-device "Grown-up controls" screen only has the device's own access
   // token available (no admin login flow on-device) — a separate, narrower write
   // path than the parent-side route below. Allowlisted to sound/night only, so a
@@ -574,4 +600,18 @@ export function registerWaffledBiteRoutes(api: Api): void {
     if (!rowCount) return res.status(404).json({ error: 'NotFound', message: 'device not found' })
     return { ok: true }
   }))
+
+  // ── unpair (device side — "Forget this device" on the device itself) ───────
+  // Same revocation the admin route above does, just self-scoped via device
+  // auth instead of a parent's admin token — the device's own "Forget this
+  // device" flow calls this so a forgotten device is ACTUALLY unpaired
+  // server-side, not just locally forgetful of its own secret.
+  api.post('/api/waffled-bites/device/unpair', async (req: Request, res: Response) => {
+    const device = await requireWaffledBiteDevice(req)
+    await query(
+      `update waffled_bite_devices set revoked_at = now() where id = $1 and revoked_at is null`,
+      [device.deviceId]
+    )
+    return { ok: true }
+  })
 }

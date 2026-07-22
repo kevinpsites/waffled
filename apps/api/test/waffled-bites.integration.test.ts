@@ -162,6 +162,19 @@ describe('waffled-bites device pairing + parent control panel', () => {
     expect(json(wrongDevice).instance.status).toBe('done')
   })
 
+  it('lets the device un-tap a task it (or a parent) marked done, same as the kiosk uncomplete', async () => {
+    const uncomplete = await call('POST', `/api/waffled-bites/device/tasks/${afternoonId}/uncomplete`, undefined, deviceToken)
+    expect(uncomplete.statusCode).toBe(200)
+    expect(json(uncomplete).instance.status).toBe('pending')
+
+    const state = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
+    expect(state.stars).toBe(1) // the 2-star "Quiet reading" award is reversed; the 1-star "Get dressed" one stands
+    expect(state.routines.afternoon.find((t: { id: string }) => t.id === afternoonId).status).toBe('pending')
+
+    // Re-complete it so later tests see the same "done" state they'd expect otherwise.
+    expect((await call('POST', `/api/waffled-bites/device/tasks/${afternoonId}/complete`, undefined, deviceToken)).statusCode).toBe(200)
+  })
+
   // ── nudges: read-once ────────────────────────────────────────────────────────
   it('delivers a nudge to the device once, then clears it', async () => {
     expect((await call('POST', `/api/waffled-bites/${deviceId}/nudge`, { message: 'Dinner is ready' }, admin)).statusCode).toBe(200)
@@ -321,5 +334,21 @@ describe('waffled-bites device pairing + parent control panel', () => {
     expect((await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken)).statusCode).toBe(401)
     const none = json(await call('GET', `/api/persons/${kid}/waffled-bite`, undefined, admin))
     expect(none.device).toBeNull()
+  })
+
+  // ── device self-unpair ("Forget this device" on the device itself) ─────────────
+  it('lets a device unpair itself, same effect as the parent web app\'s unpair', async () => {
+    const code = json(await call('POST', `/api/persons/${otherKid}/waffled-bite/pairing-code`, {}, admin)).code
+    const paired = json(await call('POST', '/api/waffled-bites/pair', { code }))
+    const otherDeviceId: string = paired.deviceId
+    const otherDeviceToken = json(await call('POST', '/api/waffled-bites/device/token', { deviceSecret: paired.deviceSecret })).accessToken
+
+    expect((await call('POST', '/api/waffled-bites/device/unpair', undefined, otherDeviceToken)).statusCode).toBe(200)
+    expect((await call('GET', '/api/waffled-bites/device/state', undefined, otherDeviceToken)).statusCode).toBe(401)
+    const none = json(await call('GET', `/api/persons/${otherKid}/waffled-bite`, undefined, admin))
+    expect(none.device).toBeNull()
+
+    // Idempotent-ish: an already-revoked device's own unpair call 404s, not a crash.
+    expect((await call('POST', `/api/waffled-bites/${otherDeviceId}/nudge`, { message: 'x' }, admin)).statusCode).toBe(404)
   })
 })

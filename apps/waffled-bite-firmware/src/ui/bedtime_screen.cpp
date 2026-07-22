@@ -36,6 +36,15 @@ static uint32_t wb_bedtime_hex(const char *colorKey)
   return WB_BEDTIME_COLORS[0].hex; // unknown/stale key — fall back rather than show black
 }
 
+// A nightlight that's OFF has no light to show — dark, not "the last-set
+// color, ignoring the toggle". Applies to both the plain preview tile and
+// the wake-light sleep lock below (a parent turning the nightlight off
+// shouldn't leave the forced overnight screen still glowing that color).
+static uint32_t wb_night_color_hex(const WbDeviceState &state)
+{
+  return state.night.on ? wb_bedtime_hex(state.night.color) : 0x000000;
+}
+
 WbGlowSpec wb_glow_spec_for_device_state(const WbDeviceState &state)
 {
   // Quiet time wins if both are somehow active at once — see this file's
@@ -43,14 +52,14 @@ WbGlowSpec wb_glow_spec_for_device_state(const WbDeviceState &state)
   if (!state.quiet.active)
   {
     if (state.wakeLight.state == WbWakeLightState::Sleep)
-      return {wb_bedtime_hex(state.night.color), state.night.brightness, nullptr, false, true, -1, -1};
+      return {wb_night_color_hex(state), state.night.brightness, nullptr, false, true, -1, -1};
     if (state.wakeLight.state == WbWakeLightState::Warn)
       return {WB_WARN_HEX, 80, "Almost time to wake up", false, true, state.wakeLight.wakeAtHour, state.wakeLight.wakeAtMinute};
     if (state.wakeLight.state == WbWakeLightState::Wake)
       return {WB_WAKE_HEX, 80, "Time to get up!", true, true, state.wakeLight.wakeAtHour, state.wakeLight.wakeAtMinute};
   }
   // Plain preview — what the Bedtime tile always showed, before the wake-light schedule existed.
-  return {wb_bedtime_hex(state.night.color), state.night.brightness, nullptr, true, false, -1, -1};
+  return {wb_night_color_hex(state), state.night.brightness, nullptr, true, false, -1, -1};
 }
 
 // A single flat full-screen fill — went through a concentric-circles

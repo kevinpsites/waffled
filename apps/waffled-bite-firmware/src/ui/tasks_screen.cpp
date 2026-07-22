@@ -41,19 +41,22 @@ static lv_obj_t *make_badge(lv_obj_t *parent, const char *text, lv_color_t bg, l
 }
 
 // Owns everything one row's tap handler needs: the task id to POST, the
-// checkbox/label to update in place, and the (possibly-empty, if this task
-// came from mock data) completion callback. Heap-allocated per row and freed
-// on LV_EVENT_DELETE — unlike onboarding_screen.cpp's context (built once at
-// boot, "intentionally never freed" is fine there), this screen gets rebuilt
-// every time a routine tile is tapped, so leaving these unfreed would leak a
-// little more heap every single tap over the device's lifetime.
+// checkbox/label to update in place, current done-state (so a tap knows
+// which direction to flip), and the complete/uncomplete callbacks. Heap-
+// allocated per row and freed on LV_EVENT_DELETE — unlike
+// onboarding_screen.cpp's context (built once at boot, "intentionally never
+// freed" is fine there), this screen gets rebuilt every time a routine tile
+// is tapped, so leaving these unfreed would leak a little more heap every
+// single tap over the device's lifetime.
 struct WbTaskRowCtx
 {
   std::string taskId;
   lv_obj_t *checkbox;
   lv_obj_t *checkbox_icon;
   lv_obj_t *label;
+  bool done;
   WbTaskCompleteCallback onComplete;
+  WbTaskCompleteCallback onUncomplete;
 };
 
 static void wb_row_ctx_delete_cb(lv_event_t *e)
@@ -72,31 +75,38 @@ static void wb_set_row_done_visual(WbTaskRowCtx *ctx, bool done)
   lv_obj_set_style_text_color(ctx->label, done ? WB_COLOR_MUTED : WB_COLOR_INK, 0);
 }
 
-// Single tap, no confirmation dialog (kid-facing device — matches the
-// project's established UX call). Optimistically flips to done immediately;
-// reverts if the POST comes back false (network error, 404, or a
-// photo-proof-required chore the device can't satisfy on its own yet).
+// A tap toggles: undone -> done calls onComplete, done -> undone calls
+// onUncomplete (a mis-tap, or a kid changing their mind — same "no
+// confirmation dialog" UX call as completing). Optimistically flips the
+// visual immediately; reverts if the POST comes back false (network error,
+// 404, or — completing only — a photo-proof-required chore the device can't
+// satisfy on its own yet).
 static void wb_row_clicked_cb(lv_event_t *e)
 {
   WbTaskRowCtx *ctx = (WbTaskRowCtx *)lv_event_get_user_data(e);
   lv_obj_t *row = (lv_obj_t *)lv_event_get_target(e);
 
-  // Only undone, id-bearing rows get this handler attached in the first
-  // place (see wb_make_task_row) — no runtime "already done" guard needed.
-  wb_set_row_done_visual(ctx, true);
+  bool wasDone = ctx->done;
+  bool target = !wasDone;
+  wb_set_row_done_visual(ctx, target);
   lv_obj_remove_event_cb(row, wb_row_clicked_cb);
   lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
 
-  bool ok = ctx->onComplete && ctx->onComplete(ctx->taskId);
-  if (!ok)
+  WbTaskCompleteCallback &cb = target ? ctx->onComplete : ctx->onUncomplete;
+  bool ok = cb && cb(ctx->taskId);
+  if (ok)
   {
-    wb_set_row_done_visual(ctx, false);
-    lv_obj_add_event_cb(row, wb_row_clicked_cb, LV_EVENT_CLICKED, ctx);
-    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    ctx->done = target;
   }
+  else
+  {
+    wb_set_row_done_visual(ctx, wasDone);
+  }
+  lv_obj_add_event_cb(row, wb_row_clicked_cb, LV_EVENT_CLICKED, ctx);
+  lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
 }
 
-static void wb_make_task_row(lv_obj_t *parent, const WbTask &task, WbTaskCompleteCallback onComplete)
+static void wb_make_task_row(lv_obj_t *parent, const WbTask &task, WbTaskCompleteCallback onComplete, WbTaskCompleteCallback onUncomplete)
 {
   lv_obj_t *row = lv_obj_create(parent);
   lv_obj_remove_style_all(row);
@@ -146,21 +156,23 @@ static void wb_make_task_row(lv_obj_t *parent, const WbTask &task, WbTaskComplet
 
   // Mock data (native's placeholder before the first real poll) uses empty
   // ids — nothing to POST against, so those rows render but don't accept
-  // taps. Already-done rows likewise get no handler.
-  bool interactive = !task.done && task.id[0] != '\0';
+  // taps. Both done and undone real rows are tappable now — a tap toggles
+  // either direction (see wb_row_clicked_cb).
+  bool interactive = task.id[0] != '\0';
   if (!interactive)
   {
     lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
   }
   else
   {
-    WbTaskRowCtx *ctx = new WbTaskRowCtx{std::string(task.id), checkbox, checkbox_icon, label, onComplete};
+    WbTaskRowCtx *ctx = new WbTaskRowCtx{std::string(task.id), checkbox, checkbox_icon, label, task.done, onComplete, onUncomplete};
     lv_obj_add_event_cb(row, wb_row_clicked_cb, LV_EVENT_CLICKED, ctx);
     lv_obj_add_event_cb(row, wb_row_ctx_delete_cb, LV_EVENT_DELETE, ctx);
   }
 }
 
-void wb_build_tasks_screen(lv_obj_t *parent, const char *title, const WbRoutine &routine, lv_obj_t *home_scr, WbTaskCompleteCallback onComplete)
+void wb_build_tasks_screen(lv_obj_t *parent, const char *title, const WbRoutine &routine, lv_obj_t *home_scr,
+                            WbTaskCompleteCallback onComplete, WbTaskCompleteCallback onUncomplete)
 {
   lv_obj_set_style_bg_color(parent, WB_COLOR_BG, 0);
   lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
@@ -217,5 +229,5 @@ void wb_build_tasks_screen(lv_obj_t *parent, const char *title, const WbRoutine 
   }
 
   for (int i = 0; i < routine.count; i++)
-    wb_make_task_row(list, routine.tasks[i], onComplete);
+    wb_make_task_row(list, routine.tasks[i], onComplete, onUncomplete);
 }

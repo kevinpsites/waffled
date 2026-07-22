@@ -13,9 +13,10 @@
 // lv_scr_load on gear/back taps). `settings_scr` is the screen the gear
 // button navigates to. `tasks_scr` is a fourth screen object, reused/rebuilt
 // each time a routine tile or the Chores bar is tapped, showing that
-// routine's tap-to-complete task list (see tasks_screen.h); `onComplete` is
-// forwarded straight through to it.
-void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *settings_scr, lv_obj_t *tasks_scr, WbTaskCompleteCallback onComplete);
+// routine's tap-to-complete task list (see tasks_screen.h); `onComplete`/
+// `onUncomplete` are forwarded straight through to it.
+void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *settings_scr, lv_obj_t *tasks_scr,
+                           WbTaskCompleteCallback onComplete, WbTaskCompleteCallback onUncomplete);
 
 // Pushes updated stars/routine-progress values into an ALREADY-BUILT home
 // screen (main.cpp calls this on every poll after the first, instead of
