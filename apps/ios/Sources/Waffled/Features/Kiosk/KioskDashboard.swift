@@ -22,12 +22,8 @@ struct KioskDashboard: View {
 
     @State private var model = KioskTodayModel()
     @State private var recipes = RecipesModel()
-    @State private var countdowns = CountdownsModel()
     @State private var pantry = PantryModel()
     @State private var familyNight = FamilyNightModel()
-    @State private var addCountdown = false
-    /// Tapped standalone countdown being renamed/moved (parity with the phone Today card).
-    @State private var editingCountdown: WaffledAPI.Countdown?
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
     @State private var showCapture = false
@@ -95,9 +91,8 @@ struct KioskDashboard: View {
         .background(WF.canvas)
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .task { await sync.loadIdentity() }
-        .task { await countdowns.load() }
         // Pantry card data (only when the module's on; no dedicated sync bus, so a
-        // single load on appear — same as countdowns).
+        // single load on appear).
         // Key these to modulesRev: the flags often load *after* first appear, so a plain
         // .task would read the module as off and never fetch. Re-running on modulesRev
         // means they load as soon as the household's module state is known.
@@ -178,14 +173,6 @@ struct KioskDashboard: View {
         }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $addCountdown) {
-            AddCountdownSheet { title, date, emoji in await countdowns.add(title: title, date: date, emoji: emoji) }
-        }
-        .sheet(item: $editingCountdown) { c in
-            EditCountdownSheet(countdown: c,
-                onSave: { title, date, emoji in await countdowns.update(c, title: title, date: date, emoji: emoji) },
-                onRemove: { await countdowns.remove(c) })
         }
         .sheet(isPresented: $showApprovals) {
             NavigationStack { ApprovalsView() }.modifier(KioskSheetPresentation(kiosk: isKiosk))
@@ -287,7 +274,7 @@ struct KioskDashboard: View {
     private var agendaCol: some View {
         VStack(spacing: 22) {
             agendaColumn
-            if countdowns.loaded { kioskCountdownsCard }
+            CountdownsCard(kiosk: true)
             // Pantry rides here (content-sized cards), gated by the household "show on
             // Today" toggle — so turning it off in Settings → Pantry hides it, matching web.
             if sync.module(.pantry), pantry.loaded, pantry.showOnToday { kioskPantryCard }
@@ -350,56 +337,6 @@ struct KioskDashboard: View {
         }
     }
 
-    /// Compact countdowns card under the agenda column (iPad Today). Standalone items can
-    /// be added (header "+ Add") and removed (row ✕) right here; events/birthdays are
-    /// managed at their source (the event editor's countdown toggle · a member's birthday).
-    @ViewBuilder private var kioskCountdownsCard: some View {
-        KioskCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Text("Countdowns").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
-                    Spacer(minLength: 6)
-                    Button { addCountdown = true } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus").font(.system(size: 12, weight: .bold))
-                            Text("Add").font(.system(size: 14, weight: .semibold))
-                        }.foregroundStyle(WF.ai)
-                    }.buttonStyle(.plain)
-                }
-                if countdowns.items.isEmpty {
-                    Text("Nothing to count down to yet — add a trip; birthdays are automatic.")
-                        .font(.system(size: 15)).foregroundStyle(WF.ink3)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
-                } else {
-                    ForEach(countdowns.items.prefix(4)) { c in
-                        HStack(spacing: 12) {
-                            Text(c.emoji ?? "📅").font(.system(size: 22))
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(c.title).font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
-                                Text(CountdownFormat.dateLabel(c.date)).font(.system(size: 13)).foregroundStyle(WF.ink3)
-                            }
-                            Spacer(minLength: 8)
-                            Text(CountdownFormat.label(c.daysLeft, sleeps: countdowns.sleeps))
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(c.daysLeft <= 7 ? WF.primaryD : WF.ink2)
-                            if c.isStandalone {
-                                Button { Task { await countdowns.remove(c) } } label: {
-                                    Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundStyle(WF.ink3)
-                                }.buttonStyle(.plain)
-                            }
-                        }
-                        // Tap a standalone row to rename/move it; the × still removes.
-                        // Events/birthdays are managed at their source, so they don't tap.
-                        .contentShape(Rectangle())
-                        .onTapGesture { if c.isStandalone { editingCountdown = c } }
-                    }
-                    if countdowns.items.count > 4 {
-                        Text("+\(countdowns.items.count - 4) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
-                    }
-                }
-            }
-        }
-    }
     // Center column: tonight + this week's dinners, then Family Night (the evening
     // gathering pairs with the meal plan). Scrolls its own overflow.
     private var mealsCol: some View {

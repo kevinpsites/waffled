@@ -70,37 +70,20 @@ final class CountdownsModel {
 
 // MARK: - Today card
 
+/// The Today countdowns card, shared by iPhone (`kiosk == false`, `WaffledCard` chrome)
+/// and the iPad family display (`kiosk == true`, `KioskCard` chrome + larger type, fewer
+/// rows). Self-contained: it owns its `CountdownsModel` + the add/edit sheets, so both
+/// screens get add / rename-move (tap a standalone row) / remove without re-wiring.
 struct CountdownsCard: View {
+    var kiosk = false
     @State private var model = CountdownsModel()
     @State private var adding = false
     @State private var editing: WaffledAPI.Countdown?
-    private let cap = 6
+    private var cap: Int { kiosk ? 4 : 6 }
 
     var body: some View {
-        WaffledCard(padding: 15) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Countdowns").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
-                    Spacer()
-                    Button { adding = true } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "plus").font(.system(size: 10, weight: .bold))
-                            Text("Add").font(.system(size: 12, weight: .semibold))
-                        }.foregroundStyle(WF.ai)
-                    }.buttonStyle(.plain)
-                }
-                if model.items.isEmpty {
-                    Text(model.loaded ? "Nothing to count down to yet — add a trip; birthdays are automatic."
-                                      : "Loading…")
-                        .font(.system(size: 13)).foregroundStyle(WF.ink3)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    ForEach(model.items.prefix(cap)) { row($0) }
-                    if model.items.count > cap {
-                        Text("+\(model.items.count - cap) more").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
-                    }
-                }
-            }
+        Group {
+            if kiosk { KioskCard { inner } } else { WaffledCard(padding: 15) { inner } }
         }
         .task { await model.load() }
         .sheet(isPresented: $adding) {
@@ -113,24 +96,57 @@ struct CountdownsCard: View {
         }
     }
 
+    @ViewBuilder private var inner: some View {
+        VStack(alignment: .leading, spacing: kiosk ? 12 : 10) {
+            HStack(spacing: 8) {
+                Text("Countdowns")
+                    .font(kiosk ? .system(size: 16, weight: .heavy) : .system(size: 12.5, weight: .bold))
+                    .foregroundStyle(kiosk ? WF.ink : WF.ink2)
+                Spacer(minLength: 6)
+                Button { adding = true } label: {
+                    HStack(spacing: kiosk ? 4 : 3) {
+                        Image(systemName: "plus").font(.system(size: kiosk ? 12 : 10, weight: .bold))
+                        Text("Add").font(.system(size: kiosk ? 14 : 12, weight: .semibold))
+                    }.foregroundStyle(WF.ai)
+                }.buttonStyle(.plain)
+            }
+            if model.items.isEmpty {
+                Text(model.loaded ? "Nothing to count down to yet — add a trip; birthdays are automatic."
+                                  : "Loading…")
+                    .font(.system(size: kiosk ? 15 : 13)).foregroundStyle(WF.ink3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, kiosk ? 4 : 0)
+            } else {
+                ForEach(model.items.prefix(cap)) { row($0) }
+                if model.items.count > cap {
+                    Text("+\(model.items.count - cap) more").font(.system(size: kiosk ? 13 : 11, weight: .semibold)).foregroundStyle(WF.ink3)
+                }
+            }
+        }
+    }
+
     private func row(_ c: WaffledAPI.Countdown) -> some View {
         let soon = c.daysLeft <= 7
-        return HStack(spacing: 10) {
-            Text(c.emoji ?? "📅").font(.system(size: 17))
-                .frame(width: 32, height: 32)
-                .background((c.color.flatMap { Color(hexString: $0) } ?? WF.panel).opacity(c.color == nil ? 1 : 0.16))
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(c.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
-                Text(CountdownFormat.dateLabel(c.date)).font(.system(size: 11)).foregroundStyle(WF.ink3)
+        return HStack(spacing: kiosk ? 12 : 10) {
+            if kiosk {
+                Text(c.emoji ?? "📅").font(.system(size: 22))
+            } else {
+                Text(c.emoji ?? "📅").font(.system(size: 17))
+                    .frame(width: 32, height: 32)
+                    .background((c.color.flatMap { Color(hexString: $0) } ?? WF.panel).opacity(c.color == nil ? 1 : 0.16))
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             }
-            Spacer(minLength: 6)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(c.title).font(.system(size: kiosk ? 18 : 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                Text(CountdownFormat.dateLabel(c.date)).font(.system(size: kiosk ? 13 : 11)).foregroundStyle(WF.ink3)
+            }
+            Spacer(minLength: kiosk ? 8 : 6)
             Text(CountdownFormat.label(c.daysLeft, sleeps: model.sleeps))
-                .font(.system(size: 12.5, weight: .bold))
+                .font(.system(size: kiosk ? 15 : 12.5, weight: .bold))
                 .foregroundStyle(soon ? WF.primaryD : WF.ink2)
             if c.isStandalone {
                 Button { Task { await model.remove(c) } } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(WF.ink3)
+                    Image(systemName: "xmark.circle.fill").font(.system(size: kiosk ? 18 : 15)).foregroundStyle(WF.ink3)
                 }.buttonStyle(.plain)
             }
         }
