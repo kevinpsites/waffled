@@ -21,6 +21,7 @@ struct KioskCalendarView: View {
     @State private var detailEvent: SyncedEvent?
     @State private var headsUp: WaffledAPI.HeadsUp?
     @State private var countdowns = CountdownsModel()
+    @State private var editingCountdown: WaffledAPI.Countdown?
 
     private var tz: TimeZone { sync.householdTz }
 
@@ -37,6 +38,20 @@ struct KioskCalendarView: View {
         return out
     }
     private var selectedItems: [SyncedEvent] { filteredByDay[selectedDay] ?? [] }
+
+    /// Tapping a countdown row (parity with the phone calendar): standalone → inline
+    /// rename/move/remove editor; an event-source countdown → that event's detail;
+    /// birthday → no-op (managed on the person's profile).
+    private func openCountdown(_ c: WaffledAPI.Countdown) {
+        switch c.source {
+        case "standalone": editingCountdown = c
+        case "event": if let ev = sync.events.first(where: { $0.id == c.id }) { detailEvent = ev }
+        default: break
+        }
+    }
+
+    /// Countdowns on a day (today forward), rendered as all-day rows in the day panel + agenda.
+    private func countdownsForDay(_ day: String) -> [WaffledAPI.Countdown] { countdowns.byDate[day] ?? [] }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -55,6 +70,11 @@ struct KioskCalendarView: View {
             }
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
+        .sheet(item: $editingCountdown) { c in
+            EditCountdownSheet(countdown: c,
+                onSave: { title, date, emoji in await countdowns.update(c, title: title, date: date, emoji: emoji) },
+                onRemove: { await countdowns.remove(c) })
+        }
         .task { await countdowns.load() }
         .task {
             guard DemoHooks.kioskOpenEvent || DemoHooks.kioskOpenEdit else { return }
@@ -295,7 +315,8 @@ struct KioskCalendarView: View {
                 Spacer()
             }
             .padding(.bottom, 14)
-            if selectedItems.isEmpty {
+            let dayCountdowns = countdownsForDay(selectedDay)
+            if selectedItems.isEmpty && dayCountdowns.isEmpty {
                 Button { editing = .new(dayKeyToDate(selectedDay) ?? Date()) } label: {
                     VStack(spacing: 10) {
                         Image(systemName: "calendar.badge.plus").font(.system(size: 30)).foregroundStyle(WF.ink3)
@@ -308,6 +329,10 @@ struct KioskCalendarView: View {
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 10) {
+                        // Countdowns sit at the top as all-day rows (like the phone calendar).
+                        ForEach(dayCountdowns) { c in
+                            CountdownCard(countdown: c, sleeps: countdowns.sleeps) { openCountdown(c) }
+                        }
                         ForEach(selectedItems) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
                     }
                 }
@@ -327,17 +352,26 @@ struct KioskCalendarView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("What's coming up").font(WF.serif(28)).foregroundStyle(WF.ink)
-                    let groups = Agenda.upcoming(byDay: byDay, from: Agenda.todayKey(tz))
-                    if groups.isEmpty {
+                    // Merge event days with countdown days (today forward) so a day that has
+                    // only a countdown still shows up — parity with the phone agenda.
+                    let today = Agenda.todayKey(tz)
+                    let eventsByDay = Dictionary(uniqueKeysWithValues:
+                        Agenda.upcoming(byDay: byDay, from: today).map { ($0.day, $0.items) })
+                    let cdDays = countdowns.byDate.filter { $0.key >= today && !$0.value.isEmpty }.keys
+                    let days = Set(eventsByDay.keys).union(cdDays).sorted()
+                    if days.isEmpty {
                         Text("Nothing upcoming.").font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 14)
                     } else {
-                        ForEach(groups, id: \.day) { g in
+                        ForEach(days, id: \.self) { day in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack(spacing: 8) {
-                                    Text(relativeLabel(g.day)).font(WF.serif(20)).foregroundStyle(WF.ink)
-                                    Text(agendaDateLabel(g.day)).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+                                    Text(relativeLabel(day)).font(WF.serif(20)).foregroundStyle(WF.ink)
+                                    Text(agendaDateLabel(day)).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                                 }
-                                ForEach(g.items) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
+                                ForEach(countdownsForDay(day)) { c in
+                                    CountdownCard(countdown: c, sleeps: countdowns.sleeps) { openCountdown(c) }
+                                }
+                                ForEach(eventsByDay[day] ?? []) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
                             }
                         }
                     }

@@ -26,6 +26,8 @@ struct KioskDashboard: View {
     @State private var pantry = PantryModel()
     @State private var familyNight = FamilyNightModel()
     @State private var addCountdown = false
+    /// Tapped standalone countdown being renamed/moved (parity with the phone Today card).
+    @State private var editingCountdown: WaffledAPI.Countdown?
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
     @State private var showCapture = false
@@ -179,6 +181,11 @@ struct KioskDashboard: View {
         }
         .sheet(isPresented: $addCountdown) {
             AddCountdownSheet { title, date, emoji in await countdowns.add(title: title, date: date, emoji: emoji) }
+        }
+        .sheet(item: $editingCountdown) { c in
+            EditCountdownSheet(countdown: c,
+                onSave: { title, date, emoji in await countdowns.update(c, title: title, date: date, emoji: emoji) },
+                onRemove: { await countdowns.remove(c) })
         }
         .sheet(isPresented: $showApprovals) {
             NavigationStack { ApprovalsView() }.modifier(KioskSheetPresentation(kiosk: isKiosk))
@@ -381,6 +388,10 @@ struct KioskDashboard: View {
                                 }.buttonStyle(.plain)
                             }
                         }
+                        // Tap a standalone row to rename/move it; the × still removes.
+                        // Events/birthdays are managed at their source, so they don't tap.
+                        .contentShape(Rectangle())
+                        .onTapGesture { if c.isStandalone { editingCountdown = c } }
                     }
                     if countdowns.items.count > 4 {
                         Text("+\(countdowns.items.count - 4) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
