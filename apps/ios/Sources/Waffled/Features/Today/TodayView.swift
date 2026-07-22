@@ -370,7 +370,8 @@ struct TodayView: View {
                      goal: KioskDashboard.featuredGoal(dash.goals, pinnedId: todayGoalId,
                                                        memberIds: Set(sync.members.map(\.id))),
                      goals: dash.goals, goalsLoaded: dash.goalsLoaded,
-                     myPersonId: sync.currentPersonId ?? greetingMember?.id, selectedId: todayGoalId,
+                     myPersonId: sync.currentPersonId ?? greetingMember?.id,
+                     householdMemberIds: Set(sync.members.map(\.id)), selectedId: todayGoalId,
                      onOpen: { path.append(.goal($0)) }, onSeeAll: { path.append(.goals) },
                      onPin: { todayGoalId = $0 },
                      onLogged: { Task { await dash.loadGoals(); sync.touchGoals() } })

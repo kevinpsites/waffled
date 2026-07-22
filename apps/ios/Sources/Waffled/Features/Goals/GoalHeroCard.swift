@@ -16,6 +16,9 @@ struct GoalHeroCard: View {
     let goals: [WaffledAPI.Goal]
     let goalsLoaded: Bool
     let myPersonId: String?
+    /// The household's member ids — classifies the card's scope label (whole household →
+    /// "Family Goal", solo → "My Goal"/"<Name>'s Goal", subset → "Group Goal").
+    var householdMemberIds: Set<String> = []
     let selectedId: String
     var onOpen: (WaffledAPI.Goal) -> Void = { _ in }
     var onSeeAll: () -> Void = {}
@@ -45,12 +48,24 @@ struct GoalHeroCard: View {
             }
     }
 
+    /// The scope label shown at the top: reflects who the goal belongs to, not always
+    /// "Family" (it could be a personal or sub-group goal).
+    private func scopeLabel(_ g: WaffledAPI.Goal) -> String {
+        let parts = Set(g.participants.map(\.personId))
+        if householdMemberIds.count > 1 && householdMemberIds.isSubset(of: parts) { return "Family Goal" }
+        if parts.count == 1 {
+            if let me = myPersonId, parts == [me] { return "My Goal" }
+            if let only = g.participants.first { return "\(only.name)’s Goal" }
+        }
+        return parts.isEmpty ? "Goal" : "Group Goal"
+    }
+
     // MARK: hero
 
     private func hero(_ g: WaffledAPI.Goal) -> some View {
         VStack(alignment: .leading, spacing: kiosk ? 18 : 13) {
             HStack {
-                Text("Family Goal")
+                Text(scopeLabel(g))
                     .font(.system(size: kiosk ? 14 : 12, weight: .heavy)).tracking(0.5)
                     .foregroundStyle(.white.opacity(0.9))
                 Spacer()
@@ -158,7 +173,7 @@ struct GoalHeroCard: View {
     @ViewBuilder private var emptyCard: some View {
         let content = VStack(alignment: .leading, spacing: kiosk ? 18 : 10) {
             HStack {
-                Text("Family Goal").font(.system(size: kiosk ? 16 : 12.5, weight: kiosk ? .heavy : .bold)).foregroundStyle(WF.ink2)
+                Text("Goals").font(.system(size: kiosk ? 16 : 12.5, weight: kiosk ? .heavy : .bold)).foregroundStyle(WF.ink2)
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: kiosk ? 15 : 12, weight: .bold)).foregroundStyle(WF.ink3)
             }

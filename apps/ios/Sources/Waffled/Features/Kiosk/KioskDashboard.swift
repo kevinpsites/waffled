@@ -329,7 +329,8 @@ struct KioskDashboard: View {
     /// switcher pins it to the wall; logging refreshes the goals + bus.
     @ViewBuilder private var goalCard: some View {
         GoalHeroCard(kiosk: true, goal: kioskGoal, goals: model.goals, goalsLoaded: model.goalsLoaded,
-                     myPersonId: sync.currentPersonId, selectedId: kioskGoalId,
+                     myPersonId: sync.currentPersonId, householdMemberIds: Set(sync.members.map(\.id)),
+                     selectedId: kioskGoalId,
                      onOpen: { openGoal($0) }, onSeeAll: { navigate(.goals) }, onPin: { pinGoal($0) },
                      onLogged: { Task { await model.loadGoals(); sync.touchGoals() } })
     }
