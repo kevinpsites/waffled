@@ -4,12 +4,16 @@
   "private": true,
   "type": "module",
   "description": "Waffled web app + counter-kiosk (Vite + React + TS). Static SPA served by Caddy/CloudFront.",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@powersync/react": "^1.10.0",
@@ -22,6 +26,7 @@
     "react-router": "^7.17.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^16.0.1",
     "@types/react": "^18.3.11",

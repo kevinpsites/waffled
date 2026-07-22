@@ -58,6 +58,7 @@ struct WaffledAPI: Sendable {
 
     enum APIError: Error {
         case http(Int, String)
+        case invalidServerURL
         /// True for the 422 a photo-required chore returns when completed without proof
         /// (`{ error: "ProofRequired" }`) — lets the capture flow prompt for a photo.
         var isProofRequired: Bool {
@@ -108,7 +109,7 @@ struct WaffledAPI: Sendable {
 
     /// Has this instance been set up, and which sign-in methods are offered.
     func authStatus() async throws -> AuthStatus {
-        let req = URLRequest(url: url("/api/auth/status"))
+        let req = URLRequest(url: try url("/api/auth/status"))
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp, data)
         return try Self.decoder.decode(AuthStatus.self, from: data)
@@ -116,7 +117,7 @@ struct WaffledAPI: Sendable {
 
     /// Exchange email + password for an access + refresh pair.
     func login(email: String, password: String) async throws -> Session {
-        var req = URLRequest(url: url("/api/auth/login"))
+        var req = URLRequest(url: try url("/api/auth/login"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["email": email, "password": password])
@@ -129,14 +130,14 @@ struct WaffledAPI: Sendable {
     static let oidcRedirect = "waffled://auth/callback"
 
     /// The URL that kicks off backend-mediated OIDC, carrying our deep-link redirect.
-    func oidcStartURL() -> URL {
+    func oidcStartURL() throws -> URL {
         let encoded = WaffledAPI.oidcRedirect.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? WaffledAPI.oidcRedirect
-        return url("/api/auth/oidc/start?redirect=\(encoded)")
+        return try url("/api/auth/oidc/start?redirect=\(encoded)")
     }
 
     /// Exchange the one-time handoff `code` (from the deep-link callback) for a session.
     func oidcExchange(code: String) async throws -> Session {
-        var req = URLRequest(url: url("/api/auth/oidc/exchange"))
+        var req = URLRequest(url: try url("/api/auth/oidc/exchange"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["code": code])
@@ -147,7 +148,8 @@ struct WaffledAPI: Sendable {
 
     /// Best-effort server-side revocation of a refresh token (logout).
     func revoke(refreshToken: String) async {
-        var req = URLRequest(url: url("/api/auth/logout"))
+        guard let endpoint = try? url("/api/auth/logout") else { return }
+        var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONEncoder().encode(["refreshToken": refreshToken])
@@ -203,7 +205,7 @@ struct WaffledAPI: Sendable {
     /// Fetch the account's household memberships + pending invites (and which household
     /// is active) for the switcher UI.
     func householdOverview() async throws -> HouseholdOverview {
-        var req = URLRequest(url: url("/api/household"))
+        var req = URLRequest(url: try url("/api/household"))
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
@@ -222,7 +224,7 @@ struct WaffledAPI: Sendable {
     /// the *target* household claim — the caller must persist both and re-scope PowerSync
     /// (the sync token is minted from this claim). 403 if not a member of `householdId`.
     func switchHousehold(householdId: String) async throws -> SwitchResult {
-        var req = URLRequest(url: url("/api/auth/switch"))
+        var req = URLRequest(url: try url("/api/auth/switch"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -235,7 +237,7 @@ struct WaffledAPI: Sendable {
     /// Accept a pending invite (creates the membership; 200 if it already existed). Does
     /// NOT switch you into it — re-fetch the overview, then switch separately.
     func acceptInvite(id: String) async throws {
-        var req = URLRequest(url: url("/api/auth/invites/\(id)/accept"))
+        var req = URLRequest(url: try url("/api/auth/invites/\(id)/accept"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -246,7 +248,7 @@ struct WaffledAPI: Sendable {
 
     /// Exchange the session token for a short-lived PowerSync token + endpoint.
     func fetchPowerSyncToken() async throws -> TokenResponse {
-        var req = URLRequest(url: url("/api/powersync/token"))
+        var req = URLRequest(url: try url("/api/powersync/token"))
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
@@ -261,7 +263,7 @@ struct WaffledAPI: Sendable {
 
     /// Parse free text into an intent via the server's pluggable-LLM endpoint.
     func capture(text: String) async throws -> CaptureResponse {
-        var req = URLRequest(url: url("/api/capture"))
+        var req = URLRequest(url: try url("/api/capture"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -273,7 +275,8 @@ struct WaffledAPI: Sendable {
 
     /// Preload the model (fire-and-forget) so the first parse isn't a cold start.
     func warmCapture() async {
-        var req = URLRequest(url: url("/api/capture/warm"))
+        guard let endpoint = try? url("/api/capture/warm") else { return }
+        var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -314,7 +317,7 @@ struct WaffledAPI: Sendable {
     /// call: `{ verb, targetKind, target: { description }, args }`.
     func resolveMutate(verb: String, targetKind: String?, description: String,
                        args: [String: JSONValue]) async throws -> ResolveResponse {
-        var req = URLRequest(url: url("/api/capture/resolve"))
+        var req = URLRequest(url: try url("/api/capture/resolve"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -335,7 +338,7 @@ struct WaffledAPI: Sendable {
     /// `CaptureCommitError` carrying the server's friendly `message`.
     func commitMutate(verb: String, targetKind: String?, targetId: String,
                       args: [String: JSONValue], meta: [String: JSONValue]?) async throws -> String {
-        var req = URLRequest(url: url("/api/capture/commit"))
+        var req = URLRequest(url: try url("/api/capture/commit"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -439,7 +442,7 @@ struct WaffledAPI: Sendable {
         // "Try New Recipe" steering: specific dishes to feature + a novelty nudge.
         if let wantToTry, !wantToTry.isEmpty { body["wantToTry"] = .array(wantToTry.map { .string($0) }) }
         if let trySomethingNew, trySomethingNew { body["trySomethingNew"] = .bool(true) }
-        var req = URLRequest(url: url("/api/meals/plan-week"))
+        var req = URLRequest(url: try url("/api/meals/plan-week"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -480,7 +483,7 @@ struct WaffledAPI: Sendable {
         if let weekdayThemes, !weekdayThemes.isEmpty { body["weekdayThemes"] = .object(weekdayThemes.mapValues { .string($0) }) }
         if let weeknightMaxMin { body["weeknightMaxMin"] = .int(weeknightMaxMin) }
         body["leftovers"] = .bool(leftovers)
-        var req = URLRequest(url: url("/api/meals/plan-month"))
+        var req = URLRequest(url: try url("/api/meals/plan-month"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1766,12 +1769,12 @@ struct WaffledAPI: Sendable {
         ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?[key] as? Int
     }
     private func deviceGet<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
-        let (data, resp) = try await deviceFetch(URLRequest(url: url(path)))
+        let (data, resp) = try await deviceFetch(URLRequest(url: try url(path)))
         try check(resp, data)
         return try Self.decoder.decode(T.self, from: data)
     }
     private func deviceSend(_ method: String, _ path: String, body: [String: JSONValue], retryOn401: Bool = true) async throws -> (Data, URLResponse) {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(body)
@@ -3062,7 +3065,7 @@ struct WaffledAPI: Sendable {
 
     /// Forward a batch of queued local writes to the server's CRUD sink.
     func uploadCrud(_ ops: [CrudOpDTO]) async throws {
-        var req = URLRequest(url: url("/api/powersync/crud"))
+        var req = URLRequest(url: try url("/api/powersync/crud"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -3116,7 +3119,7 @@ struct WaffledAPI: Sendable {
     /// POST/PATCH a JSON body to `path`, throwing on non-2xx. The response body is
     /// ignored — capture commits only care that the write succeeded.
     private func send(_ method: String, _ path: String, body: [String: JSONValue]) async throws {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         req.httpMethod = method
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -3127,7 +3130,7 @@ struct WaffledAPI: Sendable {
 
     /// POST/PATCH a JSON body and decode the JSON response, throwing on non-2xx.
     private func sendReturning<T: Decodable>(_ method: String, _ path: String, body: [String: JSONValue], as: T.Type) async throws -> T {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         req.httpMethod = method
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -3141,7 +3144,7 @@ struct WaffledAPI: Sendable {
     /// the body are omitted when nil (Swift's `encodeIfPresent`), so only the fields
     /// you set are sent.
     private func patchEncodable<B: Encodable, T: Decodable>(_ path: String, body: B, as: T.Type) async throws -> T {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         req.httpMethod = "PATCH"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -3153,7 +3156,7 @@ struct WaffledAPI: Sendable {
 
     /// POST/PATCH (no body) and decode the JSON response, throwing on non-2xx.
     private func sendJSON<T: Decodable>(_ method: String, _ path: String, as: T.Type) async throws -> T {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         req.httpMethod = method
         authorize(&req)
         let (data, resp) = try await perform(req)
@@ -3163,7 +3166,7 @@ struct WaffledAPI: Sendable {
 
     /// GET `path` and decode the JSON body, throwing on non-2xx.
     private func getJSON<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
@@ -3172,15 +3175,16 @@ struct WaffledAPI: Sendable {
 
     /// DELETE `path`, throwing on non-2xx (204 is success).
     private func delete(_ path: String) async throws {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         req.httpMethod = "DELETE"
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
     }
 
-    private func url(_ path: String) -> URL {
-        URL(string: AppConfig.apiBaseURL + path)!
+    private func url(_ path: String) throws -> URL {
+        guard let url = AppConfig.apiURL(path: path) else { throw APIError.invalidServerURL }
+        return url
     }
 
     private func authorize(_ req: inout URLRequest) {

@@ -16,6 +16,7 @@ struct SyncStatusView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var token = AppConfig.devToken
     @State private var baseURL = AppConfig.apiBaseURL
+    @State private var serverError: String?
 
     var body: some View {
         NavigationStack {
@@ -111,9 +112,18 @@ struct SyncStatusView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(text: "Connection")
                 field("API URL", text: $baseURL)
+                if let serverError {
+                    Text(serverError).font(.system(size: 12)).foregroundStyle(WF.primaryD)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 field("Dev token", text: $token, secure: true)
                 Button {
-                    AppConfig.setApiBaseURL(baseURL)
+                    guard AppConfig.setApiBaseURL(baseURL) else {
+                        serverError = "Enter a full server address beginning with http:// or https://."
+                        return
+                    }
+                    baseURL = AppConfig.apiBaseURL
+                    serverError = nil
                     AppConfig.setDevToken(token)
                     Task { await sync.reconnect() }
                 } label: {

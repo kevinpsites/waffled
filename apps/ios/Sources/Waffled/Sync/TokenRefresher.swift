@@ -25,7 +25,8 @@ actor TokenRefresher {
         struct Body: Encodable { let refreshToken: String }
         struct Pair: Decodable { let accessToken: String; let refreshToken: String }
 
-        var req = URLRequest(url: URL(string: AppConfig.apiBaseURL + "/api/auth/refresh")!)
+        guard let endpoint = AppConfig.apiURL(path: "/api/auth/refresh") else { return false }
+        var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONEncoder().encode(Body(refreshToken: refreshToken))
