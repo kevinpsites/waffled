@@ -104,7 +104,7 @@ struct WeekHeatmapView: View {
                 GeometryReader { geo in
                     Color.clear
                         .onAppear { gridWidth = geo.size.width }
-                        .onChange(of: geo.size.width) { gridWidth = $0 }
+                        .onChange(of: geo.size.width) { _, newWidth in gridWidth = newWidth }
                 }
             )
 

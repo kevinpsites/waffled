@@ -40,7 +40,8 @@ struct ByPersonBarsView: View {
                 GeometryReader { geo in
                     Rectangle().fill(.clear).contentShape(Rectangle())
                         .onTapGesture { location in
-                            guard let label: String = proxy.value(atX: location.x - geo[proxy.plotAreaFrame].origin.x),
+                            guard let plotFrame = proxy.plotFrame,
+                                  let label: String = proxy.value(atX: location.x - geo[plotFrame].origin.x),
                                   let idx = monthLabels.firstIndex(of: label) else { return }
                             ctx.onMonthTap(year, months[idx])
                         }
