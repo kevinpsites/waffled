@@ -67,7 +67,10 @@ actor KioskDeviceAuth {
     @discardableResult
     func refresh() async throws -> String {
         guard let secret = KioskDeviceStore.secret else { throw NotPaired() }
-        var req = URLRequest(url: URL(string: AppConfig.apiBaseURL + "/api/kiosk/device/token")!)
+        guard let endpoint = AppConfig.apiURL(path: "/api/kiosk/device/token") else {
+            throw WaffledAPI.APIError.invalidServerURL
+        }
+        var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["deviceSecret": secret])

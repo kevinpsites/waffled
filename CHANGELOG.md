@@ -168,6 +168,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Unfinished web actions no longer look usable.** Grocery export and online-order
   buttons, list sharing, plus empty Lists and Notifications settings destinations,
   stay hidden until they have working behavior.
+- **The iPhone and iPad apps now reject malformed server addresses before saving.**
+  Server settings require an HTTP(S) origin, explain invalid input in place, normalize
+  trailing slashes, and no longer force-unwrap request URLs.
 - **Production dependency audits now run in CI.** The API's transitive `protobufjs`
   dependency is updated past its schema-name denial-of-service advisory, and future
   moderate-or-higher production advisories fail the build for both API and web.
