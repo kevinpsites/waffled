@@ -414,16 +414,28 @@ static void wb_do_poll()
     // quiet_scr above, and only when not already showing it — avoid
     // reloading a screen that's already active given this app's history
     // with animated transitions hanging LVGL (see settings_screen.cpp's
-    // wb_open_detail_cb).
+    // wb_open_detail_cb). The reverse edge (forced -> Preview, e.g. a
+    // schedule edited/removed mid-lock) explicitly navigates back to home_scr
+    // too — see the wasForced branch below; don't rely on the rebuilt
+    // screen's own close button alone to end a lock that's already over.
     WbBedtimeClaim claim = wb_bedtime_claim_of(liveState);
     WbGlowSpec spec = wb_glow_spec_for_device_state(liveState);
     if (!g_bedtimeScrBuilt || claim != g_bedtimeClaim)
     {
+      bool wasForced = g_bedtimeClaim != WbBedtimeClaim::Preview;
       lv_obj_clean(bedtime_scr);
       lv_obj_t *back = (claim == WbBedtimeClaim::Preview) ? settings_scr : home_scr;
       wb_build_bedtime_screen(bedtime_scr, spec, back);
       if (claim != WbBedtimeClaim::Preview && lv_screen_active() != bedtime_scr)
         lv_scr_load(bedtime_scr);
+      else if (claim == WbBedtimeClaim::Preview && wasForced && lv_screen_active() == bedtime_scr)
+        // The lock just ended mid-session (schedule edited/removed from the
+        // web app, or the wake grace period elapsed) — hand control back to
+        // home instead of leaving them stranded on the now-unlocked screen
+        // waiting to notice a close button. Mirrors the quiet-time block
+        // above; only fires if they're actually still sitting on this
+        // screen (not if they'd already tapped away from an exitable Wake).
+        lv_scr_load(home_scr);
       g_bedtimeScrBuilt = true;
       g_bedtimeClaim = claim;
     }
