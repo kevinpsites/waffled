@@ -611,7 +611,11 @@ struct ListDetailView: View {
             // we read the item's new section from the header it landed under (`ListReorder`)
             // and PATCH just that section. Grouping stays visually intact because the rows
             // regroup from `activeSections` once `setSection` updates the item.
-            ForEach(flatDisplayRows) { r in
+            // Build the flat rows ONCE per render (filter→group→sort) and reuse them for
+            // both the ForEach and the drop handler, so a drag doesn't recompute the pipeline
+            // a second time (per apps/ios/CLAUDE.md's precompute rule).
+            let rows = flatDisplayRows
+            ForEach(rows) { r in
                 switch r {
                 case .header(let group):
                     flatHeaderRow(group).moveDisabled(true).deleteDisabled(true)
@@ -619,7 +623,7 @@ struct ListDetailView: View {
                     itemRow(item)
                 }
             }
-            .onMove { from, to in handleMove(from: from, to: to) }
+            .onMove { from, to in handleMove(rows: rows, from: from, to: to) }
         }
         completedSection
     }
@@ -668,8 +672,8 @@ struct ListDetailView: View {
     /// SwiftUI `.onMove` handler: resolve the item's new section from where it landed and
     /// PATCH it. A within-section reorder resolves to nil and is a no-op (we persist section,
     /// not fine order — matching the web drag).
-    private func handleMove(from: IndexSet, to: Int) {
-        let rows: [ListReorder.Row] = flatDisplayRows.map { r in
+    private func handleMove(rows displayRows: [ListDisplayRow], from: IndexSet, to: Int) {
+        let rows: [ListReorder.Row] = displayRows.map { r in
             switch r {
             case .header(let g): return .header(g.sectionValue)
             case .item(let i, let s): return .item(id: i.id, section: s)
