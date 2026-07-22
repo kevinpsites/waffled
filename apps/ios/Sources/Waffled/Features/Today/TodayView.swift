@@ -365,6 +365,12 @@ struct TodayView: View {
     /// The featured-goal hero, shared with the iPad Today card (`GoalHeroCard`). Adopts the
     /// iPad's pinned/auto model — the grouped picker (in the card's switcher) replaces the
     /// old My/Family scope pill. Logging refreshes the goals + bus.
+    ///
+    /// BY DESIGN: the former `waffled.todayGoalScope` ("mine"/"family") preference was
+    /// intentionally dropped for this unified card (no migration). It isn't needed —
+    /// `featuredGoal`'s fallback already prefers a whole-household goal before `goals.first`,
+    /// so households that relied on "Family spotlight" keep seeing the family goal; anyone
+    /// wanting a specific goal pins it via the grouped picker.
     @ViewBuilder private var goalsCard: some View {
         GoalHeroCard(kiosk: false,
                      goal: KioskDashboard.featuredGoal(dash.goals, pinnedId: todayGoalId,
@@ -651,14 +657,15 @@ struct ProgressBar: View {
     let value: Double      // 0...1
     let tint: Color
     let track: Color
+    var height: CGFloat = 7
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(track)
-                Capsule().fill(tint).frame(width: geo.size.width * value)
+                Capsule().fill(tint).frame(width: geo.size.width * max(0, min(value, 1)))
             }
         }
-        .frame(height: 7)
+        .frame(height: height)
     }
 }
 

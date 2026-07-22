@@ -142,14 +142,8 @@ struct GoalHeroCard: View {
                     Text("\(goalFmt(p.progress))\(p.target.map { " / \(goalFmt($0))" } ?? "")\(unit.map { " \($0)" } ?? "")")
                         .font(.system(size: kiosk ? 14 : 12, weight: .heavy)).foregroundStyle(.white)
                 }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.25))
-                        Capsule().fill(.white)
-                            .frame(width: geo.size.width * (max > 0 ? min(p.progress / max, 1) : 0))
-                    }
-                }
-                .frame(height: kiosk ? 8 : 6)
+                ProgressBar(value: max > 0 ? p.progress / max : 0, tint: .white,
+                            track: .white.opacity(0.25), height: kiosk ? 8 : 6)
             }
         }
     }
