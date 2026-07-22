@@ -119,13 +119,15 @@ export function Calendar() {
     if (view === 'month') setSelectedDay(ymd(now))
   }
   const openEvent = (e: AgendaEvent) => navigate(eventDetailPath(e))
-  // Tapping a countdown routes by source: an event-sourced one carries its event id,
-  // so it deep-links to that event's detail page (rename + a "Show a countdown" toggle);
-  // a standalone one opens the inline editor (rename/move/remove); a birthday has no
-  // editing surface here (it comes from the person's profile), so it's a no-op.
+  // Tapping a countdown routes by source: an event-sourced one deep-links to that
+  // event's detail page (rename + a "Show a countdown" toggle); a standalone one opens
+  // the inline editor (rename/move/remove); a birthday has no editing surface here (it
+  // comes from the person's profile), so it jumps to its day for context (parity with the
+  // Today card, which also navigates a birthday tap to the calendar day).
   const openCountdown = (c: Countdown) => {
     if (c.source === 'event') navigate(`/calendar/event/${c.id}`)
     else if (c.source === 'standalone') setEditCountdown(c)
+    else jumpToDay(new Date(`${c.date}T12:00:00`))
   }
   const jumpToWeek = (d: Date) => {
     setAnchor(d)
@@ -179,7 +181,11 @@ export function Calendar() {
           selectedDay={selectedDay}
           onSelectDay={setSelectedDay}
           onOpenEvent={openEvent}
-          onCountdownTap={(cds) => openCountdown(cds[0])}
+          onCountdownTap={(cds) =>
+            // One countdown → open it directly; several on the same day → jump to Day
+            // view, where each is listed as its own (tappable) chip so all are reachable.
+            cds.length > 1 ? jumpToDay(new Date(`${cds[0].date}T12:00:00`)) : openCountdown(cds[0])
+          }
           onCreateOnDay={(date) => setModal({ date })}
           onMore={(date) => jumpToDay(new Date(`${date}T12:00:00`))}
         />
