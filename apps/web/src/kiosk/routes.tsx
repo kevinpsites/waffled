@@ -10,6 +10,7 @@ import { Goals } from './Goals'
 import { GoalCreate } from './GoalCreate'
 import { GoalDetail } from './GoalDetail'
 import { PersonProfile } from './PersonProfile'
+import { WaffledBiteDevice } from './WaffledBiteDevice'
 import { FamilyOverview } from './FamilyOverview'
 import { Meals } from './Meals'
 import { RecipeDetail } from './RecipeDetail'
@@ -57,6 +58,7 @@ export function KioskRoutes() {
         </Route>
         <Route path="family" element={<FamilyOverview />} />
         <Route path="person/:id" element={<PersonProfile />} />
+        <Route path="person/:id/waffled-bite" element={<WaffledBiteDevice />} />
         <Route element={<ModuleGate module="meals" />}>
           <Route path="meals" element={<Meals />} />
           <Route path="meals/recipes" element={<RecipesLibrary />} />

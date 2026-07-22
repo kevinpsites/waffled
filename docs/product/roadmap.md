@@ -142,6 +142,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Partial / in progress 🟡
 
+- **Waffled-Bites (kid companion device)** — the pairing system and the parent-facing
+  control panel (Family → tap a kid → Waffled-Bite: quiet time, night light, wake-up
+  light schedule, alarm, sound machine, screen brightness, nudges) are done — new
+  optional `waffledBites` module, `waffled_bite_devices`/`waffled_bite_pairing_codes`
+  tables, device polls `GET /api/waffled-bites/device/state` (no WebSockets). **Not yet
+  built:** the physical device firmware itself (ESP32/LVGL touchscreen) — a separate
+  embedded project — so pairing has nothing to connect to until a device exists.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
   are REST + live-refresh bus.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend

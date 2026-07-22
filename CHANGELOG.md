@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Waffled-Bites: pair a kid's companion device and control it from Family.** A new
+  optional module (Settings → Modules) adds a "Waffled-Bite" section to each kid's profile
+  page — pair a device with a short one-time code, then control it live: start/pause/end a
+  quiet-time countdown, set a night light (color + brightness), a wake-up light schedule
+  (per day-of-week, with a yellow "almost time" warning before it turns green), a morning
+  alarm, a sound machine, screen brightness, and send a quick nudge ("dinner is ready") that
+  shows on the device. A device polls for changes every few seconds — no separate app or
+  account needed on the device side. This release ships the pairing system and the parent
+  control panel; the physical Waffled-Bite device and its on-screen app are still in
+  development, so pairing will wait until a device is available to connect.
 
 ### Changed
 
