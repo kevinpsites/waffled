@@ -819,7 +819,7 @@ final class KioskTodayModel {
     func addGrocery(_ name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        try? await api.addListItem(listId: "grocery", name: trimmed, quantity: nil)
+        _ = try? await api.addListItem(listId: "grocery", name: trimmed, quantity: nil)
         await loadGrocery()
     }
 

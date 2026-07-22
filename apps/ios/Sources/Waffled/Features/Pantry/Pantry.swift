@@ -268,7 +268,7 @@ final class PantryModel {
     /// Restock a used-up item: add it to the grocery list, then remove it from the
     /// pantry (mirrors the web "＋ Shopping list" action on used-up rows).
     func toShoppingList(_ item: WaffledAPI.PantryItem) async {
-        try? await api.addGroceryItem(name: item.name)
+        _ = try? await api.addGroceryItem(name: item.name)
         await delete(item)
     }
 }
