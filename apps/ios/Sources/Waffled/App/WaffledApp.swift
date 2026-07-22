@@ -50,6 +50,27 @@ struct WaffledApp: App {
             .tint(WF.primary)
             .preferredColorScheme(theme.colorScheme)   // light / dark / follow-device (Settings → Appearance)
             .task { await session.bootstrap() }    // read the Keychain / probe auth status
+            .task {
+                // Headless-verification rotation (see DemoHooks.forceOrientation). The
+                // request is a preference the system can ignore while the scene is still
+                // settling (cold launch), so retry until the geometry actually flips.
+                guard let o = DemoHooks.forceOrientation else { return }
+                let mask: UIInterfaceOrientationMask = o == "landscape" ? .landscapeRight : .portrait
+                // With a focus hook in play, rotate AFTER the keyboard is up — that's
+                // the real bug scenario (keyboard visible, device rotates), and focusing
+                // works reliably in portrait while the keyboard survives the rotation.
+                if DemoHooks.focusAdd { try? await Task.sleep(for: .seconds(7)) }
+                for _ in 0..<8 {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard let scene = UIApplication.shared.connectedScenes
+                        .compactMap({ $0 as? UIWindowScene }).first else { continue }
+                    let now = scene.effectiveGeometry.interfaceOrientation
+                    if (o == "landscape") == now.isLandscape { return }
+                    scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
+                        print("WAFFLED orientation request failed: \(error)")
+                    }
+                }
+            }
         }
     }
 }
