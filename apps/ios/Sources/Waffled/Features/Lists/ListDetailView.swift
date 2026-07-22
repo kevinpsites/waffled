@@ -640,7 +640,9 @@ struct ListDetailView: View {
         for group in model.activeSections {
             out.append(.header(group))
             if !collapsed.contains(group.id) {
-                for item in group.items { out.append(.item(item, section: group.title)) }
+                // Tag with the group's real category (sectionValue), NOT its display title —
+                // the ungrouped "Items" header maps to a nil category.
+                for item in group.items { out.append(.item(item, section: group.sectionValue)) }
             }
         }
         return out
@@ -664,7 +666,7 @@ struct ListDetailView: View {
     private func handleMove(from: IndexSet, to: Int) {
         let rows: [ListReorder.Row] = flatDisplayRows.map { r in
             switch r {
-            case .header(let g): return .header(g.title)
+            case .header(let g): return .header(g.sectionValue)
             case .item(let i, let s): return .item(id: i.id, section: s)
             }
         }
