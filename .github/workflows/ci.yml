@@ -4,8 +4,8 @@
 # their own package.json + package-lock.json (npm). So each job installs with
 # `npm ci` in its own app dir and caches on that app's lockfile.
 #
-# Node 20 to match the runtime (apps/api/Dockerfile + caddy web stage use
-# node:20-alpine).
+# API tests stay on Node 20 to match the production API image. Web typechecking
+# and tests use Node 24, the minimum supported by the current browser toolchain.
 #
 # Jobs are independent so the fast ones (typecheck, web tests) fail fast without
 # waiting on the slow api job. The api integration/e2e tests use Testcontainers
@@ -115,7 +115,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
           cache-dependency-path: |
             apps/api/package-lock.json
@@ -148,7 +148,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
