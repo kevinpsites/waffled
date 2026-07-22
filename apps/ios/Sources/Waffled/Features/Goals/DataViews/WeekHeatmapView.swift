@@ -92,7 +92,7 @@ struct WeekHeatmapView: View {
                             .frame(width: cellSize, height: cellSize)
                             .background(entry.total > 0 ? Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255) : WF.panel)
                             .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                            Text(GoalViewFmt.weekday(dateKey))
+                            Text(GoalViewFmt.weekdayDay(dateKey))
                                 .font(.system(size: 11, weight: .heavy))
                                 .foregroundStyle(isToday ? WF.primary : WF.ink3)
                         }

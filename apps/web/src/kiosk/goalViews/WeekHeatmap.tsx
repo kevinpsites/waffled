@@ -6,7 +6,7 @@ import { fmtGoalNum } from '../../lib/api'
 import { addDaysKey, heat, HEAT_DARK_THRESHOLD, parseLocalDateKey, startOfWeekKey } from '../../lib/goalStats'
 import type { DataViewProps } from './types'
 
-const WEEKDAY = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function fmtMonthDay(dateKey: string): string {
   return parseLocalDateKey(dateKey).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -68,7 +68,7 @@ export function WeekHeatmap({ goal, stats, personMap, onDayClick, headerRight }:
                 )}
               </div>
               <span className="gdv-week-lbl" style={{ color: isToday ? 'var(--primary)' : 'var(--ink-3)' }}>
-                {WEEKDAY[dow]}
+                {WEEKDAY[dow]} {parseLocalDateKey(dateKey).getDate()}
               </span>
             </button>
           )

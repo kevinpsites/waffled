@@ -33,9 +33,12 @@ describe('WeekHeatmap', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
     render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
     // today Fri 2026-07-17 → the calendar week is Sun Jul 12 .. Sat Jul 18 (not rolling)
-    expect(screen.getAllByText(/^(Sa|Su|Mo|Tu|We|Th|Fr)$/)).toHaveLength(7)
+    // Each day label carries its date, e.g. "Sun 12" … "Sat 18".
+    expect(screen.getAllByText(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{1,2}$/)).toHaveLength(7)
+    expect(screen.getByText('Sun 12')).toBeInTheDocument()
+    expect(screen.getByText('Sat 18')).toBeInTheDocument()
     expect(screen.getByText(/Jul 12 – Jul 18/)).toBeInTheDocument()
-    const today = screen.getByText('Fr')
+    const today = screen.getByText('Fri 17')
     expect(today).toHaveStyle({ color: 'var(--primary)' })
   })
 
@@ -59,7 +62,7 @@ describe('WeekHeatmap', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
     const onDayClick = vi.fn()
     render(<WeekHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={onDayClick} onMonthClick={() => {}} />)
-    fireEvent.click(screen.getByText('Fr'))
+    fireEvent.click(screen.getByText('Fri 17'))
     expect(onDayClick).toHaveBeenCalledWith('2026-07-17')
   })
 
