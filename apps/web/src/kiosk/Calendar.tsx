@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { Icon } from './icons'
 import { EventModal } from './components/EventModal'
+import { CountdownEditModal } from './components/CountdownEditModal'
 import { MonthView } from './components/MonthView'
 import { WeekView } from './components/WeekView'
 import { DayView } from './components/DayView'
@@ -80,6 +81,7 @@ export function Calendar() {
     paramDate && /^\d{4}-\d{2}-\d{2}$/.test(paramDate) ? paramDate : defaultDayForMonth(new Date(lastCalState.anchorTime))
   )
   const [modal, setModal] = useState<{ date?: string; time?: string } | null>(null)
+  const [editCountdown, setEditCountdown] = useState<Countdown | null>(null)
 
   // Persist view + anchor so returning from an event detail restores this spot.
   useEffect(() => {
@@ -117,9 +119,14 @@ export function Calendar() {
     if (view === 'month') setSelectedDay(ymd(now))
   }
   const openEvent = (e: AgendaEvent) => navigate(eventDetailPath(e))
-  // An event-sourced countdown carries its event id, so opening it deep-links to
-  // that event's detail page (standalone/birthday sources have no event to open).
-  const openCountdown = (c: Countdown) => { if (c.source === 'event') navigate(`/calendar/event/${c.id}`) }
+  // Tapping a countdown routes by source: an event-sourced one carries its event id,
+  // so it deep-links to that event's detail page (rename + a "Show a countdown" toggle);
+  // a standalone one opens the inline editor (rename/move/remove); a birthday has no
+  // editing surface here (it comes from the person's profile), so it's a no-op.
+  const openCountdown = (c: Countdown) => {
+    if (c.source === 'event') navigate(`/calendar/event/${c.id}`)
+    else if (c.source === 'standalone') setEditCountdown(c)
+  }
   const jumpToWeek = (d: Date) => {
     setAnchor(d)
     setView('week')
@@ -172,6 +179,7 @@ export function Calendar() {
           selectedDay={selectedDay}
           onSelectDay={setSelectedDay}
           onOpenEvent={openEvent}
+          onCountdownTap={(cds) => openCountdown(cds[0])}
           onCreateOnDay={(date) => setModal({ date })}
           onMore={(date) => jumpToDay(new Date(`${date}T12:00:00`))}
         />
@@ -205,6 +213,9 @@ export function Calendar() {
 
       {modal && (
         <EventModal date={modal.date} time={modal.time} onClose={() => setModal(null)} onSaved={refetch} />
+      )}
+      {editCountdown && (
+        <CountdownEditModal countdown={editCountdown} onClose={() => setEditCountdown(null)} />
       )}
     </div>
   )
