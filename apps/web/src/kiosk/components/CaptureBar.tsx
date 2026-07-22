@@ -212,6 +212,19 @@ export function resolveEventPersonId(
   return viewerId ?? null
 }
 
+// Show the signed-in viewer as the default owner in the event picker (not "Nobody"),
+// mirroring what commit() already does via resolveEventPersonId. Seeds the viewer's
+// NAME (the chips match on name, case-insensitively, and the viewer is always in
+// `persons`). Applies only to the DISPLAYED intent while it's still untouched — the
+// caller runs this on the pre-draft parse, so once the user taps a chip a draft
+// exists and this no longer runs, leaving an explicit "Nobody" choice intact.
+export function seedEventViewer(intent: ParsedIntent | null, viewerName: string | null): ParsedIntent | null {
+  if (intent?.kind === 'event' && intent.personName == null && viewerName) {
+    return { ...intent, personName: viewerName }
+  }
+  return intent
+}
+
 export function seedGoalParticipants(audience: 'me' | 'everyone' | null, viewerId: string | null, allIds: string[], canManageOthers = true): string[] {
   // A non-manager (a kid) can only create a self-only goal — POST /api/goals requires the
   // goal.manage capability the moment participants include anyone but the caller — so we
@@ -622,7 +635,7 @@ export function CaptureBar() {
   // While the model is still thinking and the on-device guess is just a weak
   // grocery fallback, don't assert it — show a thinking row instead.
   const thinkingPlaceholder = !usingServer && thinking && !looksConfident(localIntent, text)
-  const rawIntent = draft ?? (thinkingPlaceholder ? null : parsed)
+  const rawIntent = draft ?? (thinkingPlaceholder ? null : seedEventViewer(parsed, viewer?.name ?? null))
   // Gates: only admins can add a household member (adminRoute); goals can be created
   // only when the Goals module is on; and pantry (default OFF) is suppressed entirely
   // unless the Pantry module is on. Each blocked case degrades gracefully to an
