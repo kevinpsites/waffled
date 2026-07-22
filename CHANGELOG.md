@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Security
+- **Patched a high-severity advisory in a bundled telemetry dependency.** Updated the
+  OpenTelemetry Node packages so they pull in the fixed `@opentelemetry/propagator-jaeger`
+  (≥ 2.9.0), clearing GHSA-45rx-2jwx-cxfr (a denial-of-service via a malformed Jaeger trace
+  header). Telemetry stays off by default, so this only mattered when the OTLP exporter was
+  enabled — updated regardless.
+
 ## [0.9.0] - 2026-07-20
 
 ### Added
