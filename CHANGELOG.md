@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The iPad's Family Goal card now uses the grouped goal picker.** "Show a different goal"
+  opens the same organized pop-over the iPhone uses — goals grouped by list (your goals,
+  shared groups you're in, then the rest) with member avatars — instead of one flat list.
 - **Start Cook Mode from the iPhone Today card.** Tonight's dinner card now has **View
   recipe** and **👨‍🍳 Cook Mode** buttons (matching iPad) — Cook Mode drops you straight
   into the step-by-step cook flow instead of only opening the recipe.

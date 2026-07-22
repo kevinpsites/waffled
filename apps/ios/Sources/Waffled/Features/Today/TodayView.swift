@@ -633,7 +633,11 @@ struct TodayView: View {
 /// Thin rounded progress bar used in the summary cards.
 /// A modal goal chooser for the Today card — "Follow the spotlight" plus a scrollable
 /// list of every goal (reuses the goal-card styling), instead of a long inline menu.
-private struct TodayGoalPickerSheet: View {
+/// The grouped goal picker used by the Today Goals card on both iPhone and iPad: goals
+/// grouped by list (My goals → shared groups I'm in → other), each an expandable section
+/// with member avatars, plus a "Follow the spotlight" auto row. `selectedId` = "" means
+/// auto; otherwise the pinned goal. Shared so the iPad no longer shows a flat menu list.
+struct TodayGoalPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     let goals: [WaffledAPI.Goal]
     let myPersonId: String?

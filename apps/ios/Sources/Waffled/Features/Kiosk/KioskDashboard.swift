@@ -45,6 +45,7 @@ struct KioskDashboard: View {
     /// (featured → whole-family → first). A picker on the card lets the family switch it.
     @AppStorage("waffled.kioskGoalId") private var kioskGoalId = ""
     @State private var logGoal: WaffledAPI.Goal?
+    @State private var showingGoalPicker = false
 
     /// The card's pick order as a pure function (tested in KioskGoalPickTests): pinned
     /// if it still exists → Spotlight → Pinned tier (isFeatured) → a whole-family goal
@@ -141,6 +142,10 @@ struct KioskDashboard: View {
                     sync.touchGoals()
                 }
             }
+        }
+        .sheet(isPresented: $showingGoalPicker) {
+            TodayGoalPickerSheet(goals: model.goals, myPersonId: sync.currentPersonId,
+                                 selectedId: kioskGoalId) { pinGoal($0) }
         }
         // The full recipe page, not a cramped iPad page-sheet — open it full-screen with
         // a Close button (matches the phone, which pushes the same view).
@@ -449,17 +454,9 @@ struct KioskDashboard: View {
     /// A compact switcher so the family can pin a different goal to the wall. Picking one
     /// also re-asserts the goal layout, so the dashboard never drifts off the goal view.
     private func goalSwitcher(current: WaffledAPI.Goal) -> some View {
-        Menu {
-            Button { pinGoal("") } label: {
-                Label("Auto (featured)", systemImage: kioskGoalId.isEmpty ? "checkmark" : "sparkles")
-            }
-            ForEach(model.goals) { g in
-                Button { pinGoal(g.id) } label: {
-                    if kioskGoalId == g.id { Label("\(g.emoji ?? "🎯") \(g.title)", systemImage: "checkmark") }
-                    else { Text("\(g.emoji ?? "🎯") \(g.title)") }
-                }
-            }
-        } label: {
+        // Opens the shared grouped picker (My goals / shared lists / other) — the iPhone's
+        // pop-over, so the wall no longer shows a flat menu of every goal.
+        Button { showingGoalPicker = true } label: {
             HStack(spacing: 7) {
                 Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 13, weight: .semibold))
                 Text("Show a different goal").font(.system(size: 14, weight: .bold))
@@ -469,6 +466,7 @@ struct KioskDashboard: View {
             .background(.white.opacity(0.16)).clipShape(Capsule())
             .overlay(Capsule().strokeBorder(.white.opacity(0.4), lineWidth: 1))
         }
+        .buttonStyle(.plain)
     }
 
     /// Pin a goal to the wall (empty = auto) and re-assert the goal layout, so picking a
