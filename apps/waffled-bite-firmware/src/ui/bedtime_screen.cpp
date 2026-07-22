@@ -99,7 +99,11 @@ static void wb_bedtime_close_cb(lv_event_t *e)
 // specific anymore; only whether a label chip is shown differs.
 static void wb_apply_glow(WbBedtimeCtx *ctx, const WbGlowSpec &spec)
 {
-  float b = (spec.brightness <= 0 ? 5 : spec.brightness) / 100.0f; // never fully invisible, even at a very low setting
+  // Floor at 15%, not just "> 0" — the parent web app allows typing any value
+  // 1-100 (a kid-safety floor of 10% used to be enforced there instead, but a
+  // parent asked for finer control), so this is now the ONLY place a very-low
+  // setting (e.g. 1%) is kept from rendering as an almost-invisible glow.
+  float b = (spec.brightness < 15 ? 15 : spec.brightness) / 100.0f;
   lv_color_t base = lv_color_hex(spec.colorHex);
   // Blend toward black for dimness rather than toward transparent — keeps
   // the color saturated/warm instead of washing it out. coreMix ranges
