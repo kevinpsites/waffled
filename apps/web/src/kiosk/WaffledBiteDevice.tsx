@@ -47,14 +47,33 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   )
 }
 
-function Stepper({ value, onChange, step = 1, min, max, format }: {
-  value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number; format?: (v: number) => string
+// +/- buttons for quick nudges, plus a directly-typable value for an exact
+// number — +/- alone forced everything to land on a multiple of `step`.
+function Stepper({ value, onChange, step = 1, min, max, unit }: {
+  value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number; unit?: string
 }) {
   const clamp = (v: number) => Math.max(min ?? -Infinity, Math.min(max ?? Infinity, v))
+  const [text, setText] = useState(String(value))
+  useEffect(() => setText(String(value)), [value])
+  function commit(raw: string) {
+    const n = Number(raw)
+    if (raw.trim() !== '' && Number.isFinite(n)) onChange(clamp(Math.round(n)))
+    else setText(String(value))
+  }
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <button type="button" className="btn btn-ghost" style={{ padding: '6px 12px' }} onClick={() => onChange(clamp(value - step))}>–</button>
-      <span style={{ fontWeight: 700, minWidth: 48, textAlign: 'center' }}>{format ? format(value) : value}</span>
+      <input
+        type="number"
+        className="stepper-input"
+        value={text}
+        min={min}
+        max={max}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+      />
+      {unit && <span className="tiny muted" style={{ fontWeight: 700 }}>{unit}</span>}
       <button type="button" className="btn btn-ghost" style={{ padding: '6px 12px' }} onClick={() => onChange(clamp(value + step))}>+</button>
     </div>
   )
@@ -298,7 +317,7 @@ export function WaffledBiteDevice() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span className="tiny muted" style={{ fontWeight: 700 }}>Brightness</span>
-                <Stepper value={night.brightness} step={10} min={10} max={100} format={(v) => `${v}%`} onChange={(v) => patchSettings({ night: { ...night, brightness: v } })} />
+                <Stepper value={night.brightness} step={5} min={1} max={100} unit="%" onChange={(v) => patchSettings({ night: { ...night, brightness: v } })} />
               </div>
             </div>
           )}
@@ -312,7 +331,7 @@ export function WaffledBiteDevice() {
               <ChipPicker options={SOUNDS} value={sound.sound} onChange={(id) => patchSettings({ sound: { ...sound, sound: id } })} />
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0' }}>
                 <span className="tiny muted" style={{ fontWeight: 700 }}>Volume</span>
-                <Stepper value={sound.volume} step={5} min={0} max={100} format={(v) => `${v}%`} onChange={(v) => patchSettings({ sound: { ...sound, volume: v } })} />
+                <Stepper value={sound.volume} step={5} min={0} max={100} unit="%" onChange={(v) => patchSettings({ sound: { ...sound, volume: v } })} />
               </div>
               <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Sleep timer</div>
               <div style={{ display: 'flex', gap: 7 }}>
@@ -329,7 +348,7 @@ export function WaffledBiteDevice() {
         <Card title="Screen & display">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <span className="tiny muted" style={{ fontWeight: 700 }}>Brightness</span>
-            <Stepper value={display.brightness} step={10} min={10} max={100} format={(v) => `${v}%`} onChange={(v) => patchSettings({ display: { ...display, brightness: v } })} />
+            <Stepper value={display.brightness} step={10} min={10} max={100} unit="%" onChange={(v) => patchSettings({ display: { ...display, brightness: v } })} />
           </div>
           <Toggle on={display.nightDim} onChange={(v) => patchSettings({ display: { ...display, nightDim: v } })} label="Screen goes dark at night" />
         </Card>
