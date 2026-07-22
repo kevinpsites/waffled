@@ -72,10 +72,15 @@ struct MonthHeatmapView: View {
                     let intensity = info.total > 0 ? info.total / monthMax : 0
                     let (r, g, b) = GoalStats.heat(intensity)
                     let dark = intensity > GoalStats.heatDarkThreshold
+                    let isToday = info.dateKey == ctx.stats.today
                     Button { ctx.onDayTap(info.dateKey) } label: {
                         VStack(alignment: .leading, spacing: 2) {
+                            // Today: a red circle around the day number, so you can see where
+                            // you are in the month at a glance (mirrors the week view).
                             Text("\(info.day)").font(.system(size: 11.5, weight: .heavy))
-                                .foregroundStyle(info.future ? WF.ink3 : (dark ? .white : WF.ink2))
+                                .foregroundStyle(isToday ? WF.danger : (info.future ? WF.ink3 : (dark ? .white : WF.ink2)))
+                                .frame(minWidth: isToday ? 16 : nil, minHeight: isToday ? 16 : nil)
+                                .overlay(isToday ? Circle().stroke(WF.danger, lineWidth: 1.5) : nil)
                             if !info.future, info.total > 0 {
                                 Text(GoalViewFmt.num(info.total)).font(WF.serif(12, .semibold))
                                     .foregroundStyle(dark ? .white : WF.ink)
