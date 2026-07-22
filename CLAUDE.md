@@ -47,6 +47,16 @@ PR was already opened as a draft, promote it with `gh pr ready <n>`. Some agent 
 default to draft PRs — that default does **not** apply here; override it. As always, don't
 push to `main`, force-push, or merge without being asked.
 
+**A batch of related changes is ONE PR, one commit per fix — worktree isolation is about
+*branches*, not PRs.** When work is framed as a batch (e.g. a list of bug fixes, or "one PR,
+one commit per fix"), every item lands in the **same PR**, each as its own commit —
+*including follow-up items added later in the same conversation*. Push new commits to that
+branch; do **not** open a second PR for the next batch. A fresh worktree/branch for a later
+batch is fine, but its commits belong in the existing PR (merge/rebase it in if needed).
+Only open a separate PR when the work is a genuinely different effort the user didn't group
+together. (This bit us once: a follow-up batch got its own PR alongside the first and had to
+be consolidated back into one.)
+
 ## Releasing & the changelog (repo-wide)
 
 1. **Log every user/operator-facing change in `CHANGELOG.md` under `## [Unreleased]` as

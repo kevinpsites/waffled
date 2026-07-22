@@ -12,6 +12,7 @@ let url: string
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let app: any
 let closePool: () => Promise<void>
+let foreignPersonId = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, {
@@ -79,6 +80,7 @@ beforeAll(async () => {
     [kHid]
   )
   const kPid = kp.rows[0].id
+  foreignPersonId = kPid
   await query(
     `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified)
      values ($1,$2,'password','dev|kelly','kelly@example.com',true)`,
@@ -341,6 +343,15 @@ describe('list items — sections, quantity, assignee', () => {
     ).toBe(404)
   })
 
+  it('rejects assignees from another household on create and patch', async () => {
+    expect((await call('POST', `/api/lists/${listId}/items`, kevin, {
+      name: 'Unsafe assignee', assignedTo: foreignPersonId,
+    })).statusCode).toBe(404)
+    expect((await call('PATCH', `/api/list-items/${itemId}`, kevin, {
+      assignedTo: foreignPersonId,
+    })).statusCode).toBe(404)
+  })
+
   it('patches an item: reassign + re-quantity, then clears the assignee', async () => {
     const re = await call('PATCH', `/api/list-items/${itemId}`, kevin, { quantity: '×2', assignedTo: null })
     expect(re.statusCode).toBe(200)
@@ -351,6 +362,44 @@ describe('list items — sections, quantity, assignee', () => {
 
   it('rejects a patch with no known fields (400)', async () => {
     expect((await call('PATCH', `/api/list-items/${itemId}`, kevin, { bogus: 1 })).statusCode).toBe(400)
+  })
+})
+
+describe('list item priority', () => {
+  let listId = ''
+
+  beforeAll(async () => {
+    listId = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Errands' })).body).list.id
+  })
+
+  it('defaults new items to priority 3 (normal) and accepts a 1–5 priority on create', async () => {
+    const plain = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Milk' })).body).item
+    expect(plain.priority).toBe(3)
+    const urgent = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Passport', priority: 5 })).body).item
+    expect(urgent.priority).toBe(5)
+  })
+
+  it('patches an item priority and rejects values outside 1–5', async () => {
+    const id = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Batteries' })).body).item.id
+    const up = await call('PATCH', `/api/list-items/${id}`, kevin, { priority: 2 })
+    expect(up.statusCode).toBe(200)
+    expect(JSON.parse(up.body).item.priority).toBe(2)
+    expect((await call('PATCH', `/api/list-items/${id}`, kevin, { priority: 0 })).statusCode).toBe(400)
+    expect((await call('PATCH', `/api/list-items/${id}`, kevin, { priority: 6 })).statusCode).toBe(400)
+    expect((await call('PATCH', `/api/list-items/${id}`, kevin, { priority: 'high' })).statusCode).toBe(400)
+  })
+
+  it('keeps items in manual (insertion) order — priority is stored/returned but does NOT reorder', async () => {
+    const fresh = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Trip prep' })).body).list.id
+    await call('POST', `/api/lists/${fresh}/items`, kevin, { name: 'Snacks' }) // priority 3 (normal)
+    await call('POST', `/api/lists/${fresh}/items`, kevin, { name: 'Tickets', priority: 5 })
+    await call('POST', `/api/lists/${fresh}/items`, kevin, { name: 'Sunhat', priority: 4 })
+    const items = JSON.parse((await call('GET', `/api/lists/${fresh}`, kevin)).body).items as Array<{ name: string; priority: number }>
+    // insertion order preserved (changing priority no longer jumps items around) —
+    // priority-first ordering is now an opt-in client-side view.
+    expect(items.map((i) => i.name)).toEqual(['Snacks', 'Tickets', 'Sunhat'])
+    // ...but priority is still persisted and returned so the client can flag/sort it
+    expect(items.map((i) => i.priority)).toEqual([3, 5, 4])
   })
 })
 
@@ -463,6 +512,51 @@ describe('grocery auto-build from a recipe', () => {
     )
     expect(names).toContain('ground chicken') // the swap
     expect(names).not.toContain('Ground turkey') // not the original
+  })
+})
+
+describe('remove a recipe from the grocery list', () => {
+  const addRecipe = async (title: string, ingredients: Array<{ name: string; amount?: number; unit?: string }>) => {
+    const r = await call('POST', '/api/recipes', kevin, { title, emoji: '🍲' })
+    const rid = JSON.parse(r.body).recipe.id
+    await call('POST', `/api/recipes/${rid}/ingredients`, kevin, { ingredients })
+    await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin)
+    return rid
+  }
+  const groceryItems = async () => JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items as Array<{ name: string; sourceRecipeIds: string[] }>
+  const unscheduled = async () => JSON.parse((await call('GET', '/api/lists/grocery/board', kevin)).body).unscheduled as Array<{ recipeId: string }>
+
+  it('removes items that belong only to that recipe and drops it from unscheduled', async () => {
+    const rid = await addRecipe('Solo Soup', [{ name: 'Miso paste', amount: 1, unit: 'cup' }, { name: 'Silken tofu', amount: 1 }])
+    expect((await groceryItems()).some((i) => i.name === 'Miso paste')).toBe(true)
+    expect((await unscheduled()).some((u) => u.recipeId === rid)).toBe(true)
+
+    const del = await call('DELETE', `/api/lists/grocery/from-recipe/${rid}`, kevin)
+    expect(del.statusCode).toBe(200)
+    expect(JSON.parse(del.body).removed).toBe(2)
+
+    const items = await groceryItems()
+    expect(items.some((i) => i.name === 'Miso paste')).toBe(false)
+    expect(items.some((i) => i.name === 'Silken tofu')).toBe(false)
+    expect((await unscheduled()).some((u) => u.recipeId === rid)).toBe(false)
+  })
+
+  it('keeps an item shared with another recipe, dropping only the removed recipe’s credit', async () => {
+    const a = await addRecipe('Scallion A', [{ name: 'Fresh scallions', amount: 1, unit: 'bunch' }])
+    const b = await addRecipe('Scallion B', [{ name: 'Fresh scallions', amount: 1, unit: 'bunch' }])
+
+    await call('DELETE', `/api/lists/grocery/from-recipe/${a}`, kevin)
+
+    const scallions = (await groceryItems()).find((i) => i.name === 'Fresh scallions')
+    expect(scallions).toBeDefined() // still on the list — it's also recipe B's
+    expect(scallions!.sourceRecipeIds).toContain(b)
+    expect(scallions!.sourceRecipeIds).not.toContain(a)
+  })
+
+  it('404s an unknown recipe', async () => {
+    expect(
+      (await call('DELETE', '/api/lists/grocery/from-recipe/00000000-0000-0000-0000-000000000000', kevin)).statusCode
+    ).toBe(404)
   })
 })
 

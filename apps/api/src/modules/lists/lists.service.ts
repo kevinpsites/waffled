@@ -249,12 +249,12 @@ export async function listItems(householdId: string, listId: string): Promise<Li
 export async function addItem(
   tenant: Tenant,
   listId: string,
-  input: { name: string; quantity?: string | null; category?: string | null; assignedTo?: string | null }
+  input: { name: string; quantity?: string | null; category?: string | null; assignedTo?: string | null; priority?: number }
 ): Promise<ListItemRow> {
   const { rows } = await query<ListItemRow>(
     `with ins as (
-       insert into list_items (household_id, list_id, name, quantity, category, assigned_to, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7)
+       insert into list_items (household_id, list_id, name, quantity, category, assigned_to, priority, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
        returning *
      )
      select ins.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
@@ -269,6 +269,7 @@ export async function addItem(
       input.quantity ?? null,
       input.category ?? null,
       input.assignedTo ?? null,
+      input.priority ?? 3,
       tenant.personId,
     ]
   )
@@ -327,6 +328,10 @@ export async function patchItem(
   if ('category' in patch) {
     sets.push(`category = $${i++}`)
     vals.push(patch.category ?? null)
+  }
+  if (typeof patch.priority === 'number') {
+    sets.push(`priority = $${i++}`)
+    vals.push(patch.priority)
   }
   if (typeof patch.name === 'string') {
     sets.push(`name = $${i++}`)
@@ -451,6 +456,38 @@ export async function addRecipeToGrocery(
     added.push(rows[0])
   }
   return added
+}
+
+// Undo an off-plan "add recipe to grocery": take that recipe's ingredients back
+// off the list. Rows that exist ONLY for this recipe (source='recipe' crediting
+// just this id) are soft-deleted; rows shared with another recipe or hand-added
+// keep living — we only strip this recipe's credit (array_remove). Returns the
+// number of rows removed, or null if the recipe isn't in this household.
+export async function removeRecipeFromGrocery(
+  tenant: Tenant,
+  recipeId: string
+): Promise<number | null> {
+  const recipe = await getRecipe(tenant.householdId, recipeId)
+  if (!recipe) return null
+  const list = await getOrCreateGroceryList(tenant)
+
+  // Delete rows solely owned by this recipe (an explicit off-plan add with no
+  // other stake) — exactly [recipeId], and not a hand-added 'manual' row.
+  const del = await query(
+    `update list_items set deleted_at = now()
+       where household_id = $1 and list_id = $2 and deleted_at is null
+         and source = 'recipe' and source_recipe_ids = ARRAY[$3]::uuid[]`,
+    [tenant.householdId, list.id, recipeId]
+  )
+  // Strip this recipe's credit from rows that survive (shared with another recipe,
+  // or a 'manual' row this recipe had merged onto).
+  await query(
+    `update list_items set source_recipe_ids = array_remove(source_recipe_ids, $3::uuid)
+       where household_id = $1 and list_id = $2 and deleted_at is null
+         and $3 = ANY(source_recipe_ids)`,
+    [tenant.householdId, list.id, recipeId]
+  )
+  return del.rowCount ?? 0
 }
 
 // Combine two freeform grocery quantities. Same unit (or both unit-less) → sum
@@ -728,6 +765,7 @@ export function presentListItem(i: ListItemRow) {
     checked: i.checked,
     checkedAt: i.checked_at,
     section: i.category,
+    priority: i.priority ?? 3,
     sortOrder: i.sort_order,
     source: i.source,
     sourceRecipeIds: i.source_recipe_ids ?? [],

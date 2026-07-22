@@ -1,9 +1,12 @@
 {
   "name": "@waffled/api",
-  "version": "0.8.0",
+  "version": "0.10.0",
   "private": true,
   "description": "Waffled backend API (lambda-api), written in TS, bundled to JS with esbuild. Same code runs as a container locally (server) and on AWS Lambda (lambda).",
   "main": "dist/lambda.js",
+  "engines": {
+    "node": ">=20.19"
+  },
   "scripts": {
     "build": "node esbuild.config.mjs",
     "typecheck": "tsc --noEmit",
@@ -19,11 +22,11 @@
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
-    "@opentelemetry/auto-instrumentations-node": "^0.77.0",
-    "@opentelemetry/exporter-metrics-otlp-proto": "^0.219.0",
-    "@opentelemetry/exporter-trace-otlp-proto": "^0.219.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.78.0",
+    "@opentelemetry/exporter-metrics-otlp-proto": "^0.221.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.221.0",
     "@opentelemetry/sdk-metrics": "^2.8.0",
-    "@opentelemetry/sdk-node": "^0.219.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.1.0",
     "lambda-api": "^1.4.0",
@@ -44,5 +47,9 @@
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
+  },
+  "overrides": {
+    "brace-expansion@2.0.0 - 2.1.1": "2.1.2",
+    "brace-expansion@3.0.0 - 5.0.6": "5.0.7"
   }
 }

@@ -187,7 +187,6 @@ button.goal-listhead-link:hover {
   font-size: 29px;
   font-weight: 600;
   margin: 9px 0 3px;
-  text-transform: capitalize;
 }
 .hero-sub {
   font-size: 13px;
@@ -426,7 +425,7 @@ button.goal-listhead-link:hover {
 .ge-pv-hero .hrow { position: relative; z-index: 1; display: flex; align-items: center; gap: 18px; }
 .ge-pv-hero .hicon { width: 60px; height: 60px; border-radius: 17px; background: var(--on-color-track); display: grid; place-items: center; font-size: 30px; flex: none; }
 .ge-pv-hero .htag { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; background: var(--on-color-track); padding: 3px 9px; border-radius: 999px; }
-.ge-pv-hero .htitle { font-family: var(--serif); font-size: 23px; font-weight: 600; letter-spacing: -.01em; line-height: 1.1; margin: 8px 0 3px; text-transform: capitalize; }
+.ge-pv-hero .htitle { font-family: var(--serif); font-size: 23px; font-weight: 600; letter-spacing: -.01em; line-height: 1.1; margin: 8px 0 3px; }
 .ge-pv-hero .hsub { font-size: 12.5px; font-weight: 600; opacity: .92; }
 .ge-pv-hero .hring { flex: none; margin-left: auto; }
 
@@ -434,7 +433,7 @@ button.goal-listhead-link:hover {
 .ge-pv-card .crow { display: flex; align-items: flex-start; gap: 14px; }
 .ge-pv-card .cicon { width: 52px; height: 52px; border-radius: 15px; background: var(--primary-t); display: grid; place-items: center; font-size: 27px; flex: none; }
 .ge-pv-card .ctag { font-size: 11px; font-weight: 800; color: var(--ink-3); text-transform: uppercase; letter-spacing: .03em; }
-.ge-pv-card .ctitle { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -.01em; line-height: 1.12; margin: 4px 0 3px; text-transform: capitalize; }
+.ge-pv-card .ctitle { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -.01em; line-height: 1.12; margin: 4px 0 3px; }
 .ge-pv-card .csub { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
 .ge-pv-card .cbar { height: 9px; border-radius: 99px; background: var(--panel); overflow: hidden; margin-top: 18px; }
 .ge-pv-card .cbar > div { height: 100%; border-radius: 99px; background: var(--primary); }
@@ -510,7 +509,6 @@ button.goal-listhead-link:hover {
   padding: 14px 16px;
   border: 2px solid var(--primary);
   background: var(--card);
-  text-transform: capitalize;
 }
 .gc-input-title::placeholder {
   text-transform: none;
@@ -680,7 +678,6 @@ button.goal-listhead-link:hover {
   font-size: 32px;
   font-weight: 600;
   margin: 9px 0 4px;
-  text-transform: capitalize;
 }
 .detail-hero-sub {
   font-size: 13.5px;
@@ -762,6 +759,108 @@ button.goal-listhead-link:hover {
     padding: 20px;
   }
 }
+
+/* ===== Goal data views (Week/Month/Pace/Year/By-person/Year-ring/Collection/Consistency) ===== */
+.gdv-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.gdv-head-t { font-family: var(--serif); font-size: 17px; font-weight: 600; }
+.gdv-head-sub { font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.gdv-head-grow { margin-left: auto; }
+.gdv-head-grow-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* Goals with 6 offered views (e.g. Total) can be wider than the card on
+   narrower layouts — scroll instead of clipping, so every option stays
+   reachable rather than silently unselectable past the card's edge. */
+.gdv-seg { flex: none; max-width: 100%; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.gdv-seg::-webkit-scrollbar { display: none; }
+.gdv-seg button { white-space: nowrap; }
+.gdv-loading { display: flex; align-items: center; justify-content: center; min-height: 120px; }
+
+.gdv-week { display: flex; gap: 8px; }
+.gdv-week-cell-btn { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: none; padding: 0; cursor: pointer; font: inherit; }
+.gdv-week-cell { width: 100%; aspect-ratio: 1; border-radius: 13px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 3px; }
+.gdv-week-num { font-size: 16px; }
+.gdv-week-lbl { font-size: 11px; font-weight: 800; }
+.gdv-dot-row { display: flex; gap: 2px; }
+.gdv-dot { width: 5px; height: 5px; border-radius: 99px; display: inline-block; }
+.gdv-summary { font-size: 12px; color: var(--ink-2); font-weight: 600; margin-top: 11px; }
+.gdv-summary-n { font-size: 15px; }
+.gdv-summary-t { margin-left: 2px; }
+
+.gdv-month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.gdv-month-heads { margin-bottom: 6px; }
+.gdv-month-head { text-align: center; font-size: 11px; font-weight: 800; color: var(--ink-3); }
+.gdv-month-cell {
+  aspect-ratio: 1; border-radius: 10px; padding: 6px 7px; box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: flex-start; border: 0; cursor: pointer; font: inherit;
+}
+.gdv-month-cell.future { border: 1px dashed var(--hair); cursor: default; }
+.gdv-month-nav { display: flex; align-items: center; gap: 10px; }
+.gdv-month-navbtn {
+  width: 28px; height: 28px; flex: none; border-radius: 999px; border: 1px solid var(--hair);
+  background: var(--card); color: var(--ink-2); font-size: 15px; font-weight: 700; cursor: pointer;
+  display: grid; place-items: center; box-shadow: var(--sh-1);
+}
+.gdv-month-navbtn:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
+.gdv-month-navbtn:disabled { opacity: .35; cursor: default; }
+.gdv-month-daynum { font-size: 11.5px; font-weight: 800; }
+/* Today: a red circle around the day number, so you can see where you are in the
+   month at a glance (mirrors the week view's today emphasis). */
+.gdv-month-daynum.today {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 17px; height: 17px; padding: 0 3px; box-sizing: border-box;
+  border: 1.5px solid var(--danger); border-radius: 999px; margin: -2px 0 0 -2px;
+}
+.gdv-month-total { font-size: 13px; }
+.gdv-month-dots { margin-top: auto; }
+.gdv-footer { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hair-2); }
+.gdv-footer-right { margin-left: auto; }
+.gdv-legend { display: flex; gap: 4px; }
+.gdv-legend-sw { width: 16px; height: 16px; border-radius: 5px; display: inline-block; }
+
+.gdv-pace-pill { font-size: 12px; font-weight: 800; padding: 5px 11px; border-radius: 999px; white-space: nowrap; }
+.gdv-pace-legend { flex-wrap: wrap; row-gap: 8px; }
+.legdot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--ink-2); }
+.legdot i { width: 11px; height: 11px; border-radius: 4px; display: inline-block; }
+
+.gdv-stat { text-align: center; }
+.gdv-stat-v { font-size: 24px; line-height: 1; }
+.gdv-stat-l { font-size: 11px; color: var(--ink-3); font-weight: 700; margin-top: 4px; }
+.gdv-legend-row { display: flex; align-items: center; gap: 7px; }
+
+.gdv-byperson-cols { display: flex; gap: 10px; align-items: flex-end; margin-top: 4px; }
+.gdv-byperson-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; border: 0; background: none; padding: 0; cursor: pointer; font: inherit; }
+.gdv-byperson-total { font-size: 13px; }
+.gdv-byperson-bar { width: 100%; max-width: 44px; height: 190px; display: flex; flex-direction: column-reverse; border-radius: 8px 8px 4px 4px; overflow: hidden; background: var(--panel); }
+.gdv-byperson-lbl { font-weight: 800; color: var(--ink-3); }
+.gdv-byperson-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--hair-2); }
+.gdv-byperson-chip { flex: 1; min-width: 110px; display: flex; align-items: center; gap: 9px; background: var(--panel); border-radius: 12px; padding: 9px 12px; }
+.gdv-byperson-chip-name { color: var(--ink-2); font-weight: 700; }
+.gdv-byperson-chip-total { font-size: 17px; }
+
+.gdv-ring-row { display: flex; align-items: center; gap: 8px; }
+.gdv-ring-list { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+.gdv-ring-row-item { display: flex; align-items: center; gap: 9px; }
+.gdv-ring-mo { width: 26px; font-weight: 800; color: var(--ink-3); }
+.gdv-ring-bar { flex: 1; height: 8px; border-radius: 99px; background: var(--panel); overflow: hidden; }
+.gdv-ring-bar > div { height: 100%; }
+.gdv-ring-val { width: 34px; text-align: right; font-size: 12.5px; }
+
+.gdv-collection-grid { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.gdv-collection-slot { flex: 1; min-width: 16px; height: 46px; border-radius: 4px; box-sizing: border-box; background: var(--panel); border: 1px dashed var(--hair); }
+.gdv-collection-slot.filled { border: 0; }
+.gdv-collection-cap { margin-bottom: 16px; }
+.gdv-collection-permonth-lbl { letter-spacing: .04em; margin-bottom: 8px; }
+.gdv-collection-permonth { display: flex; gap: 6px; align-items: flex-end; height: 40px; }
+.gdv-collection-permonth-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.gdv-collection-permonth-bar { width: 100%; max-width: 18px; background: var(--success); border-radius: 3px; }
+
+.gdv-consistency-grid { max-width: 320px; }
+.gdv-consistency-cell {
+  aspect-ratio: 1; border-radius: 99px; border: 0; background: var(--panel);
+  display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 800; color: var(--ink-3);
+  cursor: pointer; font: inherit; padding: 0;
+}
+.gdv-consistency-cell.hit { background: var(--success); }
+.gdv-consistency-cell.future { background: transparent; border: 1px dashed var(--hair); cursor: default; }
 
 /* ===== Log progress modal (handoff "Log time" capture) ===== */
 .log-quick {

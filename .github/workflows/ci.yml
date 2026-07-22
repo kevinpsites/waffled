@@ -4,8 +4,8 @@
 # their own package.json + package-lock.json (npm). So each job installs with
 # `npm ci` in its own app dir and caches on that app's lockfile.
 #
-# Node 20 to match the runtime (apps/api/Dockerfile + caddy web stage use
-# node:20-alpine).
+# API tests stay on Node 20 to match the production API image. Web typechecking
+# and tests use Node 24, the minimum supported by the current browser toolchain.
 #
 # Jobs are independent so the fast ones (typecheck, web tests) fail fast without
 # waiting on the slow api job. The api integration/e2e tests use Testcontainers
@@ -83,6 +83,27 @@ jobs:
       - name: Run waffled CLI tests
         run: bash tests/waffled.test.sh
 
+  production-audit:
+    name: Production dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Audit API production dependencies
+        working-directory: apps/api
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Audit web production dependencies
+        working-directory: apps/web
+        run: npm audit --omit=dev --audit-level=moderate
+
   typecheck:
     name: Typecheck (api + web)
     runs-on: ubuntu-latest
@@ -94,7 +115,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
           cache-dependency-path: |
             apps/api/package-lock.json
@@ -127,7 +148,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
@@ -138,6 +159,34 @@ jobs:
       - name: Run web tests
         working-directory: apps/web
         run: npm test                 # vitest run
+
+  web-browser-tests:
+    name: Web browser smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # PR #96 establishes Node 24 as the supported web toolchain.
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install web deps
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser smoke tests
+        working-directory: apps/web
+        run: npm run test:browser
 
   api-tests:
     name: API tests (vitest + Testcontainers)

@@ -2,7 +2,7 @@
 # `docker compose up --build` is fully reproducible with no host build step.
 # Build context is the repo root (see docker-compose.yml).
 
-FROM node:20-alpine AS web
+FROM node:24-alpine AS web
 WORKDIR /app
 COPY apps/web/package.json apps/web/package-lock.json* ./
 RUN npm ci || npm install

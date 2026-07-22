@@ -27,6 +27,126 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bring-up. So pairing still has nothing to actually connect to yet — this is **pending
   hardware validation**, not a finished, buyable device. An iOS control panel is coming
   soon as a fast-follow; web ships first.
+
+### Changed
+
+### Fixed
+
+## [0.10.0] - 2026-07-22
+
+### Added
+- **The iPhone Today Goals card is now the full goal hero.** It matches the iPad: a progress
+  ring, each participant's contribution bar, a **Log progress** button (log straight from
+  Today), and a **"Show a different goal"** switcher that opens the grouped goal picker. The
+  old My/Family scope pill is replaced by that picker (which already covers your goals, shared
+  groups, and the rest). One shared card now drives both iPhone and iPad, so they stay in sync.
+- **The iPad's Family Goal card now uses the grouped goal picker.** "Show a different goal"
+  opens the same organized pop-over the iPhone uses — goals grouped by list (your goals,
+  shared groups you're in, then the rest) with member avatars — instead of one flat list.
+- **Start Cook Mode from the iPhone Today card.** Tonight's dinner card now has **View
+  recipe** and **👨‍🍳 Cook Mode** buttons (matching iPad) — Cook Mode drops you straight
+  into the step-by-step cook flow instead of only opening the recipe.
+- **Take a recipe back off the grocery list.** A recipe you added off-plan from its page
+  shows under "Unscheduled" — now you can remove it in one tap. Web: a **Remove** button on
+  the by-meal section, or an **×** on the "This week's meals" Unscheduled rail; iPhone/iPad:
+  an **×** on the "This week's meals" Unscheduled recap rows. Items shared with another recipe
+  stay put; only this recipe's are cleared.
+- **Rank list items on a 1–5 urgency scale.** Every list item has a priority from 1 (not
+  urgent) through 3 (normal) up to 5 (urgent), set from the item editor on web and
+  iPhone/iPad. High and Urgent items get a flag on the row so what matters most is easy to
+  spot. Setting a priority no longer shuffles items around; instead the web list header has a
+  **Sort: manual ⇄ By priority** toggle that, on demand, flattens the list highest-priority
+  first.
+- **Reorganize list items into other sections.** On web, drag an item from one section onto
+  another to refile it; on iPhone/iPad, press and drag a list item across a section header to
+  drop it into that section — the same native row-drag used for reordering, so swipe-to-delete
+  keeps working. (The Details editor also changes an item's section.)
+- **Swipe between steps in cook mode (iPhone/iPad).** Swipe left for the next step, right for
+  the previous — in addition to the Back/Next buttons.
+- **Edit a countdown straight from the calendar.** Tap a countdown to change it: a standalone
+  countdown (the "add anything" kind) opens a small editor to rename, move its date, or remove
+  it; an event-countdown opens its event, where you can rename it or untick "Show a countdown"
+  to stop it. (Birthday countdowns come from a person's profile.) On web, tap it on the
+  calendar; on iPhone/iPad, tap the countdown on the Today card, or in the calendar where it
+  now appears as an all-day row (see below).
+- **Backups can now be restore-tested without touching the live app.** Run
+  `./waffled backup verify` to restore the newest database dump into a disposable Postgres
+  container, fail on archive or SQL errors, confirm the Waffled schema exists, and clean up the
+  test database automatically. A specific dump filename can be supplied when checking an older
+  or retrieved offsite copy.
+
+### Changed
+- **Countdowns now show up on the calendar, not just the Today card.** They render like
+  all-day events on their target date — on web in the day/week views (with a month-grid
+  badge), and on iPhone/iPad as an all-day row in the agenda, day, and month-detail lists
+  (a countdown-only day now appears in the agenda too) — so "12 days until Hawaii" is visible
+  right where you're planning, and tappable to edit.
+- **The goal month grid marks today.** A red ring around today's date in a goal's month
+  heatmap shows where you are in the month at a glance (web + iPhone/iPad).
+- **The web nav rail no longer shows a permanent "New" badge.** A "New" pill sat under the
+  Waffled logo on every screen with nothing to announce; it's been removed.
+
+### Fixed
+- **Fixed an iPad crash (and a hidden field) when adding a grocery item from Today.** The
+  Today grocery quick-add was a bottom-pinned field that fought the iPad keyboard — it hid
+  behind the keys, and the code that tried to lift it clear could spiral into an unbounded
+  relayout loop and crash the app in portrait. Tapping **Add** on the Today grocery card now
+  opens a small sheet whose field the system keeps above the keyboard — always visible, no
+  lift math, can't loop. Return adds the item and keeps the keyboard up for the next.
+- **Goal names now read exactly as you typed them, everywhere.** A goal called
+  "10 hours at the gym" appeared title-cased ("10 Hours At The Gym") on the Goals page, the
+  goal detail, the name field, and the editor preview, but as-entered on a person's profile —
+  the same name looked different from screen to screen. Names now render as-typed in all of
+  those places (web).
+- **The goal "week" chart is now the actual calendar week.** It showed a rolling last-7-days
+  window ending today; it now always shows the current week Sunday–Saturday (and paging back
+  steps whole calendar weeks), and each day cell shows its date (e.g. "Sun 14") so the span is
+  obvious — on web and iPhone/iPad.
+- **The goal "year" grid shows the whole year again.** A goal created partway through the
+  year collapsed its GitHub-style square grid to just the current month; it now paints every
+  day from January 1 to today, with the days before the goal started simply sitting empty
+  (web + iPhone/iPad).
+- **"Add anything" events now default to you.** When you type an event into the AI capture
+  bar without naming anyone ("dentist Tuesday at 3"), the person picker now shows — and saves —
+  the logged-in member instead of "Nobody". Naming someone ("dentist for George") still
+  assigns them. Web + iPhone/iPad.
+- **Adding a grocery/list item on iPhone/iPad is easier to tap.** The add-item bar now
+  raises the keyboard when you tap anywhere on it — the icon and padding, not just the tiny
+  text glyphs — so it's no longer a fiddly target.
+- **A half-typed list item is no longer lost when you leave.** If you type an item into the
+  add bar on iPhone/iPad and navigate away without hitting return, it's now saved instead of
+  discarded.
+- **Add a list item with full details from the composer (iPhone/iPad).** The details button
+  on the add bar opens a proper **"Add item"** half-sheet — set the assignee, section, and
+  priority up front, then add — seeded with whatever you'd already typed. (Replaces an
+  unreliable swipe-up gesture.) The five priority pills now scroll horizontally instead of
+  wrapping.
+- **Countdowns on the Today page are now tappable.** Tap a countdown to jump straight to
+  what it's counting down to — an event-based countdown opens that event, while a trip or
+  birthday countdown opens the calendar on its day.
+- **Checked-off list items now have somewhere to go.** On the web custom-list view, items
+  you check off no longer linger in place — they tuck into a collapsible "Completed" section
+  at the bottom (matching the grocery board), with a brief grace window so an accidental tap
+  is easy to undo. Un-checking an item puts it back on the list.
+
+### Security
+- **Patched a high-severity advisory in a bundled telemetry dependency.** Updated the
+  OpenTelemetry Node packages so they pull in the fixed `@opentelemetry/propagator-jaeger`
+  (≥ 2.9.0), clearing GHSA-45rx-2jwx-cxfr (a denial-of-service via a malformed Jaeger trace
+  header). Telemetry stays off by default, so this only mattered when the OTLP exporter was
+  enabled — updated regardless.
+
+## [0.9.0] - 2026-07-20
+
+### Added
+- **See a goal's progress your way, not just as a number.** Every goal's detail page now
+  offers a switcher of visualizations tailored to what you're tracking: a week or month
+  heatmap strip, a GitHub-style year grid, a pace chart showing where you need to be to hit
+  your target on time, a radial "year in a ring," and stacked by-person bars for family
+  goals — plus a fill-up collection grid for count goals and a hit/miss dot calendar for
+  habits. Only the views that make sense for the goal's type and timeframe are offered, your
+  last pick is remembered per goal, and tapping any day or month opens who logged what.
+  Shipped on web and iPhone/iPad together.
 - **Add any recipe's ingredients to the grocery list — no meal plan needed.** Every recipe
   page (web and iOS) now has a first-class "Add to grocery" action, so a one-off dinner, a
   side, or a snack goes straight to the list: staples you already have are skipped, quantities
@@ -150,6 +270,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **The iPhone and iPad apps now reject malformed server addresses before saving.**
+  Server settings require an HTTP(S) origin, explain invalid input in place, normalize
+  trailing slashes, and no longer force-unwrap request URLs.
+- **Production dependency audits now run in CI.** The API's transitive `protobufjs`
+  dependency is updated past its schema-name denial-of-service advisory, and future
+  moderate-or-higher production advisories fail the build for both API and web.
+- **Sign-in and first-run setup forms now work better with assistive technology.**
+  Labels are associated with their fields, validation messages identify the affected
+  input, and server errors are announced and focused instead of silently appearing.
 - **The iPad calendar is much snappier.** Opening the Calendar tab and tapping days in the
   month view used to re-scan and re-bucket every synced event (including every occurrence of
   recurring events) on each tap, which felt sluggish on a busy household calendar. The app
@@ -228,6 +357,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Run the API and backup scheduler as unprivileged image users. A short-lived startup job
+  safely updates ownership on volumes created by earlier root-running releases.
+- Postgres and direct API diagnostics now bind to loopback, while device-facing
+  PowerSync and Google OAuth callbacks enter through Caddy. This preserves local
+  and LAN setup while avoiding raw service exposure.
+- The container API now rejects oversized request bodies before buffering them
+  and throttles repeated login, setup, OIDC, kiosk pairing, refresh, and media
+  upload attempts with retry guidance. Caddy normalizes the client address used
+  by those limits, and direct API access is restricted to the Docker host.
 - **Member logins now respect account ownership.** An administrator can update the login
   already linked to a household profile, but an account owned by a different person must
   join through the explicit invitation and acceptance flow.
@@ -237,6 +375,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
   attachments now reject malformed or cross-household keys, and local storage prevents
   paths from escaping the configured media directory.
+- **Household links now stay inside the family they belong to.** Chore assignees,
+  currency conversions, calendar events, offline writes, goal participants, list
+  assignees, calendar owners, and meal references reject IDs from another household.
 - **Installation-wide login settings now have one recoverable owner.** Global login and
   SSO configuration no longer accepts changes from administrators of any household;
   ownership persists across household changes and can be recovered from the host admin CLI.
@@ -1126,7 +1267,9 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/kevinpsites/waffled/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/kevinpsites/waffled/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/kevinpsites/waffled/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kevinpsites/waffled/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/kevinpsites/waffled/compare/v0.6.0...v0.6.1

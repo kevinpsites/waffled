@@ -13,7 +13,7 @@
 #   ./waffled rebuild [svc]   force a rebuild + recreate (all, or one)
 #   ./waffled logs [svc]      follow logs (all, or one)
 #   ./waffled migrate   re-apply DB migrations from the host (also run automatically on up)
-#   ./waffled backup [list]   run a DB backup now (or list existing dumps)
+#   ./waffled backup [list|verify [file]]   run, list, or safely test DB backups
 #   ./waffled restore <file>  restore a dump (DESTRUCTIVE — stops the app, overwrites the DB)
 #   ./waffled psql      open a psql shell on the database
 #   ./waffled token [sub]     mint a dev JWT for localStorage (default sub: dev|demo)
@@ -103,6 +103,55 @@ ensure_env() {
     return 1
   fi
   [ "$created" -eq 0 ] || echo "${c_grn}Created $ENV_FILE with generated secrets.${c_reset}"
+}
+
+# Upgrade bridge for installs created before PowerSync moved behind Caddy. New
+# `.env` files already carry this value; existing files get the matching listener
+# without overwriting any operator customization.
+ensure_powersync_proxy_env() {
+  [ -n "$(env_val POWERSYNC_CADDY_ADDRESS)" ] && return 0
+  local site host
+  site="$(env_val CADDY_SITE_ADDRESS)"
+  case "$site" in
+    ""|:*) set_env_var POWERSYNC_CADDY_ADDRESS ":8090" ;;
+    *)
+      host="${site#https://}"; host="${host#http://}"; host="${host%%:*}"
+      set_env_var POWERSYNC_CADDY_ADDRESS "https://$host:8090"
+      ;;
+  esac
+}
+
+# Return a replacement only for the exact legacy localhost default. Custom OAuth
+# callbacks belong to the operator because changing one also requires updating the
+# Google Cloud console; those are warned about below, never silently overwritten.
+google_callback_replacement() {
+  local current="$1" public_base="$2" http_port="$3"
+  [ "$current" = "http://localhost:3000/auth/google/calendar/callback" ] || return 1
+  if [ -n "$public_base" ]; then
+    printf '%s/auth/google/calendar/callback' "${public_base%/}"
+  else
+    printf 'http://localhost:%s/auth/google/calendar/callback' "$http_port"
+  fi
+}
+
+ensure_google_callback_env() {
+  local current public_base http_port replacement
+  current="$(env_val GOOGLE_CALENDAR_REDIRECT_URI)"
+  [ -n "$current" ] || return 0
+  public_base="$(env_val PUBLIC_BASE_URL)"
+  http_port="$(env_val HTTP_PORT)"; http_port="${http_port:-8080}"
+  if replacement="$(google_callback_replacement "$current" "$public_base" "$http_port")"; then
+    set_env_var GOOGLE_CALENDAR_REDIRECT_URI "$replacement"
+    echo "${c_grn}Updated Google Calendar callback to Caddy: $replacement${c_reset}"
+    [ -z "$public_base" ] || echo "${c_ylw}Register this exact callback in Google Cloud before reconnecting Calendar.${c_reset}"
+    return 0
+  fi
+  case "$current" in
+    http://*:3000/auth/google/calendar/callback|https://*:3000/auth/google/calendar/callback)
+      echo "${c_ylw}Google Calendar callback still targets direct API port :3000, which is now loopback-only.${c_reset}"
+      echo "${c_ylw}Set GOOGLE_CALENDAR_REDIRECT_URI to your Caddy origin + /auth/google/calendar/callback and register that exact URL in Google Cloud.${c_reset}"
+      ;;
+  esac
 }
 
 status() {
@@ -232,6 +281,109 @@ run_pre_upgrade_backup() {
   fi
 }
 
+# Restore a dump into a short-lived, isolated Postgres container. This exercises the
+# real gunzip -> psql recovery path without stopping or writing to the live stack.
+verify_backup_restore() (
+  local file="${1:-}" backup_path image drill_container remaining schema_ok
+
+  if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-backup$'; then
+    echo "${c_red}waffled-backup is not running — start it with ./waffled up${c_reset}"
+    return 2
+  fi
+
+  if [ -z "$file" ]; then
+    backup_path="$(docker exec waffled-backup sh -c \
+      'ls -1t /backups/waffled-*.sql.gz 2>/dev/null | head -1' || true)"
+    if [ -z "$backup_path" ]; then
+      echo "${c_red}No database backups found. Run './waffled backup' first.${c_reset}"
+      return 1
+    fi
+    file="$(basename "$backup_path")"
+  else
+    file="$(basename "$file")"
+  fi
+
+  case "$file" in
+    waffled-*.sql.gz) ;;
+    *)
+      echo "${c_red}$file is not a Waffled database dump (expected waffled-*.sql.gz).${c_reset}"
+      return 1
+      ;;
+  esac
+
+  if ! docker exec waffled-backup test -f "/backups/$file"; then
+    echo "${c_red}/backups/$file not found. Run './waffled backup list'.${c_reset}"
+    return 1
+  fi
+  if ! docker exec waffled-backup sh -c 'gunzip -t "$1"' sh "/backups/$file"; then
+    echo "${c_red}$file is corrupt or is not a readable gzip archive.${c_reset}"
+    return 1
+  fi
+
+  image="$(docker inspect --format '{{.Config.Image}}' waffled-postgres 2>/dev/null || true)"
+  if [ -z "$image" ]; then
+    echo "${c_red}The waffled-postgres container was not found — start the stack first.${c_reset}"
+    return 2
+  fi
+
+  drill_container="waffled-restore-drill-$$-${RANDOM:-0}"
+  # Expand the generated name while the local is in scope: bash 3.2 runs an EXIT
+  # trap after function locals have been torn down under `set -u`.
+  trap "docker rm -f '$drill_container' >/dev/null 2>&1 || true" EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  echo "${c_dim}Starting an isolated Postgres restore drill for ${file}…${c_reset}"
+  if ! docker run -d --rm \
+    --name "$drill_container" \
+    --label com.waffled.restore-drill=true \
+    -e POSTGRES_USER=waffled_verify \
+    -e POSTGRES_PASSWORD=waffled-restore-drill-only \
+    -e POSTGRES_DB=waffled_verify \
+    "$image" -c wal_level=logical >/dev/null; then
+    echo "${c_red}Couldn't start the disposable Postgres container.${c_reset}"
+    return 1
+  fi
+
+  remaining=30
+  while [ "$remaining" -gt 0 ]; do
+    # pg_isready can report success before the image's entrypoint has created the
+    # requested database. Require a real query against that database instead.
+    if docker exec "$drill_container" psql \
+      -U waffled_verify -d waffled_verify -Atc 'SELECT 1' >/dev/null 2>&1; then
+      break
+    fi
+    remaining=$((remaining - 1))
+    sleep 1
+  done
+  if [ "$remaining" -eq 0 ]; then
+    echo "${c_red}Disposable Postgres did not become ready in 30 seconds.${c_reset}"
+    return 1
+  fi
+
+  if ! docker exec waffled-backup sh -c 'gunzip -c "$1"' sh "/backups/$file" \
+    | docker exec -i "$drill_container" psql \
+        -U waffled_verify -d waffled_verify \
+        -v ON_ERROR_STOP=1 --single-transaction >/dev/null; then
+    echo "${c_red}$file could not be restored cleanly.${c_reset}"
+    return 1
+  fi
+
+  if ! schema_ok="$(docker exec "$drill_container" psql \
+    -U waffled_verify -d waffled_verify -Atc \
+    "SELECT to_regclass('public.households') IS NOT NULL;" 2>/dev/null)"; then
+    echo "${c_red}The restored database could not be inspected.${c_reset}"
+    return 1
+  fi
+  if [ "$(printf '%s' "$schema_ok" | tr -d '[:space:]')" != "t" ]; then
+    echo "${c_red}Restore completed, but the Waffled schema is missing.${c_reset}"
+    return 1
+  fi
+
+  echo "${c_grn}Backup verified: $file restored cleanly in an isolated database.${c_reset}"
+  echo "The live Waffled database was not changed. Uploaded-media archives are checked separately."
+)
+
 # Best-effort primary LAN IPv4 (for "reach it from a tablet"). Empty if undetectable.
 detect_lan_ip() {
   local ip=""
@@ -324,7 +476,7 @@ cmd="${1:-help}"; shift || true
 case "$cmd" in
   up)
     preflight || exit 1
-    ensure_env; export_build_meta
+    ensure_env; ensure_powersync_proxy_env; ensure_google_callback_env; export_build_meta
     # Default: pull the published images (fast — no local toolchain build) and start.
     # `./waffled up --build [svc]` (dev/bleeding-edge): build the images from source
     # instead, stamping the current git SHA into /healthz + /api/health.
@@ -357,6 +509,8 @@ case "$cmd" in
     done
     preflight || exit 1
     ensure_env
+    ensure_powersync_proxy_env
+    ensure_google_callback_env
     script_before="$(script_checksum)"
     update_repo_for_upgrade || exit 1
     # If the update replaced this script, restart the upgrade under the new copy NOW —
@@ -385,7 +539,7 @@ case "$cmd" in
     ;;
   down)    "${DC[@]}" down "$@" ;;
   restart) "${DC[@]}" restart "$@"; wait_for_services "$@" || true; echo; status || true ;;
-  rebuild) preflight || exit 1; ensure_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; wait_for_services "$@" || true; echo; status || true ;;
+  rebuild) preflight || exit 1; ensure_env; ensure_powersync_proxy_env; ensure_google_callback_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; wait_for_services "$@" || true; echo; status || true ;;
   logs)    "${DC[@]}" logs -f --tail=120 "$@" ;;
   status|st|ps) status || true ;;
   migrate)
@@ -395,17 +549,27 @@ case "$cmd" in
     ( cd "$ROOT/apps/api" && DATABASE_URL="postgres://$pg_user:$pg_pass@localhost:$pg_port/$pg_db" npm run migrate )
     ;;
   backup)
-    # Run a backup right now (or list dumps) via the backup sidecar. It has pg_dump,
-    # the /backups target, and DATABASE_URL already — no flags to remember.
+    # Run, list, or verify dumps via the backup sidecar. It has pg_dump, the
+    # /backups target, and DATABASE_URL already — no flags to remember.
     if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-backup$'; then
       echo "${c_red}waffled-backup is not running — start it with ./waffled up${c_reset}"; exit 2
     fi
-    if [ "${1:-}" = "list" ]; then
-      docker exec waffled-backup sh -c 'ls -lh /backups/waffled-*.sql.gz 2>/dev/null || echo "no backups yet"'
-    else
-      echo "${c_dim}Running a backup now…${c_reset}"
-      docker exec waffled-backup waffled-backup
-    fi
+    case "${1:-}" in
+      list)
+        docker exec waffled-backup sh -c 'ls -lh /backups/waffled-*.sql.gz 2>/dev/null || echo "no backups yet"'
+        ;;
+      verify)
+        verify_backup_restore "${2:-}"
+        ;;
+      "")
+        echo "${c_dim}Running a backup now…${c_reset}"
+        docker exec waffled-backup waffled-backup
+        ;;
+      *)
+        echo "usage: ./waffled backup [list|verify [file]]"
+        exit 1
+        ;;
+    esac
     ;;
   restore)
     file="${1:-}"
@@ -462,6 +626,7 @@ case "$cmd" in
       1)
         set_env_var PUBLIC_BASE_URL ""
         set_env_var POWERSYNC_PUBLIC_URL "http://localhost:$ps_port"
+        set_env_var POWERSYNC_CADDY_ADDRESS ":8090"
         set_env_var CADDY_SITE_ADDRESS ":80"
         echo "${c_grn}Set for localhost.${c_reset} Run ${c_dim}./waffled up${c_reset}, then open http://localhost:$http_port"
         ;;
@@ -472,6 +637,7 @@ case "$cmd" in
         [ -n "$addr" ] || { echo "${c_red}No address given — aborting.${c_reset}"; exit 1; }
         set_env_var PUBLIC_BASE_URL "http://$addr:$http_port"
         set_env_var POWERSYNC_PUBLIC_URL "http://$addr:$ps_port"
+        set_env_var POWERSYNC_CADDY_ADDRESS ":8090"
         set_env_var CADDY_SITE_ADDRESS ":80"
         echo "${c_grn}Set for your network ($addr).${c_reset} Run ${c_dim}./waffled up${c_reset}, then open http://$addr:$http_port on any device."
         echo "${c_dim}Tip: reserve a static IP for this machine in your router so the address doesn't drift.${c_reset}"
@@ -482,8 +648,9 @@ case "$cmd" in
         set_env_var CADDY_SITE_ADDRESS "$host"
         set_env_var PUBLIC_BASE_URL "https://$host"
         set_env_var POWERSYNC_PUBLIC_URL "https://$host:$ps_port"
+        set_env_var POWERSYNC_CADDY_ADDRESS "https://$host:8090"
         echo "${c_grn}Set for https://$host.${c_reset} Enable the 443 mapping in infra/compose/docker-compose.yml, point DNS at this machine, then run ${c_dim}./waffled up${c_reset}."
-        echo "${c_ylw}Note: PowerSync serves on :$ps_port — for public HTTPS you'll also need to expose/proxy that port with TLS (see docs/TROUBLESHOOTING.md).${c_reset}"
+        echo "${c_dim}PowerSync is served through Caddy with TLS on :$ps_port.${c_reset}"
         ;;
       *) echo "${c_red}Unknown choice — run ./waffled setup again.${c_reset}"; exit 1 ;;
     esac

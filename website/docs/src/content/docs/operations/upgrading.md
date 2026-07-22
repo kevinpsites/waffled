@@ -45,6 +45,14 @@ the automatic snapshot with `./waffled upgrade --skip-backup`. This is intention
 without a matching pre-upgrade database backup, a forward-only migration cannot be cleanly
 rolled back.
 
+:::caution[Google Calendar callback changes]
+The API diagnostic port is loopback-only in current releases. Upgrades automatically move the
+exact old localhost callback from port `3000` to Caddy on port `8080`. A custom callback that
+still uses `:3000` is left untouched and produces a warning: update it to your public Caddy origin
+plus `/auth/google/calendar/callback`, then register that exact URL in Google Cloud before
+reconnecting Calendar.
+:::
+
 ### You'll be told when there's an update
 
 Waffled checks GitHub for new releases and shows **Settings → System Health → "Update
