@@ -100,10 +100,12 @@ export const groceryApi = {
   setItemChecked: (id: string, checked: boolean) =>
     apiSend<{ item: GroceryItem }>('PATCH', `/api/list-items/${id}`, { checked }).then((r) => r.item).then(tap('grocery')),
   deleteItem: (id: string) => apiDelete(`/api/list-items/${id}`).then(tap('grocery')),
-  groceryFromRecipe: (recipeId: string) =>
-    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}`).then(tap('grocery')),
-  removeRecipeFromGrocery: (recipeId: string) =>
-    apiDelete(`/api/lists/grocery/from-recipe/${recipeId}`).then(tap('grocery')),
+  // weekStart scopes an off-plan add/remove to the week being shopped (defaults to the
+  // current week server-side when omitted, e.g. from a recipe page with no week context).
+  groceryFromRecipe: (recipeId: string, weekStart?: string) =>
+    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
+  removeRecipeFromGrocery: (recipeId: string, weekStart?: string) =>
+    apiDelete(`/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
 
   // lists (the Lists screen)
   lists: () => apiGet<{ lists: ListSummary[] }>('/api/lists'),

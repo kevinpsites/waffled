@@ -89,7 +89,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   blessed Markdown format for the native share sheet / clipboard / `.md` download),
   overrides, cook mode, **per-step timers** (set in the editor; a floating
   cook-mode dock that ticks live, jumps to the step on tap, and rings a looping
-  alarm + local-notification fallback), substitution-aware grocery build, AI
+  alarm + local-notification fallback), substitution-aware grocery build with a
+  **per-week grocery board** (switch weeks to shop ahead — each week's meal items are
+  their own list, typed items + staples stay global), AI
   plan-week/month (with a no-AI **shuffle** fallback that fills empty slots from
   your library, skipping recently-planned/cooked dishes), AI metadata auto-fill.
 - **Photos** — wall (masonry), real blob upload (single + multi), albums, edit, multi-

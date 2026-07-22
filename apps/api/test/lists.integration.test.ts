@@ -859,3 +859,107 @@ describe('list templates (mark-as-template converts in place, apply, unmark)', (
     expect((await call('POST', `/api/lists/${listId}/save-as-template`, kelly)).statusCode).toBe(404)
   })
 })
+
+// The grocery board can be viewed/built one week at a time. Meal-derived ('auto') rows
+// and off-plan recipe adds ('recipe') belong to a week; manually-typed rows are global.
+// Building or checking one week must never touch another week's rows.
+describe('grocery week switching — never clobber', () => {
+  // Use weeks well ahead of thisSunday() so earlier suites' current/next-week data
+  // doesn't bleed in.
+  const addDays = (iso: string, n: number) => {
+    const d = new Date(iso + 'T00:00:00Z')
+    d.setUTCDate(d.getUTCDate() + n)
+    return d.toISOString().slice(0, 10)
+  }
+  const weekA = addDays(thisSunday(), 14)
+  const weekB = addDays(thisSunday(), 21)
+
+  async function recipe(title: string, ingredients: Array<{ name: string; amount?: number; unit?: string }>) {
+    const r = await call('POST', '/api/recipes', kevin, { title, emoji: '🥦' })
+    const rid = JSON.parse(r.body).recipe.id as string
+    await call('POST', `/api/recipes/${rid}/ingredients`, kevin, { ingredients })
+    return rid
+  }
+  const planOn = (week: string, recipeId: string) =>
+    call('POST', '/api/meals/plan', kevin, { date: addDays(week, 2), mealType: 'dinner', recipeId })
+  const board = async (week: string) =>
+    JSON.parse((await call('GET', `/api/lists/grocery/board?weekStart=${week}`, kevin)).body)
+  const rebuild = (week: string) => call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
+  const names = (b: { items: Array<{ name: string }> }) => b.items.map((i) => i.name)
+
+  let alpha = ''
+  let bravo = ''
+  it('builds each week from its own meals and never clobbers the other', async () => {
+    alpha = await recipe('WK Alpha', [{ name: 'Alpha Beef', amount: 2, unit: 'lb' }])
+    bravo = await recipe('WK Bravo', [{ name: 'Bravo Fish', amount: 1, unit: 'lb' }])
+    await planOn(weekA, alpha)
+    await planOn(weekB, bravo)
+
+    expect(rebuild(weekA)).resolves // build week A first
+    await rebuild(weekA)
+    let a = await board(weekA)
+    expect(names(a)).toContain('Alpha Beef')
+    expect(names(a)).not.toContain('Bravo Fish')
+    const alphaRow = a.items.find((i: { name: string }) => i.name === 'Alpha Beef')
+    expect(alphaRow.source).toBe('auto')
+    expect(alphaRow.weekStart).toBe(weekA)
+
+    // building week B must leave week A's auto rows untouched
+    await rebuild(weekB)
+    const b = await board(weekB)
+    expect(names(b)).toContain('Bravo Fish')
+    expect(names(b)).not.toContain('Alpha Beef')
+    a = await board(weekA)
+    expect(names(a)).toContain('Alpha Beef') // still here — not clobbered
+    expect(names(a)).not.toContain('Bravo Fish')
+
+    // rebuilding week A again doesn't disturb week B
+    await rebuild(weekA)
+    expect(names(await board(weekB))).toContain('Bravo Fish')
+  })
+
+  it('shows a manually-typed item on every week (global)', async () => {
+    await call('POST', '/api/lists/grocery/items', kevin, { name: 'Paper towels' })
+    expect(names(await board(weekA))).toContain('Paper towels')
+    expect(names(await board(weekB))).toContain('Paper towels')
+  })
+
+  it('checking a week’s auto item does not affect another week', async () => {
+    const a = await board(weekA)
+    const alphaRow = a.items.find((i: { name: string }) => i.name === 'Alpha Beef')
+    expect((await call('PATCH', `/api/list-items/${alphaRow.id}`, kevin, { checked: true })).statusCode).toBe(200)
+    const b = await board(weekB)
+    const bravoRow = b.items.find((i: { name: string }) => i.name === 'Bravo Fish')
+    expect(bravoRow.checked).toBe(false)
+  })
+
+  it('scopes an off-plan recipe add to the week it is added to', async () => {
+    const charlie = await recipe('WK Charlie', [{ name: 'Charlie Corn', amount: 1, unit: 'can' }])
+    expect((await call('POST', `/api/lists/grocery/from-recipe/${charlie}?weekStart=${weekA}`, kevin)).statusCode).toBe(201)
+    expect(names(await board(weekA))).toContain('Charlie Corn')
+    expect(names(await board(weekB))).not.toContain('Charlie Corn')
+  })
+
+  it('keeps an off-plan row’s quantity coherent — no cross-week accumulation', async () => {
+    // Off-plan "Shared Kale" on week A, plus a planned recipe needing it in EACH week.
+    const offplan = await recipe('WK Kale Salad', [{ name: 'Shared Kale', amount: 1, unit: 'bunch' }])
+    const plannedA = await recipe('WK Kale A', [{ name: 'Shared Kale', amount: 1, unit: 'bunch' }])
+    const plannedB = await recipe('WK Kale B', [{ name: 'Shared Kale', amount: 1, unit: 'bunch' }])
+    await call('POST', `/api/lists/grocery/from-recipe/${offplan}?weekStart=${weekA}`, kevin)
+    await planOn(weekA, plannedA)
+    await planOn(weekB, plannedB)
+
+    await rebuild(weekA) // credits week A's planned portion onto the off-plan row: 1 + 1 = 2
+    let kaleA = (await board(weekA)).items.filter((i: { name: string }) => i.name === 'Shared Kale')
+    expect(kaleA).toHaveLength(1)
+    const qtyAfterA = kaleA[0].quantity
+
+    // rebuilding week B must NOT touch week A's off-plan Shared Kale row
+    await rebuild(weekB)
+    kaleA = (await board(weekA)).items.filter((i: { name: string }) => i.name === 'Shared Kale')
+    expect(kaleA).toHaveLength(1)
+    expect(kaleA[0].quantity).toBe(qtyAfterA) // unchanged by week B's rebuild
+    // week B has its own Shared Kale (from plannedB), independent of week A's
+    expect(names(await board(weekB))).toContain('Shared Kale')
+  })
+})
