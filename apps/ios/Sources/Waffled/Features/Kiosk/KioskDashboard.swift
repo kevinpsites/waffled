@@ -229,7 +229,7 @@ struct KioskDashboard: View {
                 .background(LinearGradient(colors: [WF.ai2, WF.ai], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(reviewTitle(nR, nS)).font(.system(size: 18, weight: .heavy)).foregroundStyle(WF.ink)
+                Text(reviewRecapTitle(nR, nS)).font(.system(size: 18, weight: .heavy)).foregroundStyle(WF.ink)
                 Text(preview.isEmpty ? "Each ties to a goal." : "\(preview) — each ties to a goal.")
                     .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
             }
@@ -252,11 +252,6 @@ struct KioskDashboard: View {
         .background(tint).clipShape(Capsule())
     }
 
-    private func reviewTitle(_ nR: Int, _ nS: Int) -> String {
-        if nR > 0 && nS > 0 { return "\(nR) to review · \(nS) to link" }
-        if nR > 0 { return nR == 1 ? "1 event to log" : "\(nR) events to log" }
-        return nS == 1 ? "1 event might count" : "\(nS) events might count"
-    }
 
     // MARK: columns (preset layouts)
 

@@ -222,7 +222,7 @@ struct TodayView: View {
                 .background(LinearGradient(colors: [WF.ai2, WF.ai], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(reviewTitle(nR, nS)).font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
+                Text(reviewRecapTitle(nR, nS)).font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
                 Text(reviewSubtitle).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
             }
             Spacer(minLength: 6)
@@ -232,12 +232,6 @@ struct TodayView: View {
         .background(WF.ai.opacity(0.07))
         .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.ai.opacity(0.22), lineWidth: 1))
-    }
-
-    private func reviewTitle(_ nR: Int, _ nS: Int) -> String {
-        if nR > 0 && nS > 0 { return "\(nR) to review · \(nS) to link" }
-        if nR > 0 { return nR == 1 ? "1 event to log" : "\(nR) events to log" }
-        return nS == 1 ? "1 event might count" : "\(nS) events might count"
     }
 
     private var reviewSubtitle: String {
