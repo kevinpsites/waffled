@@ -23,7 +23,6 @@ struct KioskDashboard: View {
     @State private var model = KioskTodayModel()
     @State private var recipes = RecipesModel()
     @State private var pantry = PantryModel()
-    @State private var familyNight = FamilyNightModel()
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
     @State private var showCapture = false
@@ -97,7 +96,6 @@ struct KioskDashboard: View {
         // .task would read the module as off and never fetch. Re-running on modulesRev
         // means they load as soon as the household's module state is known.
         .task(id: sync.modulesRev) { if sync.module(.pantry) { await pantry.load() } }
-        .task(id: sync.modulesRev) { if sync.module(.familyNight) { await familyNight.load() } }
         // Per-domain reloads: each fires on appear (initial load) and only when its own
         // bus bumps — so a grocery toggle no longer reloads chores + meals + weather.
         .task(id: "\(tz.identifier)|\(sync.choresRev)") { await model.loadChores() }
@@ -281,61 +279,6 @@ struct KioskDashboard: View {
         }
     }
 
-    /// Family Night card under the agenda column (iPad Today). Shows the upcoming
-    /// gathering's date + agenda, with a per-part person picker that overrides this
-    /// week's rotation (managed at its source — Settings → Family Night — for day/agenda).
-    @ViewBuilder private func kioskFamilyNightCard(_ v: WaffledAPI.FamilyNightView) -> some View {
-        KioskCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Text("🏡 Family Night").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
-                    Spacer(minLength: 6)
-                    Text(FamilyNightFormat.dateLabel(v.next.date))
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
-                }
-                if v.members.isEmpty {
-                    Text("Add family members to start rotating the agenda.")
-                        .font(.system(size: 15)).foregroundStyle(WF.ink3)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
-                } else {
-                    ForEach(v.next.assignments) { a in
-                        HStack(spacing: 12) {
-                            Text(a.emoji).font(.system(size: 22))
-                            Text(a.label).font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink)
-                            Spacer(minLength: 8)
-                            Menu {
-                                ForEach(v.members) { m in
-                                    Button {
-                                        Task { await familyNight.assign(partId: a.partId, personId: m.id) }
-                                    } label: {
-                                        if m.id == a.personId { Label(m.name, systemImage: "checkmark") } else { Text(m.name) }
-                                    }
-                                }
-                                if a.personId != nil {
-                                    Divider()
-                                    Button(role: .destructive) {
-                                        Task { await familyNight.assign(partId: a.partId, personId: nil) }
-                                    } label: { Label("Clear", systemImage: "xmark") }
-                                }
-                            } label: {
-                                if let name = a.personName {
-                                    HStack(spacing: 7) {
-                                        if let m = v.members.first(where: { $0.id == a.personId }) {
-                                            Avatar(colorHex: m.color, emoji: m.emoji ?? "🙂", size: 26)
-                                        }
-                                        Text(name).font(.system(size: 15, weight: .semibold))
-                                            .foregroundStyle(a.suggested ? WF.ink3 : WF.ink)
-                                    }
-                                } else {
-                                    Text("Pick").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ai)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     // Center column: tonight + this week's dinners, then Family Night (the evening
     // gathering pairs with the meal plan). Scrolls its own overflow.
@@ -344,7 +287,7 @@ struct KioskDashboard: View {
             VStack(spacing: 22) {
                 tonightCard
                 weekDinnersCard
-                if sync.module(.familyNight), let v = familyNight.view { kioskFamilyNightCard(v) }
+                if sync.module(.familyNight) { FamilyNightCard(kiosk: true) }
             }
             .padding(.bottom, 8)
         }
