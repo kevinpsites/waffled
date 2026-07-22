@@ -125,6 +125,97 @@ t "ensure_env backfills LOCAL_JWT_SECRET without touching other values" '
   echo "PASS"
 '
 
+# --- 6. PowerSync CSP allows the derived WebSocket endpoint --------------------------
+t "PowerSync CSP follows the configured public URL" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  ENV_FILE="$tmp/.env"
+  {
+    echo "POWERSYNC_PUBLIC_URL=https://sync.example.test:8090"
+    echo "POWERSYNC_CADDY_ADDRESS=:8090"
+  } > "$ENV_FILE"
+
+  ensure_powersync_proxy_env
+  grep -qxF "POWERSYNC_WS_URL=wss://sync.example.test:8090" "$ENV_FILE" || {
+    echo "FAIL: HTTPS endpoint did not derive a WSS source"; exit 0;
+  }
+  grep -qF "{\$POWERSYNC_WS_URL}" "$ROOT/infra/compose/caddy/Caddyfile" || {
+    echo "FAIL: WebSocket source missing from Caddy CSP"; exit 0;
+  }
+  grep -qF "POWERSYNC_WS_URL: \${POWERSYNC_WS_URL:-ws://localhost:8090}" "$ROOT/infra/compose/docker-compose.yml" || {
+    echo "FAIL: WebSocket source is not passed to Caddy"; exit 0;
+  }
+
+  set_env_var POWERSYNC_PUBLIC_URL "http://192.0.2.10:8090"
+  ensure_powersync_proxy_env
+  grep -qxF "POWERSYNC_WS_URL=ws://192.0.2.10:8090" "$ENV_FILE" && echo "PASS" ||
+    echo "FAIL: HTTP endpoint did not derive a WS source"
+'
+
+# --- 7. backup verification restores only into a disposable Postgres container ------
+t "verify_backup_restore exercises the dump and removes its disposable database" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  DOCKER_LOG="$tmp/docker.log"
+
+  docker() {
+    printf "%s\n" "$*" >> "$DOCKER_LOG"
+    case "$*" in
+      "ps --format {{.Names}}") echo "waffled-backup" ;;
+      "inspect --format {{.Config.Image}} waffled-postgres") echo "postgres:16" ;;
+      "run -d "*) echo "restore-drill-id" ;;
+      "exec waffled-backup sh -c gunzip -c "*) echo "SELECT 1;" ;;
+      "exec -i "*) cat >/dev/null ;;
+      *" -Atc SELECT 1"*) echo "1" ;;
+      *" -Atc SELECT to_regclass("*) echo "t" ;;
+      *) return 0 ;;
+    esac
+  }
+
+  out="$(verify_backup_restore "waffled-test.sql.gz" 2>&1)" || {
+    echo "FAIL: verification failed: $out"; exit 0;
+  }
+  grep -q "run -d .*postgres:16" "$DOCKER_LOG" || {
+    echo "FAIL: disposable Postgres was not started"; exit 0;
+  }
+  grep -q "exec -i waffled-restore-drill-.* psql" "$DOCKER_LOG" || {
+    echo "FAIL: dump was not piped into disposable Postgres"; exit 0;
+  }
+  grep -q "rm -f waffled-restore-drill-" "$DOCKER_LOG" || {
+    echo "FAIL: disposable Postgres was not removed"; exit 0;
+  }
+  case "$out" in
+    *"Backup verified"*) echo "PASS" ;;
+    *) echo "FAIL: missing success message: $out" ;;
+  esac
+'
+
+t "verify_backup_restore rejects a corrupt archive before starting Postgres" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  DOCKER_LOG="$tmp/docker.log"
+
+  docker() {
+    printf "%s\n" "$*" >> "$DOCKER_LOG"
+    case "$*" in
+      "ps --format {{.Names}}") echo "waffled-backup" ;;
+      "exec waffled-backup test -f "*) return 0 ;;
+      "exec waffled-backup sh -c gunzip -t "*) return 1 ;;
+      *) return 0 ;;
+    esac
+  }
+
+  set +e
+  out="$(verify_backup_restore "waffled-corrupt.sql.gz" 2>&1)"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || { echo "FAIL: corrupt archive was accepted"; exit 0; }
+  if grep -q "^run " "$DOCKER_LOG"; then
+    echo "FAIL: Postgres started for a corrupt archive"; exit 0
+  fi
+  echo "PASS"
+'
+
 echo
 if [ "$fails" -gt 0 ]; then
   echo "$fails/$runs waffled test(s) FAILED"

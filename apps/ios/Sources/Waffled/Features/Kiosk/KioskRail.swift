@@ -73,6 +73,16 @@ enum KioskRail {
         parse(raw).filter { moduleEnabled($0, sync: sync) }
     }
 
+    /// Whether a rail / bottom-bar tile should render as selected. Normally the tile
+    /// whose destination is open — but a page with no tile of its own (opened from the
+    /// More grid, e.g. unpinned Goals) lights the **More** tile, so the nav always
+    /// shows where you are instead of nothing.
+    static func isHighlighted(_ item: KioskNav, selection: KioskNav, pinned: [KioskNav]) -> Bool {
+        if item == selection { return true }
+        guard item == .more else { return false }
+        return !([.today, .calendar, .more, .settings] + pinned).contains(selection)
+    }
+
     /// The overflow destinations for the "More" grid: every enabled choosable
     /// destination that is NOT currently pinned to the rail. So pinning Goals removes
     /// it from More; unpinning drops it back in.

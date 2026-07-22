@@ -1,6 +1,6 @@
 {
   "name": "@waffled/web",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "description": "Waffled web app + counter-kiosk (Vite + React + TS). Static SPA served by Caddy/CloudFront.",
@@ -27,6 +27,7 @@
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",
+    "axe-core": "^4.12.1",
     "jsdom": "^25.0.1",
     "typescript": "^5.6.2",
     "vite": "^5.4.8",

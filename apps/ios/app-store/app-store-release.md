@@ -74,17 +74,43 @@ Get your family on the same page. Get Waffled.
 
 ## What's New (release notes)  `[≤4000]`
 
+<sub>Current draft targets **0.9.0**, covering everything user-facing since the
+0.8.0 build (commit `5b0acbe5`, the last one submitted for review). Update this
+each time you submit a new version.</sub>
+
 ```
-First public release of Waffled 🧇
+New in 0.9.0:
 
-• Shared family calendar with countdowns and birthdays
-• Chores with photo-proof and a rewards jar
-• Meal planning that builds your grocery list
-• Pantry tracking with barcode scanning and allergen warnings
-• Family goals and a customizable Today screen
-• iPad family-display (kiosk) mode
+• See your goal progress your way — every goal now has a switcher of views: a
+  week or month heatmap, a GitHub-style year grid, a pace chart showing where
+  you need to be to hit your target on time, a "year in a ring," and stacked
+  bars for family goals. Tap any day or month to see who logged what.
 
-Thanks for trying Waffled — we'd love your feedback!
+• Recipes can go straight to your grocery list, no meal plan needed. Add a
+  one-off dinner or snack from any recipe page and it merges right in with
+  what's already on the list.
+
+• The "Add anything" bar can now act on things you already have, not just
+  create new ones. Say "mark the trash chore done," "log 20 minutes on my
+  reading goal," "cross off milk," or "move soccer to Thursday at 4," and
+  confirm before anything changes.
+
+• Quick-add can also start a countdown, add a family member, set a goal, stock
+  the pantry, or add a reward — just by typing it in plain language.
+
+• Track more from Apple Health: specific workout types (running, cycling,
+  swimming, yoga, strength training), cycling/swimming/wheelchair distance,
+  and a clearer picker for choosing what a goal follows.
+
+• Swipe between weeks in the meal planner — the same gesture as Calendar and
+  Chores.
+
+Plus a batch of polish: a snappier iPad calendar, a Today screen that stays
+fresh and grocery quick-add that no longer hides under the keyboard, more
+reliable list creation and goal logging, a calmer Offline banner, and instant
+meal drag-and-drop.
+
+Thanks for using Waffled — we'd love your feedback!
 ```
 
 ---
