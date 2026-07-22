@@ -53,25 +53,26 @@ WbGlowSpec wb_glow_spec_for_device_state(const WbDeviceState &state)
   return {wb_bedtime_hex(state.night.color), state.night.brightness, nullptr, true, false, -1, -1};
 }
 
-// Concentric "glow" rings, largest/faintest first (drawn first = furthest
-// back; core drawn last = on top, brightest). Colors are SOLID blends of
-// the nightlight color toward the background via lv_color_mix, not alpha
-// transparency — translucent fills stacked over a near-black backdrop read
-// as a murky grey smear rather than a warm glow (confirmed against a real
-// on-device screenshot), so brightness/falloff is baked into the color
-// itself instead of the opacity.
-#define WB_GLOW_RING_COUNT 4
-static const int WB_GLOW_RING_BASE_DIAM[WB_GLOW_RING_COUNT] = {920, 660, 430, 230};
-static const uint8_t WB_GLOW_RING_MIX[WB_GLOW_RING_COUNT] = {40, 95, 165, 255}; // 0=full bg, 255=full core color (lv_color_mix's `mix` param)
+// A full-width, full-height stack of horizontal bands — a "gradient of
+// rectangles the whole length of the screen" per direct user feedback,
+// replacing an earlier concentric-circles version that looked like an
+// off-center blob rather than an ambient room glow. Colors are SOLID
+// blends of the nightlight color toward the background via lv_color_mix,
+// not alpha transparency — translucent fills stacked over a near-black
+// backdrop read as a murky grey smear rather than a warm glow (confirmed
+// against a real on-device screenshot), so brightness/falloff is baked
+// into the color itself instead of the opacity. Bottom band is brightest
+// (matches the original mockup's low glow), top band fades to background.
+#define WB_GLOW_BAND_COUNT 14
 
-// Owns the glow rings + optional label/until text so wb_sync_bedtime_screen
-// can push a later spec change into an already-showing screen without a
-// rebuild. Attached to a genuine per-rebuild child (see
-// wb_build_bedtime_screen), not `parent` — same leak-avoidance rule as
-// every other screen's sync ctx in this app.
+// Owns the glow band stack + optional label/until text so
+// wb_sync_bedtime_screen can push a later spec change into an already-
+// showing screen without a rebuild. Attached to a genuine per-rebuild
+// child (see wb_build_bedtime_screen), not `parent` — same leak-avoidance
+// rule as every other screen's sync ctx in this app.
 struct WbBedtimeCtx
 {
-  lv_obj_t *rings[WB_GLOW_RING_COUNT];
+  lv_obj_t *bands[WB_GLOW_BAND_COUNT]; // top to bottom
   lv_obj_t *label_lbl;  // null if this build had no label (the plain preview)
   lv_obj_t *until_lbl;  // null if this build had no wake time to show
 };
@@ -87,9 +88,9 @@ static void wb_bedtime_close_cb(lv_event_t *e)
   lv_scr_load_anim(back_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false); // NOT a fade — see settings_screen.cpp's wb_open_detail_cb
 }
 
-// Brightness (0-100) scales both how big and how saturated the glow reads —
-// a dim nightlight should look dim (blended toward black) here too, not
-// just a fainter smear of the same full-strength color.
+// Brightness (0-100) scales how saturated the glow reads — a dim nightlight
+// should look dim (blended toward black) here too, not just a fainter smear
+// of the same full-strength color.
 static void wb_apply_glow(WbBedtimeCtx *ctx, const WbGlowSpec &spec)
 {
   float b = (spec.brightness <= 0 ? 5 : spec.brightness) / 100.0f; // never fully invisible, even at a very low setting
@@ -100,12 +101,12 @@ static void wb_apply_glow(WbBedtimeCtx *ctx, const WbGlowSpec &spec)
   uint8_t coreMix = (uint8_t)(90 + 165 * b);
   lv_color_t coreColor = lv_color_mix(base, lv_color_black(), coreMix);
 
-  for (int i = 0; i < WB_GLOW_RING_COUNT; i++)
+  for (int i = 0; i < WB_GLOW_BAND_COUNT; i++)
   {
-    lv_color_t ringColor = lv_color_mix(coreColor, WB_BEDTIME_BG, WB_GLOW_RING_MIX[i]);
-    lv_obj_set_style_bg_color(ctx->rings[i], ringColor, 0);
-    int diam = (int)(WB_GLOW_RING_BASE_DIAM[i] * (0.75f + 0.25f * b));
-    lv_obj_set_size(ctx->rings[i], diam, diam);
+    float t = (float)i / (WB_GLOW_BAND_COUNT - 1); // 0 = top band, 1 = bottom band
+    float eased = t * t; // keeps the glow concentrated near the bottom, fading fast toward the top
+    lv_color_t bandColor = lv_color_mix(coreColor, WB_BEDTIME_BG, (uint8_t)(eased * 255));
+    lv_obj_set_style_bg_color(ctx->bands[i], bandColor, 0);
   }
 
   if (ctx->label_lbl)
@@ -128,16 +129,29 @@ static void wb_apply_glow(WbBedtimeCtx *ctx, const WbGlowSpec &spec)
   }
 }
 
-static lv_obj_t *wb_make_glow_ring(lv_obj_t *parent)
+// A full-width/full-height column of equal-height bands, filled top-to-
+// bottom into `ctx->bands` — flex_grow(1) on each with zero gap means they
+// tile exactly across the parent with no seams.
+static void wb_make_glow_bands(lv_obj_t *parent, WbBedtimeCtx *ctx)
 {
-  lv_obj_t *ring = lv_obj_create(parent);
-  lv_obj_remove_style_all(ring);
-  lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_opa(ring, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(ring, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(ring, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_align(ring, LV_ALIGN_BOTTOM_MID, 0, 120); // glow's brightest point sits low, per the reference mockup
-  return ring;
+  lv_obj_t *wrap = lv_obj_create(parent);
+  lv_obj_remove_style_all(wrap);
+  lv_obj_set_size(wrap, lv_pct(100), lv_pct(100));
+  lv_obj_set_flex_flow(wrap, LV_FLEX_FLOW_COLUMN);
+  lv_obj_clear_flag(wrap, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(wrap, LV_OBJ_FLAG_CLICKABLE);
+
+  for (int i = 0; i < WB_GLOW_BAND_COUNT; i++)
+  {
+    lv_obj_t *band = lv_obj_create(wrap);
+    lv_obj_remove_style_all(band);
+    lv_obj_set_style_bg_opa(band, LV_OPA_COVER, 0);
+    lv_obj_set_size(band, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(band, 1);
+    lv_obj_clear_flag(band, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(band, LV_OBJ_FLAG_CLICKABLE);
+    ctx->bands[i] = band;
+  }
 }
 
 void wb_build_bedtime_screen(lv_obj_t *parent, const WbGlowSpec &spec, lv_obj_t *back_scr)
@@ -146,8 +160,7 @@ void wb_build_bedtime_screen(lv_obj_t *parent, const WbGlowSpec &spec, lv_obj_t 
   lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
   WbBedtimeCtx *ctx = new WbBedtimeCtx();
-  for (int i = 0; i < WB_GLOW_RING_COUNT; i++)
-    ctx->rings[i] = wb_make_glow_ring(parent);
+  wb_make_glow_bands(parent, ctx);
   ctx->label_lbl = nullptr;
   ctx->until_lbl = nullptr;
 
@@ -193,7 +206,7 @@ void wb_build_bedtime_screen(lv_obj_t *parent, const WbGlowSpec &spec, lv_obj_t 
     // branch — attach it to a genuine (invisible, non-interactive) child
     // instead of `parent` itself (the persistent singleton), same rule as
     // every other screen's sync ctx.
-    lv_obj_add_event_cb(ctx->rings[WB_GLOW_RING_COUNT - 1], wb_bedtime_ctx_delete_cb, LV_EVENT_DELETE, ctx);
+    lv_obj_add_event_cb(ctx->bands[WB_GLOW_BAND_COUNT - 1], wb_bedtime_ctx_delete_cb, LV_EVENT_DELETE, ctx);
   }
 
   wb_apply_glow(ctx, spec);

@@ -61,6 +61,64 @@ static void wb_timer_preset_clicked_cb(lv_event_t *e)
     ctx->onStart(ctx->minutes * 60); // main.cpp polls immediately on success, which rebuilds this screen into countdown mode
 }
 
+// ── custom length (a stepper, not a text keyboard — faster for a kid to
+// tap through on a touchscreen than typing an exact number) ────────────────
+#define WB_TIMER_CUSTOM_MIN 1
+#define WB_TIMER_CUSTOM_MAX 90
+struct WbTimerCustomCtx
+{
+  int minutes;
+  lv_obj_t *value_lbl;
+  WbTimerStartCallback onStart;
+};
+static void wb_timer_custom_delete_cb(lv_event_t *e) { delete (WbTimerCustomCtx *)lv_event_get_user_data(e); }
+static void wb_timer_custom_refresh(WbTimerCustomCtx *ctx)
+{
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%dm", ctx->minutes);
+  lv_label_set_text(ctx->value_lbl, buf);
+}
+// Holds the step's direction alongside a pointer back to the shared custom
+// ctx — one of these per +/- button, freed with its own button (not the
+// shared ctx, which the Start button owns; see wb_timer_custom_delete_cb).
+struct WbTimerStepCtx
+{
+  WbTimerCustomCtx *custom;
+  int delta;
+};
+static void wb_timer_step_delete_cb(lv_event_t *e) { delete (WbTimerStepCtx *)lv_event_get_user_data(e); }
+static void wb_timer_custom_step_cb(lv_event_t *e)
+{
+  WbTimerStepCtx *step = (WbTimerStepCtx *)lv_event_get_user_data(e);
+  WbTimerCustomCtx *ctx = step->custom;
+  ctx->minutes = LV_CLAMP(WB_TIMER_CUSTOM_MIN, ctx->minutes + step->delta, WB_TIMER_CUSTOM_MAX);
+  wb_timer_custom_refresh(ctx);
+}
+static void wb_timer_custom_start_cb(lv_event_t *e)
+{
+  WbTimerCustomCtx *ctx = (WbTimerCustomCtx *)lv_event_get_user_data(e);
+  if (ctx->onStart)
+    ctx->onStart(ctx->minutes * 60); // main.cpp polls immediately on success, which rebuilds this screen into countdown mode
+}
+
+static lv_obj_t *make_round_btn(lv_obj_t *parent, const char *text, lv_color_t bg, lv_color_t fg)
+{
+  lv_obj_t *btn = lv_obj_create(parent);
+  lv_obj_remove_style_all(btn);
+  lv_obj_set_size(btn, 44, 44);
+  lv_obj_set_style_bg_color(btn, bg, 0);
+  lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_flex_flow(btn, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *lbl = lv_label_create(btn);
+  lv_label_set_text(lbl, text);
+  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_24, 0);
+  lv_obj_set_style_text_color(lbl, fg, 0);
+  return btn;
+}
+
 static void wb_build_timer_picker(lv_obj_t *parent, WbTimerStartCallback onStart)
 {
   lv_obj_t *title = lv_label_create(parent);
@@ -104,6 +162,55 @@ static void wb_build_timer_picker(lv_obj_t *parent, WbTimerStartCallback onStart
     lv_obj_add_event_cb(chip, wb_timer_preset_clicked_cb, LV_EVENT_CLICKED, preset_ctx);
     lv_obj_add_event_cb(chip, wb_timer_preset_delete_cb, LV_EVENT_DELETE, preset_ctx);
   }
+
+  lv_obj_t *custom_sub = lv_label_create(parent);
+  lv_label_set_text(custom_sub, "Or choose your own");
+  lv_obj_set_style_text_font(custom_sub, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(custom_sub, WB_COLOR_MUTED, 0);
+
+  lv_obj_t *custom_row = lv_obj_create(parent);
+  lv_obj_remove_style_all(custom_row);
+  lv_obj_set_size(custom_row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(custom_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(custom_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(custom_row, 14, 0);
+  lv_obj_clear_flag(custom_row, LV_OBJ_FLAG_SCROLLABLE);
+
+  WbTimerCustomCtx *custom_ctx = new WbTimerCustomCtx{10, nullptr, onStart};
+
+  lv_obj_t *minus_btn = make_round_btn(custom_row, LV_SYMBOL_MINUS, WB_COLOR_CARD, WB_COLOR_INK);
+  WbTimerStepCtx *minus_step = new WbTimerStepCtx{custom_ctx, -1};
+  lv_obj_add_event_cb(minus_btn, wb_timer_custom_step_cb, LV_EVENT_CLICKED, minus_step);
+  lv_obj_add_event_cb(minus_btn, wb_timer_step_delete_cb, LV_EVENT_DELETE, minus_step);
+
+  lv_obj_t *value_lbl = lv_label_create(custom_row);
+  lv_obj_set_style_text_font(value_lbl, &lv_font_montserrat_24, 0);
+  lv_obj_set_style_text_color(value_lbl, WB_COLOR_INK, 0);
+  lv_obj_set_style_pad_hor(value_lbl, 4, 0);
+  custom_ctx->value_lbl = value_lbl;
+  wb_timer_custom_refresh(custom_ctx);
+
+  lv_obj_t *plus_btn = make_round_btn(custom_row, LV_SYMBOL_PLUS, WB_COLOR_CARD, WB_COLOR_INK);
+  WbTimerStepCtx *plus_step = new WbTimerStepCtx{custom_ctx, 1};
+  lv_obj_add_event_cb(plus_btn, wb_timer_custom_step_cb, LV_EVENT_CLICKED, plus_step);
+  lv_obj_add_event_cb(plus_btn, wb_timer_step_delete_cb, LV_EVENT_DELETE, plus_step);
+
+  lv_obj_t *start_btn = lv_obj_create(custom_row);
+  lv_obj_remove_style_all(start_btn);
+  lv_obj_set_size(start_btn, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_color(start_btn, WB_COLOR_TILE_ACTIVE, 0);
+  lv_obj_set_style_bg_opa(start_btn, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(start_btn, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_pad_hor(start_btn, 20, 0);
+  lv_obj_set_style_pad_ver(start_btn, 12, 0);
+  lv_obj_clear_flag(start_btn, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *start_lbl = lv_label_create(start_btn);
+  lv_label_set_text(start_lbl, "Start");
+  lv_obj_set_style_text_font(start_lbl, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(start_lbl, lv_color_white(), 0);
+  lv_obj_add_event_cb(start_btn, wb_timer_custom_start_cb, LV_EVENT_CLICKED, custom_ctx);
+  // Owns custom_ctx's lifetime — the last widget built that references it.
+  lv_obj_add_event_cb(start_btn, wb_timer_custom_delete_cb, LV_EVENT_DELETE, custom_ctx);
 }
 
 // ── countdown mode (timer.active == true) ───────────────────────────────────

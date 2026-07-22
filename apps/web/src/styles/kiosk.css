@@ -376,10 +376,12 @@ body {
 }
 .field-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
 }
 .field-row .field {
   flex: 1;
+  min-width: 140px;
 }
 
 /* Smart goal suggestion inside the event modal — a soft violet nudge. */
