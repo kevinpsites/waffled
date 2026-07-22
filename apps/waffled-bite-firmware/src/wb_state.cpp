@@ -23,7 +23,7 @@ const WbDeviceState &wb_mock_state(void)
       {WbWakeLightState::None, -1, -1},
       {false, "white", 50, 0},  // sound: off, defaults picked to match apps/web's own fallback UI state
       {true, "amber", 40},      // night: on, matching the pre-settings-screen mock's nightlightOn=true
-      -1, -1,                   // nowHour/nowMin: unavailable — mock quiet is always inactive, unused
+      16, 13, 3, 10, 15,        // now: 4:13pm, Wed Oct 15 — matches this screen's original hardcoded placeholder text
   };
   return state;
 }
@@ -39,21 +39,19 @@ static void copyField(char *dst, size_t dstLen, JsonVariantConst v, const char *
   dst[dstLen - 1] = '\0';
 }
 
-// Pulls hour/minute out of an ISO-8601 "YYYY-MM-DDTHH:MM:SS.sssZ" string
-// without pulling in a date library — offsets are fixed since the server
-// (`new Date().toISOString()`) always emits this exact shape. Sets both to
-// -1 if the field is missing or doesn't look like the expected shape.
-static void parseNow(JsonVariantConst nowVal, int &outHour, int &outMin)
+// Pulls the household-local wall-clock parts out of "now" — a JSON object
+// (waffledBites.ts's nowLocalView), not a raw ISO timestamp, specifically so
+// the device never has to do its own UTC->local conversion (it has no
+// timezone database to do that with). Missing/wrong-shaped fields fall back
+// to -1, same "unavailable" sentinel the mock state and callers already
+// expect (see wb_state.h).
+static void parseNow(JsonVariantConst nowVal, int &outHour, int &outMin, int &outWeekday, int &outMonth, int &outDay)
 {
-  outHour = -1;
-  outMin = -1;
-  if (!nowVal.is<const char *>())
-    return;
-  const char *s = nowVal.as<const char *>();
-  if (strlen(s) < 16 || s[10] != 'T' || s[13] != ':')
-    return;
-  outHour = (s[11] - '0') * 10 + (s[12] - '0');
-  outMin = (s[14] - '0') * 10 + (s[15] - '0');
+  outHour = nowVal["hour"] | -1;
+  outMin = nowVal["minute"] | -1;
+  outWeekday = nowVal["weekday"] | -1;
+  outMonth = nowVal["month"] | -1;
+  outDay = nowVal["day"] | -1;
 }
 
 static void parseRoutine(JsonArrayConst arr, WbRoutine &out)
@@ -128,7 +126,7 @@ bool wb_state_from_json(JsonDocument &doc, WbDeviceState &out)
   copyField(out.night.color, WB_COLOR_LEN, night["color"], "amber");
   out.night.brightness = night["brightness"] | 40;
 
-  parseNow(doc["now"], out.nowHour, out.nowMin);
+  parseNow(doc["now"], out.nowHour, out.nowMin, out.nowWeekday, out.nowMonth, out.nowDay);
 
   return true;
 }

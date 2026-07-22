@@ -147,6 +147,23 @@ describe('waffled-bites device pairing + parent control panel', () => {
     generalId = state.routines.chores.find((t: { choreTitle: string }) => t.choreTitle === 'Feed the dog').id
   })
 
+  // The device has no RTC/timezone database of its own (see wb_state.h) — it
+  // trusts "now" from this poll verbatim for its clock and quiet-time's
+  // "Until H:MM" label, so this MUST already be household-local, not raw UTC.
+  it('reports the device poll\'s "now" in the household\'s own timezone (America/Chicago), not raw UTC', async () => {
+    const state = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
+    expect(state.now).toMatchObject({
+      hour: expect.any(Number), minute: expect.any(Number),
+      weekday: expect.any(Number), month: expect.any(Number), day: expect.any(Number),
+    })
+    expect(state.now.hour).toBeGreaterThanOrEqual(0)
+    expect(state.now.hour).toBeLessThan(24)
+    expect(state.now.minute).toBeGreaterThanOrEqual(0)
+    expect(state.now.minute).toBeLessThan(60)
+    // America/Chicago is always 5-6h behind UTC — if these ever match, "now" regressed to a raw UTC passthrough.
+    expect(state.now.hour).not.toBe(new Date().getUTCHours())
+  })
+
   it('completing a task from the device awards stars via the same ledger chores use', async () => {
     const complete = await call('POST', `/api/waffled-bites/device/tasks/${morningId}/complete`, undefined, deviceToken)
     expect(complete.statusCode).toBe(200)
@@ -269,11 +286,20 @@ describe('waffled-bites device pairing + parent control panel', () => {
   // Exact boundary behavior (midnight-crossing, day-attribution) is covered by
   // wake-light.unit.test.ts's injected-clock tests; this just proves the real
   // HTTP wiring (household tz lookup, settings.schedules parsing) actually
-  // reaches wakeLightView. Spans nearly the whole day so it's 'sleep'
-  // regardless of the real wall-clock time this test happens to run at.
+  // reaches wakeLightView. wakeMin is anchored to "shortly after right now"
+  // (Chicago-local) rather than a fixed 23:59 — a fixed near-midnight wake
+  // time collides with its own WAKE_GRACE_MIN window once real wall-clock
+  // time crosses midnight, which is exactly what made this test flaky.
   it("computes the wake-light state from the household's real schedule + timezone on both the device poll and the parent view", async () => {
+    const chicagoNow = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date())
+    const h = Number(chicagoNow.find((p) => p.type === 'hour')!.value)
+    const m = Number(chicagoNow.find((p) => p.type === 'minute')!.value)
+    const wakeMin = Math.min(1439, h * 60 + m + 10)
+
     await call('PATCH', `/api/waffled-bites/${deviceId}/settings`, {
-      schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], wakeMin: 23 * 60 + 59, leadMin: 0, bedtimeMin: 0 }],
+      schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], wakeMin, leadMin: 0, bedtimeMin: 0 }],
     }, admin)
 
     const state = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
@@ -284,7 +310,7 @@ describe('waffled-bites device pairing + parent control panel', () => {
 
     // A schedule with no bedtimeMin at all (pre-existing wake-only schedules) never force-locks.
     await call('PATCH', `/api/waffled-bites/${deviceId}/settings`, {
-      schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], wakeMin: 23 * 60 + 59, leadMin: 0 }],
+      schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], wakeMin, leadMin: 0 }],
     }, admin)
     const none = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
     expect(none.runtimeState.wakeLight.state).toBe('none')

@@ -23,6 +23,34 @@
 #define WB_COLOR_CHORES lv_color_hex(0xA7C9AC)
 #define WB_COLOR_CHORES_TEXT lv_color_hex(0x2C5A34)
 
+// Short weekday/month names for the clock's date line — index matches
+// waffledBites.ts's nowLocalView (weekday 0=Sun, month 1-12).
+static const char *WB_WEEKDAY_NAMES[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+static const char *WB_MONTH_NAMES[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+
+// Renders "H:MM" (12-hour, no AM/PM — matches this screen's original mockup)
+// and "Wed, Oct 15" from the poll's already-localized now* fields (see
+// wb_state.h's header comment — the device does no timezone math of its
+// own). Falls back to placeholder dashes when unavailable (nowHour < 0:
+// mock/pre-first-poll state).
+static void format_clock_date(char *clockBuf, size_t clockLen, char *dateBuf, size_t dateLen, const WbDeviceState &state)
+{
+  if (state.nowHour < 0)
+  {
+    snprintf(clockBuf, clockLen, "--:--");
+    dateBuf[0] = '\0';
+    return;
+  }
+  int h12 = state.nowHour % 12;
+  if (h12 == 0)
+    h12 = 12;
+  snprintf(clockBuf, clockLen, "%d:%02d", h12, state.nowMin);
+
+  const char *weekday = (state.nowWeekday >= 0 && state.nowWeekday <= 6) ? WB_WEEKDAY_NAMES[state.nowWeekday] : "";
+  const char *month = (state.nowMonth >= 1 && state.nowMonth <= 12) ? WB_MONTH_NAMES[state.nowMonth - 1] : "";
+  snprintf(dateBuf, dateLen, "%s, %s %d", weekday, month, state.nowDay);
+}
+
 static int routine_done_count(const WbRoutine &r)
 {
   int n = 0;
@@ -288,6 +316,8 @@ static lv_obj_t *make_gear_button(lv_obj_t *parent, lv_obj_t *settings_scr)
 // avoidance rule established for quiet_screen.cpp's WbQuietCtx.
 struct WbHomeSyncCtx
 {
+  lv_obj_t *clock_lbl;
+  lv_obj_t *date_lbl;
   lv_obj_t *stars_top_lbl;
   lv_obj_t *stars_greet_lbl;
   lv_obj_t *morning_badge_lbl;
@@ -328,6 +358,11 @@ void wb_sync_home_screen(lv_obj_t *parent, const WbDeviceState &state)
   if (!ctx)
     return; // not built yet
 
+  char clock_buf[8], date_buf[24];
+  format_clock_date(clock_buf, sizeof(clock_buf), date_buf, sizeof(date_buf), state);
+  lv_label_set_text(ctx->clock_lbl, clock_buf);
+  lv_label_set_text(ctx->date_lbl, date_buf);
+
   char stars_buf[24];
   snprintf(stars_buf, sizeof(stars_buf), "%d stars", state.stars);
   lv_label_set_text(ctx->stars_top_lbl, stars_buf);
@@ -366,12 +401,14 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   lv_obj_set_flex_align(clock_col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
   lv_obj_set_style_pad_column(clock_col, 8, 0);
   lv_obj_clear_flag(clock_col, LV_OBJ_FLAG_SCROLLABLE);
+  char clock_buf[8], date_buf[24];
+  format_clock_date(clock_buf, sizeof(clock_buf), date_buf, sizeof(date_buf), state);
   lv_obj_t *clock_lbl = lv_label_create(clock_col);
-  lv_label_set_text(clock_lbl, "4:13"); // placeholder — no RTC/NTP wired up yet
+  lv_label_set_text(clock_lbl, clock_buf);
   lv_obj_set_style_text_font(clock_lbl, &lv_font_montserrat_24, 0);
   lv_obj_set_style_text_color(clock_lbl, WB_COLOR_INK, 0);
   lv_obj_t *date_lbl = lv_label_create(clock_col);
-  lv_label_set_text(date_lbl, "Wed, Oct 15");
+  lv_label_set_text(date_lbl, date_buf);
   lv_obj_set_style_text_font(date_lbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(date_lbl, WB_COLOR_MUTED, 0);
 
@@ -456,6 +493,7 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   // see WbHomeSyncCtx's comment for the leak-avoidance rule (delete cb on
   // `top`, a real child, not on `parent` itself).
   WbHomeSyncCtx *sync_ctx = new WbHomeSyncCtx{
+      clock_lbl, date_lbl,
       stars_top_lbl, stars_greet_lbl,
       morning_badge_lbl, morning_bar,
       afternoon_badge_lbl, afternoon_bar,

@@ -99,16 +99,17 @@ struct WbDeviceState
   WbWakeLightInfo wakeLight;
   WbSoundSettings sound;
   WbNightSettings night;
-  // Wall-clock hour/minute parsed from the poll's top-level "now" (server's
-  // new Date().toISOString(), plain UTC — the device has no RTC/timezone
-  // database of its own). -1/-1 when unavailable (mock state, or an
-  // unexpectedly-shaped "now"). Used only for quiet_screen's "Stay cozy
-  // until H:MM" line today; NOTE this is UTC, not the household's local
-  // timezone — a real clock needs the same timezone plumbing the backend
-  // already has for day-boundary math (see waffledBites.ts's householdTz),
-  // not yet wired to the device.
+  // Wall-clock parts from the poll's top-level "now" — the device has no
+  // RTC/timezone database of its own, so the SERVER pre-localizes these to
+  // the household's own timezone (waffledBites.ts's nowLocalView, reusing
+  // the same tz plumbing as day-boundary math) rather than sending raw UTC.
+  // All -1 when unavailable (mock state, or an unexpectedly-shaped "now").
+  // Used by quiet_screen's "Until H:MM" line and home_screen's clock/date.
   int nowHour;
   int nowMin;
+  int nowWeekday; // 0=Sun .. 6=Sat
+  int nowMonth;   // 1-12
+  int nowDay;     // 1-31
 };
 
 // Fallback/offline demo data — also what native boots into before any real

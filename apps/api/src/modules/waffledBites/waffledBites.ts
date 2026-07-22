@@ -157,6 +157,16 @@ function localParts(now: Date, tz: string) {
   }
 }
 
+// The device's poll "now" field — see wb_state.h's header comment, the
+// device has no RTC/timezone database of its own, so it trusts this
+// verbatim for its clock and quiet-time's "Until H:MM" label. MUST be
+// household-local, not raw UTC (was `new Date().toISOString()` — a real
+// bug: the clock/label were silently off by the household's UTC offset).
+function nowLocalView(tz: string) {
+  const p = localParts(new Date(), tz)
+  return { hour: Math.floor(p.minuteOfDay / 60), minute: p.minuteOfDay % 60, weekday: p.dow, month: p.m, day: p.d }
+}
+
 // Pure calendar-date arithmetic (UTC-anchored, no wall-clock/DST concerns —
 // this is just "what date and weekday is N days from this date").
 function addDays(y: number, m: number, d: number, days: number) {
@@ -381,7 +391,7 @@ export function registerWaffledBiteRoutes(api: Api): void {
     }
 
     return {
-      now: new Date().toISOString(),
+      now: nowLocalView(tz),
       person: { id: device.personId, name: person?.name, avatarEmoji: person?.avatar_emoji ?? null, colorHex: person?.color_hex ?? null },
       stars: Number(balance.rows[0]?.balance ?? 0),
       routines,
