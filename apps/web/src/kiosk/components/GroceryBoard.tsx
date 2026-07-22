@@ -478,6 +478,13 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
                 <div key={u.recipeId} className="gdinner link" role="button" tabIndex={0} onClick={() => navigate(`/meals/recipe/${u.recipeId}`)}>
                   <span className="gdinner-c" style={{ background: u.color }} />
                   <span className="gdinner-t">{u.title}</span>
+                  <button
+                    type="button"
+                    className="gdinner-x"
+                    aria-label={`Remove ${u.title} from list`}
+                    title="Remove from list"
+                    onClick={(e) => { e.stopPropagation(); void removeUnscheduled(u.recipeId) }}
+                  >×</button>
                   <span className="gdinner-chev">›</span>
                   <span className="gdinner-e" style={{ background: `${u.color}1f` }}>{u.emoji ?? '🍽️'}</span>
                 </div>
