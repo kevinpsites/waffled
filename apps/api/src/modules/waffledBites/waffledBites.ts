@@ -10,6 +10,7 @@
 // ~5s cadence. `runtime_state` (quiet timer, pending nudge) stores timestamps, not
 // ticking counters, so remaining time is always computed on read.
 import { randomBytes } from 'node:crypto'
+import { DateTime } from 'luxon'
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
 import { AuthError } from '../../platform/auth'
@@ -79,6 +80,48 @@ function deepMerge(base: unknown, patch: unknown): unknown {
     return out
   }
   return patch
+}
+
+// Type/range-checks the two shapes a device is allowed to write (sound/night)
+// before deepMerge ever sees them — the device's bearer token is a lower trust
+// boundary than a parent session (no login, just a long-lived secret exchange),
+// so a field with the WRONG TYPE is dropped outright (deepMerge then leaves
+// whatever was already stored, same as if the field were simply omitted from
+// the patch), while a right-typed but out-of-range NUMBER is clamped rather
+// than dropped, since it's still perfectly usable. No schema library in this
+// codebase (no zod etc.) — matches the existing manual-validation style rather
+// than adding one for a single route.
+function sanitizeNumber(v: unknown, min: number, max: number): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, Math.round(v))) : undefined
+}
+function sanitizeString(v: unknown, maxLen: number): string | undefined {
+  return typeof v === 'string' && v.length > 0 && v.length <= maxLen ? v : undefined
+}
+function sanitizeDeviceSettingsPatch(patch: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (patch.sound && typeof patch.sound === 'object' && !Array.isArray(patch.sound)) {
+    const s = patch.sound as Record<string, unknown>
+    const soundOut: Record<string, unknown> = {}
+    if (typeof s.on === 'boolean') soundOut.on = s.on
+    const sound = sanitizeString(s.sound, 32)
+    if (sound !== undefined) soundOut.sound = sound
+    const volume = sanitizeNumber(s.volume, 0, 100)
+    if (volume !== undefined) soundOut.volume = volume
+    const timerMin = sanitizeNumber(s.timerMin, 0, 1440)
+    if (timerMin !== undefined) soundOut.timerMin = timerMin
+    if (Object.keys(soundOut).length) out.sound = soundOut
+  }
+  if (patch.night && typeof patch.night === 'object' && !Array.isArray(patch.night)) {
+    const n = patch.night as Record<string, unknown>
+    const nightOut: Record<string, unknown> = {}
+    if (typeof n.on === 'boolean') nightOut.on = n.on
+    const color = sanitizeString(n.color, 32)
+    if (color !== undefined) nightOut.color = color
+    const brightness = sanitizeNumber(n.brightness, 0, 100)
+    if (brightness !== undefined) nightOut.brightness = brightness
+    if (Object.keys(nightOut).length) out.night = nightOut
+  }
+  return out
 }
 
 // Shared shape for both quiet time and the generic timer — both are
@@ -175,22 +218,14 @@ function addDays(y: number, m: number, d: number, days: number) {
   return { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate(), dow: dt.getUTCDay() }
 }
 
-// The tz's UTC offset (minutes) at a given instant — used by localToUtcMs's
-// two-pass correction below. DST-transition-second precision isn't a real
-// concern for a bedtime clock at minute granularity.
-function offsetMinutesAt(utcGuessMs: number, tz: string): number {
-  const parts: Record<string, string> = {}
-  for (const p of new Intl.DateTimeFormat('en-US', {
-    timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
-  }).formatToParts(new Date(utcGuessMs))) parts[p.type] = p.value
-  const asUtc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second))
-  return (asUtc - utcGuessMs) / 60_000
-}
-
 // Converts a household-local wall-clock date+time to the actual UTC instant.
+// luxon resolves DST correctly (a single-pass "guess the UTC offset, then
+// subtract it" approach — what this used to hand-roll — is off by the DST
+// delta for any wall-clock time within about an hour of a transition; see
+// recurrence.ts's toFloating/fromFloating for the same pattern applied to
+// calendar recurrence).
 function localToUtcMs(y: number, m: number, d: number, minuteOfDay: number, tz: string): number {
-  const naiveUtc = Date.UTC(y, m - 1, d, Math.floor(minuteOfDay / 60), minuteOfDay % 60)
-  return naiveUtc - offsetMinutesAt(naiveUtc, tz) * 60_000
+  return DateTime.fromObject({ year: y, month: m, day: d, hour: Math.floor(minuteOfDay / 60), minute: minuteOfDay % 60 }, { zone: tz }).toMillis()
 }
 
 // For each schedule, tries each of the 3 candidate wake-dates around `now`'s
@@ -202,9 +237,16 @@ function localToUtcMs(y: number, m: number, d: number, minuteOfDay: number, tz: 
 // governed by Monday being in `days`, not Sunday — a real decision, not an
 // oversight; a parent picking "school days" (Mon-Fri) is choosing Sun-Thu
 // nights, which the web app's field hint should say explicitly.
+//
+// Two schedules CAN genuinely overlap (the web panel's "+ Add another
+// schedule" has no ordering UI) — when they do, the more SPECIFIC one wins
+// (fewest days-of-week), so a one-off single-day override beats a standing
+// every-day/school-days rule regardless of which was added first. Ties
+// (equal specificity) keep whichever is found first.
 export function wakeLightView(schedules: WaffledBiteSchedule[], now: Date, tz: string): WakeLightView {
   const nowMs = now.getTime()
   const local = localParts(now, tz)
+  let best: (WakeLightView & { specificity: number }) | null = null
 
   for (const sch of schedules) {
     if (sch.bedtimeMin == null) continue
@@ -217,13 +259,21 @@ export function wakeLightView(schedules: WaffledBiteSchedule[], now: Date, tz: s
       const wakeMs = localToUtcMs(wakeDate.y, wakeDate.m, wakeDate.d, sch.wakeMin, tz)
       const graceEndMs = wakeMs + WAKE_GRACE_MIN * 60_000
 
-      const wakeAt = { wakeAtHour: Math.floor(sch.wakeMin / 60), wakeAtMinute: sch.wakeMin % 60 }
-      if (nowMs >= bedtimeMs && nowMs < warnMs) return { state: 'sleep', ...wakeAt }
-      if (nowMs >= warnMs && nowMs < wakeMs) return { state: 'warn', ...wakeAt }
-      if (nowMs >= wakeMs && nowMs < graceEndMs) return { state: 'wake', ...wakeAt }
+      let state: WakeLightState | null = null
+      if (nowMs >= bedtimeMs && nowMs < warnMs) state = 'sleep'
+      else if (nowMs >= warnMs && nowMs < wakeMs) state = 'warn'
+      else if (nowMs >= wakeMs && nowMs < graceEndMs) state = 'wake'
+      if (!state) continue
+
+      const specificity = sch.days.length
+      if (!best || specificity < best.specificity) {
+        best = { state, wakeAtHour: Math.floor(sch.wakeMin / 60), wakeAtMinute: sch.wakeMin % 60, specificity }
+      }
     }
   }
-  return { state: 'none' }
+  if (!best) return { state: 'none' }
+  const { specificity: _specificity, ...view } = best
+  return view
 }
 
 function schedulesOf(settings: unknown): WaffledBiteSchedule[] {
@@ -468,9 +518,10 @@ export function registerWaffledBiteRoutes(api: Api): void {
     const patch = (req.body ?? {}) as Record<string, unknown>
     const filtered: Record<string, unknown> = {}
     for (const key of DEVICE_WRITABLE_SETTINGS_KEYS) if (key in patch) filtered[key] = patch[key]
+    const sanitized = sanitizeDeviceSettingsPatch(filtered)
     const deviceRow = await loadDeviceRow(device.householdId, device.deviceId)
     if (!deviceRow) return res.status(404).json({ error: 'NotFound', message: 'device not found' })
-    const next = deepMerge(deviceRow.settings ?? {}, filtered)
+    const next = deepMerge(deviceRow.settings ?? {}, sanitized)
     await query(`update waffled_bite_devices set settings = $2::jsonb where id = $1`, [device.deviceId, JSON.stringify(next)])
     return { settings: next }
   })

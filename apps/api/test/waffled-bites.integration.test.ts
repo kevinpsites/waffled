@@ -347,6 +347,37 @@ describe('waffled-bites device pairing + parent control panel', () => {
     expect((await call('PATCH', '/api/waffled-bites/device/settings', { sound: { on: false } }, admin)).statusCode).toBe(403)
   })
 
+  // The device token is a lower trust boundary than a parent session (no login,
+  // just a long-lived secret exchange), so malformed field shapes/types under the
+  // allowlisted keys must be dropped, not merged verbatim — an out-of-range NUMBER
+  // is clamped (still usable), but a wrong-TYPE value is dropped entirely, leaving
+  // whatever was already stored (same as if the field were simply omitted).
+  it('sanitizes malformed values inside a device settings patch instead of merging them verbatim', async () => {
+    // Known-good baseline first, so a later dropped field's expected value is
+    // "whatever was already there", not an assumption about test ordering.
+    await call('PATCH', '/api/waffled-bites/device/settings', {
+      sound: { on: false, sound: 'white', volume: 20, timerMin: 0 },
+      night: { on: true, color: 'amber', brightness: 40 },
+    }, deviceToken)
+
+    const r = await call('PATCH', '/api/waffled-bites/device/settings', {
+      sound: { on: 'yes', sound: 123, volume: 9999, timerMin: -50 },
+      night: { on: true, color: 42, brightness: 'loud' },
+    }, deviceToken)
+    expect(r.statusCode).toBe(200)
+    const settings = json(r).settings
+    // wrong-type `on`/`sound` dropped — the baseline values survive untouched
+    expect(settings.sound.on).toBe(false)
+    expect(settings.sound.sound).toBe('white')
+    // out-of-range numbers clamped, not dropped
+    expect(settings.sound.volume).toBe(100)
+    expect(settings.sound.timerMin).toBe(0)
+    // wrong-type `color`/`brightness` dropped — the earlier valid values survive untouched
+    expect(settings.night.color).toBe('amber')
+    expect(settings.night.brightness).toBe(40)
+    expect(settings.night.on).toBe(true)
+  })
+
   // ── the split: a device token is not a tenant, and vice versa ──────────────────
   it('rejects a device token on a normal tenant route, and a tenant token on a device route', async () => {
     expect((await call('POST', '/api/persons', { name: 'Nope', memberType: 'kid' }, deviceToken)).statusCode).toBe(403)
