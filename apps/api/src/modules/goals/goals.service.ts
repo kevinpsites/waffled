@@ -689,10 +689,14 @@ export async function goalDetail(householdId: string, id: string) {
   // row groups by its own id, so it stays one entry exactly as before. Grouping (not the
   // raw rows) is limited to 12 so a split action counts as one line.
   const recent = (
-    await query<{ id: string; amount: string; loggedAt: string; note: string | null; participants: Array<{ personId: string | null; name: string | null; avatarEmoji: string | null; colorHex: string | null }> }>(
+    await query<{ id: string; amount: string; loggedAt: string; dateKey: string; note: string | null; participants: Array<{ personId: string | null; name: string | null; avatarEmoji: string | null; colorHex: string | null }> }>(
       `select coalesce(gl.batch_id, gl.id)::text as id,
               coalesce(sum(gl.amount) filter (where gl.counts_total), 0) as amount,
               min(gl.logged_at) as "loggedAt",
+              -- Household-timezone day, matching goalActivity's bucketing exactly —
+              -- so the day drill-down's entry list agrees with the day cell's total
+              -- regardless of which timezone the VIEWING device happens to be in.
+              (min(gl.logged_at) at time zone h.timezone)::date::text as "dateKey",
               gl.note,
               coalesce(
                 json_agg(json_build_object(
@@ -701,11 +705,13 @@ export async function goalDetail(householdId: string, id: string) {
                 ) order by p.name) filter (where gl.person_id is not null),
                 '[]'::json
               ) as participants
-         from goal_logs gl left join persons p on p.id = gl.person_id
-        where gl.goal_id=$1 and gl.deleted_at is null
-        group by coalesce(gl.batch_id, gl.id), gl.note
+         from goal_logs gl
+         join households h on h.id = gl.household_id
+         left join persons p on p.id = gl.person_id
+        where gl.goal_id=$1 and gl.household_id=$2 and gl.deleted_at is null
+        group by coalesce(gl.batch_id, gl.id), gl.note, h.timezone
         order by min(gl.logged_at) desc limit 12`,
-      [id]
+      [id, householdId]
     )
   ).rows.map((r) => ({ ...r, amount: Number(r.amount) }))
 
@@ -721,6 +727,68 @@ export async function goalDetail(householdId: string, id: string) {
   )
 
   return { ...base, milestones, steps, recent, thisWeek, streakDays }
+}
+
+export interface GoalActivityDay {
+  dateKey: string // YYYY-MM-DD, household-local
+  total: number
+  perMember: Record<string, number>
+}
+
+// Day-bucketed log history for the goal-detail data views (Week/Month/Pace/Year/
+// By-person/Year-ring). Buckets by the SAME household-timezone day expression as
+// goalStreak/streaksFor, so the streak/"today" this feeds matches what's shown
+// elsewhere. `total` sums only counts_total rows (matches total_progress/the ring);
+// `perMember` sums EVERY row for that person (including counts_total=false
+// attendance rows from a count_once shared event, which land at amount 0 — present,
+// not credited) so a "who was there" indicator can key on presence, not amount>0.
+// Only days with at least one log appear (sparse) — the caller fills gaps.
+export async function goalActivity(
+  householdId: string,
+  goalId: string
+): Promise<{ startDate: string; endDate: string | null; today: string; days: GoalActivityDay[] } | null> {
+  const { rows: g } = await query<{ created_at: string; deadline: string | null }>(
+    `select (g.created_at at time zone h.timezone)::date::text as created_at, g.deadline::text as deadline
+       from goals g join households h on h.id = g.household_id
+      where g.household_id = $1 and g.id = $2 and g.deleted_at is null`,
+    [householdId, goalId]
+  )
+  if (g.length === 0) return null
+
+  const { rows: t } = await query<{ today: string }>(
+    `select (now() at time zone timezone)::date::text as today from households where id = $1`,
+    [householdId]
+  )
+
+  const { rows } = await query<{ day: string; person_id: string | null; counts_total: boolean; amount: string }>(
+    `select (gl.logged_at at time zone h.timezone)::date::text as day,
+            gl.person_id, gl.counts_total, sum(gl.amount)::float as amount
+       from goal_logs gl join households h on h.id = gl.household_id
+      where gl.goal_id = $1 and gl.household_id = $2 and gl.deleted_at is null
+      group by day, gl.person_id, gl.counts_total
+      order by day`,
+    [goalId, householdId]
+  )
+
+  const dayTotals = new Map<string, number>()
+  const dayPerMember = new Map<string, Map<string, number>>()
+  for (const r of rows) {
+    const amount = Number(r.amount)
+    if (r.counts_total) dayTotals.set(r.day, round2((dayTotals.get(r.day) ?? 0) + amount))
+    if (r.person_id != null) {
+      const perMember = dayPerMember.get(r.day) ?? new Map<string, number>()
+      perMember.set(r.person_id, round2((perMember.get(r.person_id) ?? 0) + amount))
+      dayPerMember.set(r.day, perMember)
+    }
+  }
+  const dateKeys = [...new Set([...dayTotals.keys(), ...dayPerMember.keys()])].sort()
+  const days: GoalActivityDay[] = dateKeys.map((dateKey) => ({
+    dateKey,
+    total: dayTotals.get(dateKey) ?? 0,
+    perMember: Object.fromEntries(dayPerMember.get(dateKey) ?? []),
+  }))
+
+  return { startDate: g[0].created_at, endDate: g[0].deadline, today: t[0].today, days }
 }
 
 // Tick/untick a checklist step. We keep the step's done_at as the source of truth
