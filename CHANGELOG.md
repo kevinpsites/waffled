@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Reorganize list items into other sections.** On web you can now drag an item from one
   section onto another to refile it; on iPhone/iPad a long-press "Move to section" does the
   same. (True finger-drag between sections on iOS is a fast-follow.)
+- **Swipe between steps in cook mode (iPhone/iPad).** Swipe left for the next step, right for
+  the previous — in addition to the Back/Next buttons.
 - **Edit a countdown straight from the calendar.** Tap a countdown to change it: a standalone
   countdown (the "add anything" kind) opens a small editor to rename, move its date, or remove
   it; an event-countdown opens its event, where you can rename it or untick "Show a countdown"
@@ -81,10 +83,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A half-typed list item is no longer lost when you leave.** If you type an item into the
   add bar on iPhone/iPad and navigate away without hitting return, it's now saved instead of
   discarded.
-- **Add a list item with full details from the composer (iPhone/iPad).** A details button on
-  the add bar commits what you typed and opens its editor as a half-sheet — assignee, section,
-  and priority. (Replaces an unreliable swipe-up gesture.) The five priority pills now scroll
-  horizontally instead of wrapping.
+- **Add a list item with full details from the composer (iPhone/iPad).** The details button
+  on the add bar opens a proper **"Add item"** half-sheet — set the assignee, section, and
+  priority up front, then add — seeded with whatever you'd already typed. (Replaces an
+  unreliable swipe-up gesture.) The five priority pills now scroll horizontally instead of
+  wrapping.
 - **Countdowns on the Today page are now tappable.** Tap a countdown to jump straight to
   what it's counting down to — an event-based countdown opens that event, while a trip or
   birthday countdown opens the calendar on its day.
