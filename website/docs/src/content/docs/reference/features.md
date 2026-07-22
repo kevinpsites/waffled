@@ -101,7 +101,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Recurring events** — per-occurrence **edit scope** (this / following / all) | ✅ | ✅ | ✅ | ✅ Done (scope chooser on edit + delete) |
 | **Recurring events** — **end condition** (never / on a date / after N) | ✅ | ✅ | ✅ | ✅ Done (UNTIL date + COUNT) |
 | **Recurring events** — monthly **nth-weekday ordinal** (first…fifth / last) | ✅ | ✅ | ✅ | ✅ Done (mobile offers any ordinal) |
-| **Countdowns** — "N days until X" from three sources (flag an event · standalone item · auto member birthdays); Today card + month-grid badge; household "N sleeps" toggle | ✅ | ✅ | ✅ | ✅ Done — iOS reads the merged `GET /api/countdowns` for a **Today card** (iPhone `CountdownsCard` + iPad kiosk card; emoji · title · date · N-days/sleeps · standalone × remove · + Add) and **month-grid badges** (iPhone + `KioskCalendarView`); the event editor's **"⏳ Show a countdown"** toggle rides the full `is_countdown` offline path (PowerSync schema + local/REST writes); the **"N sleeps"** toggle is in Settings → Calendars |
+| **Countdowns** — "N days until X" from three sources (flag an event · standalone item · auto member birthdays); Today card + month-grid badge; household "N sleeps" toggle | ✅ | ✅ | ✅ | ✅ Done — iOS reads the merged `GET /api/countdowns` for a **Today card** (iPhone `CountdownsCard` + iPad kiosk card; emoji · title · date · N-days/sleeps · standalone × remove · + Add; **tap a standalone row to rename/move/remove**) and **month-grid badges** plus **all-day rows in the iPhone/iPad calendar** (agenda / day / month-detail — a countdown-only day appears in the agenda too; tap to edit: standalone → the editor, event-source → its event); the event editor's **"⏳ Show a countdown"** toggle rides the full `is_countdown` offline path (PowerSync schema + local/REST writes); the **"N sleeps"** toggle is in Settings → Calendars. Web: the Today card countdowns are **tappable** (an event countdown opens its event, a standalone/birthday one opens the calendar day), countdowns render as **all-day chips** in the calendar **day/week** views (on top of the month badge), and **tapping a countdown on the calendar edits it** — a standalone one opens a rename/move/remove editor, an event one opens its event (rename + "Show a countdown" toggle) |
 
 ## Tasks & chores
 
@@ -156,6 +156,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Type-aware **logging** (amount / stepper / once-a-day / tick steps) | ✅ | ✅ | ✅ | ✅ Done |
 | Backdated logs ("When?" picker) | ✅ | ✅ | ✅ | ✅ Done |
 | **Goal detail** read-model (milestone track, hours-by-person, streaks, recent) | ✅ | ✅ | ✅ | ✅ Done |
+| **Goal-detail data views** — swappable progress visualizations (Week/Month heatmap, Year contribution grid, Pace-to-target, Year ring, By-person bars, plus Count's collection grid and Habit's consistency calendar) matched to the goal's type + timeframe, remembers your last pick per goal, tap a day/month for who logged what | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | Checklist **named steps** + per-type **milestones** (text) | ✅ | ✅ | ✅ | ✅ Done |
 | **Person profile** + **Family overview** | ✅ | ✅ | ✅ | ✅ Done (iPad = `KioskFamilyView` grid) |
 | **Calendar → goal** auto-count recap (single events) | ✅ | ✅ | ✅ | ✅ Done (Phase 1) |
@@ -173,12 +174,16 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **List templates** — save a list as a reusable template, apply → a fresh unchecked copy, manage (delete) | ✅ | ✅ | ✅ | ✅ Done — mobile: one New-list modal (name + emoji + Create) with an "Or start from a template" picker (**select-then-Create**, name pre-fills from the template); long-press a template to delete |
 | **Auto-built grocery board** from the week's dinners | ✅ | ✅ | ✅ | ✅ Done |
 | **Add a recipe's ingredients to the grocery list from its page** — no meal-plan entry needed (one-off dinners, sides, snacks); staples skipped, quantities merged, items linked back to the recipe | ✅ | ✅ | ✅ | ✅ Done — web: cart icon in the recipe actions (plus the on-hand banner button); mobile: "Add to grocery list" in the recipe ⋯ menu + the banner button |
+| **Remove an off-plan recipe from the grocery list** — undo the above; the recipe drops out of the by-meal "Unscheduled" shelf, keeping any items it shares with another recipe | ✅ | ✅ | ✅ | ✅ Done — web: **Remove** on the by-meal Unscheduled section, or an **×** on the "This week's meals" Unscheduled rail; mobile: long-press the section → **Remove from list** (`DELETE /api/lists/grocery/from-recipe/:id`) |
 | **Unscheduled recipe sections in By-meal view** — off-plan recipes group under their own "Unscheduled" header with their own dot color, instead of lumping into "Other items"; they're also listed in the "This week's meals" card below a divider, completing the dot-color legend | ✅ | ✅ | ✅ | ✅ Done |
 | **Aisle grouping** + **quantity merge** (By aisle / By meal) | ✅ | ✅ | ✅ | ✅ Done |
 | **Pantry staples** (kept off the list; Pantry check) | ✅ | ✅ | ✅ | ✅ Done |
 | Check off / add / delete (persists) | ✅ | ✅ | ✅ | ✅ Done |
 | **Item attribution** — "added by {name}" / "🍽 from meal plan" | ✅ | ✅ | ✅ | ✅ Done |
 | **Re-aisle** a grocery item (move it to another aisle section from its editor) | ✅ | ✅ | ✅ | ✅ Done — mobile: section chips + an **Auto** chip (clear the override → classify by name) in the item Details editor |
+| **Move an item to another section** — refile without opening the full editor: **drag** a row across sections (web drag-and-drop; iPhone/iPad native press-and-drag via `.onMove`, so swipe-to-delete still works); the Details editor also sets the section | ✅ | ✅ | ✅ | ✅ Done — PATCHes the item's category |
+| **Item priority** — set an item's urgency on a **1–5 scale** (1 = not urgent · 3 = normal · 5 = urgent) from its editor; High/Urgent items show a row flag. Setting a priority doesn't reorder the list; a web **Sort: manual ⇄ By priority** toggle flattens it highest-first on demand | ✅ | ✅ | ✅ | ✅ Done — web + iOS; API stores `priority` (1–5, default 3, mig 0084 + 0085) and returns manual order (priority sort is a client-side opt-in) |
+| **Completed section** on a custom list — checked items tuck into a collapsible "Completed" group (with an undo grace window) instead of lingering in place | ✅ | ✅ | ✅ | ✅ Done — web now matches the grocery board + iOS |
 | **Cross-surface live refresh** (Today ↔ Lists ↔ Rewards) | ✅ | ✅ | ✅ | ✅ Done (in-app refresh bus) |
 
 ## Meals & recipes

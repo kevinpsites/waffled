@@ -2,6 +2,7 @@
 // /api/pantry-staples). Logic in lists.service.ts; types in lists.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { moduleRoutes } from '../../platform/route-guards'
+import { assertPersonInHousehold } from '../../platform/household-refs'
 import { registerListItemCaptureTarget } from './lists-capture'
 import type { CreateListInput, PatchItemInput } from './lists.types'
 import {
@@ -16,6 +17,7 @@ import {
   patchItem,
   softDeleteItem,
   addRecipeToGrocery,
+  removeRecipeFromGrocery,
   convertToTemplate,
   convertToList,
   applyTemplate,
@@ -36,6 +38,11 @@ type Api = ReturnType<typeof createAPI>
 const { tenantRoute } = moduleRoutes('lists')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Priority is a 1–5 urgency scale: 1 = not urgent, 3 = normal, 5 = urgent.
+function isValidPriority(v: unknown): v is 1 | 2 | 3 | 4 | 5 {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 5
+}
 
 export function registerListRoutes(api: Api): void {
   // ---- the household's lists (sidebar) --------------------------------------
@@ -141,15 +148,20 @@ export function registerListRoutes(api: Api): void {
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
     const list = await getList(tenant.householdId, id)
     if (!list) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
-    const body = (req.body ?? {}) as { name?: string; quantity?: string; category?: string; assignedTo?: string }
+    const body = (req.body ?? {}) as { name?: string; quantity?: string; category?: string; assignedTo?: string; priority?: number }
     if (!body.name || !body.name.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
     }
+    if ('priority' in body && !isValidPriority(body.priority)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'priority must be an integer from 1 (not urgent) to 5 (urgent)' })
+    }
+    if (body.assignedTo != null) await assertPersonInHousehold(tenant.householdId, body.assignedTo)
     const item = await addItem(tenant, id, {
       name: body.name.trim(),
       quantity: body.quantity ?? null,
       category: body.category ?? null,
       assignedTo: body.assignedTo ?? null,
+      priority: body.priority,
     })
     return res.status(201).json({ item: presentListItem(item) })
   }))
@@ -181,13 +193,17 @@ export function registerListRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
     const body = (req.body ?? {}) as PatchItemInput
-    const known = ['checked', 'assignedTo', 'quantity', 'category', 'name']
+    const known = ['checked', 'assignedTo', 'quantity', 'category', 'priority', 'name']
     if (!known.some((k) => k in body)) {
       return res.status(400).json({ error: 'BadRequest', message: 'no patchable fields provided' })
     }
     if ('checked' in body && typeof body.checked !== 'boolean') {
       return res.status(400).json({ error: 'BadRequest', message: 'checked must be a boolean' })
     }
+    if ('priority' in body && !isValidPriority(body.priority)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'priority must be an integer from 1 (not urgent) to 5 (urgent)' })
+    }
+    if (body.assignedTo != null) await assertPersonInHousehold(tenant.householdId, body.assignedTo)
     const item = await patchItem(tenant, id, body)
     if (!item) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
     return { item: presentListItem(item) }
@@ -209,6 +225,16 @@ export function registerListRoutes(api: Api): void {
     const added = await addRecipeToGrocery(tenant, recipeId)
     if (added === null) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     return res.status(201).json({ added: added.length, items: added.map(presentListItem) })
+  }))
+
+  // Take a recipe's ingredients back off the grocery list (undo the off-plan add;
+  // removes it from the by-meal "Unscheduled" group).
+  api.delete('/api/lists/grocery/from-recipe/:recipeId', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const recipeId = req.params.recipeId ?? ''
+    if (!UUID_RE.test(recipeId)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    const removed = await removeRecipeFromGrocery(tenant, recipeId)
+    if (removed === null) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    return res.status(200).json({ removed })
   }))
 
   // ---- grocery board + auto-build + pantry staples --------------------------

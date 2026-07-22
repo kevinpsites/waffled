@@ -220,7 +220,12 @@ struct LoginView: View {
                         .padding(11).background(WF.panel)
                         .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                     Button {
-                        AppConfig.setApiBaseURL(serverURL.trimmingCharacters(in: .whitespaces))
+                        guard AppConfig.setApiBaseURL(serverURL) else {
+                            error = "Enter a full server address beginning with http:// or https://."
+                            return
+                        }
+                        serverURL = AppConfig.apiBaseURL
+                        error = nil
                         Task { busy = true; await session.refreshStatus(); busy = false }
                     } label: {
                         Text("Use this server").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink)

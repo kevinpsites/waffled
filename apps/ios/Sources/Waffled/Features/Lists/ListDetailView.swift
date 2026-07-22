@@ -123,21 +123,25 @@ final class ListDetailModel {
         loading = false
     }
 
-    func add(name rawName: String, quantity rawQty: String, section rawSection: String? = nil) async {
+    @discardableResult
+    func add(name rawName: String, quantity rawQty: String, section rawSection: String? = nil) async -> WaffledAPI.ListItemDTO? {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
+        guard !name.isEmpty else { return nil }
         let qty = rawQty.trimmingCharacters(in: .whitespacesAndNewlines)
         let section = rawSection?.trimmingCharacters(in: .whitespacesAndNewlines)
         let sec = (section?.isEmpty == false) ? section : nil
         do {
+            let created: WaffledAPI.ListItemDTO
             if isGrocery {
-                try await api.addGroceryItem(name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
+                created = try await api.addGroceryItem(name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
             } else {
-                try await api.addListItem(listId: list.id, name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
+                created = try await api.addListItem(listId: list.id, name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
             }
             await load()
+            return created
         } catch {
             self.error = true
+            return nil
         }
     }
 
@@ -194,7 +198,7 @@ final class ListDetailModel {
     /// Optimistic full-detail edit (name / quantity / assignee / section); revert on
     /// failure. `member` is the chosen assignee (nil = unassigned).
     func editDetails(_ id: String, name rawName: String, quantity rawQty: String,
-                     member: SyncedMember?, section rawSection: String) async {
+                     member: SyncedMember?, section rawSection: String, priority: Int) async {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
@@ -204,11 +208,28 @@ final class ListDetailModel {
         items[idx].name = name
         items[idx].quantity = qty.isEmpty ? nil : qty
         items[idx].section = section.isEmpty ? nil : section
+        items[idx].priority = priority
         items[idx].assignee = member.map { .init(name: $0.name, avatarEmoji: $0.emoji, colorHex: $0.colorHex) }
         do {
-            try await api.updateItemDetails(id: id, name: name, quantity: qty, assignedTo: member?.id, section: section)
+            try await api.updateItemDetails(id: id, name: name, quantity: qty, assignedTo: member?.id, section: section, priority: priority)
         } catch {
             if let i = items.firstIndex(where: { $0.id == id }) { items[i] = prev }
+        }
+    }
+
+    /// Move an item to a different section (drag-and-drop / "Move to section"),
+    /// PATCHing just its category. Optimistic; reverts on failure.
+    func setSection(_ id: String, to rawSection: String?) async {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        let section = rawSection?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let target = (section?.isEmpty == false) ? section : nil
+        guard items[idx].section != target else { return }
+        let prev = items[idx]
+        withAnimation { items[idx].section = target }
+        do {
+            try await api.patchListItem(id: id, section: target ?? "")
+        } catch {
+            if let i = items.firstIndex(where: { $0.id == id }) { withAnimation { items[i] = prev } }
         }
     }
 
@@ -256,6 +277,16 @@ final class ListDetailModel {
         } catch {
             items = snapshot
         }
+    }
+
+    /// Take an off-plan recipe back off the grocery list (undo "add to grocery"),
+    /// removing it from the by-meal "Unscheduled" group. Reloads (it can touch
+    /// several rows and strip shared credits server-side).
+    func removeRecipe(_ recipeId: String) async {
+        do {
+            try await api.removeRecipeFromGrocery(recipeId: recipeId)
+            await load()
+        } catch { self.error = true }
     }
 
     /// Turn this list into a reusable template — converts it in place (it leaves the
@@ -315,6 +346,8 @@ struct ListDetailView: View {
     @State private var editQty = ""
     @State private var showCompleted = false
     @State private var detailItem: WaffledAPI.ListItemDTO?
+    @State private var showAddDetail = false
+    @State private var addDetailName = ""
     @State private var didAutoDetails = false
     @State private var mode: GroceryViewMode = .aisle
     @State private var railMeal = "dinner"
@@ -436,9 +469,28 @@ struct ListDetailView: View {
             if editingId != nil, new != .editName, new != .editQty { commitEdit() }
         }
         .onChange(of: query) { _, q in model.searchQuery = q }
+        .onDisappear {
+            // Don't lose a typed-but-unsubmitted item when navigating away — commit it.
+            if !draftName.trimmingCharacters(in: .whitespaces).isEmpty {
+                let name = draftName, qty = draftQty, section = draftSection
+                draftName = ""; draftQty = ""
+                Task { await model.add(name: name, quantity: qty, section: section) }
+            }
+        }
         .sheet(item: $detailItem) { item in
-            ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section in
-                Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section) }
+            ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section, priority in
+                Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section, priority: priority) }
+            }
+        }
+        // The "Add item with details" sheet (from the add bar's sliders button): create the
+        // item, then apply assignee/section/priority in one go.
+        .sheet(isPresented: $showAddDetail) {
+            ItemDetailEditor(newItemName: addDetailName, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section, priority in
+                Task {
+                    if let created = await model.add(name: name, quantity: qty, section: section) {
+                        await model.editDetails(created.id, name: name, quantity: qty, member: member, section: section, priority: priority)
+                    }
+                }
             }
         }
         .confirmationDialog("Delete “\(model.list.name)”?", isPresented: $confirmingDelete, titleVisibility: .visible) {
@@ -480,6 +532,7 @@ struct ListDetailView: View {
             }
         }
         .listStyle(.plain)
+        .listSectionSpacing(0)   // no white gaps between sections — one tan surface
         .scrollContentBackground(.hidden)
         // Drag down through the items to tuck the keyboard away (the add bar's field
         // otherwise keeps it up with no way to dismiss on iPhone).
@@ -505,6 +558,7 @@ struct ListDetailView: View {
                 topControls
                 List { itemRows }
                     .listStyle(.plain)
+                    .listSectionSpacing(0)   // no white gaps between sections — one tan surface
                     .scrollContentBackground(.hidden)
                     .scrollDismissesKeyboard(.interactively)
                     // The lifted bar is drawn OVER the List's bottom (offset is
@@ -515,11 +569,14 @@ struct ListDetailView: View {
             }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { columnBottom = $0 }
             .frame(maxWidth: .infinity)
-            if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.staples.isEmpty) {
+            if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.unscheduled.isEmpty || !model.staples.isEmpty) {
                 Rectangle().fill(WF.hair).frame(width: 1)
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        if !model.meals.isEmpty { summaryPanel }
+                        // Match the phone gate: the summary card also carries the Unscheduled
+                        // recap, so show it whenever there are planned OR unscheduled recipes
+                        // (a week with only off-plan adds still needs the side panel).
+                        if !model.meals.isEmpty || !model.unscheduled.isEmpty { summaryPanel }
                         if !model.staples.isEmpty { staplesPanel }
                     }
                     .padding(16)
@@ -546,15 +603,84 @@ struct ListDetailView: View {
                 } header: { mealHeader(group) }
             }
         } else {
-            ForEach(model.activeSections) { group in
-                Section {
-                    if !collapsed.contains(group.id) {
-                        ForEach(group.items) { item in itemRow(item) }
-                    }
-                } header: { sectionHeader(group) }
+            // One flat run (headers + items in a single ForEach) so `.onMove` can drag an
+            // item ACROSS a header into another section. A sectioned List's `.onMove` only
+            // reorders within one section, and its `.dropDestination` silently refuses the
+            // drop entirely (verified on-device) — `.onMove` is the drag that actually
+            // works next to `.swipeActions`. Headers can't be dragged or deleted; on drop
+            // we read the item's new section from the header it landed under (`ListReorder`)
+            // and PATCH just that section. Grouping stays visually intact because the rows
+            // regroup from `activeSections` once `setSection` updates the item.
+            // Build the flat rows ONCE per render (filter→group→sort) and reuse them for
+            // both the ForEach and the drop handler, so a drag doesn't recompute the pipeline
+            // a second time (per apps/ios/CLAUDE.md's precompute rule).
+            let rows = flatDisplayRows
+            ForEach(rows) { r in
+                switch r {
+                case .header(let group):
+                    flatHeaderRow(group).moveDisabled(true).deleteDisabled(true)
+                case .item(let item, _):
+                    itemRow(item)
+                }
             }
+            .onMove { from, to in handleMove(rows: rows, from: from, to: to) }
         }
         completedSection
+    }
+
+    /// A flattened display row for the drag-enabled section view: a section header, or an
+    /// item tagged with its section. Built from `activeSections` in render order, so the
+    /// indices line up 1:1 with the `ListReorder.Row` array `handleMove` reasons over.
+    private enum ListDisplayRow: Identifiable {
+        case header(ListSectionGroup)
+        case item(WaffledAPI.ListItemDTO, section: String?)
+        var id: String {
+            switch self {
+            case .header(let g): return "h:\(g.id)"
+            case .item(let i, _): return "i:\(i.id)"
+            }
+        }
+    }
+
+    /// Headers + visible items in one sequence. Collapsed sections keep their header (a
+    /// drop target) but drop their items, matching what the List renders.
+    private var flatDisplayRows: [ListDisplayRow] {
+        var out: [ListDisplayRow] = []
+        for group in model.activeSections {
+            out.append(.header(group))
+            if !collapsed.contains(group.id) {
+                // Tag with the group's real category (sectionValue), NOT its display title —
+                // the ungrouped "Items" header maps to a nil category.
+                for item in group.items { out.append(.item(item, section: group.sectionValue)) }
+            }
+        }
+        return out
+    }
+
+    /// The header inside the flat ForEach. A titled group reuses the normal section header;
+    /// the untitled ("no section") group keeps its old look — no visible header — via a
+    /// zero-height anchor row that still holds a slot for index alignment + a drop target.
+    @ViewBuilder private func flatHeaderRow(_ group: ListSectionGroup) -> some View {
+        if group.title != nil {
+            sectionHeader(group)
+        } else {
+            Color.clear.frame(height: 0)
+                .listRowInsets(EdgeInsets()).listRowSeparator(.hidden).listRowBackground(Color.clear)
+        }
+    }
+
+    /// SwiftUI `.onMove` handler: resolve the item's new section from where it landed and
+    /// PATCH it. A within-section reorder resolves to nil and is a no-op (we persist section,
+    /// not fine order — matching the web drag).
+    private func handleMove(rows displayRows: [ListDisplayRow], from: IndexSet, to: Int) {
+        let rows: [ListReorder.Row] = displayRows.map { r in
+            switch r {
+            case .header(let g): return .header(g.sectionValue)
+            case .item(let i, let s): return .item(id: i.id, section: s)
+            }
+        }
+        guard let result = ListReorder.targetSection(rows: rows, from: from, to: to) else { return }
+        Task { await model.setSection(result.id, to: result.section) }
     }
 
     /// Whether to show the search field — only worth the space once a list is long.
@@ -602,11 +728,15 @@ struct ListDetailView: View {
         return result
     }
 
-    /// A row plus its swipe actions (Delete + Details), shared by the active and
-    /// completed sections.
+    /// A row plus its swipe actions (Delete + Details). Native swipe stays because the
+    /// list keeps using `List`; moving an item between sections is handled by the flat
+    /// ForEach's `.onMove` (see `itemRows`), not a per-row gesture.
     @ViewBuilder private func itemRow(_ item: WaffledAPI.ListItemDTO) -> some View {
         row(item)
-            .listRowBackground(Color.clear)
+            // A flat tan sheet: canvas row backgrounds (no white cells) and no hairline
+            // separators — the list reads as one continuous surface, not ruled rows.
+            .listRowBackground(WF.canvas)
+            .listRowSeparator(.hidden)
             .swipeActions(edge: .trailing) {
                 Button(role: .destructive) {
                     Task { await model.remove(item.id) }
@@ -644,6 +774,8 @@ struct ListDetailView: View {
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
             .background(WF.canvas)
             .listRowInsets(EdgeInsets())
+            .listRowBackground(WF.canvas)
+            .listRowSeparator(.hidden)
     }
 
     /// A header laid out as a tap target that collapses/expands its section.
@@ -716,6 +848,14 @@ struct ListDetailView: View {
                 Spacer(minLength: 6)
                 Text("\(group.items.count)")
                     .font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
+            }
+        }
+        // Long-press an Unscheduled recipe's header to take it back off the list.
+        .contextMenu {
+            if let recipe = group.unscheduled {
+                Button(role: .destructive) {
+                    Task { await model.removeRecipe(recipe.recipeId) }
+                } label: { Label("Remove from list", systemImage: "trash") }
             }
         }
     }
@@ -807,24 +947,32 @@ struct ListDetailView: View {
     /// day label; taps through to the recipe like they do.
     @ViewBuilder private func unscheduledRecapRow(_ recipe: WaffledAPI.GroceryBoardDTO.UnscheduledRecipe) -> some View {
         let color = Color(hexString: recipe.color) ?? WF.ink3
-        Button {
+        // Not a Button: the row taps through to the recipe via `onTapGesture`, so the
+        // trailing × can be its own Button and remove the recipe from the list (these
+        // recap rows live in a VStack, not a List, so native swipe-to-delete isn't
+        // available — a visible × mirrors the web's Unscheduled rail).
+        HStack(spacing: 10) {
+            Circle().fill(color).frame(width: 9, height: 9)
+            Text(recipe.title)
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                .lineLimit(1)
+            Spacer(minLength: 6)
+            Button { Task { await model.removeRecipe(recipe.recipeId) } } label: {
+                Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(WF.ink3)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(recipe.title) from list")
+            Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
+            Text(recipe.emoji ?? "🍽️")
+                .font(.system(size: 14))
+                .frame(width: 28, height: 28)
+                .background(color.opacity(0.12)).clipShape(Circle())
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
             openRecipe(.placeholder(id: recipe.recipeId, title: recipe.title, emoji: recipe.emoji,
                                     category: nil, cookTimeMinutes: nil, servings: nil))
-        } label: {
-            HStack(spacing: 10) {
-                Circle().fill(color).frame(width: 9, height: 9)
-                Text(recipe.title)
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
-                    .lineLimit(1)
-                Spacer(minLength: 6)
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
-                Text(recipe.emoji ?? "🍽️")
-                    .font(.system(size: 14))
-                    .frame(width: 28, height: 28)
-                    .background(color.opacity(0.12)).clipShape(Circle())
-            }
         }
-        .buttonStyle(.plain)
     }
 
     @ViewBuilder private func mealRecapRow(_ meal: WaffledAPI.GroceryBoardDTO.Meal) -> some View {
@@ -996,6 +1144,11 @@ struct ListDetailView: View {
             } else {
                 Button { startEdit(item) } label: {
                     HStack(spacing: 8) {
+                        if !ListItemPriority.meta(item.priority).icon.isEmpty {
+                            Text(ListItemPriority.meta(item.priority).icon)
+                                .font(.system(size: 13))
+                                .accessibilityLabel(ListItemPriority.meta(item.priority).label)
+                        }
                         Text(item.name)
                             .font(.system(size: 16, weight: .semibold))
                             .strikethrough(item.checked, color: WF.ink3)
@@ -1057,9 +1210,26 @@ struct ListDetailView: View {
                     .focused($focus, equals: .addQty)
                     .submitLabel(.done)
                     .onSubmit(submit)
+                // Tap for the full "Add item" sheet — assignee, section, priority — seeded
+                // with whatever's already typed. (The old swipe-up gesture was unreliable
+                // next to the text fields.)
+                Button {
+                    addDetailName = draftName
+                    draftName = ""; draftQty = ""; focus = nil
+                    showAddDetail = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3").font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(WF.ink3)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add item with details")
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
             .wfField()
+            // The whole bar (icon + padding, not just the field glyphs) raises the
+            // keyboard — the bare TextField hit target was a too-small tap.
+            .contentShape(Rectangle())
+            .onTapGesture { focus = .add }
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -1163,41 +1333,83 @@ struct ListDetailView: View {
     }
 }
 
+/// List-item priority: a 1–5 urgency scale (1 not urgent, 3 normal, 5 urgent) shared
+/// by the detail editor's chips and the row flag. Above-normal items (4–5) get the
+/// flag. Mirrors the web `priority.tsx`.
+enum ListItemPriority {
+    struct Option { let value: Int; let label: String; let icon: String }
+    static let normal = 3
+    static let all: [Option] = [
+        .init(value: 1, label: "Not urgent", icon: ""),
+        .init(value: 2, label: "Low", icon: ""),
+        .init(value: 3, label: "Normal", icon: ""),
+        .init(value: 4, label: "High", icon: "⚑"),
+        .init(value: 5, label: "Urgent", icon: "‼️"),
+    ]
+    static func meta(_ p: Int?) -> Option { all.first { $0.value == (p ?? normal) } ?? all[2] }
+}
+
 /// The fuller "Details" editor reached by swiping a row — name, quantity, assignee,
 /// and section. The 90% case stays on the inline row editor; this is for the rest.
 /// Styled to match the app (WF cards on canvas) rather than the stock iOS Form.
 struct ItemDetailEditor: View {
     @Environment(\.dismiss) private var dismiss
     let originalName: String
+    let isNew: Bool
     let members: [SyncedMember]
     let suggestions: [String]
-    let onSave: (String, String, SyncedMember?, String) -> Void
+    let onSave: (String, String, SyncedMember?, String, Int) -> Void
 
     @State private var name: String
     @State private var quantity: String
     @State private var assigneeId: String?
     @State private var section: String
+    @State private var priority: Int
+    @FocusState private var nameFocused: Bool
 
     init(item: WaffledAPI.ListItemDTO, members: [SyncedMember], suggestions: [String],
-         onSave: @escaping (String, String, SyncedMember?, String) -> Void) {
+         onSave: @escaping (String, String, SyncedMember?, String, Int) -> Void) {
         self.originalName = item.name
+        self.isNew = false
         self.members = members
         self.suggestions = suggestions
         self.onSave = onSave
         _name = State(initialValue: item.name)
         _quantity = State(initialValue: item.quantity ?? "")
         _section = State(initialValue: item.section ?? "")
+        _priority = State(initialValue: item.priority ?? ListItemPriority.normal)
         // The item's assignee carries no id, so resolve it to a member by name.
         let assigneeName = item.assignee?.name
         _assigneeId = State(initialValue: members.first { $0.name == assigneeName }?.id)
+    }
+
+    /// Add mode — a blank "Add item" sheet (optionally seeded with a name already typed in
+    /// the add bar) so you can set assignee / section / priority up front, then add.
+    init(newItemName: String, members: [SyncedMember], suggestions: [String],
+         onSave: @escaping (String, String, SyncedMember?, String, Int) -> Void) {
+        self.originalName = ""
+        self.isNew = true
+        self.members = members
+        self.suggestions = suggestions
+        self.onSave = onSave
+        _name = State(initialValue: newItemName)
+        _quantity = State(initialValue: "")
+        _section = State(initialValue: "")
+        _priority = State(initialValue: ListItemPriority.normal)
+        _assigneeId = State(initialValue: nil)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    field("Name") { TextField("Item", text: $name).textInputAutocapitalization(.words) }
+                    field("Name") { TextField("Item", text: $name).textInputAutocapitalization(.words).focused($nameFocused) }
                     field("Quantity") { TextField("e.g. 2 lb", text: $quantity) }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Priority")
+                        priorityRow
+                    }
 
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: "Assigned to")
@@ -1217,13 +1429,14 @@ struct ItemDetailEditor: View {
                 .padding(20)
             }
             .background(WF.canvas)
-            .navigationTitle("Edit \(originalName)")
+            .navigationTitle(isNew ? "Add item" : "Edit \(originalName)")
             .navigationBarTitleDisplayMode(.inline)
+            .task { if isNew, name.isEmpty { nameFocused = true } }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        onSave(name, quantity, members.first { $0.id == assigneeId }, section)
+                    Button(isNew ? "Add" : "Save") {
+                        onSave(name, quantity, members.first { $0.id == assigneeId }, section, priority)
                         dismiss()
                     }
                     .fontWeight(.semibold)
@@ -1231,7 +1444,7 @@ struct ItemDetailEditor: View {
                 }
             }
         }
-        .presentationDetents([.large])
+        .presentationDetents([.medium, .large])
     }
 
     // MARK: pieces
@@ -1249,6 +1462,29 @@ struct ItemDetailEditor: View {
             .padding(.horizontal, 15).padding(.vertical, 13)
             .frame(maxWidth: .infinity, alignment: .leading)
             .wfField()
+    }
+
+    /// Normal / Important / Urgent chips — mirrors the web item editor's priority pills.
+    private var priorityRow: some View {
+        // Horizontal scroll (like the Assigned-to row) so the five 1–5 pills never wrap.
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(ListItemPriority.all, id: \.value) { p in
+                    let selected = priority == p.value
+                    Button { priority = p.value } label: {
+                        HStack(spacing: 5) {
+                            if !p.icon.isEmpty { Text(p.icon).font(.system(size: 12)) }
+                            Text(p.label).font(.system(size: 13, weight: .semibold)).fixedSize()
+                        }
+                        .foregroundStyle(selected ? WF.ink : WF.ink2)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .wfChip(selected: selected)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 1)
+        }
     }
 
     private var assigneeRow: some View {

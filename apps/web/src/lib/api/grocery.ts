@@ -53,6 +53,8 @@ export interface ListItem {
   checked: boolean
   checkedAt: string | null
   section: string | null
+  // 1–5 urgency scale: 1 = not urgent, 3 = normal, 5 = urgent. Higher sorts first.
+  priority?: number
   sortOrder: number | null
   assignee: ListItemAssignee | null
   // ambient attribution: who hand-added the item, and where it came from.
@@ -74,6 +76,7 @@ export interface PatchItemBody {
   assignedTo?: string | null
   quantity?: string | null
   section?: string | null
+  priority?: number
   name?: string
 }
 
@@ -84,6 +87,7 @@ function patchBody(b: PatchItemBody): Record<string, unknown> {
   if ('assignedTo' in b) out.assignedTo = b.assignedTo
   if ('quantity' in b) out.quantity = b.quantity
   if ('section' in b) out.category = b.section
+  if ('priority' in b) out.priority = b.priority
   if ('name' in b) out.name = b.name
   return out
 }
@@ -98,6 +102,8 @@ export const groceryApi = {
   deleteItem: (id: string) => apiDelete(`/api/list-items/${id}`).then(tap('grocery')),
   groceryFromRecipe: (recipeId: string) =>
     apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}`).then(tap('grocery')),
+  removeRecipeFromGrocery: (recipeId: string) =>
+    apiDelete(`/api/lists/grocery/from-recipe/${recipeId}`).then(tap('grocery')),
 
   // lists (the Lists screen)
   lists: () => apiGet<{ lists: ListSummary[] }>('/api/lists'),
@@ -117,12 +123,13 @@ export const groceryApi = {
   applyTemplate: (templateId: string, name?: string) =>
     apiSend<{ list: ListSummary }>('POST', `/api/lists/templates/${templateId}/apply`, name ? { name } : {}).then((r) => r.list).then(tap('grocery')),
 
-  addListItem: (listId: string, input: { name: string; quantity?: string | null; section?: string | null; assignedTo?: string | null }) =>
+  addListItem: (listId: string, input: { name: string; quantity?: string | null; section?: string | null; assignedTo?: string | null; priority?: number }) =>
     apiSend<{ item: ListItem }>('POST', `/api/lists/${listId}/items`, {
       name: input.name,
       quantity: input.quantity ?? null,
       category: input.section ?? null,
       assignedTo: input.assignedTo ?? null,
+      ...(input.priority ? { priority: input.priority } : {}),
     }).then((r) => r.item).then(tap('grocery')),
   patchListItem: (id: string, patch: PatchItemBody) =>
     apiSend<{ item: ListItem }>('PATCH', `/api/list-items/${id}`, patchBody(patch)).then((r) => r.item).then(tap('grocery')),

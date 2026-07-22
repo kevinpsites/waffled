@@ -164,6 +164,19 @@
 }
 .lists-section {
   margin-bottom: 14px;
+  border-radius: 12px;
+  transition: box-shadow 0.12s ease, background 0.12s ease;
+}
+/* Drop target highlight while dragging an item over a section. */
+.lists-section.drag-over {
+  background: var(--panel);
+  box-shadow: inset 0 0 0 2px var(--accent, #8A7DBE);
+}
+.litem[draggable='true'] {
+  cursor: grab;
+}
+.litem[draggable='true']:active {
+  cursor: grabbing;
 }
 .lists-section-title {
   font-size: 13px;
@@ -172,6 +185,35 @@
   letter-spacing: 0.05em;
   color: var(--ink-2);
   margin: 2px 2px 9px;
+}
+/* Completed section (checked items tuck here — collapsible, matches the grocery board). */
+.lists-completed {
+  margin-top: 10px;
+  grid-column: 1 / -1;
+}
+.lists-completed-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 4px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink-2);
+  border-top: 1px solid var(--hair-2);
+}
+.lists-completed-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 6px;
+  padding-top: 4px;
+}
+.lpri {
+  flex: none;
+  margin-right: 5px;
+  font-size: 13px;
+  line-height: 1;
 }
 .litem {
   cursor: pointer;

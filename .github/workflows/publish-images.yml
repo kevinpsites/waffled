@@ -12,7 +12,7 @@
 #   WAFFLED_BACKUP_IMAGE=ghcr.io/kevinpsites/waffled-backup:latest
 # then `docker compose pull && ./waffled up`.
 #
-# Runs ONLY on a version tag (e.g. `git tag v0.1.0 && git push --tags`) or a manual
+# Runs ONLY on a version tag pushed by `./waffled release X.Y.Z` or a manual
 # dispatch — NOT on every push to main, to conserve Actions minutes.
 #
 # ── Why this is a build-per-arch + merge, not one QEMU job ─────────────────────────
@@ -27,7 +27,7 @@ name: Publish images
 
 on:
   push:
-    tags: ['v*']            # cut a release: `git tag v1.2.3 && git push origin v1.2.3`
+    tags: ['v*']            # cut a release locally: `./waffled release X.Y.Z`
   workflow_dispatch:        # manual "Run workflow" button (builds an sha-tagged image)
 
 # Least-privilege: read the repo, write packages (GHCR).

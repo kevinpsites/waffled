@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type MouseEvent } from 'react'
 import type { AgendaEvent, Countdown } from '../../lib/api'
 import { DOW, ymd, localDate } from './cal-utils'
 import { MonthDayPanel } from './MonthDayPanel'
@@ -23,6 +23,7 @@ export function MonthView({
   selectedDay,
   onSelectDay,
   onOpenEvent,
+  onCountdownTap,
   onCreateOnDay,
   onMore,
 }: {
@@ -34,6 +35,7 @@ export function MonthView({
   selectedDay: string
   onSelectDay: (date: string) => void
   onOpenEvent: (e: AgendaEvent) => void
+  onCountdownTap?: (cds: Countdown[]) => void
   onCreateOnDay: (date: string) => void
   onMore: (date: string) => void
 }) {
@@ -67,7 +69,13 @@ export function MonthView({
             >
               <div className="dn">{d.getDate()}</div>
               {cds.length > 0 && (
-                <div className="cal-cd" title={cds.map((c) => c.title).join(' · ')}>
+                <div
+                  className={`cal-cd ${onCountdownTap ? 'link' : ''}`}
+                  title={onCountdownTap ? `Edit: ${cds.map((c) => c.title).join(' · ')}` : cds.map((c) => c.title).join(' · ')}
+                  {...(onCountdownTap
+                    ? { role: 'button', tabIndex: 0, onClick: (e: MouseEvent) => { e.stopPropagation(); onCountdownTap(cds) } }
+                    : {})}
+                >
                   <span className="cal-cd-em">{cds[0].emoji ?? '⏳'}</span>
                   <span className="cal-cd-d">{cds[0].daysLeft <= 0 ? 'Today!' : `${cds[0].daysLeft}d`}</span>
                   {cds.length > 1 && <span className="cal-cd-n">+{cds.length - 1}</span>}
