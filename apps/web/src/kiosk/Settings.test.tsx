@@ -44,6 +44,7 @@ describe('Settings screen', () => {
     await screen.findByText('Kevin')
 
     const menu = screen.getByLabelText('Settings section')
+    expect(menu).toHaveClass('sel')
     fireEvent.change(menu, { target: { value: 'appearance' } })
     expect(screen.getByText('Match system')).toBeInTheDocument()
   })

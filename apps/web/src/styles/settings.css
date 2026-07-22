@@ -411,18 +411,10 @@ select.sel {
     background: var(--bg);
     border-bottom: 1px solid var(--hair);
   }
-  .set-mobile-nav select {
+  .set-mobile-nav select.sel {
     min-width: 0;
     flex: 1;
     height: 42px;
-    border: 1px solid var(--hair);
-    border-radius: 8px;
-    padding: 0 11px;
-    background: var(--card);
-    color: var(--ink);
-    font: inherit;
-    font-size: 14px;
-    font-weight: 650;
   }
   .set-mobile-signout {
     min-height: 42px;

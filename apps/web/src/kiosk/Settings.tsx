@@ -3125,7 +3125,7 @@ export function Settings() {
   return (
     <div className="settings-screen">
       <div className="set-mobile-nav">
-        <select aria-label="Settings section" value={activeTab} onChange={(e) => setTab(e.target.value)}>
+        <select className="sel" aria-label="Settings section" value={activeTab} onChange={(e) => setTab(e.target.value)}>
           {nav.map((n) => <option key={n.key} value={n.key}>{n.icon} {n.label}</option>)}
         </select>
         <SignOutButton className="set-mobile-signout" />
