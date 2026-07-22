@@ -8,6 +8,11 @@ section, numbered steps) that you then review and save.
 It's also handy for generating recipes with an LLM: paste the template below into
 ChatGPT/Claude, ask it to fill in a dish, and paste the result back into Waffled.
 
+The same format is what the **Share** action on a recipe produces — Waffled compiles any
+recipe in your library into this Markdown and hands it to your device's share sheet (as a
+`.md` file on iPhone/iPad, or clipboard/download on the web). A shared recipe pastes
+straight back into another Waffled library, so import and export are the same format.
+
 > **You usually don't need to do this by hand.** The New recipe screen can build a
 > recipe *for* you from a **photo** of a physical recipe or a spoken/typed
 > **description** — both use this same format under the hood and drop into the editor

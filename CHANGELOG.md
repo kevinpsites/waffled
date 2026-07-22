@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Share a recipe from your library.** Every recipe detail now has a **Share** action that
+  compiles the recipe into Waffled's Markdown format (title, metadata, sectioned
+  ingredients, numbered steps with timers, notes) and hands it to your device's share
+  options — on iPhone/iPad the native share sheet with a `.md` file (Messages, Mail, Save to
+  Files, …), on the web the browser share sheet, falling back to copy-to-clipboard plus a
+  `.md` download. The shared file is the same format the app imports, so anyone can paste it
+  straight back into their own library.
 
 ### Changed
 

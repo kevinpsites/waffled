@@ -602,6 +602,18 @@ struct WaffledAPI: Sendable {
         try await getJSON("/api/recipes/\(id)", as: RecipeDetailDTO.self)
     }
 
+    struct RecipeMarkdown: Decodable, Sendable {
+        let markdown: String
+        let filename: String
+    }
+
+    /// The recipe compiled into the blessed Markdown format for sharing, plus a suggested
+    /// `.md` filename. Server-side so it stays identical to the web export and round-trips
+    /// through the same parser.
+    func recipeMarkdown(id: String) async throws -> RecipeMarkdown {
+        try await getJSON("/api/recipes/\(id)/markdown", as: RecipeMarkdown.self)
+    }
+
     /// The household's previously-used ingredient section names (a global look across
     /// recipes), for the editor's section-name autocomplete. Merged client-side with the
     /// curated defaults.
