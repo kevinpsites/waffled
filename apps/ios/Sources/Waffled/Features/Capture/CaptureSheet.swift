@@ -990,7 +990,10 @@ struct CaptureSheet: View {
         }
         switch i {
         case let .event(title, startsAt, allDay, personName, rrule, _, _):
-            editKind = "event"; editName = title; evAllDay = allDay; evPerson = personName
+            // Default a bare event's owner to the signed-in viewer (matches the web
+            // capture bar) so the picker shows "me", not "Nobody"; a parsed name wins.
+            editKind = "event"; editName = title; evAllDay = allDay
+            evPerson = personName ?? sync.members.first { $0.id == sync.currentPersonId }?.name
             evDate = date(startsAt) ?? Date()
             evRepeat = Recurrence.parseRepeat(rrule)
             evUntilOn = false
