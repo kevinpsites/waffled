@@ -353,6 +353,10 @@ struct ListDetailView: View {
     @State private var railMeal = "dinner"
     /// Section ids (aisle title or meal-group id) the user has collapsed.
     @State private var collapsed: Set<String> = []
+    /// The section group currently under a dragged item (its `id`), so every row in
+    /// that group can highlight as the drop target. nil when nothing is being dragged
+    /// over a section.
+    @State private var targetedGroupId: String?
     /// Transient confirmation banner ("Added Butter to Pantry").
     @State private var toast: String?
     @State private var toastTask: Task<Void, Never>?
@@ -601,7 +605,7 @@ struct ListDetailView: View {
             ForEach(model.activeSections) { group in
                 Section {
                     if !collapsed.contains(group.id) {
-                        ForEach(group.items) { item in itemRow(item) }
+                        ForEach(group.items) { item in itemRow(item, in: group) }
                     }
                 } header: { sectionHeader(group) }
             }
@@ -654,11 +658,35 @@ struct ListDetailView: View {
         return result
     }
 
-    /// A row plus its swipe actions (Delete + Details), shared by the active and
-    /// completed sections.
-    @ViewBuilder private func itemRow(_ item: WaffledAPI.ListItemDTO) -> some View {
+    /// A row plus its swipe actions (Delete + Details). In section ("By aisle") mode a
+    /// `dragGroup` is passed, making the whole row a drop target: dragging any item onto
+    /// it moves that item into this row's section (see `row`'s `.draggable`). This is the
+    /// drag-and-drop that replaced the old long-press "Move to section" menu — a
+    /// `.contextMenu` claims the very long-press `.draggable` needs, so the two can't
+    /// share a row. "By meal" mode and the Completed group pass no group (their runs
+    /// aren't sections, so there's nowhere to drop). Re-sectioning without a drag is still
+    /// possible via the Details editor (it writes the section too).
+    @ViewBuilder private func itemRow(_ item: WaffledAPI.ListItemDTO, in dragGroup: ListSectionGroup? = nil) -> some View {
+        if let dragGroup {
+            baseRow(item, targeted: targetedGroupId == dragGroup.id)
+                .dropDestination(for: ListItemDrag.self) { payload, _ in
+                    guard let p = payload.first else { return false }
+                    Task { await model.setSection(p.id, to: dragGroup.title) }
+                    return true
+                } isTargeted: { over in
+                    targetedGroupId = over ? dragGroup.id : (targetedGroupId == dragGroup.id ? nil : targetedGroupId)
+                }
+        } else {
+            baseRow(item, targeted: false)
+        }
+    }
+
+    /// The row + its swipe actions, shared by the drag-enabled and plain paths. When
+    /// `targeted`, the row tints — every row in the hovered section shares the same
+    /// `targetedGroupId`, so the whole group lights up as one drop zone.
+    @ViewBuilder private func baseRow(_ item: WaffledAPI.ListItemDTO, targeted: Bool) -> some View {
         row(item)
-            .listRowBackground(Color.clear)
+            .listRowBackground(targeted ? WF.primary.opacity(0.10) : Color.clear)
             .swipeActions(edge: .trailing) {
                 Button(role: .destructive) {
                     Task { await model.remove(item.id) }
@@ -669,31 +697,18 @@ struct ListDetailView: View {
                 } label: { Label("Details", systemImage: "slider.horizontal.3") }
                     .tint(WF.ai)
             }
-            // Reorganize into another section without opening the full editor. (A
-            // long-press menu is the reliable native path; true finger-drag between
-            // sections is a fast-follow that needs on-device QA.)
-            .contextMenu {
-                let targets = moveTargets(for: item)
-                if !targets.isEmpty {
-                    Menu {
-                        ForEach(targets, id: \.self) { s in
-                            Button(s) { Task { await model.setSection(item.id, to: s) } }
-                        }
-                        if item.section != nil {
-                            Button("No section") { Task { await model.setSection(item.id, to: nil) } }
-                        }
-                    } label: { Label("Move to section", systemImage: "tray.and.arrow.down") }
-                }
-                Button {
-                    if editingId != nil { commitEdit() }
-                    detailItem = item
-                } label: { Label("Details…", systemImage: "slider.horizontal.3") }
-            }
     }
 
-    /// Sections this item could move to — the suggestion list minus its own section.
-    private func moveTargets(for item: WaffledAPI.ListItemDTO) -> [String] {
-        sectionSuggestions.filter { $0.caseInsensitiveCompare(item.section ?? "") != .orderedSame }
+    /// The lift shown under the finger while dragging a row — just the item's name on a
+    /// card, mirroring the meal-planner's drag preview.
+    private func dragPreview(_ item: WaffledAPI.ListItemDTO) -> some View {
+        Text(item.name)
+            .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+            .lineLimit(1)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     @ViewBuilder private func sectionHeader(_ group: ListSectionGroup) -> some View {
@@ -1087,29 +1102,31 @@ struct ListDetailView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                Button { startEdit(item) } label: {
-                    HStack(spacing: 8) {
-                        if !ListItemPriority.meta(item.priority).icon.isEmpty {
-                            Text(ListItemPriority.meta(item.priority).icon)
-                                .font(.system(size: 13))
-                                .accessibilityLabel(ListItemPriority.meta(item.priority).label)
-                        }
-                        Text(item.name)
-                            .font(.system(size: 16, weight: .semibold))
-                            .strikethrough(item.checked, color: WF.ink3)
-                            .foregroundStyle(item.checked ? WF.ink3 : WF.ink)
-                        Spacer(minLength: 8)
-                        mealDots(for: item)
-                        if let q = item.quantity, !q.isEmpty {
-                            Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
-                        }
-                        if let a = item.assignee, a.avatarEmoji != nil || a.colorHex != nil {
-                            Avatar(colorHex: a.colorHex, emoji: a.avatarEmoji ?? "🙂", size: 24)
-                        }
+                // Plain (not a Button) so `.draggable` can claim the long-press; a tap
+                // still opens the inline editor. Drag the row onto another section's
+                // rows to move the item there (replaces the old long-press menu).
+                HStack(spacing: 8) {
+                    if !ListItemPriority.meta(item.priority).icon.isEmpty {
+                        Text(ListItemPriority.meta(item.priority).icon)
+                            .font(.system(size: 13))
+                            .accessibilityLabel(ListItemPriority.meta(item.priority).label)
                     }
-                    .contentShape(Rectangle())
+                    Text(item.name)
+                        .font(.system(size: 16, weight: .semibold))
+                        .strikethrough(item.checked, color: WF.ink3)
+                        .foregroundStyle(item.checked ? WF.ink3 : WF.ink)
+                    Spacer(minLength: 8)
+                    mealDots(for: item)
+                    if let q = item.quantity, !q.isEmpty {
+                        Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+                    }
+                    if let a = item.assignee, a.avatarEmoji != nil || a.colorHex != nil {
+                        Avatar(colorHex: a.colorHex, emoji: a.avatarEmoji ?? "🙂", size: 24)
+                    }
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .onTapGesture { startEdit(item) }
+                .draggable(ListItemDrag(id: item.id)) { dragPreview(item) }
             }
         }
         .padding(.vertical, 2)

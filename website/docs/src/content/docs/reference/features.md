@@ -181,7 +181,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Check off / add / delete (persists) | ✅ | ✅ | ✅ | ✅ Done |
 | **Item attribution** — "added by {name}" / "🍽 from meal plan" | ✅ | ✅ | ✅ | ✅ Done |
 | **Re-aisle** a grocery item (move it to another aisle section from its editor) | ✅ | ✅ | ✅ | ✅ Done — mobile: section chips + an **Auto** chip (clear the override → classify by name) in the item Details editor |
-| **Move an item to another section** — refile without opening the full editor: **drag-and-drop** a row between sections on web; **long-press → Move to section** on iPhone/iPad | ✅ | ✅ | ✅ | ✅ Done — PATCHes the item's category (true finger-drag between sections on iOS is a fast-follow) |
+| **Move an item to another section** — refile without opening the full editor: **drag-and-drop** a row between sections on web and iPhone/iPad (the target section highlights as you hover); the Details editor also sets the section | ✅ | ✅ | ✅ | ✅ Done — PATCHes the item's category |
 | **Item priority** — set an item's urgency on a **1–5 scale** (1 = not urgent · 3 = normal · 5 = urgent) from its editor; High/Urgent items show a row flag. Setting a priority doesn't reorder the list; a web **Sort: manual ⇄ By priority** toggle flattens it highest-first on demand | ✅ | ✅ | ✅ | ✅ Done — web + iOS; API stores `priority` (1–5, default 3, mig 0084 + 0085) and returns manual order (priority sort is a client-side opt-in) |
 | **Completed section** on a custom list — checked items tuck into a collapsible "Completed" group (with an undo grace window) instead of lingering in place | ✅ | ✅ | ✅ | ✅ Done — web now matches the grocery board + iOS |
 | **Cross-surface live refresh** (Today ↔ Lists ↔ Rewards) | ✅ | ✅ | ✅ | ✅ Done (in-app refresh bus) |
