@@ -4,9 +4,10 @@ import { LogModal } from './components/LogModal'
 import { EntryModal } from './components/EntryModal'
 import { EventModal } from './components/EventModal'
 import { ReviewList } from './components/GoalRecap'
-import { useGoalDetail, useHousehold, can, api, fmtGoalNum, type GoalParticipant, type GoalMilestone, type GoalLogEntry } from '../lib/api'
+import { useGoalDetail, useHousehold, can, api, fmtGoalNum, type GoalMilestone, type GoalLogEntry } from '../lib/api'
 import { useTopbarFull } from './topbar-slot'
 import { CATEGORIES } from './categories'
+import { GoalDataViews } from './goalViews/GoalDataViews'
 import './../styles/goals.css'
 
 const HOUR_UNITS = new Set(['hour', 'hours', 'hr', 'hrs'])
@@ -39,24 +40,6 @@ function Ring({ value, children }: { value: number; children: ReactNode }) {
         <circle cx="50" cy="50" r="44" fill="none" stroke="#fff" strokeWidth="9" strokeLinecap="round" strokeDasharray={`${dash} ${C}`} />
       </svg>
       <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>{children}</div>
-    </div>
-  )
-}
-
-function HoursRow({ p, max, unit }: { p: GoalParticipant; max: number; unit: string | null }) {
-  const w = max ? Math.round((p.progress / max) * 100) : 0
-  const color = p.colorHex ?? 'var(--person-1)'
-  return (
-    <div className="detail-hours-row">
-      <div className="av sm" style={{ background: `${p.colorHex ?? '#A6A29B'}22` }}>{p.avatarEmoji ?? '🙂'}</div>
-      <div className="detail-hours-name">{p.name}</div>
-      <div className="detail-hours-bar">
-        <div style={{ width: `${w}%`, background: color }} />
-      </div>
-      <div className="tiny muted detail-hours-val">
-        {fmtNum(p.progress)}
-        {unit ? ` ${unit}` : ''}
-      </div>
     </div>
   )
 }
@@ -161,7 +144,6 @@ export function GoalDetail() {
   if (error || !goal) return <div className="muted" style={{ padding: 30 }}>This goal isn’t available.</div>
 
   const c = goal.category ? CATEGORIES[goal.category] : null
-  const max = Math.max(1, ...goal.participants.map((p) => p.progress))
   const firstUnreached = goal.milestones.findIndex((m) => !m.reached)
   const isHabit = goal.goalType === 'habit'
   const isChecklist = goal.goalType === 'checklist'
@@ -250,6 +232,12 @@ export function GoalDetail() {
             </div>
           )}
 
+          <GoalDataViews goal={goal} />
+        </div>
+
+        <div className="detail-col">
+          {goal.autoFromCalendar && <ReviewList goalId={goal.id} variant="inline" />}
+
           {goal.milestones.length > 0 && (
             <div className="card detail-card">
               <div className="card-h" style={{ marginBottom: 18 }}>Milestones</div>
@@ -269,21 +257,6 @@ export function GoalDetail() {
               </div>
             </div>
           )}
-
-          {goal.participants.length > 0 && (
-            <div className="card detail-card">
-              <div className="card-h" style={{ marginBottom: 12 }}>
-                {goal.unit ? `${goal.unit[0].toUpperCase()}${goal.unit.slice(1)} by person` : 'By person'}
-              </div>
-              {goal.participants.map((p) => (
-                <HoursRow key={p.personId} p={p} max={max} unit={goal.unit} />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="detail-col">
-          {goal.autoFromCalendar && <ReviewList goalId={goal.id} variant="inline" />}
 
           <div className="card detail-card">
             <div className="card-h" style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
