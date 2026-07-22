@@ -108,6 +108,7 @@ static lv_obj_t *detail_scr;  // rebuilt fresh each time the Sounds/Nightlight t
 static lv_obj_t *quiet_scr;   // force-shown whenever the poll reports quiet time active — see wb_do_poll
 static lv_obj_t *timer_scr;   // picker <-> countdown, kept correctly built by every poll — see wb_do_poll
 static lv_obj_t *bedtime_scr; // plain preview OR wake-light sleep/warn/wake — see wb_bedtime_claim_of
+static lv_obj_t *forget_scr;  // rebuilt fresh each time (see settings_screen.cpp's 5-tap sequence), no live state to sync
 static bool onboarding_built = false;
 static bool g_quietWasActive = false;
 static bool g_timerWasActive = false; // tracks timer_scr's built shape (picker vs countdown), same role as g_quietWasActive
@@ -155,8 +156,49 @@ static std::string g_accessToken;
 static uint32_t g_tokenExpiresAtMs = 0; // wb_tick_ms() deadline; 0 forces an immediate refresh
 static lv_timer_t *g_pollTimer = nullptr;
 
+// A small "Offline" pill on lv_layer_top() — LVGL's always-on-top overlay
+// layer, which renders above whichever screen is active and survives
+// lv_scr_load/lv_scr_load_anim, so this doesn't need its own copy on every
+// screen. Hidden by default; wb_mark_poll_failed/wb_mark_poll_ok toggle it.
+// A single miss doesn't show it (transient hiccups are normal on real
+// WiFi) — only WB_OFFLINE_AFTER_MISSES consecutive ones do.
+#define WB_OFFLINE_AFTER_MISSES 2
+static lv_obj_t *g_offlineBadge = nullptr;
+static int g_pollFailStreak = 0;
+static void wb_mark_poll_failed()
+{
+  g_pollFailStreak++;
+  if (g_pollFailStreak >= WB_OFFLINE_AFTER_MISSES)
+    lv_obj_clear_flag(g_offlineBadge, LV_OBJ_FLAG_HIDDEN);
+}
+static void wb_mark_poll_ok()
+{
+  g_pollFailStreak = 0;
+  lv_obj_add_flag(g_offlineBadge, LV_OBJ_FLAG_HIDDEN);
+}
+
 static void wb_show_onboarding();
 static void wb_enter_app();
+
+// Clears the local pairing and falls back to onboarding — shared by (1) the
+// server telling us we're revoked (401 on a token refresh OR now on a live
+// poll — see wb_do_poll) and (2) the on-device "Forget this device" confirm
+// screen (settings_screen.cpp's 5-tap sequence into forget_confirm_screen.h).
+// Deliberately does NOT call the server: a device-initiated forget is
+// purely local (the parent web app's own "Unpair" button already handles
+// the server side, independently).
+static void wb_forget_pairing()
+{
+  wb_store_clear("deviceSecret");
+  g_deviceSecret.clear();
+  if (g_pollTimer)
+  {
+    lv_timer_del(g_pollTimer);
+    g_pollTimer = nullptr;
+  }
+  wb_mark_poll_ok(); // hide any stale "Offline" badge before onboarding takes over
+  wb_show_onboarding();
+}
 static bool wb_complete_task(const std::string &taskId);
 static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue);
 static bool wb_start_timer(int durationSec);
@@ -178,14 +220,7 @@ static bool wb_refresh_access_token()
 
   if (resp.ok && resp.status == 401)
   {
-    wb_store_clear("deviceSecret");
-    g_deviceSecret.clear();
-    if (g_pollTimer)
-    {
-      lv_timer_del(g_pollTimer);
-      g_pollTimer = nullptr;
-    }
-    wb_show_onboarding();
+    wb_forget_pairing();
     return false;
   }
   if (!resp.ok || resp.status != 200)
@@ -203,29 +238,50 @@ static bool wb_refresh_access_token()
 }
 
 // One poll cycle: refresh the token if due, GET the live state, rebuild the
-// home screen on success. Any failure (network, parse, revoked) just skips
+// home screen on success. A transient failure (network, parse) just skips
 // this tick and leaves the screen showing the last-good state — never
-// blanks it on a transient hiccup.
+// blanks it on a single hiccup, but WB_OFFLINE_AFTER_MISSES in a row shows
+// the "Offline" badge. A 401 (device revoked/unpaired server-side) is
+// handled immediately, not treated as a generic miss — see wb_forget_pairing.
 static void wb_do_poll()
 {
   if (wb_tick_ms() >= g_tokenExpiresAtMs)
   {
     if (!wb_refresh_access_token())
+    {
+      // If the secret's gone, wb_forget_pairing() already ran (401 case) —
+      // onboarding's showing and the badge is already hidden; nothing more
+      // to do. Otherwise this was a generic network/server hiccup.
+      if (!g_deviceSecret.empty())
+        wb_mark_poll_failed();
       return;
+    }
   }
 
   std::string url = g_serverUrl + "/api/waffled-bites/device/state";
   WbHttpResponse resp = wb_http_get(url.c_str(), g_accessToken.c_str());
-  if (!resp.ok || resp.status != 200)
+  if (resp.ok && resp.status == 401)
+  {
+    wb_forget_pairing();
     return;
+  }
+  if (!resp.ok || resp.status != 200)
+  {
+    wb_mark_poll_failed();
+    return;
+  }
 
   JsonDocument doc;
   if (deserializeJson(doc, resp.body))
+  {
+    wb_mark_poll_failed();
     return;
+  }
 
   static WbDeviceState liveState;
   if (wb_state_from_json(doc, liveState))
   {
+    wb_mark_poll_ok();
     // Full clean+rebuild only ONCE per (re-)pairing session — the first real
     // poll after wb_enter_app()'s mock-data build. Every poll after that
     // used to lv_obj_clean+rebuild both screens unconditionally, even while
@@ -240,7 +296,7 @@ static void wb_do_poll()
       lv_obj_clean(home_scr);
       wb_build_home_screen(home_scr, liveState, settings_scr, tasks_scr, wb_complete_task);
       lv_obj_clean(settings_scr);
-      wb_build_settings_screen(settings_scr, liveState, home_scr, detail_scr, timer_scr, bedtime_scr, wb_patch_settings);
+      wb_build_settings_screen(settings_scr, liveState, home_scr, detail_scr, timer_scr, bedtime_scr, forget_scr, wb_patch_settings, wb_forget_pairing);
       lv_obj_clean(timer_scr);
       wb_build_timer_screen(timer_scr, liveState.timer, settings_scr, wb_start_timer, wb_end_timer);
       g_timerWasActive = liveState.timer.active;
@@ -357,6 +413,10 @@ static void wb_do_poll()
     {
       wb_sync_bedtime_screen(bedtime_scr, spec);
     }
+  }
+  else
+  {
+    wb_mark_poll_failed();
   }
 }
 
@@ -482,7 +542,7 @@ static void wb_enter_app()
   lv_obj_clean(home_scr);
   lv_obj_clean(settings_scr);
   wb_build_home_screen(home_scr, wb_mock_state(), settings_scr, tasks_scr, wb_complete_task);
-  wb_build_settings_screen(settings_scr, wb_mock_state(), home_scr, detail_scr, timer_scr, bedtime_scr, wb_patch_settings);
+  wb_build_settings_screen(settings_scr, wb_mock_state(), home_scr, detail_scr, timer_scr, bedtime_scr, forget_scr, wb_patch_settings, wb_forget_pairing);
   lv_scr_load(home_scr);
 
   wb_do_poll(); // also does timer_scr/bedtime_scr's real first build — see wb_do_poll's g_liveScreensBuilt branch
@@ -568,6 +628,40 @@ void setup()
   quiet_scr = lv_obj_create(NULL);
   timer_scr = lv_obj_create(NULL);
   bedtime_scr = lv_obj_create(NULL);
+  forget_scr = lv_obj_create(NULL);
+
+  // A small "Offline" pill on the always-on-top layer — see g_offlineBadge's
+  // header comment. Built once here, toggled hidden/visible by
+  // wb_mark_poll_failed/wb_mark_poll_ok, never rebuilt.
+  g_offlineBadge = lv_obj_create(lv_layer_top());
+  lv_obj_remove_style_all(g_offlineBadge);
+  lv_obj_set_size(g_offlineBadge, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_color(g_offlineBadge, lv_color_hex(0x1C1A18), 0);
+  lv_obj_set_style_bg_opa(g_offlineBadge, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(g_offlineBadge, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_pad_hor(g_offlineBadge, 14, 0);
+  lv_obj_set_style_pad_ver(g_offlineBadge, 8, 0);
+  lv_obj_set_flex_flow(g_offlineBadge, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(g_offlineBadge, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(g_offlineBadge, 6, 0);
+  lv_obj_clear_flag(g_offlineBadge, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(g_offlineBadge, LV_OBJ_FLAG_CLICKABLE); // never eat a tap meant for the screen underneath
+  lv_obj_align(g_offlineBadge, LV_ALIGN_TOP_LEFT, 16, 16);
+  lv_obj_add_flag(g_offlineBadge, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_t *offline_dot = lv_obj_create(g_offlineBadge);
+  lv_obj_remove_style_all(offline_dot);
+  lv_obj_set_size(offline_dot, 8, 8);
+  lv_obj_set_style_bg_color(offline_dot, lv_color_hex(0xE8B23D), 0); // same amber as the wake-light warn state — "needs attention"
+  lv_obj_set_style_bg_opa(offline_dot, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(offline_dot, LV_RADIUS_CIRCLE, 0);
+  lv_obj_clear_flag(offline_dot, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(offline_dot, LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t *offline_lbl = lv_label_create(g_offlineBadge);
+  lv_label_set_text(offline_lbl, "Offline");
+  lv_obj_set_style_text_font(offline_lbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(offline_lbl, lv_color_white(), 0);
 
   g_deviceSecret = wb_store_get("deviceSecret");
   g_serverUrl = wb_store_get("serverUrl");

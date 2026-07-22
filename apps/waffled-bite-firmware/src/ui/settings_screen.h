@@ -12,6 +12,7 @@
 #include <functional>
 #include <string>
 #include "../wb_state.h"
+#include "forget_confirm_screen.h"
 
 // Which settings sub-object a change applies to — main.cpp uses this to
 // build the right PATCH body ({sound:{...}} vs {night:{...}}).
@@ -37,8 +38,16 @@ using WbSettingsChangeCallback = std::function<bool(WbSettingsKey key, bool on, 
 // brightness can change, while the kid isn't even looking at either screen,
 // so both tiles here are pure navigation (no rebuild-on-tap): see
 // wb_go_scr_cb.
+//
+// `forget_scr`/`onForget`: tapping the "For a grown-up" chip 5 times in a
+// row (a fast sequence — a >2s gap between taps resets the count, so idle
+// slow taps over a long session can't accidentally accumulate to 5) opens
+// forget_confirm_screen.h's confirmation screen, wired to `onForget`
+// (main.cpp's wb_forget_pairing). This is intentionally not a normal,
+// visible button — see forget_confirm_screen.h's header comment.
 void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *home_scr, lv_obj_t *detail_scr,
-                               lv_obj_t *timer_scr, lv_obj_t *bedtime_scr, WbSettingsChangeCallback onChange);
+                               lv_obj_t *timer_scr, lv_obj_t *bedtime_scr, lv_obj_t *forget_scr,
+                               WbSettingsChangeCallback onChange, WbForgetConfirmCallback onForget);
 
 // Pushes updated Sounds/Nightlight on-off + Nightlight's active styling into
 // an ALREADY-BUILT settings screen (main.cpp calls this on every poll after

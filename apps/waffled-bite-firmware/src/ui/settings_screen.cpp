@@ -1,5 +1,6 @@
 #include "settings_screen.h"
 #include "control_detail_screen.h"
+#include "../wb_tick_hal.h"
 #include <cstdio>
 
 // Palette — kept in sync with home_screen.cpp's by eye; duplicated rather
@@ -237,8 +238,41 @@ void wb_sync_settings_screen(lv_obj_t *parent, const WbDeviceState &state)
   }
 }
 
+// The "For a grown-up" chip's secret 5-tap sequence into forget_confirm_
+// screen.h. A >2s gap between taps resets the count to 1 rather than 0 (the
+// tap that broke the streak still starts a new one) — a kid poking at it
+// idly over a whole session shouldn't ever accidentally reach 5; only a
+// deliberate, fast, in-a-row sequence does. Lives for the settings screen's
+// whole (single, "build once") lifetime — see wb_build_settings_screen's
+// header comment for why that's safe to assume here.
+struct WbGrownupTapCtx
+{
+  int count;
+  uint32_t lastTapMs;
+  lv_obj_t *settings_scr;
+  lv_obj_t *forget_scr;
+  WbForgetConfirmCallback onForget;
+};
+static void wb_grownup_tap_delete_cb(lv_event_t *e) { delete (WbGrownupTapCtx *)lv_event_get_user_data(e); }
+static void wb_grownup_tap_clicked_cb(lv_event_t *e)
+{
+  WbGrownupTapCtx *ctx = (WbGrownupTapCtx *)lv_event_get_user_data(e);
+  uint32_t now = wb_tick_ms();
+  ctx->count = (now - ctx->lastTapMs > 2000) ? 1 : ctx->count + 1;
+  ctx->lastTapMs = now;
+  if (ctx->count >= 5)
+  {
+    ctx->count = 0;
+    lv_obj_clean(ctx->forget_scr);
+    wb_build_forget_confirm_screen(ctx->forget_scr, ctx->settings_scr, ctx->onForget);
+    // NOT a fade — see wb_open_detail_cb's comment above for why.
+    lv_scr_load_anim(ctx->forget_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+  }
+}
+
 void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *home_scr, lv_obj_t *detail_scr,
-                               lv_obj_t *timer_scr, lv_obj_t *bedtime_scr, WbSettingsChangeCallback onChange)
+                               lv_obj_t *timer_scr, lv_obj_t *bedtime_scr, lv_obj_t *forget_scr,
+                               WbSettingsChangeCallback onChange, WbForgetConfirmCallback onForget)
 {
   lv_obj_set_style_bg_color(parent, WB_COLOR_BG, 0);
   lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
@@ -295,6 +329,11 @@ void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_o
   lv_label_set_text(locked_lbl, "For a grown-up"); // no built-in lock glyph — plain text for now
   lv_obj_set_style_text_font(locked_lbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(locked_lbl, WB_COLOR_MUTED, 0);
+
+  // 5 fast taps here reaches forget_confirm_screen.h — see WbGrownupTapCtx.
+  WbGrownupTapCtx *tap_ctx = new WbGrownupTapCtx{0, 0, parent, forget_scr, onForget};
+  lv_obj_add_event_cb(locked, wb_grownup_tap_clicked_cb, LV_EVENT_CLICKED, tap_ctx);
+  lv_obj_add_event_cb(locked, wb_grownup_tap_delete_cb, LV_EVENT_DELETE, tap_ctx);
 
   // ── control tiles ────────────────────────────────────────────────────────
   lv_obj_t *row = lv_obj_create(parent);
