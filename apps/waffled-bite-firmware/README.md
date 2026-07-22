@@ -12,16 +12,16 @@ An earlier board (ELECROW CrowPanel Basic 7", ESP32-S3, 800×480 RGB-parallel) w
 targeted first and is gone from this repo — superseded before it ever arrived. See
 git history if that context is ever needed again.
 
-**Status: milestone 6.** Home + settings ("Grown-up controls") + a tasks screen are
+**Status: milestone 7.** Home + settings ("Grown-up controls") + a tasks screen are
 built, the firmware talks to the real backend (onboarding → pairing → a 5s live poll
-that rebuilds home *and* settings, token refresh, tap-to-complete on tasks, and now
-real Sounds/Nightlight controls that PATCH the backend), and it's been ported to
-**LVGL 9.2** + **1024×600** for the new board. Verified end-to-end against a real
-running backend on `native` (paired, exchanged tokens, polled real routine/stars
-data, completed a task, changed sound/nightlight settings, all for a demo
-household's kid — see git history). `esp32-p4` compiles clean against the real
-production silicon's toolchain, but nothing has run on actual hardware yet — see
-"What's not done" below.
+that keeps every screen in sync, token refresh, tap-to-complete on tasks), and all
+four Grown-up controls tiles are real: Sounds, Nightlight, Set a timer, and Bedtime.
+Ported to **LVGL 9.2** + **1024×600** for the new board. Verified end-to-end against a
+real running backend on `native` (paired, exchanged tokens, polled real routine/stars
+data, completed a task, changed sound/nightlight settings, started/ended a timer from
+both the device and the parent side, all for a demo household's kid — see git
+history). `esp32-p4` compiles clean against the real production silicon's toolchain,
+but nothing has run on actual hardware yet — see "What's not done" below.
 
 ## Two environments, one app
 
@@ -163,6 +163,35 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   milestone but worth knowing about together); (2) no moon icon in the mockup made it in —
   no built-in `LV_SYMBOL_*` match, so the title stands alone rather than pairing with a
   mismatched glyph, same "built-in symbols for now" convention as everywhere else.
+- **Set a timer and Bedtime are done.** Both were genuinely ambiguous placeholders until
+  direct user feedback pinned them down:
+  - **Set a timer** (`src/ui/timer_screen.cpp`) — unlike quiet time, either a parent (web
+    app) OR the kid (right on the device) can start or end one, and it's exitable (a Home
+    button, no lock). New backend: `runtime_state.timer` mirrors `runtime_state.quiet`'s
+    exact shape (`CountdownState`/`countdownView` in `waffledBites.ts`, generalized from
+    the quiet-time-only `QuietState`/`quietView`), with the same parent-side
+    start/pause/resume/add-time/end routes as quiet time, **plus** two new device-authed
+    routes (`POST /api/waffled-bites/device/timer/{start,end}`) so the kid can drive their
+    own — pause/resume/add-time stay parent-only either way. TDD'd first (two new `it()`
+    blocks in `waffled-bites.integration.test.ts`, watched fail with "Route not found",
+    then implemented — full suite 882/882, `tsc --noEmit` clean). The device screen has two
+    shapes: a duration-preset picker when no timer is active, or the same arc/MM:SS
+    countdown language as `quiet_screen.cpp` (but the app's normal light palette, not
+    quiet's dark "wind down" navy — this isn't meant to feel locked-in) once one is
+    running. `main.cpp`'s poll keeps it correctly built at all times (not just when
+    tapped), same reasoning as the Sounds/Nightlight sync fix — a parent could start one
+    while the kid isn't looking at this screen. Parent web app gained a matching "Set a
+    timer" card (`WaffledBiteDevice.tsx`) with presets + custom length + pause/+5/end,
+    same shape as the existing Quiet time card.
+  - **Bedtime** (`src/ui/bedtime_screen.cpp`) — deliberately NOT a routine or countdown:
+    just a full-screen preview of the nightlight at its actual configured color and
+    brightness, so a kid (or parent) can see what the room will actually look like. No new
+    backend at all — reads the existing `settings.night` the Nightlight tile already
+    writes. Exitable via a close button. Brightness scales both the glow's size and
+    opacity, so a dim setting reads as genuinely dim, not just a different shade.
+  - Both tiles' taps are pure navigation (no rebuild-on-tap) — `wb_do_poll` keeps
+    `timer_scr`/`bedtime_scr` correctly built/synced every cycle regardless of which
+    screen is currently showing, same pattern as `home_scr`/`settings_scr`.
 - **Tap-to-complete on tasks is done.** Tapping a routine tile or the Chores bar opens
   a task list (`src/ui/tasks_screen.cpp`) with a checkbox per task; tapping an undone
   row calls `POST /api/waffled-bites/device/tasks/:instanceId/complete` with the

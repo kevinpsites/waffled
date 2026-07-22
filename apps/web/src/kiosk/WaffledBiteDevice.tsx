@@ -24,6 +24,7 @@ const ALARM_TONES = ['Sunrise chime', 'Birdsong', 'Soft harp', 'Gentle bells', '
 const SLEEP_TIMERS = [0, 15, 30, 60, 120]
 const DOW: Array<[number, string]> = [[0, 'S'], [1, 'M'], [2, 'T'], [3, 'W'], [4, 'T'], [5, 'F'], [6, 'S']]
 const QUIET_PRESETS = [10, 15, 20, 30, 60]
+const TIMER_PRESETS = [5, 10, 15, 20, 30]
 
 function pad(n: number): string { return n < 10 ? `0${n}` : `${n}` }
 function minToHHMM(min: number): string { const h = Math.floor(min / 60) % 24; return `${pad(h)}:${pad(min % 60)}` }
@@ -102,6 +103,7 @@ export function WaffledBiteDevice() {
   const [pairing, setPairing] = useState(false)
   const [customQuietH, setCustomQuietH] = useState(0)
   const [customQuietM, setCustomQuietM] = useState(5)
+  const [customTimerM, setCustomTimerM] = useState(10)
   const settingsRef = useRef<WaffledBiteSettings>({})
   if (device) settingsRef.current = device.settings
 
@@ -116,6 +118,7 @@ export function WaffledBiteDevice() {
 
   const enabled = moduleEnabled(household, 'waffledBites')
   const quietRemaining = useLocalCountdown(device?.runtimeState.quiet.remainingSec ?? 0, device?.runtimeState.quiet.running ?? false)
+  const timerRemaining = useLocalCountdown(device?.runtimeState.timer.remainingSec ?? 0, device?.runtimeState.timer.running ?? false)
 
   async function patchSettings(patch: WaffledBiteSettings) {
     if (!device) return
@@ -155,6 +158,7 @@ export function WaffledBiteDevice() {
   const display = s.display ?? { brightness: 85, nightDim: true }
   const schedules = s.schedules ?? []
   const quiet = device.runtimeState.quiet
+  const timer = device.runtimeState.timer
 
   function updateSchedule(i: number, patch: Partial<WaffledBiteSchedule>) {
     const next = schedules.map((sch, idx) => (idx === i ? { ...sch, ...patch } : sch))
@@ -215,6 +219,50 @@ export function WaffledBiteDevice() {
                   className="btn btn-primary"
                   disabled={customQuietH * 60 + customQuietM <= 0}
                   onClick={() => waffledBitesApi.quietStart(device.id, (customQuietH * 3600) + (customQuietM * 60)).then(refetch)}
+                >
+                  Start
+                </button>
+              </div>
+            </>
+          )}
+        </Card>
+
+        <Card title="Set a timer">
+          {timer.active ? (
+            <>
+              <div style={{ fontSize: 34, fontWeight: 800, fontVariantNumeric: 'tabular-nums', margin: '4px 0 6px' }}>{fmtMMSS(timerRemaining)}</div>
+              <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>{timer.running ? 'Counting down on the device' : 'Paused'}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" className="btn btn-ghost" onClick={() => waffledBitesApi[timer.running ? 'timerPause' : 'timerResume'](device.id).then(refetch)}>
+                  {timer.running ? '⏸ Pause' : '▶ Resume'}
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={() => waffledBitesApi.timerAddTime(device.id, 300).then(refetch)}>+5 min</button>
+                <button type="button" className="btn btn-primary" onClick={() => waffledBitesApi.timerEnd(device.id).then(refetch)}>End now</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 10 }}>
+                Start a countdown the kid can also start (or stop) themselves on the device.
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                {TIMER_PRESETS.map((m) => (
+                  <button key={m} type="button" className="btn btn-ghost" onClick={() => waffledBitesApi.timerStart(device.id, m * 60).then(refetch)}>
+                    {m}m
+                  </button>
+                ))}
+              </div>
+              <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Or a custom length</div>
+              <div className="field-row" style={{ alignItems: 'flex-end' }}>
+                <label className="field" style={{ flex: 1 }}>
+                  <span>Minutes</span>
+                  <input type="number" min={1} max={90} value={customTimerM} onChange={(e) => setCustomTimerM(Math.max(1, Math.min(90, Number(e.target.value) || 0)))} />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={customTimerM <= 0}
+                  onClick={() => waffledBitesApi.timerStart(device.id, customTimerM * 60).then(refetch)}
                 >
                   Start
                 </button>

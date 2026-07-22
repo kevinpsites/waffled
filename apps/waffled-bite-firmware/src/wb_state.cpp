@@ -17,6 +17,8 @@ const WbDeviceState &wb_mock_state(void)
       {{{"", "Feed the dog", true, 1}, {"", "Clothes in hamper", false, 1}, {"", "Tidy playroom", false, 1}}, 3},
       // quiet
       {false, false, 0, 0},
+      // timer
+      {false, false, 0, 0},
       {false, "white", 50, 0},  // sound: off, defaults picked to match apps/web's own fallback UI state
       {true, "amber", 40},      // night: on, matching the pre-settings-screen mock's nightlightOn=true
       -1, -1,                   // nowHour/nowMin: unavailable — mock quiet is always inactive, unused
@@ -88,6 +90,12 @@ bool wb_state_from_json(JsonDocument &doc, WbDeviceState &out)
   out.quiet.running = rt["running"] | false;
   out.quiet.remainingSec = rt["remainingSec"] | 0;
   out.quiet.durationSec = rt["durationSec"] | 0;
+
+  JsonObjectConst timerRt = doc["runtimeState"]["timer"];
+  out.timer.active = timerRt["active"] | false;
+  out.timer.running = timerRt["running"] | false;
+  out.timer.remainingSec = timerRt["remainingSec"] | 0;
+  out.timer.durationSec = timerRt["durationSec"] | 0;
 
   // Real settings keys are "night"/"sound" (not "nightlight"/"sounds") —
   // confirmed against apps/web/src/kiosk/WaffledBiteDevice.tsx. Both are

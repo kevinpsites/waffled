@@ -59,6 +59,11 @@ struct WbQuietState
   int durationSec;
 };
 
+// Same shape as WbQuietState (see wb_state_from_json's runtimeState.timer
+// parse) — unlike quiet time, a timer can be started/ended by the kid
+// directly on the device too, and isn't full-screen-locked.
+using WbTimerState = WbQuietState;
+
 struct WbDeviceState
 {
   char personName[WB_NAME_LEN];
@@ -68,6 +73,7 @@ struct WbDeviceState
   WbRoutine evening;
   WbRoutine chores; // unscheduled/general — no due time
   WbQuietState quiet;
+  WbTimerState timer;
   WbSoundSettings sound;
   WbNightSettings night;
   // Wall-clock hour/minute parsed from the poll's top-level "now" (server's

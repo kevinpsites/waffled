@@ -18,6 +18,16 @@ static void wb_go_home_cb(lv_event_t *e)
   lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
 }
 
+// Pure navigation, no rebuild — timer_scr/bedtime_scr are kept correctly
+// built by main.cpp's poll at all times (see wb_build_settings_screen's
+// header comment in settings_screen.h for why).
+static void wb_go_scr_cb(lv_event_t *e)
+{
+  lv_obj_t *target = (lv_obj_t *)lv_event_get_user_data(e);
+  // NOT a fade — see wb_open_detail_cb's comment below for why.
+  lv_scr_load_anim(target, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+}
+
 // One control tile (Sounds/Nightlight/Set a timer/Bedtime). `icon` may be
 // NULL — moon, stopwatch, and bed have no built-in LV_SYMBOL_* match yet;
 // a custom icon font is deferred (see the firmware README), so those render
@@ -191,6 +201,7 @@ struct WbSettingsSyncCtx
   lv_obj_t *night_tile;
   lv_obj_t *night_label_lbl;
   lv_obj_t *night_sub_lbl;
+  lv_obj_t *timer_sub_lbl;
 };
 
 static void wb_settings_sync_ctx_delete_cb(lv_event_t *e)
@@ -213,9 +224,21 @@ void wb_sync_settings_screen(lv_obj_t *parent, const WbDeviceState &state)
   lv_obj_set_style_text_color(ctx->night_label_lbl, fg, 0);
   lv_obj_set_style_text_color(ctx->night_sub_lbl, sub_fg, 0);
   lv_label_set_text(ctx->night_sub_lbl, nightOn ? "On" : "Off");
+
+  if (state.timer.active)
+  {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d:%02d left", state.timer.remainingSec / 60, state.timer.remainingSec % 60);
+    lv_label_set_text(ctx->timer_sub_lbl, buf);
+  }
+  else
+  {
+    lv_label_set_text(ctx->timer_sub_lbl, "Off");
+  }
 }
 
-void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *home_scr, lv_obj_t *detail_scr, WbSettingsChangeCallback onChange)
+void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *home_scr, lv_obj_t *detail_scr,
+                               lv_obj_t *timer_scr, lv_obj_t *bedtime_scr, WbSettingsChangeCallback onChange)
 {
   lv_obj_set_style_bg_color(parent, WB_COLOR_BG, 0);
   lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
@@ -294,12 +317,19 @@ void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_o
                        WB_NIGHT_OPTIONS, sizeof(WB_NIGHT_OPTIONS) / sizeof(WB_NIGHT_OPTIONS[0]), "Brightness",
                        detail_scr, parent, onChange);
 
-  make_control_tile(row, NULL, "Set a timer", "", false);
-  make_control_tile(row, NULL, "Bedtime", "", false);
+  // Sub text must never be empty ("" skips creating the label at all — see
+  // make_control_tile) — "Off"/"Running" here mirrors Sound/Night's own
+  // "On"/"Off", which is why their sub labels never hit this gotcha.
+  lv_obj_t *timer_sub_lbl = nullptr;
+  lv_obj_t *timer_tile = make_control_tile(row, NULL, "Set a timer", state.timer.active ? "Running" : "Off", false, nullptr, &timer_sub_lbl);
+  lv_obj_add_event_cb(timer_tile, wb_go_scr_cb, LV_EVENT_CLICKED, timer_scr);
+
+  lv_obj_t *bedtime_tile = make_control_tile(row, NULL, "Bedtime", "Preview", false);
+  lv_obj_add_event_cb(bedtime_tile, wb_go_scr_cb, LV_EVENT_CLICKED, bedtime_scr);
 
   // Stash the pieces wb_sync_settings_screen updates in place on later
   // polls — see WbSettingsSyncCtx's comment for the leak-avoidance rule.
-  WbSettingsSyncCtx *sync_ctx = new WbSettingsSyncCtx{sound_sub_lbl, night_tile, night_label_lbl, night_sub_lbl};
+  WbSettingsSyncCtx *sync_ctx = new WbSettingsSyncCtx{sound_sub_lbl, night_tile, night_label_lbl, night_sub_lbl, timer_sub_lbl};
   lv_obj_add_event_cb(row, wb_settings_sync_ctx_delete_cb, LV_EVENT_DELETE, sync_ctx);
   lv_obj_set_user_data(parent, sync_ctx);
 }

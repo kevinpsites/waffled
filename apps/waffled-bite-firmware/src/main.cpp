@@ -23,6 +23,8 @@
 #include "ui/control_detail_screen.h"
 #include "ui/onboarding_screen.h"
 #include "ui/quiet_screen.h"
+#include "ui/timer_screen.h"
+#include "ui/bedtime_screen.h"
 #include <ArduinoJson.h>
 #include <string>
 
@@ -102,10 +104,13 @@ static lv_obj_t *home_scr;
 static lv_obj_t *settings_scr;
 static lv_obj_t *onboarding_scr;
 static lv_obj_t *tasks_scr;  // rebuilt fresh each time a routine tile is tapped — see home_screen.cpp
-static lv_obj_t *detail_scr; // rebuilt fresh each time the Sounds/Nightlight tile is tapped — see settings_screen.cpp
-static lv_obj_t *quiet_scr;  // force-shown whenever the poll reports quiet time active — see wb_do_poll
+static lv_obj_t *detail_scr;  // rebuilt fresh each time the Sounds/Nightlight tile is tapped — see settings_screen.cpp
+static lv_obj_t *quiet_scr;   // force-shown whenever the poll reports quiet time active — see wb_do_poll
+static lv_obj_t *timer_scr;   // picker <-> countdown, kept correctly built by every poll — see wb_do_poll
+static lv_obj_t *bedtime_scr; // synced (color/brightness) by every poll while it happens to be showing
 static bool onboarding_built = false;
 static bool g_quietWasActive = false;
+static bool g_timerWasActive = false; // tracks timer_scr's built shape (picker vs countdown), same role as g_quietWasActive
 // Home/settings get one full lv_obj_clean+rebuild per (re-)pairing session —
 // the mock-data build in wb_enter_app(), then the first real poll after it —
 // and are only ever synced-in-place after that (see wb_do_poll). Reset to
@@ -124,6 +129,8 @@ static void wb_show_onboarding();
 static void wb_enter_app();
 static bool wb_complete_task(const std::string &taskId);
 static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue);
+static bool wb_start_timer(int durationSec);
+static bool wb_end_timer();
 
 // Mints (or refreshes) a short-lived access token from the stored device
 // secret. On 401 (waffledBites.ts: revoked device) clears the stored
@@ -203,13 +210,36 @@ static void wb_do_poll()
       lv_obj_clean(home_scr);
       wb_build_home_screen(home_scr, liveState, settings_scr, tasks_scr, wb_complete_task);
       lv_obj_clean(settings_scr);
-      wb_build_settings_screen(settings_scr, liveState, home_scr, detail_scr, wb_patch_settings);
+      wb_build_settings_screen(settings_scr, liveState, home_scr, detail_scr, timer_scr, bedtime_scr, wb_patch_settings);
+      lv_obj_clean(bedtime_scr);
+      wb_build_bedtime_screen(bedtime_scr, liveState.night, settings_scr);
+      lv_obj_clean(timer_scr);
+      wb_build_timer_screen(timer_scr, liveState.timer, settings_scr, wb_start_timer, wb_end_timer);
+      g_timerWasActive = liveState.timer.active;
       g_liveScreensBuilt = true;
     }
     else
     {
       wb_sync_home_screen(home_scr, liveState);
       wb_sync_settings_screen(settings_scr, liveState);
+      wb_sync_bedtime_screen(bedtime_scr, liveState.night);
+
+      // timer_scr has two SHAPES (picker vs countdown), not just values to
+      // push — only rebuild on the active/inactive transition (mirrors
+      // g_quietWasActive below), sync in place otherwise. This can happen
+      // while the kid isn't even looking at timer_scr (a parent starting one
+      // remotely), which is fine — it's kept correct in the background so
+      // whenever they do tap the tile, it's already showing the right thing.
+      if (liveState.timer.active != g_timerWasActive)
+      {
+        lv_obj_clean(timer_scr);
+        wb_build_timer_screen(timer_scr, liveState.timer, settings_scr, wb_start_timer, wb_end_timer);
+        g_timerWasActive = liveState.timer.active;
+      }
+      else
+      {
+        wb_sync_timer_screen(timer_scr, liveState.timer);
+      }
 
       // The Sounds/Nightlight detail screen only gets built at tap time
       // (see wb_open_detail_cb) — without this, a parent flipping a setting
@@ -347,6 +377,46 @@ static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &opt
   return ok;
 }
 
+// timer_screen.h's onStart/onEnd. Unlike wb_patch_settings/wb_complete_task,
+// these hit device-authed routes dedicated to the kid starting/ending their
+// OWN timer (/api/waffled-bites/device/timer/{start,end}) — a parent starts/
+// ends one from the web app instead, via the parent-side routes. Same
+// synchronous refresh-then-poll-on-success pattern as the others.
+static bool wb_start_timer(int durationSec)
+{
+  if (wb_tick_ms() >= g_tokenExpiresAtMs)
+  {
+    if (!wb_refresh_access_token())
+      return false;
+  }
+  JsonDocument reqDoc;
+  reqDoc["durationSec"] = durationSec;
+  std::string body;
+  serializeJson(reqDoc, body);
+
+  std::string url = g_serverUrl + "/api/waffled-bites/device/timer/start";
+  WbHttpResponse resp = wb_http_post(url.c_str(), body.c_str(), g_accessToken.c_str());
+  bool ok = resp.ok && resp.status == 200;
+  if (ok)
+    wb_do_poll();
+  return ok;
+}
+
+static bool wb_end_timer()
+{
+  if (wb_tick_ms() >= g_tokenExpiresAtMs)
+  {
+    if (!wb_refresh_access_token())
+      return false;
+  }
+  std::string url = g_serverUrl + "/api/waffled-bites/device/timer/end";
+  WbHttpResponse resp = wb_http_post(url.c_str(), "{}", g_accessToken.c_str());
+  bool ok = resp.ok && resp.status == 200;
+  if (ok)
+    wb_do_poll();
+  return ok;
+}
+
 // Builds home/settings from mock data as an immediate placeholder (so
 // lv_scr_load never shows a blank screen), shows home, then does one
 // synchronous poll right away rather than waiting up to 5s for the first
@@ -357,10 +427,10 @@ static void wb_enter_app()
   lv_obj_clean(home_scr);
   lv_obj_clean(settings_scr);
   wb_build_home_screen(home_scr, wb_mock_state(), settings_scr, tasks_scr, wb_complete_task);
-  wb_build_settings_screen(settings_scr, wb_mock_state(), home_scr, detail_scr, wb_patch_settings);
+  wb_build_settings_screen(settings_scr, wb_mock_state(), home_scr, detail_scr, timer_scr, bedtime_scr, wb_patch_settings);
   lv_scr_load(home_scr);
 
-  wb_do_poll();
+  wb_do_poll(); // also does timer_scr/bedtime_scr's real first build — see wb_do_poll's g_liveScreensBuilt branch
 
   if (g_pollTimer)
     lv_timer_del(g_pollTimer);
@@ -441,6 +511,8 @@ void setup()
   tasks_scr = lv_obj_create(NULL);
   detail_scr = lv_obj_create(NULL);
   quiet_scr = lv_obj_create(NULL);
+  timer_scr = lv_obj_create(NULL);
+  bedtime_scr = lv_obj_create(NULL);
 
   g_deviceSecret = wb_store_get("deviceSecret");
   g_serverUrl = wb_store_get("serverUrl");

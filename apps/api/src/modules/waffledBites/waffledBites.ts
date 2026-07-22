@@ -80,7 +80,10 @@ function deepMerge(base: unknown, patch: unknown): unknown {
   return patch
 }
 
-interface QuietState {
+// Shared shape for both quiet time and the generic timer — both are
+// "started at T, runs for durationSec, optionally paused" countdowns, only
+// their access rules differ (see countdownView/updateRuntimeState below).
+interface CountdownState {
   active: boolean
   startedAt?: string
   durationSec?: number
@@ -88,13 +91,14 @@ interface QuietState {
   pauseAccumSec?: number
 }
 interface RuntimeState {
-  quiet?: QuietState
+  quiet?: CountdownState
+  timer?: CountdownState
   nudge?: { message: string; sentAt: string }
 }
 
-// Compute the device-facing quiet-time view (running/remaining) from the stored
+// Compute the device-facing view (running/remaining) from the stored
 // timestamps — never trust a stored "remaining" number, it would drift.
-function quietView(q: QuietState | undefined) {
+function countdownView(q: CountdownState | undefined) {
   if (!q?.active || !q.startedAt || q.durationSec == null) {
     return { active: false, running: false, remainingSec: 0, durationSec: 0 }
   }
@@ -163,7 +167,7 @@ export function registerWaffledBiteRoutes(api: Api): void {
             id: d.id,
             label: d.label,
             settings: d.settings,
-            runtimeState: { quiet: quietView(d.runtime_state?.quiet) },
+            runtimeState: { quiet: countdownView(d.runtime_state?.quiet), timer: countdownView(d.runtime_state?.timer) },
             lastSeenAt: d.last_seen_at,
             createdAt: d.created_at,
           }
@@ -268,7 +272,7 @@ export function registerWaffledBiteRoutes(api: Api): void {
       stars: Number(balance.rows[0]?.balance ?? 0),
       routines,
       settings: deviceRow?.settings ?? {},
-      runtimeState: { quiet: quietView(deviceRow?.runtime_state?.quiet) },
+      runtimeState: { quiet: countdownView(deviceRow?.runtime_state?.quiet), timer: countdownView(deviceRow?.runtime_state?.timer) },
       nudge,
     }
   })
@@ -328,16 +332,25 @@ export function registerWaffledBiteRoutes(api: Api): void {
     return { settings: next }
   }))
 
-  // ── quiet time + nudge (parent side, any household member) ──────────────────
-  async function updateQuiet(tenant: Tenant, deviceIdParam: string, res: Response, fn: (q: QuietState) => QuietState): Promise<unknown> {
+  // ── quiet time + timer + nudge (parent side, any household member) ──────────
+  // Shared by both countdowns — quiet and timer store/compute identically
+  // (see CountdownState/countdownView above), only which routes exist and
+  // who's allowed to hit them differs.
+  async function updateRuntimeState(
+    tenant: Tenant, deviceIdParam: string, res: Response, key: 'quiet' | 'timer', fn: (q: CountdownState) => CountdownState
+  ): Promise<unknown> {
     const device = await loadDeviceRow(tenant.householdId, deviceIdParam)
     if (!device) return res.status(404).json({ error: 'NotFound', message: 'device not found' })
-    const current: QuietState = device.runtime_state?.quiet ?? { active: false }
+    const current: CountdownState = device.runtime_state?.[key] ?? { active: false }
     const next = fn(current)
-    const nextState = { ...(device.runtime_state ?? {}), quiet: next }
+    const nextState = { ...(device.runtime_state ?? {}), [key]: next }
     await query(`update waffled_bite_devices set runtime_state = $2::jsonb where id = $1`, [device.id, JSON.stringify(nextState)])
     return { ok: true }
   }
+  const updateQuiet = (tenant: Tenant, id: string, res: Response, fn: (q: CountdownState) => CountdownState) =>
+    updateRuntimeState(tenant, id, res, 'quiet', fn)
+  const updateTimer = (tenant: Tenant, id: string, res: Response, fn: (q: CountdownState) => CountdownState) =>
+    updateRuntimeState(tenant, id, res, 'timer', fn)
 
   api.post('/api/waffled-bites/:id/quiet/start', tenantRoute(async (tenant, req: Request, res: Response) => {
     const durationSec = Math.max(60, Math.min(90 * 60, Number((req.body as { durationSec?: number })?.durationSec) || 15 * 60))
@@ -366,6 +379,64 @@ export function registerWaffledBiteRoutes(api: Api): void {
   api.post('/api/waffled-bites/:id/quiet/end', tenantRoute(async (tenant, req: Request, res: Response) =>
     updateQuiet(tenant, req.params.id ?? '', res, () => ({ active: false }))
   ))
+
+  // Timer: unlike quiet time, a parent can ALSO start/end one directly (a kid
+  // starts/ends their own via the device-authed routes below) — the fine
+  // controls (pause/resume/add-time) stay parent-only either way, same as
+  // quiet time, since a kid navigating away and back shouldn't need them.
+  api.post('/api/waffled-bites/:id/timer/start', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const durationSec = Math.max(60, Math.min(90 * 60, Number((req.body as { durationSec?: number })?.durationSec) || 5 * 60))
+    return updateTimer(tenant, req.params.id ?? '', res, () => ({
+      active: true, startedAt: new Date().toISOString(), durationSec, pausedAt: null, pauseAccumSec: 0,
+    }))
+  }))
+
+  api.post('/api/waffled-bites/:id/timer/pause', tenantRoute(async (tenant, req: Request, res: Response) =>
+    updateTimer(tenant, req.params.id ?? '', res, (q) => (q.active && !q.pausedAt ? { ...q, pausedAt: new Date().toISOString() } : q))
+  ))
+
+  api.post('/api/waffled-bites/:id/timer/resume', tenantRoute(async (tenant, req: Request, res: Response) =>
+    updateTimer(tenant, req.params.id ?? '', res, (q) => {
+      if (!q.active || !q.pausedAt) return q
+      const pausedMs = Date.now() - Date.parse(q.pausedAt)
+      return { ...q, pausedAt: null, pauseAccumSec: (q.pauseAccumSec ?? 0) + pausedMs / 1000 }
+    })
+  ))
+
+  api.post('/api/waffled-bites/:id/timer/add-time', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const seconds = Number((req.body as { seconds?: number })?.seconds) || 300
+    return updateTimer(tenant, req.params.id ?? '', res, (q) => (q.active ? { ...q, durationSec: (q.durationSec ?? 0) + seconds } : q))
+  }))
+
+  api.post('/api/waffled-bites/:id/timer/end', tenantRoute(async (tenant, req: Request, res: Response) =>
+    updateTimer(tenant, req.params.id ?? '', res, () => ({ active: false }))
+  ))
+
+  // ── timer (device side) ──────────────────────────────────────────────────────
+  // The kid can start/end their own timer right from the device — unlike
+  // quiet time, this one is exitable and not parent-locked. Pause/resume/
+  // add-time stay parent-only (routes above), matching quiet time's asymmetry.
+  async function updateTimerAsDevice(device: WaffledBiteDevicePrincipal, fn: (q: CountdownState) => CountdownState): Promise<unknown> {
+    const deviceRow = await loadDeviceRow(device.householdId, device.deviceId)
+    const current: CountdownState = deviceRow?.runtime_state?.timer ?? { active: false }
+    const next = fn(current)
+    const nextState = { ...(deviceRow?.runtime_state ?? {}), timer: next }
+    await query(`update waffled_bite_devices set runtime_state = $2::jsonb where id = $1`, [device.deviceId, JSON.stringify(nextState)])
+    return { ok: true }
+  }
+
+  api.post('/api/waffled-bites/device/timer/start', async (req: Request) => {
+    const device = await requireWaffledBiteDevice(req)
+    const durationSec = Math.max(60, Math.min(90 * 60, Number((req.body as { durationSec?: number })?.durationSec) || 5 * 60))
+    return updateTimerAsDevice(device, () => ({
+      active: true, startedAt: new Date().toISOString(), durationSec, pausedAt: null, pauseAccumSec: 0,
+    }))
+  })
+
+  api.post('/api/waffled-bites/device/timer/end', async (req: Request) => {
+    const device = await requireWaffledBiteDevice(req)
+    return updateTimerAsDevice(device, () => ({ active: false }))
+  })
 
   api.post('/api/waffled-bites/:id/nudge', tenantRoute(async (tenant, req: Request, res: Response) => {
     const message = ((req.body ?? {}) as { message?: string }).message?.trim()

@@ -30,7 +30,15 @@ using WbSettingsChangeCallback = std::function<bool(WbSettingsKey key, bool on, 
 // screen object, reused/rebuilt each time the Sounds or Nightlight tile is
 // tapped (same convention as home_screen.h's tasks_scr); `onChange` is
 // forwarded straight through to whichever detail screen opens.
-void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *home_scr, lv_obj_t *detail_scr, WbSettingsChangeCallback onChange);
+//
+// `timer_scr`/`bedtime_scr` are kept CORRECTLY BUILT by main.cpp's poll at
+// all times (unlike detail_scr, which only rebuilds at tap time) — a timer
+// can be started remotely by a parent, or bedtime's nightlight color/
+// brightness can change, while the kid isn't even looking at either screen,
+// so both tiles here are pure navigation (no rebuild-on-tap): see
+// wb_go_scr_cb.
+void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *home_scr, lv_obj_t *detail_scr,
+                               lv_obj_t *timer_scr, lv_obj_t *bedtime_scr, WbSettingsChangeCallback onChange);
 
 // Pushes updated Sounds/Nightlight on-off + Nightlight's active styling into
 // an ALREADY-BUILT settings screen (main.cpp calls this on every poll after

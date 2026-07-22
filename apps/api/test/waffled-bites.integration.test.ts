@@ -201,6 +201,47 @@ describe('waffled-bites device pairing + parent control panel', () => {
     expect(ended.active).toBe(false)
   })
 
+  // ── timer: unlike quiet time, either the kid (on-device) or a parent can
+  // start/end it, and it's exitable (no on-device lock). Only the parent gets
+  // the fine controls (pause/resume/add-time), same asymmetry as quiet time.
+  it('starts a timer from the device itself, and a parent can pause/resume/extend/end it', async () => {
+    expect((await call('POST', '/api/waffled-bites/device/timer/start', { durationSec: 300 }, deviceToken)).statusCode).toBe(200)
+    const state = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
+    expect(state.runtimeState.timer.active).toBe(true)
+    expect(state.runtimeState.timer.running).toBe(true)
+    expect(state.runtimeState.timer.remainingSec).toBeGreaterThan(290)
+    expect(state.runtimeState.timer.remainingSec).toBeLessThanOrEqual(300)
+    // The parent-side profile card reads the same live timer state, not just the device poll.
+    const parentView = json(await call('GET', `/api/persons/${kid}/waffled-bite`, undefined, admin)).device.runtimeState.timer
+    expect(parentView.active).toBe(true)
+
+    expect((await call('POST', `/api/waffled-bites/${deviceId}/timer/pause`, {}, admin)).statusCode).toBe(200)
+    const paused1 = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken)).runtimeState.timer
+    expect(paused1.running).toBe(false)
+    await new Promise((r) => setTimeout(r, 1100))
+    const paused2 = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken)).runtimeState.timer
+    expect(paused2.remainingSec).toBe(paused1.remainingSec) // frozen while paused
+
+    expect((await call('POST', `/api/waffled-bites/${deviceId}/timer/resume`, {}, admin)).statusCode).toBe(200)
+    expect((await call('POST', `/api/waffled-bites/${deviceId}/timer/add-time`, { seconds: 60 }, admin)).statusCode).toBe(200)
+    const extended = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken)).runtimeState.timer
+    expect(extended.remainingSec).toBeGreaterThan(paused2.remainingSec)
+
+    // Unlike quiet time (parent-only end), the device can end its own timer too.
+    expect((await call('POST', '/api/waffled-bites/device/timer/end', {}, deviceToken)).statusCode).toBe(200)
+    const ended = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken)).runtimeState.timer
+    expect(ended.active).toBe(false)
+  })
+
+  it('also lets a parent start a timer directly; a device token cannot hit the parent-only fine controls', async () => {
+    expect((await call('POST', `/api/waffled-bites/${deviceId}/timer/start`, { durationSec: 600 }, admin)).statusCode).toBe(200)
+    const state = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
+    expect(state.runtimeState.timer.active).toBe(true)
+    expect((await call('POST', `/api/waffled-bites/${deviceId}/timer/end`, {}, admin)).statusCode).toBe(200)
+
+    expect((await call('POST', `/api/waffled-bites/${deviceId}/timer/pause`, {}, deviceToken)).statusCode).toBe(403)
+  })
+
   // ── settings ─────────────────────────────────────────────────────────────────
   it('lets a parent patch device settings; the device sees them on the next poll', async () => {
     const r = await call('PATCH', `/api/waffled-bites/${deviceId}/settings`, {
