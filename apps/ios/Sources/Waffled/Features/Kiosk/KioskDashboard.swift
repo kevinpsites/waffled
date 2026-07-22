@@ -37,13 +37,10 @@ struct KioskDashboard: View {
     @State private var reviewSuggestions: [WaffledAPI.GoalSuggestionItem] = []
     @State private var showApprovals = false
     @State private var showReview = false
-    /// Quick-add field on the Today grocery card.
-    @State private var groceryDraft = ""
-    @FocusState private var groceryFocused: Bool
-    /// Bottom of the grocery card in window space — with `KeyboardState`, lifts the add
-    /// row clear of the under-reported iPad landscape keyboard (same fix as the Lists
-    /// page add bar; see KeyboardState.swift).
-    @State private var groceryCardBottom: CGFloat = 0
+    /// Quick-add on the Today grocery card opens a half-sheet — the OS keeps its field
+    /// above the keyboard natively (no bottom-pinned bar to lift, which fought the iPad
+    /// keyboard and, when we tried to lift it, looped/crashed in portrait).
+    @State private var groceryAddSheet = false
     /// The chosen Today layout (persisted) — see `DashLayout`.
     @AppStorage("waffled.kioskDashLayout") private var layoutRaw = DashLayout.balanced.rawValue
     private var layout: DashLayout { DashLayout(rawValue: layoutRaw) ?? .balanced }
@@ -116,16 +113,12 @@ struct KioskDashboard: View {
             // WAFFLED_OPEN_GOAL=1, "tap" the Family Goal card once goals are in.
             if DemoHooks.openGoal, DemoHooks.kioskPage == "today", let g = kioskGoal { openGoal(g) }
         }
-        // Focus the grocery quick-add for keyboard-lift verification (the Today twin
-        // of the Lists page's WAFFLED_FOCUS_ADD hook).
+        // Open the grocery add sheet for verification (the Today twin of the Lists
+        // page's WAFFLED_FOCUS_ADD hook).
         .task {
             if DemoHooks.focusAdd, DemoHooks.kioskPage == "today" {
-                // Retry a few times: focusing mid-rotation (forced-landscape
-                // verification) gets dropped, so keep re-asserting until it sticks.
-                for attempt in 0..<5 {
-                    try? await Task.sleep(for: .seconds(attempt == 0 ? 2 : 2.5))
-                    groceryFocused = true
-                }
+                try? await Task.sleep(for: .seconds(2))
+                groceryAddSheet = true
             }
         }
         // Day rollover on the always-on display: sleep to just past each
@@ -916,15 +909,7 @@ struct KioskDashboard: View {
     // MARK: grocery (named list + checkboxes)
 
     private var groceryCard: some View {
-        // iPadOS under-reports the docked landscape keyboard's safe-area inset, so the
-        // system compression leaves the add row buried under the keys. Lift it by the
-        // measured shortfall — a render-time offset (can't feed back into layout), with
-        // a matching scroll margin so the last items stay reachable above the lifted
-        // row. Read KeyboardState here in the body, not inside a Geometry closure,
-        // so @Observable tracks it. Same pattern as ListDetailView's kiosk add bar.
-        let shift = KeyboardState.barShift(columnBottom: groceryCardBottom,
-                                           keyboardTop: KeyboardState.shared.topInWindow)
-        return KioskCard {
+        KioskCard {
             VStack(alignment: .leading, spacing: 12) {
                 cardHeader("Grocery", trailing: "\(model.groceryActive.count) to buy", chevron: true) { navigate(.lists) }
                 if model.groceryActive.isEmpty {
@@ -932,7 +917,6 @@ struct KioskDashboard: View {
                         .font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 8)
                     Spacer(minLength: 0)
                 } else {
-                    // The full list scrolls within the card; the add row below stays pinned.
                     ScrollView(showsIndicators: false) {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(model.groceryActive.enumerated()), id: \.element.id) { idx, item in
@@ -943,50 +927,26 @@ struct KioskDashboard: View {
                             }
                         }
                     }
-                    .contentMargins(.bottom, shift, for: .scrollContent)
                 }
-                groceryAddRow
-                    .background(WF.card)   // stays legible when lifted over the rows
-                    .offset(y: -shift)
+                // Add opens a half-sheet — the OS floats its text field above the keyboard,
+                // so there's no bottom-pinned bar to lift (which fought the iPad keyboard and
+                // looped/crashed when we tried to lift it).
+                Button { groceryAddSheet = true } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "plus.circle.fill").font(.system(size: 22)).foregroundStyle(WF.primary)
+                        Text("Add an item").font(.system(size: 17)).foregroundStyle(WF.ink3)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 11)
+                    .overlay(alignment: .top) { Rectangle().fill(WF.hair2).frame(height: 1) }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
-        // Capture the card's RESTING bottom only while the keyboard is DOWN. Re-measuring
-        // it while the keyboard is up would feed the shift-driven `.contentMargins` back
-        // into the measured height (which grows a content-sized scroll view in iPad
-        // portrait) → an unbounded relayout loop that watchdog-kills the app. When the
-        // keyboard is up we keep the last resting bottom, which is exactly the reference
-        // `barShift` needs.
-        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { newBottom in
-            if KeyboardState.shared.topInWindow == nil { groceryCardBottom = newBottom }
+        .sheet(isPresented: $groceryAddSheet) {
+            AddGroceryItemSheet { name in await model.addGrocery(name) }
         }
-    }
-
-    /// Inline "add to grocery" field — type an item and hit return (or Add) without
-    /// leaving Today.
-    private var groceryAddRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "plus.circle.fill").font(.system(size: 22))
-                .foregroundStyle(groceryDraft.isEmpty ? WF.ink3 : WF.primary)
-            TextField("Add an item", text: $groceryDraft)
-                .font(.system(size: 17)).foregroundStyle(WF.ink)
-                .focused($groceryFocused)
-                .submitLabel(.done)
-                .onSubmit(addGroceryItem)
-            if !groceryDraft.isEmpty {
-                Button("Add", action: addGroceryItem)
-                    .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.primary)
-                    .buttonStyle(.plain)
-            }
-        }
-        .padding(.vertical, 11)
-        .overlay(alignment: .top) { Rectangle().fill(WF.hair2).frame(height: 1) }
-    }
-
-    private func addGroceryItem() {
-        let name = groceryDraft
-        groceryDraft = ""
-        groceryFocused = true   // keep the keyboard up for rapid entry
-        Task { await model.addGrocery(name) }
     }
 
     private func groceryRow(_ item: WaffledAPI.ListItemDTO) -> some View {
@@ -1239,6 +1199,55 @@ struct KioskCard<Content: View>: View {
             .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
             .wfShadow1()
+    }
+}
+
+/// Add items to the grocery list from the Today card — a half-sheet whose text field the
+/// OS keeps above the keyboard (so there's no bottom-pinned bar to lift). Return adds the
+/// item and keeps the keyboard up for rapid entry; swipe down or Done to close.
+struct AddGroceryItemSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onAdd: (_ name: String) async -> Void
+
+    @State private var draft = ""
+    @State private var addedCount = 0
+    @FocusState private var focused: Bool
+
+    private var canAdd: Bool { !draft.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("e.g. Milk", text: $draft)
+                    .font(.system(size: 18, weight: .semibold))
+                    .focused($focused)
+                    .submitLabel(.done)
+                    .onSubmit(add)
+                    .padding(.horizontal, 15).padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading).wfField()
+                if addedCount > 0 {
+                    Text("Added \(addedCount) item\(addedCount == 1 ? "" : "s") — keep typing, or swipe down when done.")
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+            .background(WF.canvas)
+            .navigationTitle("Add to grocery").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Add", action: add).fontWeight(.semibold).disabled(!canAdd) }
+            }
+        }
+        .presentationDetents([.height(210), .medium])
+        .task { focused = true }
+    }
+
+    private func add() {
+        let name = draft.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        draft = ""; addedCount += 1; focused = true
+        Task { await onAdd(name) }
     }
 }
 
