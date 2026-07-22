@@ -198,6 +198,8 @@ static void wb_wire_open_detail(lv_obj_t *tile, const char *title, WbSettingsKey
 // itself — same leak-avoidance rule as home_screen.cpp's WbHomeSyncCtx.
 struct WbSettingsSyncCtx
 {
+  lv_obj_t *sound_tile;
+  lv_obj_t *sound_label_lbl;
   lv_obj_t *sound_sub_lbl;
   lv_obj_t *night_tile;
   lv_obj_t *night_label_lbl;
@@ -216,7 +218,11 @@ void wb_sync_settings_screen(lv_obj_t *parent, const WbDeviceState &state)
   if (!ctx)
     return; // not built yet
 
-  lv_label_set_text(ctx->sound_sub_lbl, state.sound.on ? "On" : "Off");
+  bool soundOn = state.sound.on;
+  lv_obj_set_style_bg_color(ctx->sound_tile, soundOn ? WB_COLOR_TILE_ACTIVE : WB_COLOR_TILE, 0);
+  lv_obj_set_style_text_color(ctx->sound_label_lbl, soundOn ? lv_color_white() : WB_COLOR_INK, 0);
+  lv_obj_set_style_text_color(ctx->sound_sub_lbl, soundOn ? lv_color_hex(0xC9C4BC) : WB_COLOR_MUTED, 0);
+  lv_label_set_text(ctx->sound_sub_lbl, soundOn ? "On" : "Off");
 
   bool nightOn = state.night.on;
   lv_obj_set_style_bg_color(ctx->night_tile, nightOn ? WB_COLOR_TILE_ACTIVE : WB_COLOR_TILE, 0);
@@ -344,8 +350,8 @@ void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_o
   lv_obj_set_style_pad_column(row, 16, 0);
   lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t *sound_sub_lbl = nullptr;
-  lv_obj_t *sound_tile = make_control_tile(row, LV_SYMBOL_VOLUME_MAX, "Sounds", state.sound.on ? "On" : "Off", false, nullptr, &sound_sub_lbl);
+  lv_obj_t *sound_label_lbl = nullptr, *sound_sub_lbl = nullptr;
+  lv_obj_t *sound_tile = make_control_tile(row, LV_SYMBOL_VOLUME_MAX, "Sounds", state.sound.on ? "On" : "Off", state.sound.on, &sound_label_lbl, &sound_sub_lbl);
   wb_wire_open_detail(sound_tile, "Sounds", WbSettingsKey::Sound, &state,
                        WB_SOUND_OPTIONS, sizeof(WB_SOUND_OPTIONS) / sizeof(WB_SOUND_OPTIONS[0]), "Volume",
                        detail_scr, parent, onChange);
@@ -368,7 +374,7 @@ void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_o
 
   // Stash the pieces wb_sync_settings_screen updates in place on later
   // polls — see WbSettingsSyncCtx's comment for the leak-avoidance rule.
-  WbSettingsSyncCtx *sync_ctx = new WbSettingsSyncCtx{sound_sub_lbl, night_tile, night_label_lbl, night_sub_lbl, timer_sub_lbl};
+  WbSettingsSyncCtx *sync_ctx = new WbSettingsSyncCtx{sound_tile, sound_label_lbl, sound_sub_lbl, night_tile, night_label_lbl, night_sub_lbl, timer_sub_lbl};
   lv_obj_add_event_cb(row, wb_settings_sync_ctx_delete_cb, LV_EVENT_DELETE, sync_ctx);
   lv_obj_set_user_data(parent, sync_ctx);
 }
