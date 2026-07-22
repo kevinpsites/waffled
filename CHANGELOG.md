@@ -25,11 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spot. Setting a priority no longer shuffles items around; instead the web list header has a
   **Sort: manual ⇄ By priority** toggle that, on demand, flattens the list highest-priority
   first.
-- **Reorganize list items into other sections.** On web you can now drag an item from one
-  section onto another to refile it; on iPhone/iPad you can drag a list item and drop it onto
-  another section to move it there — the target section highlights as you hover, the same
-  finger-drag used to rearrange the meal planner. (The Details editor still changes an item's
-  section too.)
+- **Reorganize list items into other sections.** On web, drag an item from one section onto
+  another to refile it; on iPhone/iPad, press and drag a list item across a section header to
+  drop it into that section — the same native row-drag used for reordering, so swipe-to-delete
+  keeps working. (The Details editor also changes an item's section.)
 - **Swipe between steps in cook mode (iPhone/iPad).** Swipe left for the next step, right for
   the previous — in addition to the Back/Next buttons.
 - **Edit a countdown straight from the calendar.** Tap a countdown to change it: a standalone

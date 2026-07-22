@@ -353,10 +353,6 @@ struct ListDetailView: View {
     @State private var railMeal = "dinner"
     /// Section ids (aisle title or meal-group id) the user has collapsed.
     @State private var collapsed: Set<String> = []
-    /// The section group currently under a dragged item (its `id`), so every row in
-    /// that group can highlight as the drop target. nil when nothing is being dragged
-    /// over a section.
-    @State private var targetedGroupId: String?
     /// Transient confirmation banner ("Added Butter to Pantry").
     @State private var toast: String?
     @State private var toastTask: Task<Void, Never>?
@@ -602,15 +598,78 @@ struct ListDetailView: View {
                 } header: { mealHeader(group) }
             }
         } else {
-            ForEach(model.activeSections) { group in
-                Section {
-                    if !collapsed.contains(group.id) {
-                        ForEach(group.items) { item in itemRow(item, in: group) }
-                    }
-                } header: { sectionHeader(group) }
+            // One flat run (headers + items in a single ForEach) so `.onMove` can drag an
+            // item ACROSS a header into another section. A sectioned List's `.onMove` only
+            // reorders within one section, and its `.dropDestination` silently refuses the
+            // drop entirely (verified on-device) — `.onMove` is the drag that actually
+            // works next to `.swipeActions`. Headers can't be dragged or deleted; on drop
+            // we read the item's new section from the header it landed under (`ListReorder`)
+            // and PATCH just that section. Grouping stays visually intact because the rows
+            // regroup from `activeSections` once `setSection` updates the item.
+            ForEach(flatDisplayRows) { r in
+                switch r {
+                case .header(let group):
+                    flatHeaderRow(group).moveDisabled(true).deleteDisabled(true)
+                case .item(let item, _):
+                    itemRow(item)
+                }
             }
+            .onMove { from, to in handleMove(from: from, to: to) }
         }
         completedSection
+    }
+
+    /// A flattened display row for the drag-enabled section view: a section header, or an
+    /// item tagged with its section. Built from `activeSections` in render order, so the
+    /// indices line up 1:1 with the `ListReorder.Row` array `handleMove` reasons over.
+    private enum ListDisplayRow: Identifiable {
+        case header(ListSectionGroup)
+        case item(WaffledAPI.ListItemDTO, section: String?)
+        var id: String {
+            switch self {
+            case .header(let g): return "h:\(g.id)"
+            case .item(let i, _): return "i:\(i.id)"
+            }
+        }
+    }
+
+    /// Headers + visible items in one sequence. Collapsed sections keep their header (a
+    /// drop target) but drop their items, matching what the List renders.
+    private var flatDisplayRows: [ListDisplayRow] {
+        var out: [ListDisplayRow] = []
+        for group in model.activeSections {
+            out.append(.header(group))
+            if !collapsed.contains(group.id) {
+                for item in group.items { out.append(.item(item, section: group.title)) }
+            }
+        }
+        return out
+    }
+
+    /// The header inside the flat ForEach. A titled group reuses the normal section header;
+    /// the untitled ("no section") group keeps its old look — no visible header — via a
+    /// zero-height anchor row that still holds a slot for index alignment + a drop target.
+    @ViewBuilder private func flatHeaderRow(_ group: ListSectionGroup) -> some View {
+        if group.title != nil {
+            sectionHeader(group)
+        } else {
+            Color.clear.frame(height: 0)
+                .listRowInsets(EdgeInsets()).listRowSeparator(.hidden).listRowBackground(Color.clear)
+        }
+    }
+
+    /// SwiftUI `.onMove` handler: resolve the item's new section from where it landed and
+    /// PATCH it. A within-section reorder resolves to nil and is a no-op (we persist section,
+    /// not fine order — matching the web drag).
+    private func handleMove(from: IndexSet, to: Int) {
+        let rows: [ListReorder.Row] = flatDisplayRows.map { r in
+            switch r {
+            case .header(let g): return .header(g.title)
+            case .item(let i, let s): return .item(id: i.id, section: s)
+            }
+        }
+        guard let result = ListReorder.targetSection(rows: rows, from: from, to: to) else { return }
+        Task { await model.setSection(result.id, to: result.section) }
     }
 
     /// Whether to show the search field — only worth the space once a list is long.
@@ -658,35 +717,12 @@ struct ListDetailView: View {
         return result
     }
 
-    /// A row plus its swipe actions (Delete + Details). In section ("By aisle") mode a
-    /// `dragGroup` is passed, making the whole row a drop target: dragging any item onto
-    /// it moves that item into this row's section (see `row`'s `.draggable`). This is the
-    /// drag-and-drop that replaced the old long-press "Move to section" menu — a
-    /// `.contextMenu` claims the very long-press `.draggable` needs, so the two can't
-    /// share a row. "By meal" mode and the Completed group pass no group (their runs
-    /// aren't sections, so there's nowhere to drop). Re-sectioning without a drag is still
-    /// possible via the Details editor (it writes the section too).
-    @ViewBuilder private func itemRow(_ item: WaffledAPI.ListItemDTO, in dragGroup: ListSectionGroup? = nil) -> some View {
-        if let dragGroup {
-            baseRow(item, targeted: targetedGroupId == dragGroup.id)
-                .dropDestination(for: ListItemDrag.self) { payload, _ in
-                    guard let p = payload.first else { return false }
-                    Task { await model.setSection(p.id, to: dragGroup.title) }
-                    return true
-                } isTargeted: { over in
-                    targetedGroupId = over ? dragGroup.id : (targetedGroupId == dragGroup.id ? nil : targetedGroupId)
-                }
-        } else {
-            baseRow(item, targeted: false)
-        }
-    }
-
-    /// The row + its swipe actions, shared by the drag-enabled and plain paths. When
-    /// `targeted`, the row tints — every row in the hovered section shares the same
-    /// `targetedGroupId`, so the whole group lights up as one drop zone.
-    @ViewBuilder private func baseRow(_ item: WaffledAPI.ListItemDTO, targeted: Bool) -> some View {
+    /// A row plus its swipe actions (Delete + Details). Native swipe stays because the
+    /// list keeps using `List`; moving an item between sections is handled by the flat
+    /// ForEach's `.onMove` (see `itemRows`), not a per-row gesture.
+    @ViewBuilder private func itemRow(_ item: WaffledAPI.ListItemDTO) -> some View {
         row(item)
-            .listRowBackground(targeted ? WF.primary.opacity(0.10) : Color.clear)
+            .listRowBackground(Color.clear)
             .swipeActions(edge: .trailing) {
                 Button(role: .destructive) {
                     Task { await model.remove(item.id) }
@@ -697,18 +733,6 @@ struct ListDetailView: View {
                 } label: { Label("Details", systemImage: "slider.horizontal.3") }
                     .tint(WF.ai)
             }
-    }
-
-    /// The lift shown under the finger while dragging a row — just the item's name on a
-    /// card, mirroring the meal-planner's drag preview.
-    private func dragPreview(_ item: WaffledAPI.ListItemDTO) -> some View {
-        Text(item.name)
-            .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
-            .lineLimit(1)
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(WF.card)
-            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     @ViewBuilder private func sectionHeader(_ group: ListSectionGroup) -> some View {
@@ -1102,31 +1126,29 @@ struct ListDetailView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                // Plain (not a Button) so `.draggable` can claim the long-press; a tap
-                // still opens the inline editor. Drag the row onto another section's
-                // rows to move the item there (replaces the old long-press menu).
-                HStack(spacing: 8) {
-                    if !ListItemPriority.meta(item.priority).icon.isEmpty {
-                        Text(ListItemPriority.meta(item.priority).icon)
-                            .font(.system(size: 13))
-                            .accessibilityLabel(ListItemPriority.meta(item.priority).label)
+                Button { startEdit(item) } label: {
+                    HStack(spacing: 8) {
+                        if !ListItemPriority.meta(item.priority).icon.isEmpty {
+                            Text(ListItemPriority.meta(item.priority).icon)
+                                .font(.system(size: 13))
+                                .accessibilityLabel(ListItemPriority.meta(item.priority).label)
+                        }
+                        Text(item.name)
+                            .font(.system(size: 16, weight: .semibold))
+                            .strikethrough(item.checked, color: WF.ink3)
+                            .foregroundStyle(item.checked ? WF.ink3 : WF.ink)
+                        Spacer(minLength: 8)
+                        mealDots(for: item)
+                        if let q = item.quantity, !q.isEmpty {
+                            Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+                        }
+                        if let a = item.assignee, a.avatarEmoji != nil || a.colorHex != nil {
+                            Avatar(colorHex: a.colorHex, emoji: a.avatarEmoji ?? "🙂", size: 24)
+                        }
                     }
-                    Text(item.name)
-                        .font(.system(size: 16, weight: .semibold))
-                        .strikethrough(item.checked, color: WF.ink3)
-                        .foregroundStyle(item.checked ? WF.ink3 : WF.ink)
-                    Spacer(minLength: 8)
-                    mealDots(for: item)
-                    if let q = item.quantity, !q.isEmpty {
-                        Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
-                    }
-                    if let a = item.assignee, a.avatarEmoji != nil || a.colorHex != nil {
-                        Avatar(colorHex: a.colorHex, emoji: a.avatarEmoji ?? "🙂", size: 24)
-                    }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
-                .onTapGesture { startEdit(item) }
-                .draggable(ListItemDrag(id: item.id)) { dragPreview(item) }
+                .buttonStyle(.plain)
             }
         }
         .padding(.vertical, 2)
