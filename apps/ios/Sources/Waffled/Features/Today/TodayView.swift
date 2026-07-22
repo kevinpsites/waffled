@@ -289,25 +289,36 @@ struct TodayView: View {
     // MARK: tonight's meal (split media card, live from the meal plan)
     @ViewBuilder private var tonightCard: some View {
         if let meal = dash.tonight {
-            HStack(spacing: 0) {
-                LinearGradient(colors: meal.eatingOut
-                                   ? [Color(hex: 0xD9E7F6), Color(hex: 0xBCD0E9)]
-                                   : [Color(hex: 0xF6D9C6), Color(hex: 0xE9B596)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-                    .frame(width: 104)
-                    .overlay(Text(meal.emoji).font(.system(size: 36)))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("TONIGHT · DINNER")
-                        .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                        .foregroundStyle(FamilyColor.person4.solid)
-                    Text(meal.title)
-                        .font(WF.serif(18)).foregroundStyle(WF.ink)
-                    if let sub = mealSubtitle(meal) {
-                        Text(sub).font(.system(size: 12)).foregroundStyle(WF.ink3)
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    LinearGradient(colors: meal.eatingOut
+                                       ? [Color(hex: 0xD9E7F6), Color(hex: 0xBCD0E9)]
+                                       : [Color(hex: 0xF6D9C6), Color(hex: 0xE9B596)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .frame(width: 104)
+                        .overlay(Text(meal.emoji).font(.system(size: 36)))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("TONIGHT · DINNER")
+                            .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                            .foregroundStyle(FamilyColor.person4.solid)
+                        Text(meal.title)
+                            .font(WF.serif(18)).foregroundStyle(WF.ink)
+                        if let sub = mealSubtitle(meal) {
+                            Text(sub).font(.system(size: 12)).foregroundStyle(WF.ink3)
+                        }
                     }
+                    .padding(.horizontal, 15).padding(.vertical, 13)
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 15).padding(.vertical, 13)
-                Spacer(minLength: 0)
+                // Cook Mode + View recipe (parity with the iPad card) — a planned recipe
+                // opens its detail, or drops straight into Cook Mode.
+                if let summary = meal.recipeSummary {
+                    HStack(spacing: 10) {
+                        tonightButton("View recipe", primary: false) { path.append(.recipe(summary)) }
+                        tonightButton("👨‍🍳 Cook Mode", primary: true) { path.append(.recipeCook(summary)) }
+                    }
+                    .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 12)
+                }
             }
             .background(WF.card)
             .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
@@ -332,6 +343,22 @@ struct TodayView: View {
         if let m = meal.cookTimeMinutes { parts.append("🕐 \(m) min") }
         if let s = meal.servings { parts.append("serves \(s)") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// A tonight-card action button — primary (coral fill) for Cook Mode, outline for
+    /// View recipe. Matches the app's button chrome at Today-card scale.
+    private func tonightButton(_ title: String, primary: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(primary ? .white : WF.ink)
+                .frame(maxWidth: .infinity).padding(.vertical, 10)
+                .background(primary ? WF.primary : WF.panel)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                    .strokeBorder(primary ? Color.clear : WF.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: chores + grocery summary (live)
@@ -528,12 +555,7 @@ struct TodayView: View {
         switch key {
         case "agenda": todayCard
         case "countdowns": CountdownsCard()
-        case "tonight":
-            if let summary = dash.tonight?.recipeSummary {
-                Button { path.append(.recipe(summary)) } label: { tonightCard }.buttonStyle(.plain)
-            } else {
-                tonightCard
-            }
+        case "tonight": tonightCard
         case "chores": Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
         case "grocery": Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
         case "pantry": PantryTodayCard { path.append(.pantry) }
