@@ -368,12 +368,15 @@ struct WaffledAPI: Sendable {
 
     /// Add a grocery item. Capture folds the quantity into `name` ("milk (2)"); the
     /// Lists screen passes a separate `quantity` so the aisle/board keeps it tidy.
-    func addGroceryItem(name: String, quantity: String? = nil, section: String? = nil) async throws {
+    @discardableResult
+    func addGroceryItem(name: String, quantity: String? = nil, section: String? = nil) async throws -> ListItemDTO {
         var body: [String: JSONValue] = ["name": .string(name)]
         if let q = quantity, !q.isEmpty { body["quantity"] = .string(q) }
         if let s = section, !s.isEmpty { body["category"] = .string(s) }
-        try await send("POST", "/api/lists/grocery/items", body: body)
+        return try await sendReturning("POST", "/api/lists/grocery/items", body: body, as: ListItemResponse.self).item
     }
+
+    private struct ListItemResponse: Decodable { let item: ListItemDTO }
 
     /// Create a chore (the "task" intent). personId resolves the assignee; stars map
     /// to the reward amount; rrule carries a recurrence if the LLM inferred one.
@@ -2208,6 +2211,8 @@ struct WaffledAPI: Sendable {
         var quantity: String?
         var checked: Bool
         var section: String?
+        /// 1–5 urgency (1 = not urgent, 3 = normal/default, 5 = urgent). Optional so older servers decode.
+        var priority: Int?
         var assignee: Assignee?
         var aisle: String?
         var sourceRecipeIds: [String]?
@@ -2265,6 +2270,15 @@ struct WaffledAPI: Sendable {
     func groceryFromRecipe(recipeId: String) async throws -> Int {
         struct Resp: Decodable { let added: Int }
         return try await sendJSON("POST", "/api/lists/grocery/from-recipe/\(recipeId)", as: Resp.self).added
+    }
+
+    /// Take a recipe's ingredients back off the grocery list (undo the off-plan add;
+    /// removes it from the by-meal "Unscheduled" group). Keeps rows shared with
+    /// another recipe. Returns how many rows were removed.
+    @discardableResult
+    func removeRecipeFromGrocery(recipeId: String) async throws -> Int {
+        struct Resp: Decodable { let removed: Int }
+        return try await sendJSON("DELETE", "/api/lists/grocery/from-recipe/\(recipeId)", as: Resp.self).removed
     }
 
     /// Pantry staples (assumed in-house, left off the list) — the editable master list,
@@ -2325,31 +2339,38 @@ struct WaffledAPI: Sendable {
     }
 
     /// Add an item to a non-grocery list.
-    func addListItem(listId: String, name: String, quantity: String?, section: String? = nil) async throws {
+    @discardableResult
+    func addListItem(listId: String, name: String, quantity: String?, section: String? = nil) async throws -> ListItemDTO {
         var body: [String: JSONValue] = ["name": .string(name)]
         if let q = quantity, !q.isEmpty { body["quantity"] = .string(q) }
         if let s = section, !s.isEmpty { body["category"] = .string(s) }
-        try await send("POST", "/api/lists/\(listId)/items", body: body)
+        return try await sendReturning("POST", "/api/lists/\(listId)/items", body: body, as: ListItemResponse.self).item
     }
 
-    /// Edit a list item (name / quantity / checked). Empty quantity clears it.
-    func patchListItem(id: String, name: String? = nil, quantity: String? = nil, checked: Bool? = nil) async throws {
+    /// Edit a list item (name / quantity / checked / section / priority). Empty
+    /// quantity clears it; `section`/`priority` are only sent when provided (a
+    /// section-move or priority-mark PATCHes just that field).
+    func patchListItem(id: String, name: String? = nil, quantity: String? = nil, checked: Bool? = nil,
+                       section: String? = nil, priority: Int? = nil) async throws {
         var body: [String: JSONValue] = [:]
         if let name { body["name"] = .string(name) }
         if let quantity { body["quantity"] = quantity.isEmpty ? .null : .string(quantity) }
         if let checked { body["checked"] = .bool(checked) }
+        if let section { body["category"] = section.isEmpty ? .null : .string(section) }
+        if let priority { body["priority"] = .int(priority) }
         guard !body.isEmpty else { return }
         try await send("PATCH", "/api/list-items/\(id)", body: body)
     }
 
     /// Full-detail edit (the swipe → Details editor): always sets name, quantity,
-    /// assignee, and section. `assignedTo`/empty section send null to clear.
-    func updateItemDetails(id: String, name: String, quantity: String, assignedTo: String?, section: String) async throws {
+    /// assignee, section, and priority. `assignedTo`/empty section send null to clear.
+    func updateItemDetails(id: String, name: String, quantity: String, assignedTo: String?, section: String, priority: Int) async throws {
         let body: [String: JSONValue] = [
             "name": .string(name),
             "quantity": quantity.isEmpty ? .null : .string(quantity),
             "assignedTo": assignedTo.map(JSONValue.string) ?? .null,
             "category": section.isEmpty ? .null : .string(section),
+            "priority": .int(priority),
         ]
         try await send("PATCH", "/api/list-items/\(id)", body: body)
     }

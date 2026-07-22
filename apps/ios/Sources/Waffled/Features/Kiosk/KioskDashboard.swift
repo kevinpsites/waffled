@@ -22,10 +22,6 @@ struct KioskDashboard: View {
 
     @State private var model = KioskTodayModel()
     @State private var recipes = RecipesModel()
-    @State private var countdowns = CountdownsModel()
-    @State private var pantry = PantryModel()
-    @State private var familyNight = FamilyNightModel()
-    @State private var addCountdown = false
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
     @State private var showCapture = false
@@ -37,13 +33,10 @@ struct KioskDashboard: View {
     @State private var reviewSuggestions: [WaffledAPI.GoalSuggestionItem] = []
     @State private var showApprovals = false
     @State private var showReview = false
-    /// Quick-add field on the Today grocery card.
-    @State private var groceryDraft = ""
-    @FocusState private var groceryFocused: Bool
-    /// Bottom of the grocery card in window space — with `KeyboardState`, lifts the add
-    /// row clear of the under-reported iPad landscape keyboard (same fix as the Lists
-    /// page add bar; see KeyboardState.swift).
-    @State private var groceryCardBottom: CGFloat = 0
+    /// Quick-add on the Today grocery card opens a half-sheet — the OS keeps its field
+    /// above the keyboard natively (no bottom-pinned bar to lift, which fought the iPad
+    /// keyboard and, when we tried to lift it, looped/crashed in portrait).
+    @State private var groceryAddSheet = false
     /// The chosen Today layout (persisted) — see `DashLayout`.
     @AppStorage("waffled.kioskDashLayout") private var layoutRaw = DashLayout.balanced.rawValue
     private var layout: DashLayout { DashLayout(rawValue: layoutRaw) ?? .balanced }
@@ -51,7 +44,6 @@ struct KioskDashboard: View {
     /// Goal-focused preset: which goal is pinned to the wall (persisted). Empty = auto
     /// (featured → whole-family → first). A picker on the card lets the family switch it.
     @AppStorage("waffled.kioskGoalId") private var kioskGoalId = ""
-    @State private var logGoal: WaffledAPI.Goal?
 
     /// The card's pick order as a pure function (tested in KioskGoalPickTests): pinned
     /// if it still exists → Spotlight → Pinned tier (isFeatured) → a whole-family goal
@@ -96,14 +88,6 @@ struct KioskDashboard: View {
         .background(WF.canvas)
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .task { await sync.loadIdentity() }
-        .task { await countdowns.load() }
-        // Pantry card data (only when the module's on; no dedicated sync bus, so a
-        // single load on appear — same as countdowns).
-        // Key these to modulesRev: the flags often load *after* first appear, so a plain
-        // .task would read the module as off and never fetch. Re-running on modulesRev
-        // means they load as soon as the household's module state is known.
-        .task(id: sync.modulesRev) { if sync.module(.pantry) { await pantry.load() } }
-        .task(id: sync.modulesRev) { if sync.module(.familyNight) { await familyNight.load() } }
         // Per-domain reloads: each fires on appear (initial load) and only when its own
         // bus bumps — so a grocery toggle no longer reloads chores + meals + weather.
         .task(id: "\(tz.identifier)|\(sync.choresRev)") { await model.loadChores() }
@@ -116,16 +100,12 @@ struct KioskDashboard: View {
             // WAFFLED_OPEN_GOAL=1, "tap" the Family Goal card once goals are in.
             if DemoHooks.openGoal, DemoHooks.kioskPage == "today", let g = kioskGoal { openGoal(g) }
         }
-        // Focus the grocery quick-add for keyboard-lift verification (the Today twin
-        // of the Lists page's WAFFLED_FOCUS_ADD hook).
+        // Open the grocery add sheet for verification (the Today twin of the Lists
+        // page's WAFFLED_FOCUS_ADD hook).
         .task {
             if DemoHooks.focusAdd, DemoHooks.kioskPage == "today" {
-                // Retry a few times: focusing mid-rotation (forced-landscape
-                // verification) gets dropped, so keep re-asserting until it sticks.
-                for attempt in 0..<5 {
-                    try? await Task.sleep(for: .seconds(attempt == 0 ? 2 : 2.5))
-                    groceryFocused = true
-                }
+                try? await Task.sleep(for: .seconds(2))
+                groceryAddSheet = true
             }
         }
         // Day rollover on the always-on display: sleep to just past each
@@ -152,15 +132,6 @@ struct KioskDashboard: View {
             reviewSuggestions = await s ?? []
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
-        .sheet(item: $logGoal) { g in
-            GoalLogSheet(goal: g) { amount, hours, minutes, ids, note, loggedOn in
-                Task {
-                    try? await WaffledAPI().logGoalProgress(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn, hours: hours, minutes: minutes)
-                    await model.loadGoals()
-                    sync.touchGoals()
-                }
-            }
-        }
         // The full recipe page, not a cramped iPad page-sheet — open it full-screen with
         // a Close button (matches the phone, which pushes the same view).
         .fullScreenCover(item: $recipeTarget) { t in
@@ -183,9 +154,6 @@ struct KioskDashboard: View {
         }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $addCountdown) {
-            AddCountdownSheet { title, date, emoji in await countdowns.add(title: title, date: date, emoji: emoji) }
         }
         .sheet(isPresented: $showApprovals) {
             NavigationStack { ApprovalsView() }.modifier(KioskSheetPresentation(kiosk: isKiosk))
@@ -251,7 +219,7 @@ struct KioskDashboard: View {
                 .background(LinearGradient(colors: [WF.ai2, WF.ai], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(reviewTitle(nR, nS)).font(.system(size: 18, weight: .heavy)).foregroundStyle(WF.ink)
+                Text(reviewRecapTitle(nR, nS)).font(.system(size: 18, weight: .heavy)).foregroundStyle(WF.ink)
                 Text(preview.isEmpty ? "Each ties to a goal." : "\(preview) — each ties to a goal.")
                     .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
             }
@@ -274,11 +242,6 @@ struct KioskDashboard: View {
         .background(tint).clipShape(Capsule())
     }
 
-    private func reviewTitle(_ nR: Int, _ nS: Int) -> String {
-        if nR > 0 && nS > 0 { return "\(nR) to review · \(nS) to link" }
-        if nR > 0 { return nR == 1 ? "1 event to log" : "\(nR) events to log" }
-        return nS == 1 ? "1 event might count" : "\(nS) events might count"
-    }
 
     // MARK: columns (preset layouts)
 
@@ -287,115 +250,14 @@ struct KioskDashboard: View {
     private var agendaCol: some View {
         VStack(spacing: 22) {
             agendaColumn
-            if countdowns.loaded { kioskCountdownsCard }
-            // Pantry rides here (content-sized cards), gated by the household "show on
-            // Today" toggle — so turning it off in Settings → Pantry hides it, matching web.
-            if sync.module(.pantry), pantry.loaded, pantry.showOnToday { kioskPantryCard }
+            CountdownsCard(kiosk: true)
+            // Pantry (shared card; it hides itself when the household's "show on Today"
+            // toggle is off, matching web).
+            if sync.module(.pantry) { PantryTodayCard(kiosk: true) { navigate(.pantry) } }
         }
     }
 
-    /// Family Night card under the agenda column (iPad Today). Shows the upcoming
-    /// gathering's date + agenda, with a per-part person picker that overrides this
-    /// week's rotation (managed at its source — Settings → Family Night — for day/agenda).
-    @ViewBuilder private func kioskFamilyNightCard(_ v: WaffledAPI.FamilyNightView) -> some View {
-        KioskCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Text("🏡 Family Night").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
-                    Spacer(minLength: 6)
-                    Text(FamilyNightFormat.dateLabel(v.next.date))
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
-                }
-                if v.members.isEmpty {
-                    Text("Add family members to start rotating the agenda.")
-                        .font(.system(size: 15)).foregroundStyle(WF.ink3)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
-                } else {
-                    ForEach(v.next.assignments) { a in
-                        HStack(spacing: 12) {
-                            Text(a.emoji).font(.system(size: 22))
-                            Text(a.label).font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink)
-                            Spacer(minLength: 8)
-                            Menu {
-                                ForEach(v.members) { m in
-                                    Button {
-                                        Task { await familyNight.assign(partId: a.partId, personId: m.id) }
-                                    } label: {
-                                        if m.id == a.personId { Label(m.name, systemImage: "checkmark") } else { Text(m.name) }
-                                    }
-                                }
-                                if a.personId != nil {
-                                    Divider()
-                                    Button(role: .destructive) {
-                                        Task { await familyNight.assign(partId: a.partId, personId: nil) }
-                                    } label: { Label("Clear", systemImage: "xmark") }
-                                }
-                            } label: {
-                                if let name = a.personName {
-                                    HStack(spacing: 7) {
-                                        if let m = v.members.first(where: { $0.id == a.personId }) {
-                                            Avatar(colorHex: m.color, emoji: m.emoji ?? "🙂", size: 26)
-                                        }
-                                        Text(name).font(.system(size: 15, weight: .semibold))
-                                            .foregroundStyle(a.suggested ? WF.ink3 : WF.ink)
-                                    }
-                                } else {
-                                    Text("Pick").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ai)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 
-    /// Compact countdowns card under the agenda column (iPad Today). Standalone items can
-    /// be added (header "+ Add") and removed (row ✕) right here; events/birthdays are
-    /// managed at their source (the event editor's countdown toggle · a member's birthday).
-    @ViewBuilder private var kioskCountdownsCard: some View {
-        KioskCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Text("Countdowns").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
-                    Spacer(minLength: 6)
-                    Button { addCountdown = true } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus").font(.system(size: 12, weight: .bold))
-                            Text("Add").font(.system(size: 14, weight: .semibold))
-                        }.foregroundStyle(WF.ai)
-                    }.buttonStyle(.plain)
-                }
-                if countdowns.items.isEmpty {
-                    Text("Nothing to count down to yet — add a trip; birthdays are automatic.")
-                        .font(.system(size: 15)).foregroundStyle(WF.ink3)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
-                } else {
-                    ForEach(countdowns.items.prefix(4)) { c in
-                        HStack(spacing: 12) {
-                            Text(c.emoji ?? "📅").font(.system(size: 22))
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(c.title).font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
-                                Text(CountdownFormat.dateLabel(c.date)).font(.system(size: 13)).foregroundStyle(WF.ink3)
-                            }
-                            Spacer(minLength: 8)
-                            Text(CountdownFormat.label(c.daysLeft, sleeps: countdowns.sleeps))
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(c.daysLeft <= 7 ? WF.primaryD : WF.ink2)
-                            if c.isStandalone {
-                                Button { Task { await countdowns.remove(c) } } label: {
-                                    Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundStyle(WF.ink3)
-                                }.buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    if countdowns.items.count > 4 {
-                        Text("+\(countdowns.items.count - 4) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
-                    }
-                }
-            }
-        }
-    }
     // Center column: tonight + this week's dinners, then Family Night (the evening
     // gathering pairs with the meal plan). Scrolls its own overflow.
     private var mealsCol: some View {
@@ -403,7 +265,7 @@ struct KioskDashboard: View {
             VStack(spacing: 22) {
                 tonightCard
                 weekDinnersCard
-                if sync.module(.familyNight), let v = familyNight.view { kioskFamilyNightCard(v) }
+                if sync.module(.familyNight) { FamilyNightCard(kiosk: true) }
             }
             .padding(.bottom, 8)
         }
@@ -418,66 +280,6 @@ struct KioskDashboard: View {
         }
     }
 
-    /// Compact pantry card under the chores/grocery column (iPad Today). Surfaces the
-    /// items needing attention — use-soon (expiring ≤ 3 days / past) first, then merely
-    /// running-low. Taps into the Pantry page. Mirrors the phone `PantryTodayCard`.
-    @ViewBuilder private var kioskPantryCard: some View {
-        let soon = pantry.onHand.filter { pantry.isSoon($0) }
-            .sorted { (pantry.days($0) ?? .max) < (pantry.days($1) ?? .max) }
-        let low = pantry.onHand.filter { pantry.isLow($0) && !pantry.isSoon($0) }.sorted { $0.name < $1.name }
-        let attention = soon + low
-        Button { navigate(.pantry) } label: {
-            KioskCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 8) {
-                        Text("🥫 Pantry").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
-                        Spacer(minLength: 6)
-                        Text(soon.isEmpty ? "\(pantry.onHand.count) on hand" : "\(pantry.onHand.count) on hand · \(soon.count) soon")
-                            .font(.system(size: 13)).foregroundStyle(WF.ink3)
-                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
-                    }
-                    if pantry.onHand.isEmpty {
-                        pantryEmpty("Nothing logged yet — add what’s on hand.")
-                    } else if attention.isEmpty {
-                        pantryEmpty("All fresh — nothing to use up soon.")
-                    } else {
-                        ForEach(attention.prefix(5)) { kioskPantryRow($0) }
-                        if attention.count > 5 {
-                            Text("+\(attention.count - 5) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
-                        }
-                    }
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func pantryEmpty(_ text: String) -> some View {
-        Text(text).font(.system(size: 15)).foregroundStyle(WF.ink3)
-            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
-    }
-
-    private func kioskPantryRow(_ item: WaffledAPI.PantryItem) -> some View {
-        HStack(spacing: 12) {
-            Text(PantryFood.emoji(for: item.name)).font(.system(size: 22))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.name).font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
-                let qty = [item.amount, item.unit].map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
-                if !qty.isEmpty { Text(qty).font(.system(size: 13)).foregroundStyle(WF.ink3) }
-            }
-            Spacer(minLength: 8)
-            if pantry.isSoon(item), let d = pantry.days(item) {
-                Text(d < 0 ? "Expired" : d == 0 ? "Today" : "\(d) day\(d == 1 ? "" : "s")")
-                    .font(.system(size: 14, weight: .bold)).foregroundStyle(WF.warn)
-                    .padding(.horizontal, 9).padding(.vertical, 3)
-                    .background(WF.warnT).clipShape(Capsule())
-            } else {
-                Text("Low").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.primaryD)
-                    .padding(.horizontal, 9).padding(.vertical, 3)
-                    .background(WF.primaryD.opacity(0.12)).clipShape(Capsule())
-            }
-        }
-    }
 
     // Concrete columns per layout (no AnyView — type erasure would stop SwiftUI from
     // diffing the three columns, forcing all of them to rebuild on every render). The
@@ -523,140 +325,14 @@ struct KioskDashboard: View {
         }
     }
 
-    // The featured-goal green, identical to the Goals page hero.
-    private static let heroGreen = LinearGradient(colors: [Color(hex: 0x2BA86B), Color(hex: 0x1C8A56)],
-                                                  startPoint: .topLeading, endPoint: .bottomTrailing)
-    private static let heroGreenInk = Color(hex: 0x1C8A56)
-
+    /// The featured-goal hero (shared with the iPhone Today card). Picking a goal in its
+    /// switcher pins it to the wall; logging refreshes the goals + bus.
     @ViewBuilder private var goalCard: some View {
-        if let g = kioskGoal {
-            // A green hero card, matching the Goals page — white type on the gradient.
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Text("Family Goal").font(.system(size: 14, weight: .heavy)).tracking(0.5)
-                        .foregroundStyle(.white.opacity(0.9))
-                    Spacer()
-                    Button { navigate(.goals) } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 15, weight: .bold)).foregroundStyle(.white.opacity(0.9))
-                    }
-                    .buttonStyle(.plain)
-                }
-                goalFocusBody(g)
-            }
-            .padding(22)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Self.heroGreen)
-            .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
-            .wfShadow1()
-            // The card body opens the goal's detail; the inner Buttons/Menu (chevron,
-            // Log, switcher) sit above this gesture so they keep their own actions.
-            .contentShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
-            .onTapGesture { openGoal(g) }
-        } else {
-            KioskCard {
-                VStack(alignment: .leading, spacing: 18) {
-                    cardHeader("Family Goal", chevron: true) { navigate(.goals) }
-                    Text(model.goalsLoaded ? "No goals yet — add one on the Goals page." : "Loading…")
-                        .font(.system(size: 17)).foregroundStyle(WF.ink3).padding(.vertical, 12)
-                }
-            }
-        }
-    }
-
-    /// The featured goal, big: a progress ring, title, each participant's bar, a prominent
-    /// "Log progress" button, and (when there's more than one goal) a switcher.
-    @ViewBuilder private func goalFocusBody(_ g: WaffledAPI.Goal) -> some View {
-        let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
-        let maxProg = max(1, g.participants.map(\.progress).max() ?? 1)
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .center, spacing: 18) {
-                GoalRing(value: frac, size: 116, lineWidth: 10, stroke: .white, track: .white.opacity(0.25)) {
-                    // Constrain the inner text well inside the ring so a long total
-                    // (e.g. "333.5") never crowds the stroke.
-                    VStack(spacing: 1) {
-                        Text(goalFmt(g.totalProgress)).font(.system(size: 24, weight: .heavy)).foregroundStyle(.white)
-                            .lineLimit(1).minimumScaleFactor(0.5)
-                        if g.target != nil {
-                            Text("of \(goalFmt(g.target))\(g.unit.map { " \($0)" } ?? "")")
-                                .font(.system(size: 11, weight: .bold)).foregroundStyle(.white.opacity(0.85))
-                                .lineLimit(1).minimumScaleFactor(0.7)
-                        }
-                    }
-                    .frame(width: 80)
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("\(g.emoji ?? "🎯") \(g.title)")
-                        .font(WF.serif(26)).foregroundStyle(.white).lineLimit(3).minimumScaleFactor(0.7)
-                    if g.streakDays > 0 {
-                        Text("🔥 \(g.streakDays)-day streak")
-                            .font(.system(size: 15, weight: .bold)).foregroundStyle(.white.opacity(0.9))
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            if !g.participants.isEmpty {
-                VStack(spacing: 10) {
-                    ForEach(g.participants, id: \.personId) { goalContribRow($0, max: maxProg, unit: g.unit) }
-                }
-            }
-            Button { logGoal = g } label: {
-                Label("Log \(g.unit ?? "progress")", systemImage: "plus.circle.fill")
-                    .font(.system(size: 17, weight: .bold)).foregroundStyle(Self.heroGreenInk)
-                    .frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(.white).clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            if model.goals.count > 1 { goalSwitcher(current: g) }
-        }
-    }
-
-    /// One participant's progress bar inside the green goal card (white on green).
-    private func goalContribRow(_ p: WaffledAPI.Goal.Participant, max: Double, unit: String?) -> some View {
-        HStack(spacing: 12) {
-            Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 32)
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Text(p.name).font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
-                    Spacer()
-                    Text("\(goalFmt(p.progress))\(p.target.map { " / \(goalFmt($0))" } ?? "")\(unit.map { " \($0)" } ?? "")")
-                        .font(.system(size: 14, weight: .heavy)).foregroundStyle(.white)
-                }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.25))
-                        Capsule().fill(.white)
-                            .frame(width: geo.size.width * (max > 0 ? min(p.progress / max, 1) : 0))
-                    }
-                }
-                .frame(height: 8)
-            }
-        }
-    }
-
-    /// A compact switcher so the family can pin a different goal to the wall. Picking one
-    /// also re-asserts the goal layout, so the dashboard never drifts off the goal view.
-    private func goalSwitcher(current: WaffledAPI.Goal) -> some View {
-        Menu {
-            Button { pinGoal("") } label: {
-                Label("Auto (featured)", systemImage: kioskGoalId.isEmpty ? "checkmark" : "sparkles")
-            }
-            ForEach(model.goals) { g in
-                Button { pinGoal(g.id) } label: {
-                    if kioskGoalId == g.id { Label("\(g.emoji ?? "🎯") \(g.title)", systemImage: "checkmark") }
-                    else { Text("\(g.emoji ?? "🎯") \(g.title)") }
-                }
-            }
-        } label: {
-            HStack(spacing: 7) {
-                Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 13, weight: .semibold))
-                Text("Show a different goal").font(.system(size: 14, weight: .bold))
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity).padding(.vertical, 11)
-            .background(.white.opacity(0.16)).clipShape(Capsule())
-            .overlay(Capsule().strokeBorder(.white.opacity(0.4), lineWidth: 1))
-        }
+        GoalHeroCard(kiosk: true, goal: kioskGoal, goals: model.goals, goalsLoaded: model.goalsLoaded,
+                     myPersonId: sync.currentPersonId, householdMemberIds: Set(sync.members.map(\.id)),
+                     selectedId: kioskGoalId,
+                     onOpen: { openGoal($0) }, onSeeAll: { navigate(.goals) }, onPin: { pinGoal($0) },
+                     onLogged: { Task { await model.loadGoals(); sync.touchGoals() } })
     }
 
     /// Pin a goal to the wall (empty = auto) and re-assert the goal layout, so picking a
@@ -916,15 +592,7 @@ struct KioskDashboard: View {
     // MARK: grocery (named list + checkboxes)
 
     private var groceryCard: some View {
-        // iPadOS under-reports the docked landscape keyboard's safe-area inset, so the
-        // system compression leaves the add row buried under the keys. Lift it by the
-        // measured shortfall — a render-time offset (can't feed back into layout), with
-        // a matching scroll margin so the last items stay reachable above the lifted
-        // row. Read KeyboardState here in the body, not inside a Geometry closure,
-        // so @Observable tracks it. Same pattern as ListDetailView's kiosk add bar.
-        let shift = KeyboardState.barShift(columnBottom: groceryCardBottom,
-                                           keyboardTop: KeyboardState.shared.topInWindow)
-        return KioskCard {
+        KioskCard {
             VStack(alignment: .leading, spacing: 12) {
                 cardHeader("Grocery", trailing: "\(model.groceryActive.count) to buy", chevron: true) { navigate(.lists) }
                 if model.groceryActive.isEmpty {
@@ -932,7 +600,6 @@ struct KioskDashboard: View {
                         .font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 8)
                     Spacer(minLength: 0)
                 } else {
-                    // The full list scrolls within the card; the add row below stays pinned.
                     ScrollView(showsIndicators: false) {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(model.groceryActive.enumerated()), id: \.element.id) { idx, item in
@@ -943,42 +610,26 @@ struct KioskDashboard: View {
                             }
                         }
                     }
-                    .contentMargins(.bottom, shift, for: .scrollContent)
                 }
-                groceryAddRow
-                    .background(WF.card)   // stays legible when lifted over the rows
-                    .offset(y: -shift)
+                // Add opens a half-sheet — the OS floats its text field above the keyboard,
+                // so there's no bottom-pinned bar to lift (which fought the iPad keyboard and
+                // looped/crashed when we tried to lift it).
+                Button { groceryAddSheet = true } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "plus.circle.fill").font(.system(size: 22)).foregroundStyle(WF.primary)
+                        Text("Add an item").font(.system(size: 17)).foregroundStyle(WF.ink3)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 11)
+                    .overlay(alignment: .top) { Rectangle().fill(WF.hair2).frame(height: 1) }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { groceryCardBottom = $0 }
-    }
-
-    /// Inline "add to grocery" field — type an item and hit return (or Add) without
-    /// leaving Today.
-    private var groceryAddRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "plus.circle.fill").font(.system(size: 22))
-                .foregroundStyle(groceryDraft.isEmpty ? WF.ink3 : WF.primary)
-            TextField("Add an item", text: $groceryDraft)
-                .font(.system(size: 17)).foregroundStyle(WF.ink)
-                .focused($groceryFocused)
-                .submitLabel(.done)
-                .onSubmit(addGroceryItem)
-            if !groceryDraft.isEmpty {
-                Button("Add", action: addGroceryItem)
-                    .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.primary)
-                    .buttonStyle(.plain)
-            }
+        .sheet(isPresented: $groceryAddSheet) {
+            AddGroceryItemSheet { name in await model.addGrocery(name) }
         }
-        .padding(.vertical, 11)
-        .overlay(alignment: .top) { Rectangle().fill(WF.hair2).frame(height: 1) }
-    }
-
-    private func addGroceryItem() {
-        let name = groceryDraft
-        groceryDraft = ""
-        groceryFocused = true   // keep the keyboard up for rapid entry
-        Task { await model.addGrocery(name) }
     }
 
     private func groceryRow(_ item: WaffledAPI.ListItemDTO) -> some View {
@@ -1231,6 +882,55 @@ struct KioskCard<Content: View>: View {
             .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
             .wfShadow1()
+    }
+}
+
+/// Add items to the grocery list from the Today card — a half-sheet whose text field the
+/// OS keeps above the keyboard (so there's no bottom-pinned bar to lift). Return adds the
+/// item and keeps the keyboard up for rapid entry; swipe down or Done to close.
+struct AddGroceryItemSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onAdd: (_ name: String) async -> Void
+
+    @State private var draft = ""
+    @State private var addedCount = 0
+    @FocusState private var focused: Bool
+
+    private var canAdd: Bool { !draft.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("e.g. Milk", text: $draft)
+                    .font(.system(size: 18, weight: .semibold))
+                    .focused($focused)
+                    .submitLabel(.done)
+                    .onSubmit(add)
+                    .padding(.horizontal, 15).padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading).wfField()
+                if addedCount > 0 {
+                    Text("Added \(addedCount) item\(addedCount == 1 ? "" : "s") — keep typing, or swipe down when done.")
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+            .background(WF.canvas)
+            .navigationTitle("Add to grocery").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Add", action: add).fontWeight(.semibold).disabled(!canAdd) }
+            }
+        }
+        .presentationDetents([.height(210), .medium])
+        .task { focused = true }
+    }
+
+    private func add() {
+        let name = draft.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        draft = ""; addedCount += 1; focused = true
+        Task { await onAdd(name) }
     }
 }
 

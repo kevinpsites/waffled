@@ -198,6 +198,33 @@ function PersonChips({ persons, value, onChange, noneLabel }: { persons: Person[
 // Seed the "who's it for" SET from the inferred audience: 'everyone' → all members;
 // 'me'/null → just the viewer (empty when the viewer id hasn't loaded yet, so the preview
 // still renders). Pure so it's unit-testable.
+// The owner for an event created from the "add anything" bar. If the phrasing named
+// a household member ("dentist for George") that person wins; otherwise it defaults
+// to the logged-in viewer so a bare "dentist Tuesday 3pm" lands on you rather than
+// nobody. A stated-but-unmatched name is left unassigned (the parser only sets a
+// name it matched, so this is a belt-and-braces guard).
+export function resolveEventPersonId(
+  name: string | null,
+  persons: { id: string; name: string }[],
+  viewerId: string | null
+): string | null {
+  if (name) return persons.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id ?? null
+  return viewerId ?? null
+}
+
+// Show the signed-in viewer as the default owner in the event picker (not "Nobody"),
+// mirroring what commit() already does via resolveEventPersonId. Seeds the viewer's
+// NAME (the chips match on name, case-insensitively, and the viewer is always in
+// `persons`). Applies only to the DISPLAYED intent while it's still untouched — the
+// caller runs this on the pre-draft parse, so once the user taps a chip a draft
+// exists and this no longer runs, leaving an explicit "Nobody" choice intact.
+export function seedEventViewer(intent: ParsedIntent | null, viewerName: string | null): ParsedIntent | null {
+  if (intent?.kind === 'event' && intent.personName == null && viewerName) {
+    return { ...intent, personName: viewerName }
+  }
+  return intent
+}
+
 export function seedGoalParticipants(audience: 'me' | 'everyone' | null, viewerId: string | null, allIds: string[], canManageOthers = true): string[] {
   // A non-manager (a kid) can only create a self-only goal — POST /api/goals requires the
   // goal.manage capability the moment participants include anyone but the caller — so we
@@ -608,7 +635,7 @@ export function CaptureBar() {
   // While the model is still thinking and the on-device guess is just a weak
   // grocery fallback, don't assert it — show a thinking row instead.
   const thinkingPlaceholder = !usingServer && thinking && !looksConfident(localIntent, text)
-  const rawIntent = draft ?? (thinkingPlaceholder ? null : parsed)
+  const rawIntent = draft ?? (thinkingPlaceholder ? null : seedEventViewer(parsed, viewer?.name ?? null))
   // Gates: only admins can add a household member (adminRoute); goals can be created
   // only when the Goals module is on; and pantry (default OFF) is suppressed entirely
   // unless the Pantry module is on. Each blocked case degrades gracefully to an
@@ -682,7 +709,7 @@ export function CaptureBar() {
 
   async function commit(i: ParsedIntent): Promise<string> {
     if (i.kind === 'event') {
-      await api.createEvent({ title: i.title, startsAt: i.startsAt, allDay: i.allDay, personId: personId(i.personName), rrule: i.rrule ?? undefined, recurrenceEndAt: i.recurrenceEndAt ?? undefined })
+      await api.createEvent({ title: i.title, startsAt: i.startsAt, allDay: i.allDay, personId: resolveEventPersonId(i.personName, persons, viewer?.id ?? null), rrule: i.rrule ?? undefined, recurrenceEndAt: i.recurrenceEndAt ?? undefined })
       return `Added “${i.title}”${i.rrule ? ' (repeating)' : ''} to the calendar`
     }
     if (i.kind === 'grocery') {

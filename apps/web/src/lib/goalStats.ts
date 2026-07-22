@@ -41,6 +41,12 @@ export function addDaysKey(key: string, n: number): string {
   return toLocalDateKey(d)
 }
 
+// The Sunday that starts the week containing `key` (local). Anchors the week
+// heatmap to a fixed Sun–Sat calendar week instead of a rolling 7-day window.
+export function startOfWeekKey(key: string): string {
+  return addDaysKey(key, -parseLocalDateKey(key).getDay())
+}
+
 // Whole calendar days between two keys (a - b). Safe across DST because both sides
 // are constructed via the local Date constructor at local midnight, which the JS
 // engine keeps aligned to the wall-clock day regardless of any DST shift between them.
