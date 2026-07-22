@@ -160,6 +160,34 @@ jobs:
         working-directory: apps/web
         run: npm test                 # vitest run
 
+  web-browser-tests:
+    name: Web browser smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # PR #96 establishes Node 24 as the supported web toolchain.
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install web deps
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser smoke tests
+        working-directory: apps/web
+        run: npm run test:browser
+
   api-tests:
     name: API tests (vitest + Testcontainers)
     runs-on: ubuntu-latest
