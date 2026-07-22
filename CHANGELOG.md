@@ -19,11 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   page — pair a device with a short one-time code, then control it live: start/pause/end a
   quiet-time countdown, set a night light (color + brightness), a wake-up light schedule
   (per day-of-week, with a yellow "almost time" warning before it turns green), a morning
-  alarm, a sound machine, screen brightness, and send a quick nudge ("dinner is ready") that
-  shows on the device. A device polls for changes every few seconds — no separate app or
-  account needed on the device side. This release ships the pairing system and the parent
-  control panel; the physical Waffled-Bite device and its on-screen app are still in
-  development, so pairing will wait until a device is available to connect.
+  alarm, a sound machine, and screen brightness. A device polls for changes every few
+  seconds — no separate app or account needed on the device side. This release ships the
+  pairing system, the parent control panel, and a code-complete on-device app (ESP32-P4 +
+  LVGL) — but the on-device app has only run in a desktop simulator against the real
+  backend so far, since the physical touchscreen has never been in hand for real hardware
+  bring-up. So pairing still has nothing to actually connect to yet — this is **pending
+  hardware validation**, not a finished, buyable device. An iOS control panel is coming
+  soon as a fast-follow; web ships first.
 - **Add any recipe's ingredients to the grocery list — no meal plan needed.** Every recipe
   page (web and iOS) now has a first-class "Add to grocery" action, so a one-off dinner, a
   side, or a snack goes straight to the list: staples you already have are skipped, quantities

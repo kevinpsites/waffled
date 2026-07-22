@@ -109,6 +109,13 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 
 ## What's not done
 
+> **Status summary:** the app itself is now code-complete — every screen described below
+> is wired to the real API and has been run against the real `./waffled-demo` backend. But
+> all of that verification happened in the `native` desktop simulator; the `esp32-p4`
+> target has never run on the actual board (still not in hand — see "unverified on real
+> silicon" below). Treat everything above the hardware-bring-up entries as **simulator-proven,
+> not hardware-proven**.
+
 - **Sounds and Nightlight are done.** Tapping either tile on the Grown-up controls
   screen opens a shared toggle+picker+slider detail screen (`src/ui/control_detail_screen.cpp` —
   one screen parameterized for both, since they're the same shape: on/off, pick a
@@ -129,12 +136,9 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   device route; ran the actual compiled `native` binary through a real pair→token→poll cycle
   against the same backend to confirm the port didn't regress. Full `apps/api` suite (880
   tests) and `tsc --noEmit` both clean. What's still open: no on-screen tap-gesture
-  verification (same SDL-headless caveat as tasks), and **Set a timer + Bedtime are still
-  non-functional placeholders** — no backend concept exists yet for either (see the research
-  this milestone did: quiet-time's start/pause/resume/end + computed-on-read pattern is the
-  closest reusable primitive for a kid-facing timer, but a true one needs real design; Bedtime
-  has no dedicated data model at all, just adjacent wake-schedule/alarm fields and the
-  generic evening chore bucket). Nightlight's color options render as plain color circles
+  verification (same SDL-headless caveat as tasks). At the time of this milestone, Set a
+  timer and Bedtime were still non-functional placeholders — **both were completed in a
+  later milestone**, see "Set a timer and Bedtime are done" further down. Nightlight's color options render as plain color circles
   with no text label at all — a swatch was added first (small circle next to a text name
   like "Amber"), then the name was dropped once the swatch made it redundant; selection
   shows as a border ring + a larger live preview above the row, using the exact hex values
@@ -158,12 +162,12 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   starting a real quiet session against the demo backend, confirming the poll response
   and the actual compiled `native` binary picked it up (`lastSeenAt` advanced through a
   real pair→poll cycle while quiet was active), and by code review that the screen has
-  zero navigation callbacks. Two things worth flagging: (1) "Stay cozy until" is computed
-  from the poll's `now` field, which is the server's plain UTC time — the device has no
-  RTC or timezone database, so this reads as UTC, not the household's actual local time,
-  until real timezone plumbing lands (same gap as the home screen's still-hardcoded
-  placeholder clock, `"4:13"`/`"Wed, Oct 15"` in `home_screen.cpp`, unrelated to this
-  milestone but worth knowing about together); (2) no moon icon in the mockup made it in —
+  zero navigation callbacks. Two things worth flagging: (1) at the time of this milestone,
+  "Stay cozy until" was computed from the poll's plain UTC `now` field — the device has no
+  RTC or timezone database of its own, so this read as UTC, not the household's actual
+  local time; **this was fixed in a later milestone** (`waffledBites.ts`'s `now` is now a
+  pre-localized `{hour, minute, weekday, month, day}` object, and the home screen's clock/
+  date — previously hardcoded placeholders — are wired to it too); (2) no moon icon in the mockup made it in —
   no built-in `LV_SYMBOL_*` match, so the title stands alone rather than pairing with a
   mismatched glyph, same "built-in symbols for now" convention as everywhere else.
 - **Set a timer and Bedtime are done.** Both were genuinely ambiguous placeholders until
@@ -288,3 +292,13 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   across core versions; picked the boring, version-stable option for now (see the
   comment in `main.cpp`). Needed once Screen & display's brightness setting should
   actually do something on-device.
+- **Offline indicator, un-tap, and device-initiated unpair are done** (later milestone,
+  not reflected in the entries above): a small "Offline" pill appears after 2 consecutive
+  failed polls and clears on the next success; an already-done task row can be tapped again
+  to un-complete it (`POST /api/waffled-bites/device/tasks/:id/uncomplete`); a secret
+  5-fast-taps gesture on Settings' "For a grown-up" chip opens a confirmation screen that
+  clears local pairing **and** calls a new `POST /api/waffled-bites/device/unpair` so the
+  parent's panel actually reflects the device as gone, not just the device itself forgetting
+  locally. A 401 on the live poll (e.g. a parent unpairing from the web app) now drops the
+  device back to onboarding within one 5s poll instead of waiting for the ~4-minute token
+  refresh cycle.
