@@ -552,7 +552,12 @@ struct ListDetailView: View {
                     .contentMargins(.bottom, addBarShift, for: .scrollContent)
                 addBar.offset(y: -addBarShift)
             }
-            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { columnBottom = $0 }
+            // Only capture the RESTING bottom (keyboard down); re-measuring while the
+            // keyboard is up would feed the shift-driven `.contentMargins` back into the
+            // measured height and relayout-loop (watchdog crash on iPad portrait).
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { newBottom in
+                if KeyboardState.shared.topInWindow == nil { columnBottom = newBottom }
+            }
             .frame(maxWidth: .infinity)
             if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.staples.isEmpty) {
                 Rectangle().fill(WF.hair).frame(width: 1)

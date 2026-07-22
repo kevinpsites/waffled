@@ -52,6 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Waffled logo on every screen with nothing to announce; it's been removed.
 
 ### Fixed
+- **Fixed an iPad crash when adding a grocery item in portrait.** Tapping the Today grocery
+  quick-add (and the Lists add bar) on an iPad held vertically could hang and crash the app —
+  the keyboard-avoidance lift measured a height that its own adjustment kept growing, an
+  unbounded relayout loop. The lift now reads the bar's resting position only, so it can't
+  feed back on itself.
 - **Goal names now read exactly as you typed them, everywhere.** A goal called
   "10 hours at the gym" appeared title-cased ("10 Hours At The Gym") on the Goals page, the
   goal detail, the name field, and the editor preview, but as-entered on a person's profile —

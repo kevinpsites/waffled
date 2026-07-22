@@ -950,7 +950,15 @@ struct KioskDashboard: View {
                     .offset(y: -shift)
             }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { groceryCardBottom = $0 }
+        // Capture the card's RESTING bottom only while the keyboard is DOWN. Re-measuring
+        // it while the keyboard is up would feed the shift-driven `.contentMargins` back
+        // into the measured height (which grows a content-sized scroll view in iPad
+        // portrait) → an unbounded relayout loop that watchdog-kills the app. When the
+        // keyboard is up we keep the last resting bottom, which is exactly the reference
+        // `barShift` needs.
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { newBottom in
+            if KeyboardState.shared.topInWindow == nil { groceryCardBottom = newBottom }
+        }
     }
 
     /// Inline "add to grocery" field — type an item and hit return (or Add) without
