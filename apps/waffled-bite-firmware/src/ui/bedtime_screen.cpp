@@ -53,27 +53,22 @@ WbGlowSpec wb_glow_spec_for_device_state(const WbDeviceState &state)
   return {wb_bedtime_hex(state.night.color), state.night.brightness, nullptr, true, false, -1, -1};
 }
 
-// A full-width, full-height stack of horizontal bands — a "gradient of
-// rectangles the whole length of the screen" per direct user feedback,
-// replacing an earlier concentric-circles version that looked like an
-// off-center blob rather than an ambient room glow. Colors are SOLID
-// blends of the nightlight color toward the background via lv_color_mix,
-// not alpha transparency — translucent fills stacked over a near-black
-// backdrop read as a murky grey smear rather than a warm glow (confirmed
-// against a real on-device screenshot), so brightness/falloff is baked
-// into the color itself instead of the opacity. Bottom band is brightest
-// (matches the original mockup's low glow), top band fades to background.
-#define WB_GLOW_BAND_COUNT 14
-
-// Owns the glow band stack + optional label/until text so
-// wb_sync_bedtime_screen can push a later spec change into an already-
-// showing screen without a rebuild. Attached to a genuine per-rebuild
-// child (see wb_build_bedtime_screen), not `parent` — same leak-avoidance
-// rule as every other screen's sync ctx in this app.
+// A single flat full-screen fill — went through a concentric-circles
+// version (looked like an off-center blob) and a gradient-band version
+// (looked "weird"/murky, per direct feedback on two rounds of screenshots)
+// before landing here. The color itself carries brightness (blended toward
+// black — see wb_apply_glow) rather than any spatial falloff, so a dim
+// nightlight reads as a darker flat color, not a smaller/fainter one.
+//
+// Owns the fill + optional label/until text so wb_sync_bedtime_screen can
+// push a later spec change into an already-showing screen without a
+// rebuild. Attached to a genuine per-rebuild child (see
+// wb_build_bedtime_screen), not `parent` — same leak-avoidance rule as
+// every other screen's sync ctx in this app.
 struct WbBedtimeCtx
 {
-  lv_obj_t *bands[WB_GLOW_BAND_COUNT]; // top to bottom
-  lv_obj_t *label_lbl;  // null if this build had no label (the plain preview)
+  lv_obj_t *glow_bg;
+  lv_obj_t *label_lbl;  // null if this build had no label (sleep / the plain preview)
   lv_obj_t *until_lbl;  // null if this build had no wake time to show
 };
 
@@ -88,33 +83,21 @@ static void wb_bedtime_close_cb(lv_event_t *e)
   lv_scr_load_anim(back_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false); // NOT a fade — see settings_screen.cpp's wb_open_detail_cb
 }
 
-// Brightness (0-100) scales how saturated the glow reads — a dim nightlight
+// Brightness (0-100) scales how saturated the fill reads — a dim nightlight
 // should look dim (blended toward black) here too, not just a fainter smear
-// of the same full-strength color.
+// of the same full-strength color. Applies uniformly to every spec (sleep,
+// warn, wake, the plain preview) — nothing here is status-vs-ambient
+// specific anymore; only whether a label chip is shown differs.
 static void wb_apply_glow(WbBedtimeCtx *ctx, const WbGlowSpec &spec)
 {
   float b = (spec.brightness <= 0 ? 5 : spec.brightness) / 100.0f; // never fully invisible, even at a very low setting
   lv_color_t base = lv_color_hex(spec.colorHex);
   // Blend toward black for dimness rather than toward transparent — keeps
-  // the color saturated/warm instead of washing it out against the near-
-  // black backdrop. coreMix ranges 90 (dim) - 255 (full brightness).
+  // the color saturated/warm instead of washing it out. coreMix ranges
+  // 90 (dim) - 255 (full brightness).
   uint8_t coreMix = (uint8_t)(90 + 165 * b);
   lv_color_t coreColor = lv_color_mix(base, lv_color_black(), coreMix);
-
-  // warn/wake (spec.label set) are status SIGNALS, not mood lighting — flat
-  // solid green/yellow reads unambiguously at a glance; the label sits in
-  // its own dark chip (see wb_build_bedtime_screen) for contrast instead of
-  // leaning on a gradient. sleep/the plain preview (no label) keep the
-  // ambient falloff — ties visually to a real nightlight, not an alert.
-  bool statusSolid = spec.label != nullptr;
-
-  for (int i = 0; i < WB_GLOW_BAND_COUNT; i++)
-  {
-    float t = (float)i / (WB_GLOW_BAND_COUNT - 1); // 0 = top band, 1 = bottom band
-    float eased = statusSolid ? 1.0f : t * t; // keeps the ambient glow concentrated near the bottom, fading fast toward the top
-    lv_color_t bandColor = lv_color_mix(coreColor, WB_BEDTIME_BG, (uint8_t)(eased * 255));
-    lv_obj_set_style_bg_color(ctx->bands[i], bandColor, 0);
-  }
+  lv_obj_set_style_bg_color(ctx->glow_bg, coreColor, 0);
 
   if (ctx->label_lbl)
     lv_label_set_text(ctx->label_lbl, spec.label ? spec.label : "");
@@ -136,29 +119,15 @@ static void wb_apply_glow(WbBedtimeCtx *ctx, const WbGlowSpec &spec)
   }
 }
 
-// A full-width/full-height column of equal-height bands, filled top-to-
-// bottom into `ctx->bands` — flex_grow(1) on each with zero gap means they
-// tile exactly across the parent with no seams.
-static void wb_make_glow_bands(lv_obj_t *parent, WbBedtimeCtx *ctx)
+static lv_obj_t *wb_make_glow_bg(lv_obj_t *parent)
 {
-  lv_obj_t *wrap = lv_obj_create(parent);
-  lv_obj_remove_style_all(wrap);
-  lv_obj_set_size(wrap, lv_pct(100), lv_pct(100));
-  lv_obj_set_flex_flow(wrap, LV_FLEX_FLOW_COLUMN);
-  lv_obj_clear_flag(wrap, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(wrap, LV_OBJ_FLAG_CLICKABLE);
-
-  for (int i = 0; i < WB_GLOW_BAND_COUNT; i++)
-  {
-    lv_obj_t *band = lv_obj_create(wrap);
-    lv_obj_remove_style_all(band);
-    lv_obj_set_style_bg_opa(band, LV_OPA_COVER, 0);
-    lv_obj_set_size(band, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_grow(band, 1);
-    lv_obj_clear_flag(band, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(band, LV_OBJ_FLAG_CLICKABLE);
-    ctx->bands[i] = band;
-  }
+  lv_obj_t *bg = lv_obj_create(parent);
+  lv_obj_remove_style_all(bg);
+  lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
+  lv_obj_set_size(bg, lv_pct(100), lv_pct(100));
+  lv_obj_clear_flag(bg, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(bg, LV_OBJ_FLAG_CLICKABLE);
+  return bg;
 }
 
 void wb_build_bedtime_screen(lv_obj_t *parent, const WbGlowSpec &spec, lv_obj_t *back_scr)
@@ -167,15 +136,15 @@ void wb_build_bedtime_screen(lv_obj_t *parent, const WbGlowSpec &spec, lv_obj_t 
   lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
   WbBedtimeCtx *ctx = new WbBedtimeCtx();
-  wb_make_glow_bands(parent, ctx);
+  ctx->glow_bg = wb_make_glow_bg(parent);
   ctx->label_lbl = nullptr;
   ctx->until_lbl = nullptr;
 
   if (spec.label)
   {
     // A solid dark chip behind the label, not a gradient — reads clearly
-    // against the now-flat green/yellow background (see wb_apply_glow's
-    // statusSolid branch) without relying on a fade to separate it.
+    // against the flat colored background without relying on a fade to
+    // separate it.
     lv_obj_t *box = lv_obj_create(parent);
     lv_obj_remove_style_all(box);
     lv_obj_set_style_bg_color(box, lv_color_hex(0x14140F), 0);
@@ -228,7 +197,7 @@ void wb_build_bedtime_screen(lv_obj_t *parent, const WbGlowSpec &spec, lv_obj_t 
     // branch — attach it to a genuine (invisible, non-interactive) child
     // instead of `parent` itself (the persistent singleton), same rule as
     // every other screen's sync ctx.
-    lv_obj_add_event_cb(ctx->bands[WB_GLOW_BAND_COUNT - 1], wb_bedtime_ctx_delete_cb, LV_EVENT_DELETE, ctx);
+    lv_obj_add_event_cb(ctx->glow_bg, wb_bedtime_ctx_delete_cb, LV_EVENT_DELETE, ctx);
   }
 
   wb_apply_glow(ctx, spec);
