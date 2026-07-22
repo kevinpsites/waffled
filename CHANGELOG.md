@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## [0.10.0] - 2026-07-22
+
+### Added
 - **The iPhone Today Goals card is now the full goal hero.** It matches the iPad: a progress
   ring, each participant's contribution bar, a **Log progress** button (log straight from
   Today), and a **"Show a different goal"** switcher that opens the grouped goal picker. The
@@ -1246,7 +1254,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/kevinpsites/waffled/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kevinpsites/waffled/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/kevinpsites/waffled/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kevinpsites/waffled/compare/v0.6.1...v0.7.0
