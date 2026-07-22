@@ -39,9 +39,9 @@ const { tenantRoute } = moduleRoutes('lists')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// Priority is a small, closed scale: 0 = normal, 1 = important, 2 = urgent.
-function isValidPriority(v: unknown): v is 0 | 1 | 2 {
-  return v === 0 || v === 1 || v === 2
+// Priority is a 1–5 urgency scale: 1 = not urgent, 3 = normal, 5 = urgent.
+function isValidPriority(v: unknown): v is 1 | 2 | 3 | 4 | 5 {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 5
 }
 
 export function registerListRoutes(api: Api): void {
@@ -153,7 +153,7 @@ export function registerListRoutes(api: Api): void {
       return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
     }
     if ('priority' in body && !isValidPriority(body.priority)) {
-      return res.status(400).json({ error: 'BadRequest', message: 'priority must be 0, 1 or 2' })
+      return res.status(400).json({ error: 'BadRequest', message: 'priority must be an integer from 1 (not urgent) to 5 (urgent)' })
     }
     if (body.assignedTo != null) await assertPersonInHousehold(tenant.householdId, body.assignedTo)
     const item = await addItem(tenant, id, {
@@ -201,7 +201,7 @@ export function registerListRoutes(api: Api): void {
       return res.status(400).json({ error: 'BadRequest', message: 'checked must be a boolean' })
     }
     if ('priority' in body && !isValidPriority(body.priority)) {
-      return res.status(400).json({ error: 'BadRequest', message: 'priority must be 0, 1 or 2' })
+      return res.status(400).json({ error: 'BadRequest', message: 'priority must be an integer from 1 (not urgent) to 5 (urgent)' })
     }
     if (body.assignedTo != null) await assertPersonInHousehold(tenant.householdId, body.assignedTo)
     const item = await patchItem(tenant, id, body)

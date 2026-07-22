@@ -53,7 +53,7 @@ export interface ListItem {
   checked: boolean
   checkedAt: string | null
   section: string | null
-  // 0 = normal, 1 = important, 2 = urgent. Higher priority sorts first.
+  // 1–5 urgency scale: 1 = not urgent, 3 = normal, 5 = urgent. Higher sorts first.
   priority?: number
   sortOrder: number | null
   assignee: ListItemAssignee | null

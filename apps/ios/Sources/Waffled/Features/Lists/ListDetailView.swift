@@ -1068,7 +1068,7 @@ struct ListDetailView: View {
             } else {
                 Button { startEdit(item) } label: {
                     HStack(spacing: 8) {
-                        if ListItemPriority.meta(item.priority).value != 0 {
+                        if !ListItemPriority.meta(item.priority).icon.isEmpty {
                             Text(ListItemPriority.meta(item.priority).icon)
                                 .font(.system(size: 13))
                                 .accessibilityLabel(ListItemPriority.meta(item.priority).label)
@@ -1267,16 +1267,20 @@ struct ListDetailView: View {
     }
 }
 
-/// List-item priority: a small closed scale (0 normal, 1 important, 2 urgent) shared
-/// by the detail editor's chips and the row flag. Mirrors the web `priority.tsx`.
+/// List-item priority: a 1–5 urgency scale (1 not urgent, 3 normal, 5 urgent) shared
+/// by the detail editor's chips and the row flag. Above-normal items (4–5) get the
+/// flag. Mirrors the web `priority.tsx`.
 enum ListItemPriority {
     struct Option { let value: Int; let label: String; let icon: String }
+    static let normal = 3
     static let all: [Option] = [
-        .init(value: 0, label: "Normal", icon: ""),
-        .init(value: 1, label: "Important", icon: "⚑"),
-        .init(value: 2, label: "Urgent", icon: "‼️"),
+        .init(value: 1, label: "Not urgent", icon: ""),
+        .init(value: 2, label: "Low", icon: ""),
+        .init(value: 3, label: "Normal", icon: ""),
+        .init(value: 4, label: "High", icon: "⚑"),
+        .init(value: 5, label: "Urgent", icon: "‼️"),
     ]
-    static func meta(_ p: Int?) -> Option { all.first { $0.value == (p ?? 0) } ?? all[0] }
+    static func meta(_ p: Int?) -> Option { all.first { $0.value == (p ?? normal) } ?? all[2] }
 }
 
 /// The fuller "Details" editor reached by swiping a row — name, quantity, assignee,
@@ -1304,7 +1308,7 @@ struct ItemDetailEditor: View {
         _name = State(initialValue: item.name)
         _quantity = State(initialValue: item.quantity ?? "")
         _section = State(initialValue: item.section ?? "")
-        _priority = State(initialValue: item.priority ?? 0)
+        _priority = State(initialValue: item.priority ?? ListItemPriority.normal)
         // The item's assignee carries no id, so resolve it to a member by name.
         let assigneeName = item.assignee?.name
         _assigneeId = State(initialValue: members.first { $0.name == assigneeName }?.id)

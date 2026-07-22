@@ -15,21 +15,21 @@ function mock(sent: Sent[]) {
 
 const item: ListItem = {
   id: 'i1', name: 'Passport', quantity: null, checked: false, checkedAt: null,
-  section: 'Docs', priority: 0, sortOrder: 0, assignee: null,
+  section: 'Docs', priority: 3, sortOrder: 0, assignee: null,
 }
 
 describe('ListItemModal — priority', () => {
-  it('preselects the item\'s current priority and PATCHes a new one', async () => {
+  it('preselects the item\'s current priority and PATCHes a new one on the 1–5 scale', async () => {
     const sent: Sent[] = []
     mock(sent)
     render(<ListItemModal listId="L" item={item} persons={persons} sections={['Docs']} onClose={() => {}} onSaved={() => {}} />)
 
-    // choose Urgent, then save
-    fireEvent.click(screen.getByRole('button', { name: /Urgent/i }))
+    // choose Urgent (=5), then save. Exact name so it doesn't also match "Not urgent".
+    fireEvent.click(screen.getByRole('button', { name: 'Urgent' }))
     fireEvent.click(screen.getByRole('button', { name: /Save changes/i }))
 
     await waitFor(() => expect(sent.some((s) => s.method === 'PATCH')).toBe(true))
     const patch = sent.find((s) => s.method === 'PATCH')!
-    expect(patch.body).toMatchObject({ priority: 2 })
+    expect(patch.body).toMatchObject({ priority: 5 })
   })
 })

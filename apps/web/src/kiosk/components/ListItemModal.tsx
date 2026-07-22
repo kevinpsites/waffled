@@ -24,7 +24,7 @@ export function ListItemModal({
   const [quantity, setQuantity] = useState(item?.quantity ?? '')
   const [section, setSection] = useState(item?.section ?? '')
   const [assignedTo, setAssignedTo] = useState<string>(item?.assignee?.personId ?? '')
-  const [priority, setPriority] = useState<number>(item?.priority ?? 0)
+  const [priority, setPriority] = useState<number>(item?.priority ?? 3)
   const [saving, setSaving] = useState(false)
 
   async function submit(e: FormEvent) {

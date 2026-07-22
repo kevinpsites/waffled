@@ -269,7 +269,7 @@ export async function addItem(
       input.quantity ?? null,
       input.category ?? null,
       input.assignedTo ?? null,
-      input.priority ?? 0,
+      input.priority ?? 3,
       tenant.personId,
     ]
   )
@@ -765,7 +765,7 @@ export function presentListItem(i: ListItemRow) {
     checked: i.checked,
     checkedAt: i.checked_at,
     section: i.category,
-    priority: i.priority ?? 0,
+    priority: i.priority ?? 3,
     sortOrder: i.sort_order,
     source: i.source,
     sourceRecipeIds: i.source_recipe_ids ?? [],
