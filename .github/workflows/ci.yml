@@ -83,6 +83,27 @@ jobs:
       - name: Run waffled CLI tests
         run: bash tests/waffled.test.sh
 
+  production-audit:
+    name: Production dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Audit API production dependencies
+        working-directory: apps/api
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Audit web production dependencies
+        working-directory: apps/web
+        run: npm audit --omit=dev --audit-level=moderate
+
   typecheck:
     name: Typecheck (api + web)
     runs-on: ubuntu-latest
