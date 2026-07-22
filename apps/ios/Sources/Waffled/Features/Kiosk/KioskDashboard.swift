@@ -22,7 +22,6 @@ struct KioskDashboard: View {
 
     @State private var model = KioskTodayModel()
     @State private var recipes = RecipesModel()
-    @State private var pantry = PantryModel()
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
     @State private var showCapture = false
@@ -90,12 +89,6 @@ struct KioskDashboard: View {
         .background(WF.canvas)
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .task { await sync.loadIdentity() }
-        // Pantry card data (only when the module's on; no dedicated sync bus, so a
-        // single load on appear).
-        // Key these to modulesRev: the flags often load *after* first appear, so a plain
-        // .task would read the module as off and never fetch. Re-running on modulesRev
-        // means they load as soon as the household's module state is known.
-        .task(id: sync.modulesRev) { if sync.module(.pantry) { await pantry.load() } }
         // Per-domain reloads: each fires on appear (initial load) and only when its own
         // bus bumps — so a grocery toggle no longer reloads chores + meals + weather.
         .task(id: "\(tz.identifier)|\(sync.choresRev)") { await model.loadChores() }
@@ -273,9 +266,9 @@ struct KioskDashboard: View {
         VStack(spacing: 22) {
             agendaColumn
             CountdownsCard(kiosk: true)
-            // Pantry rides here (content-sized cards), gated by the household "show on
-            // Today" toggle — so turning it off in Settings → Pantry hides it, matching web.
-            if sync.module(.pantry), pantry.loaded, pantry.showOnToday { kioskPantryCard }
+            // Pantry (shared card; it hides itself when the household's "show on Today"
+            // toggle is off, matching web).
+            if sync.module(.pantry) { PantryTodayCard(kiosk: true) { navigate(.pantry) } }
         }
     }
 
@@ -302,66 +295,6 @@ struct KioskDashboard: View {
         }
     }
 
-    /// Compact pantry card under the chores/grocery column (iPad Today). Surfaces the
-    /// items needing attention — use-soon (expiring ≤ 3 days / past) first, then merely
-    /// running-low. Taps into the Pantry page. Mirrors the phone `PantryTodayCard`.
-    @ViewBuilder private var kioskPantryCard: some View {
-        let soon = pantry.onHand.filter { pantry.isSoon($0) }
-            .sorted { (pantry.days($0) ?? .max) < (pantry.days($1) ?? .max) }
-        let low = pantry.onHand.filter { pantry.isLow($0) && !pantry.isSoon($0) }.sorted { $0.name < $1.name }
-        let attention = soon + low
-        Button { navigate(.pantry) } label: {
-            KioskCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 8) {
-                        Text("🥫 Pantry").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
-                        Spacer(minLength: 6)
-                        Text(soon.isEmpty ? "\(pantry.onHand.count) on hand" : "\(pantry.onHand.count) on hand · \(soon.count) soon")
-                            .font(.system(size: 13)).foregroundStyle(WF.ink3)
-                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
-                    }
-                    if pantry.onHand.isEmpty {
-                        pantryEmpty("Nothing logged yet — add what’s on hand.")
-                    } else if attention.isEmpty {
-                        pantryEmpty("All fresh — nothing to use up soon.")
-                    } else {
-                        ForEach(attention.prefix(5)) { kioskPantryRow($0) }
-                        if attention.count > 5 {
-                            Text("+\(attention.count - 5) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
-                        }
-                    }
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func pantryEmpty(_ text: String) -> some View {
-        Text(text).font(.system(size: 15)).foregroundStyle(WF.ink3)
-            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
-    }
-
-    private func kioskPantryRow(_ item: WaffledAPI.PantryItem) -> some View {
-        HStack(spacing: 12) {
-            Text(PantryFood.emoji(for: item.name)).font(.system(size: 22))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.name).font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
-                let qty = [item.amount, item.unit].map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
-                if !qty.isEmpty { Text(qty).font(.system(size: 13)).foregroundStyle(WF.ink3) }
-            }
-            Spacer(minLength: 8)
-            if pantry.isSoon(item), let d = pantry.days(item) {
-                Text(d < 0 ? "Expired" : d == 0 ? "Today" : "\(d) day\(d == 1 ? "" : "s")")
-                    .font(.system(size: 14, weight: .bold)).foregroundStyle(WF.warn)
-                    .padding(.horizontal, 9).padding(.vertical, 3)
-                    .background(WF.warnT).clipShape(Capsule())
-            } else {
-                Text("Low").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.primaryD)
-                    .padding(.horizontal, 9).padding(.vertical, 3)
-                    .background(WF.primaryD.opacity(0.12)).clipShape(Capsule())
-            }
-        }
-    }
 
     // Concrete columns per layout (no AnyView — type erasure would stop SwiftUI from
     // diffing the three columns, forcing all of them to rebuild on every render). The
