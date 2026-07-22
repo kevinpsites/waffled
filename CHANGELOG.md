@@ -21,15 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recipe's are cleared.
 - **Rank list items on a 1–5 urgency scale.** Every list item has a priority from 1 (not
   urgent) through 3 (normal) up to 5 (urgent), set from the item editor on web and
-  iPhone/iPad. High and Urgent items get a flag on the row and float to the top of their
-  list, so what matters most is easy to spot.
+  iPhone/iPad. High and Urgent items get a flag on the row so what matters most is easy to
+  spot. Setting a priority no longer shuffles items around; instead the web list header has a
+  **Sort: manual ⇄ By priority** toggle that, on demand, flattens the list highest-priority
+  first.
 - **Reorganize list items into other sections.** On web you can now drag an item from one
   section onto another to refile it; on iPhone/iPad a long-press "Move to section" does the
   same. (True finger-drag between sections on iOS is a fast-follow.)
-- **Edit a countdown straight from the calendar.** Tap any countdown on the calendar to
-  change it: a standalone countdown (the "add anything" kind) opens a small editor to rename,
-  move its date, or remove it; an event-countdown opens its event, where you can rename it or
-  untick "Show a countdown" to stop it. (Birthday countdowns come from a person's profile.)
+- **Edit a countdown straight from the calendar.** Tap a countdown to change it: a standalone
+  countdown (the "add anything" kind) opens a small editor to rename, move its date, or remove
+  it; an event-countdown opens its event, where you can rename it or untick "Show a countdown"
+  to stop it. (Birthday countdowns come from a person's profile.) On web, tap it on the
+  calendar; on iPhone/iPad, tap the countdown on the Today card or its month-grid badge.
 - **Backups can now be restore-tested without touching the live app.** Run
   `./waffled backup verify` to restore the newest database dump into a disposable Postgres
   container, fail on archive or SQL errors, confirm the Waffled schema exists, and clean up the
@@ -40,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Countdowns now show up on the calendar, not just the Today card.** In the calendar's
   day and week views, each countdown appears as an all-day chip on its target date (the
   month grid shows a badge), so "12 days until Hawaii" is visible right where you're planning.
+- **The goal month grid marks today.** A red ring around today's date in a goal's month
+  heatmap shows where you are in the month at a glance (web + iPhone/iPad).
 - **The web nav rail no longer shows a permanent "New" badge.** A "New" pill sat under the
   Waffled logo on every screen with nothing to announce; it's been removed.
 
@@ -60,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **"Add anything" events now default to you.** When you type an event into the AI capture
   bar without naming anyone ("dentist Tuesday at 3"), the person picker now shows — and saves —
   the logged-in member instead of "Nobody". Naming someone ("dentist for George") still
-  assigns them.
+  assigns them. Web + iPhone/iPad.
 - **Adding a grocery/list item on iPhone/iPad is easier to tap.** The add-item bar now
   raises the keyboard when you tap anywhere on it — the icon and padding, not just the tiny
   text glyphs — so it's no longer a fiddly target.
