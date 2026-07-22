@@ -532,6 +532,7 @@ struct ListDetailView: View {
             }
         }
         .listStyle(.plain)
+        .listSectionSpacing(0)   // no white gaps between sections — one tan surface
         .scrollContentBackground(.hidden)
         // Drag down through the items to tuck the keyboard away (the add bar's field
         // otherwise keeps it up with no way to dismiss on iPhone).
@@ -557,6 +558,7 @@ struct ListDetailView: View {
                 topControls
                 List { itemRows }
                     .listStyle(.plain)
+                    .listSectionSpacing(0)   // no white gaps between sections — one tan surface
                     .scrollContentBackground(.hidden)
                     .scrollDismissesKeyboard(.interactively)
                     // The lifted bar is drawn OVER the List's bottom (offset is
@@ -724,7 +726,10 @@ struct ListDetailView: View {
     /// ForEach's `.onMove` (see `itemRows`), not a per-row gesture.
     @ViewBuilder private func itemRow(_ item: WaffledAPI.ListItemDTO) -> some View {
         row(item)
-            .listRowBackground(Color.clear)
+            // A flat tan sheet: canvas row backgrounds (no white cells) and no hairline
+            // separators — the list reads as one continuous surface, not ruled rows.
+            .listRowBackground(WF.canvas)
+            .listRowSeparator(.hidden)
             .swipeActions(edge: .trailing) {
                 Button(role: .destructive) {
                     Task { await model.remove(item.id) }
@@ -762,6 +767,8 @@ struct ListDetailView: View {
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
             .background(WF.canvas)
             .listRowInsets(EdgeInsets())
+            .listRowBackground(WF.canvas)
+            .listRowSeparator(.hidden)
     }
 
     /// A header laid out as a tap target that collapses/expands its section.
