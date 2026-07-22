@@ -171,7 +171,8 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # PR #96 establishes Node 24 as the supported web toolchain.
+          node-version: '24'
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
