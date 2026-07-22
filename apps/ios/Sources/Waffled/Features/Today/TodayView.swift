@@ -19,13 +19,9 @@ struct TodayView: View {
     /// trigger: AppRoot reloads it at launch, on the chore/reward buses, and on
     /// return to the foreground.
     var approvals: ApprovalsModel
-    /// Which goal the card highlights: "mine" (the logged-in member's) or "family"
-    /// (a whole-family goal). Per-device preference; defaults to mine.
-    @AppStorage("waffled.todayGoalScope") private var goalScope = "mine"
-    /// A specific goal pinned to the Today card (empty = follow the My/Family spotlight scope).
-    /// Per-device; falls back to the scope pick if the pinned goal is gone.
+    /// A specific goal pinned to the Today card (empty = auto/featured). Per-device; the
+    /// hero's grouped picker sets it. Falls back to the featured pick if the goal is gone.
     @AppStorage("waffled.todayGoalId") private var todayGoalId = ""
-    @State private var showingGoalPicker = false
     /// The resolved card layout (order + hidden) from the server, plus whether this
     /// member may edit the shared family default. Drives which cards render and how.
     @State private var cardOrder: [String] = ["agenda", "tonight", "chores", "grocery", "goals"]
@@ -366,136 +362,18 @@ struct TodayView: View {
 
     // MARK: goals card (featured goal + a shortcut to all goals)
 
-    /// The headline goal to surface, honoring the user's scope preference. "Mine"
-    /// prefers a goal the logged-in member is in; "Family" prefers a whole-family
-    /// goal. Either way featured wins within the bucket, and we never get stuck — a
-    /// sub-group goal (e.g. kids-only) only shows if nothing better exists.
-    private var featuredGoal: WaffledAPI.Goal? {
-        let goals = dash.goals
-        // A specific goal pinned to the card wins, if it still exists.
-        if !todayGoalId.isEmpty, let pinned = goals.first(where: { $0.id == todayGoalId }) { return pinned }
-        // The token-resolved person if we have it, else the greeting member (first adult).
-        let me = sync.currentPersonId ?? greetingMember?.id
-        let everyone = Set(sync.members.map(\.id))
-        // "Mine" = a goal that's solo to me (my personal list), not a shared/group goal.
-        func isMine(_ g: WaffledAPI.Goal) -> Bool {
-            guard let me else { return false }
-            return Set(g.participants.map(\.personId)) == [me]
-        }
-        // "Family" = a goal the whole household shares.
-        func isFamily(_ g: WaffledAPI.Goal) -> Bool {
-            everyone.count > 1 && everyone.isSubset(of: Set(g.participants.map(\.personId)))
-        }
-        // Prefer the Spotlight, then a Pinned (isFeatured) goal, then any — within scope.
-        func spot(_ g: WaffledAPI.Goal) -> Bool { g.isSpotlight ?? false }
-        let mineFirst: [(WaffledAPI.Goal) -> Bool] = [
-            { isMine($0) && spot($0) }, { isMine($0) && $0.isFeatured }, { isMine($0) },
-            { isFamily($0) && spot($0) }, { isFamily($0) && $0.isFeatured }, { isFamily($0) },
-        ]
-        let familyFirst: [(WaffledAPI.Goal) -> Bool] = [
-            { isFamily($0) && spot($0) }, { isFamily($0) && $0.isFeatured }, { isFamily($0) },
-            { isMine($0) && spot($0) }, { isMine($0) && $0.isFeatured }, { isMine($0) },
-        ]
-        let order = goalScope == "family" ? familyFirst : mineFirst
-        for matches in order { if let g = goals.first(where: matches) { return g } }
-        return goals.first(where: spot) ?? goals.first { $0.isFeatured } ?? goals.first
-    }
-
-    private static let goalGreen = WF.success
-
-    /// A full-width card showing the featured goal's progress (taps into that goal),
-    /// with a "See all" shortcut to the goals hub.
+    /// The featured-goal hero, shared with the iPad Today card (`GoalHeroCard`). Adopts the
+    /// iPad's pinned/auto model — the grouped picker (in the card's switcher) replaces the
+    /// old My/Family scope pill. Logging refreshes the goals + bus.
     @ViewBuilder private var goalsCard: some View {
-        WaffledCard(padding: 15) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Text("Goals").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
-                    scopeMenu
-                    Spacer()
-                    Button { path.append(.goals) } label: {
-                        HStack(spacing: 3) {
-                            Text("See all").font(.system(size: 12, weight: .semibold))
-                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
-                        }
-                        .foregroundStyle(WF.ai)
-                    }
-                    .buttonStyle(.plain)
-                }
-                if let g = featuredGoal {
-                    Button { path.append(.goal(g)) } label: { featuredGoalRow(g) }.buttonStyle(.plain)
-                } else {
-                    // Key the empty state off the goals fetch itself — `dash.loaded`
-                    // (meals/chores/grocery) usually finishes first, and used to flash
-                    // "Set a family goal →" at people who have goals.
-                    Button { path.append(.goals) } label: {
-                        Text(dash.goalsLoaded ? "Set a family goal →" : "Loading…")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .sheet(isPresented: $showingGoalPicker) {
-            TodayGoalPickerSheet(goals: dash.goals, myPersonId: sync.currentPersonId ?? greetingMember?.id, selectedId: todayGoalId) { id in todayGoalId = id }
-        }
-    }
-
-    /// A small pill-menu to switch the card between the logged-in member's goal and a
-    /// whole-family goal. Only shown when there's more than one goal to choose from.
-    @ViewBuilder private var scopeMenu: some View {
-        if dash.goals.count > 1 {
-            // The pinned goal's title (if one is pinned and still exists), else the scope name.
-            let pinnedTitle = todayGoalId.isEmpty ? nil : dash.goals.first { $0.id == todayGoalId }?.title
-            Menu {
-                Button { goalScope = "mine"; todayGoalId = "" } label: {
-                    Label("My spotlight", systemImage: (todayGoalId.isEmpty && goalScope == "mine") ? "checkmark" : "person")
-                }
-                Button { goalScope = "family"; todayGoalId = "" } label: {
-                    Label("Family spotlight", systemImage: (todayGoalId.isEmpty && goalScope == "family") ? "checkmark" : "person.3")
-                }
-                Divider()
-                Button { showingGoalPicker = true } label: {
-                    Label("Choose a goal…", systemImage: "pin")
-                }
-            } label: {
-                HStack(spacing: 3) {
-                    Text(pinnedTitle ?? (goalScope == "family" ? "Family" : "Mine"))
-                        .font(.system(size: 11, weight: .bold)).lineLimit(1).frame(maxWidth: 120)
-                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
-                }
-                .foregroundStyle(WF.ink3)
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(WF.panel)
-                .clipShape(Capsule())
-            }
-        }
-    }
-
-    private func featuredGoalRow(_ g: WaffledAPI.Goal) -> some View {
-        let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 8) {
-                Text(g.emoji ?? "🎯").font(.system(size: 20))
-                Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
-                if g.isSpotlight ?? false { Text("🌟").font(.system(size: 11)) }
-                else if g.isFeatured { Text("📌").font(.system(size: 11)) }
-                Spacer(minLength: 6)
-                if g.streakDays >= 2 {
-                    Text("🔥 \(g.streakDays)").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink2)
-                }
-            }
-            if let target = g.target, target > 0 {
-                ProgressBar(value: frac, tint: Self.goalGreen, track: Self.goalGreen.opacity(0.18))
-                (Text("\(goalFmt(g.totalProgress)) ").foregroundStyle(WF.ink).bold()
-                 + Text("of \(goalFmt(target))\(g.unit.map { " \($0)" } ?? "")").foregroundStyle(WF.ink3))
-                    .font(.system(size: 12))
-            } else if g.streakDays > 0 {
-                Text("\(g.streakDays)-day streak").font(.system(size: 12)).foregroundStyle(WF.ink3)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
+        GoalHeroCard(kiosk: false,
+                     goal: KioskDashboard.featuredGoal(dash.goals, pinnedId: todayGoalId,
+                                                       memberIds: Set(sync.members.map(\.id))),
+                     goals: dash.goals, goalsLoaded: dash.goalsLoaded,
+                     myPersonId: sync.currentPersonId ?? greetingMember?.id, selectedId: todayGoalId,
+                     onOpen: { path.append(.goal($0)) }, onSeeAll: { path.append(.goals) },
+                     onPin: { todayGoalId = $0 },
+                     onLogged: { Task { await dash.loadGoals(); sync.touchGoals() } })
     }
 
     // MARK: layout-driven card rendering

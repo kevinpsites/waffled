@@ -44,8 +44,6 @@ struct KioskDashboard: View {
     /// Goal-focused preset: which goal is pinned to the wall (persisted). Empty = auto
     /// (featured → whole-family → first). A picker on the card lets the family switch it.
     @AppStorage("waffled.kioskGoalId") private var kioskGoalId = ""
-    @State private var logGoal: WaffledAPI.Goal?
-    @State private var showingGoalPicker = false
 
     /// The card's pick order as a pure function (tested in KioskGoalPickTests): pinned
     /// if it still exists → Spotlight → Pinned tier (isFeatured) → a whole-family goal
@@ -134,19 +132,6 @@ struct KioskDashboard: View {
             reviewSuggestions = await s ?? []
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
-        .sheet(item: $logGoal) { g in
-            GoalLogSheet(goal: g) { amount, hours, minutes, ids, note, loggedOn in
-                Task {
-                    try? await WaffledAPI().logGoalProgress(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn, hours: hours, minutes: minutes)
-                    await model.loadGoals()
-                    sync.touchGoals()
-                }
-            }
-        }
-        .sheet(isPresented: $showingGoalPicker) {
-            TodayGoalPickerSheet(goals: model.goals, myPersonId: sync.currentPersonId,
-                                 selectedId: kioskGoalId) { pinGoal($0) }
-        }
         // The full recipe page, not a cramped iPad page-sheet — open it full-screen with
         // a Close button (matches the phone, which pushes the same view).
         .fullScreenCover(item: $recipeTarget) { t in
@@ -340,133 +325,13 @@ struct KioskDashboard: View {
         }
     }
 
-    // The featured-goal green, identical to the Goals page hero.
-    private static let heroGreen = LinearGradient(colors: [Color(hex: 0x2BA86B), Color(hex: 0x1C8A56)],
-                                                  startPoint: .topLeading, endPoint: .bottomTrailing)
-    private static let heroGreenInk = Color(hex: 0x1C8A56)
-
+    /// The featured-goal hero (shared with the iPhone Today card). Picking a goal in its
+    /// switcher pins it to the wall; logging refreshes the goals + bus.
     @ViewBuilder private var goalCard: some View {
-        if let g = kioskGoal {
-            // A green hero card, matching the Goals page — white type on the gradient.
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Text("Family Goal").font(.system(size: 14, weight: .heavy)).tracking(0.5)
-                        .foregroundStyle(.white.opacity(0.9))
-                    Spacer()
-                    Button { navigate(.goals) } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 15, weight: .bold)).foregroundStyle(.white.opacity(0.9))
-                    }
-                    .buttonStyle(.plain)
-                }
-                goalFocusBody(g)
-            }
-            .padding(22)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Self.heroGreen)
-            .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
-            .wfShadow1()
-            // The card body opens the goal's detail; the inner Buttons/Menu (chevron,
-            // Log, switcher) sit above this gesture so they keep their own actions.
-            .contentShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
-            .onTapGesture { openGoal(g) }
-        } else {
-            KioskCard {
-                VStack(alignment: .leading, spacing: 18) {
-                    cardHeader("Family Goal", chevron: true) { navigate(.goals) }
-                    Text(model.goalsLoaded ? "No goals yet — add one on the Goals page." : "Loading…")
-                        .font(.system(size: 17)).foregroundStyle(WF.ink3).padding(.vertical, 12)
-                }
-            }
-        }
-    }
-
-    /// The featured goal, big: a progress ring, title, each participant's bar, a prominent
-    /// "Log progress" button, and (when there's more than one goal) a switcher.
-    @ViewBuilder private func goalFocusBody(_ g: WaffledAPI.Goal) -> some View {
-        let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
-        let maxProg = max(1, g.participants.map(\.progress).max() ?? 1)
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .center, spacing: 18) {
-                GoalRing(value: frac, size: 116, lineWidth: 10, stroke: .white, track: .white.opacity(0.25)) {
-                    // Constrain the inner text well inside the ring so a long total
-                    // (e.g. "333.5") never crowds the stroke.
-                    VStack(spacing: 1) {
-                        Text(goalFmt(g.totalProgress)).font(.system(size: 24, weight: .heavy)).foregroundStyle(.white)
-                            .lineLimit(1).minimumScaleFactor(0.5)
-                        if g.target != nil {
-                            Text("of \(goalFmt(g.target))\(g.unit.map { " \($0)" } ?? "")")
-                                .font(.system(size: 11, weight: .bold)).foregroundStyle(.white.opacity(0.85))
-                                .lineLimit(1).minimumScaleFactor(0.7)
-                        }
-                    }
-                    .frame(width: 80)
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("\(g.emoji ?? "🎯") \(g.title)")
-                        .font(WF.serif(26)).foregroundStyle(.white).lineLimit(3).minimumScaleFactor(0.7)
-                    if g.streakDays > 0 {
-                        Text("🔥 \(g.streakDays)-day streak")
-                            .font(.system(size: 15, weight: .bold)).foregroundStyle(.white.opacity(0.9))
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            if !g.participants.isEmpty {
-                VStack(spacing: 10) {
-                    ForEach(g.participants, id: \.personId) { goalContribRow($0, max: maxProg, unit: g.unit) }
-                }
-            }
-            Button { logGoal = g } label: {
-                Label("Log \(g.unit ?? "progress")", systemImage: "plus.circle.fill")
-                    .font(.system(size: 17, weight: .bold)).foregroundStyle(Self.heroGreenInk)
-                    .frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(.white).clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            if model.goals.count > 1 { goalSwitcher(current: g) }
-        }
-    }
-
-    /// One participant's progress bar inside the green goal card (white on green).
-    private func goalContribRow(_ p: WaffledAPI.Goal.Participant, max: Double, unit: String?) -> some View {
-        HStack(spacing: 12) {
-            Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 32)
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Text(p.name).font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
-                    Spacer()
-                    Text("\(goalFmt(p.progress))\(p.target.map { " / \(goalFmt($0))" } ?? "")\(unit.map { " \($0)" } ?? "")")
-                        .font(.system(size: 14, weight: .heavy)).foregroundStyle(.white)
-                }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.25))
-                        Capsule().fill(.white)
-                            .frame(width: geo.size.width * (max > 0 ? min(p.progress / max, 1) : 0))
-                    }
-                }
-                .frame(height: 8)
-            }
-        }
-    }
-
-    /// A compact switcher so the family can pin a different goal to the wall. Picking one
-    /// also re-asserts the goal layout, so the dashboard never drifts off the goal view.
-    private func goalSwitcher(current: WaffledAPI.Goal) -> some View {
-        // Opens the shared grouped picker (My goals / shared lists / other) — the iPhone's
-        // pop-over, so the wall no longer shows a flat menu of every goal.
-        Button { showingGoalPicker = true } label: {
-            HStack(spacing: 7) {
-                Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 13, weight: .semibold))
-                Text("Show a different goal").font(.system(size: 14, weight: .bold))
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity).padding(.vertical, 11)
-            .background(.white.opacity(0.16)).clipShape(Capsule())
-            .overlay(Capsule().strokeBorder(.white.opacity(0.4), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
+        GoalHeroCard(kiosk: true, goal: kioskGoal, goals: model.goals, goalsLoaded: model.goalsLoaded,
+                     myPersonId: sync.currentPersonId, selectedId: kioskGoalId,
+                     onOpen: { openGoal($0) }, onSeeAll: { navigate(.goals) }, onPin: { pinGoal($0) },
+                     onLogged: { Task { await model.loadGoals(); sync.touchGoals() } })
     }
 
     /// Pin a goal to the wall (empty = auto) and re-assert the goal layout, so picking a

@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The iPhone Today Goals card is now the full goal hero.** It matches the iPad: a progress
+  ring, each participant's contribution bar, a **Log progress** button (log straight from
+  Today), and a **"Show a different goal"** switcher that opens the grouped goal picker. The
+  old My/Family scope pill is replaced by that picker (which already covers your goals, shared
+  groups, and the rest). One shared card now drives both iPhone and iPad, so they stay in sync.
 - **The iPad's Family Goal card now uses the grouped goal picker.** "Show a different goal"
   opens the same organized pop-over the iPhone uses — goals grouped by list (your goals,
   shared groups you're in, then the rest) with member avatars — instead of one flat list.
