@@ -17,8 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Take a recipe back off the grocery list.** A recipe you added off-plan from its page
   shows under "Unscheduled" — now you can remove it in one tap. Web: a **Remove** button on
   the by-meal section, or an **×** on the "This week's meals" Unscheduled rail; iPhone/iPad:
-  long-press → **Remove from list**. Items shared with another recipe stay put; only this
-  recipe's are cleared.
+  an **×** on the "This week's meals" Unscheduled recap rows. Items shared with another recipe
+  stay put; only this recipe's are cleared.
 - **Rank list items on a 1–5 urgency scale.** Every list item has a priority from 1 (not
   urgent) through 3 (normal) up to 5 (urgent), set from the item editor on web and
   iPhone/iPad. High and Urgent items get a flag on the row so what matters most is easy to
@@ -32,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   countdown (the "add anything" kind) opens a small editor to rename, move its date, or remove
   it; an event-countdown opens its event, where you can rename it or untick "Show a countdown"
   to stop it. (Birthday countdowns come from a person's profile.) On web, tap it on the
-  calendar; on iPhone/iPad, tap the countdown on the Today card or its month-grid badge.
+  calendar; on iPhone/iPad, tap the countdown on the Today card, or in the calendar where it
+  now appears as an all-day row (see below).
 - **Backups can now be restore-tested without touching the live app.** Run
   `./waffled backup verify` to restore the newest database dump into a disposable Postgres
   container, fail on archive or SQL errors, confirm the Waffled schema exists, and clean up the
@@ -40,9 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or retrieved offsite copy.
 
 ### Changed
-- **Countdowns now show up on the calendar, not just the Today card.** In the calendar's
-  day and week views, each countdown appears as an all-day chip on its target date (the
-  month grid shows a badge), so "12 days until Hawaii" is visible right where you're planning.
+- **Countdowns now show up on the calendar, not just the Today card.** They render like
+  all-day events on their target date — on web in the day/week views (with a month-grid
+  badge), and on iPhone/iPad as an all-day row in the agenda, day, and month-detail lists
+  (a countdown-only day now appears in the agenda too) — so "12 days until Hawaii" is visible
+  right where you're planning, and tappable to edit.
 - **The goal month grid marks today.** A red ring around today's date in a goal's month
   heatmap shows where you are in the month at a glance (web + iPhone/iPad).
 - **The web nav rail no longer shows a permanent "New" badge.** A "New" pill sat under the
@@ -72,9 +75,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A half-typed list item is no longer lost when you leave.** If you type an item into the
   add bar on iPhone/iPad and navigate away without hitting return, it's now saved instead of
   discarded.
-- **Swipe up while adding a list item (iPhone/iPad) to fill in the details.** Mid-add, an
-  upward swipe on the add bar commits what you typed and opens its full editor — assignee,
-  section, and priority — without hunting for the swipe action afterward.
+- **Add a list item with full details from the composer (iPhone/iPad).** A details button on
+  the add bar commits what you typed and opens its editor as a half-sheet — assignee, section,
+  and priority. (Replaces an unreliable swipe-up gesture.) The five priority pills now scroll
+  horizontally instead of wrapping.
 - **Countdowns on the Today page are now tappable.** Tap a countdown to jump straight to
   what it's counting down to — an event-based countdown opens that event, while a trip or
   birthday countdown opens the calendar on its day.
