@@ -168,6 +168,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Web navigation now fits phones.** Narrow screens use a compact app header and
   accessible slide-out destination menu, while Settings replaces its long stacked
   index with a section picker and nearby sign-out action.
+- **The iPhone and iPad apps now reject malformed server addresses before saving.**
+  Server settings require an HTTP(S) origin, explain invalid input in place, normalize
+  trailing slashes, and no longer force-unwrap request URLs.
 - **Production dependency audits now run in CI.** The API's transitive `protobufjs`
   dependency is updated past its schema-name denial-of-service advisory, and future
   moderate-or-higher production advisories fail the build for both API and web.
