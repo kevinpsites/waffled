@@ -18,6 +18,7 @@ struct CalendarView: View {
     @State private var showCapture = false
     @State private var dictateOnOpen = false
     @State private var countdowns = CountdownsModel()
+    @State private var editingCountdown: WaffledAPI.Countdown?
 
     enum CalMode: String, CaseIterable { case agenda, month, day
         var label: String { rawValue.capitalized }
@@ -82,6 +83,11 @@ struct CalendarView: View {
             }
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
+        .sheet(item: $editingCountdown) { c in
+            EditCountdownSheet(countdown: c,
+                onSave: { title, date, emoji in await countdowns.update(c, title: title, date: date, emoji: emoji) },
+                onRemove: { await countdowns.remove(c) })
+        }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
@@ -242,12 +248,16 @@ struct CalendarView: View {
     private func monthCell(_ cell: MonthCell) -> some View {
         let isSelected = cell.key == selectedDay
         let isToday = cell.key == Agenda.todayKey(tz)
-        return Button { withAnimation { selectedDay = cell.key } } label: {
-            VStack(spacing: 3) {
-                Text("\(cell.day)")
-                    .font(.system(size: 14, weight: isToday ? .heavy : .semibold))
-                    .foregroundStyle(cell.inMonth ? (isToday ? WF.primary : WF.ink) : WF.ink3.opacity(0.5))
-                if let cds = countdowns.byDate[cell.key], let first = cds.first {
+        // Not a Button: the day-select is an `onTapGesture` on the whole cell, so the
+        // countdown badge can be its own Button that intercepts taps on it (a Button
+        // beats an ancestor tap gesture) — tapping the badge edits the countdown, the
+        // rest of the cell still selects the day.
+        return VStack(spacing: 3) {
+            Text("\(cell.day)")
+                .font(.system(size: 14, weight: isToday ? .heavy : .semibold))
+                .foregroundStyle(cell.inMonth ? (isToday ? WF.primary : WF.ink) : WF.ink3.opacity(0.5))
+            if let cds = countdowns.byDate[cell.key], let first = cds.first {
+                Button { tapCountdown(cds, day: cell.key) } label: {
                     HStack(spacing: 2) {
                         Text(first.emoji ?? "⏳").font(.system(size: 8))
                         Text(CountdownFormat.short(first.daysLeft)).font(.system(size: 8, weight: .heavy)).foregroundStyle(WF.warn)
@@ -255,22 +265,32 @@ struct CalendarView: View {
                     }
                     .padding(.horizontal, 3).padding(.vertical, 1)
                     .background(WF.warnT).clipShape(Capsule())
-                } else {
-                    HStack(spacing: 2) {
-                        ForEach(Array(dotColors(cell.key).prefix(3).enumerated()), id: \.offset) { _, hex in
-                            Circle().fill(Color(hexString: hex) ?? WF.ink3).frame(width: 5, height: 5)
-                        }
-                    }
-                    .frame(height: 5)
                 }
+                .buttonStyle(.plain)
+            } else {
+                HStack(spacing: 2) {
+                    ForEach(Array(dotColors(cell.key).prefix(3).enumerated()), id: \.offset) { _, hex in
+                        Circle().fill(Color(hexString: hex) ?? WF.ink3).frame(width: 5, height: 5)
+                    }
+                }
+                .frame(height: 5)
             }
-            .frame(maxWidth: .infinity).frame(height: 44)
-            .background(isSelected ? WF.primary.opacity(0.12) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(isSelected ? WF.primary : Color.clear, lineWidth: 1.5))
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity).frame(height: 44)
+        .background(isSelected ? WF.primary.opacity(0.12) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(isSelected ? WF.primary : Color.clear, lineWidth: 1.5))
+        .contentShape(Rectangle())
+        .onTapGesture { withAnimation { selectedDay = cell.key } }
+    }
+
+    /// Route a month-badge countdown tap: a standalone countdown opens the inline editor
+    /// (rename/move/remove); an event- or birthday-sourced one just selects the day
+    /// (event countdowns are edited by tapping the event; birthdays live on a profile).
+    private func tapCountdown(_ cds: [WaffledAPI.Countdown], day: String) {
+        if let c = cds.first, c.isStandalone { editingCountdown = c }
+        else { withAnimation { selectedDay = day } }
     }
 
     /// Distinct owner colors of events on a day (for the month dots).

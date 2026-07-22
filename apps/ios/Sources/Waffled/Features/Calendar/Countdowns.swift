@@ -60,6 +60,12 @@ final class CountdownsModel {
         items.removeAll { $0.id == c.id }
         try? await api.deleteCountdown(id: c.id)
     }
+    /// Rename / move a standalone countdown (events/birthdays are edited at their source).
+    func update(_ c: WaffledAPI.Countdown, title: String, date: String, emoji: String?) async {
+        guard c.isStandalone else { return }
+        try? await api.updateCountdown(id: c.id, title: title, date: date, emoji: emoji)
+        await load()
+    }
 }
 
 // MARK: - Today card
@@ -67,6 +73,7 @@ final class CountdownsModel {
 struct CountdownsCard: View {
     @State private var model = CountdownsModel()
     @State private var adding = false
+    @State private var editing: WaffledAPI.Countdown?
     private let cap = 6
 
     var body: some View {
@@ -99,6 +106,11 @@ struct CountdownsCard: View {
         .sheet(isPresented: $adding) {
             AddCountdownSheet { title, date, emoji in await model.add(title: title, date: date, emoji: emoji) }
         }
+        .sheet(item: $editing) { c in
+            EditCountdownSheet(countdown: c,
+                onSave: { title, date, emoji in await model.update(c, title: title, date: date, emoji: emoji) },
+                onRemove: { await model.remove(c) })
+        }
     }
 
     private func row(_ c: WaffledAPI.Countdown) -> some View {
@@ -122,6 +134,10 @@ struct CountdownsCard: View {
                 }.buttonStyle(.plain)
             }
         }
+        // Tap a standalone row to rename/move it; the × still removes. Events/birthdays
+        // aren't editable here (managed at their source), so their rows don't tap.
+        .contentShape(Rectangle())
+        .onTapGesture { if c.isStandalone { editing = c } }
     }
 }
 
@@ -184,5 +200,92 @@ struct AddCountdownSheet: View {
         let t = title.trimmingCharacters(in: .whitespaces)
         let e = emoji.trimmingCharacters(in: .whitespaces)
         Task { await onAdd(t, CountdownFormat.ymd(date), e.isEmpty ? nil : e); dismiss() }
+    }
+}
+
+// MARK: - Edit sheet (standalone only)
+
+/// Rename / move / remove a standalone countdown — the parity for the web calendar's
+/// countdown editor. Seeded from the tapped countdown; Save calls `updateCountdown`,
+/// Remove calls `deleteCountdown`.
+struct EditCountdownSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let countdown: WaffledAPI.Countdown
+    let onSave: (_ title: String, _ date: String, _ emoji: String?) async -> Void
+    let onRemove: () async -> Void
+
+    @State private var title: String
+    @State private var date: Date
+    @State private var emoji: String
+    @State private var busy = false
+
+    init(countdown: WaffledAPI.Countdown,
+         onSave: @escaping (_ title: String, _ date: String, _ emoji: String?) async -> Void,
+         onRemove: @escaping () async -> Void) {
+        self.countdown = countdown
+        self.onSave = onSave
+        self.onRemove = onRemove
+        _title = State(initialValue: countdown.title)
+        _date = State(initialValue: CountdownFormat.date(countdown.date) ?? Date())
+        _emoji = State(initialValue: countdown.emoji ?? "")
+    }
+
+    private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    field("What are you counting down to?") {
+                        TextField("e.g. Beach trip", text: $title).textInputAutocapitalization(.sentences)
+                    }
+                    HStack(spacing: 12) {
+                        field("Emoji") { TextField("🏖️", text: $emoji).onChange(of: emoji) { _, v in emoji = String(v.prefix(2)) } }
+                            .frame(width: 96)
+                        VStack(alignment: .leading, spacing: 9) {
+                            SectionLabel(text: "Date")
+                            DatePicker("", selection: $date, displayedComponents: .date)
+                                .labelsHidden().datePickerStyle(.compact).tint(WF.primary)
+                        }
+                    }
+                    Button(role: .destructive) {
+                        busy = true
+                        Task { await onRemove(); dismiss() }
+                    } label: {
+                        HStack { Image(systemName: "trash"); Text("Remove countdown") }
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .disabled(busy)
+                    .padding(.top, 4)
+                }
+                .padding(20)
+            }
+            .background(WF.canvas)
+            .navigationTitle("Edit countdown").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(busy ? "Saving…" : "Save") { save() }.fontWeight(.semibold).disabled(!canSave || busy)
+                }
+            }
+        }
+        .presentationDetents([.height(360), .medium])
+    }
+
+    private func field<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            SectionLabel(text: label)
+            content()
+                .font(.system(size: 16, weight: .semibold))
+                .padding(.horizontal, 15).padding(.vertical, 13)
+                .frame(maxWidth: .infinity, alignment: .leading).wfField()
+        }
+    }
+
+    private func save() {
+        busy = true
+        let t = title.trimmingCharacters(in: .whitespaces)
+        let e = emoji.trimmingCharacters(in: .whitespaces)
+        Task { await onSave(t, CountdownFormat.ymd(date), e.isEmpty ? nil : e); dismiss() }
     }
 }
