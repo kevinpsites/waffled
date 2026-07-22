@@ -59,6 +59,8 @@ struct PersonView: View {
     @State private var showSavingPicker = false
     @State private var showTrade = false
     @State private var showAward = false
+    @State private var waffledBiteDevice: WaffledAPI.WaffledBiteDevice?
+    @State private var showWaffledBitePair = false
     // Collapse state for the iPad spotlight's grouped sections.
     @State private var dayOpen = true
     @State private var goalsOpen = true
@@ -224,7 +226,7 @@ struct PersonView: View {
 
     // MARK: header
 
-    private var header: some View {
+    @ViewBuilder private var header: some View {
         HStack(spacing: 14) {
             Avatar(colorHex: person?.colorHex, emoji: person?.avatarEmoji ?? "🙂", size: 56)
             VStack(alignment: .leading, spacing: 2) {
@@ -242,6 +244,36 @@ struct PersonView: View {
                         }
                     }
                 }
+            }
+        }
+        if sync.module(.waffledBites) { waffledBiteChip }
+    }
+
+    /// Pairs a Waffled-Bite, or opens its control panel once paired — mirrors the web's
+    /// `WaffledBiteChip` (a pill next to the name, not a whole card). Gated purely on the
+    /// household module flag, same as web — no per-person kid/adult check exists there
+    /// either, so this shows identically on every person's page.
+    private var waffledBiteChip: some View {
+        Button {
+            if waffledBiteDevice != nil {
+                path.append(.waffledBites(personId: personId, personName: firstName))
+            } else {
+                showWaffledBitePair = true
+            }
+        } label: {
+            Text(waffledBiteDevice != nil ? "🧇 Open Waffled-Bite controls" : "🧇 Pair a Waffled-Bite")
+                .font(.system(size: 12, weight: .semibold))
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(WF.panel)
+                .foregroundStyle(WF.ink2)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .task { waffledBiteDevice = try? await WaffledAPI().waffledBiteDevice(personId: personId) }
+        .sheet(isPresented: $showWaffledBitePair) {
+            WaffledBitePairSheet(personId: personId, personName: firstName) {
+                showWaffledBitePair = false
+                Task { waffledBiteDevice = try? await WaffledAPI().waffledBiteDevice(personId: personId) }
             }
         }
     }

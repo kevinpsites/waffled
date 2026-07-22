@@ -144,16 +144,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 - **Waffled-Bites (kid companion device)** — the pairing system and the parent-facing
   control panel (Family → tap a kid → Waffled-Bite: quiet time, night light, wake-up
-  light schedule, alarm, sound machine, screen brightness) are done — new
-  optional `waffledBites` module, `waffled_bite_devices`/`waffled_bite_pairing_codes`
-  tables, device polls `GET /api/waffled-bites/device/state` (no WebSockets). The
-  on-device firmware (ESP32-P4 + LVGL 9.2, `apps/waffled-bite-firmware`) is also
-  feature-complete — every screen (home, routines, quiet time, timer, bedtime,
-  wake-light lock, settings, pairing, forget-device) is wired to the real API. **Pending:**
-  real-hardware bring-up — the target board (ELECROW CrowPanel Advanced 7") has never
-  been in hand, so the firmware has only run in a desktop simulator (SDL) against the
-  live backend; WiFi provisioning is also still hardcoded credentials, no UI yet. The
-  iOS control panel hasn't started — web ships first, iOS is coming soon as a fast-follow.
+  light schedule, alarm, sound machine, screen brightness) are done on **web and iOS**
+  (iPhone + iPad) — new optional `waffledBites` module, `waffled_bite_devices`/
+  `waffled_bite_pairing_codes` tables, device polls `GET /api/waffled-bites/device/state`
+  (no WebSockets). The on-device firmware (ESP32-P4 + LVGL 9.2,
+  `apps/waffled-bite-firmware`) is also feature-complete — every screen (home, routines,
+  quiet time, timer, bedtime, wake-light lock, settings, pairing, forget-device) is wired
+  to the real API. **Pending:** real-hardware bring-up — the target board (ELECROW
+  CrowPanel Advanced 7") has never been in hand, so the firmware has only run in a
+  desktop simulator (SDL) against the live backend; WiFi provisioning is also still
+  hardcoded credentials, no UI yet.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
   are REST + live-refresh bus.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend

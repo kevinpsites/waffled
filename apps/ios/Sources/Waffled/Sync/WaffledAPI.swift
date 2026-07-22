@@ -1796,6 +1796,141 @@ struct WaffledAPI: Sendable {
         return try await URLSession.shared.data(for: retry)
     }
 
+    // MARK: - Waffled-Bites (kid device pairing + parent controls)
+    //
+    // ⚠️ KEEP IN SYNC with `apps/web/src/lib/api/waffledBites.ts` and the server routes
+    // in `apps/api/src/modules/waffledBites/waffledBites.ts` — endpoints and body shapes
+    // must match. The server does NOT validate `settings` patches (a real deep-merge,
+    // no allowlist) — client-side defaults/clamps below mirror the web app's own
+    // discipline, not a server contract.
+
+    struct WaffledBiteDevice: Decodable, Sendable {
+        let id: String
+        let label: String
+        let settings: WaffledBiteSettings
+        let runtimeState: RuntimeState
+        let lastSeenAt: String?
+        let createdAt: String
+
+        struct RuntimeState: Decodable, Sendable {
+            let quiet: Countdown
+            let timer: Countdown
+            let wakeLight: WakeLight
+        }
+        /// Always fully populated by the server (computed fresh from stored timestamps
+        /// on every read) — never partial, unlike `settings`' sub-objects.
+        struct Countdown: Decodable, Sendable {
+            let active: Bool
+            let running: Bool
+            let remainingSec: Int
+            let durationSec: Int
+        }
+        /// Server-computed wake-light state — render it, don't recompute it client-side.
+        struct WakeLight: Decodable, Sendable {
+            let state: String   // "none" | "sleep" | "warn" | "wake"
+            let wakeAtHour: Int?     // present only when state != "none"
+            let wakeAtMinute: Int?
+        }
+    }
+
+    /// A fresh pairing leaves `settings == {}` server-side, so every top-level key here
+    /// is genuinely absent, not just optional in principle — apply `.withDefaults()`
+    /// (below) after decoding before showing this in the UI.
+    struct WaffledBiteSettings: Decodable, Sendable {
+        let night: Night?
+        let sound: Sound?
+        let alarm: Alarm?
+        let schedules: [Schedule]?
+        let display: Display?
+
+        // `color`/`sound`/`tone` are free-form strings server-side — the option lists
+        // below (WB_NIGHT_COLORS etc.) are a UI-only convention, not a server enum.
+        // `var` (not `let`): `Schedule` in particular needs in-place editing while a
+        // parent edits a wake-light row, before the whole array round-trips in one PATCH.
+        struct Night: Decodable, Sendable { var on: Bool; var color: String; var brightness: Int }
+        struct Sound: Decodable, Sendable { var on: Bool; var sound: String; var volume: Int; var timerMin: Int }
+        struct Alarm: Decodable, Sendable { var on: Bool; var hour: Int; var min: Int; var tone: String }
+        struct Display: Decodable, Sendable { var brightness: Int; var nightDim: Bool }
+        // Not `Identifiable` — edited in place by array index (`schedules.indices`), since
+        // a content-derived id would change identity mid-edit (e.g. every keystroke on a
+        // time field), confusing SwiftUI's ForEach diffing.
+        struct Schedule: Decodable, Sendable, Hashable {
+            var days: [Int]       // 0=Sun..6=Sat
+            var wakeMin: Int      // minutes since midnight, light turns green
+            var leadMin: Int      // minutes before wakeMin, light turns yellow
+            var bedtimeMin: Int?  // optional — minutes since midnight the night before wakeMin
+        }
+    }
+
+    struct WaffledBitePairingCode: Decodable, Sendable {
+        let code: String
+        let personId: String
+        let expiresAt: String
+    }
+
+    /// This kid's paired device + live state, or `nil` if none is paired yet.
+    func waffledBiteDevice(personId: String) async throws -> WaffledBiteDevice? {
+        struct Resp: Decodable { let device: WaffledBiteDevice? }
+        return try await getJSON("/api/persons/\(personId)/waffled-bite", as: Resp.self).device
+    }
+
+    /// Mint a one-time pairing code for this kid's Waffled-Bite (admins, ~10-min TTL,
+    /// same as kiosk pairing). No client-side expiry handling — polling for the device
+    /// simply never succeeds if the code lapses unclaimed, matching the web app.
+    func mintWaffledBitePairingCode(personId: String, label: String?) async throws -> WaffledBitePairingCode {
+        var body: [String: JSONValue] = [:]
+        if let label, !label.isEmpty { body["label"] = .string(label) }
+        return try await sendReturning("POST", "/api/persons/\(personId)/waffled-bite/pairing-code", body: body, as: WaffledBitePairingCode.self)
+    }
+
+    /// Unpair (revoke) a Waffled-Bite device (admins).
+    func unpairWaffledBite(deviceId: String) async throws {
+        try await delete("/api/waffled-bites/\(deviceId)")
+    }
+
+    /// Patch a partial slice of settings (e.g. `["night": .object([...])]`) — the server
+    /// deep-merges it into the stored object, so this never needs the full settings blob.
+    @discardableResult
+    func updateWaffledBiteSettings(deviceId: String, patch: [String: JSONValue]) async throws -> WaffledBiteSettings {
+        struct Resp: Decodable { let settings: WaffledBiteSettings }
+        return try await sendReturning("PATCH", "/api/waffled-bites/\(deviceId)/settings", body: patch, as: Resp.self).settings
+    }
+
+    // Quiet time — server clamps `start`'s duration to [60, 5400]s regardless of what's sent.
+    func waffledBiteQuietStart(deviceId: String, durationSec: Int) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/start", body: ["durationSec": .int(durationSec)])
+    }
+    func waffledBiteQuietPause(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/pause", body: [:])
+    }
+    func waffledBiteQuietResume(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/resume", body: [:])
+    }
+    func waffledBiteQuietAddTime(deviceId: String, seconds: Int = 300) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/add-time", body: ["seconds": .int(seconds)])
+    }
+    func waffledBiteQuietEnd(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/end", body: [:])
+    }
+
+    // Occasional timer — same shape/semantics as quiet time (default start duration differs
+    // server-side: 5min vs quiet's 15min — both are just defaults for an omitted durationSec).
+    func waffledBiteTimerStart(deviceId: String, durationSec: Int) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/start", body: ["durationSec": .int(durationSec)])
+    }
+    func waffledBiteTimerPause(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/pause", body: [:])
+    }
+    func waffledBiteTimerResume(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/resume", body: [:])
+    }
+    func waffledBiteTimerAddTime(deviceId: String, seconds: Int = 300) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/add-time", body: ["seconds": .int(seconds)])
+    }
+    func waffledBiteTimerEnd(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/end", body: [:])
+    }
+
     // MARK: - Rewards
 
     /// One reward in the household catalog — costs `cost` of `currency`.
