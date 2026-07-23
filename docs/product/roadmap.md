@@ -167,6 +167,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
+- **List sharing.** Let a household invite specific people to a list, choose whether
+  they can view or edit it, and revoke access later.
+
 - **Recurring-edit scope — give chores the calendar's model, and close two calendar gaps.**
   Calendar events already ship the full **this event / this-and-following / all events** picker
   (per-occurrence `event_overrides`, a new master via a series split for "following", `exdate`

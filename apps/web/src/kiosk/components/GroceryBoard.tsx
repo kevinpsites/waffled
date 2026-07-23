@@ -206,10 +206,6 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={onBack}>‹ Lists</button>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
-          <button className="pill" style={{ cursor: 'pointer' }} title="Coming soon">⬆ Send to phone</button>
-          <button className="pill" style={{ cursor: 'pointer' }} title="Coming soon">🛒 Order online</button>
-        </div>
       </div>
     ),
     [onBack]

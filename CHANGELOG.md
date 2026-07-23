@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Unfinished web actions no longer look usable.** Grocery export and online-order
+  buttons, list sharing, plus empty Lists and Notifications settings destinations,
+  stay hidden until they have working behavior.
 - **Backup limitations are now called out after startup and in `./waffled doctor`.**
   Operators are warned when uploaded media is excluded or all backup copies remain
   on the Waffled host, with a direct link to the verification guide.
