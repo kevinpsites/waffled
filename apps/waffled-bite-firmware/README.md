@@ -25,9 +25,11 @@ computed a live wake-light state from a real schedule + household timezone, all 
 demo household's kid — see git history). `esp32-p4` has been bring-up tested on the
 real board, including an on-device WiFi-provisioning UI (`ui/wifi_screen.cpp` +
 `ui/onboarding_screen.cpp` — scan, pick a network, enter a password on the built-in
-keyboard, no build-time credentials) and dozens of real-hardware reboot tests
-confirming the on-board ESP32-C6 WiFi link connects reliably — see "What's not done"
-below for the remaining rough edges.
+keyboard, no build-time credentials, plus a "Change Wi-Fi network" option on the
+onboarding screen to re-open the picker if the wrong network was picked or the
+device moves) and dozens of real-hardware reboot tests confirming the on-board
+ESP32-C6 WiFi link connects reliably — see "What's not done" below for the
+remaining rough edges.
 
 ## Two environments, one app
 
@@ -296,10 +298,33 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   ([esphome/esphome#14313](https://github.com/esphome/esphome/issues/14313)) hasn't
   been specifically ruled out (reboot tests run in the tens-of-seconds-per-boot
   range, not tens of minutes of continuous uptime).
+  A follow-up bring-up pass found a second, separate SDIO issue: sitting idle on the
+  onboarding screen (WiFi already connected) for ~13s could hit a transient
+  `H_SDIO_DRV: failed to read registers` error that `esp_hosted` (by default)
+  treats as fatal — an unconditional full device reboot, looping forever once
+  triggered. Fixed by setting `CONFIG_ESP_HOSTED_TRANSPORT_RESTART_ON_FAILURE=n`
+  (see `sdkconfig.defaults`), which makes this the same non-fatal retry every other
+  transient SDIO error in that driver already gets, instead of a reboot.
+  **Important gotcha for whoever debugs this next:** the P4 host can be reset two
+  ways that are NOT equivalent — a soft/RTS-pin reset (what `pio run -t upload`
+  does automatically, and what most serial-monitor tools use to "restart" the
+  board) versus a real power cycle (unplug/replug). Repeated soft resets during
+  this investigation left the on-board ESP32-C6 WiFi co-processor in a stale state
+  that a fresh P4 boot couldn't talk to — WiFi failed to initialize every time,
+  100% reproducible, looking exactly like a firmware bug. A genuine power cycle
+  connected cleanly and quickly (~6s) every time. If WiFi ever appears to fail
+  hard during bench testing (not on a real, freshly-plugged-in device), power-cycle
+  before assuming it's a regression.
 - **`esp32-p4` display/touch: bring-up tested, but not exhaustively.** LovyanGFX's
-  `Bus_DSI`/`Panel_EK79007` does drive this panel; touch, keyboard, and tap-target
-  fixes from real-hardware bring-up are in `main.cpp`/`ui/wifi_screen.cpp`/
-  `ui/onboarding_screen.cpp`. The DSI PHY LDO channel question (Elecrow's own config
+  `Bus_DSI`/`Panel_EK79007` does drive this panel. Real-hardware bring-up found
+  touch was mirrored on the X axis (`main.cpp`'s `touchpad_read` — the GT911's
+  `ROTATION_NORMAL` flips both axes internally and only the Y half was being
+  undone; wide tap targets like list rows masked it, the on-screen keyboard's
+  narrow side-by-side keys exposed it), and two onboarding-screen UX gaps: no
+  visible way to dismiss the keyboard (only tapping elsewhere closed it — not
+  discoverable) and the pairing-code field ending up hidden behind the keyboard
+  once it popped up (`ui/onboarding_screen.cpp`'s flex alignment was centered,
+  now top-started). The DSI PHY LDO channel question (Elecrow's own config
   disables it; LovyanGFX's `Bus_DSI` has no "disabled" value) hasn't specifically
   been revisited since it didn't block bring-up in practice.
 - **Backlight is on/off, not dimmable** — the arduino-esp32 LEDC PWM API differs

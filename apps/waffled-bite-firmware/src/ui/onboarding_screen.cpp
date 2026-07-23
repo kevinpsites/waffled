@@ -23,6 +23,45 @@ struct WbOnboardingCtx
   WbPairedCallback onPaired;
 };
 
+// Bundles just what the "Change Wi-Fi network" chip needs — a separate,
+// smaller struct so its context doesn't have to wait on WbOnboardingCtx (or
+// vice versa) to exist first.
+struct WbChangeWifiCtx
+{
+  WbChangeWifiCallback onChangeWifi;
+};
+
+static void wb_change_wifi_clicked_cb(lv_event_t *e)
+{
+  WbChangeWifiCtx *ctx = (WbChangeWifiCtx *)lv_event_get_user_data(e);
+  ctx->onChangeWifi();
+}
+
+// Bundles what the keyboard's focus/defocus/"Hide" handlers need — a
+// separate, smaller struct than WbOnboardingCtx since it's created before the
+// pair button (and therefore before WbOnboardingCtx exists). hide_chip is a
+// small "⌄ Hide keyboard" button, pinned to a fixed spot near the top of the
+// screen (not near the keyboard itself, so it can't overlap real keys) and
+// shown/hidden in lockstep with the keyboard — with no visible dismiss
+// control, real-hardware bring-up found the only way to close the keyboard
+// was tapping elsewhere, which isn't discoverable.
+struct WbKeyboardCtx
+{
+  lv_obj_t *kb;
+  lv_obj_t *hide_chip;
+  lv_obj_t *server_ta;
+  lv_obj_t *code_ta;
+};
+
+static void wb_hide_keyboard_cb(lv_event_t *e)
+{
+  WbKeyboardCtx *kbCtx = (WbKeyboardCtx *)lv_event_get_user_data(e);
+  lv_obj_clear_state(kbCtx->server_ta, LV_STATE_FOCUSED);
+  lv_obj_clear_state(kbCtx->code_ta, LV_STATE_FOCUSED);
+  lv_obj_add_flag(kbCtx->kb, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(kbCtx->hide_chip, LV_OBJ_FLAG_HIDDEN);
+}
+
 static lv_obj_t *make_field_label(lv_obj_t *parent, const char *text)
 {
   lv_obj_t *lbl = lv_label_create(parent);
@@ -30,6 +69,28 @@ static lv_obj_t *make_field_label(lv_obj_t *parent, const char *text)
   lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(lbl, WB_COLOR_MUTED, 0);
   return lbl;
+}
+
+// A small tappable pill — same pattern as wifi_screen.cpp's make_tap_chip
+// (duplicated rather than shared, same rationale as the palette macros
+// above): a real touch-target size and visible press feedback, versus a
+// plain clickable label's tiny hit-box matching only its rendered glyphs.
+static lv_obj_t *make_tap_chip(lv_obj_t *parent, const char *text, lv_color_t text_color)
+{
+  lv_obj_t *chip = lv_obj_create(parent);
+  lv_obj_remove_style_all(chip);
+  lv_obj_set_size(chip, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_color(chip, WB_COLOR_CARD, 0);
+  lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(chip, 14, 0);
+  lv_obj_set_style_pad_hor(chip, 16, 0);
+  lv_obj_set_style_pad_ver(chip, 10, 0);
+  lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *lbl = lv_label_create(chip);
+  lv_label_set_text(lbl, text);
+  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(lbl, text_color, 0);
+  return chip;
 }
 
 static lv_obj_t *make_textarea(lv_obj_t *parent)
@@ -48,19 +109,20 @@ static lv_obj_t *make_textarea(lv_obj_t *parent)
 
 // Shared LV_EVENT_FOCUSED handler for both textareas: attaches the on-screen
 // keyboard (created once, hidden by default) to whichever field was tapped.
-// The keyboard object is stashed as this event's user_data.
 static void wb_ta_focused_cb(lv_event_t *e)
 {
   lv_obj_t *ta = (lv_obj_t *)lv_event_get_target(e);
-  lv_obj_t *kb = (lv_obj_t *)lv_event_get_user_data(e);
-  lv_keyboard_set_textarea(kb, ta);
-  lv_obj_clear_flag(kb, LV_OBJ_FLAG_HIDDEN);
+  WbKeyboardCtx *kbCtx = (WbKeyboardCtx *)lv_event_get_user_data(e);
+  lv_keyboard_set_textarea(kbCtx->kb, ta);
+  lv_obj_clear_flag(kbCtx->kb, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(kbCtx->hide_chip, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void wb_ta_defocused_cb(lv_event_t *e)
 {
-  lv_obj_t *kb = (lv_obj_t *)lv_event_get_user_data(e);
-  lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+  WbKeyboardCtx *kbCtx = (WbKeyboardCtx *)lv_event_get_user_data(e);
+  lv_obj_add_flag(kbCtx->kb, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(kbCtx->hide_chip, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void wb_show_error(lv_obj_t *error_lbl, const char *message)
@@ -117,11 +179,16 @@ static void wb_pair_clicked_cb(lv_event_t *e)
   wb_show_error(ctx->error_lbl, serverMessage);
 }
 
-void wb_build_onboarding_screen(lv_obj_t *parent, const char *defaultServerUrl, WbPairedCallback onPaired)
+void wb_build_onboarding_screen(lv_obj_t *parent, const char *defaultServerUrl, WbPairedCallback onPaired, WbChangeWifiCallback onChangeWifi)
 {
   lv_obj_set_style_bg_color(parent, WB_COLOR_BG, 0);
   lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  // Vertical alignment is START, not CENTER: this card has two text fields
+  // (server address + pairing code), tall enough that centering it put the
+  // pairing-code field low enough to end up behind the on-screen keyboard
+  // once it popped up (confirmed on real hardware) — starting from the top
+  // leaves enough headroom above the keyboard's dock area for both fields.
+  lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_all(parent, 24, 0);
   lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -140,7 +207,15 @@ void wb_build_onboarding_screen(lv_obj_t *parent, const char *defaultServerUrl, 
   lv_label_set_text(title, "Set up your Waffled-Bite");
   lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
   lv_obj_set_style_text_color(title, WB_COLOR_INK, 0);
-  lv_obj_set_style_pad_bottom(title, 10, 0);
+  lv_obj_set_style_pad_bottom(title, 4, 0);
+
+  // Once WiFi is saved, this screen was the only way forward — a kid/parent
+  // who picked the wrong network (or moved the device to a new one) had no
+  // way back to the WiFi picker short of a factory reset. This chip re-opens
+  // it; main.cpp's onChangeWifi rebuilds wifi_scr fresh (same "rebuilt each
+  // time it's entered" pattern as tasks_scr/detail_scr/forget_scr).
+  lv_obj_t *change_wifi_chip = make_tap_chip(card, "Wrong network? Change Wi-Fi", WB_COLOR_GOLD);
+  lv_obj_set_style_pad_bottom(change_wifi_chip, 10, 0);
 
   make_field_label(card, "Server address");
   lv_obj_t *server_ta = make_textarea(card);
@@ -192,10 +267,28 @@ void wb_build_onboarding_screen(lv_obj_t *parent, const char *defaultServerUrl, 
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
   lv_keyboard_set_textarea(kb, server_ta);
 
-  lv_obj_add_event_cb(server_ta, wb_ta_focused_cb, LV_EVENT_FOCUSED, kb);
-  lv_obj_add_event_cb(server_ta, wb_ta_defocused_cb, LV_EVENT_DEFOCUSED, kb);
-  lv_obj_add_event_cb(code_ta, wb_ta_focused_cb, LV_EVENT_FOCUSED, kb);
-  lv_obj_add_event_cb(code_ta, wb_ta_defocused_cb, LV_EVENT_DEFOCUSED, kb);
+  // A visible way to dismiss the keyboard — pinned to the top-right of the
+  // whole screen (not near the keyboard itself, so it can never overlap a
+  // real key), shown only while the keyboard is. FLOATING for the same
+  // reason as `kb` above (excluded from `parent`'s flex layout).
+  lv_obj_t *hide_kb_chip = make_tap_chip(parent, LV_SYMBOL_DOWN " Hide keyboard", WB_COLOR_MUTED);
+  lv_obj_add_flag(hide_kb_chip, LV_OBJ_FLAG_FLOATING);
+  lv_obj_add_flag(hide_kb_chip, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_align(hide_kb_chip, LV_ALIGN_TOP_RIGHT, -12, 12);
+
+  // Heap-allocated and intentionally never freed — same lifetime rationale as
+  // WbOnboardingCtx below.
+  WbKeyboardCtx *kbCtx = new WbKeyboardCtx{kb, hide_kb_chip, server_ta, code_ta};
+  lv_obj_add_event_cb(hide_kb_chip, wb_hide_keyboard_cb, LV_EVENT_CLICKED, kbCtx);
+  lv_obj_add_event_cb(server_ta, wb_ta_focused_cb, LV_EVENT_FOCUSED, kbCtx);
+  lv_obj_add_event_cb(server_ta, wb_ta_defocused_cb, LV_EVENT_DEFOCUSED, kbCtx);
+  lv_obj_add_event_cb(code_ta, wb_ta_focused_cb, LV_EVENT_FOCUSED, kbCtx);
+  lv_obj_add_event_cb(code_ta, wb_ta_defocused_cb, LV_EVENT_DEFOCUSED, kbCtx);
+
+  // Heap-allocated and intentionally never freed — same lifetime rationale as
+  // WbOnboardingCtx below.
+  WbChangeWifiCtx *wifiCtx = new WbChangeWifiCtx{onChangeWifi};
+  lv_obj_add_event_cb(change_wifi_chip, wb_change_wifi_clicked_cb, LV_EVENT_CLICKED, wifiCtx);
 
   // Heap-allocated and intentionally never freed: this context must outlive
   // the button's event callback for the lifetime of the screen, and the

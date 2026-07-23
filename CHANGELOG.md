@@ -39,7 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Waffled-Bite device: set up WiFi right on the screen.** Connecting a new device to
   your home network no longer requires flashing it with hardcoded credentials — it now
   scans for nearby networks, lets you pick one and enter the password on the device's
-  own keyboard, right during first-time setup.
+  own keyboard, right during first-time setup. If you pick the wrong network (or move
+  the device to a new one), a "Change Wi-Fi network" option on the setup screen takes
+  you back to the picker — no reflash needed.
 
 ### Changed
 
@@ -54,7 +56,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Waffled-Bite device: WiFi now connects reliably.** The device's WiFi chip could
   crash-loop unpredictably on boot. Fixed by changing how the firmware is built (the
   underlying networking software is now compiled fresh instead of using a flaky
-  pre-packaged version) — verified across 30+ real-device reboots with no failures.
+  pre-packaged version) and disabling an overly aggressive failure-recovery setting that
+  rebooted the whole device over a single transient WiFi hiccup — verified across 30+
+  real-device reboots with no failures.
+- **Waffled-Bite device: touchscreen input was mirrored left-right.** Most taps landed
+  fine, but the on-screen keyboard's narrow, side-by-side keys made it obvious — tapping
+  a key hit its mirror on the opposite side. Also added a visible way to dismiss the
+  keyboard (there was none before — the only way was tapping elsewhere), and fixed the
+  pairing-code field being hidden behind the keyboard once it popped up.
 
 ## [0.11.0] - 2026-07-22
 

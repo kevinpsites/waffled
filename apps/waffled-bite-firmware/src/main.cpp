@@ -191,6 +191,7 @@ static void wb_mark_poll_ok()
 }
 
 static void wb_show_onboarding();
+static void wb_show_wifi_picker();
 static void wb_enter_app();
 
 // Clears the local pairing and falls back to onboarding. Does NOT itself
@@ -668,7 +669,7 @@ static void wb_show_onboarding()
 {
   if (!onboarding_built)
   {
-    wb_build_onboarding_screen(onboarding_scr, g_serverUrl.empty() ? WB_API_BASE_URL : g_serverUrl.c_str(), wb_on_paired);
+    wb_build_onboarding_screen(onboarding_scr, g_serverUrl.empty() ? WB_API_BASE_URL : g_serverUrl.c_str(), wb_on_paired, wb_show_wifi_picker);
     onboarding_built = true;
   }
   lv_scr_load(onboarding_scr);
@@ -688,6 +689,20 @@ static void wb_on_wifi_connected(const std::string &ssid, const std::string &pas
     wb_show_onboarding();
   else
     wb_enter_app();
+}
+
+// Re-opens the WiFi picker from the onboarding screen's "Change Wi-Fi
+// network" chip — the only way back to it once a network's already saved,
+// otherwise a wrong/moved network left onboarding permanently unreachable.
+// Rebuilt fresh on every tap (same pattern as tasks_scr/detail_scr/
+// forget_scr — see their declarations above) rather than built once at boot,
+// so it doesn't kick off an extra WiFi scan on every boot that already has
+// working WiFi.
+static void wb_show_wifi_picker()
+{
+  lv_obj_clean(wifi_scr);
+  wb_build_wifi_screen(wifi_scr, wb_on_wifi_connected);
+  lv_scr_load(wifi_scr);
 }
 
 void setup()
@@ -820,8 +835,7 @@ void setup()
   switch (wb_boot_next(!savedWifiSsid.empty(), wifiConnected, !g_deviceSecret.empty()))
   {
   case WbBootNext::ShowWifiPicker:
-    wb_build_wifi_screen(wifi_scr, wb_on_wifi_connected);
-    lv_scr_load(wifi_scr);
+    wb_show_wifi_picker();
     break;
   case WbBootNext::ShowOnboarding:
     wb_show_onboarding();

@@ -32,7 +32,7 @@ The parent control panel is available on web, iPhone, and iPad — pair once fro
 
 ## How pairing works
 
-1. Turn the Waffled-Bite device on and connect it to Wi-Fi — the device scans for nearby networks and lets you pick one and enter the password right on its own screen.
+1. Turn the Waffled-Bite device on and connect it to Wi-Fi — the device scans for nearby networks and lets you pick one and enter the password right on its own screen. Picked the wrong network, or moving the device somewhere new? A "Change Wi-Fi network" option on the next screen takes you back to the picker — no reflash needed.
 2. On web, iPhone, or iPad, open **Family → the kid → Waffled-Bite → Pair a Waffled-Bite**. This mints a short, one-time code (10-minute window).
 3. Enter the code on the device. Once it claims the code, the control panel appears automatically — no refresh needed.
 
