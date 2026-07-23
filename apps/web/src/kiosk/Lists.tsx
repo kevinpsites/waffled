@@ -223,22 +223,16 @@ function groupBySection(items: ListItem[]): Array<{ title: string; key: string; 
   return order.map((key) => ({ key, title: key === '__other__' ? 'Items' : key, items: map.get(key)! }))
 }
 
-// Balance the sections across two columns by running item count (mirrors the
-// mock's left/right split: Clothes+Kids | Gear).
+// Assign sections to two columns by their position in the section order (even
+// index → left, odd → right). Deliberately NOT balanced by item count: a running-
+// count split reflows every time an item is checked off (its section's count
+// changes), so sections visibly jump between columns. Index parity keeps each
+// section anchored to its column regardless of how many items it has — it only
+// shifts if a section empties out of the list entirely.
 function splitColumns(sections: ReturnType<typeof groupBySection>) {
   const left: typeof sections = []
   const right: typeof sections = []
-  let lc = 0
-  let rc = 0
-  for (const s of sections) {
-    if (lc <= rc) {
-      left.push(s)
-      lc += s.items.length + 1
-    } else {
-      right.push(s)
-      rc += s.items.length + 1
-    }
-  }
+  sections.forEach((s, i) => (i % 2 === 0 ? left : right).push(s))
   return [left, right] as const
 }
 
