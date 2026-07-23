@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine, morning alarm, an occasional timer, and screen brightness — was web-only
   until now; it's a full port, reached the same way as web (Family → tap the kid →
   Waffled-Bite), including pairing a new device from your phone or tablet.
+- **Waffled-Bite device: set up WiFi right on the screen.** Connecting a new device to
+  your home network no longer requires flashing it with hardcoded credentials — it now
+  scans for nearby networks, lets you pick one and enter the password on the device's
+  own keyboard, right during first-time setup.
 
 ### Changed
 
@@ -47,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   time does, while staying exitable (its Home button still works, unlike quiet time's
   on-device lock). Also, quiet-time and timer countdowns over an hour now show as
   `H:MM:SS` instead of raw minutes (e.g. `1:05:00`, not `65:00`).
+- **Waffled-Bite device: WiFi now connects reliably.** The device's WiFi chip could
+  crash-loop unpredictably on boot. Fixed by changing how the firmware is built (the
+  underlying networking software is now compiled fresh instead of using a flaky
+  pre-packaged version) — verified across 30+ real-device reboots with no failures.
 
 ## [0.11.0] - 2026-07-22
 

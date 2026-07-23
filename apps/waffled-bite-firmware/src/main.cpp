@@ -72,7 +72,16 @@ static void touchpad_read(lv_indev_t * /*indev*/, lv_indev_data_t *data)
   {
     data->state = LV_INDEV_STATE_PR;
     data->point.x = ts.points[0].x;
-    data->point.y = ts.points[0].y;
+    // TAMC_GT911's ROTATION_NORMAL (set in setup(), below) flips BOTH axes
+    // (y = height - y_raw internally) — confirmed correct for X (tap
+    // targeting on this board lines up), but it makes vertical drags feel
+    // backwards versus every phone/tablet's "content follows your finger"
+    // convention (confirmed on real hardware during WiFi-picker bring-up:
+    // swiping up scrolled the list down). Undo just the Y half of that flip
+    // here rather than picking a different TAMC_GT911 rotation constant —
+    // none of its four presets express "flip Y only, leave X" (they're all
+    // symmetric: both axes flipped, neither, or a 90° swap).
+    data->point.y = 600 - ts.points[0].y;
   }
   else
   {

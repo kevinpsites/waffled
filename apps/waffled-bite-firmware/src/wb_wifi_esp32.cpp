@@ -1,8 +1,8 @@
 // ESP32-P4/Arduino backend for wb_wifi.h — WiFi.h's async scan
 // (WiFi.scanNetworks(true)) and STA connect, polled rather than blocking so
 // the LVGL/touch pipeline (lv_timer_handler) never freezes during either.
-// UNVERIFIED on real hardware — see the firmware README's WiFi caveats
-// (esp-hosted SDIO link to the on-board ESP32-C6).
+// Verified reliably on real hardware once built via the espidf+arduino
+// hybrid framework — see platformio.ini's esp32-p4 env comment.
 #include "wb_wifi.h"
 #include "wb_tick_hal.h"
 #include <WiFi.h>

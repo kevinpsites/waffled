@@ -154,10 +154,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   (no WebSockets). The on-device firmware (ESP32-P4 + LVGL 9.2,
   `apps/waffled-bite-firmware`) is also feature-complete — every screen (home, routines,
   quiet time, timer, bedtime, wake-light lock, settings, pairing, forget-device) is wired
-  to the real API. **Pending:** real-hardware bring-up — the target board (ELECROW
-  CrowPanel Advanced 7") has never been in hand, so the firmware has only run in a
-  desktop simulator (SDL) against the live backend; WiFi provisioning is also still
-  hardcoded credentials, no UI yet.
+  to the real API. Real-hardware bring-up on the target board (ELECROW CrowPanel
+  Advanced 7") is underway, including an on-device WiFi-provisioning UI (scan, pick a
+  network, enter the password on the built-in keyboard — no more hardcoded
+  credentials) and a fix for an intermittent WiFi-chip crash-loop found during
+  bring-up. **Pending:** OTA updates, TLS certificate validation for `https://` server
+  addresses, and custom icon assets — see `apps/waffled-bite-firmware/README.md` for
+  the full list of open items.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
   are REST + live-refresh bus.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend

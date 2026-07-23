@@ -143,6 +143,32 @@ static void wb_wifi_build_rows(WbWifiScreenCtx *ctx)
   }
 }
 
+// A small tappable pill (icon/text label wrapped in a padded, backgrounded
+// container) — used for Rescan and Back. Plain clickable labels (the
+// original shape here) have no background for LVGL's default press-state
+// darkening to show against, and a tiny hit-box matching just the rendered
+// glyphs — near-impossible to tell whether a real finger actually landed on
+// them (confirmed on real hardware during bring-up: no visible feedback at
+// all on tap). This gives both a real touch target size and visible
+// press feedback, matching settings_screen.cpp's back_btn pattern.
+static lv_obj_t *make_tap_chip(lv_obj_t *parent, const char *text, lv_color_t text_color)
+{
+  lv_obj_t *chip = lv_obj_create(parent);
+  lv_obj_remove_style_all(chip);
+  lv_obj_set_size(chip, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_color(chip, WB_COLOR_ROW, 0);
+  lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(chip, 14, 0);
+  lv_obj_set_style_pad_hor(chip, 16, 0);
+  lv_obj_set_style_pad_ver(chip, 10, 0);
+  lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *lbl = lv_label_create(chip);
+  lv_label_set_text(lbl, text);
+  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(lbl, text_color, 0);
+  return chip;
+}
+
 static void wb_rescan_clicked_cb(lv_event_t *e)
 {
   WbWifiScreenCtx *ctx = (WbWifiScreenCtx *)lv_event_get_user_data(e);
@@ -268,11 +294,7 @@ void wb_build_wifi_screen(lv_obj_t *parent, WbWifiConnectedCallback onConnected)
   lv_obj_set_style_pad_row(rows_container, 8, 0);
   ctx->rows_container = rows_container;
 
-  lv_obj_t *rescan_btn = lv_label_create(list_view);
-  lv_label_set_text(rescan_btn, LV_SYMBOL_REFRESH " Rescan");
-  lv_obj_set_style_text_font(rescan_btn, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(rescan_btn, WB_COLOR_GOLD, 0);
-  lv_obj_add_flag(rescan_btn, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_t *rescan_btn = make_tap_chip(list_view, LV_SYMBOL_REFRESH " Rescan", WB_COLOR_GOLD);
   lv_obj_add_event_cb(rescan_btn, wb_rescan_clicked_cb, LV_EVENT_CLICKED, ctx);
 
   // ── password view ────────────────────────────────────────────────────────
@@ -285,12 +307,8 @@ void wb_build_wifi_screen(lv_obj_t *parent, WbWifiConnectedCallback onConnected)
   lv_obj_add_flag(password_view, LV_OBJ_FLAG_HIDDEN);
   ctx->password_view = password_view;
 
-  lv_obj_t *back_lbl = lv_label_create(password_view);
-  lv_label_set_text(back_lbl, LV_SYMBOL_LEFT " Back");
-  lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(back_lbl, WB_COLOR_MUTED, 0);
-  lv_obj_add_flag(back_lbl, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(back_lbl, wb_password_back_cb, LV_EVENT_CLICKED, ctx);
+  lv_obj_t *back_chip = make_tap_chip(password_view, LV_SYMBOL_LEFT " Back", WB_COLOR_MUTED);
+  lv_obj_add_event_cb(back_chip, wb_password_back_cb, LV_EVENT_CLICKED, ctx);
 
   lv_obj_t *password_title_lbl = lv_label_create(password_view);
   lv_label_set_text(password_title_lbl, "Password");
@@ -340,8 +358,17 @@ void wb_build_wifi_screen(lv_obj_t *parent, WbWifiConnectedCallback onConnected)
 
   // Shared keyboard for the password field — parented to `parent` (not
   // `card`) so it docks to the bottom of the whole screen, same reasoning as
-  // onboarding_screen.cpp's own keyboard.
+  // onboarding_screen.cpp's own keyboard. FLOATING is required: `parent` is
+  // a centered flex column, and without this flag the keyboard becomes a
+  // normal flex item — its own built-in bottom-docking (lv_keyboard_create
+  // already calls lv_obj_align(BOTTOM_MID) internally) gets silently
+  // overridden by the flex layout, which instead centers card+keyboard as
+  // one stacked group. Confirmed on real hardware during bring-up: `card`
+  // rendered shoved toward the top and the keyboard's bottom rows ran off
+  // the bottom of the screen. FLOATING excludes it from flex layout so its
+  // own alignment call actually takes effect.
   lv_obj_t *kb = lv_keyboard_create(parent);
+  lv_obj_add_flag(kb, LV_OBJ_FLAG_FLOATING);
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
   lv_keyboard_set_textarea(kb, password_ta);
   ctx->kb = kb;

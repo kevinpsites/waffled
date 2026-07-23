@@ -180,8 +180,15 @@ void wb_build_onboarding_screen(lv_obj_t *parent, const char *defaultServerUrl, 
   // The on-screen keyboard: one shared instance, hidden until a textarea is
   // focused. Parented to the top-level `parent`, not `card`, so it docks to
   // the bottom of the whole screen rather than getting laid out inside the
-  // card's flex column.
+  // card's flex column. FLOATING is required: `parent` is a centered flex
+  // column, and without this flag the keyboard becomes a normal flex item —
+  // its own built-in bottom-docking (lv_keyboard_create already calls
+  // lv_obj_align(BOTTOM_MID) internally) gets silently overridden by the
+  // flex layout, which instead centers card+keyboard as one stacked group
+  // (confirmed on real hardware: card shoved toward the top, keyboard's
+  // bottom rows running off-screen — see wifi_screen.cpp's identical fix).
   lv_obj_t *kb = lv_keyboard_create(parent);
+  lv_obj_add_flag(kb, LV_OBJ_FLAG_FLOATING);
   lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
   lv_keyboard_set_textarea(kb, server_ta);
 

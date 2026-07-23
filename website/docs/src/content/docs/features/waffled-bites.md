@@ -5,7 +5,7 @@ description: Pair a kid's companion touchscreen device and control it from Famil
 
 Waffled-Bites is a kid-facing companion device — a small touchscreen that sits in their room showing their routines, a quiet-time timer, a night light, and a gentle wake-up light — paired one-per-child and controlled by a parent from **Family → tap the kid → Waffled-Bite**. 🧇
 
-**Where things stand today:** the pairing system, the parent control panel, and the on-device app are all built. The catch — the on-device app has only run in a desktop simulator so far, against the real backend, not on the actual physical touchscreen: the target hardware has never been in hand for a real bring-up. So this feature is **pending hardware validation**, not yet something you can buy and plug in. Everything below describes the intended experience once that's done.
+**Where things stand today:** the pairing system, the parent control panel, and the on-device app are all built, and real-hardware bring-up on the target touchscreen is underway — including on-device WiFi setup and dozens of reboot tests confirming the WiFi connection holds up. Some rough edges remain (no over-the-air updates yet, a few missing icon assets), so this isn't yet something you can buy and plug in, but it's running on the real device, not just a desktop simulator. Everything below describes the intended experience.
 
 ## Highlights
 
@@ -32,11 +32,11 @@ The parent control panel is available on web, iPhone, and iPad — pair once fro
 
 ## How pairing works
 
-1. Turn the Waffled-Bite device on and connect it to Wi-Fi (device-side; Wi-Fi provisioning is still hardcoded for development, a real setup UI comes with hardware bring-up).
+1. Turn the Waffled-Bite device on and connect it to Wi-Fi — the device scans for nearby networks and lets you pick one and enter the password right on its own screen.
 2. On web, iPhone, or iPad, open **Family → the kid → Waffled-Bite → Pair a Waffled-Bite**. This mints a short, one-time code (10-minute window).
 3. Enter the code on the device. Once it claims the code, the control panel appears automatically — no refresh needed.
 
-> This flow is proven end-to-end against the real backend — but only with the on-device app running in a desktop simulator, not the physical touchscreen. See the status note at the top of this page.
+> This flow is proven end-to-end against the real backend, including on the physical touchscreen device. See the status note at the top of this page for what's still rough around the edges.
 
 The device polls the server every few seconds for changes (settings, remote quiet-time/timer commands) rather than holding an always-open connection — simple, and plenty fast for a kid's room.
 
