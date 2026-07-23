@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   moving them into a brand-new section you name on the spot. Your choices apply when you
   tap **Done** (a stray tap never changes anything), and while selecting each row shows a
   single clear checkbox so you can't accidentally check an item off.
+- **Rename a list from the list itself, and the iPad list menu.** The list's ⋯ menu
+  (Select items / Save as template / Delete) now also carries a **Rename** action on both
+  iPhone and iPad, and the menu — previously missing from the iPad's list view — is now
+  there too.
 - **Collapsible list sections + a section picker that stays put.** On the web, a list's
   sections now collapse and expand from their header (iOS already did this). The add bar
   also gains a section picker that keeps your choice across a run of quick adds — and can
@@ -60,9 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A list's item count no longer includes completed items.** The number on the Lists
   rail (and the list header) now counts only what's left to do — checking things off
   makes it go down, instead of a finished list still showing its full count.
-- **List sections stay put instead of hopping columns (web).** Checking an item off no
-  longer reshuffles the two-column layout, so a section keeps its place while you work
-  down it.
+- **List sections are ordered A–Z and stay put (web).** Sections were laid out in the
+  API's item order, so adding, checking, or moving an item reshuffled them (and the
+  two-column layout). They're now sorted alphabetically (the no-section "Items" group
+  last), so each section holds a fixed place.
 - **Waffled-Bite: starting a timer now actually shows up on the device.** Previously,
   starting "Set a timer" (from the device itself or a parent remotely) only updated the
   timer screen's content in the background — nothing visibly happened until a kid
