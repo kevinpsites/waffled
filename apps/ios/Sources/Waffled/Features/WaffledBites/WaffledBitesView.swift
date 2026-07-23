@@ -12,11 +12,18 @@ struct WaffledBitesView: View {
     let personName: String
     @State private var model: WaffledBitesModel
     @State private var showUnpairConfirm = false
-    @State private var quietCustom = 5
+    // Text-backed (not Int) so a cleared field stays empty while editing, same rationale
+    // as the goal-log sheet's hours/minutes fields (DurationEntry) — normalized on focus
+    // loss via `.onChange(of: hmFocus)` below.
     @State private var showQuietCustom = false
-    @State private var timerCustom = 10
+    @State private var quietHoursText = "0"
+    @State private var quietMinutesText = "5"
     @State private var showTimerCustom = false
-    @State private var schedules: [WaffledAPI.WaffledBiteSettings.Schedule] = []
+    @State private var timerHoursText = "0"
+    @State private var timerMinutesText = "10"
+    @FocusState private var hmFocus: HMField?
+    private enum HMField { case quietHours, quietMinutes, timerHours, timerMinutes }
+    @State private var scheduleRows: [EditableSchedule] = []
 
     init(personId: String, personName: String) {
         self.personId = personId
@@ -38,7 +45,7 @@ struct WaffledBitesView: View {
                     DismissibleErrorBanner(message: msg) { }
                 }
             }
-            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 60)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
         }
         .background(WF.canvas)
         .navigationTitle("Waffled-Bite")
@@ -46,7 +53,18 @@ struct WaffledBitesView: View {
         .task { await model.load() }
         .refreshable { await model.load() }
         .onChange(of: model.device?.settings.schedules) { _, _ in
-            schedules = model.device?.settings.withDefaults.schedules ?? []
+            scheduleRows = (model.device?.settings.withDefaults.schedules ?? []).map(EditableSchedule.init)
+        }
+        // Normalize only when a field is left: "" → "0", "007" → "7", 75 min → 59 —
+        // matches GoalsView's GoalLogSheet hours/minutes fields exactly.
+        .onChange(of: hmFocus) { old, _ in
+            switch old {
+            case .quietHours: quietHoursText = DurationEntry.normalized(quietHoursText)
+            case .quietMinutes: quietMinutesText = DurationEntry.normalized(quietMinutesText, cap: 59)
+            case .timerHours: timerHoursText = DurationEntry.normalized(timerHoursText)
+            case .timerMinutes: timerMinutesText = DurationEntry.normalized(timerMinutesText, cap: 59)
+            case nil: break
+            }
         }
         .confirmationDialog("Unpair this Waffled-Bite?", isPresented: $showUnpairConfirm, titleVisibility: .visible) {
             Button("Unpair", role: .destructive) {
@@ -82,7 +100,9 @@ struct WaffledBitesView: View {
             WaffledStatusBadge(text: "MOST USED", color: WF.primary)
             countdownBody(state: device.runtimeState.quiet, remaining: model.quietRemaining,
                           presets: WaffledBiteOptions.quietPresetsMin,
-                          showCustom: $showQuietCustom, custom: $quietCustom,
+                          showCustom: $showQuietCustom,
+                          hoursText: $quietHoursText, minutesText: $quietMinutesText,
+                          hoursField: .quietHours, minutesField: .quietMinutes,
                           onStart: { m in Task { await model.startQuiet(minutes: m) } },
                           onPause: { Task { await model.pauseQuiet() } },
                           onResume: { Task { await model.resumeQuiet() } },
@@ -95,7 +115,9 @@ struct WaffledBitesView: View {
         WaffledFieldCard(title: "Set a timer") {
             countdownBody(state: device.runtimeState.timer, remaining: model.timerRemaining,
                           presets: WaffledBiteOptions.timerPresetsMin,
-                          showCustom: $showTimerCustom, custom: $timerCustom,
+                          showCustom: $showTimerCustom,
+                          hoursText: $timerHoursText, minutesText: $timerMinutesText,
+                          hoursField: .timerHours, minutesField: .timerMinutes,
                           onStart: { m in Task { await model.startTimer(minutes: m) } },
                           onPause: { Task { await model.pauseTimer() } },
                           onResume: { Task { await model.resumeTimer() } },
@@ -106,13 +128,15 @@ struct WaffledBitesView: View {
 
     @ViewBuilder private func countdownBody(
         state: WaffledAPI.WaffledBiteDevice.Countdown, remaining: Int,
-        presets: [Int], showCustom: Binding<Bool>, custom: Binding<Int>,
+        presets: [Int], showCustom: Binding<Bool>,
+        hoursText: Binding<String>, minutesText: Binding<String>,
+        hoursField: HMField, minutesField: HMField,
         onStart: @escaping (Int) -> Void, onPause: @escaping () -> Void, onResume: @escaping () -> Void,
         onAddTime: @escaping () -> Void, onEnd: @escaping () -> Void
     ) -> some View {
         if state.active {
             VStack(alignment: .leading, spacing: 10) {
-                Text(mmss(remaining)).font(.system(size: 34, weight: .heavy, design: .rounded)).foregroundStyle(WF.ink)
+                Text(hms(remaining)).font(.system(size: 34, weight: .heavy, design: .rounded)).foregroundStyle(WF.ink)
                 Text(state.running ? "Counting down on the device" : "Paused")
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                 HStack(spacing: 8) {
@@ -129,10 +153,16 @@ struct WaffledBitesView: View {
                     }
                 }
                 if showCustom.wrappedValue {
-                    HStack(spacing: 10) {
-                        Stepper("\(custom.wrappedValue) min", value: custom, in: 1...90)
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
-                        WBChip(label: "Start", filled: true) { onStart(custom.wrappedValue) }
+                    // Hours + minutes fields, not a ±1 stepper or a 180-row wheel —
+                    // matches GoalsView's GoalLogSheet time-goal entry. 180 min (3h) is a
+                    // hard server-side ceiling (matches the web app); typing past it just
+                    // clamps at Start, same as the server's own backstop.
+                    let hours = DurationEntry.value(of: hoursText.wrappedValue)
+                    let minutes = DurationEntry.value(of: minutesText.wrappedValue, cap: 59)
+                    HStack(spacing: 8) {
+                        hmField(hoursText, unit: "hr", field: hoursField)
+                        hmField(minutesText, unit: "min", field: minutesField)
+                        WBChip(label: "Start", filled: true) { onStart(hours * 60 + minutes) }
                     }
                 } else {
                     WBChip(label: "Custom ＋") { showCustom.wrappedValue = true }
@@ -141,29 +171,65 @@ struct WaffledBitesView: View {
         }
     }
 
+    /// A compact whole-number field for hours or minutes — text-backed (see the state
+    /// declarations' doc comment), identical shape to GoalsView's `hmField`.
+    private func hmField(_ text: Binding<String>, unit: String, field: HMField) -> some View {
+        HStack(spacing: 6) {
+            TextField("0", text: text)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.center)
+                .font(.system(size: 16, weight: .semibold))
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+                .frame(width: 56)
+                .focused($hmFocus, equals: field)
+            Text(unit).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+        }
+    }
+
     // MARK: wake-light schedule
 
     private func wakeLightCard(_ device: WaffledAPI.WaffledBiteDevice, settings: WaffledAPI.WaffledBiteSettings.Filled) -> some View {
         WaffledFieldCard(title: "Wake-light schedule") {
             wakeLightBanner(device.runtimeState.wakeLight)
-            ForEach(Array(schedules.enumerated()), id: \.offset) { i, sched in
-                scheduleRow(sched, index: i)
-                if i < schedules.count - 1 { Divider().overlay(WF.hair) }
+            ForEach(scheduleRows) { row in
+                scheduleRow(row)
+                if row.id != scheduleRows.last?.id { Divider().overlay(WF.hair) }
             }
-            if schedules.isEmpty {
+            if scheduleRows.isEmpty {
                 Text("No schedule set yet").font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink3)
             }
             WBChip(label: "＋ Add another schedule") {
-                schedules.append(.init(days: [], wakeMin: 7 * 60, leadMin: 10, bedtimeMin: nil))
-                Task { await model.setSchedules(schedules) }
+                scheduleRows.append(EditableSchedule(schedule: .init(days: [], wakeMin: 7 * 60, leadMin: 10, bedtimeMin: nil)))
+                commitSchedules()
             }
         }
-        .task { schedules = settings.schedules }
+        .task { scheduleRows = settings.schedules.map(EditableSchedule.init) }
+    }
+
+    /// Sends the current rows to the server, stripped of their local-only UUIDs.
+    private func commitSchedules() {
+        Task { await model.setSchedules(scheduleRows.map(\.schedule)) }
+    }
+
+    /// Guarded lookup-and-mutate by stable id — a no-op (not a crash) if this row was
+    /// already removed by the time an in-flight edit's closure fires. This is the fix for
+    /// a real crash: `ForEach($scheduleRows)`'s per-row `Binding` reads through a live
+    /// array subscript internally, and SwiftUI can still evaluate a soon-to-be-removed
+    /// row's binding getter (e.g. mid removal-transition diffing) *after* the array has
+    /// already shrunk — an unguarded `scheduleRows[i]` there is an out-of-bounds crash.
+    /// Every read in `scheduleRow` below uses the row's captured VALUE instead (safe,
+    /// no array access at all); every write goes through this guarded helper.
+    private func updateSchedule(id: UUID, _ mutate: (inout WaffledAPI.WaffledBiteSettings.Schedule) -> Void) {
+        guard let idx = scheduleRows.firstIndex(where: { $0.id == id }) else { return }
+        mutate(&scheduleRows[idx].schedule)
+        commitSchedules()
     }
 
     @ViewBuilder private func wakeLightBanner(_ wl: WaffledAPI.WaffledBiteDevice.WakeLight) -> some View {
         switch wl.state {
-        case "sleep": bannerRow("🌙 Asleep right now", fg: WBColors.sleepInk, bg: WBColors.sleepTint)
+        case "sleep": bannerRow("🌙 Asleep right now", fg: WaffledBiteStatusColors.sleepInk, bg: WaffledBiteStatusColors.sleepTint)
         case "warn":  bannerRow("🟡 Almost time to wake", fg: WF.warn, bg: WF.warnT)
         case "wake":  bannerRow("🟢 Awake — can exit the wake screen", fg: WF.success, bg: WF.successT)
         default: EmptyView()
@@ -177,48 +243,53 @@ struct WaffledBitesView: View {
 
     private static let dow: [(Int, String)] = [(0, "S"), (1, "M"), (2, "T"), (3, "W"), (4, "T"), (5, "F"), (6, "S")]
 
-    @ViewBuilder private func scheduleRow(_ sched: WaffledAPI.WaffledBiteSettings.Schedule, index i: Int) -> some View {
+    /// Takes a captured VALUE snapshot (not a `Binding`) — every read below is a plain
+    /// property access on that snapshot, so it can never crash even if this row is
+    /// removed mid-edit; every write goes through `updateSchedule(id:)`'s guarded
+    /// id-lookup instead of a live array index (see that function's doc comment for the
+    /// crash this replaces).
+    @ViewBuilder private func scheduleRow(_ row: EditableSchedule) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 ForEach(Self.dow, id: \.0) { day, label in
-                    WeekdayToggleChip(label: label, isOn: schedules[i].days.contains(day)) {
-                        if let idx = schedules[i].days.firstIndex(of: day) { schedules[i].days.remove(at: idx) }
-                        else { schedules[i].days.append(day); schedules[i].days.sort() }
-                        Task { await model.setSchedules(schedules) }
+                    WeekdayToggleChip(label: label, isOn: row.schedule.days.contains(day)) {
+                        updateSchedule(id: row.id) { s in
+                            if let idx = s.days.firstIndex(of: day) { s.days.remove(at: idx) }
+                            else { s.days.append(day); s.days.sort() }
+                        }
                     }
                 }
             }
             HStack {
                 Toggle(isOn: Binding(
-                    get: { schedules[i].bedtimeMin != nil },
+                    get: { row.schedule.bedtimeMin != nil },
                     set: { on in
-                        schedules[i].bedtimeMin = on ? (schedules[i].bedtimeMin ?? 20 * 60) : nil
-                        Task { await model.setSchedules(schedules) }
+                        updateSchedule(id: row.id) { $0.bedtimeMin = on ? ($0.bedtimeMin ?? 20 * 60) : nil }
                     })) {
                     Text("Bedtime").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
                 }.tint(WF.primary)
             }
-            if let bedtimeMin = schedules[i].bedtimeMin {
+            if let bedtimeMin = row.schedule.bedtimeMin {
                 minutePicker("Bedtime", minutes: Binding(
                     get: { bedtimeMin },
-                    set: { schedules[i].bedtimeMin = $0; Task { await model.setSchedules(schedules) } }))
+                    set: { m in updateSchedule(id: row.id) { $0.bedtimeMin = m } }))
             } else {
                 Text("No bedtime set — this rule shows the day toggle above but never locks the device.")
                     .font(.system(size: 12)).foregroundStyle(WF.ink3)
             }
             minutePicker("Okay to get up", minutes: Binding(
-                get: { schedules[i].wakeMin },
-                set: { schedules[i].wakeMin = $0; Task { await model.setSchedules(schedules) } }))
-            Stepper("Yellow warning starts \(schedules[i].leadMin) min before",
+                get: { row.schedule.wakeMin },
+                set: { m in updateSchedule(id: row.id) { $0.wakeMin = m } }))
+            Stepper("Yellow warning starts \(row.schedule.leadMin) min before",
                     value: Binding(
-                        get: { schedules[i].leadMin },
-                        set: { schedules[i].leadMin = max(0, min(30, $0)); Task { await model.setSchedules(schedules) } }),
+                        get: { row.schedule.leadMin },
+                        set: { m in updateSchedule(id: row.id) { $0.leadMin = max(0, min(30, m)) } }),
                     in: 0...30)
                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
-            if schedules.count > 1 {
+            if scheduleRows.count > 1 {
                 Button("Remove") {
-                    schedules.remove(at: i)
-                    Task { await model.setSchedules(schedules) }
+                    scheduleRows.removeAll { $0.id == row.id }
+                    commitSchedules()
                 }
                 .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.danger)
             }
@@ -345,7 +416,14 @@ struct WaffledBitesView: View {
 
     // MARK: formatting helpers
 
-    private func mmss(_ sec: Int) -> String { String(format: "%d:%02d", sec / 60, sec % 60) }
+    /// "H:MM:SS" once past an hour, else "M:SS" — quiet time/timer can now run up to 3h,
+    /// so a bare minutes:seconds would read as "150:00". Matches the firmware's own
+    /// `formatCountdown` (quiet_screen.cpp/timer_screen.cpp) so the phone and the device
+    /// show the same shape.
+    private func hms(_ sec: Int) -> String {
+        let h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
 
     private func fmtAmPm(_ totalMin: Int) -> String {
         let h = totalMin / 60, m = totalMin % 60
@@ -363,10 +441,20 @@ struct WaffledBitesView: View {
     }
 }
 
-/// Fixed status hues for the wake-light "asleep" banner — no `WF.*` semantic token
+/// A wake-light schedule paired with a local-only stable id, purely for safe SwiftUI
+/// list editing (`ForEach($scheduleRows)`/removal) — the server has no id concept for
+/// schedules (`WaffledBiteSettings.schedules` is a bare array), so this never leaves
+/// the view layer; `commitSchedules()` strips it back to `[Schedule]` before sending.
+private struct EditableSchedule: Identifiable {
+    let id = UUID()
+    var schedule: WaffledAPI.WaffledBiteSettings.Schedule
+}
+
+/// Fixed status hues for the wake-light "asleep" state — no `WF.*` semantic token
 /// covers purple, so this is a proper light/dark pair (not a hardcoded literal),
-/// matching the web app's fixed `#E7E1F0`/`#4A3F73`.
-private enum WBColors {
+/// matching the web app's fixed `#E7E1F0`/`#4A3F73`. Internal (not `private`): also used
+/// by `PersonView`'s entry-card status badge, which mirrors this same state.
+enum WaffledBiteStatusColors {
     static let sleepTint = Color.wash(light: 0xE7E1F0, darkBase: 0x8A5CF0, darkAlpha: 0.20)
     static let sleepInk = Color(light: 0x4A3F73, dark: 0xA48CF0)
 }

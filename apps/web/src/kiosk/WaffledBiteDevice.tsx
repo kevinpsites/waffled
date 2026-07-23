@@ -280,10 +280,10 @@ export function WaffledBiteDevice() {
               <div className="field-row" style={{ alignItems: 'flex-end' }}>
                 <label className="field" style={{ flex: 1 }}>
                   <span>Minutes</span>
-                  {/* Capped at 90 — the server clamps quiet-time duration to 1-90 min
-                      regardless (see quiet/start's Math.min(90*60, ...)), so a wider
+                  {/* Capped at 180 (3h) — the server clamps quiet-time duration to 1-180 min
+                      regardless (see quiet/start's Math.min(180*60, ...)), so a wider
                       range here would silently get truncated with no feedback. */}
-                  <input type="number" min={1} max={90} value={customQuietM} onChange={(e) => setCustomQuietM(Math.max(1, Math.min(90, Number(e.target.value) || 0)))} />
+                  <input type="number" min={1} max={180} value={customQuietM} onChange={(e) => setCustomQuietM(Math.max(1, Math.min(180, Number(e.target.value) || 0)))} />
                 </label>
                 <button
                   type="button"
@@ -473,7 +473,7 @@ export function WaffledBiteDevice() {
               <div className="field-row" style={{ alignItems: 'flex-end', marginTop: 14 }}>
                 <label className="field" style={{ flex: 1 }}>
                   <span>Minutes</span>
-                  <input type="number" min={1} max={90} value={customTimerM} onChange={(e) => setCustomTimerM(Math.max(1, Math.min(90, Number(e.target.value) || 0)))} />
+                  <input type="number" min={1} max={180} value={customTimerM} onChange={(e) => setCustomTimerM(Math.max(1, Math.min(180, Number(e.target.value) || 0)))} />
                 </label>
                 <button
                   type="button"

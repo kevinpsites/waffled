@@ -231,6 +231,22 @@ describe('waffled-bites device pairing + parent control panel', () => {
     expect(ended.active).toBe(false)
   })
 
+  // Retrofit test (not written before the clamp change, per the "say so explicitly"
+  // exception) — the parent-facing UI's own custom-duration input used to cap at 90
+  // minutes to match this server-side ceiling; both were raised to 3 hours together
+  // when a real usage need for longer quiet time came up.
+  it('clamps quiet/start duration to [60s, 3h], not the old 90-minute ceiling', async () => {
+    await call('POST', `/api/waffled-bites/${deviceId}/quiet/start`, { durationSec: 999999 }, admin)
+    const long = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken)).runtimeState.quiet
+    expect(long.durationSec).toBe(180 * 60)
+    expect((await call('POST', `/api/waffled-bites/${deviceId}/quiet/end`, {}, admin)).statusCode).toBe(200)
+
+    await call('POST', `/api/waffled-bites/${deviceId}/quiet/start`, { durationSec: 1 }, admin)
+    const short = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken)).runtimeState.quiet
+    expect(short.durationSec).toBe(60)
+    expect((await call('POST', `/api/waffled-bites/${deviceId}/quiet/end`, {}, admin)).statusCode).toBe(200)
+  })
+
   // ── timer: unlike quiet time, either the kid (on-device) or a parent can
   // start/end it, and it's exitable (no on-device lock). Only the parent gets
   // the fine controls (pause/resume/add-time), same asymmetry as quiet time.
