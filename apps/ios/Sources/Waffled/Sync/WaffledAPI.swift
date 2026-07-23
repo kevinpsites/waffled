@@ -2555,6 +2555,10 @@ struct WaffledAPI: Sendable {
         try await send("PATCH", "/api/list-items/bulk", body: ["ids": .array(ids.map(JSONValue.string)), "patch": .object(patch)])
     }
 
+    /// Clear a custom list's Completed section now (soft-deletes its checked items).
+    func clearCompletedList(listId: String) async throws {
+        try await send("POST", "/api/lists/\(listId)/clear-completed", body: [:])
+    }
 
     // MARK: List templates (save-as-template / apply)
     // A template is a `lists` row with listType == "template"; its items are stored

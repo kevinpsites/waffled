@@ -1100,6 +1100,19 @@ describe('list-item bulk edit + completed-item lifecycle', () => {
     expect(items.find((i) => i.name === 'Milk-autoclear')).toBeTruthy()
   })
 
+  it('manual clear-completed removes checked items, keeps unchecked', async () => {
+    const list = await newList('Clear done')
+    const a = await addItem(list, 'Done 1')
+    const b = await addItem(list, 'Done 2')
+    await addItem(list, 'Not done')
+    await call('PATCH', `/api/list-items/${a}`, kevin, { checked: true })
+    await call('PATCH', `/api/list-items/${b}`, kevin, { checked: true })
+    const res = await call('POST', `/api/lists/${list}/clear-completed`, kevin)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).cleared).toBe(2)
+    expect((await getItems(list)).map((i) => i.name)).toEqual(['Not done'])
+  })
+
   it('bulk-edits section, priority and assignee across many items', async () => {
     const list = await newList('Bulk')
     const a = await addItem(list, 'A')

@@ -48,9 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Completed list items tidy themselves away.** A list's checked-off items now clear
-  automatically a day after you check them, so the Completed section doesn't pile up.
-  (The grocery board is deliberately untouched — its checked = "in the cart" state is
-  preserved so the weekly rebuild still works.)
+  automatically a day after you check them, and the Completed section has a **Clear**
+  button to sweep them now. (The grocery board is deliberately untouched — its checked =
+  "in the cart" state is preserved so the weekly rebuild still works.)
 
 ### Fixed
 - **A list's item count no longer includes completed items.** The number on the Lists

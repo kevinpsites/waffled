@@ -295,6 +295,19 @@ final class ListDetailModel {
         }
     }
 
+    /// Clear the Completed section now — soft-deletes every checked item server-side.
+    /// Optimistic; restores on failure. (Old checked items also auto-clear on load.)
+    func clearCompleted() async {
+        let snapshot = items
+        withAnimation { items.removeAll { $0.checked } }
+        settling = []
+        do {
+            try await api.clearCompletedList(listId: list.id)
+        } catch {
+            items = snapshot
+        }
+    }
+
     /// Bulk-edit section / assignee / priority across `ids` in one call, then reload
     /// so grouping/badges reflect it. Double-optional args distinguish leave-unchanged
     /// (.none) from set-to-null (.some(nil)).
@@ -1277,6 +1290,13 @@ struct ListDetailView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        // Clear the whole Completed section now (custom lists only).
+                        if !model.isTemplate {
+                            Button { Task { await model.clearCompleted() } } label: {
+                                Text("Clear").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.primary)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
             }

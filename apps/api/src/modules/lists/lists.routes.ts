@@ -18,6 +18,7 @@ import {
   softDeleteItem,
   bulkPatchItems,
   autoClearCheckedItems,
+  clearCompletedItems,
   addRecipeToGrocery,
   removeRecipeFromGrocery,
   convertToTemplate,
@@ -147,6 +148,16 @@ export function registerListRoutes(api: Api): void {
     await autoClearCheckedItems(tenant.householdId, id)
     const items = await listItems(tenant.householdId, id)
     return { list: presentList(list), items: items.map(presentListItem) }
+  }))
+
+  // Clear a custom list's Completed section now (soft-delete its checked items).
+  api.post('/api/lists/:id/clear-completed', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
+    const list = await getList(tenant.householdId, id)
+    if (!list) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
+    const cleared = await clearCompletedItems(tenant.householdId, id)
+    return { cleared }
   }))
 
   // Add an item to any list.

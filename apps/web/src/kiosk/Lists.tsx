@@ -419,6 +419,23 @@ export function Lists() {
     }
   }
 
+  // Manual "Clear completed": drop every checked item from the list now (server
+  // soft-deletes them). Optimistic; restore on failure. Custom lists only.
+  async function clearCompleted() {
+    if (!selected || isTemplate) return
+    let snapshot: ListItem[] = []
+    setItems((prev) => {
+      snapshot = prev
+      return prev.filter((i) => !i.checked)
+    })
+    try {
+      await groceryApi.clearCompleted(selected.id)
+      refetchLists()
+    } catch {
+      setItems(snapshot)
+    }
+  }
+
   // Apply one attribute (section / assignee / priority) to every selected item in
   // one round-trip, then refetch. Selection is kept so several attributes can be
   // applied to the same set.
@@ -857,6 +874,15 @@ export function Lists() {
                       <span className={`cal-chev ${showDone ? 'open' : ''}`} aria-hidden>›</span>
                       <span>Completed</span>
                       <span className="ga-n">{completedItems.length}</span>
+                      {!isTemplate && (
+                        <button
+                          type="button"
+                          className="linkbtn lists-clear-done"
+                          onClick={(e) => { e.stopPropagation(); clearCompleted() }}
+                        >
+                          Clear
+                        </button>
+                      )}
                     </div>
                     {showDone && (
                       <div className="lists-completed-list">
