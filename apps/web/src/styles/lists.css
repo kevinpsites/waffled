@@ -99,6 +99,21 @@
 .lists-head .filter-pill {
   cursor: pointer;
 }
+/* The Select toggle carries a distinct coral outline so it's easy to spot among
+   the other neutral filter pills (it was hard to find as a plain pill). */
+.lists-select-pill {
+  border: 1.5px solid var(--primary);
+  color: var(--primary);
+  font-weight: 700;
+}
+.lists-select-pill svg {
+  width: 15px;
+  height: 15px;
+}
+.lists-select-pill.on {
+  background: var(--primary);
+  color: var(--on-accent);
+}
 .lists-hint {
   font-weight: 600;
   margin-bottom: 10px;

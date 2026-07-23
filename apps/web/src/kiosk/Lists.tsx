@@ -654,12 +654,12 @@ export function Lists() {
               </button>
               <button
                 type="button"
-                className={`pill filter-pill${selecting ? ' on' : ''}`}
+                className={`pill filter-pill lists-select-pill${selecting ? ' on' : ''}`}
                 aria-pressed={selecting}
                 title="Select multiple items to edit at once"
                 onClick={() => { setSelecting((v) => !v); setSelectedItems(new Set()) }}
               >
-                ☑ {selecting ? 'Done' : 'Select'}
+                <Icon name="tasks" /> {selecting ? 'Done' : 'Select'}
               </button>
               {isTemplate && (
                 <button type="button" className="pill btn-primary" style={{ cursor: 'pointer' }} title="Create a new list from this template (current items, unchecked)" onClick={useSelectedTemplate}>
