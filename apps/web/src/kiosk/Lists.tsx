@@ -324,6 +324,12 @@ function SectionPicker({
       {placeholder !== undefined && <option value="">{placeholder}</option>}
       <option value="__none__">{noneLabel}</option>
       {sections.map((s) => <option key={s} value={s}>{s}</option>)}
+      {/* A just-created section isn't in `sections` yet (no item uses it until this
+          value is committed) — render it so the select can actually SHOW the choice
+          instead of snapping back to the first option and looking like it cleared. */}
+      {typeof value === 'string' && value && !sections.includes(value) && (
+        <option value={value}>{value}</option>
+      )}
       <option value="__new__">+ New section…</option>
     </select>
   )

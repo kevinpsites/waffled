@@ -235,6 +235,28 @@ describe('Lists screen', () => {
     expect(sent.find((s) => s.method === 'POST' && /\/items$/.test(s.url))!.body).toMatchObject({ name: 'Water bottles' })
   })
 
+  it('adds an item into a brand-new section created from the add bar', async () => {
+    const sent: Sent[] = []
+    mockApi({ lists: [grocery, packing], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+
+    // create a new section in the add-bar picker …
+    fireEvent.change(await screen.findByLabelText('Section for new items'), { target: { value: '__new__' } })
+    fireEvent.change(await screen.findByLabelText('New section name'), { target: { value: 'Campsite' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    // … the picker keeps showing it (doesn't snap back to "No section") …
+    expect((screen.getByLabelText('Section for new items') as HTMLSelectElement).value).toBe('Campsite')
+
+    // … and a typed item lands in that section
+    const input = screen.getByLabelText('Add to this list')
+    fireEvent.change(input, { target: { value: 'Firewood' } })
+    fireEvent.submit(input.closest('form')!)
+    await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/items$/.test(s.url))).toBe(true))
+    // the add endpoint carries the section as `category`
+    expect(sent.find((s) => s.method === 'POST' && /\/items$/.test(s.url))!.body).toMatchObject({ name: 'Firewood', category: 'Campsite' })
+  })
+
   // The "New list" trigger lives in the shared topbar slot (wired by KioskLayout,
   // out of this screen's scope), so the modal itself is exercised directly.
   it('creates a list from the New list modal', async () => {
@@ -361,6 +383,9 @@ describe('Lists screen', () => {
     fireEvent.change(screen.getByLabelText('Set section for selected'), { target: { value: '__new__' } })
     fireEvent.change(await screen.findByLabelText('New section name'), { target: { value: 'Camping' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    // the picker must now SHOW the created section selected (not snap back to blank)
+    expect((screen.getByLabelText('Set section for selected') as HTMLSelectElement).value).toBe('Camping')
 
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     await waitFor(() => expect(sent.some((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))).toBe(true))
