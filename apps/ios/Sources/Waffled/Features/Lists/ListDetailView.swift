@@ -295,6 +295,30 @@ final class ListDetailModel {
         }
     }
 
+    /// Clear the Completed section now — soft-deletes every checked item server-side.
+    /// Optimistic; restores on failure. (Old checked items also auto-clear on load.)
+    func clearCompleted() async {
+        let snapshot = items
+        withAnimation { items.removeAll { $0.checked } }
+        settling = []
+        do {
+            try await api.clearCompletedList(listId: list.id)
+        } catch {
+            items = snapshot
+        }
+    }
+
+    /// Bulk-edit section / assignee / priority across `ids` in one call, then reload
+    /// so grouping/badges reflect it. Double-optional args distinguish leave-unchanged
+    /// (.none) from set-to-null (.some(nil)).
+    func bulkPatch(ids: [String], section: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) async {
+        guard !ids.isEmpty else { return }
+        do {
+            try await api.bulkPatchListItems(ids: ids, section: section, assignedTo: assignedTo, priority: priority)
+            await load()
+        } catch { self.error = true }
+    }
+
     /// Take an off-plan recipe back off the grocery list (undo "add to grocery"),
     /// removing it from the by-meal "Unscheduled" group. Reloads (it can touch
     /// several rows and strip shared credits server-side).
@@ -376,6 +400,9 @@ struct ListDetailView: View {
     @State private var toast: String?
     @State private var toastTask: Task<Void, Never>?
     @State private var editingStaples = false
+    // Multi-select (bulk edit): whether we're selecting + which items are picked.
+    @State private var selecting = false
+    @State private var selectedIDs: Set<String> = []
     @FocusState private var focus: Field?
 
     /// Meal-type ordering for the summary filter (matches the web rail).
@@ -429,6 +456,10 @@ struct ListDetailView: View {
             if !model.isGrocery {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
+                        // Enter multi-select to bulk-edit section / assignee / priority.
+                        Button { withAnimation { selecting = true } } label: {
+                            Label("Select items to edit", systemImage: "checklist")
+                        }
                         if model.isTemplate {
                             Button {
                                 Task {
@@ -524,6 +555,7 @@ struct ListDetailView: View {
             PantryStaplesEditor(initial: model.staples) { Task { await model.reloadStaples() } }
         }
         .overlay(alignment: .bottom) { toastBanner }
+        .overlay(alignment: .bottom) { if selecting { bulkBar } }
         .alert("New section", isPresented: $newSectionPrompt) {
             TextField("Section name", text: $newSectionName)
             Button("Cancel", role: .cancel) { newSectionName = "" }
@@ -798,21 +830,113 @@ struct ListDetailView: View {
     /// list keeps using `List`; moving an item between sections is handled by the flat
     /// ForEach's `.onMove` (see `itemRows`), not a per-row gesture.
     @ViewBuilder private func itemRow(_ item: WaffledAPI.ListItemDTO) -> some View {
-        row(item)
-            // A flat tan sheet: canvas row backgrounds (no white cells) and no hairline
-            // separators — the list reads as one continuous surface, not ruled rows.
-            .listRowBackground(WF.canvas)
-            .listRowSeparator(.hidden)
-            .swipeActions(edge: .trailing) {
-                Button(role: .destructive) {
-                    Task { await model.remove(item.id) }
-                } label: { Label("Delete", systemImage: "trash") }
-                Button {
-                    if editingId != nil { commitEdit() }
-                    detailItem = item
-                } label: { Label("Details", systemImage: "slider.horizontal.3") }
-                    .tint(WF.ai)
+        if selecting {
+            // Multi-select mode: the whole row toggles selection; swipe/edit are off.
+            selectableRow(item)
+                .listRowBackground(WF.canvas)
+                .listRowSeparator(.hidden)
+        } else {
+            row(item)
+                // A flat tan sheet: canvas row backgrounds (no white cells) and no hairline
+                // separators — the list reads as one continuous surface, not ruled rows.
+                .listRowBackground(WF.canvas)
+                .listRowSeparator(.hidden)
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        Task { await model.remove(item.id) }
+                    } label: { Label("Delete", systemImage: "trash") }
+                    Button {
+                        if editingId != nil { commitEdit() }
+                        detailItem = item
+                    } label: { Label("Details", systemImage: "slider.horizontal.3") }
+                        .tint(WF.ai)
+                }
+        }
+    }
+
+    /// A tap-to-select row shown in multi-select mode (leading checkmark + name/qty/
+    /// assignee). Kept simple — editing/checking-off are disabled while selecting.
+    @ViewBuilder private func selectableRow(_ item: WaffledAPI.ListItemDTO) -> some View {
+        let isSel = selectedIDs.contains(item.id)
+        Button {
+            if isSel { selectedIDs.remove(item.id) } else { selectedIDs.insert(item.id) }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: isSel ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 21))
+                    .foregroundStyle(isSel ? WF.primary : WF.ink3)
+                    .frame(width: 32, height: 32)
+                if !ListItemPriority.meta(item.priority).icon.isEmpty {
+                    Text(ListItemPriority.meta(item.priority).icon).font(.system(size: 13))
+                }
+                Text(item.name)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(WF.ink)
+                Spacer(minLength: 8)
+                if let q = item.quantity, !q.isEmpty {
+                    Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+                }
+                if let a = item.assignee, a.avatarEmoji != nil || a.colorHex != nil {
+                    Avatar(colorHex: a.colorHex, emoji: a.avatarEmoji ?? "🙂", size: 24)
+                }
             }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Bottom action bar shown in multi-select mode: set section / assignee / priority
+    /// across the whole selection (native Menus), then Done to exit.
+    private var bulkBar: some View {
+        HStack(spacing: 8) {
+            Text("\(selectedIDs.count) selected")
+                .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+            Spacer(minLength: 6)
+            Menu {
+                ForEach(sectionSuggestions, id: \.self) { s in
+                    Button(s) { applyBulk(section: .some(s)) }
+                }
+                Button("No section") { applyBulk(section: .some(nil)) }
+            } label: { bulkChip("Section", "folder") }
+                .disabled(selectedIDs.isEmpty)
+            Menu {
+                ForEach(sync.members, id: \.id) { m in
+                    Button { applyBulk(assignedTo: .some(m.id)) } label: { Text("\(m.emoji ?? "🙂") \(m.name)") }
+                }
+                Button("Unassign") { applyBulk(assignedTo: .some(nil)) }
+            } label: { bulkChip("Assign", "person") }
+                .disabled(selectedIDs.isEmpty)
+            Menu {
+                ForEach([5, 4, 3, 2, 1], id: \.self) { p in
+                    Button { applyBulk(priority: p) } label: { Text(ListItemPriority.meta(p).label) }
+                }
+            } label: { bulkChip("Priority", "flag") }
+                .disabled(selectedIDs.isEmpty)
+            Button("Done") { withAnimation { selecting = false; selectedIDs = [] } }
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.primary)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(.bar)
+        .overlay(WF.hair.frame(height: 1), alignment: .top)
+    }
+
+    private func bulkChip(_ label: String, _ icon: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+            Text(label).font(.system(size: 13, weight: .semibold))
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(WF.panel).clipShape(Capsule())
+        .foregroundStyle(WF.ink)
+    }
+
+    /// Fire a bulk edit for the current selection (keeps the selection so several
+    /// attributes can be applied to the same set).
+    private func applyBulk(section: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) {
+        let ids = Array(selectedIDs)
+        Task { await model.bulkPatch(ids: ids, section: section, assignedTo: assignedTo, priority: priority) }
     }
 
     @ViewBuilder private func sectionHeader(_ group: ListSectionGroup) -> some View {
@@ -1151,20 +1275,29 @@ struct ListDetailView: View {
                 }
             } header: {
                 headerChrome {
-                    Button {
-                        withAnimation { showCompleted.toggle() }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: showCompleted ? "chevron.down" : "chevron.right")
-                                .font(.system(size: 10, weight: .heavy))
-                            Text("COMPLETED (\(model.completed.count))")
-                                .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                            Spacer()
+                    HStack(spacing: 6) {
+                        Button {
+                            withAnimation { showCompleted.toggle() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: showCompleted ? "chevron.down" : "chevron.right")
+                                    .font(.system(size: 10, weight: .heavy))
+                                Text("COMPLETED (\(model.completed.count))")
+                                    .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                                Spacer()
+                            }
+                            .foregroundStyle(WF.ink3)
+                            .contentShape(Rectangle())
                         }
-                        .foregroundStyle(WF.ink3)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        // Clear the whole Completed section now (custom lists only).
+                        if !model.isTemplate {
+                            Button { Task { await model.clearCompleted() } } label: {
+                                Text("Clear").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.primary)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
