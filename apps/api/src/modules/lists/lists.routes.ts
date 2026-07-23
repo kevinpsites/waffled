@@ -216,8 +216,10 @@ export function registerListRoutes(api: Api): void {
     }
     const p = (body.patch ?? {}) as { section?: string | null; category?: string | null; assignedTo?: string | null; priority?: number }
     const patch: { category?: string | null; assignedTo?: string | null; priority?: number } = {}
-    if ('section' in p) patch.category = p.section ?? null
+    // `section` is the client-facing key; `category` is a legacy alias for the same
+    // column. Apply the alias first so that if both are ever sent, `section` wins.
     if ('category' in p) patch.category = p.category ?? null
+    if ('section' in p) patch.category = p.section ?? null
     if ('assignedTo' in p) patch.assignedTo = p.assignedTo ?? null
     if ('priority' in p) {
       if (!isValidPriority(p.priority)) {

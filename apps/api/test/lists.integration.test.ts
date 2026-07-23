@@ -1151,6 +1151,17 @@ describe('list-item bulk edit + completed-item lifecycle', () => {
     }
   })
 
+  it('bulk-edit prefers `section` over the legacy `category` alias when both are sent', async () => {
+    const list = await newList('Bulk precedence')
+    const a = await addItem(list, 'A')
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, {
+      ids: [a],
+      patch: { section: 'FROM_SECTION', category: 'FROM_CATEGORY' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect((await getItems(list))[0].section).toBe('FROM_SECTION')
+  })
+
   it('bulk edit is tenant-scoped — cannot touch another household\'s items (IDOR)', async () => {
     // seed a foreign list+item directly in Kelly's household
     const foreignItem = await withClient(async (c) => {
