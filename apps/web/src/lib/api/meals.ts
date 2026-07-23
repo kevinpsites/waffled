@@ -274,6 +274,10 @@ export const mealsApi = {
   recipeSections: () => apiGet<{ sections: string[] }>('/api/recipes/sections'),
   recipe: (id: string) =>
     apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[]; steps: RecipeStep[] }>(`/api/recipes/${id}`),
+  // Compile a recipe into the blessed Markdown format for sharing (native share sheet /
+  // clipboard / .md download). Returns the markdown text + a suggested filename.
+  recipeMarkdown: (id: string) =>
+    apiGet<{ markdown: string; filename: string }>(`/api/recipes/${id}/markdown`),
   planSlot: (slot: PlanSlot) => apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot).then(tap('meals')),
   clearSlot: (date: string, mealType: string) =>
     apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`).then(tap('meals')),

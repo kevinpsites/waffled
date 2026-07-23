@@ -21,6 +21,7 @@ struct KioskCalendarView: View {
     @State private var detailEvent: SyncedEvent?
     @State private var headsUp: WaffledAPI.HeadsUp?
     @State private var countdowns = CountdownsModel()
+    @State private var editingCountdown: WaffledAPI.Countdown?
 
     private var tz: TimeZone { sync.householdTz }
 
@@ -37,6 +38,20 @@ struct KioskCalendarView: View {
         return out
     }
     private var selectedItems: [SyncedEvent] { filteredByDay[selectedDay] ?? [] }
+
+    /// Tapping a countdown row (parity with the phone calendar): standalone → inline
+    /// rename/move/remove editor; an event-source countdown → that event's detail;
+    /// birthday → no-op (managed on the person's profile).
+    private func openCountdown(_ c: WaffledAPI.Countdown) {
+        switch c.source {
+        case "standalone": editingCountdown = c
+        case "event": if let ev = sync.events.first(where: { $0.id == c.id }) { detailEvent = ev }
+        default: break
+        }
+    }
+
+    /// Countdowns on a day (today forward), rendered as all-day rows in the day panel + agenda.
+    private func countdownsForDay(_ day: String) -> [WaffledAPI.Countdown] { countdowns.byDate[day] ?? [] }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -55,6 +70,11 @@ struct KioskCalendarView: View {
             }
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
+        .sheet(item: $editingCountdown) { c in
+            EditCountdownSheet(countdown: c,
+                onSave: { title, date, emoji in await countdowns.update(c, title: title, date: date, emoji: emoji) },
+                onRemove: { await countdowns.remove(c) })
+        }
         .task { await countdowns.load() }
         .task {
             guard DemoHooks.kioskOpenEvent || DemoHooks.kioskOpenEdit else { return }
@@ -79,12 +99,16 @@ struct KioskCalendarView: View {
             CalTimeGrid(days: weekDays(selectedDay), tz: tz, byDay: byDay,
                         showDayHeaders: true, selectedDay: selectedDay,
                         onTapEvent: { detailEvent = $0 }, onAddAt: { editing = .new($0) },
-                        onPickDay: { day in withAnimation { selectedDay = day; mode = .day } })
+                        onPickDay: { day in withAnimation { selectedDay = day; mode = .day } },
+                        countdownsByDay: countdowns.byDate,
+                        onTapCountdown: { openCountdown($0) })
         case .day:
             CalTimeGrid(days: [selectedDay], tz: tz, byDay: byDay,
                         showDayHeaders: false, selectedDay: selectedDay,
                         onTapEvent: { detailEvent = $0 }, onAddAt: { editing = .new($0) },
-                        onPickDay: { _ in })
+                        onPickDay: { _ in },
+                        countdownsByDay: countdowns.byDate,
+                        onTapCountdown: { openCountdown($0) })
         case .agenda:
             agendaContent(byDay)
         }
@@ -295,7 +319,8 @@ struct KioskCalendarView: View {
                 Spacer()
             }
             .padding(.bottom, 14)
-            if selectedItems.isEmpty {
+            let dayCountdowns = countdownsForDay(selectedDay)
+            if selectedItems.isEmpty && dayCountdowns.isEmpty {
                 Button { editing = .new(dayKeyToDate(selectedDay) ?? Date()) } label: {
                     VStack(spacing: 10) {
                         Image(systemName: "calendar.badge.plus").font(.system(size: 30)).foregroundStyle(WF.ink3)
@@ -308,6 +333,10 @@ struct KioskCalendarView: View {
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 10) {
+                        // Countdowns sit at the top as all-day rows (like the phone calendar).
+                        ForEach(dayCountdowns) { c in
+                            CountdownCard(countdown: c, sleeps: countdowns.sleeps) { openCountdown(c) }
+                        }
                         ForEach(selectedItems) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
                     }
                 }
@@ -327,17 +356,26 @@ struct KioskCalendarView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("What's coming up").font(WF.serif(28)).foregroundStyle(WF.ink)
-                    let groups = Agenda.upcoming(byDay: byDay, from: Agenda.todayKey(tz))
-                    if groups.isEmpty {
+                    // Merge event days with countdown days (today forward) so a day that has
+                    // only a countdown still shows up — parity with the phone agenda.
+                    let today = Agenda.todayKey(tz)
+                    let eventsByDay = Dictionary(uniqueKeysWithValues:
+                        Agenda.upcoming(byDay: byDay, from: today).map { ($0.day, $0.items) })
+                    let cdDays = countdowns.byDate.filter { $0.key >= today && !$0.value.isEmpty }.keys
+                    let days = Set(eventsByDay.keys).union(cdDays).sorted()
+                    if days.isEmpty {
                         Text("Nothing upcoming.").font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 14)
                     } else {
-                        ForEach(groups, id: \.day) { g in
+                        ForEach(days, id: \.self) { day in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack(spacing: 8) {
-                                    Text(relativeLabel(g.day)).font(WF.serif(20)).foregroundStyle(WF.ink)
-                                    Text(agendaDateLabel(g.day)).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+                                    Text(relativeLabel(day)).font(WF.serif(20)).foregroundStyle(WF.ink)
+                                    Text(agendaDateLabel(day)).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                                 }
-                                ForEach(g.items) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
+                                ForEach(countdownsForDay(day)) { c in
+                                    CountdownCard(countdown: c, sleeps: countdowns.sleeps) { openCountdown(c) }
+                                }
+                                ForEach(eventsByDay[day] ?? []) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
                             }
                         }
                     }
@@ -556,6 +594,10 @@ struct CalTimeGrid: View {
     let onTapEvent: (SyncedEvent) -> Void
     let onAddAt: (Date) -> Void
     let onPickDay: (String) -> Void
+    /// Countdowns keyed by day — rendered as chips in the all-day row (Week/Day parity
+    /// with the month badge + day panel). Defaulted so non-countdown callers are unaffected.
+    var countdownsByDay: [String: [WaffledAPI.Countdown]] = [:]
+    var onTapCountdown: (WaffledAPI.Countdown) -> Void = { _ in }
 
     private let hourHeight: CGFloat = 56
     private let gutter: CGFloat = 56
@@ -564,10 +606,11 @@ struct CalTimeGrid: View {
         (byDay[key] ?? []).filter { !$0.allDay && $0.startsAt != nil }
             .sorted { ($0.startsAt ?? .distantPast) < ($1.startsAt ?? .distantPast) }
     }
+    private func countdowns(_ key: String) -> [WaffledAPI.Countdown] { countdownsByDay[key] ?? [] }
     private func allDay(_ key: String) -> [SyncedEvent] {
         (byDay[key] ?? []).filter(\.allDay)
     }
-    private var hasAllDay: Bool { days.contains { !allDay($0).isEmpty } }
+    private var hasAllDay: Bool { days.contains { !allDay($0).isEmpty || !countdowns($0).isEmpty } }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -660,6 +703,10 @@ struct CalTimeGrid: View {
                 .frame(width: gutter, alignment: .trailing).padding(.trailing, 6)
             ForEach(Array(days.enumerated()), id: \.element) { idx, key in
                 VStack(spacing: 3) {
+                    // Countdowns first, then all-day events — same order as the day panel.
+                    ForEach(countdowns(key)) { c in
+                        Button { onTapCountdown(c) } label: { countdownChip(c) }.buttonStyle(.plain)
+                    }
                     ForEach(allDay(key)) { ev in
                         Button { onTapEvent(ev) } label: { miniChip(ev) }.buttonStyle(.plain)
                     }
@@ -677,10 +724,23 @@ struct CalTimeGrid: View {
         .padding(.vertical, 6).padding(.bottom, 4)
     }
 
-    /// Uniform height for the all-day separators — the tallest day's chip stack.
+    /// Uniform height for the all-day separators — the tallest day's chip stack (countdowns + all-day events).
     private var allDayContentHeight: CGFloat {
-        let n = max(1, days.map { allDay($0).count }.max() ?? 1)
+        let n = max(1, days.map { allDay($0).count + countdowns($0).count }.max() ?? 1)
         return CGFloat(n) * 24 + CGFloat(n - 1) * 3
+    }
+
+    /// A countdown as an all-day chip (warm-tinted, emoji + title + days-left).
+    private func countdownChip(_ c: WaffledAPI.Countdown) -> some View {
+        HStack(spacing: 4) {
+            Text(c.emoji ?? "⏳").font(.system(size: 10))
+            Text(c.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+            Spacer(minLength: 0)
+            Text(CountdownFormat.short(c.daysLeft)).font(.system(size: 10, weight: .heavy)).foregroundStyle(WF.warn)
+        }
+        .padding(.horizontal, 6).padding(.vertical, 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WF.warnT).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
     private func miniChip(_ ev: SyncedEvent) -> some View {

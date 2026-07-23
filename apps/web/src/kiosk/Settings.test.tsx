@@ -72,12 +72,12 @@ describe('Settings screen', () => {
     expect(screen.getByText('Add a person', { selector: '.wf-serif' })).toBeInTheDocument()
   })
 
-  it('switches to a placeholder sub-tab', async () => {
+  it('hides settings destinations that do not have working controls', async () => {
     mockApi()
     renderSettings()
     await screen.findByText('Kevin')
-    fireEvent.click(screen.getByText('Notifications'))
-    expect(screen.getByText(/Push to phones/)).toBeInTheDocument()
+    expect(screen.queryByText('Lists')).not.toBeInTheDocument()
+    expect(screen.queryByText('Notifications')).not.toBeInTheDocument()
   })
 
   it('shows the Display & Kiosk panel with the family-display toggle', async () => {

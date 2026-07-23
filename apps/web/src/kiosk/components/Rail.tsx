@@ -57,7 +57,6 @@ export function Rail({ mobileOpen = false, onNavigate }: { mobileOpen?: boolean;
   return (
     <nav id="primary-navigation" className={`rail${mobileOpen ? ' mobile-open' : ''}`} aria-label="Primary navigation">
       <Link to="/" className="rail-logo" aria-label="Home" onClick={onNavigate}><img src="/logo.png" alt="Waffled" /></Link>
-      <div className="rail-new">New</div>
       {screens.map((s) => (
         <RailLink key={s.path} screen={s} onNavigate={onNavigate} />
       ))}

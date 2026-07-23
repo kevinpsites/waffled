@@ -8,7 +8,7 @@ import '../../styles/recipe.css'
 
 // Favorite / edit / schedule as icon buttons. Rendered in the topbar (full-screen
 // route, on the back-button row) and inline (modal preview, which has no topbar).
-function RecipeActionIcons({ fav, onFav, onEdit, onSchedule, onAddToGrocery }: { fav: boolean; onFav: () => void; onEdit: () => void; onSchedule: () => void; onAddToGrocery: () => void }) {
+function RecipeActionIcons({ fav, onFav, onEdit, onSchedule, onAddToGrocery, onShare }: { fav: boolean; onFav: () => void; onEdit: () => void; onSchedule: () => void; onAddToGrocery: () => void; onShare: () => void }) {
   return (
     <>
       <button type="button" className={`icon-btn rd-fav ${fav ? 'on' : ''}`} aria-label="Favorite" aria-pressed={fav} onClick={onFav}>
@@ -23,8 +23,25 @@ function RecipeActionIcons({ fav, onFav, onEdit, onSchedule, onAddToGrocery }: {
       <button type="button" className="icon-btn" aria-label="Schedule" onClick={onSchedule}>
         <svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16" rx="3" /><path d="M3 9.5h18M8 2.5v4M16 2.5v4" /></svg>
       </button>
+      <button type="button" className="icon-btn" aria-label="Share recipe" onClick={onShare}>
+        <svg viewBox="0 0 24 24"><path d="M12 15V4M8.5 7.5 12 4l3.5 3.5" /><path d="M6 11H5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1h-1" /></svg>
+      </button>
     </>
   )
+}
+
+// Trigger a client-side download of the compiled markdown as a .md file (fallback for
+// browsers without navigator.share, e.g. desktop).
+function downloadMarkdown(markdown: string, filename: string) {
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 // The one canonical recipe view — hero, metadata chips, scalable ingredients with
@@ -139,12 +156,20 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const [cooked, setCooked] = useState(0)
   const [notes, setNotes] = useState('')
   const [usedMatches, setUsedMatches] = useState<RecipeMatch[] | null>(null)
+  // Compiled shareable markdown, prefetched on load. Native navigator.share() needs the
+  // click handler to stay inside the user-gesture (transient activation) — awaiting a
+  // fetch inside the handler breaks that on Safari — so we prefetch and share the
+  // already-loaded text synchronously. A ref (not state) so the full-screen topbar's
+  // memoized handler always reads the latest value; refreshed when the recipe changes.
+  const shareMd = useRef<{ markdown: string; filename: string } | null>(null)
 
   useEffect(() => {
     if (recipe) {
       setFav(recipe.isFavorite)
       setCooked(recipe.cookedCount)
       setNotes(recipe.userNotes ?? '')
+      shareMd.current = null
+      mealsApi.recipeMarkdown(recipe.id).then((r) => { shareMd.current = r }).catch(() => {})
     }
   }, [recipe])
 
@@ -217,6 +242,7 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
                 onEdit={() => navigate(`/meals/recipe/${recipe.id}/edit`)}
                 onSchedule={() => setScheduling(true)}
                 onAddToGrocery={addToGrocery}
+                onShare={shareRecipe}
               />
             </div>
           )}
@@ -245,6 +271,37 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
     } finally {
       addingGrocery.current = false
     }
+  }
+
+  async function shareRecipe() {
+    // Prefer the prefetched markdown so navigator.share() fires inside the click gesture
+    // (Safari requires transient activation). Only fetch here if the prefetch hasn't
+    // landed yet — that path can't use the native sheet, so it falls back to copy+download.
+    const payload = shareMd.current ?? (await mealsApi.recipeMarkdown(recipe!.id).catch(() => null))
+    if (!payload) { setAddedNote('Couldn’t prepare the recipe to share — try again.'); return }
+    const { markdown, filename } = payload
+    const nav = navigator as Navigator & { canShare?: (d?: ShareData) => boolean }
+    try {
+      const file = new File([markdown], filename, { type: 'text/markdown' })
+      if (nav.share && nav.canShare?.({ files: [file] })) {
+        await nav.share({ title: recipe!.title, files: [file] } as ShareData)
+        return
+      }
+      if (nav.share) {
+        await nav.share({ title: recipe!.title, text: markdown })
+        return
+      }
+    } catch (e) {
+      if ((e as { name?: string })?.name === 'AbortError') return // user dismissed the sheet
+      // any other share failure → fall through to the copy + download fallback
+    }
+    try {
+      await navigator.clipboard?.writeText(markdown)
+      setAddedNote('Recipe copied to clipboard.')
+    } catch {
+      /* non-secure context (Safari over http) — the download still lands the recipe */
+    }
+    downloadMarkdown(markdown, filename)
   }
 
   // Categorical chips are what people scan — show the first few, tuck the rest behind
@@ -284,6 +341,7 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
             onEdit={() => navigate(`/meals/recipe/${recipe.id}/edit`)}
             onSchedule={() => setScheduling(true)}
             onAddToGrocery={addToGrocery}
+            onShare={shareRecipe}
           />
         </div>
       )}

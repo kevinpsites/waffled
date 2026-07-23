@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { type AgendaEvent } from '../../lib/api'
+import { type AgendaEvent, type Countdown } from '../../lib/api'
 import { DOW_FULL, MONTHS, ymd, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, packLanes } from './cal-utils'
+import { CountdownChip } from './CountdownChip'
 
 const DAY_START = 0 // midnight — top of the grid (full day so early events are reachable)
 const DAY_END = 23 // 11 PM — bottom
@@ -12,13 +13,17 @@ export function DayView({
   day,
   events,
   tz,
+  countdownsByDate,
   onOpenEvent,
+  onOpenCountdown,
   onCreate,
 }: {
   day: Date
   events: AgendaEvent[]
   tz: string
+  countdownsByDate?: Record<string, Countdown[]>
   onOpenEvent: (e: AgendaEvent) => void
+  onOpenCountdown?: (c: Countdown) => void
   onCreate: (date: string, time?: string) => void
 }) {
   const key = ymd(day)
@@ -26,6 +31,7 @@ export function DayView({
 
   const todays = useMemo(() => events.filter((e) => localDate(e.startsAt, tz) === key), [events, tz, key])
   const allDay = todays.filter((e) => e.allDay)
+  const dayCountdowns = countdownsByDate?.[key] ?? []
   const timed = useMemo(() => todays.filter((e) => !e.allDay), [todays])
   const lanes = useMemo(() => packLanes(timed), [timed])
 
@@ -58,7 +64,7 @@ export function DayView({
         </button>
       </div>
 
-      {allDay.length > 0 && (
+      {(allDay.length > 0 || dayCountdowns.length > 0) && (
         <div className="dv-allday">
           <div className="dv-rail-lbl">ALL-DAY</div>
           <div className="dv-allday-cell">
@@ -70,6 +76,9 @@ export function DayView({
                 </div>
               )
             })}
+            {dayCountdowns.map((c) => (
+              <CountdownChip key={c.id} c={c} onOpen={onOpenCountdown} />
+            ))}
           </div>
         </div>
       )}

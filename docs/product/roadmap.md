@@ -85,9 +85,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   off-plan recipes in the grocery board's by-meal view.
 - **Meals & recipes** — week/month planners, recipe library, in-app editor (with
   **ingredient sections** + dividers and cross-section drag-drop), paste-markdown
-  import, overrides, cook mode, **per-step timers** (set in the editor; a floating
+  import **and share-as-markdown export** (a Share action compiles a recipe to the
+  blessed Markdown format for the native share sheet / clipboard / `.md` download),
+  overrides, cook mode, **per-step timers** (set in the editor; a floating
   cook-mode dock that ticks live, jumps to the step on tap, and rings a looping
-  alarm + local-notification fallback), substitution-aware grocery build, AI
+  alarm + local-notification fallback), substitution-aware grocery build with a
+  **per-week grocery board** (switch weeks to shop ahead — each week's meal items are
+  their own list, typed items + staples stay global), AI
   plan-week/month (with a no-AI **shuffle** fallback that fills empty slots from
   your library, skipping recently-planned/cooked dishes), AI metadata auto-fill.
 - **Photos** — wall (masonry), real blob upload (single + multi), albums, edit, multi-
@@ -142,6 +146,18 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Partial / in progress 🟡
 
+- **Waffled-Bites (kid companion device)** — the pairing system and the parent-facing
+  control panel (Family → tap a kid → Waffled-Bite: quiet time, night light, wake-up
+  light schedule, alarm, sound machine, screen brightness) are done on **web and iOS**
+  (iPhone + iPad) — new optional `waffledBites` module, `waffled_bite_devices`/
+  `waffled_bite_pairing_codes` tables, device polls `GET /api/waffled-bites/device/state`
+  (no WebSockets). The on-device firmware (ESP32-P4 + LVGL 9.2,
+  `apps/waffled-bite-firmware`) is also feature-complete — every screen (home, routines,
+  quiet time, timer, bedtime, wake-light lock, settings, pairing, forget-device) is wired
+  to the real API. **Pending:** real-hardware bring-up — the target board (ELECROW
+  CrowPanel Advanced 7") has never been in hand, so the firmware has only run in a
+  desktop simulator (SDL) against the live backend; WiFi provisioning is also still
+  hardcoded credentials, no UI yet.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
   are REST + live-refresh bus.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend
@@ -150,6 +166,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   choice.
 
 ## Planned 🚧
+
+- **List sharing.** Let a household invite specific people to a list, choose whether
+  they can view or edit it, and revoke access later.
 
 - **Recurring-edit scope — give chores the calendar's model, and close two calendar gaps.**
   Calendar events already ship the full **this event / this-and-following / all events** picker
