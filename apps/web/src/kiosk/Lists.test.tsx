@@ -59,10 +59,17 @@ function mockApi(opts: { lists?: unknown[]; items?: unknown[]; sent?: Sent[]; cr
     if (/\/api\/lists\/templates\/[^/]+\/apply$/.test(u) && method === 'POST') {
       return { ok: true, json: async () => ({ list: { ...packing, id: 'applied', name: body?.name ?? 'Applied', listType: 'custom' } }) }
     }
+    if (/\/api\/lists\/[^/]+\/clear-completed$/.test(u) && method === 'POST') {
+      return { ok: true, json: async () => ({ cleared: 1 }) }
+    }
     if (u.endsWith('/api/lists') && method === 'POST') {
       return { ok: true, json: async () => ({ list: opts.created }) }
     }
     if (u.endsWith('/api/lists')) return { ok: true, json: async () => ({ lists: opts.lists ?? [] }) }
+    // bulk edit (must precede the single-item PATCH regex, which captures "bulk" as :id)
+    if (u.endsWith('/api/list-items/bulk') && method === 'PATCH') {
+      return { ok: true, json: async () => ({ updated: (body?.ids?.length ?? 0) }) }
+    }
     if (/\/api\/list-items\/[^/]+$/.test(u) && method === 'PATCH') {
       return { ok: true, json: async () => ({ item: { id: u.split('/').pop(), name: 'Swimsuits', quantity: '×4', checked: body.checked ?? false, checkedAt: null, section: 'Clothes', sortOrder: 0, assignee: body.assignedTo === null ? null : kelly } }) }
     }
@@ -106,8 +113,8 @@ describe('Lists screen', () => {
     expect(screen.getByText('✦ 15')).toBeInTheDocument()
     expect(screen.getAllByText('Lake trip packing').length).toBeGreaterThan(0)
 
-    // header: name + "3 items · 1 packed" + filter
-    await waitFor(() => expect(screen.getByText('3 items · 1 packed')).toBeInTheDocument())
+    // header: name + "2 items · 1 done" (the count is active/unchecked only) + filter
+    await waitFor(() => expect(screen.getByText('2 items · 1 done')).toBeInTheDocument())
     expect(screen.getByText('Everyone')).toBeInTheDocument()
 
     // suggestions
@@ -115,9 +122,11 @@ describe('Lists screen', () => {
     expect(screen.getByText('Bug spray')).toBeInTheDocument()
 
     // active sectioned items render; the checked one is tucked into a collapsed
-    // Completed section rather than lingering inline in its original section
-    expect(await screen.findByText('Clothes')).toBeInTheDocument()
-    expect(screen.getByText('Gear')).toBeInTheDocument()
+    // Completed section rather than lingering inline in its original section.
+    // (Section names also appear as <option>s in the add-bar picker, so scope the
+    // header-title queries to the section-name span.)
+    expect(await screen.findByText('Clothes', { selector: '.lists-section-name' })).toBeInTheDocument()
+    expect(screen.getByText('Gear', { selector: '.lists-section-name' })).toBeInTheDocument()
     expect(screen.getByText('Swimsuits')).toBeInTheDocument()
     expect(screen.getByText('×4')).toBeInTheDocument()
     expect(screen.queryByText('PJs & socks')).toBeNull()
@@ -130,7 +139,7 @@ describe('Lists screen', () => {
     await exitBoard()
 
     // the checked item (PJs & socks, section Clothes) no longer sits in Clothes…
-    const clothes = (await screen.findByText('Clothes')).closest('.lists-section') as HTMLElement
+    const clothes = (await screen.findByText('Clothes', { selector: '.lists-section-name' })).closest('.lists-section') as HTMLElement
     expect(within(clothes).queryByText('PJs & socks')).toBeNull()
     expect(within(clothes).getByText('Swimsuits')).toBeInTheDocument()
 
@@ -149,7 +158,7 @@ describe('Lists screen', () => {
 
     // Sunscreen lives in Gear; drag it onto the Clothes section
     const sunscreen = (await screen.findByText('Sunscreen')).closest('.litem') as HTMLElement
-    const clothes = (await screen.findByText('Clothes')).closest('.lists-section') as HTMLElement
+    const clothes = (await screen.findByText('Clothes', { selector: '.lists-section-name' })).closest('.lists-section') as HTMLElement
     fireEvent.dragStart(sunscreen)
     fireEvent.dragOver(clothes)
     fireEvent.drop(clothes)
@@ -303,6 +312,36 @@ describe('Lists screen', () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('applied'))
   })
 
+  it('collapses a section when its header toggle is clicked', async () => {
+    mockApi({ lists: [grocery, packing], items: packItems })
+    renderScreen()
+    await exitBoard()
+
+    // Swimsuits shows under the Clothes section…
+    expect(await screen.findByText('Swimsuits')).toBeInTheDocument()
+    // …click the Clothes section header to collapse it → its items hide
+    const header = screen.getByText('Clothes', { selector: '.lists-section-name' }).closest('button') as HTMLElement
+    fireEvent.click(header)
+    await waitFor(() => expect(screen.queryByText('Swimsuits')).toBeNull())
+  })
+
+  it('bulk-edits selected items via the Select toolbar (PATCH /api/list-items/bulk)', async () => {
+    const sent: Sent[] = []
+    mockApi({ lists: [grocery, packing], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    // enter multi-select, pick Swimsuits, then set its section from the bulk toolbar
+    fireEvent.click(screen.getByRole('button', { name: /Select/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Select Swimsuits' }))
+    fireEvent.change(screen.getByLabelText('Set section for selected'), { target: { value: 'Gear' } })
+
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))).toBe(true))
+    const patch = sent.find((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))!
+    expect(patch.body).toMatchObject({ ids: ['i1'], patch: { section: 'Gear' } })
+  })
+
   it('flattens into a highest-priority-first view when "By priority" is toggled on', async () => {
     const items = [
       { id: 'a', name: 'Low item', quantity: null, checked: false, checkedAt: null, section: 'Clothes', sortOrder: 0, assignee: null, priority: 2 },
@@ -315,11 +354,12 @@ describe('Lists screen', () => {
     await screen.findByText('Urgent item')
 
     // default (manual) view keeps the section grouping — no priority reordering
-    expect(screen.getByText('Clothes')).toBeInTheDocument()
+    // (query the section-title span, since 'Clothes' also appears as an add-bar option)
+    expect(screen.getByText('Clothes', { selector: '.lists-section-name' })).toBeInTheDocument()
 
     // toggle on → flat, highest-priority first, section titles gone
     fireEvent.click(screen.getByRole('button', { name: /Sort: manual/i }))
-    await waitFor(() => expect(screen.queryByText('Clothes')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText('Clothes', { selector: '.lists-section-name' })).not.toBeInTheDocument())
     const titles = [...container.querySelectorAll('.lists-section-title')].map((el) => el.textContent)
     expect(titles).toEqual(['By priority'])
 
