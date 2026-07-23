@@ -72,6 +72,10 @@ export function KioskRoutes() {
           <Route path="meals/recipe/:id" element={<RecipeDetail />} />
           <Route path="meals/recipe/:id/edit" element={<RecipeEditor />} />
           <Route path="meals/recipe/:id/cook" element={<CookMode />} />
+          {/* Cooking a whole plate: the same screen, but tabbed across the meal's
+              dishes with independent step progress per dish. Registered here so the
+              Cook Mode work never has to edit this router. */}
+          <Route path="meals/meal/:id/cook" element={<CookMode />} />
         </Route>
         <Route element={<ModuleGate module="lists" />}>
           <Route path="lists" element={<Lists />} />
