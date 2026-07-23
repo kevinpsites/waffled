@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## [0.12.0] - 2026-07-23
+
+### Added
 - **Shop ahead — see and build next week's grocery list.** The grocery board now has a
   week switcher (‹ ›, with a "This week" reset) on both web and iOS/iPad. Each week's
   meal-derived items are their own list, so you can shop Saturday for next week's meals
@@ -1336,7 +1344,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/kevinpsites/waffled/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/kevinpsites/waffled/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kevinpsites/waffled/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kevinpsites/waffled/compare/v0.8.0...v0.9.0
