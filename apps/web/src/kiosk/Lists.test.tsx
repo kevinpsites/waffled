@@ -393,6 +393,29 @@ describe('Lists screen', () => {
     expect(patch.body).toEqual({ ids: ['i1'], patch: { section: 'Camping' } })
   })
 
+  it('clears Select mode + selection when switching lists (no stray bulk PATCH on the old list)', async () => {
+    const sent: Sent[] = []
+    const other = { ...(packing as Record<string, unknown>), id: 'p2', name: 'Costco run' }
+    mockApi({ lists: [grocery, packing, other], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    // enter Select on this list and pick an item
+    fireEvent.click(screen.getByRole('button', { name: /^\s*Select\s*$/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Select Swimsuits' }))
+    expect(screen.getByText(/^1 selected$/)).toBeInTheDocument()
+
+    // switch to a different list from the rail
+    fireEvent.click(screen.getByText('Costco run'))
+
+    // Select mode is reset (the toggle is back, the bulk bar is gone) and switching
+    // fired NO bulk PATCH against the previous list's items.
+    await screen.findByRole('button', { name: /^\s*Select\s*$/ })
+    expect(screen.queryByText(/ selected$/)).not.toBeInTheDocument()
+    expect(sent.some((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))).toBe(false)
+  })
+
   it('flattens into a highest-priority-first view when "By priority" is toggled on', async () => {
     const items = [
       { id: 'a', name: 'Low item', quantity: null, checked: false, checkedAt: null, section: 'Clothes', sortOrder: 0, assignee: null, priority: 2 },

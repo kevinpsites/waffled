@@ -599,6 +599,18 @@ export function Lists() {
     }
   }, [lists, templates, selectedId])
 
+  // Clear per-list UI state whenever the selected list changes. This component is
+  // long-lived (only `selectedId` changes when you switch lists), so without this a
+  // pending multi-selection/staging or add-bar section would leak into the next list
+  // — and pressing Done after switching would PATCH the PREVIOUS list's items.
+  useEffect(() => {
+    setSelecting(false)
+    setSelectedItems(new Set())
+    setBulkStaged({})
+    setAddSection(null)
+    setCollapsedSections(new Set())
+  }, [selectedId])
+
   // Delete the selected list (and, server-side, its items). Two-tap confirm since
   // it discards anything not yet checked off.
   async function deleteSelected() {
