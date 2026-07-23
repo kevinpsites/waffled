@@ -272,6 +272,18 @@ final class ListDetailModel {
         } catch { self.error = true }
     }
 
+    /// "Start over": un-check everything on this week's list (Refresh keeps checks).
+    func startOver() async {
+        guard !weekStart.isEmpty else { return }
+        do {
+            let board = try await api.clearGroceryChecks(weekStart: weekStart)
+            settling = []
+            withAnimation {
+                items = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
+            }
+        } catch { self.error = true }
+    }
+
     /// Optimistic removal; restore on failure.
     func remove(_ id: String) async {
         let snapshot = items
@@ -954,6 +966,16 @@ struct ListDetailView: View {
                 Text(weekOffset == 0 ? "THIS WEEK’S MEALS" : weekOffset == 1 ? "NEXT WEEK’S MEALS" : "MEALS · \(groceryWeekLabel.uppercased())")
                     .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
                 Spacer()
+                if model.items.contains(where: { $0.checked }) {
+                    Button { Task { await model.startOver() } } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.counterclockwise").font(.system(size: 11, weight: .bold))
+                            Text("Start over").font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundStyle(WF.ink2)
+                    }
+                    .buttonStyle(.plain)
+                }
                 Button { Task { await model.rebuild() } } label: {
                     HStack(spacing: 5) {
                         if model.rebuilding {

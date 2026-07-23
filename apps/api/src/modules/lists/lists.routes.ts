@@ -27,6 +27,7 @@ import {
   addPantryStaple,
   removePantryStaple,
   rebuildGroceryFromWeek,
+  clearGroceryChecks,
   groceryBoard,
   householdWeekStart,
   presentList,
@@ -256,6 +257,13 @@ export function registerListRoutes(api: Api): void {
     const weekStart = await weekStartFor(tenant, req)
     const count = await rebuildGroceryFromWeek(tenant, weekStart)
     return { rebuilt: count, board: await groceryBoard(tenant, weekStart) }
+  }))
+
+  // "Start over": un-check everything on the week's list (Refresh keeps checks instead).
+  api.post('/api/lists/grocery/clear-checks', tenantRoute(async (tenant, req: Request) => {
+    const weekStart = await weekStartFor(tenant, req)
+    const cleared = await clearGroceryChecks(tenant, weekStart)
+    return { cleared, board: await groceryBoard(tenant, weekStart) }
   }))
 
   api.get('/api/pantry-staples', tenantRoute(async (tenant) => {

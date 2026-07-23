@@ -20,7 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without disturbing this week's — building or checking off one week never touches
   another. Items you type in by hand (and your pantry staples) stay on a single running
   list shown on every week. Adding a recipe's ingredients off-plan now lands on the week
-  you're viewing.
+  you're viewing. **Refresh** rebuilds a week's items while keeping what you've checked
+  off; a new **Start over** clears that week's checkmarks when you want a fresh list.
+  Existing installs migrate automatically — your current grocery items move onto this
+  week (honoring your first-day-of-week and timezone).
 - **Share a recipe from your library.** Every recipe detail now has a **Share** action that
   compiles the recipe into Waffled's Markdown format (title, metadata, sectioned
   ingredients, numbered steps with timers, notes) and hands it to your device's share

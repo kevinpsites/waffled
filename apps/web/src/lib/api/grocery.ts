@@ -141,6 +141,9 @@ export const groceryApi = {
     apiGet<GroceryBoard>(`/api/lists/grocery/board${weekStart ? `?weekStart=${weekStart}` : ''}`),
   rebuildGrocery: (weekStart?: string) =>
     apiSend<{ rebuilt: number; board: GroceryBoard }>('POST', `/api/lists/grocery/rebuild${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
+  // "Start over": un-check everything on the given week's list (Refresh keeps checks).
+  clearGroceryChecks: (weekStart?: string) =>
+    apiSend<{ cleared: number; board: GroceryBoard }>('POST', `/api/lists/grocery/clear-checks${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
   pantryStaples: () => apiGet<{ staples: PantryStaple[] }>('/api/pantry-staples'),
   addStaple: (name: string) => apiSend<{ staple: PantryStaple }>('POST', '/api/pantry-staples', { name }).then((r) => r.staple).then(tap('grocery')),
   removeStaple: (id: string) => apiDelete(`/api/pantry-staples/${id}`).then(tap('grocery')),

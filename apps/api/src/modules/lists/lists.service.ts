@@ -694,6 +694,21 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
   return byName.size
 }
 
+// "Start over" for a week: un-check every item shown on that week's board (this week's
+// meal/off-plan rows + the global manual rows), so the list is a fresh unchecked list.
+// Refresh, by contrast, keeps checks (see rebuildGroceryFromWeek's prevChecked). Scoped
+// so clearing one week doesn't touch another week's per-week rows. Returns rows cleared.
+export async function clearGroceryChecks(tenant: Tenant, weekStart: string): Promise<number> {
+  const list = await getOrCreateGroceryList(tenant)
+  const res = await query(
+    `update list_items set checked = false, checked_at = null
+       where household_id = $1 and list_id = $2 and deleted_at is null and checked
+         and (week_start = $3 or week_start is null)`,
+    [tenant.householdId, list.id, weekStart]
+  )
+  return res.rowCount ?? 0
+}
+
 const DINNER_COLORS = ['#2F7FED', '#EC6049', '#8B5CF6', '#E0A500', '#25A368', '#EC4899', '#14B8A6']
 const MEAL_ORDER: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 }
 

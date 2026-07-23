@@ -284,6 +284,12 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
       setRefreshing(false)
     }
   }
+  // "Start over" — un-check everything on this week's list (Refresh keeps checks).
+  async function startOver() {
+    setRecent(new Set())
+    await groceryApi.clearGroceryChecks(board!.weekStart)
+    refetch()
+  }
 
   const sections: BoardSection[] =
     view === 'aisle'
@@ -473,13 +479,20 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
 
       <div className="grocery-rail">
         <div className="card grocery-railcard">
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, gap: 8 }}>
             <div className="card-h">{weekLabel(board.weekStart)}’s meals</div>
-            {board.meals.length > 0 && (
-              <button type="button" className="pill grocery-refresh" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={rebuild} disabled={refreshing} title="Rebuild the auto items from these meals (keeps what you added or checked off)">
-                ↻ {refreshing ? 'Refreshing…' : 'Refresh'}
-              </button>
-            )}
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              {board.items.some((i) => i.checked) && (
+                <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={startOver} title="Un-check everything on this week’s list (does not remove items)">
+                  ⟲ Start over
+                </button>
+              )}
+              {board.meals.length > 0 && (
+                <button type="button" className="pill grocery-refresh" style={{ cursor: 'pointer' }} onClick={rebuild} disabled={refreshing} title="Rebuild the auto items from these meals (keeps what you added or checked off)">
+                  ↻ {refreshing ? 'Refreshing…' : 'Refresh'}
+                </button>
+              )}
+            </div>
           </div>
           {board.meals.length === 0 && <div className="tiny muted" style={{ fontWeight: 600 }}>No meals planned yet.</div>}
           {availableMealTypes.length > 0 && (

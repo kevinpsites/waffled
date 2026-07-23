@@ -963,6 +963,22 @@ describe('grocery week switching — never clobber', () => {
     // week B has its own Shared Kale (from plannedB), independent of week A's
     expect(names(await board(weekB))).toContain('Shared Kale')
   })
+
+  it('"start over" clears this week’s checks without touching another week', async () => {
+    // check a week-A item (Charlie Corn @ weekA) and a week-B item (Shared Kale @ weekB)
+    const wa = (await board(weekA)).items.find((i: { name: string }) => i.name === 'Charlie Corn')
+    await call('PATCH', `/api/list-items/${wa.id}`, kevin, { checked: true })
+    const wb = (await board(weekB)).items.find((i: { name: string }) => i.name === 'Shared Kale')
+    await call('PATCH', `/api/list-items/${wb.id}`, kevin, { checked: true })
+
+    // start over on week A
+    const res = await call('POST', `/api/lists/grocery/clear-checks?weekStart=${weekA}`, kevin)
+    expect(res.statusCode).toBe(200)
+
+    // week A's item is now unchecked; week B's item is untouched
+    expect((await board(weekA)).items.find((i: { name: string }) => i.name === 'Charlie Corn').checked).toBe(false)
+    expect((await board(weekB)).items.find((i: { name: string }) => i.name === 'Shared Kale').checked).toBe(true)
+  })
 })
 
 // The 0088 backfill must stamp legacy (pre-0087) weekless rows to the SAME date the board

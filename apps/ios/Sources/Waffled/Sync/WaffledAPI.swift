@@ -2321,6 +2321,13 @@ struct WaffledAPI: Sendable {
         return try await sendJSON("POST", "/api/lists/grocery/rebuild?weekStart=\(weekStart)", as: Resp.self).board
     }
 
+    /// "Start over": un-check everything on this week's grocery list (Refresh keeps
+    /// checks instead). Returns the refreshed board.
+    func clearGroceryChecks(weekStart: String) async throws -> GroceryBoardDTO {
+        struct Resp: Decodable { let board: GroceryBoardDTO }
+        return try await sendJSON("POST", "/api/lists/grocery/clear-checks?weekStart=\(weekStart)", as: Resp.self).board
+    }
+
     /// All lists in the household (for the Lists index). Templates are excluded
     /// server-side; we also filter defensively so a `list_type == "template"` row
     /// never pollutes the normal rail (mirrors the web/server behavior).
