@@ -40,6 +40,7 @@ import {
   todayDate,
 } from './meals.service'
 import { parseRecipe } from './recipe-markdown'
+import { serializeRecipe, recipeFilename } from './recipe-serialize'
 import {
   ingestRecipeFromText,
   ingestRecipeFromPhotos,
@@ -117,6 +118,22 @@ export function registerMealRoutes(api: Api): void {
       note: stepNotes[String(s.stepNumber)] ?? null,
     }))
     return { recipe: presentRecipe(recipe), ingredients, steps }
+  }))
+
+  // Compile a recipe into the blessed Markdown format (docs/RECIPE_FORMAT.md) for
+  // sharing — the inverse of parse-markdown. Returns the markdown text (as-presented,
+  // so user overrides are included) plus a suggested .md filename; clients hand it to
+  // the native share sheet / clipboard / download.
+  api.get('/api/recipes/:id/markdown', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    const recipe = await getRecipe(tenant.householdId, id)
+    if (!recipe) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    const presented = presentRecipe(recipe)
+    const ingredients = (await listIngredients(tenant.householdId, id)).map(presentIngredient)
+    const steps = await listSteps(tenant.householdId, id)
+    const markdown = serializeRecipe({ recipe: presented, ingredients, steps })
+    return { markdown, filename: recipeFilename(presented.title) }
   }))
 
   // Update a recipe — favorite/rename/rating/notes/overrides (non-destructive) and

@@ -40,6 +40,10 @@ final class ListDetailModel {
     private(set) var staples: [WaffledAPI.GroceryBoardDTO.Staple] = []
     /// The week the board covers (YYYY-MM-DD) — passed to rebuild.
     private(set) var weekStart = ""
+    /// Which week to request (YYYY-MM-DD); nil = the current week (server default). The
+    /// view sets this from its week switcher so you can shop a future week without
+    /// touching this week's list.
+    var requestedWeekStart: String?
     /// True while a rebuild-from-meals is in flight (drives the Refresh spinner).
     private(set) var rebuilding = false
 
@@ -107,7 +111,7 @@ final class ListDetailModel {
         settling = []
         do {
             if isGrocery {
-                let board = try await api.groceryBoard()
+                let board = try await api.groceryBoard(weekStart: requestedWeekStart)
                 meals = board.meals
                 unscheduled = board.unscheduled ?? []
                 staples = board.staples
@@ -123,21 +127,25 @@ final class ListDetailModel {
         loading = false
     }
 
-    func add(name rawName: String, quantity rawQty: String, section rawSection: String? = nil) async {
+    @discardableResult
+    func add(name rawName: String, quantity rawQty: String, section rawSection: String? = nil) async -> WaffledAPI.ListItemDTO? {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
+        guard !name.isEmpty else { return nil }
         let qty = rawQty.trimmingCharacters(in: .whitespacesAndNewlines)
         let section = rawSection?.trimmingCharacters(in: .whitespacesAndNewlines)
         let sec = (section?.isEmpty == false) ? section : nil
         do {
+            let created: WaffledAPI.ListItemDTO
             if isGrocery {
-                try await api.addGroceryItem(name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
+                created = try await api.addGroceryItem(name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
             } else {
-                try await api.addListItem(listId: list.id, name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
+                created = try await api.addListItem(listId: list.id, name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
             }
             await load()
+            return created
         } catch {
             self.error = true
+            return nil
         }
     }
 
@@ -194,7 +202,7 @@ final class ListDetailModel {
     /// Optimistic full-detail edit (name / quantity / assignee / section); revert on
     /// failure. `member` is the chosen assignee (nil = unassigned).
     func editDetails(_ id: String, name rawName: String, quantity rawQty: String,
-                     member: SyncedMember?, section rawSection: String) async {
+                     member: SyncedMember?, section rawSection: String, priority: Int) async {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
@@ -204,11 +212,28 @@ final class ListDetailModel {
         items[idx].name = name
         items[idx].quantity = qty.isEmpty ? nil : qty
         items[idx].section = section.isEmpty ? nil : section
+        items[idx].priority = priority
         items[idx].assignee = member.map { .init(name: $0.name, avatarEmoji: $0.emoji, colorHex: $0.colorHex) }
         do {
-            try await api.updateItemDetails(id: id, name: name, quantity: qty, assignedTo: member?.id, section: section)
+            try await api.updateItemDetails(id: id, name: name, quantity: qty, assignedTo: member?.id, section: section, priority: priority)
         } catch {
             if let i = items.firstIndex(where: { $0.id == id }) { items[i] = prev }
+        }
+    }
+
+    /// Move an item to a different section (drag-and-drop / "Move to section"),
+    /// PATCHing just its category. Optimistic; reverts on failure.
+    func setSection(_ id: String, to rawSection: String?) async {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        let section = rawSection?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let target = (section?.isEmpty == false) ? section : nil
+        guard items[idx].section != target else { return }
+        let prev = items[idx]
+        withAnimation { items[idx].section = target }
+        do {
+            try await api.patchListItem(id: id, section: target ?? "")
+        } catch {
+            if let i = items.firstIndex(where: { $0.id == id }) { withAnimation { items[i] = prev } }
         }
     }
 
@@ -247,6 +272,18 @@ final class ListDetailModel {
         } catch { self.error = true }
     }
 
+    /// "Start over": un-check everything on this week's list (Refresh keeps checks).
+    func startOver() async {
+        guard !weekStart.isEmpty else { return }
+        do {
+            let board = try await api.clearGroceryChecks(weekStart: weekStart)
+            settling = []
+            withAnimation {
+                items = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
+            }
+        } catch { self.error = true }
+    }
+
     /// Optimistic removal; restore on failure.
     func remove(_ id: String) async {
         let snapshot = items
@@ -256,6 +293,40 @@ final class ListDetailModel {
         } catch {
             items = snapshot
         }
+    }
+
+    /// Clear the Completed section now — soft-deletes every checked item server-side.
+    /// Optimistic; restores on failure. (Old checked items also auto-clear on load.)
+    func clearCompleted() async {
+        let snapshot = items
+        withAnimation { items.removeAll { $0.checked } }
+        settling = []
+        do {
+            try await api.clearCompletedList(listId: list.id)
+        } catch {
+            items = snapshot
+        }
+    }
+
+    /// Bulk-edit section / assignee / priority across `ids` in one call, then reload
+    /// so grouping/badges reflect it. Double-optional args distinguish leave-unchanged
+    /// (.none) from set-to-null (.some(nil)).
+    func bulkPatch(ids: [String], section: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) async {
+        guard !ids.isEmpty else { return }
+        do {
+            try await api.bulkPatchListItems(ids: ids, section: section, assignedTo: assignedTo, priority: priority)
+            await load()
+        } catch { self.error = true }
+    }
+
+    /// Take an off-plan recipe back off the grocery list (undo "add to grocery"),
+    /// removing it from the by-meal "Unscheduled" group. Reloads (it can touch
+    /// several rows and strip shared credits server-side).
+    func removeRecipe(_ recipeId: String) async {
+        do {
+            try await api.removeRecipeFromGrocery(recipeId: recipeId, weekStart: weekStart.isEmpty ? nil : weekStart)
+            await load()
+        } catch { self.error = true }
     }
 
     /// Turn this list into a reusable template — converts it in place (it leaves the
@@ -291,6 +362,15 @@ final class ListDetailModel {
         }
     }
 
+    /// Rename the list (keeps its emoji). Updates the header (`list.name` drives the
+    /// nav title) and rail. Returns true on success.
+    func rename(to name: String) async -> Bool {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty else { return false }
+        do { list = try await api.updateList(id: list.id, name: n); return true }
+        catch { self.error = true; return false }
+    }
+
     /// Soft-delete the whole list. Returns true so the view can pop back + refresh.
     func deleteList() async -> Bool {
         do { try await api.deleteList(id: list.id); return true }
@@ -315,15 +395,32 @@ struct ListDetailView: View {
     @State private var editQty = ""
     @State private var showCompleted = false
     @State private var detailItem: WaffledAPI.ListItemDTO?
+    @State private var showAddDetail = false
+    @State private var addDetailName = ""
     @State private var didAutoDetails = false
     @State private var mode: GroceryViewMode = .aisle
     @State private var railMeal = "dinner"
+    /// Which week the grocery board shows (0 = current). Lets you shop a future week
+    /// without touching this week's list — meal items are per week, typed items global.
+    @State private var weekOffset = 0
     /// Section ids (aisle title or meal-group id) the user has collapsed.
     @State private var collapsed: Set<String> = []
     /// Transient confirmation banner ("Added Butter to Pantry").
     @State private var toast: String?
     @State private var toastTask: Task<Void, Never>?
     @State private var editingStaples = false
+    // Multi-select (bulk edit): whether we're selecting + which items are picked.
+    @State private var selecting = false
+    @State private var selectedIDs: Set<String> = []
+    // Staged bulk edits — a menu choice no longer writes immediately; it commits on
+    // Done (mirrors web). Tri-state: .none = leave, .some(nil) = clear, .some(x) = set.
+    @State private var stagedSection: String?? = .none
+    @State private var stagedAssignee: String?? = .none
+    @State private var stagedPriority: Int? = nil
+    @State private var bulkNewSectionPrompt = false
+    @State private var bulkNewSectionName = ""
+    @State private var renamePrompt = false
+    @State private var renameText = ""
     @FocusState private var focus: Field?
 
     /// Meal-type ordering for the summary filter (matches the web rail).
@@ -374,45 +471,11 @@ struct ListDetailView: View {
         .toolbar {
             // Grocery is auto-built, so it has no template/delete menu. A template gets
             // Use / Move to Lists / Delete; a normal list gets Save as template / Delete.
-            if !model.isGrocery {
+            // iPad (kiosk) has no navigation bar — its ⋯ menu lives in the list header
+            // (see `kioskListHeader`); iPhone keeps it here in the nav bar.
+            if !model.isGrocery && !isKiosk {
                 ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        if model.isTemplate {
-                            Button {
-                                Task {
-                                    if let created = await model.useTemplate() {
-                                        sync.bumpLists()
-                                        showToast("Made “\(created.name)” from this template")
-                                    }
-                                }
-                            } label: { Label("Use template", systemImage: "plus.square.on.square") }
-                            Button {
-                                Task {
-                                    if await model.moveToLists() {
-                                        sync.bumpLists()
-                                        showToast("Moved “\(model.list.name)” back to Lists")
-                                    }
-                                }
-                            } label: { Label("Move to Lists", systemImage: "arrow.uturn.left") }
-                            Button(role: .destructive) { confirmingDelete = true } label: {
-                                Label("Delete template", systemImage: "trash")
-                            }
-                        } else {
-                            Button {
-                                Task {
-                                    if await model.convertToTemplate() {
-                                        sync.bumpLists()
-                                        showToast("Turned “\(model.list.name)” into a template")
-                                    }
-                                }
-                            } label: { Label("Save as template", systemImage: "doc.on.doc") }
-                            Button(role: .destructive) { confirmingDelete = true } label: {
-                                Label("Delete list", systemImage: "trash")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
+                    listActionsMenu
                 }
             }
         }
@@ -436,9 +499,28 @@ struct ListDetailView: View {
             if editingId != nil, new != .editName, new != .editQty { commitEdit() }
         }
         .onChange(of: query) { _, q in model.searchQuery = q }
+        .onDisappear {
+            // Don't lose a typed-but-unsubmitted item when navigating away — commit it.
+            if !draftName.trimmingCharacters(in: .whitespaces).isEmpty {
+                let name = draftName, qty = draftQty, section = draftSection
+                draftName = ""; draftQty = ""
+                Task { await model.add(name: name, quantity: qty, section: section) }
+            }
+        }
         .sheet(item: $detailItem) { item in
-            ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section in
-                Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section) }
+            ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section, priority in
+                Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section, priority: priority) }
+            }
+        }
+        // The "Add item with details" sheet (from the add bar's sliders button): create the
+        // item, then apply assignee/section/priority in one go.
+        .sheet(isPresented: $showAddDetail) {
+            ItemDetailEditor(newItemName: addDetailName, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section, priority in
+                Task {
+                    if let created = await model.add(name: name, quantity: qty, section: section) {
+                        await model.editDetails(created.id, name: name, quantity: qty, member: member, section: section, priority: priority)
+                    }
+                }
             }
         }
         .confirmationDialog("Delete “\(model.list.name)”?", isPresented: $confirmingDelete, titleVisibility: .visible) {
@@ -462,6 +544,23 @@ struct ListDetailView: View {
                 newSectionName = ""
             }
         } message: { Text("New items will be added to this section.") }
+        .alert("New section", isPresented: $bulkNewSectionPrompt) {
+            TextField("Section name", text: $bulkNewSectionName)
+            Button("Cancel", role: .cancel) { bulkNewSectionName = "" }
+            Button("Use") {
+                let s = bulkNewSectionName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !s.isEmpty { stagedSection = .some(s) }
+                bulkNewSectionName = ""
+            }
+        } message: { Text("Move the selected items into this new section.") }
+        .alert("Rename list", isPresented: $renamePrompt) {
+            TextField("List name", text: $renameText)
+            Button("Cancel", role: .cancel) { renameText = "" }
+            Button("Save") {
+                let n = renameText; renameText = ""
+                Task { if await model.rename(to: n) { sync.bumpLists() } }
+            }
+        }
     }
 
     /// iPhone: items with the meals recap + staples inline in the list.
@@ -480,6 +579,7 @@ struct ListDetailView: View {
             }
         }
         .listStyle(.plain)
+        .listSectionSpacing(0)   // no white gaps between sections — one tan surface
         .scrollContentBackground(.hidden)
         // Drag down through the items to tuck the keyboard away (the add bar's field
         // otherwise keeps it up with no way to dismiss on iPhone).
@@ -505,6 +605,7 @@ struct ListDetailView: View {
                 topControls
                 List { itemRows }
                     .listStyle(.plain)
+                    .listSectionSpacing(0)   // no white gaps between sections — one tan surface
                     .scrollContentBackground(.hidden)
                     .scrollDismissesKeyboard(.interactively)
                     // The lifted bar is drawn OVER the List's bottom (offset is
@@ -515,11 +616,14 @@ struct ListDetailView: View {
             }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { columnBottom = $0 }
             .frame(maxWidth: .infinity)
-            if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.staples.isEmpty) {
+            if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.unscheduled.isEmpty || !model.staples.isEmpty) {
                 Rectangle().fill(WF.hair).frame(width: 1)
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        if !model.meals.isEmpty { summaryPanel }
+                        // Match the phone gate: the summary card also carries the Unscheduled
+                        // recap, so show it whenever there are planned OR unscheduled recipes
+                        // (a week with only off-plan adds still needs the side panel).
+                        if !model.meals.isEmpty || !model.unscheduled.isEmpty { summaryPanel }
                         if !model.staples.isEmpty { staplesPanel }
                     }
                     .padding(16)
@@ -546,15 +650,84 @@ struct ListDetailView: View {
                 } header: { mealHeader(group) }
             }
         } else {
-            ForEach(model.activeSections) { group in
-                Section {
-                    if !collapsed.contains(group.id) {
-                        ForEach(group.items) { item in itemRow(item) }
-                    }
-                } header: { sectionHeader(group) }
+            // One flat run (headers + items in a single ForEach) so `.onMove` can drag an
+            // item ACROSS a header into another section. A sectioned List's `.onMove` only
+            // reorders within one section, and its `.dropDestination` silently refuses the
+            // drop entirely (verified on-device) — `.onMove` is the drag that actually
+            // works next to `.swipeActions`. Headers can't be dragged or deleted; on drop
+            // we read the item's new section from the header it landed under (`ListReorder`)
+            // and PATCH just that section. Grouping stays visually intact because the rows
+            // regroup from `activeSections` once `setSection` updates the item.
+            // Build the flat rows ONCE per render (filter→group→sort) and reuse them for
+            // both the ForEach and the drop handler, so a drag doesn't recompute the pipeline
+            // a second time (per apps/ios/CLAUDE.md's precompute rule).
+            let rows = flatDisplayRows
+            ForEach(rows) { r in
+                switch r {
+                case .header(let group):
+                    flatHeaderRow(group).moveDisabled(true).deleteDisabled(true)
+                case .item(let item, _):
+                    itemRow(item)
+                }
             }
+            .onMove { from, to in handleMove(rows: rows, from: from, to: to) }
         }
         completedSection
+    }
+
+    /// A flattened display row for the drag-enabled section view: a section header, or an
+    /// item tagged with its section. Built from `activeSections` in render order, so the
+    /// indices line up 1:1 with the `ListReorder.Row` array `handleMove` reasons over.
+    private enum ListDisplayRow: Identifiable {
+        case header(ListSectionGroup)
+        case item(WaffledAPI.ListItemDTO, section: String?)
+        var id: String {
+            switch self {
+            case .header(let g): return "h:\(g.id)"
+            case .item(let i, _): return "i:\(i.id)"
+            }
+        }
+    }
+
+    /// Headers + visible items in one sequence. Collapsed sections keep their header (a
+    /// drop target) but drop their items, matching what the List renders.
+    private var flatDisplayRows: [ListDisplayRow] {
+        var out: [ListDisplayRow] = []
+        for group in model.activeSections {
+            out.append(.header(group))
+            if !collapsed.contains(group.id) {
+                // Tag with the group's real category (sectionValue), NOT its display title —
+                // the ungrouped "Items" header maps to a nil category.
+                for item in group.items { out.append(.item(item, section: group.sectionValue)) }
+            }
+        }
+        return out
+    }
+
+    /// The header inside the flat ForEach. A titled group reuses the normal section header;
+    /// the untitled ("no section") group keeps its old look — no visible header — via a
+    /// zero-height anchor row that still holds a slot for index alignment + a drop target.
+    @ViewBuilder private func flatHeaderRow(_ group: ListSectionGroup) -> some View {
+        if group.title != nil {
+            sectionHeader(group)
+        } else {
+            Color.clear.frame(height: 0)
+                .listRowInsets(EdgeInsets()).listRowSeparator(.hidden).listRowBackground(Color.clear)
+        }
+    }
+
+    /// SwiftUI `.onMove` handler: resolve the item's new section from where it landed and
+    /// PATCH it. A within-section reorder resolves to nil and is a no-op (we persist section,
+    /// not fine order — matching the web drag).
+    private func handleMove(rows displayRows: [ListDisplayRow], from: IndexSet, to: Int) {
+        let rows: [ListReorder.Row] = displayRows.map { r in
+            switch r {
+            case .header(let g): return .header(g.sectionValue)
+            case .item(let i, let s): return .item(id: i.id, section: s)
+            }
+        }
+        guard let result = ListReorder.targetSection(rows: rows, from: from, to: to) else { return }
+        Task { await model.setSection(result.id, to: result.section) }
     }
 
     /// Whether to show the search field — only worth the space once a list is long.
@@ -562,12 +735,131 @@ struct ListDetailView: View {
 
     /// Pinned controls below the nav bar: a search field (long lists) above the
     /// grocery aisle/meal toggle.
+    /// The list's ⋯ actions, shared by the iPhone nav bar and the iPad header.
+    private var listActionsMenu: some View {
+        Menu { listActionButtons } label: {
+            Image(systemName: "ellipsis.circle").font(.system(size: 20, weight: .regular))
+        }
+    }
+
+    /// Menu contents — same options on iPhone and iPad: Select, Rename, template
+    /// actions, Delete.
+    @ViewBuilder private var listActionButtons: some View {
+        // Enter multi-select to bulk-edit section / assignee / priority.
+        Button { withAnimation { selecting = true; selectedIDs = []; resetBulkStaging() } } label: {
+            Label("Select items to edit", systemImage: "checklist")
+        }
+        Button { renameText = model.list.name; renamePrompt = true } label: {
+            Label("Rename", systemImage: "pencil")
+        }
+        if model.isTemplate {
+            Button {
+                Task {
+                    if let created = await model.useTemplate() {
+                        sync.bumpLists()
+                        showToast("Made “\(created.name)” from this template")
+                    }
+                }
+            } label: { Label("Use template", systemImage: "plus.square.on.square") }
+            Button {
+                Task {
+                    if await model.moveToLists() {
+                        sync.bumpLists()
+                        showToast("Moved “\(model.list.name)” back to Lists")
+                    }
+                }
+            } label: { Label("Move to Lists", systemImage: "arrow.uturn.left") }
+            Button(role: .destructive) { confirmingDelete = true } label: {
+                Label("Delete template", systemImage: "trash")
+            }
+        } else {
+            Button {
+                Task {
+                    if await model.convertToTemplate() {
+                        sync.bumpLists()
+                        showToast("Turned “\(model.list.name)” into a template")
+                    }
+                }
+            } label: { Label("Save as template", systemImage: "doc.on.doc") }
+            Button(role: .destructive) { confirmingDelete = true } label: {
+                Label("Delete list", systemImage: "trash")
+            }
+        }
+    }
+
+    /// iPad-only header: the list name + the ⋯ menu (the kiosk layout has no nav bar,
+    /// so the actions would otherwise be unreachable). Grocery has no menu.
+    @ViewBuilder private var kioskListHeader: some View {
+        if !model.isGrocery {
+            HStack(spacing: 10) {
+                Text(model.list.name)
+                    .font(WF.serif(20, .semibold)).foregroundStyle(WF.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                listActionsMenu.foregroundStyle(WF.ink2)
+            }
+            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 2)
+        }
+    }
+
     @ViewBuilder private var topControls: some View {
         VStack(spacing: 0) {
+            if isKiosk { kioskListHeader }
             if showSearch { searchField }
+            // Bulk-edit action bar sits directly under the search field (not a bottom
+            // overlay, which the tab bar hid) so the section/person/priority actions
+            // are obvious the moment you enter select mode.
+            if selecting { bulkBar }
+            if model.isGrocery && !searchActive { groceryWeekSwitcher }
             if model.isGrocery { modeToggle }
         }
         .background(WF.canvas)
+    }
+
+    // MARK: grocery week switcher
+
+    private var viewedWeekStart: Date {
+        let base = Cal.weekStart(Date(), sync.householdTz)   // honors first-day-of-week
+        return Cal.gregorian(sync.householdTz).date(byAdding: .weekOfYear, value: weekOffset, to: base) ?? base
+    }
+    /// The YYYY-MM-DD to request; nil for the current week (server default).
+    private var requestedWeekYMD: String? {
+        weekOffset == 0 ? nil : DateFmt.string(viewedWeekStart, "yyyy-MM-dd", sync.householdTz)
+    }
+    private var groceryWeekLabel: String {
+        switch weekOffset {
+        case 0: return "This week"
+        case 1: return "Next week"
+        case -1: return "Last week"
+        default: return "Week of " + DateFmt.string(viewedWeekStart, "MMM d", sync.householdTz)
+        }
+    }
+
+    /// Prev/next week with a "This week" reset — always visible for grocery so an empty
+    /// future week can still be navigated back. Changing the week reloads the board for
+    /// that week; this week's list is never touched.
+    @ViewBuilder private var groceryWeekSwitcher: some View {
+        HStack(spacing: 10) {
+            Button { withAnimation { weekOffset -= 1 } } label: {
+                Image(systemName: "chevron.left").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+                    .frame(width: 36, height: 30).background(WF.panel).clipShape(Capsule())
+            }.buttonStyle(.plain)
+            Text(groceryWeekLabel).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
+                .frame(maxWidth: .infinity)
+            if weekOffset != 0 {
+                Button("This week") { withAnimation { weekOffset = 0 } }
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ai).buttonStyle(.plain)
+            }
+            Button { withAnimation { weekOffset += 1 } } label: {
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+                    .frame(width: 36, height: 30).background(WF.panel).clipShape(Capsule())
+            }.buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 2)
+        .onChange(of: weekOffset) { _, _ in
+            model.requestedWeekStart = requestedWeekYMD
+            Task { await model.load() }
+        }
     }
 
     /// Inline search box — filters items by name, section, or quantity.
@@ -602,21 +894,167 @@ struct ListDetailView: View {
         return result
     }
 
-    /// A row plus its swipe actions (Delete + Details), shared by the active and
-    /// completed sections.
+    /// A row plus its swipe actions (Delete + Details). Native swipe stays because the
+    /// list keeps using `List`; moving an item between sections is handled by the flat
+    /// ForEach's `.onMove` (see `itemRows`), not a per-row gesture.
     @ViewBuilder private func itemRow(_ item: WaffledAPI.ListItemDTO) -> some View {
-        row(item)
-            .listRowBackground(Color.clear)
-            .swipeActions(edge: .trailing) {
-                Button(role: .destructive) {
-                    Task { await model.remove(item.id) }
-                } label: { Label("Delete", systemImage: "trash") }
-                Button {
-                    if editingId != nil { commitEdit() }
-                    detailItem = item
-                } label: { Label("Details", systemImage: "slider.horizontal.3") }
-                    .tint(WF.ai)
+        if selecting {
+            // Multi-select mode: the whole row toggles selection; swipe/edit are off.
+            selectableRow(item)
+                .listRowBackground(WF.canvas)
+                .listRowSeparator(.hidden)
+        } else {
+            row(item)
+                // A flat tan sheet: canvas row backgrounds (no white cells) and no hairline
+                // separators — the list reads as one continuous surface, not ruled rows.
+                .listRowBackground(WF.canvas)
+                .listRowSeparator(.hidden)
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        Task { await model.remove(item.id) }
+                    } label: { Label("Delete", systemImage: "trash") }
+                    Button {
+                        if editingId != nil { commitEdit() }
+                        detailItem = item
+                    } label: { Label("Details", systemImage: "slider.horizontal.3") }
+                        .tint(WF.ai)
+                }
+        }
+    }
+
+    /// A tap-to-select row shown in multi-select mode (leading checkmark + name/qty/
+    /// assignee). Kept simple — editing/checking-off are disabled while selecting.
+    @ViewBuilder private func selectableRow(_ item: WaffledAPI.ListItemDTO) -> some View {
+        let isSel = selectedIDs.contains(item.id)
+        Button {
+            if isSel { selectedIDs.remove(item.id) } else { selectedIDs.insert(item.id) }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: isSel ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 21))
+                    .foregroundStyle(isSel ? WF.primary : WF.ink3)
+                    .frame(width: 32, height: 32)
+                if !ListItemPriority.meta(item.priority).icon.isEmpty {
+                    Text(ListItemPriority.meta(item.priority).icon).font(.system(size: 13))
+                }
+                Text(item.name)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(WF.ink)
+                Spacer(minLength: 8)
+                if let q = item.quantity, !q.isEmpty {
+                    Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+                }
+                if let a = item.assignee, a.avatarEmoji != nil || a.colorHex != nil {
+                    Avatar(colorHex: a.colorHex, emoji: a.avatarEmoji ?? "🙂", size: 24)
+                }
             }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Action bar shown in multi-select mode (under the search field): stage a
+    /// section / assignee / priority for the whole selection via native Menus, then
+    /// Done commits — a menu tap no longer writes immediately (mirrors web).
+    private var bulkBar: some View {
+        // Two rows so the action chips get the full width and never squish their labels
+        // into two-letters-per-line: top row is the count + Cancel/Done, bottom row the
+        // Section / Assign / Priority chips spread evenly across the width.
+        VStack(spacing: 10) {
+            HStack {
+                Text("\(selectedIDs.count) selected")
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+                Spacer(minLength: 8)
+                Button("Cancel") { withAnimation { selecting = false; selectedIDs = []; resetBulkStaging() } }
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+                Button("Done") { commitBulk() }
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(selectedIDs.isEmpty ? WF.ink3 : WF.primary)
+                    .disabled(selectedIDs.isEmpty)
+            }
+            HStack(spacing: 8) {
+                Menu {
+                    ForEach(sectionSuggestions, id: \.self) { s in
+                        Button(s) { stagedSection = .some(s) }
+                    }
+                    Button("No section") { stagedSection = .some(nil) }
+                    Divider()
+                    Button { bulkNewSectionName = ""; bulkNewSectionPrompt = true } label: {
+                        Label("New section…", systemImage: "plus")
+                    }
+                } label: { bulkChip(sectionChipLabel, "folder", active: stagedSection != nil) }
+                    .disabled(selectedIDs.isEmpty)
+                Menu {
+                    ForEach(sync.members, id: \.id) { m in
+                        Button { stagedAssignee = .some(m.id) } label: { Text("\(m.emoji ?? "🙂") \(m.name)") }
+                    }
+                    Button("Unassign") { stagedAssignee = .some(nil) }
+                } label: { bulkChip(assignChipLabel, "person", active: stagedAssignee != nil) }
+                    .disabled(selectedIDs.isEmpty)
+                Menu {
+                    ForEach([5, 4, 3, 2, 1], id: \.self) { p in
+                        Button { stagedPriority = p } label: { Text(ListItemPriority.meta(p).label) }
+                    }
+                } label: { bulkChip(priorityChipLabel, "flag", active: stagedPriority != nil) }
+                    .disabled(selectedIDs.isEmpty)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(WF.canvas)
+        .overlay(WF.hair.frame(height: 1), alignment: .bottom)
+    }
+
+    private var sectionChipLabel: String {
+        switch stagedSection {
+        case .none: return "Section"
+        case .some(.none): return "No section"
+        case .some(.some(let s)): return s
+        }
+    }
+    private var assignChipLabel: String {
+        switch stagedAssignee {
+        case .none: return "Assign"
+        case .some(.none): return "Unassign"
+        case .some(.some(let id)): return sync.members.first(where: { $0.id == id })?.name ?? "Assigned"
+        }
+    }
+    private var priorityChipLabel: String {
+        stagedPriority.map { ListItemPriority.meta($0).label } ?? "Priority"
+    }
+
+    private func bulkChip(_ label: String, _ icon: String, active: Bool = false) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+            Text(label)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)            // each chip takes an equal third of the row
+        .padding(.vertical, 9)
+        .background(active ? WF.primary.opacity(0.16) : WF.panel).clipShape(Capsule())
+        .foregroundStyle(active ? WF.primary : WF.ink)
+    }
+
+    private func resetBulkStaging() {
+        stagedSection = .none; stagedAssignee = .none; stagedPriority = nil
+    }
+
+    /// "Done": write only the fields the user staged, then leave select mode.
+    private func commitBulk() {
+        // Snapshot the selection + staged values into locals FIRST: resetBulkStaging()
+        // below runs synchronously, before the async Task executes, so reading the
+        // @State inside the Task would see the already-cleared values and patch nothing.
+        let ids = Array(selectedIDs)
+        let section = stagedSection
+        let assignee = stagedAssignee
+        let priority = stagedPriority
+        let hasChange = section != nil || assignee != nil || priority != nil
+        if !ids.isEmpty && hasChange {
+            Task { await model.bulkPatch(ids: ids, section: section, assignedTo: assignee, priority: priority) }
+        }
+        withAnimation { selecting = false; selectedIDs = []; resetBulkStaging() }
     }
 
     @ViewBuilder private func sectionHeader(_ group: ListSectionGroup) -> some View {
@@ -644,6 +1082,8 @@ struct ListDetailView: View {
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
             .background(WF.canvas)
             .listRowInsets(EdgeInsets())
+            .listRowBackground(WF.canvas)
+            .listRowSeparator(.hidden)
     }
 
     /// A header laid out as a tap target that collapses/expands its section.
@@ -718,6 +1158,14 @@ struct ListDetailView: View {
                     .font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             }
         }
+        // Long-press an Unscheduled recipe's header to take it back off the list.
+        .contextMenu {
+            if let recipe = group.unscheduled {
+                Button(role: .destructive) {
+                    Task { await model.removeRecipe(recipe.recipeId) }
+                } label: { Label("Remove from list", systemImage: "trash") }
+            }
+        }
     }
 
     /// Colored dots showing which dinners need this item (grocery board).
@@ -757,9 +1205,19 @@ struct ListDetailView: View {
     @ViewBuilder private var summaryPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("THIS WEEK’S MEALS")
+                Text(weekOffset == 0 ? "THIS WEEK’S MEALS" : weekOffset == 1 ? "NEXT WEEK’S MEALS" : "MEALS · \(groceryWeekLabel.uppercased())")
                     .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
                 Spacer()
+                if model.items.contains(where: { $0.checked && $0.weekStart != nil }) {
+                    Button { Task { await model.startOver() } } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.counterclockwise").font(.system(size: 11, weight: .bold))
+                            Text("Start over").font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundStyle(WF.ink2)
+                    }
+                    .buttonStyle(.plain)
+                }
                 Button { Task { await model.rebuild() } } label: {
                     HStack(spacing: 5) {
                         if model.rebuilding {
@@ -807,24 +1265,32 @@ struct ListDetailView: View {
     /// day label; taps through to the recipe like they do.
     @ViewBuilder private func unscheduledRecapRow(_ recipe: WaffledAPI.GroceryBoardDTO.UnscheduledRecipe) -> some View {
         let color = Color(hexString: recipe.color) ?? WF.ink3
-        Button {
+        // Not a Button: the row taps through to the recipe via `onTapGesture`, so the
+        // trailing × can be its own Button and remove the recipe from the list (these
+        // recap rows live in a VStack, not a List, so native swipe-to-delete isn't
+        // available — a visible × mirrors the web's Unscheduled rail).
+        HStack(spacing: 10) {
+            Circle().fill(color).frame(width: 9, height: 9)
+            Text(recipe.title)
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                .lineLimit(1)
+            Spacer(minLength: 6)
+            Button { Task { await model.removeRecipe(recipe.recipeId) } } label: {
+                Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(WF.ink3)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(recipe.title) from list")
+            Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
+            Text(recipe.emoji ?? "🍽️")
+                .font(.system(size: 14))
+                .frame(width: 28, height: 28)
+                .background(color.opacity(0.12)).clipShape(Circle())
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
             openRecipe(.placeholder(id: recipe.recipeId, title: recipe.title, emoji: recipe.emoji,
                                     category: nil, cookTimeMinutes: nil, servings: nil))
-        } label: {
-            HStack(spacing: 10) {
-                Circle().fill(color).frame(width: 9, height: 9)
-                Text(recipe.title)
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
-                    .lineLimit(1)
-                Spacer(minLength: 6)
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
-                Text(recipe.emoji ?? "🍽️")
-                    .font(.system(size: 14))
-                    .frame(width: 28, height: 28)
-                    .background(color.opacity(0.12)).clipShape(Circle())
-            }
         }
-        .buttonStyle(.plain)
     }
 
     @ViewBuilder private func mealRecapRow(_ meal: WaffledAPI.GroceryBoardDTO.Meal) -> some View {
@@ -927,20 +1393,33 @@ struct ListDetailView: View {
                 }
             } header: {
                 headerChrome {
-                    Button {
-                        withAnimation { showCompleted.toggle() }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: showCompleted ? "chevron.down" : "chevron.right")
-                                .font(.system(size: 10, weight: .heavy))
-                            Text("COMPLETED (\(model.completed.count))")
-                                .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                            Spacer()
+                    HStack(spacing: 6) {
+                        Button {
+                            withAnimation { showCompleted.toggle() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: showCompleted ? "chevron.down" : "chevron.right")
+                                    .font(.system(size: 10, weight: .heavy))
+                                Text("COMPLETED (\(model.completed.count))")
+                                    .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                                Spacer()
+                            }
+                            .foregroundStyle(WF.ink3)
+                            .contentShape(Rectangle())
                         }
-                        .foregroundStyle(WF.ink3)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        // Clear the whole Completed section now — CUSTOM lists only. On
+                        // grocery, `checked` means "in cart", and clear-completed is a
+                        // server-side no-op there, so the button would optimistically wipe
+                        // in-cart items that then reappear on the next sync. (Templates
+                        // have no Completed either.)
+                        if !model.isTemplate && !model.isGrocery {
+                            Button { Task { await model.clearCompleted() } } label: {
+                                Text("Clear").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.primary)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -996,6 +1475,11 @@ struct ListDetailView: View {
             } else {
                 Button { startEdit(item) } label: {
                     HStack(spacing: 8) {
+                        if !ListItemPriority.meta(item.priority).icon.isEmpty {
+                            Text(ListItemPriority.meta(item.priority).icon)
+                                .font(.system(size: 13))
+                                .accessibilityLabel(ListItemPriority.meta(item.priority).label)
+                        }
                         Text(item.name)
                             .font(.system(size: 16, weight: .semibold))
                             .strikethrough(item.checked, color: WF.ink3)
@@ -1057,9 +1541,26 @@ struct ListDetailView: View {
                     .focused($focus, equals: .addQty)
                     .submitLabel(.done)
                     .onSubmit(submit)
+                // Tap for the full "Add item" sheet — assignee, section, priority — seeded
+                // with whatever's already typed. (The old swipe-up gesture was unreliable
+                // next to the text fields.)
+                Button {
+                    addDetailName = draftName
+                    draftName = ""; draftQty = ""; focus = nil
+                    showAddDetail = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3").font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(WF.ink3)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add item with details")
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
             .wfField()
+            // The whole bar (icon + padding, not just the field glyphs) raises the
+            // keyboard — the bare TextField hit target was a too-small tap.
+            .contentShape(Rectangle())
+            .onTapGesture { focus = .add }
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -1163,41 +1664,83 @@ struct ListDetailView: View {
     }
 }
 
+/// List-item priority: a 1–5 urgency scale (1 not urgent, 3 normal, 5 urgent) shared
+/// by the detail editor's chips and the row flag. Above-normal items (4–5) get the
+/// flag. Mirrors the web `priority.tsx`.
+enum ListItemPriority {
+    struct Option { let value: Int; let label: String; let icon: String }
+    static let normal = 3
+    static let all: [Option] = [
+        .init(value: 1, label: "Not urgent", icon: ""),
+        .init(value: 2, label: "Low", icon: ""),
+        .init(value: 3, label: "Normal", icon: ""),
+        .init(value: 4, label: "High", icon: "⚑"),
+        .init(value: 5, label: "Urgent", icon: "‼️"),
+    ]
+    static func meta(_ p: Int?) -> Option { all.first { $0.value == (p ?? normal) } ?? all[2] }
+}
+
 /// The fuller "Details" editor reached by swiping a row — name, quantity, assignee,
 /// and section. The 90% case stays on the inline row editor; this is for the rest.
 /// Styled to match the app (WF cards on canvas) rather than the stock iOS Form.
 struct ItemDetailEditor: View {
     @Environment(\.dismiss) private var dismiss
     let originalName: String
+    let isNew: Bool
     let members: [SyncedMember]
     let suggestions: [String]
-    let onSave: (String, String, SyncedMember?, String) -> Void
+    let onSave: (String, String, SyncedMember?, String, Int) -> Void
 
     @State private var name: String
     @State private var quantity: String
     @State private var assigneeId: String?
     @State private var section: String
+    @State private var priority: Int
+    @FocusState private var nameFocused: Bool
 
     init(item: WaffledAPI.ListItemDTO, members: [SyncedMember], suggestions: [String],
-         onSave: @escaping (String, String, SyncedMember?, String) -> Void) {
+         onSave: @escaping (String, String, SyncedMember?, String, Int) -> Void) {
         self.originalName = item.name
+        self.isNew = false
         self.members = members
         self.suggestions = suggestions
         self.onSave = onSave
         _name = State(initialValue: item.name)
         _quantity = State(initialValue: item.quantity ?? "")
         _section = State(initialValue: item.section ?? "")
+        _priority = State(initialValue: item.priority ?? ListItemPriority.normal)
         // The item's assignee carries no id, so resolve it to a member by name.
         let assigneeName = item.assignee?.name
         _assigneeId = State(initialValue: members.first { $0.name == assigneeName }?.id)
+    }
+
+    /// Add mode — a blank "Add item" sheet (optionally seeded with a name already typed in
+    /// the add bar) so you can set assignee / section / priority up front, then add.
+    init(newItemName: String, members: [SyncedMember], suggestions: [String],
+         onSave: @escaping (String, String, SyncedMember?, String, Int) -> Void) {
+        self.originalName = ""
+        self.isNew = true
+        self.members = members
+        self.suggestions = suggestions
+        self.onSave = onSave
+        _name = State(initialValue: newItemName)
+        _quantity = State(initialValue: "")
+        _section = State(initialValue: "")
+        _priority = State(initialValue: ListItemPriority.normal)
+        _assigneeId = State(initialValue: nil)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    field("Name") { TextField("Item", text: $name).textInputAutocapitalization(.words) }
+                    field("Name") { TextField("Item", text: $name).textInputAutocapitalization(.words).focused($nameFocused) }
                     field("Quantity") { TextField("e.g. 2 lb", text: $quantity) }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Priority")
+                        priorityRow
+                    }
 
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: "Assigned to")
@@ -1217,13 +1760,14 @@ struct ItemDetailEditor: View {
                 .padding(20)
             }
             .background(WF.canvas)
-            .navigationTitle("Edit \(originalName)")
+            .navigationTitle(isNew ? "Add item" : "Edit \(originalName)")
             .navigationBarTitleDisplayMode(.inline)
+            .task { if isNew, name.isEmpty { nameFocused = true } }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        onSave(name, quantity, members.first { $0.id == assigneeId }, section)
+                    Button(isNew ? "Add" : "Save") {
+                        onSave(name, quantity, members.first { $0.id == assigneeId }, section, priority)
                         dismiss()
                     }
                     .fontWeight(.semibold)
@@ -1231,7 +1775,7 @@ struct ItemDetailEditor: View {
                 }
             }
         }
-        .presentationDetents([.large])
+        .presentationDetents([.medium, .large])
     }
 
     // MARK: pieces
@@ -1249,6 +1793,29 @@ struct ItemDetailEditor: View {
             .padding(.horizontal, 15).padding(.vertical, 13)
             .frame(maxWidth: .infinity, alignment: .leading)
             .wfField()
+    }
+
+    /// Normal / Important / Urgent chips — mirrors the web item editor's priority pills.
+    private var priorityRow: some View {
+        // Horizontal scroll (like the Assigned-to row) so the five 1–5 pills never wrap.
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(ListItemPriority.all, id: \.value) { p in
+                    let selected = priority == p.value
+                    Button { priority = p.value } label: {
+                        HStack(spacing: 5) {
+                            if !p.icon.isEmpty { Text(p.icon).font(.system(size: 12)) }
+                            Text(p.label).font(.system(size: 13, weight: .semibold)).fixedSize()
+                        }
+                        .foregroundStyle(selected ? WF.ink : WF.ink2)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .wfChip(selected: selected)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 1)
+        }
     }
 
     private var assigneeRow: some View {

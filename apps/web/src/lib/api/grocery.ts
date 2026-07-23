@@ -53,6 +53,8 @@ export interface ListItem {
   checked: boolean
   checkedAt: string | null
   section: string | null
+  // 1–5 urgency scale: 1 = not urgent, 3 = normal, 5 = urgent. Higher sorts first.
+  priority?: number
   sortOrder: number | null
   assignee: ListItemAssignee | null
   // ambient attribution: who hand-added the item, and where it came from.
@@ -74,6 +76,7 @@ export interface PatchItemBody {
   assignedTo?: string | null
   quantity?: string | null
   section?: string | null
+  priority?: number
   name?: string
 }
 
@@ -84,6 +87,7 @@ function patchBody(b: PatchItemBody): Record<string, unknown> {
   if ('assignedTo' in b) out.assignedTo = b.assignedTo
   if ('quantity' in b) out.quantity = b.quantity
   if ('section' in b) out.category = b.section
+  if ('priority' in b) out.priority = b.priority
   if ('name' in b) out.name = b.name
   return out
 }
@@ -96,8 +100,12 @@ export const groceryApi = {
   setItemChecked: (id: string, checked: boolean) =>
     apiSend<{ item: GroceryItem }>('PATCH', `/api/list-items/${id}`, { checked }).then((r) => r.item).then(tap('grocery')),
   deleteItem: (id: string) => apiDelete(`/api/list-items/${id}`).then(tap('grocery')),
-  groceryFromRecipe: (recipeId: string) =>
-    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}`).then(tap('grocery')),
+  // weekStart scopes an off-plan add/remove to the week being shopped (defaults to the
+  // current week server-side when omitted, e.g. from a recipe page with no week context).
+  groceryFromRecipe: (recipeId: string, weekStart?: string) =>
+    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
+  removeRecipeFromGrocery: (recipeId: string, weekStart?: string) =>
+    apiDelete(`/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
 
   // lists (the Lists screen)
   lists: () => apiGet<{ lists: ListSummary[] }>('/api/lists'),
@@ -117,21 +125,31 @@ export const groceryApi = {
   applyTemplate: (templateId: string, name?: string) =>
     apiSend<{ list: ListSummary }>('POST', `/api/lists/templates/${templateId}/apply`, name ? { name } : {}).then((r) => r.list).then(tap('grocery')),
 
-  addListItem: (listId: string, input: { name: string; quantity?: string | null; section?: string | null; assignedTo?: string | null }) =>
+  addListItem: (listId: string, input: { name: string; quantity?: string | null; section?: string | null; assignedTo?: string | null; priority?: number }) =>
     apiSend<{ item: ListItem }>('POST', `/api/lists/${listId}/items`, {
       name: input.name,
       quantity: input.quantity ?? null,
       category: input.section ?? null,
       assignedTo: input.assignedTo ?? null,
+      ...(input.priority ? { priority: input.priority } : {}),
     }).then((r) => r.item).then(tap('grocery')),
   patchListItem: (id: string, patch: PatchItemBody) =>
     apiSend<{ item: ListItem }>('PATCH', `/api/list-items/${id}`, patchBody(patch)).then((r) => r.item).then(tap('grocery')),
+  // Bulk-edit section/assignee/priority across a multi-selection (one round-trip).
+  bulkPatchItems: (ids: string[], patch: { section?: string | null; assignedTo?: string | null; priority?: number }) =>
+    apiSend<{ updated: number }>('PATCH', '/api/list-items/bulk', { ids, patch }).then((r) => r.updated).then(tap('grocery')),
+  // Clear a custom list's Completed section now (soft-deletes its checked items).
+  clearCompleted: (listId: string) =>
+    apiSend<{ cleared: number }>('POST', `/api/lists/${listId}/clear-completed`, {}).then((r) => r.cleared).then(tap('grocery')),
 
   // grocery board (auto-built view) + pantry staples
   groceryBoard: (weekStart?: string) =>
     apiGet<GroceryBoard>(`/api/lists/grocery/board${weekStart ? `?weekStart=${weekStart}` : ''}`),
   rebuildGrocery: (weekStart?: string) =>
     apiSend<{ rebuilt: number; board: GroceryBoard }>('POST', `/api/lists/grocery/rebuild${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
+  // "Start over": un-check everything on the given week's list (Refresh keeps checks).
+  clearGroceryChecks: (weekStart?: string) =>
+    apiSend<{ cleared: number; board: GroceryBoard }>('POST', `/api/lists/grocery/clear-checks${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
   pantryStaples: () => apiGet<{ staples: PantryStaple[] }>('/api/pantry-staples'),
   addStaple: (name: string) => apiSend<{ staple: PantryStaple }>('POST', '/api/pantry-staples', { name }).then((r) => r.staple).then(tap('grocery')),
   removeStaple: (id: string) => apiDelete(`/api/pantry-staples/${id}`).then(tap('grocery')),
@@ -161,6 +179,8 @@ export interface GroceryBoardItem extends ListItem {
   aisle: string
   source: string
   sourceRecipeIds: string[]
+  // The week this row belongs to (meal-derived + off-plan rows); null = global manual row.
+  weekStart: string | null
 }
 export interface GroceryBoard {
   list: ListSummary
