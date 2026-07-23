@@ -2,7 +2,7 @@
 // meals.service.ts; types in meals.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { moduleRoutes } from '../../platform/route-guards'
+import { moduleRoutes, requireModule } from '../../platform/route-guards'
 import {
   syncMealEventForEntry,
   removeMealEventForEntry,
@@ -790,6 +790,10 @@ export function registerMealRoutes(api: Api): void {
   // the weekly rebuild must never wipe) and are credited to the plate, so the board
   // can group them under one parent row.
   api.post('/api/meals/:id/add-to-list', tenantRoute(async (tenant, req: Request, res: Response) => {
+    // Double-gated: this writes grocery rows, which belong to the lists module, so a
+    // household that has turned lists off must not be able to grow a list from the
+    // meals side. Mirrors /api/lists/grocery/from-recipe, which is lists-gated.
+    await requireModule(tenant, 'lists')
     const meal = await loadMeal(tenant, req, res)
     if (!meal) return
     const ws = typeof req.query?.weekStart === 'string' ? req.query.weekStart : ''

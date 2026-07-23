@@ -60,7 +60,7 @@ export function capRoute(cap: Capability, handler: TenantHandler) {
 // 403 unless the household has the given optional module enabled. Read once per
 // request (the same shallow settings lookup pantry already does). Checked BEFORE
 // admin/capability so a disabled module reads as "module off" regardless of role.
-async function requireModule(tenant: Tenant, key: ModuleKey): Promise<void> {
+export async function requireModule(tenant: Tenant, key: ModuleKey): Promise<void> {
   const { rows } = await query<{ settings: unknown }>('select settings from households where id = $1', [tenant.householdId])
   if (!moduleEnabled(rows[0]?.settings, key)) throw new AuthError(`The ${key} module is not enabled`, 403)
 }

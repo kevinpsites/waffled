@@ -649,6 +649,22 @@ describe('grocery: a plate on the list', () => {
   it('404s add-to-list for another household’s plate', async () => {
     expect((await call('POST', `/api/meals/${foreignMealId}/add-to-list`, kevin)).statusCode).toBe(404)
   })
+
+  // add-to-list writes grocery rows, which belong to the lists module — so it has to
+  // be gated on BOTH meals and lists, the same way /api/lists/grocery/from-recipe is.
+  // Otherwise a household that has deliberately turned lists off can still be made to
+  // grow a grocery list by adding a plate from the meals side.
+  it('403s add-to-list when the lists module is off, even with meals on', async () => {
+    await setModule('lists', false)
+    try {
+      const res = await call('POST', `/api/meals/${sidesPlate}/add-to-list?weekStart=${WEEK}`, kevin)
+      expect(res.statusCode).toBe(403)
+    } finally {
+      await setModule('lists', true)
+    }
+    // and it works again once lists is back on
+    expect((await call('POST', `/api/meals/${sidesPlate}/add-to-list?weekStart=${WEEK}`, kevin)).statusCode).toBe(201)
+  })
 })
 
 // Regression guard (characterisation, not TDD — the behaviour already held): the
