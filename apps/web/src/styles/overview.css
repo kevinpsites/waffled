@@ -12,6 +12,30 @@
 .pp-left, .pp-right { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .pp-card { padding: 18px 20px; }
 
+/* ===== Waffled-Bite device control panel — stacked sections, not the
+   .pp-left/.pp-right two-column split above (that's the sibling person
+   overview page's layout; this screen groups by topic instead). ===== */
+.wb-page { flex: 1; display: flex; flex-direction: column; gap: 18px; padding: 4px 30px 28px; min-height: 0; overflow-y: auto; }
+.wb-row { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+.wb-section-label { font-size: 12px; font-weight: 700; color: var(--ink-3); margin: 6px 2px 0; }
+.wb-note {
+  border: 1px solid color-mix(in srgb, var(--success) 35%, var(--hair));
+  background: color-mix(in srgb, var(--success) 8%, transparent);
+  border-radius: var(--r-lg); padding: 12px 16px; font-size: 13px; font-weight: 600; color: var(--ink-2);
+}
+.wb-tag {
+  flex: none; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--ink-3); background: var(--panel); padding: 3px 9px; border-radius: 999px;
+}
+.wb-card-accent { border: 1.5px solid color-mix(in srgb, var(--primary) 35%, var(--hair)); }
+.wb-list { display: flex; flex-direction: column; }
+.wb-list-row { display: flex; align-items: center; gap: 14px; padding: 13px 0; cursor: pointer; user-select: none; }
+.wb-list-row:not(:first-child) { border-top: 1px solid var(--hair-2); }
+.wb-list-body { padding: 2px 0 14px; }
+@media (max-width: 1000px) {
+  .wb-row { grid-template-columns: 1fr; }
+}
+
 .pp-hero { display: flex; align-items: center; gap: 16px; }
 .pp-av {
   width: 64px; height: 64px; border-radius: 999px; flex: none;

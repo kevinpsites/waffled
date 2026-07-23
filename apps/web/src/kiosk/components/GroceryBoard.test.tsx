@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { GroceryBoard } from './GroceryBoard'
 import { TopbarSlotProvider } from '../topbar-slot'
@@ -165,6 +165,36 @@ describe('GroceryBoard unscheduled recipes (By meal view)', () => {
     expect(guac.textContent).not.toContain('Limes')
     expect(guac.textContent).toContain('Avocados')
   })
+
+  it('removes an off-plan recipe from the list via the section Remove button', async () => {
+    const sent: { method: string; url: string }[] = []
+    globalThis.fetch = vi.fn(async (url: string, init?: { method?: string }) => {
+      const u = String(url)
+      sent.push({ method: init?.method ?? 'GET', url: u })
+      if (u.includes('/api/lists/grocery/board')) {
+        return ok({
+          list: { id: 'g', name: 'Grocery', emoji: '🛒', listType: 'grocery', isAutoBuilt: true, sortMode: 'manual', itemCount: 1 },
+          weekStart: '2026-06-07',
+          meals: [{ date: '2026-06-08', mealType: 'dinner', recipeId: 'r1', title: 'Pasta', emoji: '🍝', color: '#1f5fd0' }],
+          unscheduled: [{ recipeId: 'r2', title: 'Guacamole', emoji: '🥑', color: '#8B5CF6' }],
+          items: [offPlanItem],
+          staples: [],
+        })
+      }
+      return ok({})
+    }) as unknown as typeof fetch
+
+    renderBoard()
+    await screen.findByText('Avocados')
+    fireEvent.click(screen.getByRole('button', { name: 'By meal' }))
+
+    const header = screen.getAllByText('Guacamole').map((el) => el.closest('.grocery-section-h')).find(Boolean) as HTMLElement
+    fireEvent.click(within(header).getByRole('button', { name: /Remove/i }))
+
+    await waitFor(() =>
+      expect(sent.some((s) => s.method === 'DELETE' && /\/api\/lists\/grocery\/from-recipe\/r2\?weekStart=2026-06-07$/.test(s.url))).toBe(true)
+    )
+  })
 })
 
 // Rail rows drill into the recipe, matching iOS.
@@ -198,5 +228,36 @@ describe('GroceryBoard rail navigation', () => {
     const rail = document.querySelector('.grocery-railcard') as HTMLElement
     fireEvent.click(within(rail).getByText('Guacamole'))
     expect(await screen.findByText('recipe-page')).toBeInTheDocument()
+  })
+
+  it('removes an off-plan recipe from the rail\'s Unscheduled row without navigating', async () => {
+    const sent: { method: string; url: string }[] = []
+    globalThis.fetch = vi.fn(async (url: string, init?: { method?: string }) => {
+      const u = String(url)
+      sent.push({ method: init?.method ?? 'GET', url: u })
+      if (u.includes('/api/lists/grocery/board')) {
+        return ok({
+          list: { id: 'g', name: 'Grocery', emoji: '🛒', listType: 'grocery', isAutoBuilt: true, sortMode: 'manual', itemCount: 1 },
+          weekStart: '2026-06-07',
+          meals: [{ date: '2026-06-08', mealType: 'dinner', recipeId: 'r1', title: 'Pasta', emoji: '🍝', color: '#1f5fd0' }],
+          unscheduled: [{ recipeId: 'r2', title: 'Guacamole', emoji: '🥑', color: '#8B5CF6' }],
+          items: [offPlanItem],
+          staples: [],
+        })
+      }
+      return ok({})
+    }) as unknown as typeof fetch
+
+    renderWithRecipeRoute()
+    await screen.findByText('Avocados')
+    const rail = document.querySelector('.grocery-railcard') as HTMLElement
+    fireEvent.click(within(rail).getByRole('button', { name: /Remove Guacamole/i }))
+
+    // fires the delete for that recipe
+    await waitFor(() =>
+      expect(sent.some((s) => s.method === 'DELETE' && /\/api\/lists\/grocery\/from-recipe\/r2\?weekStart=2026-06-07$/.test(s.url))).toBe(true)
+    )
+    // and does NOT drill into the recipe (stopPropagation on the × button)
+    expect(screen.queryByText('recipe-page')).not.toBeInTheDocument()
   })
 })

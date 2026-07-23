@@ -376,10 +376,41 @@ body {
 }
 .field-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
 }
 .field-row .field {
   flex: 1;
+  min-width: 140px;
+}
+
+/* Stepper's typable value — a +/- pair alone can only land on multiples of
+   its step, so the number itself is directly editable too. */
+.stepper-input {
+  width: 56px;
+  text-align: center;
+  font: inherit;
+  font-weight: 700;
+  padding: 6px 4px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+  color: var(--ink);
+}
+.stepper-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+/* +/- buttons already cover the increment/decrement affordance — the
+   native spinner arrows are redundant clutter next to them. */
+.stepper-input::-webkit-inner-spin-button,
+.stepper-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.stepper-input {
+  -moz-appearance: textfield;
 }
 
 /* Smart goal suggestion inside the event modal — a soft violet nudge. */
@@ -996,6 +1027,8 @@ button.tick {
 /* Countdowns card */
 .cd-row { display: flex; align-items: center; gap: 12px; padding: 11px 4px; border-bottom: 1px solid var(--hair-2); }
 .cd-row:last-child { border-bottom: 0; }
+.cd-row-btn { cursor: pointer; border-radius: 8px; transition: background 0.12s ease; }
+.cd-row-btn:hover { background: var(--panel); }
 .cd-emoji { flex: none; width: 38px; height: 38px; display: grid; place-items: center; font-size: 20px; border-radius: 12px; background: var(--panel); }
 .cd-main { flex: 1; min-width: 0; }
 .cd-title { font-size: 16px; font-weight: 600; }

@@ -59,10 +59,17 @@ function mockApi(opts: { lists?: unknown[]; items?: unknown[]; sent?: Sent[]; cr
     if (/\/api\/lists\/templates\/[^/]+\/apply$/.test(u) && method === 'POST') {
       return { ok: true, json: async () => ({ list: { ...packing, id: 'applied', name: body?.name ?? 'Applied', listType: 'custom' } }) }
     }
+    if (/\/api\/lists\/[^/]+\/clear-completed$/.test(u) && method === 'POST') {
+      return { ok: true, json: async () => ({ cleared: 1 }) }
+    }
     if (u.endsWith('/api/lists') && method === 'POST') {
       return { ok: true, json: async () => ({ list: opts.created }) }
     }
     if (u.endsWith('/api/lists')) return { ok: true, json: async () => ({ lists: opts.lists ?? [] }) }
+    // bulk edit (must precede the single-item PATCH regex, which captures "bulk" as :id)
+    if (u.endsWith('/api/list-items/bulk') && method === 'PATCH') {
+      return { ok: true, json: async () => ({ updated: (body?.ids?.length ?? 0) }) }
+    }
     if (/\/api\/list-items\/[^/]+$/.test(u) && method === 'PATCH') {
       return { ok: true, json: async () => ({ item: { id: u.split('/').pop(), name: 'Swimsuits', quantity: '×4', checked: body.checked ?? false, checkedAt: null, section: 'Clothes', sortOrder: 0, assignee: body.assignedTo === null ? null : kelly } }) }
     }
@@ -106,21 +113,59 @@ describe('Lists screen', () => {
     expect(screen.getByText('✦ 15')).toBeInTheDocument()
     expect(screen.getAllByText('Lake trip packing').length).toBeGreaterThan(0)
 
-    // header: name + "3 items · 1 packed" + filter
-    await waitFor(() => expect(screen.getByText('3 items · 1 packed')).toBeInTheDocument())
+    // header: name + "2 items · 1 done" (the count is active/unchecked only) + filter
+    await waitFor(() => expect(screen.getByText('2 items · 1 done')).toBeInTheDocument())
     expect(screen.getByText('Everyone')).toBeInTheDocument()
 
     // suggestions
     expect(screen.getByText('Waffled suggests:')).toBeInTheDocument()
     expect(screen.getByText('Bug spray')).toBeInTheDocument()
 
-    // sectioned items with strikethrough on the checked one (titles uppercased via CSS)
-    expect(await screen.findByText('Clothes')).toBeInTheDocument()
-    expect(screen.getByText('Gear')).toBeInTheDocument()
+    // active sectioned items render; the checked one is tucked into a collapsed
+    // Completed section rather than lingering inline in its original section.
+    // (Section names also appear as <option>s in the add-bar picker, so scope the
+    // header-title queries to the section-name span.)
+    expect(await screen.findByText('Clothes', { selector: '.lists-section-name' })).toBeInTheDocument()
+    expect(screen.getByText('Gear', { selector: '.lists-section-name' })).toBeInTheDocument()
     expect(screen.getByText('Swimsuits')).toBeInTheDocument()
     expect(screen.getByText('×4')).toBeInTheDocument()
-    const pjs = screen.getByText('PJs & socks').closest('.litem')!
-    expect(pjs).toHaveClass('done')
+    expect(screen.queryByText('PJs & socks')).toBeNull()
+    expect(screen.getByRole('button', { name: /Completed/i })).toHaveTextContent('1')
+  })
+
+  it('tucks checked items into a collapsible Completed section, out of their original section', async () => {
+    mockApi({ lists: [grocery, packing], items: packItems })
+    renderScreen()
+    await exitBoard()
+
+    // the checked item (PJs & socks, section Clothes) no longer sits in Clothes…
+    const clothes = (await screen.findByText('Clothes', { selector: '.lists-section-name' })).closest('.lists-section') as HTMLElement
+    expect(within(clothes).queryByText('PJs & socks')).toBeNull()
+    expect(within(clothes).getByText('Swimsuits')).toBeInTheDocument()
+
+    // …it's counted in a collapsed Completed section; expanding reveals it
+    const completed = screen.getByRole('button', { name: /Completed/i })
+    expect(completed).toHaveTextContent('1')
+    fireEvent.click(completed)
+    expect(await screen.findByText('PJs & socks')).toBeInTheDocument()
+  })
+
+  it('drags an item into another section and PATCHes its category', async () => {
+    const sent: Sent[] = []
+    mockApi({ lists: [grocery, packing], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+
+    // Sunscreen lives in Gear; drag it onto the Clothes section
+    const sunscreen = (await screen.findByText('Sunscreen')).closest('.litem') as HTMLElement
+    const clothes = (await screen.findByText('Clothes', { selector: '.lists-section-name' })).closest('.lists-section') as HTMLElement
+    fireEvent.dragStart(sunscreen)
+    fireEvent.dragOver(clothes)
+    fireEvent.drop(clothes)
+
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH' && /\/api\/list-items\/i3$/.test(s.url))).toBe(true))
+    const patch = sent.find((s) => s.method === 'PATCH' && /\/api\/list-items\/i3$/.test(s.url))!
+    expect(patch.body).toMatchObject({ category: 'Clothes' })
   })
 
   it('toggles an item via its checkbox and PATCHes checked state', async () => {
@@ -188,6 +233,28 @@ describe('Lists screen', () => {
     fireEvent.submit(input.closest('form')!)
     await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/items$/.test(s.url))).toBe(true))
     expect(sent.find((s) => s.method === 'POST' && /\/items$/.test(s.url))!.body).toMatchObject({ name: 'Water bottles' })
+  })
+
+  it('adds an item into a brand-new section created from the add bar', async () => {
+    const sent: Sent[] = []
+    mockApi({ lists: [grocery, packing], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+
+    // create a new section in the add-bar picker …
+    fireEvent.change(await screen.findByLabelText('Section for new items'), { target: { value: '__new__' } })
+    fireEvent.change(await screen.findByLabelText('New section name'), { target: { value: 'Campsite' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    // … the picker keeps showing it (doesn't snap back to "No section") …
+    expect((screen.getByLabelText('Section for new items') as HTMLSelectElement).value).toBe('Campsite')
+
+    // … and a typed item lands in that section
+    const input = screen.getByLabelText('Add to this list')
+    fireEvent.change(input, { target: { value: 'Firewood' } })
+    fireEvent.submit(input.closest('form')!)
+    await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/items$/.test(s.url))).toBe(true))
+    // the add endpoint carries the section as `category`
+    expect(sent.find((s) => s.method === 'POST' && /\/items$/.test(s.url))!.body).toMatchObject({ name: 'Firewood', category: 'Campsite' })
   })
 
   // The "New list" trigger lives in the shared topbar slot (wired by KioskLayout,
@@ -265,5 +332,114 @@ describe('Lists screen', () => {
 
     await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/api\/lists\/templates\/tpl\/apply$/.test(s.url))).toBe(true))
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('applied'))
+  })
+
+  it('collapses a section when its header toggle is clicked', async () => {
+    mockApi({ lists: [grocery, packing], items: packItems })
+    renderScreen()
+    await exitBoard()
+
+    // Swimsuits shows under the Clothes section…
+    expect(await screen.findByText('Swimsuits')).toBeInTheDocument()
+    // …click the Clothes section header to collapse it → its items hide
+    const header = screen.getByText('Clothes', { selector: '.lists-section-name' }).closest('button') as HTMLElement
+    fireEvent.click(header)
+    await waitFor(() => expect(screen.queryByText('Swimsuits')).toBeNull())
+  })
+
+  it('bulk-edits selected items via the Select toolbar (PATCH /api/list-items/bulk)', async () => {
+    const sent: Sent[] = []
+    mockApi({ lists: [grocery, packing], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    // enter multi-select, pick Swimsuits, then STAGE a section change
+    fireEvent.click(screen.getByRole('button', { name: /Select/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Select Swimsuits' }))
+    fireEvent.change(screen.getByLabelText('Set section for selected'), { target: { value: 'Gear' } })
+
+    // staging must NOT write yet — the change only commits on Done
+    expect(sent.some((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))).toBe(true))
+    const patch = sent.find((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))!
+    // only the staged field is sent — untouched assignee/priority are left alone
+    expect(patch.body).toEqual({ ids: ['i1'], patch: { section: 'Gear' } })
+  })
+
+  it('bulk-edit can move items into a brand-new section', async () => {
+    const sent: Sent[] = []
+    mockApi({ lists: [grocery, packing], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    fireEvent.click(screen.getByRole('button', { name: /Select/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Select Swimsuits' }))
+
+    // choose "New section…" → an inline input appears → name it → Add
+    fireEvent.change(screen.getByLabelText('Set section for selected'), { target: { value: '__new__' } })
+    fireEvent.change(await screen.findByLabelText('New section name'), { target: { value: 'Camping' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    // the picker must now SHOW the created section selected (not snap back to blank)
+    expect((screen.getByLabelText('Set section for selected') as HTMLSelectElement).value).toBe('Camping')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))).toBe(true))
+    const patch = sent.find((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))!
+    expect(patch.body).toEqual({ ids: ['i1'], patch: { section: 'Camping' } })
+  })
+
+  it('clears Select mode + selection when switching lists (no stray bulk PATCH on the old list)', async () => {
+    const sent: Sent[] = []
+    const other = { ...(packing as Record<string, unknown>), id: 'p2', name: 'Costco run' }
+    mockApi({ lists: [grocery, packing, other], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    // enter Select on this list and pick an item
+    fireEvent.click(screen.getByRole('button', { name: /^\s*Select\s*$/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Select Swimsuits' }))
+    expect(screen.getByText(/^1 selected$/)).toBeInTheDocument()
+
+    // switch to a different list from the rail
+    fireEvent.click(screen.getByText('Costco run'))
+
+    // Select mode is reset (the toggle is back, the bulk bar is gone) and switching
+    // fired NO bulk PATCH against the previous list's items.
+    await screen.findByRole('button', { name: /^\s*Select\s*$/ })
+    expect(screen.queryByText(/ selected$/)).not.toBeInTheDocument()
+    expect(sent.some((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))).toBe(false)
+  })
+
+  it('flattens into a highest-priority-first view when "By priority" is toggled on', async () => {
+    const items = [
+      { id: 'a', name: 'Low item', quantity: null, checked: false, checkedAt: null, section: 'Clothes', sortOrder: 0, assignee: null, priority: 2 },
+      { id: 'b', name: 'Urgent item', quantity: null, checked: false, checkedAt: null, section: 'Gear', sortOrder: 1, assignee: null, priority: 5 },
+      { id: 'c', name: 'Normal item', quantity: null, checked: false, checkedAt: null, section: 'Clothes', sortOrder: 2, assignee: null, priority: 3 },
+    ]
+    mockApi({ lists: [grocery, packing], items })
+    const { container } = renderScreen()
+    await exitBoard()
+    await screen.findByText('Urgent item')
+
+    // default (manual) view keeps the section grouping — no priority reordering
+    // (query the section-title span, since 'Clothes' also appears as an add-bar option)
+    expect(screen.getByText('Clothes', { selector: '.lists-section-name' })).toBeInTheDocument()
+
+    // toggle on → flat, highest-priority first, section titles gone
+    fireEvent.click(screen.getByRole('button', { name: /Sort: manual/i }))
+    await waitFor(() => expect(screen.queryByText('Clothes', { selector: '.lists-section-name' })).not.toBeInTheDocument())
+    const titles = [...container.querySelectorAll('.lists-section-title')].map((el) => el.textContent)
+    expect(titles).toEqual(['By priority'])
+
+    const rows = [...container.querySelectorAll('.litem')].map((el) => el.textContent ?? '')
+    const idx = (name: string) => rows.findIndex((t) => t.includes(name))
+    expect(idx('Urgent item')).toBeLessThan(idx('Normal item'))
+    expect(idx('Normal item')).toBeLessThan(idx('Low item'))
   })
 })

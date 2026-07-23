@@ -5,7 +5,25 @@ import Foundation
 struct ListSectionGroup: Identifiable {
     let title: String?
     let items: [WaffledAPI.ListItemDTO]
-    var id: String { title ?? "__none__" }
+    /// The category value to persist for items in this group (nil = no category / clear).
+    /// This differs from `title` ONLY for the ungrouped fallback: its header reads "Items"
+    /// for display, but its real category is nil — so a drag-and-drop into it must write
+    /// nil, not a literal "Items" section (which would split off a duplicate "ITEMS" group
+    /// with a colliding id). Defaults to `title` for real sections.
+    let sectionValue: String?
+    /// Identity keys off the real category (not the display title), so a user-named
+    /// "Items" section and the ungrouped "Items" fallback don't collide.
+    var id: String { sectionValue ?? "__ungrouped__" }
+    /// Real section: the category to write equals the display title.
+    init(title: String?, items: [WaffledAPI.ListItemDTO]) {
+        self.init(title: title, items: items, sectionValue: title)
+    }
+    /// Explicit write-back value (the ungrouped fallback passes nil with a "Items" title).
+    init(title: String?, items: [WaffledAPI.ListItemDTO], sectionValue: String?) {
+        self.title = title
+        self.items = items
+        self.sectionValue = sectionValue
+    }
 }
 
 enum MealGrouping {
@@ -70,7 +88,13 @@ enum ListGrouping {
         if buckets[ungroupedKey] != nil { ordered.append(ungroupedKey) }
 
         return ordered.map { key in
-            ListSectionGroup(title: key == ungroupedKey ? "Items" : key, items: buckets[key] ?? [])
+            let ungrouped = key == ungroupedKey
+            // Ungrouped items show under an "Items" header but carry NO real category, so
+            // sectionValue is nil — dragging one in clears the category instead of minting a
+            // literal "Items" section (which duplicated the header + collided on id).
+            return ListSectionGroup(title: ungrouped ? "Items" : key,
+                                    items: buckets[key] ?? [],
+                                    sectionValue: ungrouped ? nil : key)
         }
     }
 }

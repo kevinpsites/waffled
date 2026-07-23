@@ -125,7 +125,18 @@ t "ensure_env backfills LOCAL_JWT_SECRET without touching other values" '
   echo "PASS"
 '
 
-# --- 6. backup warnings surface the two default durability gaps ----------------------
+# --- 6. user-facing help must point at the published troubleshooting guide ---------
+t "setup links to the published troubleshooting guide" '
+  grep -qF "https://docs.waffled.app/operations/troubleshooting/" "$WAFFLED" ||
+    { echo "FAIL: published troubleshooting URL missing"; exit 0; }
+  if grep -qF "docs/TROUBLESHOOTING.md" "$WAFFLED"; then
+    echo "FAIL: stale repository-local troubleshooting path remains"
+  else
+    echo "PASS"
+  fi
+'
+
+# --- 7. backup warnings surface the two default durability gaps ----------------------
 t "backup_safety_warnings explains the default media and same-host gaps" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
@@ -150,7 +161,7 @@ t "backup_safety_warnings is quiet when media and offsite copies are configured"
   [ -z "$out" ] && echo "PASS" || echo "FAIL: unexpected warning output: $out"
 '
 
-# --- 6. backup verification restores only into a disposable Postgres container ------
+# --- 8. backup verification restores only into a disposable Postgres container ------
 t "verify_backup_restore exercises the dump and removes its disposable database" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT

@@ -673,6 +673,7 @@ case "$cmd" in
         set_env_var POWERSYNC_CADDY_ADDRESS "https://$host:8090"
         echo "${c_grn}Set for https://$host.${c_reset} Enable the 443 mapping in infra/compose/docker-compose.yml, point DNS at this machine, then run ${c_dim}./waffled up${c_reset}."
         echo "${c_dim}PowerSync is served through Caddy with TLS on :$ps_port.${c_reset}"
+        echo "${c_dim}Troubleshooting: https://docs.waffled.app/operations/troubleshooting/${c_reset}"
         ;;
       *) echo "${c_red}Unknown choice — run ./waffled setup again.${c_reset}"; exit 1 ;;
     esac
