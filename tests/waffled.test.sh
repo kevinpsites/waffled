@@ -125,7 +125,34 @@ t "ensure_env backfills LOCAL_JWT_SECRET without touching other values" '
   echo "PASS"
 '
 
-# --- 6. backup verification restores only into a disposable Postgres container ------
+# --- 6. PowerSync CSP allows the derived WebSocket endpoint --------------------------
+t "PowerSync CSP follows the configured public URL" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  ENV_FILE="$tmp/.env"
+  {
+    echo "POWERSYNC_PUBLIC_URL=https://sync.example.test:8090"
+    echo "POWERSYNC_CADDY_ADDRESS=:8090"
+  } > "$ENV_FILE"
+
+  ensure_powersync_proxy_env
+  grep -qxF "POWERSYNC_WS_URL=wss://sync.example.test:8090" "$ENV_FILE" || {
+    echo "FAIL: HTTPS endpoint did not derive a WSS source"; exit 0;
+  }
+  grep -qF "{\$POWERSYNC_WS_URL}" "$ROOT/infra/compose/caddy/Caddyfile" || {
+    echo "FAIL: WebSocket source missing from Caddy CSP"; exit 0;
+  }
+  grep -qF "POWERSYNC_WS_URL: \${POWERSYNC_WS_URL:-ws://localhost:8090}" "$ROOT/infra/compose/docker-compose.yml" || {
+    echo "FAIL: WebSocket source is not passed to Caddy"; exit 0;
+  }
+
+  set_env_var POWERSYNC_PUBLIC_URL "http://192.0.2.10:8090"
+  ensure_powersync_proxy_env
+  grep -qxF "POWERSYNC_WS_URL=ws://192.0.2.10:8090" "$ENV_FILE" && echo "PASS" ||
+    echo "FAIL: HTTP endpoint did not derive a WS source"
+'
+
+# --- 7. backup verification restores only into a disposable Postgres container ------
 t "verify_backup_restore exercises the dump and removes its disposable database" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT

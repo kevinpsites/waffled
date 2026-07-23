@@ -105,20 +105,36 @@ ensure_env() {
   [ "$created" -eq 0 ] || echo "${c_grn}Created $ENV_FILE with generated secrets.${c_reset}"
 }
 
-# Upgrade bridge for installs created before PowerSync moved behind Caddy. New
-# `.env` files already carry this value; existing files get the matching listener
-# without overwriting any operator customization.
-ensure_powersync_proxy_env() {
-  [ -n "$(env_val POWERSYNC_CADDY_ADDRESS)" ] && return 0
-  local site host
-  site="$(env_val CADDY_SITE_ADDRESS)"
-  case "$site" in
-    ""|:*) set_env_var POWERSYNC_CADDY_ADDRESS ":8090" ;;
+# Upgrade bridge for installs created before PowerSync moved behind Caddy. It also
+# keeps Caddy's WebSocket CSP source in sync with the public HTTP(S) endpoint.
+sync_powersync_ws_env() {
+  local public_url
+  public_url="$(env_val POWERSYNC_PUBLIC_URL)"
+  public_url="${public_url:-http://localhost:8090}"
+  case "$public_url" in
+    https://*) set_env_var POWERSYNC_WS_URL "wss://${public_url#https://}" ;;
+    http://*) set_env_var POWERSYNC_WS_URL "ws://${public_url#http://}" ;;
     *)
-      host="${site#https://}"; host="${host#http://}"; host="${host%%:*}"
-      set_env_var POWERSYNC_CADDY_ADDRESS "https://$host:8090"
+      echo "${c_red}✗ POWERSYNC_PUBLIC_URL must start with http:// or https://.${c_reset}"
+      return 1
       ;;
   esac
+}
+
+ensure_powersync_proxy_env() {
+  local site host
+  if [ -z "$(env_val POWERSYNC_CADDY_ADDRESS)" ]; then
+    site="$(env_val CADDY_SITE_ADDRESS)"
+    case "$site" in
+      ""|:*) set_env_var POWERSYNC_CADDY_ADDRESS ":8090" ;;
+      *)
+        host="${site#https://}"; host="${host#http://}"; host="${host%%:*}"
+        set_env_var POWERSYNC_CADDY_ADDRESS "https://$host:8090"
+        ;;
+    esac
+  fi
+
+  sync_powersync_ws_env
 }
 
 # Return a replacement only for the exact legacy localhost default. Custom OAuth
@@ -654,6 +670,7 @@ case "$cmd" in
         ;;
       *) echo "${c_red}Unknown choice — run ./waffled setup again.${c_reset}"; exit 1 ;;
     esac
+    sync_powersync_ws_env
     ;;
   psql)
     docker exec -it waffled-postgres psql -U "$(env_val POSTGRES_USER)" -d "$(env_val POSTGRES_DB)" ;;

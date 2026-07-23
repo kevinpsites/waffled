@@ -434,6 +434,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Caddy now sends a restrictive Content Security Policy, permits outbound sync only
+  to the configured PowerSync HTTP and WebSocket endpoints, and adds transport,
+  MIME-sniffing, referrer, and browser-capability protections while preserving camera
+  and photo support.
 - Run the API and backup scheduler as unprivileged image users. A short-lived startup job
   safely updates ownership on volumes created by earlier root-running releases.
 - Postgres and direct API diagnostics now bind to loopback, while device-facing
