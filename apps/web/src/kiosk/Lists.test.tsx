@@ -347,6 +347,27 @@ describe('Lists screen', () => {
     expect(patch.body).toEqual({ ids: ['i1'], patch: { section: 'Gear' } })
   })
 
+  it('bulk-edit can move items into a brand-new section', async () => {
+    const sent: Sent[] = []
+    mockApi({ lists: [grocery, packing], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    fireEvent.click(screen.getByRole('button', { name: /Select/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Select Swimsuits' }))
+
+    // choose "New section…" → an inline input appears → name it → Add
+    fireEvent.change(screen.getByLabelText('Set section for selected'), { target: { value: '__new__' } })
+    fireEvent.change(await screen.findByLabelText('New section name'), { target: { value: 'Camping' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))).toBe(true))
+    const patch = sent.find((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))!
+    expect(patch.body).toEqual({ ids: ['i1'], patch: { section: 'Camping' } })
+  })
+
   it('flattens into a highest-priority-first view when "By priority" is toggled on', async () => {
     const items = [
       { id: 'a', name: 'Low item', quantity: null, checked: false, checkedAt: null, section: 'Clothes', sortOrder: 0, assignee: null, priority: 2 },

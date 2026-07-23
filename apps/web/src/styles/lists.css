@@ -226,6 +226,25 @@
   max-width: 42%;
   font-size: 13px;
 }
+/* Inline "create a new section" input, shown when the picker's New section… is chosen. */
+.lists-secpick-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lists-secpick-input {
+  min-width: 130px;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1.5px solid var(--primary);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+}
+.lists-secpick-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
 /* Completed section (checked items tuck here — collapsible, matches the grocery board). */
 .lists-completed {
   margin-top: 10px;

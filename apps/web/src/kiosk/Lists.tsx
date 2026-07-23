@@ -251,6 +251,84 @@ function splitColumns(sections: ReturnType<typeof groupBySection>) {
   return [left, right] as const
 }
 
+// A section chooser that can also create a NEW section inline. Shared by the add
+// bar (pick where a new item lands) and the bulk toolbar (move selected items) so
+// "make a new section" works the same in both. `value === undefined` shows the
+// placeholder (bulk toolbar's unset state); `null` = the "No section" choice.
+function SectionPicker({
+  value,
+  onChange,
+  sections,
+  ariaLabel,
+  placeholder,
+  noneLabel = 'No section',
+  className = '',
+  disabled = false,
+}: {
+  value: string | null | undefined
+  onChange: (v: string | null) => void
+  sections: string[]
+  ariaLabel: string
+  placeholder?: string
+  noneLabel?: string
+  className?: string
+  disabled?: boolean
+}) {
+  const [creating, setCreating] = useState(false)
+  const [draft, setDraft] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { if (creating) inputRef.current?.focus() }, [creating])
+
+  if (creating) {
+    const confirm = () => {
+      const name = draft.trim()
+      if (name) onChange(name)
+      setDraft('')
+      setCreating(false)
+    }
+    const cancel = () => { setDraft(''); setCreating(false) }
+    return (
+      <span className={`lists-secpick-new ${className}`}>
+        <input
+          ref={inputRef}
+          className="lists-secpick-input"
+          value={draft}
+          placeholder="New section"
+          aria-label="New section name"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            // Guard against the enclosing add-bar <form> submitting on Enter.
+            if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirm() }
+            else if (e.key === 'Escape') { e.preventDefault(); cancel() }
+          }}
+        />
+        <button type="button" className="linkbtn" onClick={confirm}>Add</button>
+        <button type="button" className="linkbtn" aria-label="Cancel new section" onClick={cancel}>×</button>
+      </span>
+    )
+  }
+
+  return (
+    <select
+      className={`sel ${className}`}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      value={value === undefined ? '' : (value ?? '__none__')}
+      onChange={(e) => {
+        const v = e.target.value
+        if (v === '__new__') { setCreating(true); return }
+        if (placeholder !== undefined && v === '') return
+        onChange(v === '__none__' ? null : v)
+      }}
+    >
+      {placeholder !== undefined && <option value="">{placeholder}</option>}
+      <option value="__none__">{noneLabel}</option>
+      {sections.map((s) => <option key={s} value={s}>{s}</option>)}
+      <option value="__new__">+ New section…</option>
+    </select>
+  )
+}
+
 export function Lists() {
   const { lists, loading: listsLoading, error: listsError, refetch: refetchLists } = useLists()
   const { templates } = useTemplates()
@@ -741,19 +819,13 @@ export function Lists() {
                 placeholder={'Add to this list… “bug spray and 2 water bottles”'}
                 aria-label="Add to this list"
               />
-              {sectionNames.length > 0 && (
-                <select
-                  className="sel lists-addbar-sec"
-                  aria-label="Section for new items"
-                  value={addSection ?? ''}
-                  onChange={(e) => setAddSection(e.target.value || null)}
-                >
-                  <option value="">No section</option>
-                  {sectionNames.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              )}
+              <SectionPicker
+                className="lists-addbar-sec"
+                ariaLabel="Section for new items"
+                value={addSection}
+                sections={sectionNames}
+                onChange={setAddSection}
+              />
               <div className="mic" aria-hidden>
                 <Icon name="mic" />
               </div>
@@ -772,17 +844,14 @@ export function Lists() {
             {selecting && (
               <div className="lists-bulkbar" role="toolbar" aria-label="Bulk edit selected items">
                 <span className="lists-bulkbar-n">{selectedItems.size} selected</span>
-                <select
-                  className="sel"
-                  aria-label="Set section for selected"
-                  value={'section' in bulkStaged ? (bulkStaged.section ?? '__none__') : ''}
+                <SectionPicker
+                  ariaLabel="Set section for selected"
+                  placeholder="Section…"
+                  value={'section' in bulkStaged ? bulkStaged.section : undefined}
+                  sections={sectionNames}
                   disabled={selectedItems.size === 0}
-                  onChange={(e) => { const v = e.target.value; if (v) setBulkStaged((s) => ({ ...s, section: v === '__none__' ? null : v })) }}
-                >
-                  <option value="">Section…</option>
-                  <option value="__none__">No section</option>
-                  {sectionNames.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
+                  onChange={(v) => setBulkStaged((s) => ({ ...s, section: v }))}
+                />
                 <select
                   className="sel"
                   aria-label="Assign selected to"
