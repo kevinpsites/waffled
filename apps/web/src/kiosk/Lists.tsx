@@ -222,9 +222,12 @@ export function partitionListItems(
   return { active, completed }
 }
 
-// Group items into ordered sections (null section → "Other"), preserving the
-// API's order (unchecked first, then checked) within each section.
-function groupBySection(items: ListItem[]): Array<{ title: string; key: string; items: ListItem[] }> {
+// Group items into sections (null section → "Items"), keeping the API's order
+// (unchecked first, then checked) WITHIN each section. Sections themselves are
+// ordered A–Z by name so they hold a fixed position — the API's item order isn't
+// stable across refetches, and ordering by it made sections hop around as items
+// were added/checked/moved. The no-section "Items" catch-all always sorts last.
+export function groupBySection(items: ListItem[]): Array<{ title: string; key: string; items: ListItem[] }> {
   const order: string[] = []
   const map = new Map<string, ListItem[]>()
   for (const it of items) {
@@ -235,7 +238,13 @@ function groupBySection(items: ListItem[]): Array<{ title: string; key: string; 
     }
     map.get(key)!.push(it)
   }
-  return order.map((key) => ({ key, title: key === '__other__' ? 'Items' : key, items: map.get(key)! }))
+  return order
+    .map((key) => ({ key, title: key === '__other__' ? 'Items' : key, items: map.get(key)! }))
+    .sort((a, b) => {
+      if (a.key === '__other__') return 1
+      if (b.key === '__other__') return -1
+      return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })
+    })
 }
 
 // Assign sections to two columns by their position in the section order (even
