@@ -434,21 +434,6 @@ export async function autoClearCheckedItems(householdId: string, listId: string)
   return rowCount ?? 0
 }
 
-// Manual "Clear completed" for a custom list — soft-delete all its checked items
-// right now (the Completed-section Clear button). Custom-only for the same reason as
-// autoClearCheckedItems; the grocery board has its own clear-checks flow. Returns the
-// number cleared.
-export async function clearCompletedItems(householdId: string, listId: string): Promise<number> {
-  const { rowCount } = await query(
-    `update list_items i set deleted_at = now()
-       from lists l
-      where l.id = i.list_id
-        and l.id = $2 and l.household_id = $1 and l.list_type = 'custom'
-        and i.deleted_at is null and i.checked`,
-    [householdId, listId]
-  )
-  return rowCount ?? 0
-}
 
 // Add a recipe's ingredients to the grocery list from its page — an *explicit*
 // user action, so rows get source='recipe' (not 'auto'): the weekly rebuild only

@@ -59,9 +59,6 @@ function mockApi(opts: { lists?: unknown[]; items?: unknown[]; sent?: Sent[]; cr
     if (/\/api\/lists\/templates\/[^/]+\/apply$/.test(u) && method === 'POST') {
       return { ok: true, json: async () => ({ list: { ...packing, id: 'applied', name: body?.name ?? 'Applied', listType: 'custom' } }) }
     }
-    if (/\/api\/lists\/[^/]+\/clear-completed$/.test(u) && method === 'POST') {
-      return { ok: true, json: async () => ({ cleared: 1 }) }
-    }
     if (u.endsWith('/api/lists') && method === 'POST') {
       return { ok: true, json: async () => ({ list: opts.created }) }
     }

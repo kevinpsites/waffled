@@ -138,9 +138,6 @@ export const groceryApi = {
   // Bulk-edit section/assignee/priority across a multi-selection (one round-trip).
   bulkPatchItems: (ids: string[], patch: { section?: string | null; assignedTo?: string | null; priority?: number }) =>
     apiSend<{ updated: number }>('PATCH', '/api/list-items/bulk', { ids, patch }).then((r) => r.updated).then(tap('grocery')),
-  // Clear a custom list's Completed section now (soft-deletes its checked items).
-  clearCompleted: (listId: string) =>
-    apiSend<{ cleared: number }>('POST', `/api/lists/${listId}/clear-completed`, {}).then((r) => r.cleared).then(tap('grocery')),
 
   // grocery board (auto-built view) + pantry staples
   groceryBoard: (weekStart?: string) =>
