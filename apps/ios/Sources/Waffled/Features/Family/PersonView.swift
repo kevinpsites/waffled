@@ -96,6 +96,7 @@ struct PersonView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
+                if sync.module(.waffledBites) { waffledBiteEntryCard }
                 statCards
                 if isKiosk {
                     // Grouped into logical sections (Today · Goals & balance · Rewards),
@@ -226,7 +227,7 @@ struct PersonView: View {
 
     // MARK: header
 
-    @ViewBuilder private var header: some View {
+    private var header: some View {
         HStack(spacing: 14) {
             Avatar(colorHex: person?.colorHex, emoji: person?.avatarEmoji ?? "🙂", size: 56)
             VStack(alignment: .leading, spacing: 2) {
@@ -246,14 +247,15 @@ struct PersonView: View {
                 }
             }
         }
-        if sync.module(.waffledBites) { waffledBiteChip }
     }
 
-    /// Pairs a Waffled-Bite, or opens its control panel once paired — mirrors the web's
-    /// `WaffledBiteChip` (a pill next to the name, not a whole card). Gated purely on the
-    /// household module flag, same as web — no per-person kid/adult check exists there
-    /// either, so this shows identically on every person's page.
-    private var waffledBiteChip: some View {
+    /// Pairs a Waffled-Bite, or opens its control panel once paired — a full-width row
+    /// (matching `SavingTowardCard`'s visual weight, one tier down from its hero color
+    /// treatment since this isn't a money/reward surface) rather than a small pill next
+    /// to the name: a pill next to an avatar reads as decorative, not tappable. Gated
+    /// purely on the household module flag, same as web — no per-person kid/adult check
+    /// exists there either, so this shows identically on every person's page.
+    private var waffledBiteEntryCard: some View {
         Button {
             if waffledBiteDevice != nil {
                 path.append(.waffledBites(personId: personId, personName: firstName))
@@ -261,12 +263,22 @@ struct PersonView: View {
                 showWaffledBitePair = true
             }
         } label: {
-            Text(waffledBiteDevice != nil ? "🧇 Open Waffled-Bite controls" : "🧇 Pair a Waffled-Bite")
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, 12).padding(.vertical, 5)
-                .background(WF.panel)
-                .foregroundStyle(WF.ink2)
-                .clipShape(Capsule())
+            HStack(spacing: 13) {
+                WaffledEmojiTile(emoji: "🧇", size: 24, frame: 46)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Waffled-Bite").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
+                    Text(waffledBiteDevice != nil ? "Open controls" : "Pair \(firstName)’s device")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+                }
+                Spacer(minLength: 8)
+                if let status = waffledBiteStatus {
+                    WaffledStatusBadge(text: status.label, color: status.color)
+                }
+                Image(systemName: "chevron.right").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink3)
+            }
+            .padding(15).frame(maxWidth: .infinity, alignment: .leading)
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .task { waffledBiteDevice = try? await WaffledAPI().waffledBiteDevice(personId: personId) }
@@ -274,7 +286,24 @@ struct PersonView: View {
             WaffledBitePairSheet(personId: personId, personName: firstName) {
                 showWaffledBitePair = false
                 Task { waffledBiteDevice = try? await WaffledAPI().waffledBiteDevice(personId: personId) }
+                path.append(.waffledBites(personId: personId, personName: firstName))
             }
+        }
+    }
+
+    /// A live-ish snapshot (as of the last load — this card doesn't tick like the control
+    /// screen does) of what the device is doing right now, so a parent can tell at a
+    /// glance without opening the full panel. Quiet time / an active timer take priority
+    /// over the wake-light state since they're a parent-initiated action in progress.
+    private var waffledBiteStatus: (label: String, color: Color)? {
+        guard let d = waffledBiteDevice else { return nil }
+        if d.runtimeState.quiet.active { return ("😴 Quiet time", WF.primary) }
+        if d.runtimeState.timer.active { return ("⏱️ Timer", WF.primary) }
+        switch d.runtimeState.wakeLight.state {
+        case "sleep": return ("🌙 Asleep", WaffledBiteStatusColors.sleepInk)
+        case "warn": return ("🟡 Almost wake", WF.warn)
+        case "wake": return ("🟢 Awake time", WF.success)
+        default: return nil
         }
     }
 

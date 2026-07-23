@@ -26,9 +26,9 @@ enum WaffledBiteOptions {
     /// Preset-minutes label: "Nh" at/above an hour, else "Nm" — matches the web's `fmtPreset`.
     static func presetLabel(_ min: Int) -> String { min >= 60 ? "\(min / 60)h" : "\(min)m" }
 
-    /// Quiet/timer custom-duration input clamp — the server backstops to [60,5400]s
-    /// regardless, but the UI only ever offers 1–90 minutes.
-    static func clampCustomMinutes(_ min: Int) -> Int { max(1, Swift.min(90, min)) }
+    /// Quiet/timer custom-duration input clamp — the server backstops to [60,10800]s
+    /// (3h) regardless, but the UI only ever offers 1–180 minutes.
+    static func clampCustomMinutes(_ min: Int) -> Int { max(1, Swift.min(180, min)) }
 }
 
 extension WaffledAPI.WaffledBiteSettings {
@@ -72,6 +72,13 @@ final class WaffledBitesModel {
     private(set) var timerRemaining = 0
     private var tickTask: Task<Void, Never>?
 
+    /// Bumped on every `load()` call, captured before the await — lets a response that
+    /// resolves out of order (e.g. two rapid schedule edits' PATCH+reload round trips
+    /// racing on the network) recognize it's stale and skip applying, instead of
+    /// clobbering a newer `device` with older data. Without this, a stale response could
+    /// silently revert an edit that was already saved successfully — flagged in PR review.
+    private var loadGeneration = 0
+
     private let api = WaffledAPI()
 
     init(personId: String) {
@@ -79,10 +86,15 @@ final class WaffledBitesModel {
     }
 
     func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         do {
-            device = try await api.waffledBiteDevice(personId: personId)
+            let fetched = try await api.waffledBiteDevice(personId: personId)
+            guard generation == loadGeneration else { return }
+            device = fetched
             errorMessage = nil
         } catch {
+            guard generation == loadGeneration else { return }
             errorMessage = "Couldn't load this Waffled-Bite."
         }
         loading = false
@@ -106,12 +118,6 @@ final class WaffledBitesModel {
                 }
             }
         }
-    }
-
-    // MARK: pairing
-
-    func mintPairingCode(label: String?) async throws -> WaffledAPI.WaffledBitePairingCode {
-        try await api.mintWaffledBitePairingCode(personId: personId, label: label)
     }
 
     // MARK: unpair
@@ -155,26 +161,51 @@ final class WaffledBitesModel {
 
     // MARK: settings — night / sound / alarm / display
     //
-    // Each sends only the changed field(s); the server deep-merges nested settings
-    // objects (unlike `schedules`, an array, which always replaces whole — see below).
+    // Every setter sends the FULL sub-object (current values + the one changed field),
+    // never just the changed key. The server's deepMerge only merges into an EXISTING
+    // object — a freshly paired device has `settings == {}}`, so a bare `{"on":true}`
+    // patch would be stored verbatim, missing `color`/`brightness`. Those fields are
+    // non-optional in `WaffledBiteSettings.Night` (WaffledAPI.swift), so the next decode
+    // of that device (this PATCH's own response, or any later load) throws and the panel
+    // never recovers — this exact bug was flagged in PR review. Matches the web app's
+    // `patchSettings({ night: { ...night, on: v } })` pattern (WaffledBiteDevice.tsx).
 
-    func setNightOn(_ on: Bool) async { await patch(["night": .object(["on": .bool(on)])]) }
-    func setNightColor(_ key: String) async { await patch(["night": .object(["color": .string(key)])]) }
-    func setNightBrightness(_ b: Int) async { await patch(["night": .object(["brightness": .int(b)])]) }
+    func setNightOn(_ on: Bool) async { await patchNight { $0.on = on } }
+    func setNightColor(_ key: String) async { await patchNight { $0.color = key } }
+    func setNightBrightness(_ b: Int) async { await patchNight { $0.brightness = b } }
 
-    func setSoundOn(_ on: Bool) async { await patch(["sound": .object(["on": .bool(on)])]) }
-    func setSoundOption(_ key: String) async { await patch(["sound": .object(["sound": .string(key)])]) }
-    func setSoundVolume(_ v: Int) async { await patch(["sound": .object(["volume": .int(v)])]) }
-    func setSoundSleepTimer(_ min: Int) async { await patch(["sound": .object(["timerMin": .int(min)])]) }
+    func setSoundOn(_ on: Bool) async { await patchSound { $0.on = on } }
+    func setSoundOption(_ key: String) async { await patchSound { $0.sound = key } }
+    func setSoundVolume(_ v: Int) async { await patchSound { $0.volume = v } }
+    func setSoundSleepTimer(_ min: Int) async { await patchSound { $0.timerMin = min } }
 
-    func setAlarmOn(_ on: Bool) async { await patch(["alarm": .object(["on": .bool(on)])]) }
-    func setAlarmTime(hour: Int, min: Int) async {
-        await patch(["alarm": .object(["hour": .int(hour), "min": .int(min)])])
+    func setAlarmOn(_ on: Bool) async { await patchAlarm { $0.on = on } }
+    func setAlarmTime(hour: Int, min: Int) async { await patchAlarm { $0.hour = hour; $0.min = min } }
+    func setAlarmTone(_ tone: String) async { await patchAlarm { $0.tone = tone } }
+
+    func setDisplayBrightness(_ b: Int) async { await patchDisplay { $0.brightness = b } }
+    func setDisplayNightDim(_ on: Bool) async { await patchDisplay { $0.nightDim = on } }
+
+    private func patchNight(_ mutate: (inout WaffledAPI.WaffledBiteSettings.Night) -> Void) async {
+        var night = device?.settings.withDefaults.night ?? .init(on: false, color: "amber", brightness: 40)
+        mutate(&night)
+        await patch(["night": .object(["on": .bool(night.on), "color": .string(night.color), "brightness": .int(night.brightness)])])
     }
-    func setAlarmTone(_ tone: String) async { await patch(["alarm": .object(["tone": .string(tone)])]) }
-
-    func setDisplayBrightness(_ b: Int) async { await patch(["display": .object(["brightness": .int(b)])]) }
-    func setDisplayNightDim(_ on: Bool) async { await patch(["display": .object(["nightDim": .bool(on)])]) }
+    private func patchSound(_ mutate: (inout WaffledAPI.WaffledBiteSettings.Sound) -> Void) async {
+        var sound = device?.settings.withDefaults.sound ?? .init(on: false, sound: "ocean", volume: 45, timerMin: 0)
+        mutate(&sound)
+        await patch(["sound": .object(["on": .bool(sound.on), "sound": .string(sound.sound), "volume": .int(sound.volume), "timerMin": .int(sound.timerMin)])])
+    }
+    private func patchAlarm(_ mutate: (inout WaffledAPI.WaffledBiteSettings.Alarm) -> Void) async {
+        var alarm = device?.settings.withDefaults.alarm ?? .init(on: false, hour: 6, min: 45, tone: "Sunrise chime")
+        mutate(&alarm)
+        await patch(["alarm": .object(["on": .bool(alarm.on), "hour": .int(alarm.hour), "min": .int(alarm.min), "tone": .string(alarm.tone)])])
+    }
+    private func patchDisplay(_ mutate: (inout WaffledAPI.WaffledBiteSettings.Display) -> Void) async {
+        var display = device?.settings.withDefaults.display ?? .init(brightness: 85, nightDim: true)
+        mutate(&display)
+        await patch(["display": .object(["brightness": .int(display.brightness), "nightDim": .bool(display.nightDim)])])
+    }
 
     /// Wake-light schedules always round-trip the FULL array — the server replaces
     /// arrays outright rather than merging them, matching the web app's own behavior.
