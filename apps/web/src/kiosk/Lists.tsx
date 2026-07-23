@@ -97,7 +97,10 @@ function ItemRow({
       onDragStart={onDragStart && !selecting ? () => onDragStart(item) : undefined}
       onDragEnd={onDragEnd}
     >
-      {selecting && (
+      {/* In select mode the row shows ONLY the square selection box — the round
+          completion checkbox is hidden so a tap can't accidentally check an item
+          off while the user is trying to pick it. */}
+      {selecting ? (
         <button
           type="button"
           className={`lck lsel ${selected ? 'on' : ''}`}
@@ -107,18 +110,24 @@ function ItemRow({
         >
           {selected ? CHECK : null}
         </button>
+      ) : (
+        // Only the checkbox toggles; tapping the name opens the editor.
+        <button
+          type="button"
+          className={`lck ${item.checked ? 'on' : ''}`}
+          aria-label={item.checked ? `Uncheck ${item.name}` : `Check ${item.name}`}
+          aria-pressed={item.checked}
+          onClick={() => onToggle(item)}
+        >
+          {item.checked ? CHECK : null}
+        </button>
       )}
-      {/* Only the checkbox toggles; tapping the name opens the editor. */}
       <button
         type="button"
-        className={`lck ${item.checked ? 'on' : ''}`}
-        aria-label={item.checked ? `Uncheck ${item.name}` : `Check ${item.name}`}
-        aria-pressed={item.checked}
-        onClick={() => onToggle(item)}
+        className="lnm lnm-btn"
+        aria-label={selecting ? (selected ? `Deselect ${item.name}` : `Select ${item.name}`) : `Edit ${item.name}`}
+        onClick={() => (selecting ? onSelect?.(item) : onEdit(item))}
       >
-        {item.checked ? CHECK : null}
-      </button>
-      <button type="button" className="lnm lnm-btn" aria-label={`Edit ${item.name}`} onClick={() => onEdit(item)}>
         <PriorityFlag priority={item.priority} />
         <span className="lnm-text">{item.name}</span>
         {addedBy?.name && (
@@ -180,8 +189,11 @@ function ItemRow({
           </div>
         )}
       </div>
-      {/* × delete always visible on the far right */}
-      <button type="button" className="litem-act litem-del" aria-label={`Delete ${item.name}`} onClick={() => onDelete(item)}>×</button>
+      {/* × delete on the far right — hidden while selecting so a stray tap can't
+          delete an item the user meant to pick. */}
+      {!selecting && (
+        <button type="button" className="litem-act litem-del" aria-label={`Delete ${item.name}`} onClick={() => onDelete(item)}>×</button>
+      )}
     </div>
   )
 }
