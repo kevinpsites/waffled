@@ -74,41 +74,41 @@ Get your family on the same page. Get Waffled.
 
 ## What's New (release notes)  `[≤4000]`
 
-<sub>Current draft targets **0.9.0**, covering everything user-facing since the
-0.8.0 build (commit `5b0acbe5`, the last one submitted for review). Update this
-each time you submit a new version.</sub>
+<sub>Current draft targets **0.12.0**, covering iOS-facing changes since the
+**0.9.0** public launch (the version currently live on the App Store) — i.e. the
+0.10.0, 0.11.0, and 0.12.0 changelogs, filtered to what iPhone/iPad users can
+actually see. Update this each time you submit a new version.</sub>
 
 ```
-New in 0.9.0:
+Since launch, Waffled has gotten a lot more capable on iPhone and iPad:
 
-• See your goal progress your way — every goal now has a switcher of views: a
-  week or month heatmap, a GitHub-style year grid, a pace chart showing where
-  you need to be to hit your target on time, a "year in a ring," and stacked
-  bars for family goals. Tap any day or month to see who logged what.
+GOALS YOU CAN SEE
+The Today goal card is now a full hero — a progress ring, each person's
+contribution, and Log progress right there — with a switcher to jump between
+goals. Swipe through the week and month heatmaps, and the charts now show the
+true calendar week and the whole year.
 
-• Recipes can go straight to your grocery list, no meal plan needed. Add a
-  one-off dinner or snack from any recipe page and it merges right in with
-  what's already on the list.
+SMARTER LISTS
+Give items a 1–5 priority (urgent ones get a flag) and drag them between
+sections. Bulk-edit a whole selection at once — set the section, assignee, or
+priority, even into a brand-new section you name on the spot. Rename a list from
+its menu, watch the count tick down to what's left, and let checked-off items
+tuck into a Completed section that clears itself.
 
-• The "Add anything" bar can now act on things you already have, not just
-  create new ones. Say "mark the trash chore done," "log 20 minutes on my
-  reading goal," "cross off milk," or "move soccer to Thursday at 4," and
-  confirm before anything changes.
+MEALS & SHOPPING
+Jump straight into Cook Mode from the Today card and swipe between steps. Shop
+ahead by planning next week's groceries without disturbing this week's, add or
+remove any recipe's ingredients from the list, and share a recipe as a file
+anyone can import.
 
-• Quick-add can also start a countdown, add a family member, set a goal, stock
-  the pantry, or add a reward — just by typing it in plain language.
+CALENDAR & COUNTDOWNS
+Countdowns now show up right on the calendar and are tappable to edit. Type an
+event into "Add anything" and it's assigned to you by default.
 
-• Track more from Apple Health: specific workout types (running, cycling,
-  swimming, yoga, strength training), cycling/swimming/wheelchair distance,
-  and a clearer picker for choosing what a goal follows.
-
-• Swipe between weeks in the meal planner — the same gesture as Calendar and
-  Chores.
-
-Plus a batch of polish: a snappier iPad calendar, a Today screen that stays
-fresh and grocery quick-add that no longer hides under the keyboard, more
-reliable list creation and goal logging, a calmer Offline banner, and instant
-meal drag-and-drop.
+Plus a lot of polish and fixes: adding a grocery item from Today no longer hangs
+the iPad, a half-typed list item is saved when you leave, add bars are easier to
+tap, the goal week/year charts are accurate, and adding a meal from the capture
+bar works reliably again.
 
 Thanks for using Waffled — we'd love your feedback!
 ```
