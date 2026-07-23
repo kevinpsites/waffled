@@ -557,7 +557,7 @@ export function registerWaffledBiteRoutes(api: Api): void {
     updateRuntimeState(tenant, id, res, 'timer', fn)
 
   api.post('/api/waffled-bites/:id/quiet/start', tenantRoute(async (tenant, req: Request, res: Response) => {
-    const durationSec = Math.max(60, Math.min(90 * 60, Number((req.body as { durationSec?: number })?.durationSec) || 15 * 60))
+    const durationSec = Math.max(60, Math.min(180 * 60, Number((req.body as { durationSec?: number })?.durationSec) || 15 * 60))
     return updateQuiet(tenant, req.params.id ?? '', res, () => ({
       active: true, startedAt: new Date().toISOString(), durationSec, pausedAt: null, pauseAccumSec: 0,
     }))
@@ -589,7 +589,7 @@ export function registerWaffledBiteRoutes(api: Api): void {
   // controls (pause/resume/add-time) stay parent-only either way, same as
   // quiet time, since a kid navigating away and back shouldn't need them.
   api.post('/api/waffled-bites/:id/timer/start', tenantRoute(async (tenant, req: Request, res: Response) => {
-    const durationSec = Math.max(60, Math.min(90 * 60, Number((req.body as { durationSec?: number })?.durationSec) || 5 * 60))
+    const durationSec = Math.max(60, Math.min(180 * 60, Number((req.body as { durationSec?: number })?.durationSec) || 5 * 60))
     return updateTimer(tenant, req.params.id ?? '', res, () => ({
       active: true, startedAt: new Date().toISOString(), durationSec, pausedAt: null, pauseAccumSec: 0,
     }))
@@ -631,7 +631,7 @@ export function registerWaffledBiteRoutes(api: Api): void {
 
   api.post('/api/waffled-bites/device/timer/start', async (req: Request) => {
     const device = await requireWaffledBiteDevice(req)
-    const durationSec = Math.max(60, Math.min(90 * 60, Number((req.body as { durationSec?: number })?.durationSec) || 5 * 60))
+    const durationSec = Math.max(60, Math.min(180 * 60, Number((req.body as { durationSec?: number })?.durationSec) || 5 * 60))
     return updateTimerAsDevice(device, () => ({
       active: true, startedAt: new Date().toISOString(), durationSec, pausedAt: null, pauseAccumSec: 0,
     }))

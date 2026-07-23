@@ -187,8 +187,12 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
     quiet's dark "wind down" navy — this isn't meant to feel locked-in) once one is
     running. `main.cpp`'s poll keeps it correctly built at all times (not just when
     tapped), same reasoning as the Sounds/Nightlight sync fix — a parent could start one
-    while the kid isn't looking at this screen. Parent web app gained a matching "Set a
-    timer" card (`WaffledBiteDevice.tsx`) with presets + custom length + pause/+5/end,
+    while the kid isn't looking at this screen. At the time of this milestone, that only
+    kept the screen's *content* correct in the background — starting a timer didn't
+    actually navigate onto it, so nothing visibly happened on the device; **this was
+    fixed in a later milestone** (it now force-navigates on the same active/inactive
+    edge quiet time does, while staying exitable). Parent web app gained a matching "Set
+    a timer" card (`WaffledBiteDevice.tsx`) with presets + custom length + pause/+5/end,
     same shape as the existing Quiet time card.
   - **Bedtime** (`src/ui/bedtime_screen.cpp`) — deliberately NOT a routine or countdown:
     just a full-screen preview of the nightlight at its actual configured color and

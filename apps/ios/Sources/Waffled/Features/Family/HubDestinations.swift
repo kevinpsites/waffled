@@ -8,6 +8,7 @@ enum HubRoute: Hashable {
     case list(WaffledAPI.ListSummary)   // a specific list pushed from the Lists index
     case goal(WaffledAPI.Goal)          // a specific goal pushed from the Goals screen
     case person(String)              // a person spotlight pushed from the people row
+    case waffledBites(personId: String, personName: String) // a kid's Waffled-Bite control panel
     case recipe(WaffledAPI.RecipeSummary) // a recipe opened from the grocery meal recap
     case recipeCook(WaffledAPI.RecipeSummary) // a recipe opened straight into Cook Mode (Today's tonight card)
     case rewardShop(String)          // one person's reward shop (from the Rewards overview)
@@ -51,6 +52,7 @@ struct HubDestination: View {
         case .goals:            GoalsView(path: $path)
         case let .goal(goal):   GoalDetailView(goal: goal, path: $path)
         case let .person(id):   PersonView(personId: id, path: $path)
+        case let .waffledBites(id, name): WaffledBitesView(personId: id, personName: name)
         case .rewards:          RewardsView(path: $path)
         case let .rewardShop(id): RewardShopView(personId: id)
         case .photos:           PhotosView()
