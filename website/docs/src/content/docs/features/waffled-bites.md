@@ -40,6 +40,12 @@ The parent control panel is available on web, iPhone, and iPad — pair once fro
 
 The device polls the server every few seconds for changes (settings, remote quiet-time/timer commands) rather than holding an always-open connection — simple, and plenty fast for a kid's room.
 
+:::caution[If the device seems stuck, don't press the reset button — power-cycle it instead]
+If the screen freezes, gets stuck on "Connecting to Wi-Fi," or otherwise stops responding, **don't use the device's reset button.** It doesn't fully restart the Wi-Fi hardware, so the device can come back up unable to find or connect to any network — stuck on a blank network list with no way to recover except powering it off.
+
+Instead: turn the device off (or unplug it), wait about **10 seconds**, then turn it back on. A real power-off/power-on always recovers it.
+:::
+
 ## Module
 
 Waffled-Bites is an **optional module** (`waffledBites`, default **OFF**), toggled in **Settings → Modules**. Turn it on to see the Waffled-Bite section on a kid's profile page.
@@ -48,4 +54,4 @@ Waffled-Bites is an **optional module** (`waffledBites`, default **OFF**), toggl
 
 - 👶 Devices pair to a specific child, not the household — there's no shared profile picker like [Kiosk](/features/kiosk/) uses for a communal tablet.
 - ⭐ Task completion on the device is just a chore completion under the hood, so it shows up in the same stars ledger, streaks, and rewards as chores completed anywhere else — see [Chores & tasks](/features/chores/) and [Rewards & economy](/features/rewards/).
-- 🔨 **Pending real-hardware bring-up.** The on-device app (ESP32-P4 + LVGL) is code-complete and has been verified against the real backend, but only inside a desktop simulator — the target board has never been in hand for an actual bring-up, so things like the display driver and on-board Wi-Fi haven't been confirmed on real silicon yet. See the [product roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md) for status.
+- 🔨 **Real-hardware bring-up is underway.** The on-device app (ESP32-P4 + LVGL) is code-complete and verified against the real backend, and has been bring-up tested on the actual board — display, touch, and on-board Wi-Fi all confirmed working on real silicon, including dozens of reboot tests. Remaining gaps: no over-the-air updates yet, and a few icon assets are still text-only. See the [product roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md) for status.
