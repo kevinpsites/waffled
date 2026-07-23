@@ -125,7 +125,10 @@ function ItemRow({
       <button
         type="button"
         className="lnm lnm-btn"
-        aria-label={selecting ? (selected ? `Deselect ${item.name}` : `Select ${item.name}`) : `Edit ${item.name}`}
+        // While selecting, the name doubles as a select target; leave its label
+        // implicit (the item text) so it doesn't collide with the checkbox's
+        // "Select {name}" accessible name.
+        aria-label={selecting ? undefined : `Edit ${item.name}`}
         onClick={() => (selecting ? onSelect?.(item) : onEdit(item))}
       >
         <PriorityFlag priority={item.priority} />
@@ -297,6 +300,15 @@ export function Lists() {
       else n.add(item.id)
       return n
     })
+  // Staged bulk edit: a change to section / assignee / priority is held here and
+  // only written on "Done" — choosing a value no longer fires immediately. A key
+  // is present ONLY if the user set it, so Done patches just those fields and
+  // never wipes attributes the user didn't touch (tri-state: absent = leave,
+  // null = clear, value = set).
+  type BulkStaged = { section?: string | null; assignedTo?: string | null; priority?: number }
+  const [bulkStaged, setBulkStaged] = useState<BulkStaged>({})
+  const startSelecting = () => { setSelecting(true); setSelectedItems(new Set()); setBulkStaged({}) }
+  const cancelSelecting = () => { setSelecting(false); setSelectedItems(new Set()); setBulkStaged({}) }
   // Drag-to-reorganize: the item being dragged (ref, not state, so the drop
   // handler reads it synchronously) + the section highlighted as a drop target.
   const dragId = useRef<string | null>(null)
@@ -455,6 +467,17 @@ export function Lists() {
     } catch {
       /* keep current state on failure */
     }
+  }
+
+  // "Done": write only the fields the user actually staged, then leave select
+  // mode. Building the patch from present keys keeps untouched attributes intact.
+  async function commitBulk() {
+    const patch: BulkStaged = {}
+    if ('section' in bulkStaged) patch.section = bulkStaged.section
+    if ('assignedTo' in bulkStaged) patch.assignedTo = bulkStaged.assignedTo
+    if ('priority' in bulkStaged) patch.priority = bulkStaged.priority
+    if (Object.keys(patch).length) await applyBulk(patch)
+    cancelSelecting()
   }
 
   async function addItem(name: string) {
@@ -652,15 +675,16 @@ export function Lists() {
               >
                 <Icon name="filter" /> {sortByPriority ? 'By priority' : 'Sort: manual'}
               </button>
-              <button
-                type="button"
-                className={`pill filter-pill lists-select-pill${selecting ? ' on' : ''}`}
-                aria-pressed={selecting}
-                title="Select multiple items to edit at once"
-                onClick={() => { setSelecting((v) => !v); setSelectedItems(new Set()) }}
-              >
-                <Icon name="tasks" /> {selecting ? 'Done' : 'Select'}
-              </button>
+              {!selecting && (
+                <button
+                  type="button"
+                  className="pill filter-pill lists-select-pill"
+                  title="Select multiple items to edit at once"
+                  onClick={startSelecting}
+                >
+                  <Icon name="tasks" /> Select
+                </button>
+              )}
               {isTemplate && (
                 <button type="button" className="pill btn-primary" style={{ cursor: 'pointer' }} title="Create a new list from this template (current items, unchecked)" onClick={useSelectedTemplate}>
                   ▶ Use template
@@ -751,9 +775,9 @@ export function Lists() {
                 <select
                   className="sel"
                   aria-label="Set section for selected"
-                  value=""
+                  value={'section' in bulkStaged ? (bulkStaged.section ?? '__none__') : ''}
                   disabled={selectedItems.size === 0}
-                  onChange={(e) => { const v = e.target.value; if (v) { applyBulk({ section: v === '__none__' ? null : v }); e.currentTarget.value = '' } }}
+                  onChange={(e) => { const v = e.target.value; if (v) setBulkStaged((s) => ({ ...s, section: v === '__none__' ? null : v })) }}
                 >
                   <option value="">Section…</option>
                   <option value="__none__">No section</option>
@@ -762,9 +786,9 @@ export function Lists() {
                 <select
                   className="sel"
                   aria-label="Assign selected to"
-                  value=""
+                  value={'assignedTo' in bulkStaged ? (bulkStaged.assignedTo ?? '__none__') : ''}
                   disabled={selectedItems.size === 0}
-                  onChange={(e) => { const v = e.target.value; if (v) { applyBulk({ assignedTo: v === '__none__' ? null : v }); e.currentTarget.value = '' } }}
+                  onChange={(e) => { const v = e.target.value; if (v) setBulkStaged((s) => ({ ...s, assignedTo: v === '__none__' ? null : v })) }}
                 >
                   <option value="">Assign…</option>
                   <option value="__none__">Unassign</option>
@@ -773,9 +797,9 @@ export function Lists() {
                 <select
                   className="sel"
                   aria-label="Set priority for selected"
-                  value=""
+                  value={'priority' in bulkStaged ? String(bulkStaged.priority) : ''}
                   disabled={selectedItems.size === 0}
-                  onChange={(e) => { const v = e.target.value; if (v) { applyBulk({ priority: Number(v) }); e.currentTarget.value = '' } }}
+                  onChange={(e) => { const v = e.target.value; if (v) setBulkStaged((s) => ({ ...s, priority: Number(v) })) }}
                 >
                   <option value="">Priority…</option>
                   <option value="5">5 · urgent</option>
@@ -784,9 +808,14 @@ export function Lists() {
                   <option value="2">2</option>
                   <option value="1">1 · not urgent</option>
                 </select>
-                <button type="button" className="btn btn-ghost lists-bulkbar-cancel" onClick={() => { setSelecting(false); setSelectedItems(new Set()) }}>
-                  Cancel
-                </button>
+                <div className="lists-bulkbar-actions">
+                  <button type="button" className="btn btn-ghost" onClick={cancelSelecting}>
+                    Cancel
+                  </button>
+                  <button type="button" className="btn btn-primary" disabled={selectedItems.size === 0} onClick={commitBulk}>
+                    Done
+                  </button>
+                </div>
               </div>
             )}
 

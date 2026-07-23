@@ -296,8 +296,12 @@
   color: var(--ink-2);
   white-space: nowrap;
 }
-.lists-bulkbar-cancel {
+/* Cancel + Done pushed together to the far right; Done is the coral commit. */
+.lists-bulkbar-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 /* Selection checkbox (distinct from the round completion check) + row highlight. */
 .litem .lck.lsel {

@@ -332,14 +332,19 @@ describe('Lists screen', () => {
     await exitBoard()
     await screen.findByText('Swimsuits')
 
-    // enter multi-select, pick Swimsuits, then set its section from the bulk toolbar
+    // enter multi-select, pick Swimsuits, then STAGE a section change
     fireEvent.click(screen.getByRole('button', { name: /Select/i }))
     fireEvent.click(await screen.findByRole('button', { name: 'Select Swimsuits' }))
     fireEvent.change(screen.getByLabelText('Set section for selected'), { target: { value: 'Gear' } })
 
+    // staging must NOT write yet — the change only commits on Done
+    expect(sent.some((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     await waitFor(() => expect(sent.some((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))).toBe(true))
     const patch = sent.find((s) => s.method === 'PATCH' && s.url.endsWith('/api/list-items/bulk'))!
-    expect(patch.body).toMatchObject({ ids: ['i1'], patch: { section: 'Gear' } })
+    // only the staged field is sent — untouched assignee/priority are left alone
+    expect(patch.body).toEqual({ ids: ['i1'], patch: { section: 'Gear' } })
   })
 
   it('flattens into a highest-priority-first view when "By priority" is toggled on', async () => {
