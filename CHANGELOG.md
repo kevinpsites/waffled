@@ -42,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own keyboard, right during first-time setup. If you pick the wrong network (or move
   the device to a new one), a "Change Wi-Fi network" option on the setup screen takes
   you back to the picker — no reflash needed.
+- **See at a glance if a Waffled-Bite has gone offline.** The parent control panel (web,
+  iPhone, iPad) now shows a status pill right at the top — 🟢 Online, or ⚪ Offline with
+  when it was last seen — the same treatment as the quiet-time and wake-light status,
+  so a device that's stopped checking in doesn't go unnoticed.
 
 ### Changed
 

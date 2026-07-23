@@ -10,6 +10,7 @@ Waffled-Bites is a kid-facing companion device — a small touchscreen that sits
 ## Highlights
 
 - 🔗 **One device per kid, code-paired** — mint a short one-time code from the kid's profile page and enter it on the device; no shared picker, the device is fixed to that one child.
+- 🟢 **Online status at a glance** — the control panel shows whether the device has checked in recently, or when it was last seen if it hasn't.
 - 🌙 **Live quiet-time control** — start, pause, add 5 minutes, or end a stay-in-room countdown right from your phone or the web, and watch it count down.
 - 💡 **Night light** — pick a color and brightness.
 - 🌅 **Wake-up light schedule** — set per-day-of-week rules; the light glows yellow a few minutes before wake time, then green when it's okay to get up.
