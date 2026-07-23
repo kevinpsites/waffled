@@ -250,6 +250,19 @@ export function Lists() {
   const [recent, setRecent] = useState<Set<string>>(new Set())
   // Completed section is collapsed by default (checked items tuck away).
   const [showDone, setShowDone] = useState(false)
+  // Section chosen in the add bar. Stays selected across quick adds so several
+  // items in a row land in the same section (mirrors iOS's mass-add behavior).
+  const [addSection, setAddSection] = useState<string | null>(null)
+  // Regular sections collapsed by the user (mirrors the grocery board's per-section
+  // collapse). Keyed on the stable section key from groupBySection.
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+  const toggleSectionCollapse = (key: string) =>
+    setCollapsedSections((s) => {
+      const n = new Set(s)
+      if (n.has(key)) n.delete(key)
+      else n.add(key)
+      return n
+    })
   // Drag-to-reorganize: the item being dragged (ref, not state, so the drop
   // handler reads it synchronously) + the section highlighted as a drop target.
   const dragId = useRef<string | null>(null)
@@ -383,7 +396,7 @@ export function Lists() {
     if (!trimmed || !selected || addingRef.current) return
     addingRef.current = true
     try {
-      const item = await groceryApi.addListItem(selected.id, { name: trimmed })
+      const item = await groceryApi.addListItem(selected.id, { name: trimmed, section: addSection })
       setItems((prev) => [...prev, item])
       refetchLists()
     } finally {
@@ -466,6 +479,8 @@ export function Lists() {
   const [leftCol, rightCol] = splitColumns(sections)
   // Flattened, highest-priority-first view (stable — ties keep manual order).
   const prioritySorted = [...activeItems].sort((a, b) => (b.priority ?? 3) - (a.priority ?? 3))
+  // Existing section names (for the add-bar picker + the item modal's datalist).
+  const sectionNames = [...new Set(items.map((i) => i.section).filter((s): s is string => !!s))]
 
   return (
     <div className="lists-home">
@@ -627,6 +642,19 @@ export function Lists() {
                 placeholder={'Add to this list… “bug spray and 2 water bottles”'}
                 aria-label="Add to this list"
               />
+              {sectionNames.length > 0 && (
+                <select
+                  className="sel lists-addbar-sec"
+                  aria-label="Section for new items"
+                  value={addSection ?? ''}
+                  onChange={(e) => setAddSection(e.target.value || null)}
+                >
+                  <option value="">No section</option>
+                  {sectionNames.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              )}
               <div className="mic" aria-hidden>
                 <Icon name="mic" />
               </div>
@@ -681,8 +709,17 @@ export function Lists() {
                               if (id) moveToSection(id, sec.key)
                             }}
                           >
-                            <div className="lists-section-title">{sec.title}</div>
-                            {sec.items.map((it) => (
+                            <button
+                              type="button"
+                              className="lists-section-title lists-section-toggle"
+                              aria-expanded={!collapsedSections.has(sec.key)}
+                              onClick={() => toggleSectionCollapse(sec.key)}
+                            >
+                              <span className={`cal-chev ${collapsedSections.has(sec.key) ? '' : 'open'}`} aria-hidden>›</span>
+                              <span className="lists-section-name">{sec.title}</span>
+                              <span className="ga-n">{sec.items.length}</span>
+                            </button>
+                            {!collapsedSections.has(sec.key) && sec.items.map((it) => (
                               <ItemRow
                                 key={it.id}
                                 item={it}
@@ -767,7 +804,7 @@ export function Lists() {
           listId={selected.id}
           item={itemModal.item}
           persons={persons}
-          sections={[...new Set(items.map((i) => i.section).filter((s): s is string => !!s))]}
+          sections={sectionNames}
           onClose={() => setItemModal(null)}
           onSaved={() => {
             refetchItems()

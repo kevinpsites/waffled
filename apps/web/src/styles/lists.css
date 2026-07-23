@@ -186,6 +186,31 @@
   color: var(--ink-2);
   margin: 2px 2px 9px;
 }
+/* Collapsible regular section header — the title doubles as a full-width toggle. */
+.lists-section-title.lists-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.lists-section-toggle .lists-section-name {
+  flex: 1;
+}
+.lists-section-toggle .ga-n {
+  font-weight: 700;
+  color: var(--ink-3);
+}
+/* Add-bar section picker — a compact pill select that keeps its choice across adds. */
+.lists-addbar .lists-addbar-sec {
+  flex: none;
+  max-width: 42%;
+  font-size: 13px;
+}
 /* Completed section (checked items tuck here — collapsible, matches the grocery board). */
 .lists-completed {
   margin-top: 10px;
