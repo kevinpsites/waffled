@@ -1408,8 +1408,12 @@ struct ListDetailView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        // Clear the whole Completed section now (custom lists only).
-                        if !model.isTemplate {
+                        // Clear the whole Completed section now — CUSTOM lists only. On
+                        // grocery, `checked` means "in cart", and clear-completed is a
+                        // server-side no-op there, so the button would optimistically wipe
+                        // in-cart items that then reappear on the next sync. (Templates
+                        // have no Completed either.)
+                        if !model.isTemplate && !model.isGrocery {
                             Button { Task { await model.clearCompleted() } } label: {
                                 Text("Clear").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.primary)
                             }
