@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Waffled-Bites parent controls now on iPhone and iPad.** The control panel for a
+  paired kid's companion device — quiet time, wake-light schedule, night light, sound
+  machine, morning alarm, an occasional timer, and screen brightness — was web-only
+  until now; it's a full port, reached the same way as web (Family → tap the kid →
+  Waffled-Bite), including pairing a new device from your phone or tablet.
 
 ### Changed
 

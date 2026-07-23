@@ -32,7 +32,7 @@ function WaffledBiteChip({ personId, personName }: { personId: string; personNam
           personId={personId}
           personName={personName}
           onClose={() => setPairing(false)}
-          onPaired={() => { setPairing(false); refetch() }}
+          onPaired={() => { setPairing(false); refetch(); navigate(`/person/${personId}/waffled-bite`) }}
         />
       )}
     </>

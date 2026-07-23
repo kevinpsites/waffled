@@ -25,15 +25,15 @@ Waffled-Bites is a kid-facing companion device — a small touchscreen that sits
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | 🚧 Coming soon |
-| iPad | 🚧 Coming soon |
+| iPhone | ✅ |
+| iPad | ✅ |
 
-The control panel is web-only for now; an iOS control panel is coming soon, planned as a fast-follow once the web version — and the physical device — have proven the shape out.
+The parent control panel is available on web, iPhone, and iPad — pair once from any of them, control from any of them.
 
 ## How pairing works
 
 1. Turn the Waffled-Bite device on and connect it to Wi-Fi (device-side; Wi-Fi provisioning is still hardcoded for development, a real setup UI comes with hardware bring-up).
-2. On the web app, open **Family → the kid → Waffled-Bite → Pair a Waffled-Bite**. This mints a short, one-time code (10-minute window).
+2. On web, iPhone, or iPad, open **Family → the kid → Waffled-Bite → Pair a Waffled-Bite**. This mints a short, one-time code (10-minute window).
 3. Enter the code on the device. Once it claims the code, the control panel appears automatically — no refresh needed.
 
 > This flow is proven end-to-end against the real backend — but only with the on-device app running in a desktop simulator, not the physical touchscreen. See the status note at the top of this page.
@@ -49,4 +49,3 @@ Waffled-Bites is an **optional module** (`waffledBites`, default **OFF**), toggl
 - 👶 Devices pair to a specific child, not the household — there's no shared profile picker like [Kiosk](/features/kiosk/) uses for a communal tablet.
 - ⭐ Task completion on the device is just a chore completion under the hood, so it shows up in the same stars ledger, streaks, and rewards as chores completed anywhere else — see [Chores & tasks](/features/chores/) and [Rewards & economy](/features/rewards/).
 - 🔨 **Pending real-hardware bring-up.** The on-device app (ESP32-P4 + LVGL) is code-complete and has been verified against the real backend, but only inside a desktop simulator — the target board has never been in hand for an actual bring-up, so things like the display driver and on-board Wi-Fi haven't been confirmed on real silicon yet. See the [product roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md) for status.
-- 📱 **iOS control panel — coming soon.** Web ships first; iOS is planned as a fast-follow.
