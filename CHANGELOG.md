@@ -347,6 +347,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Setup now links to the published troubleshooting guide.** The public-HTTPS
+  PowerSync note no longer points at a repository file that does not exist.
 - **The iPhone and iPad apps now reject malformed server addresses before saving.**
   Server settings require an HTTP(S) origin, explain invalid input in place, normalize
   trailing slashes, and no longer force-unwrap request URLs.
