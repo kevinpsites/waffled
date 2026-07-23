@@ -2543,6 +2543,23 @@ struct WaffledAPI: Sendable {
         try await delete("/api/list-items/\(id)")
     }
 
+    /// Bulk-edit section / assignee / priority across many items in one call. A
+    /// double-optional distinguishes "leave unchanged" (.none) from "set to null"
+    /// (.some(nil)); e.g. `assignedTo: .some(nil)` unassigns the whole selection.
+    func bulkPatchListItems(ids: [String], section: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) async throws {
+        var patch: [String: JSONValue] = [:]
+        if case let .some(s) = section { patch["section"] = s.map(JSONValue.string) ?? .null }
+        if case let .some(a) = assignedTo { patch["assignedTo"] = a.map(JSONValue.string) ?? .null }
+        if let priority { patch["priority"] = .int(priority) }
+        guard !patch.isEmpty, !ids.isEmpty else { return }
+        try await send("PATCH", "/api/list-items/bulk", body: ["ids": .array(ids.map(JSONValue.string)), "patch": .object(patch)])
+    }
+
+    /// Clear a custom list's Completed section now (soft-deletes its checked items).
+    func clearCompletedList(listId: String) async throws {
+        try await send("POST", "/api/lists/\(listId)/clear-completed", body: [:])
+    }
+
     // MARK: List templates (save-as-template / apply)
     // A template is a `lists` row with listType == "template"; its items are stored
     // unchecked. Templates are excluded from the normal `GET /api/lists` rail

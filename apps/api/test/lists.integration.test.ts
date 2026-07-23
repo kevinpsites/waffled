@@ -1051,3 +1051,141 @@ describe('grocery week backfill (0088) — legacy rows land on the board default
     await withClient((c) => c.query(`update households set week_start='sunday' where id in (select id from households)`))
   })
 })
+
+// ---- #4 bulk edit + #5 completed-item lifecycle -----------------------------
+describe('list-item bulk edit + completed-item lifecycle', () => {
+  async function newList(name: string): Promise<string> {
+    return JSON.parse((await call('POST', '/api/lists', kevin, { name })).body).list.id
+  }
+  async function addItem(listId: string, name: string, extra: Record<string, unknown> = {}): Promise<string> {
+    return JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name, ...extra })).body).item.id
+  }
+  async function getItems(listId: string): Promise<Array<Record<string, any>>> {
+    return JSON.parse((await call('GET', `/api/lists/${listId}`, kevin)).body).items
+  }
+  async function railCount(listId: string): Promise<number> {
+    const lists = JSON.parse((await call('GET', '/api/lists', kevin)).body).lists as Array<{ id: string; itemCount: number }>
+    return lists.find((l) => l.id === listId)!.itemCount
+  }
+
+  it('list total (itemCount) counts only unchecked items', async () => {
+    const list = await newList('Count list')
+    const a = await addItem(list, 'A')
+    await addItem(list, 'B')
+    expect(await railCount(list)).toBe(2)
+    await call('PATCH', `/api/list-items/${a}`, kevin, { checked: true })
+    expect(await railCount(list)).toBe(1)
+  })
+
+  it('grocery total ticks down as items are checked into the cart', async () => {
+    const groceryId = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).list.id
+    const before = await railCount(groceryId)
+    const gi = JSON.parse((await call('POST', '/api/lists/grocery/items', kevin, { name: 'Count-grocery' })).body).item.id
+    expect(await railCount(groceryId)).toBe(before + 1)
+    // checking it into the cart drops the count (the badge shows what's left to get)
+    await call('PATCH', `/api/list-items/${gi}`, kevin, { checked: true })
+    expect(await railCount(groceryId)).toBe(before)
+  })
+
+  it('auto-clears checked custom-list items older than the window, keeps recent + unchecked', async () => {
+    const list = await newList('Auto clear')
+    const old = await addItem(list, 'Old checked')
+    const fresh = await addItem(list, 'Fresh checked')
+    await addItem(list, 'Still active')
+    await call('PATCH', `/api/list-items/${old}`, kevin, { checked: true })
+    await call('PATCH', `/api/list-items/${fresh}`, kevin, { checked: true })
+    // backdate the old one past the 24h default window
+    await withClient((c) => c.query(`update list_items set checked_at = now() - interval '25 hours' where id=$1`, [old]))
+    const names = (await getItems(list)).map((i) => i.name)
+    expect(names).not.toContain('Old checked')
+    expect(names).toContain('Fresh checked')
+    expect(names).toContain('Still active')
+  })
+
+  it('never auto-clears a custom list whose auto_clear_checked is NULL (the "never" sentinel)', async () => {
+    const list = await newList('No auto clear')
+    const old = await addItem(list, 'Old checked forever')
+    await call('PATCH', `/api/list-items/${old}`, kevin, { checked: true })
+    // Opt this list out of auto-clear (null = never), overriding the 24h default,
+    // and backdate the checked item well past any window.
+    await withClient((c) => c.query(`update lists set auto_clear_checked = null where id=$1`, [list]))
+    await withClient((c) => c.query(`update list_items set checked_at = now() - interval '100 hours' where id=$1`, [old]))
+    const names = (await getItems(list)).map((i) => i.name)
+    expect(names).toContain('Old checked forever')
+  })
+
+  it('never auto-clears the grocery list (checked = in-cart)', async () => {
+    const gi = JSON.parse((await call('POST', '/api/lists/grocery/items', kevin, { name: 'Milk-autoclear' })).body).item.id
+    await call('PATCH', `/api/list-items/${gi}`, kevin, { checked: true })
+    await withClient((c) => c.query(`update list_items set checked_at = now() - interval '25 hours' where id=$1`, [gi]))
+    const items = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items as Array<{ name: string }>
+    expect(items.find((i) => i.name === 'Milk-autoclear')).toBeTruthy()
+  })
+
+  it('manual clear-completed removes checked items, keeps unchecked', async () => {
+    const list = await newList('Clear done')
+    const a = await addItem(list, 'Done 1')
+    const b = await addItem(list, 'Done 2')
+    await addItem(list, 'Not done')
+    await call('PATCH', `/api/list-items/${a}`, kevin, { checked: true })
+    await call('PATCH', `/api/list-items/${b}`, kevin, { checked: true })
+    const res = await call('POST', `/api/lists/${list}/clear-completed`, kevin)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).cleared).toBe(2)
+    expect((await getItems(list)).map((i) => i.name)).toEqual(['Not done'])
+  })
+
+  it('bulk-edits section, priority and assignee across many items', async () => {
+    const list = await newList('Bulk')
+    const a = await addItem(list, 'A')
+    const b = await addItem(list, 'B')
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, {
+      ids: [a, b],
+      patch: { section: 'GEAR', priority: 5 },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).updated).toBe(2)
+    for (const it of await getItems(list)) {
+      expect(it.section).toBe('GEAR')
+      expect(it.priority).toBe(5)
+    }
+  })
+
+  it('bulk-edit prefers `section` over the legacy `category` alias when both are sent', async () => {
+    const list = await newList('Bulk precedence')
+    const a = await addItem(list, 'A')
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, {
+      ids: [a],
+      patch: { section: 'FROM_SECTION', category: 'FROM_CATEGORY' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect((await getItems(list))[0].section).toBe('FROM_SECTION')
+  })
+
+  it('bulk edit is tenant-scoped — cannot touch another household\'s items (IDOR)', async () => {
+    // seed a foreign list+item directly in Kelly's household
+    const foreignItem = await withClient(async (c) => {
+      const hid = (await c.query<{ household_id: string }>(`select household_id from persons where id=$1`, [foreignPersonId])).rows[0].household_id
+      const l = (await c.query<{ id: string }>(`insert into lists (household_id, name, list_type, created_by) values ($1,'KL','custom',$2) returning id`, [hid, foreignPersonId])).rows[0].id
+      return (await c.query<{ id: string }>(`insert into list_items (household_id, list_id, name, priority, created_by) values ($1,$2,'Secret',3,$3) returning id`, [hid, l, foreignPersonId])).rows[0].id
+    })
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, { ids: [foreignItem], patch: { priority: 1 } })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).updated).toBe(0)
+    const still = await withClient((c) => c.query<{ priority: number; deleted_at: string | null }>(`select priority, deleted_at from list_items where id=$1`, [foreignItem]))
+    expect(still.rows[0].priority).toBe(3)
+    expect(still.rows[0].deleted_at).toBeNull()
+  })
+
+  it('bulk edit rejects an assignee outside the household', async () => {
+    const list = await newList('Bulk validate')
+    const a = await addItem(list, 'A')
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, { ids: [a], patch: { assignedTo: foreignPersonId } })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('bulk edit rejects an empty id list', async () => {
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, { ids: [], patch: { priority: 2 } })
+    expect(res.statusCode).toBe(400)
+  })
+})

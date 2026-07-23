@@ -295,6 +295,30 @@ final class ListDetailModel {
         }
     }
 
+    /// Clear the Completed section now — soft-deletes every checked item server-side.
+    /// Optimistic; restores on failure. (Old checked items also auto-clear on load.)
+    func clearCompleted() async {
+        let snapshot = items
+        withAnimation { items.removeAll { $0.checked } }
+        settling = []
+        do {
+            try await api.clearCompletedList(listId: list.id)
+        } catch {
+            items = snapshot
+        }
+    }
+
+    /// Bulk-edit section / assignee / priority across `ids` in one call, then reload
+    /// so grouping/badges reflect it. Double-optional args distinguish leave-unchanged
+    /// (.none) from set-to-null (.some(nil)).
+    func bulkPatch(ids: [String], section: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) async {
+        guard !ids.isEmpty else { return }
+        do {
+            try await api.bulkPatchListItems(ids: ids, section: section, assignedTo: assignedTo, priority: priority)
+            await load()
+        } catch { self.error = true }
+    }
+
     /// Take an off-plan recipe back off the grocery list (undo "add to grocery"),
     /// removing it from the by-meal "Unscheduled" group. Reloads (it can touch
     /// several rows and strip shared credits server-side).
@@ -338,6 +362,15 @@ final class ListDetailModel {
         }
     }
 
+    /// Rename the list (keeps its emoji). Updates the header (`list.name` drives the
+    /// nav title) and rail. Returns true on success.
+    func rename(to name: String) async -> Bool {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty else { return false }
+        do { list = try await api.updateList(id: list.id, name: n); return true }
+        catch { self.error = true; return false }
+    }
+
     /// Soft-delete the whole list. Returns true so the view can pop back + refresh.
     func deleteList() async -> Bool {
         do { try await api.deleteList(id: list.id); return true }
@@ -376,6 +409,18 @@ struct ListDetailView: View {
     @State private var toast: String?
     @State private var toastTask: Task<Void, Never>?
     @State private var editingStaples = false
+    // Multi-select (bulk edit): whether we're selecting + which items are picked.
+    @State private var selecting = false
+    @State private var selectedIDs: Set<String> = []
+    // Staged bulk edits — a menu choice no longer writes immediately; it commits on
+    // Done (mirrors web). Tri-state: .none = leave, .some(nil) = clear, .some(x) = set.
+    @State private var stagedSection: String?? = .none
+    @State private var stagedAssignee: String?? = .none
+    @State private var stagedPriority: Int? = nil
+    @State private var bulkNewSectionPrompt = false
+    @State private var bulkNewSectionName = ""
+    @State private var renamePrompt = false
+    @State private var renameText = ""
     @FocusState private var focus: Field?
 
     /// Meal-type ordering for the summary filter (matches the web rail).
@@ -426,45 +471,11 @@ struct ListDetailView: View {
         .toolbar {
             // Grocery is auto-built, so it has no template/delete menu. A template gets
             // Use / Move to Lists / Delete; a normal list gets Save as template / Delete.
-            if !model.isGrocery {
+            // iPad (kiosk) has no navigation bar — its ⋯ menu lives in the list header
+            // (see `kioskListHeader`); iPhone keeps it here in the nav bar.
+            if !model.isGrocery && !isKiosk {
                 ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        if model.isTemplate {
-                            Button {
-                                Task {
-                                    if let created = await model.useTemplate() {
-                                        sync.bumpLists()
-                                        showToast("Made “\(created.name)” from this template")
-                                    }
-                                }
-                            } label: { Label("Use template", systemImage: "plus.square.on.square") }
-                            Button {
-                                Task {
-                                    if await model.moveToLists() {
-                                        sync.bumpLists()
-                                        showToast("Moved “\(model.list.name)” back to Lists")
-                                    }
-                                }
-                            } label: { Label("Move to Lists", systemImage: "arrow.uturn.left") }
-                            Button(role: .destructive) { confirmingDelete = true } label: {
-                                Label("Delete template", systemImage: "trash")
-                            }
-                        } else {
-                            Button {
-                                Task {
-                                    if await model.convertToTemplate() {
-                                        sync.bumpLists()
-                                        showToast("Turned “\(model.list.name)” into a template")
-                                    }
-                                }
-                            } label: { Label("Save as template", systemImage: "doc.on.doc") }
-                            Button(role: .destructive) { confirmingDelete = true } label: {
-                                Label("Delete list", systemImage: "trash")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
+                    listActionsMenu
                 }
             }
         }
@@ -533,6 +544,23 @@ struct ListDetailView: View {
                 newSectionName = ""
             }
         } message: { Text("New items will be added to this section.") }
+        .alert("New section", isPresented: $bulkNewSectionPrompt) {
+            TextField("Section name", text: $bulkNewSectionName)
+            Button("Cancel", role: .cancel) { bulkNewSectionName = "" }
+            Button("Use") {
+                let s = bulkNewSectionName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !s.isEmpty { stagedSection = .some(s) }
+                bulkNewSectionName = ""
+            }
+        } message: { Text("Move the selected items into this new section.") }
+        .alert("Rename list", isPresented: $renamePrompt) {
+            TextField("List name", text: $renameText)
+            Button("Cancel", role: .cancel) { renameText = "" }
+            Button("Save") {
+                let n = renameText; renameText = ""
+                Task { if await model.rename(to: n) { sync.bumpLists() } }
+            }
+        }
     }
 
     /// iPhone: items with the meals recap + staples inline in the list.
@@ -707,9 +735,81 @@ struct ListDetailView: View {
 
     /// Pinned controls below the nav bar: a search field (long lists) above the
     /// grocery aisle/meal toggle.
+    /// The list's ⋯ actions, shared by the iPhone nav bar and the iPad header.
+    private var listActionsMenu: some View {
+        Menu { listActionButtons } label: {
+            Image(systemName: "ellipsis.circle").font(.system(size: 20, weight: .regular))
+        }
+    }
+
+    /// Menu contents — same options on iPhone and iPad: Select, Rename, template
+    /// actions, Delete.
+    @ViewBuilder private var listActionButtons: some View {
+        // Enter multi-select to bulk-edit section / assignee / priority.
+        Button { withAnimation { selecting = true; selectedIDs = []; resetBulkStaging() } } label: {
+            Label("Select items to edit", systemImage: "checklist")
+        }
+        Button { renameText = model.list.name; renamePrompt = true } label: {
+            Label("Rename", systemImage: "pencil")
+        }
+        if model.isTemplate {
+            Button {
+                Task {
+                    if let created = await model.useTemplate() {
+                        sync.bumpLists()
+                        showToast("Made “\(created.name)” from this template")
+                    }
+                }
+            } label: { Label("Use template", systemImage: "plus.square.on.square") }
+            Button {
+                Task {
+                    if await model.moveToLists() {
+                        sync.bumpLists()
+                        showToast("Moved “\(model.list.name)” back to Lists")
+                    }
+                }
+            } label: { Label("Move to Lists", systemImage: "arrow.uturn.left") }
+            Button(role: .destructive) { confirmingDelete = true } label: {
+                Label("Delete template", systemImage: "trash")
+            }
+        } else {
+            Button {
+                Task {
+                    if await model.convertToTemplate() {
+                        sync.bumpLists()
+                        showToast("Turned “\(model.list.name)” into a template")
+                    }
+                }
+            } label: { Label("Save as template", systemImage: "doc.on.doc") }
+            Button(role: .destructive) { confirmingDelete = true } label: {
+                Label("Delete list", systemImage: "trash")
+            }
+        }
+    }
+
+    /// iPad-only header: the list name + the ⋯ menu (the kiosk layout has no nav bar,
+    /// so the actions would otherwise be unreachable). Grocery has no menu.
+    @ViewBuilder private var kioskListHeader: some View {
+        if !model.isGrocery {
+            HStack(spacing: 10) {
+                Text(model.list.name)
+                    .font(WF.serif(20, .semibold)).foregroundStyle(WF.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                listActionsMenu.foregroundStyle(WF.ink2)
+            }
+            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 2)
+        }
+    }
+
     @ViewBuilder private var topControls: some View {
         VStack(spacing: 0) {
+            if isKiosk { kioskListHeader }
             if showSearch { searchField }
+            // Bulk-edit action bar sits directly under the search field (not a bottom
+            // overlay, which the tab bar hid) so the section/person/priority actions
+            // are obvious the moment you enter select mode.
+            if selecting { bulkBar }
             if model.isGrocery && !searchActive { groceryWeekSwitcher }
             if model.isGrocery { modeToggle }
         }
@@ -798,21 +898,163 @@ struct ListDetailView: View {
     /// list keeps using `List`; moving an item between sections is handled by the flat
     /// ForEach's `.onMove` (see `itemRows`), not a per-row gesture.
     @ViewBuilder private func itemRow(_ item: WaffledAPI.ListItemDTO) -> some View {
-        row(item)
-            // A flat tan sheet: canvas row backgrounds (no white cells) and no hairline
-            // separators — the list reads as one continuous surface, not ruled rows.
-            .listRowBackground(WF.canvas)
-            .listRowSeparator(.hidden)
-            .swipeActions(edge: .trailing) {
-                Button(role: .destructive) {
-                    Task { await model.remove(item.id) }
-                } label: { Label("Delete", systemImage: "trash") }
-                Button {
-                    if editingId != nil { commitEdit() }
-                    detailItem = item
-                } label: { Label("Details", systemImage: "slider.horizontal.3") }
-                    .tint(WF.ai)
+        if selecting {
+            // Multi-select mode: the whole row toggles selection; swipe/edit are off.
+            selectableRow(item)
+                .listRowBackground(WF.canvas)
+                .listRowSeparator(.hidden)
+        } else {
+            row(item)
+                // A flat tan sheet: canvas row backgrounds (no white cells) and no hairline
+                // separators — the list reads as one continuous surface, not ruled rows.
+                .listRowBackground(WF.canvas)
+                .listRowSeparator(.hidden)
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        Task { await model.remove(item.id) }
+                    } label: { Label("Delete", systemImage: "trash") }
+                    Button {
+                        if editingId != nil { commitEdit() }
+                        detailItem = item
+                    } label: { Label("Details", systemImage: "slider.horizontal.3") }
+                        .tint(WF.ai)
+                }
+        }
+    }
+
+    /// A tap-to-select row shown in multi-select mode (leading checkmark + name/qty/
+    /// assignee). Kept simple — editing/checking-off are disabled while selecting.
+    @ViewBuilder private func selectableRow(_ item: WaffledAPI.ListItemDTO) -> some View {
+        let isSel = selectedIDs.contains(item.id)
+        Button {
+            if isSel { selectedIDs.remove(item.id) } else { selectedIDs.insert(item.id) }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: isSel ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 21))
+                    .foregroundStyle(isSel ? WF.primary : WF.ink3)
+                    .frame(width: 32, height: 32)
+                if !ListItemPriority.meta(item.priority).icon.isEmpty {
+                    Text(ListItemPriority.meta(item.priority).icon).font(.system(size: 13))
+                }
+                Text(item.name)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(WF.ink)
+                Spacer(minLength: 8)
+                if let q = item.quantity, !q.isEmpty {
+                    Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+                }
+                if let a = item.assignee, a.avatarEmoji != nil || a.colorHex != nil {
+                    Avatar(colorHex: a.colorHex, emoji: a.avatarEmoji ?? "🙂", size: 24)
+                }
             }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Action bar shown in multi-select mode (under the search field): stage a
+    /// section / assignee / priority for the whole selection via native Menus, then
+    /// Done commits — a menu tap no longer writes immediately (mirrors web).
+    private var bulkBar: some View {
+        // Two rows so the action chips get the full width and never squish their labels
+        // into two-letters-per-line: top row is the count + Cancel/Done, bottom row the
+        // Section / Assign / Priority chips spread evenly across the width.
+        VStack(spacing: 10) {
+            HStack {
+                Text("\(selectedIDs.count) selected")
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+                Spacer(minLength: 8)
+                Button("Cancel") { withAnimation { selecting = false; selectedIDs = []; resetBulkStaging() } }
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+                Button("Done") { commitBulk() }
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(selectedIDs.isEmpty ? WF.ink3 : WF.primary)
+                    .disabled(selectedIDs.isEmpty)
+            }
+            HStack(spacing: 8) {
+                Menu {
+                    ForEach(sectionSuggestions, id: \.self) { s in
+                        Button(s) { stagedSection = .some(s) }
+                    }
+                    Button("No section") { stagedSection = .some(nil) }
+                    Divider()
+                    Button { bulkNewSectionName = ""; bulkNewSectionPrompt = true } label: {
+                        Label("New section…", systemImage: "plus")
+                    }
+                } label: { bulkChip(sectionChipLabel, "folder", active: stagedSection != nil) }
+                    .disabled(selectedIDs.isEmpty)
+                Menu {
+                    ForEach(sync.members, id: \.id) { m in
+                        Button { stagedAssignee = .some(m.id) } label: { Text("\(m.emoji ?? "🙂") \(m.name)") }
+                    }
+                    Button("Unassign") { stagedAssignee = .some(nil) }
+                } label: { bulkChip(assignChipLabel, "person", active: stagedAssignee != nil) }
+                    .disabled(selectedIDs.isEmpty)
+                Menu {
+                    ForEach([5, 4, 3, 2, 1], id: \.self) { p in
+                        Button { stagedPriority = p } label: { Text(ListItemPriority.meta(p).label) }
+                    }
+                } label: { bulkChip(priorityChipLabel, "flag", active: stagedPriority != nil) }
+                    .disabled(selectedIDs.isEmpty)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(WF.canvas)
+        .overlay(WF.hair.frame(height: 1), alignment: .bottom)
+    }
+
+    private var sectionChipLabel: String {
+        switch stagedSection {
+        case .none: return "Section"
+        case .some(.none): return "No section"
+        case .some(.some(let s)): return s
+        }
+    }
+    private var assignChipLabel: String {
+        switch stagedAssignee {
+        case .none: return "Assign"
+        case .some(.none): return "Unassign"
+        case .some(.some(let id)): return sync.members.first(where: { $0.id == id })?.name ?? "Assigned"
+        }
+    }
+    private var priorityChipLabel: String {
+        stagedPriority.map { ListItemPriority.meta($0).label } ?? "Priority"
+    }
+
+    private func bulkChip(_ label: String, _ icon: String, active: Bool = false) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+            Text(label)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)            // each chip takes an equal third of the row
+        .padding(.vertical, 9)
+        .background(active ? WF.primary.opacity(0.16) : WF.panel).clipShape(Capsule())
+        .foregroundStyle(active ? WF.primary : WF.ink)
+    }
+
+    private func resetBulkStaging() {
+        stagedSection = .none; stagedAssignee = .none; stagedPriority = nil
+    }
+
+    /// "Done": write only the fields the user staged, then leave select mode.
+    private func commitBulk() {
+        // Snapshot the selection + staged values into locals FIRST: resetBulkStaging()
+        // below runs synchronously, before the async Task executes, so reading the
+        // @State inside the Task would see the already-cleared values and patch nothing.
+        let ids = Array(selectedIDs)
+        let section = stagedSection
+        let assignee = stagedAssignee
+        let priority = stagedPriority
+        let hasChange = section != nil || assignee != nil || priority != nil
+        if !ids.isEmpty && hasChange {
+            Task { await model.bulkPatch(ids: ids, section: section, assignedTo: assignee, priority: priority) }
+        }
+        withAnimation { selecting = false; selectedIDs = []; resetBulkStaging() }
     }
 
     @ViewBuilder private func sectionHeader(_ group: ListSectionGroup) -> some View {
@@ -1151,20 +1393,33 @@ struct ListDetailView: View {
                 }
             } header: {
                 headerChrome {
-                    Button {
-                        withAnimation { showCompleted.toggle() }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: showCompleted ? "chevron.down" : "chevron.right")
-                                .font(.system(size: 10, weight: .heavy))
-                            Text("COMPLETED (\(model.completed.count))")
-                                .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                            Spacer()
+                    HStack(spacing: 6) {
+                        Button {
+                            withAnimation { showCompleted.toggle() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: showCompleted ? "chevron.down" : "chevron.right")
+                                    .font(.system(size: 10, weight: .heavy))
+                                Text("COMPLETED (\(model.completed.count))")
+                                    .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                                Spacer()
+                            }
+                            .foregroundStyle(WF.ink3)
+                            .contentShape(Rectangle())
                         }
-                        .foregroundStyle(WF.ink3)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        // Clear the whole Completed section now — CUSTOM lists only. On
+                        // grocery, `checked` means "in cart", and clear-completed is a
+                        // server-side no-op there, so the button would optimistically wipe
+                        // in-cart items that then reappear on the next sync. (Templates
+                        // have no Completed either.)
+                        if !model.isTemplate && !model.isGrocery {
+                            Button { Task { await model.clearCompleted() } } label: {
+                                Text("Clear").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.primary)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }

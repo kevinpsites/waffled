@@ -36,10 +36,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine, morning alarm, an occasional timer, and screen brightness — was web-only
   until now; it's a full port, reached the same way as web (Family → tap the kid →
   Waffled-Bite), including pairing a new device from your phone or tablet.
+- **Edit list items in bulk.** Pick "Select" on any list (web and iOS), tap the items you
+  want, and set their section, assignee, or priority for the whole selection — including
+  moving them into a brand-new section you name on the spot. Your choices apply when you
+  tap **Done** (a stray tap never changes anything), and while selecting each row shows a
+  single clear checkbox so you can't accidentally check an item off.
+- **Rename a list from the list itself, and the iPad list menu.** The list's ⋯ menu
+  (Select items / Save as template / Delete) now also carries a **Rename** action on both
+  iPhone and iPad, and the menu — previously missing from the iPad's list view — is now
+  there too.
+- **Collapsible list sections + a section picker that stays put.** On the web, a list's
+  sections now collapse and expand from their header (iOS already did this). The add bar
+  also gains a section picker that keeps your choice across a run of quick adds — and can
+  create a new section on the spot — so a batch of items all land where you want (matching
+  how iOS already behaves).
+- **Swipe through your goal charts.** The weekly and monthly goal heatmaps on iPhone/iPad
+  now page back and forth with a horizontal swipe, not just the ‹ › arrows; a past week is
+  also labelled by its dates ("Week of Jul 5 – Jul 11") instead of a vague "That week".
 
 ### Changed
+- **Completed list items tidy themselves away.** A list's checked-off items now clear
+  automatically a day after you check them, and the Completed section has a **Clear**
+  button to sweep them now. (The grocery board is deliberately untouched — its checked =
+  "in the cart" state is preserved so the weekly rebuild still works.)
 
 ### Fixed
+- **Adding a meal from the iOS capture bar works again.** "Chicken bowls on Friday" (or
+  any dish) parsed correctly but failed with a 400 on **Add meal** — the date was sent as
+  a full timestamp instead of a plain calendar day. It now saves to the right day.
+- **A list's item count now shows what's left to do.** The number on the Lists rail (and
+  the list header) counts only unchecked items, so it ticks down as you check things off —
+  on a custom list as you finish them, and on the grocery list as you put them in the cart
+  — instead of always showing the full count.
+- **List sections are ordered A–Z and stay put (web).** Sections were laid out in the
+  API's item order, so adding, checking, or moving an item reshuffled them (and the
+  two-column layout). They're now sorted alphabetically (the no-section "Items" group
+  last), so each section holds a fixed place.
 - **Waffled-Bite: starting a timer now actually shows up on the device.** Previously,
   starting "Set a timer" (from the device itself or a parent remotely) only updated the
   timer screen's content in the background — nothing visibly happened until a kid

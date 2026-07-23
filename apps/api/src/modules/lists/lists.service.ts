@@ -27,12 +27,15 @@ export async function getOrCreateGroceryList(tenant: Tenant): Promise<ListRow> {
   return created.rows[0]
 }
 
-// All of the household's lists with their live (unchecked-or-not) item count.
+// All of the household's lists with their live item count — the number of items
+// still to do. Checked items are excluded for EVERY list type: on a custom list a
+// checked item is done; on the grocery list it's in the cart. Either way the rail
+// badge counts what's left, so it ticks down as you shop / check things off.
 export async function listLists(householdId: string) {
   const { rows } = await query<ListRow & { item_count: string }>(
     `select l.id, l.name, l.emoji, l.list_type, l.is_auto_built, l.sort_mode,
             (select count(*) from list_items i
-              where i.list_id = l.id and i.deleted_at is null) as item_count
+              where i.list_id = l.id and i.deleted_at is null and not i.checked) as item_count
        from lists l
       where l.household_id = $1 and l.deleted_at is null and l.list_type <> 'template'
       order by (l.list_type = 'grocery') desc, l.sort_order, l.created_at`,
@@ -129,7 +132,7 @@ export async function listTemplates(householdId: string) {
   const { rows } = await query<ListRow & { item_count: string }>(
     `select l.id, l.name, l.emoji, l.list_type, l.is_auto_built, l.sort_mode,
             (select count(*) from list_items i
-              where i.list_id = l.id and i.deleted_at is null) as item_count
+              where i.list_id = l.id and i.deleted_at is null and not i.checked) as item_count
        from lists l
       where l.household_id = $1 and l.deleted_at is null and l.list_type = 'template'
       order by l.created_at desc`,
@@ -378,6 +381,79 @@ export async function softDeleteItem(householdId: string, id: string): Promise<b
     [householdId, id]
   )
   return !!rowCount
+}
+
+// Bulk-edit list items: set section (category), assignee and/or priority on many
+// items in one call (the web/iOS multi-select action bar). Household-scoped in the
+// WHERE, so caller-supplied ids that belong to another household are simply not
+// matched — no IDOR. `checked` is intentionally NOT bulk-editable (that's the
+// per-item check/complete flow). Returns the number of rows actually updated.
+export async function bulkPatchItems(
+  householdId: string,
+  ids: string[],
+  patch: { category?: string | null; assignedTo?: string | null; priority?: number }
+): Promise<number> {
+  const sets: string[] = []
+  const vals: unknown[] = []
+  let i = 1
+  if ('category' in patch) {
+    sets.push(`category = $${i++}`)
+    vals.push(patch.category ?? null)
+  }
+  if ('assignedTo' in patch) {
+    sets.push(`assigned_to = $${i++}`)
+    vals.push(patch.assignedTo ?? null)
+  }
+  if (typeof patch.priority === 'number') {
+    sets.push(`priority = $${i++}`)
+    vals.push(patch.priority)
+  }
+  if (sets.length === 0) return 0
+  vals.push(householdId, ids)
+  const { rowCount } = await query(
+    `update list_items set ${sets.join(', ')}
+      where household_id = $${i++} and id = any($${i++}::uuid[]) and deleted_at is null`,
+    vals
+  )
+  return rowCount ?? 0
+}
+
+// Auto-clear: soft-delete a CUSTOM list's checked items once they've been checked
+// longer than that list's `auto_clear_checked` window. Runs lazily whenever the list
+// is loaded — no cron. `auto_clear_checked` defaults to 24h (set on the column +
+// backfilled onto existing custom lists in migration 0089); a NULL value means
+// "never" (the documented sentinel), so those lists are skipped. Deliberately scoped
+// to list_type='custom': on the grocery list a "checked" row means it's in the cart
+// and the weekly rebuild relies on that state, so grocery (and templates) are never
+// touched. Returns how many rows were cleared.
+export async function autoClearCheckedItems(householdId: string, listId: string): Promise<number> {
+  const { rowCount } = await query(
+    `update list_items i set deleted_at = now()
+       from lists l
+      where l.id = i.list_id
+        and l.id = $2 and l.household_id = $1 and l.list_type = 'custom'
+        and l.auto_clear_checked is not null
+        and i.deleted_at is null and i.checked and i.checked_at is not null
+        and i.checked_at < now() - l.auto_clear_checked`,
+    [householdId, listId]
+  )
+  return rowCount ?? 0
+}
+
+// Manual "Clear completed" for a custom list — soft-delete all its checked items
+// right now (the Completed-section Clear button). Custom-only for the same reason as
+// autoClearCheckedItems; the grocery board has its own clear-checks flow. Returns the
+// number cleared.
+export async function clearCompletedItems(householdId: string, listId: string): Promise<number> {
+  const { rowCount } = await query(
+    `update list_items i set deleted_at = now()
+       from lists l
+      where l.id = i.list_id
+        and l.id = $2 and l.household_id = $1 and l.list_type = 'custom'
+        and i.deleted_at is null and i.checked`,
+    [householdId, listId]
+  )
+  return rowCount ?? 0
 }
 
 // Add a recipe's ingredients to the grocery list from its page — an *explicit*

@@ -99,6 +99,21 @@
 .lists-head .filter-pill {
   cursor: pointer;
 }
+/* The Select toggle carries a distinct coral outline so it's easy to spot among
+   the other neutral filter pills (it was hard to find as a plain pill). */
+.lists-select-pill {
+  border: 1.5px solid var(--primary);
+  color: var(--primary);
+  font-weight: 700;
+}
+.lists-select-pill svg {
+  width: 15px;
+  height: 15px;
+}
+.lists-select-pill.on {
+  background: var(--primary);
+  color: var(--on-accent);
+}
 .lists-hint {
   font-weight: 600;
   margin-bottom: 10px;
@@ -186,6 +201,50 @@
   color: var(--ink-2);
   margin: 2px 2px 9px;
 }
+/* Collapsible regular section header — the title doubles as a full-width toggle. */
+.lists-section-title.lists-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.lists-section-toggle .lists-section-name {
+  flex: 1;
+}
+.lists-section-toggle .ga-n {
+  font-weight: 700;
+  color: var(--ink-3);
+}
+/* Add-bar section picker — a compact pill select that keeps its choice across adds. */
+.lists-addbar .lists-addbar-sec {
+  flex: none;
+  max-width: 42%;
+  font-size: 13px;
+}
+/* Inline "create a new section" input, shown when the picker's New section… is chosen. */
+.lists-secpick-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lists-secpick-input {
+  min-width: 130px;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1.5px solid var(--primary);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+}
+.lists-secpick-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
 /* Completed section (checked items tuck here — collapsible, matches the grocery board). */
 .lists-completed {
   margin-top: 10px;
@@ -209,6 +268,12 @@
   gap: 6px;
   padding-top: 4px;
 }
+/* "Clear" completed — pushed to the far right of the Completed header. */
+.lists-clear-done {
+  margin-left: auto;
+  font-size: 12.5px;
+  font-weight: 700;
+}
 .lpri {
   flex: none;
   margin-right: 5px;
@@ -230,6 +295,49 @@
   color: var(--ink-2);
   font-weight: 600;
   padding: 22px 2px;
+}
+
+/* ----- bulk multi-select ----- */
+.lists-bulkbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--hair-2);
+}
+.lists-bulkbar-n {
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+/* Cancel + Done pushed together to the far right; Done is the coral commit. */
+.lists-bulkbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Selection checkbox (distinct from the round completion check) + row highlight. */
+.litem .lck.lsel {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--hair-2);
+  border-radius: 6px;
+  background: transparent;
+  flex: none;
+}
+.litem .lck.lsel.on {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.litem.selected {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border-radius: 8px;
 }
 
 /* Ambient "added by {name}" attribution on a list item — small, muted, trails

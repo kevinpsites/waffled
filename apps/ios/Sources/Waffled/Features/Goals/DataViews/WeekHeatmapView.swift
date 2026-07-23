@@ -54,9 +54,16 @@ struct WeekHeatmapView: View {
                 Button { weekOffset -= 1 } label: { Image(systemName: "chevron.left") }
                     .buttonStyle(.plain).foregroundStyle(WF.ink2)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(weekOffset == 0 ? "This week" : "That week")
+                    Text(weekOffset == 0
+                         ? "This week"
+                         : "Week of \(GoalViewFmt.monthDay(weekKeys[0])) – \(GoalViewFmt.monthDay(weekEnd))")
                         .font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
-                    Text("\(GoalViewFmt.monthDay(weekKeys[0])) – \(GoalViewFmt.monthDay(weekEnd)) · the rhythm of your week")
+                    // For the current week the title is just "This week", so the date range
+                    // lives in the subtitle; for other weeks the title already carries the
+                    // range, so the subtitle is just the tagline (no duplicated dates).
+                    Text(weekOffset == 0
+                         ? "\(GoalViewFmt.monthDay(weekKeys[0])) – \(GoalViewFmt.monthDay(weekEnd)) · the rhythm of your week"
+                         : "the rhythm of your week")
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 8)
@@ -116,5 +123,20 @@ struct WeekHeatmapView: View {
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(delta >= 0 ? WF.success : WF.danger)
                     : Text("")))
         }
+        // Swipe to page weeks (same forward-clamp as the chevrons). A minimumDistance
+        // keeps per-cell taps working — a tap moves < the threshold, so the drag never
+        // claims it; the horizontal-dominance check ignores vertical scroll drags.
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    let dx = value.translation.width
+                    guard abs(dx) > 44, abs(dx) > abs(value.translation.height) else { return }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        if dx < 0 { weekOffset = min(0, weekOffset + 1) }  // drag left → later week
+                        else { weekOffset -= 1 }                            // drag right → earlier week
+                    }
+                }
+        )
     }
 }
