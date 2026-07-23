@@ -561,19 +561,27 @@ function isoAddDays(iso: string, n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-// The Sunday/Monday-anchored start of the household's *current* week, honoring its
-// first-day-of-week preference. Used to decide when a rebuild may absorb legacy
-// (pre-week-column) rows that carry a NULL week_start — only the current week folds
-// them in, so building a future week can never wipe this week's un-migrated rows.
-async function currentWeekStart(householdId: string): Promise<string> {
-  const { rows } = await query<{ week_start: string }>(`select week_start from households where id=$1`, [householdId])
+// The start (YYYY-MM-DD) of a household's week, honoring BOTH its first-day-of-week
+// preference (sunday|monday) and its timezone — the single server-side source of truth
+// for "which week is it". It backs the grocery board/rebuild default week, the rebuild's
+// legacy-absorb check, and the 0088 backfill (which replicates this exact math in SQL),
+// so a backfilled row lands on precisely the week the board shows. Mirrors the iOS
+// `Cal.weekStart(Date(), householdTz)`. `offsetWeeks` shifts by whole weeks.
+export async function householdWeekStart(householdId: string, offsetWeeks = 0): Promise<string> {
+  const { rows } = await query<{ week_start: string; timezone: string | null }>(
+    `select week_start, timezone from households where id=$1`,
+    [householdId]
+  )
   const monday = rows[0]?.week_start === 'monday'
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  const dow = d.getDay() // 0=Sun..6=Sat
+  const tz = (rows[0]?.timezone ?? '').trim() || 'UTC'
+  // "today" as seen in the household's timezone, then treated as a UTC midnight so the
+  // day arithmetic below is timezone-shift-free.
+  const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+  const d = new Date(todayLocal + 'T00:00:00Z')
+  const dow = d.getUTCDay() // 0=Sun..6=Sat
   const back = monday ? (dow === 0 ? 6 : dow - 1) : dow
-  d.setDate(d.getDate() - back)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  d.setUTCDate(d.getUTCDate() - back + offsetWeeks * 7)
+  return d.toISOString().slice(0, 10)
 }
 
 // Rebuild the auto portion of the grocery list from a week's planned meals
@@ -583,8 +591,8 @@ async function currentWeekStart(householdId: string): Promise<string> {
 // another week's rows.
 export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string): Promise<number> {
   const list = await getOrCreateGroceryList(tenant)
-  // Only the current week folds in legacy NULL-week rows (see currentWeekStart).
-  const absorbLegacy = weekStart === (await currentWeekStart(tenant.householdId))
+  // Only the current week folds in legacy NULL-week rows (see householdWeekStart).
+  const absorbLegacy = weekStart === (await householdWeekStart(tenant.householdId))
   // Matches this week's rows, plus legacy NULL rows when rebuilding the current week.
   const weekClause = absorbLegacy ? '(week_start = $3 or week_start is null)' : 'week_start = $3'
   const weekEnd = isoAddDays(weekStart, 6)

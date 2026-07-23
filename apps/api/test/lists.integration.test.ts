@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
+import { readFileSync } from 'node:fs'
 import { runMigrations } from '../src/migrate'
 
 const SECRET = 'waffled-local-dev-secret-change-me'
@@ -961,5 +962,44 @@ describe('grocery week switching — never clobber', () => {
     expect(kaleA[0].quantity).toBe(qtyAfterA) // unchanged by week B's rebuild
     // week B has its own Shared Kale (from plannedB), independent of week A's
     expect(names(await board(weekB))).toContain('Shared Kale')
+  })
+})
+
+// The 0088 backfill must stamp legacy (pre-0087) weekless rows to the SAME date the board
+// shows for "this week" — for BOTH first-day-of-week prefs — or those rows would vanish on
+// deploy (the Sunday-vs-Monday trap). This runs the REAL migration SQL, so a drift between
+// the SQL date math and the server's `householdWeekStart` fails the test.
+describe('grocery week backfill (0088) — legacy rows land on the board default week', () => {
+  const backfillUpSql = readFileSync(new URL('../migrations/0088_backfill_list_item_week.sql', import.meta.url), 'utf8').split('-- Down Migration')[0]
+
+  for (const pref of ['sunday', 'monday'] as const) {
+    it(`stamps a weekless auto row onto this week for a ${pref}-start household`, async () => {
+      // Derive kevin's grocery list + household from HIS board (deterministic — a bare
+      // `households limit 1` can return a different/foreign household across calls).
+      const listId = JSON.parse((await call('GET', '/api/lists/grocery/board', kevin)).body).list.id as string
+      const householdId = (await withClient((c) => c.query<{ household_id: string }>(`select household_id from lists where id=$1`, [listId]))).rows[0].household_id
+      // a non-UTC timezone exercises the tz path in both the SQL and householdWeekStart
+      await withClient((c) => c.query(`update households set week_start=$1, timezone='America/Chicago' where id=$2`, [pref, householdId]))
+      const name = `Legacy ${pref} kale`
+      // a legacy row: meal-derived but weekless (as it would be right after 0087)
+      await withClient((c) => c.query(
+        `insert into list_items (household_id, list_id, name, source, week_start) values ($1,$2,$3,'auto',null)`,
+        [householdId, listId, name]
+      ))
+
+      await withClient((c) => c.query(backfillUpSql)) // run the real 0088 UPDATE
+
+      // The board's DEFAULT week (no ?weekStart=) must now include it — proving the SQL
+      // stamp equals what householdWeekStart returns for this pref/timezone. If they
+      // disagreed, the row's week wouldn't match board.weekStart and it wouldn't appear.
+      const b = JSON.parse((await call('GET', '/api/lists/grocery/board', kevin)).body)
+      const row = b.items.find((i: { name: string }) => i.name === name)
+      expect(row).toBeTruthy()
+      expect(row.weekStart).toBe(b.weekStart)
+    })
+  }
+
+  afterAll(async () => {
+    await withClient((c) => c.query(`update households set week_start='sunday' where id in (select id from households)`))
   })
 })
