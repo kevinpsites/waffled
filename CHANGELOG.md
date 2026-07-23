@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Backup limitations are now called out after startup and in `./waffled doctor`.**
+  Operators are warned when uploaded media is excluded or all backup copies remain
+  on the Waffled host, with a direct link to the verification guide.
+- **Setup now links to the published troubleshooting guide.** The public-HTTPS
+  PowerSync note no longer points at a repository file that does not exist.
+
+### Security
+
+- **Web routing dependencies now include current security patches.** React Router
+  is updated to 7.18.1 to clear the production dependency audit.
+
 ## [0.12.0] - 2026-07-23
 
 ### Added
@@ -347,8 +358,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
-- **Setup now links to the published troubleshooting guide.** The public-HTTPS
-  PowerSync note no longer points at a repository file that does not exist.
 - **The iPhone and iPad apps now reject malformed server addresses before saving.**
   Server settings require an HTTP(S) origin, explain invalid input in place, normalize
   trailing slashes, and no longer force-unwrap request URLs.

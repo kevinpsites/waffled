@@ -48,6 +48,27 @@ c_reset=$'\033[0m'; c_red=$'\033[31m'; c_grn=$'\033[32m'; c_ylw=$'\033[33m'; c_d
 # spaces, e.g. GOOGLE_CALENDAR_SCOPES, which `source` chokes on).
 env_val() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true; }
 
+# The default backup protects the database from application mistakes, but its Docker
+# volume is lost with the host and uploaded media is opt-in. Keep those limits visible
+# during setup/diagnosis without treating an intentional local-only policy as unhealthy.
+backup_safety_warnings() {
+  local include_media host_path s3_bucket warned=0
+  [ -f "$ENV_FILE" ] || return 0
+  include_media="$(env_val BACKUP_INCLUDE_MEDIA)"
+  host_path="$(env_val BACKUP_HOST_PATH)"
+  s3_bucket="$(env_val BACKUP_S3_BUCKET)"
+
+  if [ "$include_media" != "true" ]; then
+    echo "${c_ylw}⚠ Backup note: uploaded media is not included (set BACKUP_INCLUDE_MEDIA=true).${c_reset}"
+    warned=1
+  fi
+  if [ -z "$host_path" ] && [ -z "$s3_bucket" ]; then
+    echo "${c_ylw}⚠ Backup note: local dumps stay on the same machine; add BACKUP_HOST_PATH or BACKUP_S3_BUCKET.${c_reset}"
+    warned=1
+  fi
+  [ "$warned" -eq 0 ] || echo "${c_dim}Verify your backup plan: https://docs.waffled.app/operations/backup/${c_reset}"
+}
+
 # Set (or append) KEY=value in .env. '|' is a safe sed delimiter (no '|' in URLs/secrets here).
 set_env_var() {
   if grep -qE "^$1=" "$ENV_FILE" 2>/dev/null; then
@@ -492,6 +513,7 @@ case "$cmd" in
     wait_for_services "$@" || true
     echo; status || true
     next_steps
+    backup_safety_warnings
     ;;
   upgrade)
     # One-command upgrade to the latest published release. Closes the gap where an
@@ -670,6 +692,7 @@ case "$cmd" in
     hc=0; docker exec waffled-api node dist/health-cli.js --pretty || hc=$?
     echo
     sc=0; status || sc=$?
+    backup_safety_warnings
     [ "$hc" -gt "$sc" ] && exit "$hc" || exit "$sc"
     ;;
   admin)
