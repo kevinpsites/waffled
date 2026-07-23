@@ -68,6 +68,9 @@ function ItemRow({
   onDelete,
   onDragStart,
   onDragEnd,
+  selecting,
+  selected,
+  onSelect,
 }: {
   item: ListItem
   people: Person[]
@@ -77,6 +80,9 @@ function ItemRow({
   onDelete: (item: ListItem) => void
   onDragStart?: (item: ListItem) => void
   onDragEnd?: () => void
+  selecting?: boolean
+  selected?: boolean
+  onSelect?: (item: ListItem) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const a = item.assignee
@@ -86,11 +92,22 @@ function ItemRow({
 
   return (
     <div
-      className={`litem ${item.checked ? 'done' : ''}`}
-      draggable={!!onDragStart}
-      onDragStart={onDragStart ? () => onDragStart(item) : undefined}
+      className={`litem ${item.checked ? 'done' : ''}${selecting ? ' selecting' : ''}${selected ? ' selected' : ''}`}
+      draggable={!!onDragStart && !selecting}
+      onDragStart={onDragStart && !selecting ? () => onDragStart(item) : undefined}
       onDragEnd={onDragEnd}
     >
+      {selecting && (
+        <button
+          type="button"
+          className={`lck lsel ${selected ? 'on' : ''}`}
+          aria-label={selected ? `Deselect ${item.name}` : `Select ${item.name}`}
+          aria-pressed={!!selected}
+          onClick={() => onSelect?.(item)}
+        >
+          {selected ? CHECK : null}
+        </button>
+      )}
       {/* Only the checkbox toggles; tapping the name opens the editor. */}
       <button
         type="button"
@@ -264,6 +281,16 @@ export function Lists() {
       else n.add(key)
       return n
     })
+  // Multi-select mode + the set of selected item ids, for bulk edit.
+  const [selecting, setSelecting] = useState(false)
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+  const toggleItemSelected = (item: ListItem) =>
+    setSelectedItems((s) => {
+      const n = new Set(s)
+      if (n.has(item.id)) n.delete(item.id)
+      else n.add(item.id)
+      return n
+    })
   // Drag-to-reorganize: the item being dragged (ref, not state, so the drop
   // handler reads it synchronously) + the section highlighted as a drop target.
   const dragId = useRef<string | null>(null)
@@ -406,6 +433,21 @@ export function Lists() {
       refetchLists()
     } catch {
       setItems(snapshot)
+    }
+  }
+
+  // Apply one attribute (section / assignee / priority) to every selected item in
+  // one round-trip, then refetch. Selection is kept so several attributes can be
+  // applied to the same set.
+  async function applyBulk(patch: { section?: string | null; assignedTo?: string | null; priority?: number }) {
+    const ids = [...selectedItems]
+    if (!ids.length) return
+    try {
+      await groceryApi.bulkPatchItems(ids, patch)
+      refetchItems()
+      refetchLists()
+    } catch {
+      /* keep current state on failure */
     }
   }
 
@@ -604,6 +646,15 @@ export function Lists() {
               >
                 <Icon name="filter" /> {sortByPriority ? 'By priority' : 'Sort: manual'}
               </button>
+              <button
+                type="button"
+                className={`pill filter-pill${selecting ? ' on' : ''}`}
+                aria-pressed={selecting}
+                title="Select multiple items to edit at once"
+                onClick={() => { setSelecting((v) => !v); setSelectedItems(new Set()) }}
+              >
+                ☑ {selecting ? 'Done' : 'Select'}
+              </button>
               {isTemplate && (
                 <button type="button" className="pill btn-primary" style={{ cursor: 'pointer' }} title="Create a new list from this template (current items, unchecked)" onClick={useSelectedTemplate}>
                   ▶ Use template
@@ -688,6 +739,51 @@ export function Lists() {
               ))}
             </div>
 
+            {selecting && (
+              <div className="lists-bulkbar" role="toolbar" aria-label="Bulk edit selected items">
+                <span className="lists-bulkbar-n">{selectedItems.size} selected</span>
+                <select
+                  className="sel"
+                  aria-label="Set section for selected"
+                  value=""
+                  disabled={selectedItems.size === 0}
+                  onChange={(e) => { const v = e.target.value; if (v) { applyBulk({ section: v === '__none__' ? null : v }); e.currentTarget.value = '' } }}
+                >
+                  <option value="">Section…</option>
+                  <option value="__none__">No section</option>
+                  {sectionNames.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select
+                  className="sel"
+                  aria-label="Assign selected to"
+                  value=""
+                  disabled={selectedItems.size === 0}
+                  onChange={(e) => { const v = e.target.value; if (v) { applyBulk({ assignedTo: v === '__none__' ? null : v }); e.currentTarget.value = '' } }}
+                >
+                  <option value="">Assign…</option>
+                  <option value="__none__">Unassign</option>
+                  {persons.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <select
+                  className="sel"
+                  aria-label="Set priority for selected"
+                  value=""
+                  disabled={selectedItems.size === 0}
+                  onChange={(e) => { const v = e.target.value; if (v) { applyBulk({ priority: Number(v) }); e.currentTarget.value = '' } }}
+                >
+                  <option value="">Priority…</option>
+                  <option value="5">5 · urgent</option>
+                  <option value="4">4</option>
+                  <option value="3">3 · normal</option>
+                  <option value="2">2</option>
+                  <option value="1">1 · not urgent</option>
+                </select>
+                <button type="button" className="btn btn-ghost lists-bulkbar-cancel" onClick={() => { setSelecting(false); setSelectedItems(new Set()) }}>
+                  Cancel
+                </button>
+              </div>
+            )}
+
             {items.length === 0 && !itemsLoading ? (
               <div className="lists-empty">This list is empty — add something above.</div>
             ) : visibleItems.length === 0 ? (
@@ -706,6 +802,9 @@ export function Lists() {
                         onAssign={assign}
                         onEdit={(i) => setItemModal({ item: i })}
                         onDelete={remove}
+                        selecting={selecting}
+                        selected={selectedItems.has(it.id)}
+                        onSelect={toggleItemSelected}
                       />
                     ))}
                   </div>
@@ -748,6 +847,9 @@ export function Lists() {
                                 onDelete={remove}
                                 onDragStart={(i) => { dragId.current = i.id }}
                                 onDragEnd={() => { dragId.current = null; setDragOverKey(null) }}
+                                selecting={selecting}
+                                selected={selectedItems.has(it.id)}
+                                onSelect={toggleItemSelected}
                               />
                             ))}
                           </div>
