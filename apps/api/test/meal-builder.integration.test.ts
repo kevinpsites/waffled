@@ -650,3 +650,16 @@ describe('grocery: a plate on the list', () => {
     expect((await call('POST', `/api/meals/${foreignMealId}/add-to-list`, kevin)).statusCode).toBe(404)
   })
 })
+
+// Regression guard (characterisation, not TDD — the behaviour already held): the
+// week/month planners find empty slots via weekEntries. A meal-backed entry has
+// recipe_id NULL, so if "empty" were keyed off the recipe rather than the entry the
+// planner would happily overwrite a scheduled plate.
+describe('the planner treats a meal-backed slot as filled', () => {
+  it('does not offer to fill a night that already has a plate on it', async () => {
+    const res = await call('POST', '/api/meals/plan-week', kevin, { start: '2026-07-05' })
+    expect(res.statusCode).toBe(200)
+    const dates = json(res).suggestions.map((s: { date: string }) => s.date)
+    expect(dates).not.toContain('2026-07-06') // "Scheduled plate" lives here
+  })
+})

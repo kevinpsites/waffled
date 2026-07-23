@@ -12,7 +12,7 @@ import type { QueryResultRow } from 'pg'
 import { query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { mediaUrl } from '../../platform/storage'
-import { onHandForRecipes, type OnHandCount } from '../pantry/on-hand'
+import { onHandForRecipes, loadOnHandContext, countOnHand, type OnHandCount, type OnHandContext } from '../pantry/on-hand'
 
 export interface MealRow extends QueryResultRow {
   id: string
@@ -255,9 +255,12 @@ export function presentMealRecipe(r: MealRecipeRow, onHand?: { onHand: OnHandCou
 
 // The full plate DTO — the builder screen, the meal detail and the library card all
 // read this shape (the library list just carries fewer dish fields).
-export async function presentMeal(householdId: string, meal: MealRow, dishes?: MealRecipeRow[]) {
+export async function presentMeal(householdId: string, meal: MealRow, dishes?: MealRecipeRow[], ctx?: OnHandContext) {
   const rows = dishes ?? (await listMealRecipes(householdId, meal.id))
-  const counts = await onHandForRecipes(householdId, rows.map((r) => r.recipe_id))
+  const ids = rows.map((r) => r.recipe_id)
+  // A library page loads ONE pantry context and reuses it for every plate, so
+  // searching the library stays four queries rather than four per plate.
+  const counts = ctx ? countOnHand(ctx, ids) : await onHandForRecipes(householdId, ids)
   const mins = rows.map(minutesFor).filter((m): m is number => m != null)
   return {
     id: meal.id,
@@ -293,5 +296,9 @@ export async function listMeals(householdId: string, opts: { q?: string; limit?:
       limit $3`,
     [householdId, q || null, limit]
   )
-  return Promise.all(rows.map((m) => presentMeal(householdId, m)))
+  if (!rows.length) return []
+  const dishesByMeal = new Map<string, MealRecipeRow[]>()
+  for (const m of rows) dishesByMeal.set(m.id, await listMealRecipes(householdId, m.id))
+  const ctx = await loadOnHandContext(householdId, [...dishesByMeal.values()].flat().map((d) => d.recipe_id))
+  return Promise.all(rows.map((m) => presentMeal(householdId, m, dishesByMeal.get(m.id), ctx)))
 }
