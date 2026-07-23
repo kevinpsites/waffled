@@ -54,9 +54,16 @@ struct WeekHeatmapView: View {
                 Button { weekOffset -= 1 } label: { Image(systemName: "chevron.left") }
                     .buttonStyle(.plain).foregroundStyle(WF.ink2)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(weekOffset == 0 ? "This week" : "That week")
+                    Text(weekOffset == 0
+                         ? "This week"
+                         : "Week of \(GoalViewFmt.monthDay(weekKeys[0])) – \(GoalViewFmt.monthDay(weekEnd))")
                         .font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
-                    Text("\(GoalViewFmt.monthDay(weekKeys[0])) – \(GoalViewFmt.monthDay(weekEnd)) · the rhythm of your week")
+                    // For the current week the title is just "This week", so the date range
+                    // lives in the subtitle; for other weeks the title already carries the
+                    // range, so the subtitle is just the tagline (no duplicated dates).
+                    Text(weekOffset == 0
+                         ? "\(GoalViewFmt.monthDay(weekKeys[0])) – \(GoalViewFmt.monthDay(weekEnd)) · the rhythm of your week"
+                         : "the rhythm of your week")
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 8)
