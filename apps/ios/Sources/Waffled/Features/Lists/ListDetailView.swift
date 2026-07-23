@@ -909,40 +909,47 @@ struct ListDetailView: View {
     /// section / assignee / priority for the whole selection via native Menus, then
     /// Done commits — a menu tap no longer writes immediately (mirrors web).
     private var bulkBar: some View {
-        HStack(spacing: 8) {
-            Text("\(selectedIDs.count) selected")
-                .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
-            Spacer(minLength: 6)
-            Menu {
-                ForEach(sectionSuggestions, id: \.self) { s in
-                    Button(s) { stagedSection = .some(s) }
-                }
-                Button("No section") { stagedSection = .some(nil) }
-                Divider()
-                Button { bulkNewSectionName = ""; bulkNewSectionPrompt = true } label: {
-                    Label("New section…", systemImage: "plus")
-                }
-            } label: { bulkChip(sectionChipLabel, "folder", active: stagedSection != nil) }
-                .disabled(selectedIDs.isEmpty)
-            Menu {
-                ForEach(sync.members, id: \.id) { m in
-                    Button { stagedAssignee = .some(m.id) } label: { Text("\(m.emoji ?? "🙂") \(m.name)") }
-                }
-                Button("Unassign") { stagedAssignee = .some(nil) }
-            } label: { bulkChip(assignChipLabel, "person", active: stagedAssignee != nil) }
-                .disabled(selectedIDs.isEmpty)
-            Menu {
-                ForEach([5, 4, 3, 2, 1], id: \.self) { p in
-                    Button { stagedPriority = p } label: { Text(ListItemPriority.meta(p).label) }
-                }
-            } label: { bulkChip(priorityChipLabel, "flag", active: stagedPriority != nil) }
-                .disabled(selectedIDs.isEmpty)
-            Button("Cancel") { withAnimation { selecting = false; selectedIDs = []; resetBulkStaging() } }
-                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
-            Button("Done") { commitBulk() }
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(selectedIDs.isEmpty ? WF.ink3 : WF.primary)
-                .disabled(selectedIDs.isEmpty)
+        // Two rows so the action chips get the full width and never squish their labels
+        // into two-letters-per-line: top row is the count + Cancel/Done, bottom row the
+        // Section / Assign / Priority chips spread evenly across the width.
+        VStack(spacing: 10) {
+            HStack {
+                Text("\(selectedIDs.count) selected")
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+                Spacer(minLength: 8)
+                Button("Cancel") { withAnimation { selecting = false; selectedIDs = []; resetBulkStaging() } }
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+                Button("Done") { commitBulk() }
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(selectedIDs.isEmpty ? WF.ink3 : WF.primary)
+                    .disabled(selectedIDs.isEmpty)
+            }
+            HStack(spacing: 8) {
+                Menu {
+                    ForEach(sectionSuggestions, id: \.self) { s in
+                        Button(s) { stagedSection = .some(s) }
+                    }
+                    Button("No section") { stagedSection = .some(nil) }
+                    Divider()
+                    Button { bulkNewSectionName = ""; bulkNewSectionPrompt = true } label: {
+                        Label("New section…", systemImage: "plus")
+                    }
+                } label: { bulkChip(sectionChipLabel, "folder", active: stagedSection != nil) }
+                    .disabled(selectedIDs.isEmpty)
+                Menu {
+                    ForEach(sync.members, id: \.id) { m in
+                        Button { stagedAssignee = .some(m.id) } label: { Text("\(m.emoji ?? "🙂") \(m.name)") }
+                    }
+                    Button("Unassign") { stagedAssignee = .some(nil) }
+                } label: { bulkChip(assignChipLabel, "person", active: stagedAssignee != nil) }
+                    .disabled(selectedIDs.isEmpty)
+                Menu {
+                    ForEach([5, 4, 3, 2, 1], id: \.self) { p in
+                        Button { stagedPriority = p } label: { Text(ListItemPriority.meta(p).label) }
+                    }
+                } label: { bulkChip(priorityChipLabel, "flag", active: stagedPriority != nil) }
+                    .disabled(selectedIDs.isEmpty)
+            }
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .frame(maxWidth: .infinity)
@@ -969,11 +976,14 @@ struct ListDetailView: View {
     }
 
     private func bulkChip(_ label: String, _ icon: String, active: Bool = false) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Image(systemName: icon).font(.system(size: 12, weight: .semibold))
-            Text(label).font(.system(size: 13, weight: .semibold))
+            Text(label)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1).minimumScaleFactor(0.8)
         }
-        .padding(.horizontal, 10).padding(.vertical, 7)
+        .frame(maxWidth: .infinity)            // each chip takes an equal third of the row
+        .padding(.vertical, 9)
         .background(active ? WF.primary.opacity(0.16) : WF.panel).clipShape(Capsule())
         .foregroundStyle(active ? WF.primary : WF.ink)
     }
@@ -984,10 +994,16 @@ struct ListDetailView: View {
 
     /// "Done": write only the fields the user staged, then leave select mode.
     private func commitBulk() {
+        // Snapshot the selection + staged values into locals FIRST: resetBulkStaging()
+        // below runs synchronously, before the async Task executes, so reading the
+        // @State inside the Task would see the already-cleared values and patch nothing.
         let ids = Array(selectedIDs)
-        let hasChange = stagedSection != nil || stagedAssignee != nil || stagedPriority != nil
+        let section = stagedSection
+        let assignee = stagedAssignee
+        let priority = stagedPriority
+        let hasChange = section != nil || assignee != nil || priority != nil
         if !ids.isEmpty && hasChange {
-            Task { await model.bulkPatch(ids: ids, section: stagedSection, assignedTo: stagedAssignee, priority: stagedPriority) }
+            Task { await model.bulkPatch(ids: ids, section: section, assignedTo: assignee, priority: priority) }
         }
         withAnimation { selecting = false; selectedIDs = []; resetBulkStaging() }
     }
