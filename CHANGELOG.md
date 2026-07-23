@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Web navigation now fits phones.** Narrow screens use a compact app header and
+  accessible slide-out destination menu, while Settings replaces its long stacked
+  index with a section picker and nearby sign-out action.
 - **Unfinished web actions no longer look usable.** Grocery export and online-order
   buttons, list sharing, plus empty Lists and Notifications settings destinations,
   stay hidden until they have working behavior.
