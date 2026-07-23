@@ -71,16 +71,22 @@ static void touchpad_read(lv_indev_t * /*indev*/, lv_indev_data_t *data)
   if (ts.isTouched)
   {
     data->state = LV_INDEV_STATE_PR;
-    data->point.x = ts.points[0].x;
     // TAMC_GT911's ROTATION_NORMAL (set in setup(), below) flips BOTH axes
-    // (y = height - y_raw internally) — confirmed correct for X (tap
-    // targeting on this board lines up), but it makes vertical drags feel
-    // backwards versus every phone/tablet's "content follows your finger"
-    // convention (confirmed on real hardware during WiFi-picker bring-up:
-    // swiping up scrolled the list down). Undo just the Y half of that flip
-    // here rather than picking a different TAMC_GT911 rotation constant —
-    // none of its four presets express "flip Y only, leave X" (they're all
-    // symmetric: both axes flipped, neither, or a 90° swap).
+    // (x = width - x_raw, y = height - y_raw internally). The Y half needed
+    // undoing (confirmed on real hardware: swiping up scrolled the list
+    // down, backwards from every phone/tablet's "content follows your
+    // finger" convention) — see the on-screen keyboard's floating-flag fix
+    // nearby for the same "confirmed on real hardware" bar. The X half
+    // looked correct at first only because it was tested against full-width
+    // tap targets (list rows, wide chips), where a mirrored X still lands in
+    // the same row; the on-screen keyboard's narrow, side-by-side keys
+    // exposed it for real (confirmed: tapping a key hit the mirrored key on
+    // the opposite side) — undo it the same way. None of TAMC_GT911's four
+    // rotation presets express "flip neither axis, this board's touch
+    // controller and panel orientation just don't line up otherwise," so
+    // both axes end up hand-corrected here rather than picking a different
+    // preset.
+    data->point.x = 1024 - ts.points[0].x;
     data->point.y = 600 - ts.points[0].y;
   }
   else
