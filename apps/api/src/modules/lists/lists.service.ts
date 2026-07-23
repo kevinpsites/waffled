@@ -416,10 +416,12 @@ export async function bulkPatchItems(
 }
 
 // Auto-clear: soft-delete a CUSTOM list's checked items once they've been checked
-// longer than that list's `auto_clear_checked` window (default 24h when unset). Runs
-// lazily whenever the list is loaded — no cron. Deliberately scoped to
-// list_type='custom': on the grocery list a "checked" row means it's in the cart and
-// the weekly rebuild relies on that state, so grocery (and templates) are never
+// longer than that list's `auto_clear_checked` window. Runs lazily whenever the list
+// is loaded — no cron. `auto_clear_checked` defaults to 24h (set on the column +
+// backfilled onto existing custom lists in migration 0089); a NULL value means
+// "never" (the documented sentinel), so those lists are skipped. Deliberately scoped
+// to list_type='custom': on the grocery list a "checked" row means it's in the cart
+// and the weekly rebuild relies on that state, so grocery (and templates) are never
 // touched. Returns how many rows were cleared.
 export async function autoClearCheckedItems(householdId: string, listId: string): Promise<number> {
   const { rowCount } = await query(
@@ -427,8 +429,9 @@ export async function autoClearCheckedItems(householdId: string, listId: string)
        from lists l
       where l.id = i.list_id
         and l.id = $2 and l.household_id = $1 and l.list_type = 'custom'
+        and l.auto_clear_checked is not null
         and i.deleted_at is null and i.checked and i.checked_at is not null
-        and i.checked_at < now() - coalesce(l.auto_clear_checked, interval '24 hours')`,
+        and i.checked_at < now() - l.auto_clear_checked`,
     [householdId, listId]
   )
   return rowCount ?? 0

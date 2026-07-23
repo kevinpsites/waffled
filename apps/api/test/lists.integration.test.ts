@@ -1092,6 +1092,18 @@ describe('list-item bulk edit + completed-item lifecycle', () => {
     expect(names).toContain('Still active')
   })
 
+  it('never auto-clears a custom list whose auto_clear_checked is NULL (the "never" sentinel)', async () => {
+    const list = await newList('No auto clear')
+    const old = await addItem(list, 'Old checked forever')
+    await call('PATCH', `/api/list-items/${old}`, kevin, { checked: true })
+    // Opt this list out of auto-clear (null = never), overriding the 24h default,
+    // and backdate the checked item well past any window.
+    await withClient((c) => c.query(`update lists set auto_clear_checked = null where id=$1`, [list]))
+    await withClient((c) => c.query(`update list_items set checked_at = now() - interval '100 hours' where id=$1`, [old]))
+    const names = (await getItems(list)).map((i) => i.name)
+    expect(names).toContain('Old checked forever')
+  })
+
   it('never auto-clears the grocery list (checked = in-cart)', async () => {
     const gi = JSON.parse((await call('POST', '/api/lists/grocery/items', kevin, { name: 'Milk-autoclear' })).body).item.id
     await call('PATCH', `/api/list-items/${gi}`, kevin, { checked: true })
