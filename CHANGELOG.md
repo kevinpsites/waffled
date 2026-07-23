@@ -61,9 +61,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "in the cart" state is preserved so the weekly rebuild still works.)
 
 ### Fixed
-- **A list's item count no longer includes completed items.** The number on the Lists
-  rail (and the list header) now counts only what's left to do — checking things off
-  makes it go down, instead of a finished list still showing its full count.
+- **A custom list's item count no longer includes completed items.** The number on the
+  Lists rail (and the list header) now counts only what's left to do — checking things
+  off makes it go down, instead of a finished list still showing its full count. (The
+  grocery list is unchanged — there a checked item means "in cart," not done, so it
+  still counts toward the total.)
 - **List sections are ordered A–Z and stay put (web).** Sections were laid out in the
   API's item order, so adding, checking, or moving an item reshuffled them (and the
   two-column layout). They're now sorted alphabetically (the no-section "Items" group

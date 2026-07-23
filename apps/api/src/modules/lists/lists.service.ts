@@ -27,12 +27,16 @@ export async function getOrCreateGroceryList(tenant: Tenant): Promise<ListRow> {
   return created.rows[0]
 }
 
-// All of the household's lists with their live (unchecked-or-not) item count.
+// All of the household's lists with their live item count. For custom lists the
+// count excludes checked-off (completed) items; for the GROCERY list `checked` means
+// "in cart" (not done), so it keeps counting all items — otherwise the rail badge
+// would shrink as you shop and hide in-cart items from the total.
 export async function listLists(householdId: string) {
   const { rows } = await query<ListRow & { item_count: string }>(
     `select l.id, l.name, l.emoji, l.list_type, l.is_auto_built, l.sort_mode,
             (select count(*) from list_items i
-              where i.list_id = l.id and i.deleted_at is null and not i.checked) as item_count
+              where i.list_id = l.id and i.deleted_at is null
+                and (l.list_type = 'grocery' or not i.checked)) as item_count
        from lists l
       where l.household_id = $1 and l.deleted_at is null and l.list_type <> 'template'
       order by (l.list_type = 'grocery') desc, l.sort_order, l.created_at`,

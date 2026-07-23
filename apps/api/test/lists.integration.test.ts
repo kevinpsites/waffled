@@ -1077,6 +1077,16 @@ describe('list-item bulk edit + completed-item lifecycle', () => {
     expect(await railCount(list)).toBe(1)
   })
 
+  it('grocery total keeps counting checked (in-cart) items, unlike custom lists', async () => {
+    const groceryId = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).list.id
+    const before = await railCount(groceryId)
+    const gi = JSON.parse((await call('POST', '/api/lists/grocery/items', kevin, { name: 'Count-grocery' })).body).item.id
+    expect(await railCount(groceryId)).toBe(before + 1)
+    // checking it into the cart must NOT drop the grocery count (checked = in-cart)
+    await call('PATCH', `/api/list-items/${gi}`, kevin, { checked: true })
+    expect(await railCount(groceryId)).toBe(before + 1)
+  })
+
   it('auto-clears checked custom-list items older than the window, keeps recent + unchecked', async () => {
     const list = await newList('Auto clear')
     const old = await addItem(list, 'Old checked')
