@@ -27,12 +27,13 @@ const CHECK = (
   </svg>
 )
 
-// Pluralized summary line under the list name: "12 items · 2 packed".
+// Pluralized summary line under the list name: "12 items · 2 done". The headline
+// count is the active (unchecked) items only — completed items don't pad the total.
 function summaryLine(items: ListItem[]): string {
-  const total = items.length
-  const packed = items.filter((i) => i.checked).length
-  const head = `${total} item${total === 1 ? '' : 's'}`
-  return packed > 0 ? `${head} · ${packed} packed` : head
+  const active = items.filter((i) => !i.checked).length
+  const done = items.length - active
+  const head = `${active} item${active === 1 ? '' : 's'}`
+  return done > 0 ? `${head} · ${done} done` : head
 }
 
 // Person avatar (color-tinted bubble + emoji), matching the handoff `av()`.
@@ -385,6 +386,23 @@ export function Lists() {
     })
     try {
       await groceryApi.deleteItem(item.id)
+      refetchLists()
+    } catch {
+      setItems(snapshot)
+    }
+  }
+
+  // Manual "Clear completed": drop every checked item from the list now (server
+  // soft-deletes them). Optimistic; restore on failure. Custom lists only.
+  async function clearCompleted() {
+    if (!selected || isTemplate) return
+    let snapshot: ListItem[] = []
+    setItems((prev) => {
+      snapshot = prev
+      return prev.filter((i) => !i.checked)
+    })
+    try {
+      await groceryApi.clearCompleted(selected.id)
       refetchLists()
     } catch {
       setItems(snapshot)
@@ -754,6 +772,15 @@ export function Lists() {
                       <span className={`cal-chev ${showDone ? 'open' : ''}`} aria-hidden>›</span>
                       <span>Completed</span>
                       <span className="ga-n">{completedItems.length}</span>
+                      {!isTemplate && (
+                        <button
+                          type="button"
+                          className="linkbtn lists-clear-done"
+                          onClick={(e) => { e.stopPropagation(); clearCompleted() }}
+                        >
+                          Clear
+                        </button>
+                      )}
                     </div>
                     {showDone && (
                       <div className="lists-completed-list">

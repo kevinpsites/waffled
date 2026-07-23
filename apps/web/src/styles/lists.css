@@ -234,6 +234,12 @@
   gap: 6px;
   padding-top: 4px;
 }
+/* "Clear" completed — pushed to the far right of the Completed header. */
+.lists-clear-done {
+  margin-left: auto;
+  font-size: 12.5px;
+  font-weight: 700;
+}
 .lpri {
   flex: none;
   margin-right: 5px;
