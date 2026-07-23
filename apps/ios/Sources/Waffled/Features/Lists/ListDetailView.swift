@@ -403,6 +403,13 @@ struct ListDetailView: View {
     // Multi-select (bulk edit): whether we're selecting + which items are picked.
     @State private var selecting = false
     @State private var selectedIDs: Set<String> = []
+    // Staged bulk edits — a menu choice no longer writes immediately; it commits on
+    // Done (mirrors web). Tri-state: .none = leave, .some(nil) = clear, .some(x) = set.
+    @State private var stagedSection: String?? = .none
+    @State private var stagedAssignee: String?? = .none
+    @State private var stagedPriority: Int? = nil
+    @State private var bulkNewSectionPrompt = false
+    @State private var bulkNewSectionName = ""
     @FocusState private var focus: Field?
 
     /// Meal-type ordering for the summary filter (matches the web rail).
@@ -457,7 +464,7 @@ struct ListDetailView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         // Enter multi-select to bulk-edit section / assignee / priority.
-                        Button { withAnimation { selecting = true } } label: {
+                        Button { withAnimation { selecting = true; selectedIDs = []; resetBulkStaging() } } label: {
                             Label("Select items to edit", systemImage: "checklist")
                         }
                         if model.isTemplate {
@@ -555,7 +562,6 @@ struct ListDetailView: View {
             PantryStaplesEditor(initial: model.staples) { Task { await model.reloadStaples() } }
         }
         .overlay(alignment: .bottom) { toastBanner }
-        .overlay(alignment: .bottom) { if selecting { bulkBar } }
         .alert("New section", isPresented: $newSectionPrompt) {
             TextField("Section name", text: $newSectionName)
             Button("Cancel", role: .cancel) { newSectionName = "" }
@@ -565,6 +571,15 @@ struct ListDetailView: View {
                 newSectionName = ""
             }
         } message: { Text("New items will be added to this section.") }
+        .alert("New section", isPresented: $bulkNewSectionPrompt) {
+            TextField("Section name", text: $bulkNewSectionName)
+            Button("Cancel", role: .cancel) { bulkNewSectionName = "" }
+            Button("Use") {
+                let s = bulkNewSectionName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !s.isEmpty { stagedSection = .some(s) }
+                bulkNewSectionName = ""
+            }
+        } message: { Text("Move the selected items into this new section.") }
     }
 
     /// iPhone: items with the meals recap + staples inline in the list.
@@ -742,6 +757,10 @@ struct ListDetailView: View {
     @ViewBuilder private var topControls: some View {
         VStack(spacing: 0) {
             if showSearch { searchField }
+            // Bulk-edit action bar sits directly under the search field (not a bottom
+            // overlay, which the tab bar hid) so the section/person/priority actions
+            // are obvious the moment you enter select mode.
+            if selecting { bulkBar }
             if model.isGrocery && !searchActive { groceryWeekSwitcher }
             if model.isGrocery { modeToggle }
         }
@@ -886,8 +905,9 @@ struct ListDetailView: View {
         .buttonStyle(.plain)
     }
 
-    /// Bottom action bar shown in multi-select mode: set section / assignee / priority
-    /// across the whole selection (native Menus), then Done to exit.
+    /// Action bar shown in multi-select mode (under the search field): stage a
+    /// section / assignee / priority for the whole selection via native Menus, then
+    /// Done commits — a menu tap no longer writes immediately (mirrors web).
     private var bulkBar: some View {
         HStack(spacing: 8) {
             Text("\(selectedIDs.count) selected")
@@ -895,48 +915,81 @@ struct ListDetailView: View {
             Spacer(minLength: 6)
             Menu {
                 ForEach(sectionSuggestions, id: \.self) { s in
-                    Button(s) { applyBulk(section: .some(s)) }
+                    Button(s) { stagedSection = .some(s) }
                 }
-                Button("No section") { applyBulk(section: .some(nil)) }
-            } label: { bulkChip("Section", "folder") }
+                Button("No section") { stagedSection = .some(nil) }
+                Divider()
+                Button { bulkNewSectionName = ""; bulkNewSectionPrompt = true } label: {
+                    Label("New section…", systemImage: "plus")
+                }
+            } label: { bulkChip(sectionChipLabel, "folder", active: stagedSection != nil) }
                 .disabled(selectedIDs.isEmpty)
             Menu {
                 ForEach(sync.members, id: \.id) { m in
-                    Button { applyBulk(assignedTo: .some(m.id)) } label: { Text("\(m.emoji ?? "🙂") \(m.name)") }
+                    Button { stagedAssignee = .some(m.id) } label: { Text("\(m.emoji ?? "🙂") \(m.name)") }
                 }
-                Button("Unassign") { applyBulk(assignedTo: .some(nil)) }
-            } label: { bulkChip("Assign", "person") }
+                Button("Unassign") { stagedAssignee = .some(nil) }
+            } label: { bulkChip(assignChipLabel, "person", active: stagedAssignee != nil) }
                 .disabled(selectedIDs.isEmpty)
             Menu {
                 ForEach([5, 4, 3, 2, 1], id: \.self) { p in
-                    Button { applyBulk(priority: p) } label: { Text(ListItemPriority.meta(p).label) }
+                    Button { stagedPriority = p } label: { Text(ListItemPriority.meta(p).label) }
                 }
-            } label: { bulkChip("Priority", "flag") }
+            } label: { bulkChip(priorityChipLabel, "flag", active: stagedPriority != nil) }
                 .disabled(selectedIDs.isEmpty)
-            Button("Done") { withAnimation { selecting = false; selectedIDs = [] } }
-                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.primary)
+            Button("Cancel") { withAnimation { selecting = false; selectedIDs = []; resetBulkStaging() } }
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+            Button("Done") { commitBulk() }
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(selectedIDs.isEmpty ? WF.ink3 : WF.primary)
+                .disabled(selectedIDs.isEmpty)
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
+        .padding(.horizontal, 16).padding(.vertical, 10)
         .frame(maxWidth: .infinity)
-        .background(.bar)
-        .overlay(WF.hair.frame(height: 1), alignment: .top)
+        .background(WF.canvas)
+        .overlay(WF.hair.frame(height: 1), alignment: .bottom)
     }
 
-    private func bulkChip(_ label: String, _ icon: String) -> some View {
+    private var sectionChipLabel: String {
+        switch stagedSection {
+        case .none: return "Section"
+        case .some(.none): return "No section"
+        case .some(.some(let s)): return s
+        }
+    }
+    private var assignChipLabel: String {
+        switch stagedAssignee {
+        case .none: return "Assign"
+        case .some(.none): return "Unassign"
+        case .some(.some(let id)): return sync.members.first(where: { $0.id == id })?.name ?? "Assigned"
+        }
+    }
+    private var priorityChipLabel: String {
+        stagedPriority.map { ListItemPriority.meta($0).label } ?? "Priority"
+    }
+
+    private func bulkChip(_ label: String, _ icon: String, active: Bool = false) -> some View {
         HStack(spacing: 4) {
             Image(systemName: icon).font(.system(size: 12, weight: .semibold))
             Text(label).font(.system(size: 13, weight: .semibold))
         }
         .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(WF.panel).clipShape(Capsule())
-        .foregroundStyle(WF.ink)
+        .background(active ? WF.primary.opacity(0.16) : WF.panel).clipShape(Capsule())
+        .foregroundStyle(active ? WF.primary : WF.ink)
     }
 
-    /// Fire a bulk edit for the current selection (keeps the selection so several
-    /// attributes can be applied to the same set).
-    private func applyBulk(section: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) {
+    private func resetBulkStaging() {
+        stagedSection = .none; stagedAssignee = .none; stagedPriority = nil
+    }
+
+    /// "Done": write only the fields the user staged, then leave select mode.
+    private func commitBulk() {
         let ids = Array(selectedIDs)
-        Task { await model.bulkPatch(ids: ids, section: section, assignedTo: assignedTo, priority: priority) }
+        let hasChange = stagedSection != nil || stagedAssignee != nil || stagedPriority != nil
+        if !ids.isEmpty && hasChange {
+            Task { await model.bulkPatch(ids: ids, section: stagedSection, assignedTo: stagedAssignee, priority: stagedPriority) }
+        }
+        withAnimation { selecting = false; selectedIDs = []; resetBulkStaging() }
     }
 
     @ViewBuilder private func sectionHeader(_ group: ListSectionGroup) -> some View {
