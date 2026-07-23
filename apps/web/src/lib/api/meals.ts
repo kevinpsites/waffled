@@ -101,14 +101,34 @@ export interface MealRecipe {
   imageUrl: string | null
 }
 
+// The plate behind a meal-backed slot, trimmed to what a planner cell needs to draw
+// its emoji strip and dish list. The full plate lives in ./mealBuilder.
+export interface WeekEntryMeal {
+  id: string
+  name: string
+  servings: number
+  recipes: Array<{
+    recipeId: string
+    title: string | null
+    emoji: string | null
+    role: string
+    sortOrder: number
+  }>
+}
+
+// A planned slot holds EITHER a single recipe (recipeId set) or a whole Meal Builder
+// plate (mealId set) — never both; the one-entry-per-(date, mealType) unique index is
+// unchanged. A slot that flips type has the opposite column cleared server-side.
 export interface WeekEntry {
   id: string
   date: string
   mealType: string
   title: string | null
   recipeId: string | null
+  mealId: string | null
   cook: MealCook | null
   recipe: MealRecipe | null
+  meal: WeekEntryMeal | null
 }
 
 // Rich frontmatter metadata shared by the list + detail shapes.

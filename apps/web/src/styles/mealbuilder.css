@@ -1,0 +1,35 @@
+/* Meal Builder screen.
+ *
+ * WAVE 1 SHELL — owned by Wave 2 Agent A, who replaces this with the real builder
+ * styles. Kept as its own stylesheet (rather than appended to meals.css) so the
+ * parallel Wave 2 agents never edit the same file. Reuse the design-system classes
+ * documented in apps/web/CLAUDE.md — .modal-overlay/.modal-card, btn btn-primary,
+ * .toggle, .field — rather than hand-rolling controls here. */
+
+.mb-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 22px 30px;
+  gap: 10px;
+}
+
+.mb-title {
+  font-family: var(--serif);
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+.mb-stats {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin: 0;
+}
+
+.mb-empty {
+  color: var(--ink-3);
+  font-weight: 600;
+}
