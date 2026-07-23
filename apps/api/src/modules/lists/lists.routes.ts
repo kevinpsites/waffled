@@ -27,7 +27,9 @@ import {
   addPantryStaple,
   removePantryStaple,
   rebuildGroceryFromWeek,
+  clearGroceryChecks,
   groceryBoard,
+  householdWeekStart,
   presentList,
   presentListItem,
 } from './lists.service'
@@ -222,7 +224,7 @@ export function registerListRoutes(api: Api): void {
   api.post('/api/lists/grocery/from-recipe/:recipeId', tenantRoute(async (tenant, req: Request, res: Response) => {
     const recipeId = req.params.recipeId ?? ''
     if (!UUID_RE.test(recipeId)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
-    const added = await addRecipeToGrocery(tenant, recipeId)
+    const added = await addRecipeToGrocery(tenant, recipeId, await weekStartFor(tenant, req))
     if (added === null) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     return res.status(201).json({ added: added.length, items: added.map(presentListItem) })
   }))
@@ -232,30 +234,42 @@ export function registerListRoutes(api: Api): void {
   api.delete('/api/lists/grocery/from-recipe/:recipeId', tenantRoute(async (tenant, req: Request, res: Response) => {
     const recipeId = req.params.recipeId ?? ''
     if (!UUID_RE.test(recipeId)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
-    const removed = await removeRecipeFromGrocery(tenant, recipeId)
+    const removed = await removeRecipeFromGrocery(tenant, recipeId, await weekStartFor(tenant, req))
     if (removed === null) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     return res.status(200).json({ removed })
   }))
 
   // ---- grocery board + auto-build + pantry staples --------------------------
-  function weekStartParam(req: Request): string {
+  // The week to operate on: an explicit ?weekStart=YYYY-MM-DD, else the household's
+  // current week (honoring its first-day-of-week + timezone). Household-aware so the
+  // default matches what the clients render for "this week" — and the 0088 backfill.
+  async function weekStartFor(tenant: { householdId: string }, req: Request): Promise<string> {
     const ws = (req.query?.weekStart as string | undefined) || ''
-    if (/^\d{4}-\d{2}-\d{2}$/.test(ws)) return ws
-    // default: the Sunday of the current week (server local)
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    d.setDate(d.getDate() - d.getDay())
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    // Require a REAL calendar date — the regex alone lets "2026-13-45" through, which
+    // then throws on the Postgres date cast (→ 500). Round-trip through Date to reject
+    // impossible dates (and JS's silent overflow normalization) and fall back cleanly.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ws)) {
+      const d = new Date(ws + 'T00:00:00Z')
+      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ws) return ws
+    }
+    return householdWeekStart(tenant.householdId)
   }
 
   api.get('/api/lists/grocery/board', tenantRoute(async (tenant, req: Request) => {
-    return groceryBoard(tenant, weekStartParam(req))
+    return groceryBoard(tenant, await weekStartFor(tenant, req))
   }))
 
   api.post('/api/lists/grocery/rebuild', tenantRoute(async (tenant, req: Request) => {
-    const weekStart = weekStartParam(req)
+    const weekStart = await weekStartFor(tenant, req)
     const count = await rebuildGroceryFromWeek(tenant, weekStart)
     return { rebuilt: count, board: await groceryBoard(tenant, weekStart) }
+  }))
+
+  // "Start over": un-check everything on the week's list (Refresh keeps checks instead).
+  api.post('/api/lists/grocery/clear-checks', tenantRoute(async (tenant, req: Request) => {
+    const weekStart = await weekStartFor(tenant, req)
+    const cleared = await clearGroceryChecks(tenant, weekStart)
+    return { cleared, board: await groceryBoard(tenant, weekStart) }
   }))
 
   api.get('/api/pantry-staples', tenantRoute(async (tenant) => {

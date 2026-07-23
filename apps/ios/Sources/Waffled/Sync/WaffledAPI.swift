@@ -602,6 +602,18 @@ struct WaffledAPI: Sendable {
         try await getJSON("/api/recipes/\(id)", as: RecipeDetailDTO.self)
     }
 
+    struct RecipeMarkdown: Decodable, Sendable {
+        let markdown: String
+        let filename: String
+    }
+
+    /// The recipe compiled into the blessed Markdown format for sharing, plus a suggested
+    /// `.md` filename. Server-side so it stays identical to the web export and round-trips
+    /// through the same parser.
+    func recipeMarkdown(id: String) async throws -> RecipeMarkdown {
+        try await getJSON("/api/recipes/\(id)/markdown", as: RecipeMarkdown.self)
+    }
+
     /// The household's previously-used ingredient section names (a global look across
     /// recipes), for the editor's section-name autocomplete. Merged client-side with the
     /// curated defaults.
@@ -2351,6 +2363,8 @@ struct WaffledAPI: Sendable {
         var assignee: Assignee?
         var aisle: String?
         var sourceRecipeIds: [String]?
+        /// The week this row belongs to (meal-derived + off-plan rows); nil = global manual row.
+        var weekStart: String?
         struct Assignee: Decodable, Sendable {
             let name: String?
             let avatarEmoji: String?
@@ -2392,9 +2406,12 @@ struct WaffledAPI: Sendable {
         }
     }
 
-    /// The grocery board (aisle groupings + meal dots + this week's meals + staples).
-    func groceryBoard() async throws -> GroceryBoardDTO {
-        try await getJSON("/api/lists/grocery/board", as: GroceryBoardDTO.self)
+    /// The grocery board (aisle groupings + meal dots + a week's meals + staples) for a
+    /// given week — meal-derived + off-plan rows are per week; manually-typed rows are
+    /// global. Omit `weekStart` for the current week.
+    func groceryBoard(weekStart: String? = nil) async throws -> GroceryBoardDTO {
+        let q = weekStart.map { "?weekStart=\($0)" } ?? ""
+        return try await getJSON("/api/lists/grocery/board\(q)", as: GroceryBoardDTO.self)
     }
 
     /// Add a recipe's ingredients straight to the grocery list — no meal-plan entry
@@ -2402,18 +2419,22 @@ struct WaffledAPI: Sendable {
     /// on the list, and links every item back to the recipe (so it groups under the
     /// recipe in the by-meal view). Returns how many new rows were added (merges
     /// into existing rows don't count).
-    func groceryFromRecipe(recipeId: String) async throws -> Int {
+    /// `weekStart` scopes the off-plan add to the week being shopped (defaults to the
+    /// current week server-side when omitted, e.g. from a recipe page with no week).
+    func groceryFromRecipe(recipeId: String, weekStart: String? = nil) async throws -> Int {
         struct Resp: Decodable { let added: Int }
-        return try await sendJSON("POST", "/api/lists/grocery/from-recipe/\(recipeId)", as: Resp.self).added
+        let q = weekStart.map { "?weekStart=\($0)" } ?? ""
+        return try await sendJSON("POST", "/api/lists/grocery/from-recipe/\(recipeId)\(q)", as: Resp.self).added
     }
 
     /// Take a recipe's ingredients back off the grocery list (undo the off-plan add;
     /// removes it from the by-meal "Unscheduled" group). Keeps rows shared with
     /// another recipe. Returns how many rows were removed.
     @discardableResult
-    func removeRecipeFromGrocery(recipeId: String) async throws -> Int {
+    func removeRecipeFromGrocery(recipeId: String, weekStart: String? = nil) async throws -> Int {
         struct Resp: Decodable { let removed: Int }
-        return try await sendJSON("DELETE", "/api/lists/grocery/from-recipe/\(recipeId)", as: Resp.self).removed
+        let q = weekStart.map { "?weekStart=\($0)" } ?? ""
+        return try await sendJSON("DELETE", "/api/lists/grocery/from-recipe/\(recipeId)\(q)", as: Resp.self).removed
     }
 
     /// Pantry staples (assumed in-house, left off the list) — the editable master list,
@@ -2435,6 +2456,13 @@ struct WaffledAPI: Sendable {
     func rebuildGrocery(weekStart: String) async throws -> GroceryBoardDTO {
         struct Resp: Decodable { let board: GroceryBoardDTO }
         return try await sendJSON("POST", "/api/lists/grocery/rebuild?weekStart=\(weekStart)", as: Resp.self).board
+    }
+
+    /// "Start over": un-check everything on this week's grocery list (Refresh keeps
+    /// checks instead). Returns the refreshed board.
+    func clearGroceryChecks(weekStart: String) async throws -> GroceryBoardDTO {
+        struct Resp: Decodable { let board: GroceryBoardDTO }
+        return try await sendJSON("POST", "/api/lists/grocery/clear-checks?weekStart=\(weekStart)", as: Resp.self).board
     }
 
     /// All lists in the household (for the Lists index). Templates are excluded

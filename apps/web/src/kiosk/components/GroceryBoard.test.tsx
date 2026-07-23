@@ -192,7 +192,7 @@ describe('GroceryBoard unscheduled recipes (By meal view)', () => {
     fireEvent.click(within(header).getByRole('button', { name: /Remove/i }))
 
     await waitFor(() =>
-      expect(sent.some((s) => s.method === 'DELETE' && /\/api\/lists\/grocery\/from-recipe\/r2$/.test(s.url))).toBe(true)
+      expect(sent.some((s) => s.method === 'DELETE' && /\/api\/lists\/grocery\/from-recipe\/r2\?weekStart=2026-06-07$/.test(s.url))).toBe(true)
     )
   })
 })
@@ -255,7 +255,7 @@ describe('GroceryBoard rail navigation', () => {
 
     // fires the delete for that recipe
     await waitFor(() =>
-      expect(sent.some((s) => s.method === 'DELETE' && /\/api\/lists\/grocery\/from-recipe\/r2$/.test(s.url))).toBe(true)
+      expect(sent.some((s) => s.method === 'DELETE' && /\/api\/lists\/grocery\/from-recipe\/r2\?weekStart=2026-06-07$/.test(s.url))).toBe(true)
     )
     // and does NOT drill into the recipe (stopPropagation on the × button)
     expect(screen.queryByText('recipe-page')).not.toBeInTheDocument()

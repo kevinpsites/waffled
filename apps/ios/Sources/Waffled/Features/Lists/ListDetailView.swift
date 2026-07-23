@@ -40,6 +40,10 @@ final class ListDetailModel {
     private(set) var staples: [WaffledAPI.GroceryBoardDTO.Staple] = []
     /// The week the board covers (YYYY-MM-DD) — passed to rebuild.
     private(set) var weekStart = ""
+    /// Which week to request (YYYY-MM-DD); nil = the current week (server default). The
+    /// view sets this from its week switcher so you can shop a future week without
+    /// touching this week's list.
+    var requestedWeekStart: String?
     /// True while a rebuild-from-meals is in flight (drives the Refresh spinner).
     private(set) var rebuilding = false
 
@@ -107,7 +111,7 @@ final class ListDetailModel {
         settling = []
         do {
             if isGrocery {
-                let board = try await api.groceryBoard()
+                let board = try await api.groceryBoard(weekStart: requestedWeekStart)
                 meals = board.meals
                 unscheduled = board.unscheduled ?? []
                 staples = board.staples
@@ -268,6 +272,18 @@ final class ListDetailModel {
         } catch { self.error = true }
     }
 
+    /// "Start over": un-check everything on this week's list (Refresh keeps checks).
+    func startOver() async {
+        guard !weekStart.isEmpty else { return }
+        do {
+            let board = try await api.clearGroceryChecks(weekStart: weekStart)
+            settling = []
+            withAnimation {
+                items = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
+            }
+        } catch { self.error = true }
+    }
+
     /// Optimistic removal; restore on failure.
     func remove(_ id: String) async {
         let snapshot = items
@@ -284,7 +300,7 @@ final class ListDetailModel {
     /// several rows and strip shared credits server-side).
     func removeRecipe(_ recipeId: String) async {
         do {
-            try await api.removeRecipeFromGrocery(recipeId: recipeId)
+            try await api.removeRecipeFromGrocery(recipeId: recipeId, weekStart: weekStart.isEmpty ? nil : weekStart)
             await load()
         } catch { self.error = true }
     }
@@ -351,6 +367,9 @@ struct ListDetailView: View {
     @State private var didAutoDetails = false
     @State private var mode: GroceryViewMode = .aisle
     @State private var railMeal = "dinner"
+    /// Which week the grocery board shows (0 = current). Lets you shop a future week
+    /// without touching this week's list — meal items are per week, typed items global.
+    @State private var weekOffset = 0
     /// Section ids (aisle title or meal-group id) the user has collapsed.
     @State private var collapsed: Set<String> = []
     /// Transient confirmation banner ("Added Butter to Pantry").
@@ -691,9 +710,56 @@ struct ListDetailView: View {
     @ViewBuilder private var topControls: some View {
         VStack(spacing: 0) {
             if showSearch { searchField }
+            if model.isGrocery && !searchActive { groceryWeekSwitcher }
             if model.isGrocery { modeToggle }
         }
         .background(WF.canvas)
+    }
+
+    // MARK: grocery week switcher
+
+    private var viewedWeekStart: Date {
+        let base = Cal.weekStart(Date(), sync.householdTz)   // honors first-day-of-week
+        return Cal.gregorian(sync.householdTz).date(byAdding: .weekOfYear, value: weekOffset, to: base) ?? base
+    }
+    /// The YYYY-MM-DD to request; nil for the current week (server default).
+    private var requestedWeekYMD: String? {
+        weekOffset == 0 ? nil : DateFmt.string(viewedWeekStart, "yyyy-MM-dd", sync.householdTz)
+    }
+    private var groceryWeekLabel: String {
+        switch weekOffset {
+        case 0: return "This week"
+        case 1: return "Next week"
+        case -1: return "Last week"
+        default: return "Week of " + DateFmt.string(viewedWeekStart, "MMM d", sync.householdTz)
+        }
+    }
+
+    /// Prev/next week with a "This week" reset — always visible for grocery so an empty
+    /// future week can still be navigated back. Changing the week reloads the board for
+    /// that week; this week's list is never touched.
+    @ViewBuilder private var groceryWeekSwitcher: some View {
+        HStack(spacing: 10) {
+            Button { withAnimation { weekOffset -= 1 } } label: {
+                Image(systemName: "chevron.left").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+                    .frame(width: 36, height: 30).background(WF.panel).clipShape(Capsule())
+            }.buttonStyle(.plain)
+            Text(groceryWeekLabel).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
+                .frame(maxWidth: .infinity)
+            if weekOffset != 0 {
+                Button("This week") { withAnimation { weekOffset = 0 } }
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ai).buttonStyle(.plain)
+            }
+            Button { withAnimation { weekOffset += 1 } } label: {
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+                    .frame(width: 36, height: 30).background(WF.panel).clipShape(Capsule())
+            }.buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 2)
+        .onChange(of: weekOffset) { _, _ in
+            model.requestedWeekStart = requestedWeekYMD
+            Task { await model.load() }
+        }
     }
 
     /// Inline search box — filters items by name, section, or quantity.
@@ -897,9 +963,19 @@ struct ListDetailView: View {
     @ViewBuilder private var summaryPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("THIS WEEK’S MEALS")
+                Text(weekOffset == 0 ? "THIS WEEK’S MEALS" : weekOffset == 1 ? "NEXT WEEK’S MEALS" : "MEALS · \(groceryWeekLabel.uppercased())")
                     .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
                 Spacer()
+                if model.items.contains(where: { $0.checked && $0.weekStart != nil }) {
+                    Button { Task { await model.startOver() } } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.counterclockwise").font(.system(size: 11, weight: .bold))
+                            Text("Start over").font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundStyle(WF.ink2)
+                    }
+                    .buttonStyle(.plain)
+                }
                 Button { Task { await model.rebuild() } } label: {
                     HStack(spacing: 5) {
                         if model.rebuilding {

@@ -386,7 +386,8 @@ export async function softDeleteItem(householdId: string, id: string): Promise<b
 // already on the list by name. Returns null if the recipe isn't in this household.
 export async function addRecipeToGrocery(
   tenant: Tenant,
-  recipeId: string
+  recipeId: string,
+  weekStart: string
 ): Promise<ListItemRow[] | null> {
   const recipe = await getRecipe(tenant.householdId, recipeId)
   if (!recipe) return null
@@ -394,10 +395,13 @@ export async function addRecipeToGrocery(
   const list = await getOrCreateGroceryList(tenant)
   const ingredients = await listIngredients(tenant.householdId, recipeId)
   const subs = getOverrides(recipe).subs ?? {}
+  // Merge/credit only against THIS week's rows + the global manual list — an off-plan
+  // add belongs to the week you're shopping, so it can't collide with another week.
   const existing = await query<{ id: string; name: string; quantity: string | null; source: string; source_recipe_ids: string[] | null }>(
     `select id, name, quantity, source, source_recipe_ids from list_items
-       where household_id=$1 and list_id=$2 and deleted_at is null`,
-    [tenant.householdId, list.id]
+       where household_id=$1 and list_id=$2 and deleted_at is null
+         and (week_start = $3 or week_start is null)`,
+    [tenant.householdId, list.id, weekStart]
   )
   const have = new Map(existing.rows.map((r) => [r.name.trim().toLowerCase(), r]))
   // names written during THIS call — duplicate ingredient rows in one recipe
@@ -445,9 +449,9 @@ export async function addRecipeToGrocery(
     }
     const { rows } = await query<ListItemRow>(
       `insert into list_items
-         (household_id, list_id, name, quantity, category, source, source_recipe_ids, created_by)
-       values ($1,$2,$3,$4,$5,'recipe',$6,$7) returning *`,
-      [tenant.householdId, list.id, name, quantity, aisle, [recipeId], tenant.personId]
+         (household_id, list_id, name, quantity, category, source, source_recipe_ids, created_by, week_start)
+       values ($1,$2,$3,$4,$5,'recipe',$6,$7,$8) returning *`,
+      [tenant.householdId, list.id, name, quantity, aisle, [recipeId], tenant.personId, weekStart]
     )
     // cache the REAL inserted row (with its id) so a later duplicate name in this
     // same recipe merges into it instead of 500ing on an empty-id update.
@@ -465,27 +469,33 @@ export async function addRecipeToGrocery(
 // number of rows removed, or null if the recipe isn't in this household.
 export async function removeRecipeFromGrocery(
   tenant: Tenant,
-  recipeId: string
+  recipeId: string,
+  weekStart: string
 ): Promise<number | null> {
   const recipe = await getRecipe(tenant.householdId, recipeId)
   if (!recipe) return null
   const list = await getOrCreateGroceryList(tenant)
 
   // Delete rows solely owned by this recipe (an explicit off-plan add with no
-  // other stake) — exactly [recipeId], and not a hand-added 'manual' row.
+  // other stake) — exactly [recipeId], and not a hand-added 'manual' row. Scoped to
+  // the week the add belongs to (or a legacy global row).
   const del = await query(
     `update list_items set deleted_at = now()
        where household_id = $1 and list_id = $2 and deleted_at is null
-         and source = 'recipe' and source_recipe_ids = ARRAY[$3]::uuid[]`,
-    [tenant.householdId, list.id, recipeId]
+         and source = 'recipe' and source_recipe_ids = ARRAY[$3]::uuid[]
+         and (week_start = $4 or week_start is null)`,
+    [tenant.householdId, list.id, recipeId, weekStart]
   )
   // Strip this recipe's credit from rows that survive (shared with another recipe,
-  // or a 'manual' row this recipe had merged onto).
+  // or a 'manual' row this recipe had merged onto). Week-scoped like the delete above,
+  // or removing recipe R from one week would wipe R's credit off ANOTHER week's
+  // planned-meal rows (making their meal-color dots vanish) — a cross-week clobber.
   await query(
     `update list_items set source_recipe_ids = array_remove(source_recipe_ids, $3::uuid)
        where household_id = $1 and list_id = $2 and deleted_at is null
-         and $3 = ANY(source_recipe_ids)`,
-    [tenant.householdId, list.id, recipeId]
+         and $3 = ANY(source_recipe_ids)
+         and (week_start = $4 or week_start is null)`,
+    [tenant.householdId, list.id, recipeId, weekStart]
   )
   return del.rowCount ?? 0
 }
@@ -554,12 +564,40 @@ function isoAddDays(iso: string, n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+// The start (YYYY-MM-DD) of a household's week, honoring BOTH its first-day-of-week
+// preference (sunday|monday) and its timezone — the single server-side source of truth
+// for "which week is it". It backs the grocery board/rebuild default week, the rebuild's
+// legacy-absorb check, and the 0088 backfill (which replicates this exact math in SQL),
+// so a backfilled row lands on precisely the week the board shows. Mirrors the iOS
+// `Cal.weekStart(Date(), householdTz)`. `offsetWeeks` shifts by whole weeks.
+export async function householdWeekStart(householdId: string, offsetWeeks = 0): Promise<string> {
+  const { rows } = await query<{ week_start: string; timezone: string | null }>(
+    `select week_start, timezone from households where id=$1`,
+    [householdId]
+  )
+  const monday = rows[0]?.week_start === 'monday'
+  const tz = (rows[0]?.timezone ?? '').trim() || 'UTC'
+  // "today" as seen in the household's timezone, then treated as a UTC midnight so the
+  // day arithmetic below is timezone-shift-free.
+  const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+  const d = new Date(todayLocal + 'T00:00:00Z')
+  const dow = d.getUTCDay() // 0=Sun..6=Sat
+  const back = monday ? (dow === 0 ? 6 : dow - 1) : dow
+  d.setUTCDate(d.getUTCDate() - back + offsetWeeks * 7)
+  return d.toISOString().slice(0, 10)
+}
+
 // Rebuild the auto portion of the grocery list from a week's planned meals
 // (breakfast, lunch, dinner, snack): gather ingredients, drop staples, aggregate
 // same-name (sum same-unit amounts), tag each with source recipes (per-meal
-// dots), set the aisle.
+// dots), set the aisle. Scoped to `weekStart` so building one week never touches
+// another week's rows.
 export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string): Promise<number> {
   const list = await getOrCreateGroceryList(tenant)
+  // Only the current week folds in legacy NULL-week rows (see householdWeekStart).
+  const absorbLegacy = weekStart === (await householdWeekStart(tenant.householdId))
+  // Matches this week's rows, plus legacy NULL rows when rebuilding the current week.
+  const weekClause = absorbLegacy ? '(week_start = $3 or week_start is null)' : 'week_start = $3'
   const weekEnd = isoAddDays(weekStart, 6)
   const dinners = await query<{ recipe_id: string; overrides: unknown }>(
     `select distinct e.recipe_id, r.overrides from meal_plan_entries e
@@ -611,12 +649,12 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
   const prevChecked = new Set(
     (
       await query<{ name: string }>(
-        `select name from list_items where household_id=$1 and list_id=$2 and source='auto' and checked and deleted_at is null`,
-        [tenant.householdId, list.id]
+        `select name from list_items where household_id=$1 and list_id=$2 and source='auto' and checked and deleted_at is null and ${weekClause}`,
+        [tenant.householdId, list.id, weekStart]
       )
     ).rows.map((r) => r.name.trim().toLowerCase())
   )
-  await query(`delete from list_items where household_id=$1 and list_id=$2 and source='auto'`, [tenant.householdId, list.id])
+  await query(`delete from list_items where household_id=$1 and list_id=$2 and source='auto' and ${weekClause}`, [tenant.householdId, list.id, weekStart])
 
   // Explicit off-plan adds (source='recipe') survive the wipe above. When the
   // week's build needs a name one of them already covers, credit the planned
@@ -624,10 +662,13 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
   // portions of recipes NEW to the row (a recipe already credited contributed
   // its amount when it was added/planned before, so re-merging it on every
   // rebuild would grow the quantity without bound).
+  // Off-plan rows for THIS week only — so a week's planned portion is credited onto
+  // its own week's off-plan row, never another week's (which would make a shared-name
+  // row's quantity depend on rebuild history across weeks).
   const recipeRows = await query<{ id: string; name: string; quantity: string | null; source_recipe_ids: string[] | null }>(
     `select id, name, quantity, source_recipe_ids from list_items
-       where household_id=$1 and list_id=$2 and source='recipe' and deleted_at is null`,
-    [tenant.householdId, list.id]
+       where household_id=$1 and list_id=$2 and source='recipe' and deleted_at is null and ${weekClause}`,
+    [tenant.householdId, list.id, weekStart]
   )
   const offPlanByName = new Map(recipeRows.rows.map((r) => [r.name.trim().toLowerCase(), r]))
 
@@ -648,12 +689,30 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
     const qty = g.amount != null ? `${Number(g.amount.toFixed(2))}${g.unit ? ` ${g.unit}` : ''}` : g.unit
     const checked = prevChecked.has(g.name.trim().toLowerCase())
     await query(
-      `insert into list_items (household_id, list_id, name, quantity, category, source, source_recipe_ids, checked, checked_at, sort_order, created_by)
-       values ($1,$2,$3,$4,$5,'auto',$6,$7,$8,$9,$10)`,
-      [tenant.householdId, list.id, g.name, qty, g.aisle, [...g.recipeIds], checked, checked ? new Date() : null, order++, tenant.personId]
+      `insert into list_items (household_id, list_id, name, quantity, category, source, source_recipe_ids, checked, checked_at, sort_order, created_by, week_start)
+       values ($1,$2,$3,$4,$5,'auto',$6,$7,$8,$9,$10,$11)`,
+      [tenant.householdId, list.id, g.name, qty, g.aisle, [...g.recipeIds], checked, checked ? new Date() : null, order++, tenant.personId, weekStart]
     )
   }
   return byName.size
+}
+
+// "Start over" for a week: un-check that week's own items (meal-derived + off-plan),
+// giving a fresh list for the week. Refresh, by contrast, keeps checks (see
+// rebuildGroceryFromWeek's prevChecked). Deliberately does NOT touch global (NULL-week)
+// manual rows + staples: those are one running list shown on every week, so clearing
+// them from one week would silently un-check them everywhere — breaking the "one week
+// never touches another" promise. Uncheck a global item individually instead. Returns
+// the number of rows cleared.
+export async function clearGroceryChecks(tenant: Tenant, weekStart: string): Promise<number> {
+  const list = await getOrCreateGroceryList(tenant)
+  const res = await query(
+    `update list_items set checked = false, checked_at = null
+       where household_id = $1 and list_id = $2 and deleted_at is null and checked
+         and week_start = $3`,
+    [tenant.householdId, list.id, weekStart]
+  )
+  return res.rowCount ?? 0
 }
 
 const DINNER_COLORS = ['#2F7FED', '#EC6049', '#8B5CF6', '#E0A500', '#25A368', '#EC4899', '#14B8A6']
@@ -677,14 +736,17 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
       [tenant.householdId, weekStart, weekEnd]
     ),
     query<ListItemRow>(
+      // This week's meal-derived + off-plan rows (week_start=$3) plus the global
+      // manually-typed running list (week_start is null).
       `select li.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
               cb.name as creator_name, cb.avatar_emoji as creator_avatar, cb.color_hex as creator_color
          from list_items li
          left join persons p on p.id = li.assigned_to
          left join persons cb on cb.id = li.created_by and cb.deleted_at is null
         where li.household_id=$1 and li.list_id=$2 and li.deleted_at is null
+          and (li.week_start = $3 or li.week_start is null)
         order by li.sort_order nulls last, li.created_at`,
-      [tenant.householdId, list.id]
+      [tenant.householdId, list.id, weekStart]
     ),
   ])
   const colorByRecipe = new Map<string, string>()
@@ -757,6 +819,16 @@ export function presentList(l: ListRow) {
   }
 }
 
+// A pg `date` column comes back as a JS Date at local midnight; render it as a plain
+// YYYY-MM-DD (local components, so no timezone shift) to match the weekStart the
+// clients send.
+function isoDateOnly(d: unknown): string | null {
+  if (d == null) return null
+  if (typeof d === 'string') return d.slice(0, 10)
+  const dt = d as Date
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
 export function presentListItem(i: ListItemRow) {
   return {
     id: i.id,
@@ -764,6 +836,7 @@ export function presentListItem(i: ListItemRow) {
     quantity: i.quantity,
     checked: i.checked,
     checkedAt: i.checked_at,
+    weekStart: isoDateOnly(i.week_start),
     section: i.category,
     priority: i.priority ?? 3,
     sortOrder: i.sort_order,

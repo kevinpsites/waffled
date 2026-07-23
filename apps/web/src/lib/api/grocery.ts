@@ -100,10 +100,12 @@ export const groceryApi = {
   setItemChecked: (id: string, checked: boolean) =>
     apiSend<{ item: GroceryItem }>('PATCH', `/api/list-items/${id}`, { checked }).then((r) => r.item).then(tap('grocery')),
   deleteItem: (id: string) => apiDelete(`/api/list-items/${id}`).then(tap('grocery')),
-  groceryFromRecipe: (recipeId: string) =>
-    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}`).then(tap('grocery')),
-  removeRecipeFromGrocery: (recipeId: string) =>
-    apiDelete(`/api/lists/grocery/from-recipe/${recipeId}`).then(tap('grocery')),
+  // weekStart scopes an off-plan add/remove to the week being shopped (defaults to the
+  // current week server-side when omitted, e.g. from a recipe page with no week context).
+  groceryFromRecipe: (recipeId: string, weekStart?: string) =>
+    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
+  removeRecipeFromGrocery: (recipeId: string, weekStart?: string) =>
+    apiDelete(`/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
 
   // lists (the Lists screen)
   lists: () => apiGet<{ lists: ListSummary[] }>('/api/lists'),
@@ -139,6 +141,9 @@ export const groceryApi = {
     apiGet<GroceryBoard>(`/api/lists/grocery/board${weekStart ? `?weekStart=${weekStart}` : ''}`),
   rebuildGrocery: (weekStart?: string) =>
     apiSend<{ rebuilt: number; board: GroceryBoard }>('POST', `/api/lists/grocery/rebuild${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
+  // "Start over": un-check everything on the given week's list (Refresh keeps checks).
+  clearGroceryChecks: (weekStart?: string) =>
+    apiSend<{ cleared: number; board: GroceryBoard }>('POST', `/api/lists/grocery/clear-checks${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
   pantryStaples: () => apiGet<{ staples: PantryStaple[] }>('/api/pantry-staples'),
   addStaple: (name: string) => apiSend<{ staple: PantryStaple }>('POST', '/api/pantry-staples', { name }).then((r) => r.staple).then(tap('grocery')),
   removeStaple: (id: string) => apiDelete(`/api/pantry-staples/${id}`).then(tap('grocery')),
@@ -168,6 +173,8 @@ export interface GroceryBoardItem extends ListItem {
   aisle: string
   source: string
   sourceRecipeIds: string[]
+  // The week this row belongs to (meal-derived + off-plan rows); null = global manual row.
+  weekStart: string | null
 }
 export interface GroceryBoard {
   list: ListSummary
