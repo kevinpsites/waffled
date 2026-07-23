@@ -36,10 +36,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine, morning alarm, an occasional timer, and screen brightness — was web-only
   until now; it's a full port, reached the same way as web (Family → tap the kid →
   Waffled-Bite), including pairing a new device from your phone or tablet.
+- **Edit list items in bulk.** Pick "Select" on any list (web and iOS), tap the items you
+  want, and set their section, assignee, or priority for the whole selection at once —
+  no more editing them one by one.
+- **Collapsible list sections + a section picker that stays put.** On the web, a list's
+  sections now collapse and expand from their header (iOS already did this). The add bar
+  also gains a section picker that keeps your choice across a run of quick adds, so a
+  batch of items all land in the same section (matching how iOS already behaves).
+- **Swipe through your goal charts.** The weekly and monthly goal heatmaps on iPhone/iPad
+  now page back and forth with a horizontal swipe, not just the ‹ › arrows.
 
 ### Changed
+- **Completed list items tidy themselves away.** A list's checked-off items now clear
+  automatically a day after you check them, and the Completed section has a **Clear**
+  button to sweep them now. (The grocery board is deliberately untouched — its checked =
+  "in the cart" state is preserved so the weekly rebuild still works.)
 
 ### Fixed
+- **A list's item count no longer includes completed items.** The number on the Lists
+  rail (and the list header) now counts only what's left to do — checking things off
+  makes it go down, instead of a finished list still showing its full count.
 - **Waffled-Bite: starting a timer now actually shows up on the device.** Previously,
   starting "Set a timer" (from the device itself or a parent remotely) only updated the
   timer screen's content in the background — nothing visibly happened until a kid
