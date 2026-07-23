@@ -105,6 +105,12 @@ CALENDAR & COUNTDOWNS
 Countdowns now show up right on the calendar and are tappable to edit. Type an
 event into "Add anything" and it's assigned to you by default.
 
+WAFFLED-BITES (NEW MODULE)
+A new optional module adds parent controls for a kid's Waffled-Bite companion
+device — quiet time, a wake-up light schedule, a night light, a sound machine,
+a morning alarm, and screen brightness — all managed right from Family on your
+phone or tablet. (The companion device itself is still on the way.)
+
 Plus a lot of polish and fixes: adding a grocery item from Today no longer hangs
 the iPad, a half-typed list item is saved when you leave, add bars are easier to
 tap, the goal week/year charts are accurate, and adding a meal from the capture
