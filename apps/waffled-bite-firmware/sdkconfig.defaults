@@ -2564,6 +2564,22 @@ CONFIG_FMB_TIMER_PORT_ENABLED=y
 
 CONFIG_ESP_HOSTED_ENABLED=y
 
+# Root cause of a reliable ~13s-after-WiFi-starts crash-loop, found by reading
+# managed_components/espressif__esp_hosted/host/drivers/transport/sdio/
+# sdio_drv.c directly: esp_hosted's SDIO driver calls
+# g_h.funcs->_h_restart_host() (an unconditional host reboot) on the FIRST
+# "failed to read registers" transport error, no retry — default y. That
+# specific transient (confirmed via a decoded backtrace landing in
+# esp_restart_noos — a deliberate restart, not a hardware fault) reliably
+# occurs ~13s after the WiFi/SDIO link starts, independent of SDIO bus
+# config, WiFi power-save, connect-vs-idle state, and the display/DSI stack
+# (all individually tested and ruled out as the trigger). Similar transient
+# SDIO errors elsewhere in this same driver (e.g. "Dropping packet(s) from
+# stream") are already treated as recoverable and don't restart — disabling
+# this makes register-read failures retry the same way instead of rebooting
+# the whole device over what looks like a one-off blip.
+CONFIG_ESP_HOSTED_TRANSPORT_RESTART_ON_FAILURE=n
+
 #
 # ESP-Hosted config
 #
@@ -2591,10 +2607,21 @@ CONFIG_ESP_HOSTED_SDIO_OPTIMIZATION_RX_STREAMING_MODE=y
 CONFIG_ESP_HOSTED_SDIO_SLOT_1=y
 CONFIG_ESP_HOSTED_SDIO_SLOT=1
 # CONFIG_ESP_HOSTED_SD_PWR_CTRL_LDO_INTERNAL_IO is not set
-CONFIG_ESP_HOSTED_SDIO_4_BIT_BUS=y
-# CONFIG_ESP_HOSTED_SDIO_1_BIT_BUS is not set
-CONFIG_ESP_HOSTED_SDIO_BUS_WIDTH=4
-CONFIG_ESP_HOSTED_SDIO_CLOCK_FREQ_KHZ=40000
+# Overridden from Arduino's own default (4-bit bus, 40MHz, GPIO54 reset) —
+# that default is what shipped in the black-screen fix above via the
+# wholesale sdkconfig copy, and it silently undid an earlier, deliberately
+# chosen config: 1-bit bus, 10MHz, GPIO32 reset, matching the community
+# c6-sdio-ota tool's known-good settings for this board's actual wiring.
+# Running on Arduino's untested-on-this-board default surfaced a NEW failure
+# not caught by shorter reboot tests: sitting on the onboarding screen
+# (WiFi already connected, otherwise idle) for ~13s reliably hit "sdmmc_io:
+# sdmmc_send_cmd returned 0x107" / "H_SDIO_DRV: failed to read registers"
+# followed by an esp_restart(), looping forever. Restoring this config fixed
+# it — a higher-bandwidth/tighter-timing SDIO config not previously
+# exercised past ~12s of continuous runtime is the leading theory.
+CONFIG_ESP_HOSTED_SDIO_1_BIT_BUS=y
+CONFIG_ESP_HOSTED_SDIO_BUS_WIDTH=1
+CONFIG_ESP_HOSTED_SDIO_CLOCK_FREQ_KHZ=10000
 # CONFIG_ESP_HOSTED_CUSTOM_SDIO_PINS is not set
 CONFIG_ESP_HOSTED_SDIO_CMD_GPIO_RANGE_MIN=19
 CONFIG_ESP_HOSTED_SDIO_CMD_GPIO_RANGE_MAX=19
@@ -2604,25 +2631,17 @@ CONFIG_ESP_HOSTED_SDIO_D0_GPIO_RANGE_MIN=14
 CONFIG_ESP_HOSTED_SDIO_D0_GPIO_RANGE_MAX=14
 CONFIG_ESP_HOSTED_SDIO_D1_GPIO_RANGE_MIN=15
 CONFIG_ESP_HOSTED_SDIO_D1_GPIO_RANGE_MAX=15
-CONFIG_ESP_HOSTED_SDIO_D2_GPIO_RANGE_MIN=16
-CONFIG_ESP_HOSTED_SDIO_D2_GPIO_RANGE_MAX=16
-CONFIG_ESP_HOSTED_SDIO_D3_GPIO_RANGE_MIN=17
-CONFIG_ESP_HOSTED_SDIO_D3_GPIO_RANGE_MAX=17
-CONFIG_ESP_HOSTED_SDIO_RESET_SLAVE_GPIO_MIN=54
-CONFIG_ESP_HOSTED_SDIO_RESET_SLAVE_GPIO_MAX=54
+CONFIG_ESP_HOSTED_SDIO_RESET_SLAVE_GPIO_MIN=32
+CONFIG_ESP_HOSTED_SDIO_RESET_SLAVE_GPIO_MAX=32
 CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_CMD_SLOT_1=19
 CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_CLK_SLOT_1=18
 CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D0_SLOT_1=14
-CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D1_4BIT_BUS_SLOT_1=15
-CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D2_4BIT_BUS_SLOT_1=16
-CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D3_4BIT_BUS_SLOT_1=17
-CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE=54
+CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D1_1BIT_BUS_SLOT_1=15
+CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE=32
 CONFIG_ESP_HOSTED_SDIO_PIN_CMD=19
 CONFIG_ESP_HOSTED_SDIO_PIN_CLK=18
 CONFIG_ESP_HOSTED_SDIO_PIN_D0=14
-CONFIG_ESP_HOSTED_SDIO_PRIV_PIN_D1_4BIT_BUS=15
-CONFIG_ESP_HOSTED_SDIO_PIN_D2=16
-CONFIG_ESP_HOSTED_SDIO_PIN_D3=17
+CONFIG_ESP_HOSTED_SDIO_PRIV_PIN_D1_1BIT_BUS=15
 CONFIG_ESP_HOSTED_SDIO_PIN_D1=15
 CONFIG_ESP_HOSTED_SDIO_TX_Q_SIZE=20
 CONFIG_ESP_HOSTED_SDIO_RX_Q_SIZE=20

@@ -2,7 +2,9 @@
 // (WiFi.scanNetworks(true)) and STA connect, polled rather than blocking so
 // the LVGL/touch pipeline (lv_timer_handler) never freezes during either.
 // Verified reliably on real hardware once built via the espidf+arduino
-// hybrid framework — see platformio.ini's esp32-p4 env comment.
+// hybrid framework AND with esp_hosted's restart-on-transport-failure
+// disabled — see platformio.ini's esp32-p4 env comment and
+// sdkconfig.defaults' CONFIG_ESP_HOSTED_TRANSPORT_RESTART_ON_FAILURE.
 #include "wb_wifi.h"
 #include "wb_tick_hal.h"
 #include <WiFi.h>
