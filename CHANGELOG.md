@@ -14,6 +14,149 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+- **Backup limitations are now called out after startup and in `./waffled doctor`.**
+  Operators are warned when uploaded media is excluded or all backup copies remain
+  on the Waffled host, with a direct link to the verification guide.
+- **Setup now links to the published troubleshooting guide.** The public-HTTPS
+  PowerSync note no longer points at a repository file that does not exist.
+
+### Security
+
+- **Web routing dependencies now include current security patches.** React Router
+  is updated to 7.18.1 to clear the production dependency audit.
+
+## [0.12.0] - 2026-07-23
+
+### Added
+- **Shop ahead — see and build next week's grocery list.** The grocery board now has a
+  week switcher (‹ ›, with a "This week" reset) on both web and iOS/iPad. Each week's
+  meal-derived items are their own list, so you can shop Saturday for next week's meals
+  without disturbing this week's — building or checking off one week never touches
+  another. Items you type in by hand (and your pantry staples) stay on a single running
+  list shown on every week. Adding a recipe's ingredients off-plan now lands on the week
+  you're viewing. **Refresh** rebuilds a week's items while keeping what you've checked
+  off; a new **Start over** clears that week's checkmarks when you want a fresh list.
+  Existing installs migrate automatically — your current grocery items move onto this
+  week (honoring your first-day-of-week and timezone).
+- **Share a recipe from your library.** Every recipe detail now has a **Share** action that
+  compiles the recipe into Waffled's Markdown format (title, metadata, sectioned
+  ingredients, numbered steps with timers, notes) and hands it to your device's share
+  options — on iPhone/iPad the native share sheet with a `.md` file (Messages, Mail, Save to
+  Files, …), on the web the browser share sheet, falling back to copy-to-clipboard plus a
+  `.md` download. The shared file is the same format the app imports, so anyone can paste it
+  straight back into their own library.
+- **Waffled-Bites parent controls now on iPhone and iPad.** The control panel for a
+  paired kid's companion device — quiet time, wake-light schedule, night light, sound
+  machine, morning alarm, an occasional timer, and screen brightness — was web-only
+  until now; it's a full port, reached the same way as web (Family → tap the kid →
+  Waffled-Bite), including pairing a new device from your phone or tablet.
+- **Edit list items in bulk.** Pick "Select" on any list (web and iOS), tap the items you
+  want, and set their section, assignee, or priority for the whole selection — including
+  moving them into a brand-new section you name on the spot. Your choices apply when you
+  tap **Done** (a stray tap never changes anything), and while selecting each row shows a
+  single clear checkbox so you can't accidentally check an item off.
+- **Rename a list from the list itself, and the iPad list menu.** The list's ⋯ menu
+  (Select items / Save as template / Delete) now also carries a **Rename** action on both
+  iPhone and iPad, and the menu — previously missing from the iPad's list view — is now
+  there too.
+- **Collapsible list sections + a section picker that stays put.** On the web, a list's
+  sections now collapse and expand from their header (iOS already did this). The add bar
+  also gains a section picker that keeps your choice across a run of quick adds — and can
+  create a new section on the spot — so a batch of items all land where you want (matching
+  how iOS already behaves).
+- **Swipe through your goal charts.** The weekly and monthly goal heatmaps on iPhone/iPad
+  now page back and forth with a horizontal swipe, not just the ‹ › arrows; a past week is
+  also labelled by its dates ("Week of Jul 5 – Jul 11") instead of a vague "That week".
+
+### Changed
+- **Completed list items tidy themselves away.** A list's checked-off items now clear
+  automatically a day after you check them, and the Completed section has a **Clear**
+  button to sweep them now. (The grocery board is deliberately untouched — its checked =
+  "in the cart" state is preserved so the weekly rebuild still works.)
+
+### Fixed
+- **Adding a meal from the iOS capture bar works again.** "Chicken bowls on Friday" (or
+  any dish) parsed correctly but failed with a 400 on **Add meal** — the date was sent as
+  a full timestamp instead of a plain calendar day. It now saves to the right day.
+- **A list's item count now shows what's left to do.** The number on the Lists rail (and
+  the list header) counts only unchecked items, so it ticks down as you check things off —
+  on a custom list as you finish them, and on the grocery list as you put them in the cart
+  — instead of always showing the full count.
+- **List sections are ordered A–Z and stay put (web).** Sections were laid out in the
+  API's item order, so adding, checking, or moving an item reshuffled them (and the
+  two-column layout). They're now sorted alphabetically (the no-section "Items" group
+  last), so each section holds a fixed place.
+- **Waffled-Bite: starting a timer now actually shows up on the device.** Previously,
+  starting "Set a timer" (from the device itself or a parent remotely) only updated the
+  timer screen's content in the background — nothing visibly happened until a kid
+  happened to tap into it themselves. It now takes over the screen the same way quiet
+  time does, while staying exitable (its Home button still works, unlike quiet time's
+  on-device lock). Also, quiet-time and timer countdowns over an hour now show as
+  `H:MM:SS` instead of raw minutes (e.g. `1:05:00`, not `65:00`).
+
+## [0.11.0] - 2026-07-22
+
+### Added
+- **Waffled-Bites: pair a kid's companion device and control it from Family.** A new
+  optional module (Settings → Modules) adds a "Waffled-Bite" section to each kid's profile
+  page — pair a device with a short one-time code, then control it live: start/pause/end a
+  quiet-time countdown, set a night light (color + brightness), a wake-up light schedule
+  (per day-of-week, with a yellow "almost time" warning before it turns green), a morning
+  alarm, a sound machine, and screen brightness. A device polls for changes every few
+  seconds — no separate app or account needed on the device side. This release ships the
+  pairing system, the parent control panel, and a code-complete on-device app (ESP32-P4 +
+  LVGL) — but the on-device app has only run in a desktop simulator against the real
+  backend so far, since the physical touchscreen has never been in hand for real hardware
+  bring-up. So pairing still has nothing to actually connect to yet — this is **pending
+  hardware validation**, not a finished, buyable device. An iOS control panel is coming
+  soon as a fast-follow; web ships first.
+
+### Changed
+
+### Fixed
+
+## [0.10.0] - 2026-07-22
+
+### Added
+- **The iPhone Today Goals card is now the full goal hero.** It matches the iPad: a progress
+  ring, each participant's contribution bar, a **Log progress** button (log straight from
+  Today), and a **"Show a different goal"** switcher that opens the grouped goal picker. The
+  old My/Family scope pill is replaced by that picker (which already covers your goals, shared
+  groups, and the rest). One shared card now drives both iPhone and iPad, so they stay in sync.
+- **The iPad's Family Goal card now uses the grouped goal picker.** "Show a different goal"
+  opens the same organized pop-over the iPhone uses — goals grouped by list (your goals,
+  shared groups you're in, then the rest) with member avatars — instead of one flat list.
+- **Start Cook Mode from the iPhone Today card.** Tonight's dinner card now has **View
+  recipe** and **👨‍🍳 Cook Mode** buttons (matching iPad) — Cook Mode drops you straight
+  into the step-by-step cook flow instead of only opening the recipe.
+- **Take a recipe back off the grocery list.** A recipe you added off-plan from its page
+  shows under "Unscheduled" — now you can remove it in one tap. Web: a **Remove** button on
+  the by-meal section, or an **×** on the "This week's meals" Unscheduled rail; iPhone/iPad:
+  an **×** on the "This week's meals" Unscheduled recap rows. Items shared with another recipe
+  stay put; only this recipe's are cleared.
+- **Rank list items on a 1–5 urgency scale.** Every list item has a priority from 1 (not
+  urgent) through 3 (normal) up to 5 (urgent), set from the item editor on web and
+  iPhone/iPad. High and Urgent items get a flag on the row so what matters most is easy to
+  spot. Setting a priority no longer shuffles items around; instead the web list header has a
+  **Sort: manual ⇄ By priority** toggle that, on demand, flattens the list highest-priority
+  first.
+- **Reorganize list items into other sections.** On web, drag an item from one section onto
+  another to refile it; on iPhone/iPad, press and drag a list item across a section header to
+  drop it into that section — the same native row-drag used for reordering, so swipe-to-delete
+  keeps working. (The Details editor also changes an item's section.)
+- **Swipe between steps in cook mode (iPhone/iPad).** Swipe left for the next step, right for
+  the previous — in addition to the Back/Next buttons.
+- **Edit a countdown straight from the calendar.** Tap a countdown to change it: a standalone
+  countdown (the "add anything" kind) opens a small editor to rename, move its date, or remove
+  it; an event-countdown opens its event, where you can rename it or untick "Show a countdown"
+  to stop it. (Birthday countdowns come from a person's profile.) On web, tap it on the
+  calendar; on iPhone/iPad, tap the countdown on the Today card, or in the calendar where it
+  now appears as an all-day row (see below).
 - **Backups can now be restore-tested without touching the live app.** Run
   `./waffled backup verify` to restore the newest database dump into a disposable Postgres
   container, fail on archive or SQL errors, confirm the Waffled schema exists, and clean up the
@@ -21,8 +164,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or retrieved offsite copy.
 
 ### Changed
+- **Countdowns now show up on the calendar, not just the Today card.** They render like
+  all-day events on their target date — on web in the day/week views (with a month-grid
+  badge), and on iPhone/iPad as an all-day row in the agenda, day, and month-detail lists
+  (a countdown-only day now appears in the agenda too) — so "12 days until Hawaii" is visible
+  right where you're planning, and tappable to edit.
+- **The goal month grid marks today.** A red ring around today's date in a goal's month
+  heatmap shows where you are in the month at a glance (web + iPhone/iPad).
+- **The web nav rail no longer shows a permanent "New" badge.** A "New" pill sat under the
+  Waffled logo on every screen with nothing to announce; it's been removed.
 
 ### Fixed
+- **Fixed an iPad crash (and a hidden field) when adding a grocery item from Today.** The
+  Today grocery quick-add was a bottom-pinned field that fought the iPad keyboard — it hid
+  behind the keys, and the code that tried to lift it clear could spiral into an unbounded
+  relayout loop and crash the app in portrait. Tapping **Add** on the Today grocery card now
+  opens a small sheet whose field the system keeps above the keyboard — always visible, no
+  lift math, can't loop. Return adds the item and keeps the keyboard up for the next.
+- **Goal names now read exactly as you typed them, everywhere.** A goal called
+  "10 hours at the gym" appeared title-cased ("10 Hours At The Gym") on the Goals page, the
+  goal detail, the name field, and the editor preview, but as-entered on a person's profile —
+  the same name looked different from screen to screen. Names now render as-typed in all of
+  those places (web).
+- **The goal "week" chart is now the actual calendar week.** It showed a rolling last-7-days
+  window ending today; it now always shows the current week Sunday–Saturday (and paging back
+  steps whole calendar weeks), and each day cell shows its date (e.g. "Sun 14") so the span is
+  obvious — on web and iPhone/iPad.
+- **The goal "year" grid shows the whole year again.** A goal created partway through the
+  year collapsed its GitHub-style square grid to just the current month; it now paints every
+  day from January 1 to today, with the days before the goal started simply sitting empty
+  (web + iPhone/iPad).
+- **"Add anything" events now default to you.** When you type an event into the AI capture
+  bar without naming anyone ("dentist Tuesday at 3"), the person picker now shows — and saves —
+  the logged-in member instead of "Nobody". Naming someone ("dentist for George") still
+  assigns them. Web + iPhone/iPad.
+- **Adding a grocery/list item on iPhone/iPad is easier to tap.** The add-item bar now
+  raises the keyboard when you tap anywhere on it — the icon and padding, not just the tiny
+  text glyphs — so it's no longer a fiddly target.
+- **A half-typed list item is no longer lost when you leave.** If you type an item into the
+  add bar on iPhone/iPad and navigate away without hitting return, it's now saved instead of
+  discarded.
+- **Add a list item with full details from the composer (iPhone/iPad).** The details button
+  on the add bar opens a proper **"Add item"** half-sheet — set the assignee, section, and
+  priority up front, then add — seeded with whatever you'd already typed. (Replaces an
+  unreliable swipe-up gesture.) The five priority pills now scroll horizontally instead of
+  wrapping.
+- **Countdowns on the Today page are now tappable.** Tap a countdown to jump straight to
+  what it's counting down to — an event-based countdown opens that event, while a trip or
+  birthday countdown opens the calendar on its day.
+- **Checked-off list items now have somewhere to go.** On the web custom-list view, items
+  you check off no longer linger in place — they tuck into a collapsible "Completed" section
+  at the bottom (matching the grocery board), with a brief grace window so an accidental tap
+  is easy to undo. Un-checking an item puts it back on the list.
 
 ### Security
 - **Patched a high-severity advisory in a bundled telemetry dependency.** Updated the
@@ -1169,7 +1362,10 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/kevinpsites/waffled/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/kevinpsites/waffled/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/kevinpsites/waffled/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kevinpsites/waffled/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/kevinpsites/waffled/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kevinpsites/waffled/compare/v0.6.1...v0.7.0

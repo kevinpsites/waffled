@@ -368,12 +368,15 @@ struct WaffledAPI: Sendable {
 
     /// Add a grocery item. Capture folds the quantity into `name` ("milk (2)"); the
     /// Lists screen passes a separate `quantity` so the aisle/board keeps it tidy.
-    func addGroceryItem(name: String, quantity: String? = nil, section: String? = nil) async throws {
+    @discardableResult
+    func addGroceryItem(name: String, quantity: String? = nil, section: String? = nil) async throws -> ListItemDTO {
         var body: [String: JSONValue] = ["name": .string(name)]
         if let q = quantity, !q.isEmpty { body["quantity"] = .string(q) }
         if let s = section, !s.isEmpty { body["category"] = .string(s) }
-        try await send("POST", "/api/lists/grocery/items", body: body)
+        return try await sendReturning("POST", "/api/lists/grocery/items", body: body, as: ListItemResponse.self).item
     }
+
+    private struct ListItemResponse: Decodable { let item: ListItemDTO }
 
     /// Create a chore (the "task" intent). personId resolves the assignee; stars map
     /// to the reward amount; rrule carries a recurrence if the LLM inferred one.
@@ -597,6 +600,18 @@ struct WaffledAPI: Sendable {
     /// Full detail for one recipe: metadata + ingredients + steps.
     func recipeDetail(id: String) async throws -> RecipeDetailDTO {
         try await getJSON("/api/recipes/\(id)", as: RecipeDetailDTO.self)
+    }
+
+    struct RecipeMarkdown: Decodable, Sendable {
+        let markdown: String
+        let filename: String
+    }
+
+    /// The recipe compiled into the blessed Markdown format for sharing, plus a suggested
+    /// `.md` filename. Server-side so it stays identical to the web export and round-trips
+    /// through the same parser.
+    func recipeMarkdown(id: String) async throws -> RecipeMarkdown {
+        try await getJSON("/api/recipes/\(id)/markdown", as: RecipeMarkdown.self)
     }
 
     /// The household's previously-used ingredient section names (a global look across
@@ -1793,6 +1808,141 @@ struct WaffledAPI: Sendable {
         return try await URLSession.shared.data(for: retry)
     }
 
+    // MARK: - Waffled-Bites (kid device pairing + parent controls)
+    //
+    // ⚠️ KEEP IN SYNC with `apps/web/src/lib/api/waffledBites.ts` and the server routes
+    // in `apps/api/src/modules/waffledBites/waffledBites.ts` — endpoints and body shapes
+    // must match. The server does NOT validate `settings` patches (a real deep-merge,
+    // no allowlist) — client-side defaults/clamps below mirror the web app's own
+    // discipline, not a server contract.
+
+    struct WaffledBiteDevice: Decodable, Sendable {
+        let id: String
+        let label: String
+        let settings: WaffledBiteSettings
+        let runtimeState: RuntimeState
+        let lastSeenAt: String?
+        let createdAt: String
+
+        struct RuntimeState: Decodable, Sendable {
+            let quiet: Countdown
+            let timer: Countdown
+            let wakeLight: WakeLight
+        }
+        /// Always fully populated by the server (computed fresh from stored timestamps
+        /// on every read) — never partial, unlike `settings`' sub-objects.
+        struct Countdown: Decodable, Sendable {
+            let active: Bool
+            let running: Bool
+            let remainingSec: Int
+            let durationSec: Int
+        }
+        /// Server-computed wake-light state — render it, don't recompute it client-side.
+        struct WakeLight: Decodable, Sendable {
+            let state: String   // "none" | "sleep" | "warn" | "wake"
+            let wakeAtHour: Int?     // present only when state != "none"
+            let wakeAtMinute: Int?
+        }
+    }
+
+    /// A fresh pairing leaves `settings == {}` server-side, so every top-level key here
+    /// is genuinely absent, not just optional in principle — apply `.withDefaults()`
+    /// (below) after decoding before showing this in the UI.
+    struct WaffledBiteSettings: Decodable, Sendable {
+        let night: Night?
+        let sound: Sound?
+        let alarm: Alarm?
+        let schedules: [Schedule]?
+        let display: Display?
+
+        // `color`/`sound`/`tone` are free-form strings server-side — the option lists
+        // below (WB_NIGHT_COLORS etc.) are a UI-only convention, not a server enum.
+        // `var` (not `let`): `Schedule` in particular needs in-place editing while a
+        // parent edits a wake-light row, before the whole array round-trips in one PATCH.
+        struct Night: Decodable, Sendable { var on: Bool; var color: String; var brightness: Int }
+        struct Sound: Decodable, Sendable { var on: Bool; var sound: String; var volume: Int; var timerMin: Int }
+        struct Alarm: Decodable, Sendable { var on: Bool; var hour: Int; var min: Int; var tone: String }
+        struct Display: Decodable, Sendable { var brightness: Int; var nightDim: Bool }
+        // Not `Identifiable` — edited in place by array index (`schedules.indices`), since
+        // a content-derived id would change identity mid-edit (e.g. every keystroke on a
+        // time field), confusing SwiftUI's ForEach diffing.
+        struct Schedule: Decodable, Sendable, Hashable {
+            var days: [Int]       // 0=Sun..6=Sat
+            var wakeMin: Int      // minutes since midnight, light turns green
+            var leadMin: Int      // minutes before wakeMin, light turns yellow
+            var bedtimeMin: Int?  // optional — minutes since midnight the night before wakeMin
+        }
+    }
+
+    struct WaffledBitePairingCode: Decodable, Sendable {
+        let code: String
+        let personId: String
+        let expiresAt: String
+    }
+
+    /// This kid's paired device + live state, or `nil` if none is paired yet.
+    func waffledBiteDevice(personId: String) async throws -> WaffledBiteDevice? {
+        struct Resp: Decodable { let device: WaffledBiteDevice? }
+        return try await getJSON("/api/persons/\(personId)/waffled-bite", as: Resp.self).device
+    }
+
+    /// Mint a one-time pairing code for this kid's Waffled-Bite (admins, ~10-min TTL,
+    /// same as kiosk pairing). No client-side expiry handling — polling for the device
+    /// simply never succeeds if the code lapses unclaimed, matching the web app.
+    func mintWaffledBitePairingCode(personId: String, label: String?) async throws -> WaffledBitePairingCode {
+        var body: [String: JSONValue] = [:]
+        if let label, !label.isEmpty { body["label"] = .string(label) }
+        return try await sendReturning("POST", "/api/persons/\(personId)/waffled-bite/pairing-code", body: body, as: WaffledBitePairingCode.self)
+    }
+
+    /// Unpair (revoke) a Waffled-Bite device (admins).
+    func unpairWaffledBite(deviceId: String) async throws {
+        try await delete("/api/waffled-bites/\(deviceId)")
+    }
+
+    /// Patch a partial slice of settings (e.g. `["night": .object([...])]`) — the server
+    /// deep-merges it into the stored object, so this never needs the full settings blob.
+    @discardableResult
+    func updateWaffledBiteSettings(deviceId: String, patch: [String: JSONValue]) async throws -> WaffledBiteSettings {
+        struct Resp: Decodable { let settings: WaffledBiteSettings }
+        return try await sendReturning("PATCH", "/api/waffled-bites/\(deviceId)/settings", body: patch, as: Resp.self).settings
+    }
+
+    // Quiet time — server clamps `start`'s duration to [60, 5400]s regardless of what's sent.
+    func waffledBiteQuietStart(deviceId: String, durationSec: Int) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/start", body: ["durationSec": .int(durationSec)])
+    }
+    func waffledBiteQuietPause(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/pause", body: [:])
+    }
+    func waffledBiteQuietResume(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/resume", body: [:])
+    }
+    func waffledBiteQuietAddTime(deviceId: String, seconds: Int = 300) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/add-time", body: ["seconds": .int(seconds)])
+    }
+    func waffledBiteQuietEnd(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/end", body: [:])
+    }
+
+    // Occasional timer — same shape/semantics as quiet time (default start duration differs
+    // server-side: 5min vs quiet's 15min — both are just defaults for an omitted durationSec).
+    func waffledBiteTimerStart(deviceId: String, durationSec: Int) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/start", body: ["durationSec": .int(durationSec)])
+    }
+    func waffledBiteTimerPause(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/pause", body: [:])
+    }
+    func waffledBiteTimerResume(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/resume", body: [:])
+    }
+    func waffledBiteTimerAddTime(deviceId: String, seconds: Int = 300) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/add-time", body: ["seconds": .int(seconds)])
+    }
+    func waffledBiteTimerEnd(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/end", body: [:])
+    }
+
     // MARK: - Rewards
 
     /// One reward in the household catalog — costs `cost` of `currency`.
@@ -2208,9 +2358,13 @@ struct WaffledAPI: Sendable {
         var quantity: String?
         var checked: Bool
         var section: String?
+        /// 1–5 urgency (1 = not urgent, 3 = normal/default, 5 = urgent). Optional so older servers decode.
+        var priority: Int?
         var assignee: Assignee?
         var aisle: String?
         var sourceRecipeIds: [String]?
+        /// The week this row belongs to (meal-derived + off-plan rows); nil = global manual row.
+        var weekStart: String?
         struct Assignee: Decodable, Sendable {
             let name: String?
             let avatarEmoji: String?
@@ -2252,9 +2406,12 @@ struct WaffledAPI: Sendable {
         }
     }
 
-    /// The grocery board (aisle groupings + meal dots + this week's meals + staples).
-    func groceryBoard() async throws -> GroceryBoardDTO {
-        try await getJSON("/api/lists/grocery/board", as: GroceryBoardDTO.self)
+    /// The grocery board (aisle groupings + meal dots + a week's meals + staples) for a
+    /// given week — meal-derived + off-plan rows are per week; manually-typed rows are
+    /// global. Omit `weekStart` for the current week.
+    func groceryBoard(weekStart: String? = nil) async throws -> GroceryBoardDTO {
+        let q = weekStart.map { "?weekStart=\($0)" } ?? ""
+        return try await getJSON("/api/lists/grocery/board\(q)", as: GroceryBoardDTO.self)
     }
 
     /// Add a recipe's ingredients straight to the grocery list — no meal-plan entry
@@ -2262,9 +2419,22 @@ struct WaffledAPI: Sendable {
     /// on the list, and links every item back to the recipe (so it groups under the
     /// recipe in the by-meal view). Returns how many new rows were added (merges
     /// into existing rows don't count).
-    func groceryFromRecipe(recipeId: String) async throws -> Int {
+    /// `weekStart` scopes the off-plan add to the week being shopped (defaults to the
+    /// current week server-side when omitted, e.g. from a recipe page with no week).
+    func groceryFromRecipe(recipeId: String, weekStart: String? = nil) async throws -> Int {
         struct Resp: Decodable { let added: Int }
-        return try await sendJSON("POST", "/api/lists/grocery/from-recipe/\(recipeId)", as: Resp.self).added
+        let q = weekStart.map { "?weekStart=\($0)" } ?? ""
+        return try await sendJSON("POST", "/api/lists/grocery/from-recipe/\(recipeId)\(q)", as: Resp.self).added
+    }
+
+    /// Take a recipe's ingredients back off the grocery list (undo the off-plan add;
+    /// removes it from the by-meal "Unscheduled" group). Keeps rows shared with
+    /// another recipe. Returns how many rows were removed.
+    @discardableResult
+    func removeRecipeFromGrocery(recipeId: String, weekStart: String? = nil) async throws -> Int {
+        struct Resp: Decodable { let removed: Int }
+        let q = weekStart.map { "?weekStart=\($0)" } ?? ""
+        return try await sendJSON("DELETE", "/api/lists/grocery/from-recipe/\(recipeId)\(q)", as: Resp.self).removed
     }
 
     /// Pantry staples (assumed in-house, left off the list) — the editable master list,
@@ -2286,6 +2456,13 @@ struct WaffledAPI: Sendable {
     func rebuildGrocery(weekStart: String) async throws -> GroceryBoardDTO {
         struct Resp: Decodable { let board: GroceryBoardDTO }
         return try await sendJSON("POST", "/api/lists/grocery/rebuild?weekStart=\(weekStart)", as: Resp.self).board
+    }
+
+    /// "Start over": un-check everything on this week's grocery list (Refresh keeps
+    /// checks instead). Returns the refreshed board.
+    func clearGroceryChecks(weekStart: String) async throws -> GroceryBoardDTO {
+        struct Resp: Decodable { let board: GroceryBoardDTO }
+        return try await sendJSON("POST", "/api/lists/grocery/clear-checks?weekStart=\(weekStart)", as: Resp.self).board
     }
 
     /// All lists in the household (for the Lists index). Templates are excluded
@@ -2325,31 +2502,38 @@ struct WaffledAPI: Sendable {
     }
 
     /// Add an item to a non-grocery list.
-    func addListItem(listId: String, name: String, quantity: String?, section: String? = nil) async throws {
+    @discardableResult
+    func addListItem(listId: String, name: String, quantity: String?, section: String? = nil) async throws -> ListItemDTO {
         var body: [String: JSONValue] = ["name": .string(name)]
         if let q = quantity, !q.isEmpty { body["quantity"] = .string(q) }
         if let s = section, !s.isEmpty { body["category"] = .string(s) }
-        try await send("POST", "/api/lists/\(listId)/items", body: body)
+        return try await sendReturning("POST", "/api/lists/\(listId)/items", body: body, as: ListItemResponse.self).item
     }
 
-    /// Edit a list item (name / quantity / checked). Empty quantity clears it.
-    func patchListItem(id: String, name: String? = nil, quantity: String? = nil, checked: Bool? = nil) async throws {
+    /// Edit a list item (name / quantity / checked / section / priority). Empty
+    /// quantity clears it; `section`/`priority` are only sent when provided (a
+    /// section-move or priority-mark PATCHes just that field).
+    func patchListItem(id: String, name: String? = nil, quantity: String? = nil, checked: Bool? = nil,
+                       section: String? = nil, priority: Int? = nil) async throws {
         var body: [String: JSONValue] = [:]
         if let name { body["name"] = .string(name) }
         if let quantity { body["quantity"] = quantity.isEmpty ? .null : .string(quantity) }
         if let checked { body["checked"] = .bool(checked) }
+        if let section { body["category"] = section.isEmpty ? .null : .string(section) }
+        if let priority { body["priority"] = .int(priority) }
         guard !body.isEmpty else { return }
         try await send("PATCH", "/api/list-items/\(id)", body: body)
     }
 
     /// Full-detail edit (the swipe → Details editor): always sets name, quantity,
-    /// assignee, and section. `assignedTo`/empty section send null to clear.
-    func updateItemDetails(id: String, name: String, quantity: String, assignedTo: String?, section: String) async throws {
+    /// assignee, section, and priority. `assignedTo`/empty section send null to clear.
+    func updateItemDetails(id: String, name: String, quantity: String, assignedTo: String?, section: String, priority: Int) async throws {
         let body: [String: JSONValue] = [
             "name": .string(name),
             "quantity": quantity.isEmpty ? .null : .string(quantity),
             "assignedTo": assignedTo.map(JSONValue.string) ?? .null,
             "category": section.isEmpty ? .null : .string(section),
+            "priority": .int(priority),
         ]
         try await send("PATCH", "/api/list-items/\(id)", body: body)
     }
@@ -2357,6 +2541,23 @@ struct WaffledAPI: Sendable {
     /// Remove a list item.
     func deleteListItem(id: String) async throws {
         try await delete("/api/list-items/\(id)")
+    }
+
+    /// Bulk-edit section / assignee / priority across many items in one call. A
+    /// double-optional distinguishes "leave unchanged" (.none) from "set to null"
+    /// (.some(nil)); e.g. `assignedTo: .some(nil)` unassigns the whole selection.
+    func bulkPatchListItems(ids: [String], section: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) async throws {
+        var patch: [String: JSONValue] = [:]
+        if case let .some(s) = section { patch["section"] = s.map(JSONValue.string) ?? .null }
+        if case let .some(a) = assignedTo { patch["assignedTo"] = a.map(JSONValue.string) ?? .null }
+        if let priority { patch["priority"] = .int(priority) }
+        guard !patch.isEmpty, !ids.isEmpty else { return }
+        try await send("PATCH", "/api/list-items/bulk", body: ["ids": .array(ids.map(JSONValue.string)), "patch": .object(patch)])
+    }
+
+    /// Clear a custom list's Completed section now (soft-deletes its checked items).
+    func clearCompletedList(listId: String) async throws {
+        try await send("POST", "/api/lists/\(listId)/clear-completed", body: [:])
     }
 
     // MARK: List templates (save-as-template / apply)

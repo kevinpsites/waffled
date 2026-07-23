@@ -38,16 +38,17 @@ export function MonthHeatmap({ goal, stats, personMap, onDayClick, headerRight }
   const cells = dayInfo.map(({ day, dateKey, future, entry }) => {
     const intensity = entry.total > 0 ? entry.total / monthMax : 0
     const dark = intensity > HEAT_DARK_THRESHOLD
+    const isToday = dateKey === stats.today
     const memberIds = Object.keys(entry.perMember)
     return (
       <button
         key={dateKey}
         type="button"
-        className={`gdv-month-cell${future ? ' future' : ''}`}
+        className={`gdv-month-cell${future ? ' future' : ''}${isToday ? ' today' : ''}`}
         style={{ background: future ? 'transparent' : entry.total > 0 ? heat(intensity) : 'var(--panel)' }}
         onClick={() => onDayClick(dateKey)}
       >
-        <span className="gdv-month-daynum" style={{ color: future ? 'var(--ink-3)' : dark ? '#fff' : 'var(--ink-2)' }}>{day}</span>
+        <span className={`gdv-month-daynum${isToday ? ' today' : ''}`} style={{ color: isToday ? 'var(--danger)' : future ? 'var(--ink-3)' : dark ? '#fff' : 'var(--ink-2)' }}>{day}</span>
         {!future && entry.total > 0 && (
           <span className="wf-serif gdv-month-total" style={{ color: dark ? '#fff' : 'var(--ink)' }}>{fmtGoalNum(entry.total)}</span>
         )}

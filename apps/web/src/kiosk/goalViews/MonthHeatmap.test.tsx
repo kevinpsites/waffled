@@ -48,6 +48,14 @@ describe('MonthHeatmap', () => {
     expect(screen.getByText(/Best day/)).toBeInTheDocument()
   })
 
+  it('marks today (Jul 17) with a today ring, and only today', () => {
+    const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
+    const { container } = render(<MonthHeatmap goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const marked = container.querySelectorAll('.gdv-month-daynum.today')
+    expect(marked).toHaveLength(1)
+    expect(marked[0].textContent).toBe('17')
+  })
+
   it('calls onDayClick with the tapped day\'s dateKey', () => {
     const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
     const onDayClick = vi.fn()

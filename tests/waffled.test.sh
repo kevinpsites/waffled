@@ -125,7 +125,43 @@ t "ensure_env backfills LOCAL_JWT_SECRET without touching other values" '
   echo "PASS"
 '
 
-# --- 6. release checks require a clean, synchronized main branch --------------------
+# --- 6. user-facing help must point at the published troubleshooting guide ---------
+t "setup links to the published troubleshooting guide" '
+  grep -qF "https://docs.waffled.app/operations/troubleshooting/" "$WAFFLED" ||
+    { echo "FAIL: published troubleshooting URL missing"; exit 0; }
+  if grep -qF "docs/TROUBLESHOOTING.md" "$WAFFLED"; then
+    echo "FAIL: stale repository-local troubleshooting path remains"
+  else
+    echo "PASS"
+  fi
+'
+
+# --- 7. backup warnings surface the two default durability gaps ----------------------
+t "backup_safety_warnings explains the default media and same-host gaps" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  ENV_FILE="$tmp/.env"
+  : > "$ENV_FILE"
+  out="$(backup_safety_warnings)"
+  case "$out" in
+    *"uploaded media is not included"*"same machine"*"https://docs.waffled.app/operations/backup/"*) echo "PASS" ;;
+    *) echo "FAIL: unexpected warning output: $out" ;;
+  esac
+'
+
+t "backup_safety_warnings is quiet when media and offsite copies are configured" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  ENV_FILE="$tmp/.env"
+  {
+    echo "BACKUP_INCLUDE_MEDIA=true"
+    echo "BACKUP_S3_BUCKET=s3://family-backups/waffled"
+  } > "$ENV_FILE"
+  out="$(backup_safety_warnings)"
+  [ -z "$out" ] && echo "PASS" || echo "FAIL: unexpected warning output: $out"
+'
+
+# --- 8. release checks require a clean, synchronized main branch --------------------
 t "release_repository_ready accepts a clean main synchronized with origin" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
@@ -153,7 +189,7 @@ t "release_repository_ready accepts a clean main synchronized with origin" '
   esac
 '
 
-# --- 7. backup verification restores only into a disposable Postgres container ------
+# --- 9. backup verification restores only into a disposable Postgres container ------
 t "verify_backup_restore exercises the dump and removes its disposable database" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
@@ -191,6 +227,7 @@ t "verify_backup_restore exercises the dump and removes its disposable database"
   esac
 '
 
+# --- 10. release checks reject stale main and isolate test credentials --------------
 t "release_repository_ready rejects main when origin has advanced" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
@@ -255,6 +292,7 @@ t "run_release_api_step strips ambient AI provider configuration" '
   esac
 '
 
+# --- 11. backup verification rejects corrupt archives before restore ----------------
 t "verify_backup_restore rejects a corrupt archive before starting Postgres" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT

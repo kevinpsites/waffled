@@ -8,6 +8,7 @@ import SwiftUI
 /// Reuses `PantryModel` so the "soon"/"low" logic + precomputed expiry days match the
 /// list view exactly (no re-doing date math per render).
 struct PantryTodayCard: View {
+    var kiosk = false
     @State private var model = PantryModel()
     var onOpen: () -> Void = {}
     private let cap = 5
@@ -37,36 +38,41 @@ struct PantryTodayCard: View {
 
     private var card: some View {
         Button(action: onOpen) {
-            WaffledCard(padding: 15) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("🥫 Pantry").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
-                        Spacer()
-                        Text(headerCount).font(.system(size: 12)).foregroundStyle(WF.ink3)
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
-                    }
-                    if !model.loaded {
-                        Text("Loading…").font(.system(size: 13)).foregroundStyle(WF.ink3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else if model.onHand.isEmpty {
-                        Text("Nothing logged yet — add what’s on hand ›")
-                            .font(.system(size: 13)).foregroundStyle(WF.ink3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else if attention.isEmpty {
-                        Text("All fresh — nothing to use up soon.")
-                            .font(.system(size: 13)).foregroundStyle(WF.ink3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        ForEach(attention.prefix(cap)) { row($0) }
-                        if attention.count > cap {
-                            Text("+\(attention.count - cap) more")
-                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
-                        }
-                    }
+            Group { if kiosk { KioskCard { cardBody } } else { WaffledCard(padding: 15) { cardBody } } }
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private var cardBody: some View {
+        VStack(alignment: .leading, spacing: kiosk ? 12 : 10) {
+            HStack(spacing: 8) {
+                Text("🥫 Pantry")
+                    .font(kiosk ? .system(size: 16, weight: .heavy) : .system(size: 12.5, weight: .bold))
+                    .foregroundStyle(kiosk ? WF.ink : WF.ink2)
+                Spacer(minLength: 6)
+                Text(headerCount).font(.system(size: kiosk ? 13 : 12)).foregroundStyle(WF.ink3)
+                Image(systemName: "chevron.right").font(.system(size: kiosk ? 13 : 12, weight: kiosk ? .bold : .semibold)).foregroundStyle(WF.ink3)
+            }
+            if !model.loaded {
+                emptyLine("Loading…")
+            } else if model.onHand.isEmpty {
+                emptyLine("Nothing logged yet — add what’s on hand\(kiosk ? "." : " ›")")
+            } else if attention.isEmpty {
+                emptyLine("All fresh — nothing to use up soon.")
+            } else {
+                ForEach(attention.prefix(cap)) { row($0) }
+                if attention.count > cap {
+                    Text("+\(attention.count - cap) more")
+                        .font(.system(size: kiosk ? 13 : 11, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
             }
         }
-        .buttonStyle(.plain)
+    }
+
+    private func emptyLine(_ text: String) -> some View {
+        Text(text).font(.system(size: kiosk ? 15 : 13)).foregroundStyle(WF.ink3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, kiosk ? 4 : 0)
     }
 
     private var headerCount: String {
@@ -76,17 +82,21 @@ struct PantryTodayCard: View {
     }
 
     private func row(_ item: WaffledAPI.PantryItem) -> some View {
-        HStack(spacing: 10) {
-            Text(PantryFood.emoji(for: item.name)).font(.system(size: 17))
-                .frame(width: 32, height: 32)
-                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        HStack(spacing: kiosk ? 12 : 10) {
+            if kiosk {
+                Text(PantryFood.emoji(for: item.name)).font(.system(size: 22))
+            } else {
+                Text(PantryFood.emoji(for: item.name)).font(.system(size: 17))
+                    .frame(width: 32, height: 32)
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            }
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                Text(item.name).font(.system(size: kiosk ? 18 : 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 if let sub = qtyLabel(item) {
-                    Text(sub).font(.system(size: 11)).foregroundStyle(WF.ink3)
+                    Text(sub).font(.system(size: kiosk ? 13 : 11)).foregroundStyle(WF.ink3)
                 }
             }
-            Spacer(minLength: 6)
+            Spacer(minLength: kiosk ? 8 : 6)
             statusTag(item)
         }
     }
@@ -100,13 +110,13 @@ struct PantryTodayCard: View {
     @ViewBuilder private func statusTag(_ item: WaffledAPI.PantryItem) -> some View {
         if model.isSoon(item), let d = model.days(item) {
             Text(expiryText(d))
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.warn)
-                .padding(.horizontal, 8).padding(.vertical, 3)
+                .font(.system(size: kiosk ? 14 : 12, weight: .bold)).foregroundStyle(WF.warn)
+                .padding(.horizontal, kiosk ? 9 : 8).padding(.vertical, 3)
                 .background(WF.warnT).clipShape(Capsule())
         } else {
             Text("Low")
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.primaryD)
-                .padding(.horizontal, 8).padding(.vertical, 3)
+                .font(.system(size: kiosk ? 14 : 12, weight: .bold)).foregroundStyle(WF.primaryD)
+                .padding(.horizontal, kiosk ? 9 : 8).padding(.vertical, 3)
                 .background(WF.primaryD.opacity(0.12)).clipShape(Capsule())
         }
     }
