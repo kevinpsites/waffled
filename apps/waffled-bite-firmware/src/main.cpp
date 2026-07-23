@@ -18,10 +18,13 @@
 #include "wb_http.h"
 #include "wb_store.h"
 #include "wb_tick_hal.h"
+#include "wb_wifi.h"
+#include "wb_boot_flow.h"
 #include "ui/home_screen.h"
 #include "ui/settings_screen.h"
 #include "ui/control_detail_screen.h"
 #include "ui/onboarding_screen.h"
+#include "ui/wifi_screen.h"
 #include "ui/quiet_screen.h"
 #include "ui/timer_screen.h"
 #include "ui/bedtime_screen.h"
@@ -32,14 +35,7 @@
 #if defined(ARDUINO)
 #include <Wire.h>
 #include <TAMC_GT911.h>
-#include <WiFi.h>
 static TAMC_GT911 ts = TAMC_GT911(WB_TOUCH_SDA, WB_TOUCH_SCL, WB_TOUCH_INT, WB_TOUCH_RST, 1024, 600);
-#ifndef WB_WIFI_SSID
-#define WB_WIFI_SSID "" // set via platformio.ini's esp32-p4 build_flags
-#endif
-#ifndef WB_WIFI_PASS
-#define WB_WIFI_PASS ""
-#endif
 #else
 #include <chrono>
 #include <thread>
@@ -104,6 +100,7 @@ static void touchpad_read(lv_indev_t * /*indev*/, lv_indev_data_t *data)
 static lv_obj_t *home_scr;
 static lv_obj_t *settings_scr;
 static lv_obj_t *onboarding_scr;
+static lv_obj_t *wifi_scr; // WiFi picker — shown before onboarding_scr whenever there's no saved/working WiFi (see wb_boot_next)
 static lv_obj_t *tasks_scr;  // rebuilt fresh each time a routine tile is tapped — see home_screen.cpp
 static lv_obj_t *detail_scr;  // rebuilt fresh each time the Sounds/Nightlight tile is tapped — see settings_screen.cpp
 static lv_obj_t *quiet_scr;   // force-shown whenever the poll reports quiet time active — see wb_do_poll
@@ -662,6 +659,22 @@ static void wb_show_onboarding()
   lv_scr_load(onboarding_scr);
 }
 
+// wifi_screen.h's onConnected — WiFi just came up (or the desktop simulator
+// pretended it did). Persists the credentials so setup() doesn't need to
+// show wifi_scr again next boot, then falls through to whichever of
+// onboarding/the live app comes next (same decision wb_boot_next made once
+// already at boot, re-evaluated here since only the WiFi half of it was
+// unknown then).
+static void wb_on_wifi_connected(const std::string &ssid, const std::string &pass)
+{
+  wb_store_set("wifiSsid", ssid);
+  wb_store_set("wifiPass", pass);
+  if (g_deviceSecret.empty())
+    wb_show_onboarding();
+  else
+    wb_enter_app();
+}
+
 void setup()
 {
 #if defined(ARDUINO)
@@ -699,8 +712,8 @@ void setup()
   lv_indev_set_read_cb(indev, touchpad_read);
 
 #if defined(ARDUINO)
-  // Show something before the (up to 15s) WiFi wait below — previously the
-  // very first screen wasn't built until after this block, so a slow/absent
+  // Show something before the WiFi-connect attempt below — previously the
+  // very first screen wasn't built until after that attempt, so a slow/absent
   // network left the panel showing an undefined framebuffer for the whole
   // wait with zero feedback. This screen is a one-time throwaway (never
   // referenced again after lv_scr_load below switches away from it).
@@ -717,24 +730,12 @@ void setup()
   lv_obj_set_style_text_color(boot_sub, lv_color_hex(0x8A8478), 0);
   lv_scr_load(boot_scr);
   lv_timer_handler(); // flush this frame before the blocking wait below
-
-  // Hardcoded credentials until real WiFi provisioning exists (deferred —
-  // see the firmware README); blocking wait at boot only, a connection lost
-  // later just makes every wb_http call fail until it comes back, which
-  // wb_do_poll already tolerates by skipping that tick.
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WB_WIFI_SSID, WB_WIFI_PASS);
-  uint32_t wifiStart = wb_tick_ms();
-  while (WiFi.status() != WL_CONNECTED && wb_tick_ms() - wifiStart < 15000)
-  {
-    lv_timer_handler(); // keep the display/touch pipeline alive during the wait, not frozen
-    delay(5);
-  }
 #endif
 
   home_scr = lv_obj_create(NULL);
   settings_scr = lv_obj_create(NULL);
   onboarding_scr = lv_obj_create(NULL);
+  wifi_scr = lv_obj_create(NULL);
   tasks_scr = lv_obj_create(NULL);
   detail_scr = lv_obj_create(NULL);
   quiet_scr = lv_obj_create(NULL);
@@ -780,10 +781,40 @@ void setup()
   if (g_serverUrl.empty())
     g_serverUrl = WB_API_BASE_URL;
 
-  if (g_deviceSecret.empty())
+  // Try the saved WiFi credentials (if any) before deciding what to show.
+  // Uses wb_wifi.h (real WiFi.h on esp32-p4, a simulated connect on native)
+  // rather than a raw blocking WiFi.begin loop, so this same path is
+  // exercisable in the desktop simulator too — see wb_wifi_native.cpp.
+  std::string savedWifiSsid = wb_store_get("wifiSsid");
+  std::string savedWifiPass = wb_store_get("wifiPass");
+  bool wifiConnected = false;
+  if (!savedWifiSsid.empty())
+  {
+    wb_wifi_connect(savedWifiSsid, savedWifiPass);
+    uint32_t wifiStart = wb_tick_ms();
+    while (wb_wifi_connect_status() == WbWifiConnStatus::Connecting && wb_tick_ms() - wifiStart < 15000)
+    {
+      lv_timer_handler(); // keep the display/touch pipeline alive during the wait, not frozen
+#if defined(ARDUINO)
+      delay(5);
+#endif
+    }
+    wifiConnected = (wb_wifi_connect_status() == WbWifiConnStatus::Connected);
+  }
+
+  switch (wb_boot_next(!savedWifiSsid.empty(), wifiConnected, !g_deviceSecret.empty()))
+  {
+  case WbBootNext::ShowWifiPicker:
+    wb_build_wifi_screen(wifi_scr, wb_on_wifi_connected);
+    lv_scr_load(wifi_scr);
+    break;
+  case WbBootNext::ShowOnboarding:
     wb_show_onboarding();
-  else
+    break;
+  case WbBootNext::EnterApp:
     wb_enter_app();
+    break;
+  }
 }
 
 void loop()
