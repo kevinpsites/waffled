@@ -61,6 +61,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "in the cart" state is preserved so the weekly rebuild still works.)
 
 ### Fixed
+- **Adding a meal from the iOS capture bar works again.** "Chicken bowls on Friday" (or
+  any dish) parsed correctly but failed with a 400 on **Add meal** — the date was sent as
+  a full timestamp instead of a plain calendar day. It now saves to the right day.
 - **A custom list's item count no longer includes completed items.** The number on the
   Lists rail (and the list header) now counts only what's left to do — checking things
   off makes it go down, instead of a finished list still showing its full count. (The
