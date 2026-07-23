@@ -319,6 +319,11 @@ static void wb_do_poll()
       lv_obj_clean(timer_scr);
       wb_build_timer_screen(timer_scr, liveState.timer, settings_scr, wb_start_timer, wb_end_timer);
       g_timerWasActive = liveState.timer.active;
+      // Covers a device reboot/re-pair landing mid-timer (rare, but quiet_scr's
+      // unconditional block below handles the equivalent case for quiet time —
+      // this is the timer's analogue for the very first poll).
+      if (g_timerWasActive && lv_screen_active() != timer_scr)
+        lv_scr_load(timer_scr);
       g_liveScreensBuilt = true;
     }
     else
@@ -328,15 +333,33 @@ static void wb_do_poll()
 
       // timer_scr has two SHAPES (picker vs countdown), not just values to
       // push — only rebuild on the active/inactive transition (mirrors
-      // g_quietWasActive below), sync in place otherwise. This can happen
-      // while the kid isn't even looking at timer_scr (a parent starting one
-      // remotely), which is fine — it's kept correct in the background so
-      // whenever they do tap the tile, it's already showing the right thing.
+      // g_quietWasActive below), sync in place otherwise.
       if (liveState.timer.active != g_timerWasActive)
       {
         lv_obj_clean(timer_scr);
         wb_build_timer_screen(timer_scr, liveState.timer, settings_scr, wb_start_timer, wb_end_timer);
         g_timerWasActive = liveState.timer.active;
+        // BUG FIX: a timer starting (from either the kid on-device or a parent
+        // remotely) used to only update timer_scr's content in the background —
+        // it never actually force-navigated onto it, so nothing visibly happened
+        // on the device when a timer began. Mirrors quiet_scr's force-load below,
+        // except timer_scr stays exitable (its own Home button still works,
+        // unlike quiet's on-device lock) — this only controls the *automatic*
+        // navigation, not whether the kid can back out once they're on it.
+        // The `lv_screen_active() != timer_scr` guard matters here (unlike
+        // quiet_scr's unconditional load): unlike quiet time, a kid can reach
+        // timer_scr manually (Settings tile) and tap Start themselves, so this
+        // edge can fire while they're already sitting on the screen being
+        // rebuilt — reloading an already-active screen is the exact scenario
+        // that's hung LVGL 9.2.2's layer compositing elsewhere in this app
+        // (see settings_screen.cpp's wb_open_detail_cb).
+        if (g_timerWasActive && lv_screen_active() != timer_scr)
+          lv_scr_load(timer_scr);
+        else if (!g_timerWasActive && lv_screen_active() == timer_scr)
+          // It just ended (parent ended it remotely, or it ran out) while the
+          // kid was sitting on this exact screen — hand control back to home
+          // instead of leaving them stranded on a picker they didn't ask for.
+          lv_scr_load(home_scr);
       }
       else
       {

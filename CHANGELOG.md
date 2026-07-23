@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Waffled-Bite: starting a timer now actually shows up on the device.** Previously,
+  starting "Set a timer" (from the device itself or a parent remotely) only updated the
+  timer screen's content in the background — nothing visibly happened until a kid
+  happened to tap into it themselves. It now takes over the screen the same way quiet
+  time does, while staying exitable (its Home button still works, unlike quiet time's
+  on-device lock). Also, quiet-time and timer countdowns over an hour now show as
+  `H:MM:SS` instead of raw minutes (e.g. `1:05:00`, not `65:00`).
 
 ## [0.11.0] - 2026-07-22
 

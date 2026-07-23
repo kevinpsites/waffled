@@ -15,6 +15,23 @@
 
 static const int WB_TIMER_PRESET_MIN[] = {5, 10, 15, 20, 30};
 
+// The big countdown label — a timer can now run up to 3h (parent-settable,
+// was capped at 90min), so a bare "%d:%02d" of minutes:seconds would read as
+// "185:00"; switch to "H:MM:SS" once past an hour, same shape as any
+// clock/stopwatch. Duplicated from quiet_screen.cpp's identical helper —
+// same per-file convention as this app's other small shared pieces (see
+// bedtime_screen.cpp's color-table comment).
+static void formatCountdown(char *buf, size_t len, int remainingSec)
+{
+  int h = remainingSec / 3600;
+  int m = (remainingSec % 3600) / 60;
+  int s = remainingSec % 60;
+  if (h > 0)
+    snprintf(buf, len, "%d:%02d:%02d", h, m, s);
+  else
+    snprintf(buf, len, "%d:%02d", m, s);
+}
+
 static void wb_timer_close_cb(lv_event_t *e)
 {
   lv_obj_t *back_scr = (lv_obj_t *)lv_event_get_user_data(e);
@@ -241,7 +258,7 @@ static void wb_timer_tick_cb(lv_timer_t *timer)
     ctx->remainingSec--;
   lv_arc_set_value(ctx->arc, ctx->remainingSec);
   char buf[8];
-  snprintf(buf, sizeof(buf), "%d:%02d", ctx->remainingSec / 60, ctx->remainingSec % 60);
+  formatCountdown(buf, sizeof(buf), ctx->remainingSec);
   lv_label_set_text(ctx->time_lbl, buf);
 }
 
@@ -284,7 +301,7 @@ static WbTimerCountdownCtx *wb_build_timer_countdown(lv_obj_t *parent, const WbT
 
   lv_obj_t *time_lbl = lv_label_create(arc);
   char time_buf[8];
-  snprintf(time_buf, sizeof(time_buf), "%d:%02d", remainingSec / 60, remainingSec % 60);
+  formatCountdown(time_buf, sizeof(time_buf), remainingSec);
   lv_label_set_text(time_lbl, time_buf);
   lv_obj_set_style_text_font(time_lbl, &lv_font_montserrat_32, 0);
   lv_obj_set_style_text_color(time_lbl, WB_COLOR_INK, 0);
@@ -350,6 +367,6 @@ void wb_sync_timer_screen(lv_obj_t *parent, const WbTimerState &timer)
   lv_arc_set_value(ctx->arc, ctx->remainingSec);
 
   char buf[8];
-  snprintf(buf, sizeof(buf), "%d:%02d", ctx->remainingSec / 60, ctx->remainingSec % 60);
+  formatCountdown(buf, sizeof(buf), ctx->remainingSec);
   lv_label_set_text(ctx->time_lbl, buf);
 }
