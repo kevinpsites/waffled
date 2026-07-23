@@ -130,5 +130,19 @@ struct MonthHeatmapView: View {
             }
             .padding(.top, 8)
         }
+        // Swipe to page months (same forward-clamp as the chevrons). minimumDistance
+        // keeps per-cell taps working; the horizontal-dominance check ignores scrolls.
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    let dx = value.translation.width
+                    guard abs(dx) > 44, abs(dx) > abs(value.translation.height) else { return }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        if dx < 0 { monthOffset = min(0, monthOffset + 1) }  // drag left → later month
+                        else { monthOffset -= 1 }                             // drag right → earlier month
+                    }
+                }
+        )
     }
 }

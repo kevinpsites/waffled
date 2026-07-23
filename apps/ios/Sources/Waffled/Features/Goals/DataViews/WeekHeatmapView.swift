@@ -116,5 +116,20 @@ struct WeekHeatmapView: View {
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(delta >= 0 ? WF.success : WF.danger)
                     : Text("")))
         }
+        // Swipe to page weeks (same forward-clamp as the chevrons). A minimumDistance
+        // keeps per-cell taps working — a tap moves < the threshold, so the drag never
+        // claims it; the horizontal-dominance check ignores vertical scroll drags.
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    let dx = value.translation.width
+                    guard abs(dx) > 44, abs(dx) > abs(value.translation.height) else { return }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        if dx < 0 { weekOffset = min(0, weekOffset + 1) }  // drag left → later week
+                        else { weekOffset -= 1 }                            // drag right → earlier week
+                    }
+                }
+        )
     }
 }
