@@ -964,20 +964,52 @@ describe('grocery week switching — never clobber', () => {
     expect(names(await board(weekB))).toContain('Shared Kale')
   })
 
-  it('"start over" clears this week’s checks without touching another week', async () => {
-    // check a week-A item (Charlie Corn @ weekA) and a week-B item (Shared Kale @ weekB)
+  it('"start over" clears this week’s checks without touching another week OR the global list', async () => {
+    // check a week-A item (Charlie Corn @ weekA), a week-B item (Shared Kale @ weekB),
+    // and a global manual item (the running list, shown on every week)
     const wa = (await board(weekA)).items.find((i: { name: string }) => i.name === 'Charlie Corn')
     await call('PATCH', `/api/list-items/${wa.id}`, kevin, { checked: true })
     const wb = (await board(weekB)).items.find((i: { name: string }) => i.name === 'Shared Kale')
     await call('PATCH', `/api/list-items/${wb.id}`, kevin, { checked: true })
+    await call('POST', '/api/lists/grocery/items', kevin, { name: 'Global Napkins' })
+    const napkin = (await board(weekA)).items.find((i: { name: string }) => i.name === 'Global Napkins')
+    await call('PATCH', `/api/list-items/${napkin.id}`, kevin, { checked: true })
 
     // start over on week A
     const res = await call('POST', `/api/lists/grocery/clear-checks?weekStart=${weekA}`, kevin)
     expect(res.statusCode).toBe(200)
 
-    // week A's item is now unchecked; week B's item is untouched
+    // week A's own item is now unchecked...
     expect((await board(weekA)).items.find((i: { name: string }) => i.name === 'Charlie Corn').checked).toBe(false)
+    // ...but week B's item is untouched, and the global item keeps its check (it's the
+    // running list — clearing it from one week would un-check it everywhere)
     expect((await board(weekB)).items.find((i: { name: string }) => i.name === 'Shared Kale').checked).toBe(true)
+    expect((await board(weekA)).items.find((i: { name: string }) => i.name === 'Global Napkins').checked).toBe(true)
+  })
+
+  it('removing an off-plan recipe from one week keeps its credit on another week (no cross-week strip)', async () => {
+    const r = await recipe('WK Cross', [{ name: 'Cross Beef', amount: 1, unit: 'lb' }])
+    // off-plan add to week A, and plan the SAME recipe as a meal in week B (a free slot), built
+    await call('POST', `/api/lists/grocery/from-recipe/${r}?weekStart=${weekA}`, kevin)
+    await call('POST', '/api/meals/plan', kevin, { date: addDays(weekB, 4), mealType: 'dinner', recipeId: r })
+    await rebuild(weekB)
+    expect((await board(weekB)).items.find((i: { name: string }) => i.name === 'Cross Beef').sourceRecipeIds).toContain(r)
+
+    // remove the off-plan add from week A
+    await call('DELETE', `/api/lists/grocery/from-recipe/${r}?weekStart=${weekA}`, kevin)
+
+    // week B's planned-meal row must STILL credit r (its color dot survives)
+    const wbAfter = (await board(weekB)).items.find((i: { name: string }) => i.name === 'Cross Beef')
+    expect(wbAfter).toBeTruthy()
+    expect(wbAfter.sourceRecipeIds).toContain(r)
+    // ...and week A's off-plan Cross Beef is gone
+    expect((await board(weekA)).items.some((i: { name: string }) => i.name === 'Cross Beef')).toBe(false)
+  })
+
+  it('falls back to the current week for an impossible weekStart (no 500)', async () => {
+    const res = await call('GET', '/api/lists/grocery/board?weekStart=2026-13-45', kevin)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).weekStart).not.toBe('2026-13-45')
   })
 })
 

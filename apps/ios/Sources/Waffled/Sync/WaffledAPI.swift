@@ -2228,6 +2228,8 @@ struct WaffledAPI: Sendable {
         var assignee: Assignee?
         var aisle: String?
         var sourceRecipeIds: [String]?
+        /// The week this row belongs to (meal-derived + off-plan rows); nil = global manual row.
+        var weekStart: String?
         struct Assignee: Decodable, Sendable {
             let name: String?
             let avatarEmoji: String?

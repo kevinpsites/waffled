@@ -245,7 +245,13 @@ export function registerListRoutes(api: Api): void {
   // default matches what the clients render for "this week" — and the 0088 backfill.
   async function weekStartFor(tenant: { householdId: string }, req: Request): Promise<string> {
     const ws = (req.query?.weekStart as string | undefined) || ''
-    if (/^\d{4}-\d{2}-\d{2}$/.test(ws)) return ws
+    // Require a REAL calendar date — the regex alone lets "2026-13-45" through, which
+    // then throws on the Postgres date cast (→ 500). Round-trip through Date to reject
+    // impossible dates (and JS's silent overflow normalization) and fall back cleanly.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ws)) {
+      const d = new Date(ws + 'T00:00:00Z')
+      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ws) return ws
+    }
     return householdWeekStart(tenant.householdId)
   }
 

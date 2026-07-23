@@ -487,12 +487,15 @@ export async function removeRecipeFromGrocery(
     [tenant.householdId, list.id, recipeId, weekStart]
   )
   // Strip this recipe's credit from rows that survive (shared with another recipe,
-  // or a 'manual' row this recipe had merged onto).
+  // or a 'manual' row this recipe had merged onto). Week-scoped like the delete above,
+  // or removing recipe R from one week would wipe R's credit off ANOTHER week's
+  // planned-meal rows (making their meal-color dots vanish) — a cross-week clobber.
   await query(
     `update list_items set source_recipe_ids = array_remove(source_recipe_ids, $3::uuid)
        where household_id = $1 and list_id = $2 and deleted_at is null
-         and $3 = ANY(source_recipe_ids)`,
-    [tenant.householdId, list.id, recipeId]
+         and $3 = ANY(source_recipe_ids)
+         and (week_start = $4 or week_start is null)`,
+    [tenant.householdId, list.id, recipeId, weekStart]
   )
   return del.rowCount ?? 0
 }
@@ -694,16 +697,19 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
   return byName.size
 }
 
-// "Start over" for a week: un-check every item shown on that week's board (this week's
-// meal/off-plan rows + the global manual rows), so the list is a fresh unchecked list.
-// Refresh, by contrast, keeps checks (see rebuildGroceryFromWeek's prevChecked). Scoped
-// so clearing one week doesn't touch another week's per-week rows. Returns rows cleared.
+// "Start over" for a week: un-check that week's own items (meal-derived + off-plan),
+// giving a fresh list for the week. Refresh, by contrast, keeps checks (see
+// rebuildGroceryFromWeek's prevChecked). Deliberately does NOT touch global (NULL-week)
+// manual rows + staples: those are one running list shown on every week, so clearing
+// them from one week would silently un-check them everywhere — breaking the "one week
+// never touches another" promise. Uncheck a global item individually instead. Returns
+// the number of rows cleared.
 export async function clearGroceryChecks(tenant: Tenant, weekStart: string): Promise<number> {
   const list = await getOrCreateGroceryList(tenant)
   const res = await query(
     `update list_items set checked = false, checked_at = null
        where household_id = $1 and list_id = $2 and deleted_at is null and checked
-         and (week_start = $3 or week_start is null)`,
+         and week_start = $3`,
     [tenant.householdId, list.id, weekStart]
   )
   return res.rowCount ?? 0

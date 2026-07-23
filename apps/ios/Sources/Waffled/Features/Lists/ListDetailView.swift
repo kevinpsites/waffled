@@ -966,7 +966,7 @@ struct ListDetailView: View {
                 Text(weekOffset == 0 ? "THIS WEEK’S MEALS" : weekOffset == 1 ? "NEXT WEEK’S MEALS" : "MEALS · \(groceryWeekLabel.uppercased())")
                     .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
                 Spacer()
-                if model.items.contains(where: { $0.checked }) {
+                if model.items.contains(where: { $0.checked && $0.weekStart != nil }) {
                     Button { Task { await model.startOver() } } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.counterclockwise").font(.system(size: 11, weight: .bold))

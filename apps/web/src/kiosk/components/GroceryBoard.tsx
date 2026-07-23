@@ -187,15 +187,17 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const toggleSection = (key: string) =>
     setCollapsed((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
   const [railMeal, setRailMeal] = useState<string>('dinner') // which meal type the rail shows
-  const rebuilt = useRef(false)
+  const rebuilt = useRef<Set<string>>(new Set()) // weeks already auto-built (once each)
   const addRef = useRef<HTMLInputElement>(null)
 
-  // First time, if nothing auto-built yet but meals are planned, build it.
+  // The first time a week with planned meals but no auto items is viewed, build it —
+  // keyed PER week so switching to a future week auto-populates it too (not just the
+  // first week loaded). Never re-fires for a week already handled.
   useEffect(() => {
-    if (rebuilt.current || !board) return
+    if (!board || rebuilt.current.has(board.weekStart)) return
     const hasAuto = board.items.some((i) => i.source === 'auto')
     if (!hasAuto && board.meals.length > 0) {
-      rebuilt.current = true
+      rebuilt.current.add(board.weekStart)
       groceryApi.rebuildGrocery(board.weekStart).then(refetch).catch(() => {})
     }
   }, [board, refetch])
@@ -482,8 +484,8 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, gap: 8 }}>
             <div className="card-h">{weekLabel(board.weekStart)}’s meals</div>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-              {board.items.some((i) => i.checked) && (
-                <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={startOver} title="Un-check everything on this week’s list (does not remove items)">
+              {board.items.some((i) => i.checked && i.weekStart) && (
+                <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={startOver} title="Un-check this week’s items (your global manual list keeps its state)">
                   ⟲ Start over
                 </button>
               )}

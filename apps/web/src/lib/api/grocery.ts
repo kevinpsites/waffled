@@ -173,6 +173,8 @@ export interface GroceryBoardItem extends ListItem {
   aisle: string
   source: string
   sourceRecipeIds: string[]
+  // The week this row belongs to (meal-derived + off-plan rows); null = global manual row.
+  weekStart: string | null
 }
 export interface GroceryBoard {
   list: ListSummary
