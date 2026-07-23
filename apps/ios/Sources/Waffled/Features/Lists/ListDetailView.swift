@@ -362,6 +362,15 @@ final class ListDetailModel {
         }
     }
 
+    /// Rename the list (keeps its emoji). Updates the header (`list.name` drives the
+    /// nav title) and rail. Returns true on success.
+    func rename(to name: String) async -> Bool {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty else { return false }
+        do { list = try await api.updateList(id: list.id, name: n); return true }
+        catch { self.error = true; return false }
+    }
+
     /// Soft-delete the whole list. Returns true so the view can pop back + refresh.
     func deleteList() async -> Bool {
         do { try await api.deleteList(id: list.id); return true }
@@ -410,6 +419,8 @@ struct ListDetailView: View {
     @State private var stagedPriority: Int? = nil
     @State private var bulkNewSectionPrompt = false
     @State private var bulkNewSectionName = ""
+    @State private var renamePrompt = false
+    @State private var renameText = ""
     @FocusState private var focus: Field?
 
     /// Meal-type ordering for the summary filter (matches the web rail).
@@ -460,49 +471,11 @@ struct ListDetailView: View {
         .toolbar {
             // Grocery is auto-built, so it has no template/delete menu. A template gets
             // Use / Move to Lists / Delete; a normal list gets Save as template / Delete.
-            if !model.isGrocery {
+            // iPad (kiosk) has no navigation bar — its ⋯ menu lives in the list header
+            // (see `kioskListHeader`); iPhone keeps it here in the nav bar.
+            if !model.isGrocery && !isKiosk {
                 ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        // Enter multi-select to bulk-edit section / assignee / priority.
-                        Button { withAnimation { selecting = true; selectedIDs = []; resetBulkStaging() } } label: {
-                            Label("Select items to edit", systemImage: "checklist")
-                        }
-                        if model.isTemplate {
-                            Button {
-                                Task {
-                                    if let created = await model.useTemplate() {
-                                        sync.bumpLists()
-                                        showToast("Made “\(created.name)” from this template")
-                                    }
-                                }
-                            } label: { Label("Use template", systemImage: "plus.square.on.square") }
-                            Button {
-                                Task {
-                                    if await model.moveToLists() {
-                                        sync.bumpLists()
-                                        showToast("Moved “\(model.list.name)” back to Lists")
-                                    }
-                                }
-                            } label: { Label("Move to Lists", systemImage: "arrow.uturn.left") }
-                            Button(role: .destructive) { confirmingDelete = true } label: {
-                                Label("Delete template", systemImage: "trash")
-                            }
-                        } else {
-                            Button {
-                                Task {
-                                    if await model.convertToTemplate() {
-                                        sync.bumpLists()
-                                        showToast("Turned “\(model.list.name)” into a template")
-                                    }
-                                }
-                            } label: { Label("Save as template", systemImage: "doc.on.doc") }
-                            Button(role: .destructive) { confirmingDelete = true } label: {
-                                Label("Delete list", systemImage: "trash")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
+                    listActionsMenu
                 }
             }
         }
@@ -580,6 +553,14 @@ struct ListDetailView: View {
                 bulkNewSectionName = ""
             }
         } message: { Text("Move the selected items into this new section.") }
+        .alert("Rename list", isPresented: $renamePrompt) {
+            TextField("List name", text: $renameText)
+            Button("Cancel", role: .cancel) { renameText = "" }
+            Button("Save") {
+                let n = renameText; renameText = ""
+                Task { if await model.rename(to: n) { sync.bumpLists() } }
+            }
+        }
     }
 
     /// iPhone: items with the meals recap + staples inline in the list.
@@ -754,8 +735,76 @@ struct ListDetailView: View {
 
     /// Pinned controls below the nav bar: a search field (long lists) above the
     /// grocery aisle/meal toggle.
+    /// The list's ⋯ actions, shared by the iPhone nav bar and the iPad header.
+    private var listActionsMenu: some View {
+        Menu { listActionButtons } label: {
+            Image(systemName: "ellipsis.circle").font(.system(size: 20, weight: .regular))
+        }
+    }
+
+    /// Menu contents — same options on iPhone and iPad: Select, Rename, template
+    /// actions, Delete.
+    @ViewBuilder private var listActionButtons: some View {
+        // Enter multi-select to bulk-edit section / assignee / priority.
+        Button { withAnimation { selecting = true; selectedIDs = []; resetBulkStaging() } } label: {
+            Label("Select items to edit", systemImage: "checklist")
+        }
+        Button { renameText = model.list.name; renamePrompt = true } label: {
+            Label("Rename", systemImage: "pencil")
+        }
+        if model.isTemplate {
+            Button {
+                Task {
+                    if let created = await model.useTemplate() {
+                        sync.bumpLists()
+                        showToast("Made “\(created.name)” from this template")
+                    }
+                }
+            } label: { Label("Use template", systemImage: "plus.square.on.square") }
+            Button {
+                Task {
+                    if await model.moveToLists() {
+                        sync.bumpLists()
+                        showToast("Moved “\(model.list.name)” back to Lists")
+                    }
+                }
+            } label: { Label("Move to Lists", systemImage: "arrow.uturn.left") }
+            Button(role: .destructive) { confirmingDelete = true } label: {
+                Label("Delete template", systemImage: "trash")
+            }
+        } else {
+            Button {
+                Task {
+                    if await model.convertToTemplate() {
+                        sync.bumpLists()
+                        showToast("Turned “\(model.list.name)” into a template")
+                    }
+                }
+            } label: { Label("Save as template", systemImage: "doc.on.doc") }
+            Button(role: .destructive) { confirmingDelete = true } label: {
+                Label("Delete list", systemImage: "trash")
+            }
+        }
+    }
+
+    /// iPad-only header: the list name + the ⋯ menu (the kiosk layout has no nav bar,
+    /// so the actions would otherwise be unreachable). Grocery has no menu.
+    @ViewBuilder private var kioskListHeader: some View {
+        if !model.isGrocery {
+            HStack(spacing: 10) {
+                Text(model.list.name)
+                    .font(WF.serif(20, .semibold)).foregroundStyle(WF.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                listActionsMenu.foregroundStyle(WF.ink2)
+            }
+            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 2)
+        }
+    }
+
     @ViewBuilder private var topControls: some View {
         VStack(spacing: 0) {
+            if isKiosk { kioskListHeader }
             if showSearch { searchField }
             // Bulk-edit action bar sits directly under the search field (not a bottom
             // overlay, which the tab bar hid) so the section/person/priority actions
