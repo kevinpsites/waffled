@@ -16,6 +16,9 @@ import {
   addItem,
   patchItem,
   softDeleteItem,
+  bulkPatchItems,
+  autoClearCheckedItems,
+  clearCompletedItems,
   addRecipeToGrocery,
   removeRecipeFromGrocery,
   convertToTemplate,
@@ -140,8 +143,21 @@ export function registerListRoutes(api: Api): void {
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
     const list = await getList(tenant.householdId, id)
     if (!list) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
+    // Lazily sweep old checked items off a custom list before we read it (no cron):
+    // a no-op for grocery/templates (scoped to list_type='custom' in the query).
+    await autoClearCheckedItems(tenant.householdId, id)
     const items = await listItems(tenant.householdId, id)
     return { list: presentList(list), items: items.map(presentListItem) }
+  }))
+
+  // Clear a custom list's Completed section now (soft-delete its checked items).
+  api.post('/api/lists/:id/clear-completed', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
+    const list = await getList(tenant.householdId, id)
+    if (!list) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
+    const cleared = await clearCompletedItems(tenant.householdId, id)
+    return { cleared }
   }))
 
   // Add an item to any list.
@@ -190,6 +206,35 @@ export function registerListRoutes(api: Api): void {
   }))
 
   // ---- list items (shared across all lists) ---------------------------------
+  // Bulk-edit section / assignee / priority across a multi-selection. Registered
+  // before `/api/list-items/:id` so the literal `bulk` segment wins over `:id`.
+  api.patch('/api/list-items/bulk', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { ids?: unknown; patch?: Record<string, unknown> }
+    const ids = body.ids
+    if (!Array.isArray(ids) || ids.length === 0 || !ids.every((x) => typeof x === 'string' && UUID_RE.test(x))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'ids must be a non-empty array of item ids' })
+    }
+    const p = (body.patch ?? {}) as { section?: string | null; category?: string | null; assignedTo?: string | null; priority?: number }
+    const patch: { category?: string | null; assignedTo?: string | null; priority?: number } = {}
+    // `section` is the client-facing key; `category` is a legacy alias for the same
+    // column. Apply the alias first so that if both are ever sent, `section` wins.
+    if ('category' in p) patch.category = p.category ?? null
+    if ('section' in p) patch.category = p.section ?? null
+    if ('assignedTo' in p) patch.assignedTo = p.assignedTo ?? null
+    if ('priority' in p) {
+      if (!isValidPriority(p.priority)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'priority must be an integer from 1 (not urgent) to 5 (urgent)' })
+      }
+      patch.priority = p.priority
+    }
+    if (!('category' in patch) && !('assignedTo' in patch) && !('priority' in patch)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'no patchable fields provided' })
+    }
+    if (patch.assignedTo != null) await assertPersonInHousehold(tenant.householdId, patch.assignedTo)
+    const updated = await bulkPatchItems(tenant.householdId, ids as string[], patch)
+    return { updated }
+  }))
+
   // Check/uncheck, reassign, change quantity, or move section.
   api.patch('/api/list-items/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''

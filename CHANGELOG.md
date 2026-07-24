@@ -14,6 +14,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+- **Web navigation now fits phones.** Narrow screens use a compact app header and
+  accessible slide-out destination menu, while Settings replaces its long stacked
+  index with a section picker and nearby sign-out action.
+- **Unfinished web actions no longer look usable.** Grocery export and online-order
+  buttons, list sharing, plus empty Lists and Notifications settings destinations,
+  stay hidden until they have working behavior.
+- **Backup limitations are now called out after startup and in `./waffled doctor`.**
+  Operators are warned when uploaded media is excluded or all backup copies remain
+  on the Waffled host, with a direct link to the verification guide.
+- **Setup now links to the published troubleshooting guide.** The public-HTTPS
+  PowerSync note no longer points at a repository file that does not exist.
+
+### Security
+
+- **Web routing dependencies now include current security patches.** React Router
+  is updated to 7.18.1 to clear the production dependency audit.
+
+## [0.12.0] - 2026-07-23
+
+### Added
 - **Shop ahead — see and build next week's grocery list.** The grocery board now has a
   week switcher (‹ ›, with a "This week" reset) on both web and iOS/iPad. Each week's
   meal-derived items are their own list, so you can shop Saturday for next week's meals
@@ -46,10 +71,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   iPhone, iPad) now shows a status pill right at the top — 🟢 Online, or ⚪ Offline with
   when it was last seen — the same treatment as the quiet-time and wake-light status,
   so a device that's stopped checking in doesn't go unnoticed.
+- **Edit list items in bulk.** Pick "Select" on any list (web and iOS), tap the items you
+  want, and set their section, assignee, or priority for the whole selection — including
+  moving them into a brand-new section you name on the spot. Your choices apply when you
+  tap **Done** (a stray tap never changes anything), and while selecting each row shows a
+  single clear checkbox so you can't accidentally check an item off.
+- **Rename a list from the list itself, and the iPad list menu.** The list's ⋯ menu
+  (Select items / Save as template / Delete) now also carries a **Rename** action on both
+  iPhone and iPad, and the menu — previously missing from the iPad's list view — is now
+  there too.
+- **Collapsible list sections + a section picker that stays put.** On the web, a list's
+  sections now collapse and expand from their header (iOS already did this). The add bar
+  also gains a section picker that keeps your choice across a run of quick adds — and can
+  create a new section on the spot — so a batch of items all land where you want (matching
+  how iOS already behaves).
+- **Swipe through your goal charts.** The weekly and monthly goal heatmaps on iPhone/iPad
+  now page back and forth with a horizontal swipe, not just the ‹ › arrows; a past week is
+  also labelled by its dates ("Week of Jul 5 – Jul 11") instead of a vague "That week".
 
 ### Changed
+- **Completed list items tidy themselves away.** A list's checked-off items now clear
+  automatically a day after you check them, and the Completed section has a **Clear**
+  button to sweep them now. (The grocery board is deliberately untouched — its checked =
+  "in the cart" state is preserved so the weekly rebuild still works.)
 
 ### Fixed
+- **Adding a meal from the iOS capture bar works again.** "Chicken bowls on Friday" (or
+  any dish) parsed correctly but failed with a 400 on **Add meal** — the date was sent as
+  a full timestamp instead of a plain calendar day. It now saves to the right day.
+- **A list's item count now shows what's left to do.** The number on the Lists rail (and
+  the list header) counts only unchecked items, so it ticks down as you check things off —
+  on a custom list as you finish them, and on the grocery list as you put them in the cart
+  — instead of always showing the full count.
+- **List sections are ordered A–Z and stay put (web).** Sections were laid out in the
+  API's item order, so adding, checking, or moving an item reshuffled them (and the
+  two-column layout). They're now sorted alphabetically (the no-section "Items" group
+  last), so each section holds a fixed place.
 - **Waffled-Bite: starting a timer now actually shows up on the device.** Previously,
   starting "Set a timer" (from the device itself or a parent remotely) only updated the
   timer screen's content in the background — nothing visibly happened until a kid
@@ -1288,7 +1345,14 @@ is for users and operators, not a commit log — **synthesize** related commits 
 feature-level entry, grouped by product area, and **omit pure-internal churn** (docs,
 tests, tooling, and refactors with no user-visible effect).
 
-**To cut a release:** run **`./waffled release X.Y.Z`** locally on `main`. In one commit it:
+**Before cutting a release:** run **`./waffled release check`** on `main`. It refuses a dirty,
+diverged, or stale checkout; checks that the current API, web, Compose, and iOS versions agree;
+requires user-facing notes under `[Unreleased]`; and runs the CLI, migration, API, web, browser
+(when configured), docs, Docker E2E, and locally available iOS checks. It does not bump versions,
+commit, or tag anything; build tools may refresh ignored local artifacts.
+
+**To cut a release:** run **`./waffled release X.Y.Z`** locally on `main`. It repeats the checks
+before changing anything, then in one commit it:
 1. Reviews the `[Unreleased]` notes with you (**requires at least one entry**), dates the
    section `## [X.Y.Z] - YYYY-MM-DD`, opens a fresh `## [Unreleased]` above it, and adds the
    compare link.
@@ -1325,7 +1389,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/kevinpsites/waffled/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/kevinpsites/waffled/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kevinpsites/waffled/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kevinpsites/waffled/compare/v0.8.0...v0.9.0

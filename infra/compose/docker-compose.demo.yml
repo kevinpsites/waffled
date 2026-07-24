@@ -6,6 +6,8 @@
 services:
   postgres:
     container_name: waffled-demo-postgres
+  volume-permissions:
+    container_name: waffled-demo-volume-permissions
   migrate:
     container_name: waffled-demo-migrate
   api:

@@ -156,7 +156,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Type-aware **logging** (amount / stepper / once-a-day / tick steps) | ✅ | ✅ | ✅ | ✅ Done |
 | Backdated logs ("When?" picker) | ✅ | ✅ | ✅ | ✅ Done |
 | **Goal detail** read-model (milestone track, hours-by-person, streaks, recent) | ✅ | ✅ | ✅ | ✅ Done |
-| **Goal-detail data views** — swappable progress visualizations (Week/Month heatmap, Year contribution grid, Pace-to-target, Year ring, By-person bars, plus Count's collection grid and Habit's consistency calendar) matched to the goal's type + timeframe, remembers your last pick per goal, tap a day/month for who logged what | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
+| **Goal-detail data views** — swappable progress visualizations (Week/Month heatmap, Year contribution grid, Pace-to-target, Year ring, By-person bars, plus Count's collection grid and Habit's consistency calendar) matched to the goal's type + timeframe, remembers your last pick per goal, tap a day/month for who logged what; the Week/Month heatmaps page back and forth via ‹ › **and (iOS) a horizontal swipe**, clamped so you can't page past the current period | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | Checklist **named steps** + per-type **milestones** (text) | ✅ | ✅ | ✅ | ✅ Done |
 | **Person profile** + **Family overview** | ✅ | ✅ | ✅ | ✅ Done (iPad = `KioskFamilyView` grid) |
 | **Calendar → goal** auto-count recap (single events) | ✅ | ✅ | ✅ | ✅ Done (Phase 1) |
@@ -183,7 +183,10 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Re-aisle** a grocery item (move it to another aisle section from its editor) | ✅ | ✅ | ✅ | ✅ Done — mobile: section chips + an **Auto** chip (clear the override → classify by name) in the item Details editor |
 | **Move an item to another section** — refile without opening the full editor: **drag** a row across sections (web drag-and-drop; iPhone/iPad native press-and-drag via `.onMove`, so swipe-to-delete still works); the Details editor also sets the section | ✅ | ✅ | ✅ | ✅ Done — PATCHes the item's category |
 | **Item priority** — set an item's urgency on a **1–5 scale** (1 = not urgent · 3 = normal · 5 = urgent) from its editor; High/Urgent items show a row flag. Setting a priority doesn't reorder the list; a web **Sort: manual ⇄ By priority** toggle flattens it highest-first on demand | ✅ | ✅ | ✅ | ✅ Done — web + iOS; API stores `priority` (1–5, default 3, mig 0084 + 0085) and returns manual order (priority sort is a client-side opt-in) |
-| **Completed section** on a custom list — checked items tuck into a collapsible "Completed" group (with an undo grace window) instead of lingering in place | ✅ | ✅ | ✅ | ✅ Done — web now matches the grocery board + iOS |
+| **Completed section** on a custom list — checked items tuck into a collapsible "Completed" group (with an undo grace window) instead of lingering in place. Checked items **auto-clear ~24h** after check-off (per-list `auto_clear_checked`, default 24h; grocery is exempt — its checked = in-cart), and a **Clear** button sweeps the section on demand. A list's item count reflects only **unchecked** items | ✅ | ✅ | ✅ | ✅ Done — web + iOS; auto-clear runs lazily on load (no cron), scoped to `list_type='custom'` |
+| **Bulk-edit items** — enter Select mode, pick multiple items, and set their **section / assignee / priority** (including into a **new section**) for the whole selection; changes stage and apply on **Done** (`PATCH /api/list-items/bulk`, household-scoped, patches only the fields you set) | ✅ | ✅ | ✅ | ✅ Done — web + iOS |
+| **Collapsible sections** on a custom list — collapse/expand each section from its header | ✅ | ✅ | ✅ | ✅ Done — web now matches iOS |
+| **Sticky add section** — the add bar's section picker keeps its choice across quick adds, so a run of items lands in the same section; the picker can also **create a new section** inline (even on a list with none yet) | ✅ | ✅ | ✅ | ✅ Done — web now matches iOS |
 | **Cross-surface live refresh** (Today ↔ Lists ↔ Rewards) | ✅ | ✅ | ✅ | ✅ Done (in-app refresh bus) |
 
 ## Meals & recipes

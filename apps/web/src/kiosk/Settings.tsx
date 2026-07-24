@@ -25,10 +25,8 @@ const NAV = [
   { key: 'calendars', icon: '📅', label: 'Calendars', admin: true, group: 'family' },
   { key: 'chores', icon: '⭐', label: 'Chores & Rewards', admin: true, group: 'family' },
   { key: 'meals', icon: '🍽️', label: 'Meals', admin: true, group: 'family' },
-  { key: 'lists', icon: '📝', label: 'Lists', admin: true, group: 'family' },
   { key: 'modules', icon: '🧩', label: 'Modules', admin: true, group: 'family' },
   { key: 'display', icon: '🖥️', label: 'Display & Kiosk', admin: true, group: 'family' },
-  { key: 'notifications', icon: '🔔', label: 'Notifications', admin: true, group: 'family' },
   // System — the self-hosted deployment (admin/operator)
   { key: 'security', icon: '🔐', label: 'Sign-in & Security', admin: true, group: 'system' },
   { key: 'ai', icon: '✨', label: 'AI & Capture', admin: true, group: 'system' },
@@ -1731,30 +1729,6 @@ function CountdownsSettings() {
   )
 }
 
-// Sub-tabs that depend on integrations we haven't built yet render their section
-// honestly rather than faking data. (Defended in the build report.)
-const PLACEHOLDERS: Record<string, { title: string; note: string }> = {
-  chores: { title: 'Chores & Rewards', note: 'Reward styles & the reward shop build on the chores ledger (6.1 / 6.4).' },
-  meals: { title: 'Meals', note: 'Meal preferences & dietary defaults pair with the Meals screen.' },
-  lists: { title: 'Lists', note: 'List defaults & sharing pair with the Lists screen.' },
-  display: { title: 'Display & Kiosk', note: 'Brightness & screensaver timing land here. Kiosk device pairing moved to Sign-in & Security.' },
-  notifications: { title: 'Notifications', note: 'Push to phones rides APNs + Google reminders (6.7).' },
-}
-
-function Placeholder({ tab }: { tab: string }) {
-  const p = PLACEHOLDERS[tab]
-  return (
-    <div className="set-panel">
-      <div className="set-head">
-        <div className="wf-serif set-head-t">{p.title}</div>
-      </div>
-      <SettingCard>
-        <div className="muted" style={{ fontWeight: 600 }}>{p.note}</div>
-      </SettingCard>
-    </div>
-  )
-}
-
 // Currency catalog management (the "spend"/economy config). Admin-only writes;
 // inline edits save on blur, default/spendable toggle immediately.
 function CurrencyRow({ c, canDelete }: { c: Currency; canDelete: boolean }) {
@@ -3124,6 +3098,12 @@ export function Settings() {
 
   return (
     <div className="settings-screen">
+      <div className="set-mobile-nav">
+        <select className="sel" aria-label="Settings section" value={activeTab} onChange={(e) => setTab(e.target.value)}>
+          {nav.map((n) => <option key={n.key} value={n.key}>{n.icon} {n.label}</option>)}
+        </select>
+        <SignOutButton className="set-mobile-signout" />
+      </div>
       <div className="set-nav">
         <div className="flabel" style={{ margin: '2px 2px 8px' }}>SETTINGS</div>
         {nav.map((n, i) => {
@@ -3143,7 +3123,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'appearance' ? <AppearancePanel /> : activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
+        {activeTab === 'appearance' ? <AppearancePanel /> : activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : <AboutPanel />}
       </div>
     </div>
   )
