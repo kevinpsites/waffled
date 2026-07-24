@@ -274,6 +274,19 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   (the mockup's turtle emoji) are a colored initial-circle placeholder — a real
   avatar needs a baked bitmap asset, not a font glyph. Flash headroom for these is
   no longer tight (see below), so this is now just unbuilt, not budget-constrained.
+  **Home screen typography/elevation are now done**, though (a later, smaller polish
+  pass, ahead of the icon work above): the greeting uses a baked LVGL bitmap font
+  (`src/fonts/wb_font_newsreader_semibold_32.c`, generated via `lv_font_conv` from
+  Newsreader SemiBold — the same brand serif the marketing site loads, see
+  `website/home/src/layouts/Base.astro` — latin range `0x20-0x7E`, 32px/4bpp, ~77KB;
+  regenerate with `tools/fonts/Newsreader-SemiBold.woff` plus the exact `lv_font_conv`
+  invocation in that file's header comment if the range or size ever needs to change)
+  instead of Montserrat, every card/tile has a soft warm-tinted drop shadow
+  (`apply_card_shadow` in `home_screen.cpp`), and a fully-completed routine shows a
+  small green checkmark circle overlapping its count pill (`make_done_check`) instead
+  of a checkmark glyph appended into the pill text. When real icon assets land, the
+  same `lv_font_conv`-style "bake at build time, no runtime decoder" approach is the
+  plan — see the icon spec handed to whoever supplies the art for exact sizes/format.
 - **No OTA** — worth having before this ships to an actual kid's room.
 - **`esp32-p4` WiFi reliability: fixed, via a build-mode change.** The on-board
   ESP32-C6 WiFi co-processor talks to the P4 over SDIO (`esp-hosted`), and Arduino's

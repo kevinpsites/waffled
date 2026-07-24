@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Waffled-Bite device: home screen polish.** The "Hi, {name}!" greeting now renders in
+  the same warm serif (Newsreader) used across the rest of Waffled instead of a generic
+  sans font, the greeting card and routine tiles now have soft drop shadows for a bit of
+  depth, and a fully-completed routine (Morning/Afternoon/Evening/Chores) now shows a
+  small green checkmark badge overlapping its count pill instead of a checkmark crammed
+  into the pill's text.
+
 ### Fixed
 
 - **Waffled-Bite device: WiFi now connects reliably.** The device's WiFi chip could
