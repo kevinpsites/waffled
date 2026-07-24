@@ -53,7 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with no explanation at all — both read as "tapping does nothing." Approval-required
   chores now show "Waiting on a parent's approval" instead of reverting; photo-required
   chores are hidden from the device's list entirely — completed from a parent's
-  phone/web instead — with a note when a whole routine is nothing but those.
+  phone/web instead — with a note when a whole routine is nothing but those. A routine
+  tile's "X of Y done" count and progress ring now exclude hidden photo-required
+  chores too, so the numbers match what's actually shown and a routine can still
+  reach "all done" once every visible chore is checked.
 - **Waffled-Bite device: WiFi now connects reliably.** The device's WiFi chip could
   crash-loop unpredictably on boot. Fixed by changing how the firmware is built (the
   underlying networking software is now compiled fresh instead of using a flaky

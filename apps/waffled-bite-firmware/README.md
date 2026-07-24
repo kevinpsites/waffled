@@ -282,11 +282,13 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   real poll lands) render but aren't tappable, by design. Root-caused via a live
   serial console on real hardware (`pio device monitor`, wrapped in `script -q` to
   survive running backgrounded) while tapping real rows, then confirmed against the
-  actual DB rows behind those instance ids — no animation on complete yet. Known gap:
-  the routine tiles' "X of Y done" counts and progress rings on the home screen still
-  count hidden photo-required tasks in Y, so a routine with some hidden can never
-  visually reach "all done" even though every *visible* row is checked — flagged to
-  the user, not yet resolved one way or the other.
+  actual DB rows behind those instance ids — no animation on complete yet. The routine
+  tiles' "X of Y done" counts and progress rings (`home_screen.cpp`'s
+  `routine_visible_count`/`routine_done_count`) also exclude hidden photo-required
+  tasks from both X and Y, so the numbers match what's actually shown on the opened
+  list and a routine can still reach "all done" once every visible chore is checked —
+  a photo-required task that happens to already be `done` (completed elsewhere, with a
+  photo) still doesn't count toward either side, for consistency.
 - **No TLS certificate validation** for `https://` server addresses on `esp32-p4`
   (see the `TODO(hardware bring-up)` comment in `wb_http_esp32.cpp`) — a self-hosted
   household's server is assumed to be plain `http://` on the local LAN for now.

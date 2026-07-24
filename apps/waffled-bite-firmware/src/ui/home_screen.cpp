@@ -69,11 +69,27 @@ static const char *greeting_period(const WbDeviceState &state)
   return "evening";
 }
 
+// Photo-required tasks are hidden from tasks_screen.cpp entirely (no
+// camera-capture flow), so they're excluded from these counts too — a
+// routine tile's "X of Y" and progress ring should match what's actually
+// achievable on this device, not include chores a kid can never check off
+// here. Both counters below apply the same exclusion for consistency: a
+// photo-required task that happens to be done (completed elsewhere, with a
+// photo) still doesn't count toward Y, so it can't push done > Y either.
+static int routine_visible_count(const WbRoutine &r)
+{
+  int n = 0;
+  for (int i = 0; i < r.count; i++)
+    if (!r.tasks[i].requiresPhoto)
+      n++;
+  return n;
+}
+
 static int routine_done_count(const WbRoutine &r)
 {
   int n = 0;
   for (int i = 0; i < r.count; i++)
-    if (r.tasks[i].done)
+    if (r.tasks[i].done && !r.tasks[i].requiresPhoto)
       n++;
   return n;
 }
@@ -226,7 +242,8 @@ static lv_obj_t *make_routine_tile(lv_obj_t *parent, const char *name, const WbR
   apply_card_shadow(tile);
 
   int done = routine_done_count(r);
-  bool all_done = r.count > 0 && done == r.count;
+  int visible = routine_visible_count(r);
+  bool all_done = visible > 0 && done == visible;
 
   lv_obj_t *top_row = lv_obj_create(tile);
   lv_obj_remove_style_all(top_row);
@@ -238,7 +255,7 @@ static lv_obj_t *make_routine_tile(lv_obj_t *parent, const char *name, const WbR
   make_icon(top_row, icon, fg);
 
   char badge_buf[24];
-  snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, r.count);
+  snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, visible);
   lv_obj_t *badge_lbl = nullptr;
   make_badge(top_row, badge_buf, lv_color_white(), fg, nullptr, &badge_lbl);
   if (out_badge_lbl)
@@ -264,7 +281,7 @@ static lv_obj_t *make_routine_tile(lv_obj_t *parent, const char *name, const WbR
 
   lv_obj_t *bar = lv_bar_create(bottom);
   lv_obj_set_size(bar, lv_pct(100), 8);
-  lv_bar_set_range(bar, 0, r.count > 0 ? r.count : 1);
+  lv_bar_set_range(bar, 0, visible > 0 ? visible : 1);
   lv_bar_set_value(bar, done, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(bar, lv_color_white(), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(bar, LV_OPA_40, LV_PART_MAIN);
@@ -296,7 +313,8 @@ static lv_obj_t *make_chores_bar(lv_obj_t *parent, const WbRoutine &r, lv_obj_t 
   apply_card_shadow(bar_card);
 
   int done = routine_done_count(r);
-  bool all_done = r.count > 0 && done == r.count;
+  int visible = routine_visible_count(r);
+  bool all_done = visible > 0 && done == visible;
 
   make_icon(bar_card, &wb_icon_broom_32, WB_COLOR_CHORES_TEXT);
 
@@ -308,7 +326,7 @@ static lv_obj_t *make_chores_bar(lv_obj_t *parent, const WbRoutine &r, lv_obj_t 
   lv_obj_t *bar = lv_bar_create(bar_card);
   lv_obj_set_flex_grow(bar, 1);
   lv_obj_set_height(bar, 8);
-  lv_bar_set_range(bar, 0, r.count > 0 ? r.count : 1);
+  lv_bar_set_range(bar, 0, visible > 0 ? visible : 1);
   lv_bar_set_value(bar, done, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(bar, lv_color_white(), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(bar, LV_OPA_40, LV_PART_MAIN);
@@ -319,7 +337,7 @@ static lv_obj_t *make_chores_bar(lv_obj_t *parent, const WbRoutine &r, lv_obj_t 
     *out_bar = bar;
 
   char badge_buf[24];
-  snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, r.count);
+  snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, visible);
   lv_obj_t *badge_lbl = nullptr;
   make_badge(bar_card, badge_buf, lv_color_white(), WB_COLOR_CHORES_TEXT, nullptr, &badge_lbl);
   if (out_badge_lbl)
@@ -439,11 +457,12 @@ static void wb_home_sync_ctx_delete_cb(lv_event_t *e)
 static void sync_routine_widgets(lv_obj_t *badge_lbl, lv_obj_t *bar, lv_obj_t *check, const WbRoutine &r)
 {
   int done = routine_done_count(r);
-  bool all_done = r.count > 0 && done == r.count;
+  int visible = routine_visible_count(r);
+  bool all_done = visible > 0 && done == visible;
   char badge_buf[24];
-  snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, r.count);
+  snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, visible);
   lv_label_set_text(badge_lbl, badge_buf);
-  lv_bar_set_range(bar, 0, r.count > 0 ? r.count : 1);
+  lv_bar_set_range(bar, 0, visible > 0 ? visible : 1);
   lv_bar_set_value(bar, done, LV_ANIM_OFF);
   if (all_done)
     lv_obj_clear_flag(check, LV_OBJ_FLAG_HIDDEN);
