@@ -1,11 +1,11 @@
 #include "home_screen.h"
+#include "../icons/wb_icons.h"
 #include <cstdio>
 
 // Palette — warm cream/ink, echoing the web app's theme, plus one tint per
-// routine tile matching the latest mocks. No custom icon font yet (see the
-// firmware README's icons note) — LV_SYMBOL_* built-ins stand in wherever
-// they actually match (checkmark, gear); everything else (sun/moon/lightning)
-// is text-only for now rather than a fabricated mismatched icon.
+// routine tile matching the "Waffled Buddy" mock. Routine/gear/star icons are
+// baked A8 images (see icons/wb_icons.h) tinted per-tile via
+// style_image_recolor — see make_icon()'s comment.
 #define WB_COLOR_BG lv_color_hex(0xF5EFE1)
 #define WB_COLOR_CARD lv_color_hex(0xFFFDF8)
 #define WB_COLOR_GREET_CARD lv_color_hex(0xE7E1D6)
@@ -14,14 +14,16 @@
 #define WB_COLOR_GOLD lv_color_hex(0xC98A1E)
 #define WB_COLOR_STARS_BG lv_color_hex(0xFBEFD6)
 
-#define WB_COLOR_MORNING lv_color_hex(0xDCC981)
-#define WB_COLOR_MORNING_TEXT lv_color_hex(0x6B551C)
-#define WB_COLOR_AFTERNOON lv_color_hex(0xCC9E70)
-#define WB_COLOR_AFTERNOON_TEXT lv_color_hex(0x6B3F1B)
-#define WB_COLOR_EVENING lv_color_hex(0xACA8DC)
-#define WB_COLOR_EVENING_TEXT lv_color_hex(0x362F73)
-#define WB_COLOR_CHORES lv_color_hex(0xA7C9AC)
-#define WB_COLOR_CHORES_TEXT lv_color_hex(0x2C5A34)
+// Exact tokens from the "Waffled Buddy" mock's buddy-400.css (--morning/-i etc.),
+// not eyeballed — see tools/icons/README.md for where this mock came from.
+#define WB_COLOR_MORNING lv_color_hex(0xF6E2A0)
+#define WB_COLOR_MORNING_TEXT lv_color_hex(0x8A6A1E)
+#define WB_COLOR_AFTERNOON lv_color_hex(0xF4C9A0)
+#define WB_COLOR_AFTERNOON_TEXT lv_color_hex(0x9C5A2A)
+#define WB_COLOR_EVENING lv_color_hex(0xC6C9F2)
+#define WB_COLOR_EVENING_TEXT lv_color_hex(0x4B4EA8)
+#define WB_COLOR_CHORES lv_color_hex(0xBEE6D6)
+#define WB_COLOR_CHORES_TEXT lv_color_hex(0x1C7A56)
 #define WB_COLOR_DONE_GREEN lv_color_hex(0x4CAF6D)
 
 // Short weekday/month names for the clock's date line — index matches
@@ -50,6 +52,21 @@ static void format_clock_date(char *clockBuf, size_t clockLen, char *dateBuf, si
   const char *weekday = (state.nowWeekday >= 0 && state.nowWeekday <= 6) ? WB_WEEKDAY_NAMES[state.nowWeekday] : "";
   const char *month = (state.nowMonth >= 1 && state.nowMonth <= 12) ? WB_MONTH_NAMES[state.nowMonth - 1] : "";
   snprintf(dateBuf, dateLen, "%s, %s %d", weekday, month, state.nowDay);
+}
+
+// "Let's have a great {period}" — matches the mock's dynamic time-of-day
+// subtitle rather than a hardcoded "day". Same morning/afternoon/evening
+// split as the routine tiles' names, not the routines' own schedules (those
+// can be configured per-household; this is just a friendly greeting).
+static const char *greeting_period(const WbDeviceState &state)
+{
+  if (state.nowHour < 0)
+    return "day"; // mock/pre-first-poll state — see format_clock_date's comment
+  if (state.nowHour < 12)
+    return "morning";
+  if (state.nowHour < 17)
+    return "afternoon";
+  return "evening";
 }
 
 static int routine_done_count(const WbRoutine &r)
@@ -84,12 +101,27 @@ static lv_obj_t *make_card(lv_obj_t *parent)
   return card;
 }
 
+// A baked A8 icon (see icons/wb_icons.h) tinted to `color` — A8 images carry
+// no color of their own, LVGL fills the shape with style_image_recolor at
+// draw time, so the same baked asset works on any tile/background.
+static lv_obj_t *make_icon(lv_obj_t *parent, const lv_image_dsc_t *src, lv_color_t color)
+{
+  lv_obj_t *img = lv_image_create(parent);
+  lv_image_set_src(img, src);
+  lv_obj_set_style_image_recolor(img, color, 0);
+  lv_obj_set_style_image_recolor_opa(img, LV_OPA_COVER, 0);
+  return img;
+}
+
 // A small rounded pill for counts/status ("1 / 3", "24 stars"). Sized to hug
 // its label — every caller must NOT also set an explicit size, or it falls
 // back to LVGL's 100x100 default object size (bit us once already).
+// `icon`, when given, renders before the label (the mock's star-badge chips) —
+// see make_icon's comment on why it needs `fg` as a recolor.
 // `out_lbl` optionally hands back the inner label so a caller can update its
 // text later without a rebuild (see wb_sync_home_screen).
-static lv_obj_t *make_badge(lv_obj_t *parent, const char *text, lv_color_t bg, lv_color_t fg, lv_obj_t **out_lbl = nullptr)
+static lv_obj_t *make_badge(lv_obj_t *parent, const char *text, lv_color_t bg, lv_color_t fg, const lv_image_dsc_t *icon = nullptr,
+                             lv_obj_t **out_lbl = nullptr)
 {
   lv_obj_t *pill = lv_obj_create(parent);
   lv_obj_remove_style_all(pill);
@@ -99,7 +131,13 @@ static lv_obj_t *make_badge(lv_obj_t *parent, const char *text, lv_color_t bg, l
   lv_obj_set_style_radius(pill, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_pad_hor(pill, 10, 0);
   lv_obj_set_style_pad_ver(pill, 4, 0);
+  lv_obj_set_flex_flow(pill, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(pill, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(pill, 5, 0);
   lv_obj_clear_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
+
+  if (icon)
+    make_icon(pill, icon, fg);
 
   lv_obj_t *lbl = lv_label_create(pill);
   lv_label_set_text(lbl, text);
@@ -171,6 +209,7 @@ static lv_obj_t *make_avatar_circle(lv_obj_t *parent, char initial, lv_coord_t d
 // wb_sync_home_screen can update them in place without tearing this tile
 // down.
 static lv_obj_t *make_routine_tile(lv_obj_t *parent, const char *name, const WbRoutine &r, lv_color_t bg, lv_color_t fg,
+                                    const lv_image_dsc_t *icon,
                                     lv_obj_t **out_badge_lbl = nullptr, lv_obj_t **out_bar = nullptr, lv_obj_t **out_check = nullptr)
 {
   lv_obj_t *tile = lv_obj_create(parent);
@@ -193,13 +232,15 @@ static lv_obj_t *make_routine_tile(lv_obj_t *parent, const char *name, const WbR
   lv_obj_remove_style_all(top_row);
   lv_obj_set_size(top_row, lv_pct(100), LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(top_row, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(top_row, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_flex_align(top_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(top_row, LV_OBJ_FLAG_SCROLLABLE);
+
+  make_icon(top_row, icon, fg);
 
   char badge_buf[24];
   snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, r.count);
   lv_obj_t *badge_lbl = nullptr;
-  make_badge(top_row, badge_buf, lv_color_white(), fg, &badge_lbl);
+  make_badge(top_row, badge_buf, lv_color_white(), fg, nullptr, &badge_lbl);
   if (out_badge_lbl)
     *out_badge_lbl = badge_lbl;
 
@@ -257,6 +298,8 @@ static lv_obj_t *make_chores_bar(lv_obj_t *parent, const WbRoutine &r, lv_obj_t 
   int done = routine_done_count(r);
   bool all_done = r.count > 0 && done == r.count;
 
+  make_icon(bar_card, &wb_icon_broom_32, WB_COLOR_CHORES_TEXT);
+
   lv_obj_t *title = lv_label_create(bar_card);
   lv_label_set_text(title, "Chores");
   lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
@@ -278,7 +321,7 @@ static lv_obj_t *make_chores_bar(lv_obj_t *parent, const WbRoutine &r, lv_obj_t 
   char badge_buf[24];
   snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, r.count);
   lv_obj_t *badge_lbl = nullptr;
-  make_badge(bar_card, badge_buf, lv_color_white(), WB_COLOR_CHORES_TEXT, &badge_lbl);
+  make_badge(bar_card, badge_buf, lv_color_white(), WB_COLOR_CHORES_TEXT, nullptr, &badge_lbl);
   if (out_badge_lbl)
     *out_badge_lbl = badge_lbl;
 
@@ -352,10 +395,7 @@ static lv_obj_t *make_gear_button(lv_obj_t *parent, lv_obj_t *settings_scr)
   lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t *icon = lv_label_create(btn);
-  lv_label_set_text(icon, LV_SYMBOL_SETTINGS);
-  lv_obj_set_style_text_font(icon, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(icon, WB_COLOR_INK, 0);
+  make_icon(btn, &wb_icon_gear_24, WB_COLOR_INK);
 
   // lv_obj_create's default flags already include CLICKABLE.
   lv_obj_add_event_cb(btn, wb_open_settings_cb, LV_EVENT_CLICKED, settings_scr);
@@ -372,6 +412,7 @@ struct WbHomeSyncCtx
 {
   lv_obj_t *clock_lbl;
   lv_obj_t *date_lbl;
+  lv_obj_t *sub_lbl;
   lv_obj_t *stars_top_lbl;
   lv_obj_t *stars_greet_lbl;
   lv_obj_t *morning_badge_lbl;
@@ -421,6 +462,10 @@ void wb_sync_home_screen(lv_obj_t *parent, const WbDeviceState &state)
   format_clock_date(clock_buf, sizeof(clock_buf), date_buf, sizeof(date_buf), state);
   lv_label_set_text(ctx->clock_lbl, clock_buf);
   lv_label_set_text(ctx->date_lbl, date_buf);
+
+  char sub_buf[40];
+  snprintf(sub_buf, sizeof(sub_buf), "Let's have a great %s", greeting_period(state));
+  lv_label_set_text(ctx->sub_lbl, sub_buf);
 
   char stars_buf[24];
   snprintf(stars_buf, sizeof(stars_buf), "%d stars", state.stars);
@@ -480,7 +525,7 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   lv_obj_clear_flag(top_right, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *stars_top_lbl = nullptr;
-  make_badge(top_right, stars_buf, WB_COLOR_STARS_BG, WB_COLOR_GOLD, &stars_top_lbl);
+  make_badge(top_right, stars_buf, WB_COLOR_STARS_BG, WB_COLOR_GOLD, &wb_icon_star_18, &stars_top_lbl);
   make_gear_button(top_right, settings_scr);
 
   // ── middle: greeting card + the three routine tiles + chores bar ────────
@@ -509,14 +554,16 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   lv_obj_set_style_text_color(hi_lbl, WB_COLOR_INK, 0);
   lv_obj_set_style_pad_top(hi_lbl, 8, 0);
 
+  char sub_buf[40];
+  snprintf(sub_buf, sizeof(sub_buf), "Let's have a great %s", greeting_period(state));
   lv_obj_t *sub_lbl = lv_label_create(greet);
-  lv_label_set_text(sub_lbl, "Let's have a great day");
+  lv_label_set_text(sub_lbl, sub_buf);
   lv_obj_set_style_text_font(sub_lbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(sub_lbl, WB_COLOR_MUTED, 0);
   lv_obj_set_style_pad_bottom(sub_lbl, 4, 0);
 
   lv_obj_t *stars_greet_lbl = nullptr;
-  make_badge(greet, stars_buf, WB_COLOR_STARS_BG, WB_COLOR_GOLD, &stars_greet_lbl);
+  make_badge(greet, stars_buf, WB_COLOR_STARS_BG, WB_COLOR_GOLD, &wb_icon_star_18, &stars_greet_lbl);
 
   lv_obj_t *right_col = lv_obj_create(middle);
   lv_obj_remove_style_all(right_col);
@@ -537,9 +584,9 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   lv_obj_t *morning_badge_lbl = nullptr, *morning_bar = nullptr, *morning_check = nullptr;
   lv_obj_t *afternoon_badge_lbl = nullptr, *afternoon_bar = nullptr, *afternoon_check = nullptr;
   lv_obj_t *evening_badge_lbl = nullptr, *evening_bar = nullptr, *evening_check = nullptr;
-  lv_obj_t *morning_tile = make_routine_tile(tiles_row, "Morning", state.morning, WB_COLOR_MORNING, WB_COLOR_MORNING_TEXT, &morning_badge_lbl, &morning_bar, &morning_check);
-  lv_obj_t *afternoon_tile = make_routine_tile(tiles_row, "Afternoon", state.afternoon, WB_COLOR_AFTERNOON, WB_COLOR_AFTERNOON_TEXT, &afternoon_badge_lbl, &afternoon_bar, &afternoon_check);
-  lv_obj_t *evening_tile = make_routine_tile(tiles_row, "Evening", state.evening, WB_COLOR_EVENING, WB_COLOR_EVENING_TEXT, &evening_badge_lbl, &evening_bar, &evening_check);
+  lv_obj_t *morning_tile = make_routine_tile(tiles_row, "Morning", state.morning, WB_COLOR_MORNING, WB_COLOR_MORNING_TEXT, &wb_icon_sun_32, &morning_badge_lbl, &morning_bar, &morning_check);
+  lv_obj_t *afternoon_tile = make_routine_tile(tiles_row, "Afternoon", state.afternoon, WB_COLOR_AFTERNOON, WB_COLOR_AFTERNOON_TEXT, &wb_icon_sunhigh_32, &afternoon_badge_lbl, &afternoon_bar, &afternoon_check);
+  lv_obj_t *evening_tile = make_routine_tile(tiles_row, "Evening", state.evening, WB_COLOR_EVENING, WB_COLOR_EVENING_TEXT, &wb_icon_moon_32, &evening_badge_lbl, &evening_bar, &evening_check);
   wb_wire_open_tasks(morning_tile, "Morning", state.morning, tasks_scr, parent, onComplete, onUncomplete);
   wb_wire_open_tasks(afternoon_tile, "Afternoon", state.afternoon, tasks_scr, parent, onComplete, onUncomplete);
   wb_wire_open_tasks(evening_tile, "Evening", state.evening, tasks_scr, parent, onComplete, onUncomplete);
@@ -552,7 +599,7 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   // see WbHomeSyncCtx's comment for the leak-avoidance rule (delete cb on
   // `top`, a real child, not on `parent` itself).
   WbHomeSyncCtx *sync_ctx = new WbHomeSyncCtx{
-      clock_lbl, date_lbl,
+      clock_lbl, date_lbl, sub_lbl,
       stars_top_lbl, stars_greet_lbl,
       morning_badge_lbl, morning_bar, morning_check,
       afternoon_badge_lbl, afternoon_bar, afternoon_check,

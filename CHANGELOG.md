@@ -30,12 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Waffled-Bite device: home screen polish.** The "Hi, {name}!" greeting now renders in
-  the same warm serif (Newsreader) used across the rest of Waffled instead of a generic
-  sans font, the greeting card and routine tiles now have soft drop shadows for a bit of
-  depth, and a fully-completed routine (Morning/Afternoon/Evening/Chores) now shows a
-  small green checkmark badge overlapping its count pill instead of a checkmark crammed
-  into the pill's text.
+- **Waffled-Bite device: home + grown-up-controls screen polish.** The "Hi, {name}!"
+  greeting now renders in the same warm serif (Newsreader) used across the rest of
+  Waffled instead of a generic sans font, the greeting card and routine tiles now have
+  soft drop shadows for a bit of depth, and a fully-completed routine
+  (Morning/Afternoon/Evening/Chores) now shows a small green checkmark badge
+  overlapping its count pill instead of a checkmark crammed into the pill's text. The
+  Morning/Afternoon/Evening/Chores tiles, the Sounds/Nightlight/Set-a-timer/Bedtime
+  grown-up controls, the settings gear, and the stars badges now show real icons
+  (sun/sun-high/moon/broom/sound/timer/bed/gear/star) instead of text placeholders, the
+  routine tile colors match the design mock's exact values, and the home screen's
+  subtitle now reads "Let's have a great morning/afternoon/evening" instead of a
+  hardcoded "day".
 
 ### Fixed
 

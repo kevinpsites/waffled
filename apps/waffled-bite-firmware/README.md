@@ -268,14 +268,34 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 - **No TLS certificate validation** for `https://` server addresses on `esp32-p4`
   (see the `TODO(hardware bring-up)` comment in `wb_http_esp32.cpp`) — a self-hosted
   household's server is assumed to be plain `http://` on the local LAN for now.
-- **No custom icons yet** — the mockup's sun/moon/timer/bed/lightning/star glyphs
-  have no LVGL built-in equivalent, so those spots are text-only; gear/speaker/back-
-  chevron/checkmark use LVGL's built-in `LV_SYMBOL_*` set. Real per-kid avatars
-  (the mockup's turtle emoji) are a colored initial-circle placeholder — a real
-  avatar needs a baked bitmap asset, not a font glyph. Flash headroom for these is
-  no longer tight (see below), so this is now just unbuilt, not budget-constrained.
-  **Home screen typography/elevation are now done**, though (a later, smaller polish
-  pass, ahead of the icon work above): the greeting uses a baked LVGL bitmap font
+- **Real icons + exact mock colors are now done for the home and grown-up-controls
+  screens.** The actual "Waffled Buddy" design mock (claude.ai/design project
+  `fb5fb8fb-ed6b-4edd-a02f-bfedc8035966`, pulled via the Claude Design MCP — the
+  800×480-panel variant, since this board is 1024×600, but "the idea and icons are the
+  same" per direct feedback) turned out to have a real SVG icon set and exact CSS color
+  tokens, not just a static screenshot. Both are now baked in: `src/icons/*.c` are the
+  mock's own sun/sunhigh/moon/broom/star/gear/sound/timer/bed icons, rasterized and
+  packed as LVGL 9 A8 (alpha-only) images — see `tools/icons/README.md` for the exact
+  pipeline (`rsvg-convert` + a small stdlib-only Python script; no LVGL image-converter
+  tool was used, `lv_img_conv`'s current npm release doesn't install cleanly) and
+  `home_screen.cpp`'s `make_icon()` for how one baked asset gets tinted per-tile at
+  draw time via `style_image_recolor`. The routine tile colors
+  (`WB_COLOR_MORNING`/`AFTERNOON`/`EVENING`/`CHORES` in `home_screen.cpp`) are now the
+  mock's exact `buddy-400.css` hex values, not eyeballed approximations. The home
+  screen's subtitle is now "Let's have a great {morning/afternoon/evening}" (derived
+  from the poll's `nowHour`), matching the mock's dynamic greeting instead of a
+  hardcoded "day". Real per-kid avatars are still a colored initial-circle placeholder
+  by design, not a gap — the mock's own 800×480-panel adaptation notes explicitly say
+  color+initial, never an emoji/photo, for low-DPI legibility (see
+  `buddy-400.css`'s "800×480 PANEL ADAPTATIONS" section). Icons vendored but not yet
+  wired anywhere: `check`/`close`/`back` (the done-check badge, and the quiet/wake/
+  routine-detail/sounds/nightlight screens' back buttons, still use LVGL's built-in
+  `LV_SYMBOL_*` glyphs, a reasonable stand-in already) — picking these up, plus
+  matching the mock's exact colors/serif-header treatment on the remaining screens
+  (routine detail, quiet, wake-light, sounds, nightlight, timer, rewards) is a
+  straightforward follow-up using the exact same patterns.
+- **Home screen typography/elevation** (an earlier, smaller polish pass, ahead of the
+  icon work above): the greeting uses a baked LVGL bitmap font
   (`src/fonts/wb_font_newsreader_semibold_32.c`, generated via `lv_font_conv` from
   Newsreader SemiBold — the same brand serif the marketing site loads, see
   `website/home/src/layouts/Base.astro` — latin range `0x20-0x7E`, 32px/4bpp, ~77KB;
@@ -284,9 +304,14 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   instead of Montserrat, every card/tile has a soft warm-tinted drop shadow
   (`apply_card_shadow` in `home_screen.cpp`), and a fully-completed routine shows a
   small green checkmark circle overlapping its count pill (`make_done_check`) instead
-  of a checkmark glyph appended into the pill text. When real icon assets land, the
-  same `lv_font_conv`-style "bake at build time, no runtime decoder" approach is the
-  plan — see the icon spec handed to whoever supplies the art for exact sizes/format.
+  of a checkmark glyph appended into the pill text.
+- **The Waffled logo** (`apps/web/public/logo.png`, resized to 140×140 — the source is
+  512×512/244KB, too large to bake as-is) is staged but **not placed anywhere on-device
+  yet** — the mock itself has no logo on any kid-device screen (consistent with its
+  no-photos/no-emoji low-DPI philosophy above), so there's no obvious slot for it.
+  Candidate spot: the onboarding/pairing screens (`onboarding_screen.cpp`), which
+  currently have no equivalent brand mark either. Needs a placement decision before
+  it's wired in.
 - **No OTA** — worth having before this ships to an actual kid's room.
 - **`esp32-p4` WiFi reliability: fixed, via a build-mode change.** The on-board
   ESP32-C6 WiFi co-processor talks to the P4 over SDIO (`esp-hosted`), and Arduino's
