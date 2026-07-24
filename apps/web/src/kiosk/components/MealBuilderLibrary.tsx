@@ -3,7 +3,7 @@
 // individual dishes (decision 12), so it's badged distinctly.
 import { useEffect, useMemo, useState } from 'react'
 import { useRecipes, useSavedMeals, type Meal, type Recipe } from '../../lib/api'
-import { PLATE_ROLES, roleLabel, type DragPayload, type PlateRole } from './MealBuilderPlate'
+import { roleLabel, type DragPayload, type PlateRole } from './MealBuilderPlate'
 
 const SEGMENTS = [
   { key: 'side', label: 'Sides' },
@@ -86,7 +86,7 @@ export function MealBuilderLibrary({
   onPlate: Set<string>
   addingRole: PlateRole | null
   onCancelAdding: () => void
-  onAddRecipe: (recipeId: string) => void
+  onAddRecipe: (recipeId: string, role: PlateRole) => void
   onAddMeal: (mealId: string) => void
   onDragItem: (payload: DragPayload | null) => void
 }) {
@@ -122,6 +122,11 @@ export function MealBuilderLibrary({
   const shownMeals: Meal[] = saved
 
   const empty = shownRecipes.length === 0 && shownMeals.length === 0
+
+  // Tapping ＋ files the dish under the role you're looking at: the banner's role
+  // if a plate slot asked for one, otherwise the segment. "All" has no role of its
+  // own, so it falls back to the plate's catch-all group.
+  const addRole: PlateRole = addingRole ?? (segment === 'all' ? 'side' : segment)
 
   return (
     <aside className="mb-lib">
@@ -180,7 +185,7 @@ export function MealBuilderLibrary({
               emoji={r.emoji ?? '🍽️'}
               meta={[kind, mins > 0 ? `${mins} min` : null].filter(Boolean).join(' · ')}
               onPlate={onPlate.has(r.id)}
-              onAdd={() => onAddRecipe(r.id)}
+              onAdd={() => onAddRecipe(r.id, addRole)}
               onDragStart={() => onDragItem({ kind: 'recipe', id: r.id })}
             />
           )
@@ -189,7 +194,7 @@ export function MealBuilderLibrary({
       </div>
 
       <div className="mb-lib-foot tiny muted">
-        Drag a row onto a slot, or tap ＋ to add it to {addingRole ? roleLabel(addingRole) : PLATE_ROLES[1].label}.
+        Drag a row onto a slot, or tap ＋ to add it to {roleLabel(addRole)}.
       </div>
     </aside>
   )

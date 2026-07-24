@@ -230,7 +230,7 @@ export function MealBuilder() {
           onPlate={onPlate}
           addingRole={addingRole}
           onCancelAdding={() => setAddingRole(null)}
-          onAddRecipe={(recipeId) => addRecipe(recipeId, addingRole ?? 'side')}
+          onAddRecipe={addRecipe}
           onAddMeal={addMeal}
           onDragItem={(payload) => {
             dragRef.current = payload

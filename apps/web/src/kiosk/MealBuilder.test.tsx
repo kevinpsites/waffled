@@ -334,6 +334,32 @@ describe('MealBuilder — add from library', () => {
     expect(post?.body).toMatchObject({ recipeId: 'r1', role: 'main' })
   })
 
+  it('files a ＋ tap under the segment you are browsing, not always Sides', async () => {
+    server.plate = plate({ recipes: [] })
+    renderBuilder()
+    await screen.findByText('Peach Cobbler')
+
+    const seg = document.querySelector('.mb-lib-seg') as HTMLElement
+    fireEvent.click(within(seg).getByRole('button', { name: 'Mains' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add BBQ Chicken' }))
+
+    await waitFor(() => expect(within(group('Main')).getByText('BBQ Chicken')).toBeInTheDocument())
+    const post = server.calls.find((c) => c.method === 'POST' && c.url.endsWith('/recipes'))
+    expect(post?.body).toMatchObject({ recipeId: 'r1', role: 'main' })
+  })
+
+  it('files a dessert under Dessert when the Desserts segment is active', async () => {
+    server.plate = plate({ recipes: [] })
+    renderBuilder()
+    await screen.findByText('Peach Cobbler')
+
+    const seg = document.querySelector('.mb-lib-seg') as HTMLElement
+    fireEvent.click(within(seg).getByRole('button', { name: 'Desserts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Peach Cobbler' }))
+
+    await waitFor(() => expect(within(group('Dessert')).getByText('Peach Cobbler')).toBeInTheDocument())
+  })
+
   it('dims a recipe that is already on the plate and disables its add button', async () => {
     server.plate = plate({ recipes: [dish({ recipeId: 'r1', title: 'BBQ Chicken', role: 'main' })] })
     renderBuilder()
