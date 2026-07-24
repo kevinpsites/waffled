@@ -232,6 +232,14 @@ the route, and add a dock listing everything running across the plate.
 - [ ] Docs in this PR: CHANGELOG `[Unreleased]`, features reference, roadmap moves,
       reword existing “meal builder” usages, add deferred items to roadmap
 
+### Found during integration — must fix before the PR
+- [ ] **The list’s “By meal” toggle drops a scheduled plate into “Other items”.**
+      `claim()` matches `sourceRecipeIds` against `board.meals[].recipeId`, which is
+      `null` for a meal-backed slot — the dish ids live in `recipes[]` instead. So a
+      plate’s groceries group correctly in the week rail but fall through to “Other
+      items” in the by-meal grouping. Found by the grocery agent, deliberately left
+      alone to avoid colliding with the parallel worktrees.
+
 ### PR2 — iOS
 - [ ] Builder (tap-to-add) on iPhone + iPad
 - [ ] Meal detail with per-recipe Cook
