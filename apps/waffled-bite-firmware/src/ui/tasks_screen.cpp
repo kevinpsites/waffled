@@ -12,7 +12,6 @@
 #define WB_COLOR_GOLD lv_color_hex(0xC98A1E)
 #define WB_COLOR_DONE lv_color_hex(0x4C9A6A)
 #define WB_COLOR_DONE_RING lv_color_hex(0xD8D2C4)
-#define WB_COLOR_AWAITING_RING lv_color_hex(0xC98A1E)
 
 static void wb_go_home_cb(lv_event_t *e)
 {
@@ -52,7 +51,7 @@ enum class WbRowVisual
 };
 
 // Owns everything one row's tap handler needs: the task id to POST, the
-// checkbox/label/status-pill to update in place, current done-state (so a
+// checkbox/label/status-label to update in place, current done-state (so a
 // tap knows which direction to flip), and the complete/uncomplete callbacks.
 // Heap-allocated per row and freed on LV_EVENT_DELETE — unlike
 // onboarding_screen.cpp's context (built once at boot, "intentionally never
@@ -62,10 +61,10 @@ enum class WbRowVisual
 struct WbTaskRowCtx
 {
   std::string taskId;
-  lv_obj_t *checkbox;
+  lv_obj_t *checkbox;      // hidden entirely while Awaiting — see wb_set_row_visual
   lv_obj_t *checkbox_icon;
   lv_obj_t *label;
-  lv_obj_t *status_pill; // hidden unless the row is Awaiting
+  lv_obj_t *status_label; // "Waiting on a parent's approval" — shown only while Awaiting
   bool done;
   WbTaskCompleteCallback onComplete;
   WbTaskCompleteCallback onUncomplete;
@@ -77,20 +76,31 @@ static void wb_row_ctx_delete_cb(lv_event_t *e)
   delete ctx;
 }
 
+// Awaiting drops the checkbox circle entirely rather than showing it in some
+// third color — direct feedback was that a circle next to "Sent!" still read
+// as a checkbox waiting to be tapped again. The text alone says what's
+// actually true: this one isn't up to the kid anymore.
 static void wb_set_row_visual(WbTaskRowCtx *ctx, WbRowVisual visual)
 {
   bool done = visual == WbRowVisual::Done;
   bool awaiting = visual == WbRowVisual::Awaiting;
-  lv_obj_set_style_bg_color(ctx->checkbox, done ? WB_COLOR_DONE : WB_COLOR_CARD, 0);
-  lv_obj_set_style_border_width(ctx->checkbox, done ? 0 : 2, 0);
-  lv_obj_set_style_border_color(ctx->checkbox, awaiting ? WB_COLOR_AWAITING_RING : WB_COLOR_DONE_RING, 0);
-  lv_label_set_text(ctx->checkbox_icon, done ? LV_SYMBOL_OK : "");
+
+  if (awaiting)
+  {
+    lv_obj_add_flag(ctx->checkbox, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(ctx->status_label, LV_OBJ_FLAG_HIDDEN);
+  }
+  else
+  {
+    lv_obj_clear_flag(ctx->checkbox, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ctx->status_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_bg_color(ctx->checkbox, done ? WB_COLOR_DONE : WB_COLOR_CARD, 0);
+    lv_obj_set_style_border_width(ctx->checkbox, done ? 0 : 2, 0);
+    lv_obj_set_style_border_color(ctx->checkbox, WB_COLOR_DONE_RING, 0);
+    lv_label_set_text(ctx->checkbox_icon, done ? LV_SYMBOL_OK : "");
+  }
   lv_obj_set_style_text_decor(ctx->label, done ? LV_TEXT_DECOR_STRIKETHROUGH : LV_TEXT_DECOR_NONE, 0);
   lv_obj_set_style_text_color(ctx->label, (done || awaiting) ? WB_COLOR_MUTED : WB_COLOR_INK, 0);
-  if (awaiting)
-    lv_obj_clear_flag(ctx->status_pill, LV_OBJ_FLAG_HIDDEN);
-  else
-    lv_obj_add_flag(ctx->status_pill, LV_OBJ_FLAG_HIDDEN);
 }
 
 // A tap toggles: undone -> done calls onComplete, done -> undone calls
@@ -104,8 +114,14 @@ static void wb_set_row_visual(WbTaskRowCtx *ctx, WbRowVisual visual)
 // the tap DID succeed — the chore needed a photo or a parent's OK, so the
 // instance is sitting in the approval queue rather than "done" — the row
 // shows that pending state instead of silently reverting to unchecked with
-// no explanation, and stops accepting taps until the next poll rebuilds this
-// screen (once a parent approves/rejects it).
+// no explanation, and stops accepting taps. This screen (tasks_scr) is only
+// ever rebuilt when a routine tile is tapped from Home, NOT on the
+// background 5s poll (see main.cpp's wb_do_poll — only home_scr/settings_scr
+// get synced in place while open, to avoid tearing an in-flight tap out from
+// under itself), so a frozen row stays frozen until the kid backs out to
+// Home and re-enters — at which point it reads whatever the most recent
+// poll already knows (e.g. a parent's approval that landed while this
+// screen was still open).
 static void wb_row_clicked_cb(lv_event_t *e)
 {
   WbTaskRowCtx *ctx = (WbTaskRowCtx *)lv_event_get_user_data(e);
@@ -170,8 +186,11 @@ static void wb_make_task_row(lv_obj_t *parent, const WbTask &task, WbTaskComplet
   // Hidden unless the row is Awaiting — see wb_set_row_visual. A photo-required
   // row shows its own always-on pill instead (built separately below), never
   // this one.
-  lv_obj_t *status_pill = make_badge(row, "Sent!", WB_COLOR_STARS_BG, WB_COLOR_GOLD);
-  lv_obj_add_flag(status_pill, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t *status_label = lv_label_create(row);
+  lv_label_set_text(status_label, "Waiting on a parent's approval");
+  lv_obj_set_style_text_font(status_label, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(status_label, WB_COLOR_GOLD, 0);
+  lv_obj_add_flag(status_label, LV_OBJ_FLAG_HIDDEN);
 
   if (task.requiresPhoto)
     make_badge(row, "Needs a photo", WB_COLOR_BG, WB_COLOR_MUTED);
@@ -190,16 +209,16 @@ static void wb_make_task_row(lv_obj_t *parent, const WbTask &task, WbTaskComplet
   lv_obj_set_style_text_font(checkbox_icon, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(checkbox_icon, lv_color_white(), 0);
 
-  WbTaskRowCtx *ctx = new WbTaskRowCtx{std::string(task.id), checkbox, checkbox_icon, label, status_pill, task.done, onComplete, onUncomplete};
+  WbTaskRowCtx *ctx = new WbTaskRowCtx{std::string(task.id), checkbox, checkbox_icon, label, status_label, task.done, onComplete, onUncomplete};
   WbRowVisual initial = task.done ? WbRowVisual::Done : (task.awaiting ? WbRowVisual::Awaiting : WbRowVisual::Pending);
   wb_set_row_visual(ctx, initial);
 
   // Mock data (native's placeholder before the first real poll) uses empty
   // ids — nothing to POST against. A photo-required chore isn't tappable on
   // this device at all (no camera-capture flow — completed from a parent's
-  // phone/web instead); an already-awaiting row is frozen until the next
-  // poll rebuilds this screen. Everything else (undone or done, real id,
-  // not requiring a photo) toggles either direction on tap.
+  // phone/web instead); an already-awaiting row is frozen (see
+  // wb_row_clicked_cb's comment on why). Everything else (undone or done,
+  // real id, not requiring a photo) toggles either direction on tap.
   bool interactive = task.id[0] != '\0' && !task.requiresPhoto && !task.awaiting;
   if (!interactive)
   {
