@@ -157,10 +157,14 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   to the real API. Real-hardware bring-up on the target board (ELECROW CrowPanel
   Advanced 7") is underway, including an on-device WiFi-provisioning UI (scan, pick a
   network, enter the password on the built-in keyboard — no more hardcoded
-  credentials) and a fix for an intermittent WiFi-chip crash-loop found during
-  bring-up. **Pending:** OTA updates, TLS certificate validation for `https://` server
-  addresses, and custom icon assets — see `apps/waffled-bite-firmware/README.md` for
-  the full list of open items.
+  credentials), a fix for an intermittent WiFi-chip crash-loop found during bring-up,
+  and the real "Waffled Buddy" mock's icons/colors/typography, verified on real
+  hardware. Tap-to-complete on the device's own task list handles chores needing a
+  parent's OK (shows a "Sent!" pending state rather than silently reverting) and
+  photo-required chores (not tappable on-device at all — no camera-capture flow yet,
+  so those are completed from a parent's phone/web instead). **Pending:** OTA updates,
+  TLS certificate validation for `https://` server addresses, and on-device photo
+  capture — see `apps/waffled-bite-firmware/README.md` for the full list of open items.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
   are REST + live-refresh bus.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend

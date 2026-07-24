@@ -250,21 +250,31 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   - **Parent web app**: added the missing bedtime `<input type="time">` per schedule (with
     the "the night before" hint), plus a live status pill on the card
     ("🌙 Asleep right now" / "🟡 Almost time to wake" / "🟢 Awake").
-- **Tap-to-complete on tasks is done.** Tapping a routine tile or the Chores bar opens
-  a task list (`src/ui/tasks_screen.cpp`) with a checkbox per task; tapping an undone
-  row calls `POST /api/waffled-bites/device/tasks/:instanceId/complete` with the
-  device's access token, optimistically marks the row done, and reverts it if the
-  request fails (network error, or a photo-proof-required chore this device can't
-  satisfy yet — `ProofRequiredError` on the backend). A successful complete triggers
-  an immediate poll so stars/progress update everywhere without waiting up to 5s.
-  Verified against the real demo backend: paired a real device, hit the exact
-  complete endpoint with a real device token (the same request `wb_complete_task` in
-  `main.cpp` builds), confirmed the reward posted (`stars` went 42→48) and the
-  instance flipped to `status: "done"` on a follow-up poll; separately ran the actual
-  compiled `native` binary through a full pair→token→poll cycle to confirm nothing in
-  the port broke the runtime. What's still open: no undo/uncomplete from the device,
-  no animation on complete, and mock/placeholder tasks (empty `id`, shown before the
-  first real poll lands) render but aren't tappable, by design.
+- **Tap-to-complete (and un-complete) on tasks is done, with a three-way result, not
+  pass/fail.** Tapping a routine tile or the Chores bar opens a task list
+  (`src/ui/tasks_screen.cpp`) with a checkbox per row; an undone row calls
+  `POST .../tasks/:instanceId/complete`, a done row calls `.../uncomplete`, both with
+  the device's access token. `WbTaskCompleteResult` (`tasks_screen.h`) distinguishes
+  three outcomes rather than a plain bool: `Success` (optimistic flip stands),
+  `Failed` (network error, 401, or an uncomplete that didn't take — row reverts), and
+  `AwaitingApproval` — a chore requiring a parent's OK still answers HTTP 200, just
+  with `instance.status: "awaiting"` rather than `"done"`. That case used to fall
+  through to the same silent revert as a hard failure, which real-device testing
+  showed reads exactly like "tapping does nothing" (every chore due that day needed
+  either approval or a photo, so *every* tap silently failed). Now an
+  `AwaitingApproval` result shows a "Sent!" pending pill instead of reverting, and
+  freezes the row (no more taps) until the next poll rebuilds the screen. A chore
+  requiring a photo (`WbTask.requiresPhoto`, plumbed through from the device poll's
+  `requiresPhoto` field — `apps/api/.../waffledBites.ts`) isn't tappable on this device
+  at all — no camera-capture flow exists yet, so it'd just 422 `ProofRequiredError`
+  every time — and instead shows an always-on "Needs a photo" note; it's completed
+  from a parent's phone/web instead. A successful complete/uncomplete triggers an
+  immediate poll so stars/progress update everywhere without waiting up to 5s. Mock/
+  placeholder tasks (empty `id`, shown before the first real poll lands) render but
+  aren't tappable, by design. Root-caused via a live serial console on real hardware
+  (`pio device monitor`, wrapped in `script -q` to survive running backgrounded) while
+  tapping real rows, then confirmed against the actual DB rows behind those instance
+  ids — no animation on complete yet.
 - **No TLS certificate validation** for `https://` server addresses on `esp32-p4`
   (see the `TODO(hardware bring-up)` comment in `wb_http_esp32.cpp`) — a self-hosted
   household's server is assumed to be plain `http://` on the local LAN for now.

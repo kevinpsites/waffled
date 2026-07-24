@@ -246,8 +246,8 @@ static void wb_forget_pairing_and_unpair()
   wb_forget_pairing();
 }
 
-static bool wb_complete_task(const std::string &taskId);
-static bool wb_uncomplete_task(const std::string &taskId);
+static WbTaskCompleteResult wb_complete_task(const std::string &taskId);
+static WbTaskCompleteResult wb_uncomplete_task(const std::string &taskId);
 static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue);
 static bool wb_start_timer(int durationSec);
 static bool wb_end_timer();
@@ -515,51 +515,50 @@ static void wb_poll_timer_cb(lv_timer_t * /*timer*/)
 // update everywhere (home screen tiles, greeting badge) without waiting up
 // to 5s for the next timer tick — the tapped row itself already updated
 // optimistically in tasks_screen.cpp before this was even called.
-static bool wb_complete_task(const std::string &taskId)
+static WbTaskCompleteResult wb_complete_task(const std::string &taskId)
 {
   if (taskId.empty()) // mock/placeholder tasks have no real instance id
-    return false;
+    return WbTaskCompleteResult::Failed;
 
   if (wb_tick_ms() >= g_tokenExpiresAtMs)
   {
     if (!wb_refresh_access_token())
-      return false;
+      return WbTaskCompleteResult::Failed;
   }
 
   std::string url = g_serverUrl + "/api/waffled-bites/device/tasks/" + taskId + "/complete";
   WbHttpResponse resp = wb_http_post(url.c_str(), "{}", g_accessToken.c_str());
-  bool ok = resp.ok && resp.status == 200;
-  if (ok)
-  {
-    // A photo-proof/approval-required chore still answers HTTP 200, but with
-    // instance.status "awaiting", not "done" — treat that as NOT a completed
-    // tap (the row should revert to its un-tapped state via the caller's
-    // existing failure-revert path) instead of leaving it optimistically
-    // checked until the next poll silently un-checks it with no explanation.
-    JsonDocument doc;
-    if (!deserializeJson(doc, resp.body))
-    {
-      const char *status = doc["instance"]["status"].is<const char *>() ? doc["instance"]["status"].as<const char *>() : "";
-      if (strcmp(status, "done") != 0)
-        ok = false;
-    }
-  }
-  if (ok)
+  if (!resp.ok || resp.status != 200)
+    return WbTaskCompleteResult::Failed;
+
+  // A photo-proof/approval-required chore still answers HTTP 200, but with
+  // instance.status "awaiting", not "done" — that's a distinct result from a
+  // plain completion (see WbTaskCompleteResult), not a failure.
+  JsonDocument doc;
+  if (deserializeJson(doc, resp.body))
+    return WbTaskCompleteResult::Failed;
+  const char *status = doc["instance"]["status"].is<const char *>() ? doc["instance"]["status"].as<const char *>() : "";
+  WbTaskCompleteResult result = strcmp(status, "done") == 0     ? WbTaskCompleteResult::Success
+                                 : strcmp(status, "awaiting") == 0 ? WbTaskCompleteResult::AwaitingApproval
+                                                                    : WbTaskCompleteResult::Failed;
+  if (result != WbTaskCompleteResult::Failed)
     wb_do_poll();
-  return ok;
+  return result;
 }
 
 // tasks_screen.h's onUncomplete — un-tapping an already-done row. Mirrors
-// wb_complete_task exactly, just POSTing .../uncomplete instead.
-static bool wb_uncomplete_task(const std::string &taskId)
+// wb_complete_task exactly, just POSTing .../uncomplete instead. Never
+// returns AwaitingApproval — there's no photo/approval ambiguity on the way
+// back to "pending".
+static WbTaskCompleteResult wb_uncomplete_task(const std::string &taskId)
 {
   if (taskId.empty())
-    return false;
+    return WbTaskCompleteResult::Failed;
 
   if (wb_tick_ms() >= g_tokenExpiresAtMs)
   {
     if (!wb_refresh_access_token())
-      return false;
+      return WbTaskCompleteResult::Failed;
   }
 
   std::string url = g_serverUrl + "/api/waffled-bites/device/tasks/" + taskId + "/uncomplete";
@@ -567,7 +566,7 @@ static bool wb_uncomplete_task(const std::string &taskId)
   bool ok = resp.ok && resp.status == 200;
   if (ok)
     wb_do_poll();
-  return ok;
+  return ok ? WbTaskCompleteResult::Success : WbTaskCompleteResult::Failed;
 }
 
 // The settings detail screen's onChange callback (settings_screen.h).
