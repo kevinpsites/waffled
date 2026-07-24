@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { Icon } from '../icons'
 import { useTopbarFull } from '../topbar-slot'
-import { groceryApi, useGroceryBoard, type GroceryBoardItem } from '../../lib/api'
+import { groceryApi, useGroceryBoard, type GroceryBoardItem, type GroceryMealDish } from '../../lib/api'
 import { StaplesModal } from './StaplesModal'
 import '../../styles/grocery.css'
 
@@ -34,8 +34,9 @@ const MEAL_LABEL: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lun
 const MEAL_EMOJI: Record<string, string> = { breakfast: '🍳', lunch: '🥪', dinner: '🍽️', snack: '🍎' }
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const
 
-// Ambient attribution under an item name: meal-builder items read as auto-generated
-// ("from meal plan"); hand-added items show who added them ("added by {name}").
+// Ambient attribution under an item name: items auto-generated from the meal plan
+// read as such ("from meal plan"); hand-added items show who added them
+// ("added by {name}").
 // Subtle by design — same visual weight as the quantity metadata.
 function ItemAttribution({ item }: { item: GroceryBoardItem }) {
   const fromMeal = item.source === 'auto' || (item.sourceRecipeIds?.length ?? 0) > 0
@@ -64,6 +65,65 @@ function ItemAttribution({ item }: { item: GroceryBoardItem }) {
     )
   }
   return null
+}
+
+// A Meal Builder plate in the week rail: ONE parent row (plate dot, day, name, a
+// "Meal · N" count and a preview of its dishes' emoji) that expands into a child
+// row per dish. The dishes share the plate's dot color — provenance is per-meal.
+function PlateRow({
+  name,
+  color,
+  dishes,
+  day,
+  open,
+  onToggle,
+  onOpenRecipe,
+}: {
+  name: string
+  color: string
+  dishes: GroceryMealDish[]
+  day?: string
+  open: boolean
+  onToggle: () => void
+  onOpenRecipe: (recipeId: string) => void
+}) {
+  return (
+    <Fragment>
+      <div
+        className="gdinner gdinner-plate link"
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <span className="gdinner-c" style={{ background: color }} />
+        {day && <span className="gdinner-day">{day}</span>}
+        <span className="gdinner-t">{name}</span>
+        <span className="gplate-n">Meal · {dishes.length}</span>
+        <span className={`cal-chev ${open ? 'open' : ''}`}>›</span>
+        <span className="gplate-strip" style={{ background: `${color}1f` }} aria-hidden>
+          {dishes.slice(0, 4).map((d) => (
+            <span key={d.recipeId}>{d.emoji ?? '🍽️'}</span>
+          ))}
+        </span>
+      </div>
+      {open &&
+        dishes.map((d) => (
+          <div
+            key={d.recipeId}
+            className="gdinner gdish link"
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpenRecipe(d.recipeId)}
+          >
+            <span className="gdinner-c gdish-c" style={{ background: color }} />
+            <span className="gdinner-t">{d.title ?? '—'}</span>
+            <span className="gdinner-chev">›</span>
+            <span className="gdinner-e" style={{ background: `${color}1f` }}>{d.emoji ?? '🍽️'}</span>
+          </div>
+        ))}
+    </Fragment>
+  )
 }
 
 function ItemRow({
@@ -187,6 +247,11 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const toggleSection = (key: string) =>
     setCollapsed((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
   const [railMeal, setRailMeal] = useState<string>('dinner') // which meal type the rail shows
+  // Meal Builder plates the rail has expanded into their dishes (keyed by meal id).
+  // Collapsed by default so the rail stays a one-line-per-meal summary.
+  const [openMeals, setOpenMeals] = useState<Set<string>>(new Set())
+  const toggleMeal = (id: string) =>
+    setOpenMeals((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const rebuilt = useRef<Set<string>>(new Set()) // weeks already auto-built (once each)
   const addRef = useRef<HTMLInputElement>(null)
 
@@ -215,11 +280,37 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     [onBack]
   )
 
+  // Provenance dot colors for an item. Two linkages have to be honored, because a
+  // plate reaches its rows differently depending on how it got there:
+  //  - a SCHEDULED plate is built by the weekly rebuild, which credits the dishes'
+  //    recipe ids (no meal id) — so every dish maps to the plate's color;
+  //  - an UNSCHEDULED plate ("Add plate to list") credits the plate itself on each
+  //    row, so its meal id maps too.
+  // Colors are de-duped, which is what makes the dots per-MEAL: a row two of a
+  // plate's dishes both wanted still shows one dot, not one per dish.
   const colorFor = useMemo(() => {
-    const m = new Map<string, string>()
-    board?.meals.forEach((d) => d.recipeId && m.set(d.recipeId, d.color))
-    board?.unscheduled?.forEach((u) => m.set(u.recipeId, u.color))
-    return (ids: string[]) => ids.map((id) => m.get(id)).filter(Boolean) as string[]
+    const byRecipe = new Map<string, string>()
+    const byMeal = new Map<string, string>()
+    // first writer wins, so a dish that is also scheduled on its own keeps its
+    // own slot color rather than being repainted by a plate.
+    const recipe = (id: string, c: string) => { if (!byRecipe.has(id)) byRecipe.set(id, c) }
+    board?.meals.forEach((d) => {
+      if (d.mealId) {
+        byMeal.set(d.mealId, d.color)
+        d.recipes?.forEach((r) => recipe(r.recipeId, d.color))
+      } else if (d.recipeId) recipe(d.recipeId, d.color)
+    })
+    board?.unscheduledMeals?.forEach((m) => {
+      byMeal.set(m.mealId, m.color)
+      m.recipes.forEach((r) => recipe(r.recipeId, m.color))
+    })
+    board?.unscheduled?.forEach((u) => recipe(u.recipeId, u.color))
+    return (item: { sourceRecipeIds?: string[]; sourceMealIds?: string[] }) => {
+      const out = new Set<string>()
+      for (const id of item.sourceMealIds ?? []) { const c = byMeal.get(id); if (c) out.add(c) }
+      for (const id of item.sourceRecipeIds ?? []) { const c = byRecipe.get(id); if (c) out.add(c) }
+      return [...out]
+    }
   }, [board])
 
   if (loading && !board) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
@@ -229,6 +320,14 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   // Completed = checked and past the grace window (tucked into the Completed section).
   const activeItems = board.items.filter((i) => !i.checked || recent.has(i.id))
   const completedItems = board.items.filter((i) => i.checked && !recent.has(i.id))
+
+  // Plates added to the list without ever being scheduled. Their dishes render as
+  // the plate's child rows, so a dish must never ALSO show up as a loose
+  // unscheduled recipe (the server already drops it — this keeps the client honest
+  // if it doesn't).
+  const unscheduledMeals = board.unscheduledMeals ?? []
+  const inAPlate = new Set(unscheduledMeals.flatMap((m) => m.recipes.map((r) => r.recipeId)))
+  const looseUnscheduled = (board.unscheduled ?? []).filter((u) => !inAPlate.has(u.recipeId))
 
   async function toggle(item: GroceryBoardItem) {
     const next = !item.checked
@@ -322,7 +421,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           }
           // Recipes added straight from a recipe page (not planned this week) get
           // their own sections after the planned meals — the "unscheduled" shelf.
-          for (const u of board.unscheduled ?? []) {
+          for (const u of looseUnscheduled) {
             const items = claim(u.recipeId)
             if (items.length) perMeal.push({ key: `un|${u.recipeId}`, aisle: u.title ?? 'Recipe', items, unscheduled: true, recipeId: u.recipeId })
           }
@@ -373,7 +472,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           <ItemRow
             key={it.id}
             item={it}
-            colors={colorFor(it.sourceRecipeIds)}
+            colors={colorFor(it)}
             onToggle={() => toggle(it)}
             onSave={(patch) => saveItem(it, patch)}
             onDelete={() => deleteItem(it)}
@@ -504,28 +603,54 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
               ))}
             </div>
           )}
-          {/* Rows with a linked recipe drill into it — parity with the iOS rail. */}
-          {railMeals.map((d) => (
-            <div
-              key={`${d.date}-${d.mealType}-${d.recipeId ?? d.title}`}
-              className={`gdinner ${d.recipeId ? 'link' : ''}`}
-              {...(d.recipeId ? { role: 'button', tabIndex: 0, onClick: () => navigate(`/meals/recipe/${d.recipeId}`) } : {})}
-            >
-              <span className="gdinner-c" style={{ background: d.color }} />
-              <span className="gdinner-day">{new Date(String(d.date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
-              <span className="gdinner-t">{d.title ?? '—'}</span>
-              {d.recipeId && <span className="gdinner-chev">›</span>}
-              <span className="gdinner-e" style={{ background: `${d.color}1f` }}>{d.emoji ?? MEAL_EMOJI[d.mealType] ?? '🍽️'}</span>
-            </div>
-          ))}
-          {/* Off-plan recipes added from their pages — kept below a divider so the
-              card stays a complete legend for the item dot colors. Not affected by
-              the meal-type segment (they belong to no slot). */}
-          {(board.unscheduled ?? []).length > 0 && (
+          {railMeals.length > 0 && <div className="grocery-rail-sub">Scheduled</div>}
+          {/* A plate is ONE row that expands into its dishes; a plain single-recipe
+              slot keeps drilling straight into its recipe (parity with the iOS rail). */}
+          {railMeals.map((d) =>
+            d.mealId && (d.recipes?.length ?? 0) > 0 ? (
+              <PlateRow
+                key={`plate|${d.date}|${d.mealType}|${d.mealId}`}
+                name={d.title ?? 'Meal'}
+                color={d.color}
+                dishes={d.recipes ?? []}
+                day={new Date(String(d.date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}
+                open={openMeals.has(d.mealId)}
+                onToggle={() => toggleMeal(d.mealId!)}
+                onOpenRecipe={(id) => navigate(`/meals/recipe/${id}`)}
+              />
+            ) : (
+              <div
+                key={`${d.date}-${d.mealType}-${d.recipeId ?? d.title}`}
+                className={`gdinner ${d.recipeId ? 'link' : ''}`}
+                {...(d.recipeId ? { role: 'button', tabIndex: 0, onClick: () => navigate(`/meals/recipe/${d.recipeId}`) } : {})}
+              >
+                <span className="gdinner-c" style={{ background: d.color }} />
+                <span className="gdinner-day">{new Date(String(d.date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                <span className="gdinner-t">{d.title ?? '—'}</span>
+                {d.recipeId && <span className="gdinner-chev">›</span>}
+                <span className="gdinner-e" style={{ background: `${d.color}1f` }}>{d.emoji ?? MEAL_EMOJI[d.mealType] ?? '🍽️'}</span>
+              </div>
+            )
+          )}
+          {/* Plates and recipes put on the list without a slot — kept below a divider
+              so the card stays a complete legend for the item dot colors. Not affected
+              by the meal-type segment (they belong to no slot). */}
+          {(unscheduledMeals.length > 0 || looseUnscheduled.length > 0) && (
             <>
               <div className="grocery-rail-div" />
               <div className="grocery-rail-sub">Unscheduled</div>
-              {(board.unscheduled ?? []).map((u) => (
+              {unscheduledMeals.map((m) => (
+                <PlateRow
+                  key={`plate|${m.mealId}`}
+                  name={m.name}
+                  color={m.color}
+                  dishes={m.recipes}
+                  open={openMeals.has(m.mealId)}
+                  onToggle={() => toggleMeal(m.mealId)}
+                  onOpenRecipe={(id) => navigate(`/meals/recipe/${id}`)}
+                />
+              ))}
+              {looseUnscheduled.map((u) => (
                 <div key={u.recipeId} className="gdinner link" role="button" tabIndex={0} onClick={() => navigate(`/meals/recipe/${u.recipeId}`)}>
                   <span className="gdinner-c" style={{ background: u.color }} />
                   <span className="gdinner-t">{u.title}</span>
