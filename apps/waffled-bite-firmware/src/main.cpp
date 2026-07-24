@@ -86,8 +86,11 @@ static void touchpad_read(lv_indev_t * /*indev*/, lv_indev_data_t *data)
     // controller and panel orientation just don't line up otherwise," so
     // both axes end up hand-corrected here rather than picking a different
     // preset.
-    data->point.x = 1024 - ts.points[0].x;
-    data->point.y = 600 - ts.points[0].y;
+    // 1023/599, not 1024/600: valid coordinates on this 1024x600 panel are
+    // 0..1023 / 0..599, so flipping against the raw panel size put an edge
+    // touch (raw 0) one pixel past the last valid column/row.
+    data->point.x = 1023 - ts.points[0].x;
+    data->point.y = 599 - ts.points[0].y;
   }
   else
   {
