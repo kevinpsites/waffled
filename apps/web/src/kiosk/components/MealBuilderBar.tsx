@@ -1,0 +1,90 @@
+// The dark stat bar pinned under the Meal Builder: serves stepper · hands-on
+// time · groceries · "save to reuse" · the two actions.
+//
+// `servings` is stored and displayed only — v1 deliberately does not rescale
+// ingredient quantities (decision 4).
+
+function hoursMinutes(total: number | null): string {
+  if (!total || total <= 0) return '—'
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  if (h === 0) return `${m}m`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}m`
+}
+
+export function MealBuilderBar({
+  name,
+  servings,
+  totalMinutes,
+  toBuy,
+  isSaved,
+  empty,
+  busy,
+  onServings,
+  onToggleSaved,
+  onAddToList,
+  onSchedule,
+}: {
+  name: string
+  servings: number
+  totalMinutes: number | null
+  toBuy: number
+  isSaved: boolean
+  empty: boolean
+  busy: boolean
+  onServings: (n: number) => void
+  onToggleSaved: () => void
+  onAddToList: () => void
+  onSchedule: () => void
+}) {
+  return (
+    <footer className="mb-bar">
+      <div className="mb-bar-stat">
+        <span className="mb-bar-l">Serves</span>
+        <div className="mb-step">
+          <button type="button" aria-label="Fewer servings" onClick={() => onServings(Math.max(1, servings - 1))}>
+            −
+          </button>
+          <span className="mb-step-v" data-testid="mb-serves">
+            {servings}
+          </span>
+          <button type="button" aria-label="More servings" onClick={() => onServings(servings + 1)}>
+            ＋
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-bar-stat">
+        <span className="mb-bar-l">Hands-on time</span>
+        <span className="mb-bar-v">{`≈ ${hoursMinutes(totalMinutes)}`}</span>
+      </div>
+
+      <div className="mb-bar-stat">
+        <span className="mb-bar-l">Groceries</span>
+        <span className="mb-bar-v">{`${toBuy} to buy`}</span>
+      </div>
+
+      <div className="mb-bar-save">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={isSaved}
+          aria-label={`Save “${name}” to reuse`}
+          className={`toggle ${isSaved ? 'on' : ''}`}
+          onClick={onToggleSaved}
+        />
+        <span className="mb-bar-save-t">Save “{name}” to reuse</span>
+      </div>
+
+      <div className="mb-bar-actions">
+        <button type="button" className="btn btn-ghost" disabled={empty || busy} onClick={onAddToList}>
+          Add plate to list
+        </button>
+        <button type="button" className="btn btn-primary" disabled={empty || busy} onClick={onSchedule}>
+          Schedule meal
+        </button>
+      </div>
+    </footer>
+  )
+}
