@@ -481,3 +481,63 @@
   justify-content: center;
   cursor: pointer;
 }
+
+/* ---- rail: a Meal Builder plate --------------------------------------------
+   A plate is ONE row — plate dot, day, name, a "Meal · N" count and a preview of
+   its dishes' emoji — that expands into a child row per dish. The dish rows sit
+   indented under it and wear the plate's color (dots are per-meal), so the rail
+   still reads as one line per meal until you ask for the detail. */
+.gdinner-plate .gdinner-t {
+  font-weight: 700;
+}
+.gplate-n {
+  flex: none;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--ink-3) 12%, transparent);
+  border-radius: 999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+.gdinner-plate .cal-chev {
+  font-size: 18px;
+}
+/* the dish preview reuses the recipe-thumb tile, widened for a few emoji */
+.gplate-strip {
+  flex: none;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 7px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 13px;
+  line-height: 1;
+}
+.gdish {
+  padding-left: 20px;
+}
+.gdish .gdinner-t {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.gdish.link:hover .gdinner-t {
+  color: var(--ink);
+}
+/* lighter dot than the plate's own — same color, one step back */
+.gdish-c {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  opacity: 0.5;
+}
+.gdish .gdinner-e {
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+}
