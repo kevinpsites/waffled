@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The goal Log sheet now suggests what you actually do.** The "What did you do?"
+  chips are no longer a fixed list of six — each goal offers up the notes you've logged
+  against it before, most-used first, so a goal you keep marking "family walk" or "lunch
+  outside" starts offering those with one tap. Suggestions are per person (the notes where
+  that family member took part, not just whoever tapped Log), and until a goal has enough
+  history of its own the familiar defaults fill in the rest.
+
 - **Waffled-Bite device: set up WiFi right on the screen.** Connecting a new device to
   your home network no longer requires flashing it with hardcoded credentials — it now
   scans for nearby networks, lets you pick one and enter the password on the device's

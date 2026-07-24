@@ -151,6 +151,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Checklist tick-off** — complete a checklist by ticking its named steps (in the goal detail + the Log sheet) | ✅ | ✅ | ✅ | ✅ Done (was iPhone-blocked; now shipped) |
 | **Type-aware Log sheet** — count stepper, total amount, habit one-tap, checklist ticking; unit shown correctly | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | **Hours + minutes for time goals** — a goal measured in hours takes separate hour/minute fields (no manual "10 min → 0.17"); the server folds them to decimal hours and durations read back as "2h 10m" | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
+| **Smart note suggestions on the Log sheet** — the "What did you do?" chips are no longer a fixed list: each goal suggests the notes you've actually logged against it, most-used first, and scoped per person (the notes where that member took part, not merely who tapped Log). Falls back to the familiar defaults and tops up with them until a goal has enough of its own history | ✅ | ✅ | ✅ | ✅ Done (Tier 1). Smarter recency/frequency weighting + near-duplicate merging is Tier 2 (roadmap) |
 | Create / **edit** / delete goals | ✅ | ✅ | ✅ | ✅ Done |
 | **Edit / remove a logged entry** (amount, who took part, note, date; shared entries removed whole + re-split) | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | Type-aware **logging** (amount / stepper / once-a-day / tick steps) | ✅ | ✅ | ✅ | ✅ Done |

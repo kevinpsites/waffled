@@ -61,12 +61,13 @@ const moreGoal = {
   participants: [],
 }
 
-function mockApi(opts: { lists?: unknown[]; goals?: unknown[]; logged?: unknown[]; person?: unknown; patched?: { url: string; body: unknown }[] }) {
+function mockApi(opts: { lists?: unknown[]; goals?: unknown[]; logged?: unknown[]; person?: unknown; patched?: { url: string; body: unknown }[]; noteSuggestions?: string[] }) {
   globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const u = String(url)
     if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
     if (u.includes('/api/goal-lists')) return { ok: true, json: async () => ({ lists: opts.lists ?? [] }) }
     if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household: { id: 'h', name: 'Home', timezone: 'UTC', weekStart: 'sunday' }, person: opts.person ?? null }) }
+    if (u.includes('/note-suggestions')) return { ok: true, json: async () => ({ suggestions: opts.noteSuggestions ?? [] }) }
     if (/\/api\/goals\/[^/]+\/log$/.test(u) && init?.method === 'POST') {
       opts.logged?.push(JSON.parse(init.body!))
       return { ok: true, json: async () => ({ ok: true }) }
@@ -118,6 +119,27 @@ describe('Goals home (goal-lists model)', () => {
     await waitFor(() => expect(logged).toHaveLength(1))
     // A time goal (hours) logs hours + minutes; the server folds them to decimal hours.
     expect(logged[0]).toMatchObject({ hours: 1, minutes: 0 })
+  })
+
+  it('blends this goal\'s own logged notes ahead of the hardcoded defaults', async () => {
+    // The goal has two of its own notes; they lead the chip row, and the defaults
+    // top up the remaining slots (6 total). Tapping a suggestion fills the note field.
+    mockApi({ lists: [familyList], goals: [featured], noteSuggestions: ['Creek hike', 'Fort building'] })
+    renderHome()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Log hours/ }))
+    const modal = document.querySelector('.modal-card') as HTMLElement
+    // Personalized suggestion appears...
+    const creek = await within(modal).findByRole('button', { name: 'Creek hike' })
+    // ...and a hardcoded default still tops up the row.
+    expect(within(modal).getByRole('button', { name: /Bike ride/ })).toBeTruthy()
+    // Six chips max — two suggestions lead, then four defaults fill the rest.
+    const chips = Array.from(modal.querySelectorAll('.log-act')).map((el) => el.textContent)
+    expect(chips.length).toBe(6)
+    expect(chips.slice(0, 2)).toEqual(['Creek hike', 'Fort building'])
+
+    fireEvent.click(creek)
+    expect((within(modal).getByPlaceholderText(/Creek hike/) as HTMLInputElement).value).toBe('Creek hike')
   })
 
   it('pins a "More" goal from its card (quick PATCH, no edit form)', async () => {

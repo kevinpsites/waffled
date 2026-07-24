@@ -597,6 +597,7 @@ struct GoalsView: View {
 /// written per selected person (so per-person sums roll up to the pool). WF-styled.
 struct GoalLogSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(SyncManager.self) private var sync
     let goal: WaffledAPI.Goal
     /// (amount, hours, minutes, who, note, backdate). For a time goal, `hours`/`minutes`
     /// carry the entry and the server converts; otherwise they're nil and `amount` is used.
@@ -629,9 +630,35 @@ struct GoalLogSheet: View {
     /// Tier-0 Apple Health read-&-suggest: today's total for a metric this goal's unit
     /// matches, offered as a one-tap pre-fill. iPhone-only; nil = nothing to suggest.
     @State private var healthSuggestion: (metric: HealthKitBridge.Metric, value: Double)?
+    /// This goal's own most-used notes (optionally scoped to the focus person), fetched on
+    /// appear and whenever the focus person changes. Blended ahead of the defaults below.
+    @State private var noteSuggestions: [String] = []
 
     private static let hourUnits: Set<String> = ["hour", "hours", "hr", "hrs"]
+    /// Cold-start note chips — shown until this goal has enough of its own logged notes.
     private static let activityChips = ["Bike ride", "Park", "Sports", "Outside play", "Reading", "Art"]
+    /// How many note chips the row shows: suggestions fill it first, defaults top up the rest.
+    private static let noteChipTarget = 6
+
+    /// Whose note history steers the suggestions: the single participant currently tapped,
+    /// else the logger themselves — mirroring the web log sheet.
+    private var focusPerson: String? { who.count == 1 ? who.first : sync.currentPersonId }
+
+    /// The note chips actually rendered: this goal's own notes first, then the hardcoded
+    /// defaults topping up any remaining slots, de-duped case-insensitively.
+    private var noteChips: [String] {
+        var out: [String] = []
+        var seen = Set<String>()
+        func add(_ s: String) {
+            let key = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !key.isEmpty, !seen.contains(key) else { return }
+            seen.insert(key)
+            out.append(s)
+        }
+        for s in noteSuggestions where out.count < Self.noteChipTarget { add(s) }
+        for d in Self.activityChips where out.count < Self.noteChipTarget { add(d) }
+        return out
+    }
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
     private var isChecklist: Bool { goal.goalType == "checklist" }
@@ -697,6 +724,15 @@ struct GoalLogSheet: View {
         }
     }
 
+    /// Load this goal's own note history for the chip row. A failed/empty fetch just leaves
+    /// the defaults in place. Skipped for checklists (they have no note field).
+    private func loadNoteSuggestions() async {
+        guard !isChecklist else { return }
+        if let s = try? await api.goalNoteSuggestions(goalId: goal.id, personId: focusPerson) {
+            noteSuggestions = s
+        }
+    }
+
     /// One-tap pre-fill from Apple Health — sets the amount; the user still credits + logs.
     private func healthSuggestionCard(_ s: (metric: HealthKitBridge.Metric, value: Double)) -> some View {
         Button {
@@ -757,6 +793,9 @@ struct GoalLogSheet: View {
             }
             .background(WF.canvas)
             .task { if isChecklist { await loadSteps() } else { await loadHealthSuggestion() } }
+            // Reload note suggestions whenever the focus person changes (a different
+            // participant tapped) so the box reflects whose history it's learning from.
+            .task(id: focusPerson) { await loadNoteSuggestions() }
             .navigationTitle(isChecklist ? "Checklist" : "Log progress")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -909,7 +948,7 @@ struct GoalLogSheet: View {
                 .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
             ChipFlow(spacing: 8, lineSpacing: 8) {
-                ForEach(Self.activityChips, id: \.self) { a in
+                ForEach(noteChips, id: \.self) { a in
                     Button { note = a } label: {
                         Text(a).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
                             .padding(.horizontal, 11).padding(.vertical, 7)
