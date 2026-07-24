@@ -40,7 +40,11 @@ static lv_obj_t *make_control_tile(lv_obj_t *parent, const lv_image_dsc_t *icon,
   lv_obj_t *tile = lv_obj_create(parent);
   lv_obj_remove_style_all(tile);
   lv_obj_set_flex_grow(tile, 1);
-  lv_obj_set_size(tile, LV_SIZE_CONTENT, lv_pct(100));
+  // Fixed (roughly square) height, not lv_pct(100) — the mock shows compact
+  // squarish tiles vertically centered with room above/below, not tiles
+  // stretched to fill the whole row's height. Centering itself is the row's
+  // job (wb_build_settings_screen sets cross-axis align to CENTER).
+  lv_obj_set_size(tile, LV_SIZE_CONTENT, 220);
   lv_obj_set_style_bg_color(tile, active ? WB_COLOR_TILE_ACTIVE : WB_COLOR_TILE, 0);
   lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(tile, 20, 0);
@@ -351,6 +355,10 @@ void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_o
   lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
   lv_obj_set_flex_grow(row, 1);
   lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+  // Cross-axis (vertical, since this is a ROW) CENTER — tiles are now a
+  // fixed height (see make_control_tile), so this is what actually vertically
+  // centers them in the remaining space below the top bar, matching the mock.
+  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(row, 16, 0);
   lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 

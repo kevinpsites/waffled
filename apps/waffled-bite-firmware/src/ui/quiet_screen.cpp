@@ -1,15 +1,14 @@
 #include "quiet_screen.h"
+#include "../icons/wb_icons.h"
 #include <cstdio>
 
 // Dark, calm palette — deliberately distinct from every other screen's warm
-// cream/ink theme, matching the mockup's navy "wind down" mood. No moon/star
-// glyph yet (no built-in LV_SYMBOL_* match, no custom icon font — same
-// "built-in symbols for now" convention as the rest of this app), so the
-// title stands alone rather than pairing with a mismatched icon.
+// cream/ink theme, matching the mockup's navy "wind down" mood.
 #define WB_QUIET_BG lv_color_hex(0x1B2A4A)
 #define WB_QUIET_RING lv_color_hex(0xE7E1D6)
 #define WB_QUIET_INK lv_color_hex(0xF5EFE1)
 #define WB_QUIET_MUTED lv_color_hex(0x9AA3C4)
+#define WB_QUIET_MOON lv_color_hex(0xE8C15A)
 
 // Owns the 1s local countdown ticker + everything a later poll's sync needs
 // to update without a full rebuild. `parent` (the quiet screen itself) is a
@@ -93,20 +92,51 @@ static void wb_quiet_tick_cb(lv_timer_t *timer)
 void wb_build_quiet_screen(lv_obj_t *parent, const WbQuietState &quiet, int nowHour, int nowMin)
 {
   lv_obj_set_style_bg_color(parent, WB_QUIET_BG, 0);
-  lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(parent, 16, 0);
+  lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_hor(parent, 60, 0);
   lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
   // No back button, no gear, no gesture handler, nothing clickable below
   // that navigates anywhere — this is the actual "not exitable" mechanism.
 
-  lv_obj_t *title = lv_label_create(parent);
+  // Left column: moon + title + "Stay cozy until" — matches the updated mock's
+  // split layout (was a single centered column with the title above the
+  // ring; the mock puts the icon/copy on the left and the ring on the right).
+  lv_obj_t *left_col = lv_obj_create(parent);
+  lv_obj_remove_style_all(left_col);
+  lv_obj_set_size(left_col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(left_col, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(left_col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+  lv_obj_set_style_pad_row(left_col, 14, 0);
+  lv_obj_clear_flag(left_col, LV_OBJ_FLAG_SCROLLABLE);
+
+  // Same crescent path as the moon icon used elsewhere (wb_icon_moon_32/40),
+  // baked filled + bigger instead of scaled up at runtime — see
+  // tools/icons/README.md's moon_solid.svg note. Tinted gold via the usual
+  // A8 recolor trick, not a second asset.
+  lv_obj_t *moon_img = lv_image_create(left_col);
+  lv_image_set_src(moon_img, &wb_icon_moon_solid_128);
+  lv_obj_set_style_image_recolor(moon_img, WB_QUIET_MOON, 0);
+  lv_obj_set_style_image_recolor_opa(moon_img, LV_OPA_COVER, 0);
+
+  lv_obj_t *title = lv_label_create(left_col);
   lv_label_set_text(title, "Quiet time");
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+  lv_obj_set_style_text_font(title, &wb_font_newsreader_semibold_32, 0);
   lv_obj_set_style_text_color(title, WB_QUIET_INK, 0);
 
   int durationSec = quiet.durationSec > 0 ? quiet.durationSec : 1;
   int remainingSec = quiet.remainingSec > 0 ? quiet.remainingSec : 0;
+
+  // Built here (not after the arc, like before) so it lands in left_col
+  // rather than directly in parent — same widget, same sync logic below,
+  // just a different parent in the tree now.
+  lv_obj_t *until_lbl = lv_label_create(left_col);
+  lv_obj_set_style_text_font(until_lbl, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(until_lbl, WB_QUIET_MUTED, 0);
+  lv_obj_set_style_pad_top(until_lbl, 4, 0);
+  char until_buf[48];
+  formatUntilText(until_buf, sizeof(until_buf), remainingSec, nowHour, nowMin);
+  lv_label_set_text(until_lbl, until_buf);
 
   lv_obj_t *arc = lv_arc_create(parent);
   lv_obj_set_size(arc, 260, 260);
@@ -135,14 +165,6 @@ void wb_build_quiet_screen(lv_obj_t *parent, const WbQuietState &quiet, int nowH
   lv_obj_set_style_text_font(left_lbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(left_lbl, WB_QUIET_MUTED, 0);
   lv_obj_align_to(left_lbl, time_lbl, LV_ALIGN_OUT_BOTTOM_MID, 0, 6);
-
-  lv_obj_t *until_lbl = lv_label_create(parent);
-  lv_obj_set_style_text_font(until_lbl, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(until_lbl, WB_QUIET_MUTED, 0);
-  lv_obj_set_style_pad_top(until_lbl, 8, 0);
-  char until_buf[48];
-  formatUntilText(until_buf, sizeof(until_buf), remainingSec, nowHour, nowMin);
-  lv_label_set_text(until_lbl, until_buf);
 
   WbQuietCtx *ctx = new WbQuietCtx{remainingSec, quiet.running, arc, time_lbl, until_lbl, nullptr};
   ctx->tick_timer = lv_timer_create(wb_quiet_tick_cb, 1000, ctx);

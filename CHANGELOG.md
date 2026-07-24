@@ -43,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subtitle now reads "Let's have a great morning/afternoon/evening" instead of a
   hardcoded "day". The Waffled logo now appears on the setup screen and the
   Wi-Fi "Connecting…" screen.
+- **Waffled-Bite device: quiet-time and grown-up-controls screens match the updated
+  design mock.** Quiet time switches from a single centered column to a split
+  layout — a gold crescent moon, the "Quiet time" title in the same warm serif used
+  elsewhere, and the "Stay cozy until…" line on the left, the countdown ring on the
+  right. The grown-up-controls tiles are now compact and vertically centered instead
+  of stretched to fill the screen's height, matching the mock's proportions.
 
 ### Fixed
 

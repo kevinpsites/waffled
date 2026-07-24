@@ -23,6 +23,12 @@ extern const lv_image_dsc_t wb_icon_sun_32;      // Morning routine tile
 extern const lv_image_dsc_t wb_icon_sunhigh_32;  // Afternoon routine tile
 extern const lv_image_dsc_t wb_icon_moon_32;     // Evening routine tile
 extern const lv_image_dsc_t wb_icon_moon_40;     // Nightlight grown-up-control tile
+extern const lv_image_dsc_t wb_icon_moon_solid_128; // Quiet-time screen — same crescent
+                                                     // path as wb_icon_moon_*, baked FILLED
+                                                     // (tools/icons/moon_solid.svg) instead of
+                                                     // outline-stroked, at a bigger size for a
+                                                     // solid centerpiece glyph rather than a
+                                                     // small tile icon — recolor gold at use.
 extern const lv_image_dsc_t wb_icon_broom_32;    // Chores bar
 extern const lv_image_dsc_t wb_icon_star_18;     // Stars badges/pills
 extern const lv_image_dsc_t wb_icon_gear_24;     // Settings gear button

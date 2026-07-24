@@ -38,6 +38,14 @@ close/check. `moon` is baked twice (32 for the Evening tile, 40 for the Nightlig
 control) rather than scaled at runtime, to stay crisp — LVGL image scaling blurs a raster
 source; a second bake is a few hundred bytes for a plainly better result.
 
+`moon_solid.svg` is the exact same crescent path as `moon.svg`, just switched from a
+stroked outline (`fill:none; stroke:#1c1a18`) to a plain fill (`fill:#1c1a18; stroke:none`)
+— the path is already a closed crescent silhouette, so filling it renders a solid crescent
+for free, no redraw needed. Baked once at 128×128 as `wb_icon_moon_solid_128` for the
+quiet-time screen's big centerpiece glyph (recolored gold at use, same A8 tinting trick as
+every other icon here) — a small outline icon scaled way up would blur; this is a
+from-scratch bake at the actual display size instead.
+
 Icons vendored but **not yet wired into any screen**: `check` (18px — the done-check
 badge on home_screen.cpp still uses `LV_SYMBOL_OK`, a reasonable built-in stand-in),
 `close`/`back` (18px — quiet/wake/routine-detail/sounds/nightlight screens still use

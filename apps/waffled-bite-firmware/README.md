@@ -167,14 +167,21 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   starting a real quiet session against the demo backend, confirming the poll response
   and the actual compiled `native` binary picked it up (`lastSeenAt` advanced through a
   real pair→poll cycle while quiet was active), and by code review that the screen has
-  zero navigation callbacks. Two things worth flagging: (1) at the time of this milestone,
-  "Stay cozy until" was computed from the poll's plain UTC `now` field — the device has no
-  RTC or timezone database of its own, so this read as UTC, not the household's actual
-  local time; **this was fixed in a later milestone** (`waffledBites.ts`'s `now` is now a
-  pre-localized `{hour, minute, weekday, month, day}` object, and the home screen's clock/
-  date — previously hardcoded placeholders — are wired to it too); (2) no moon icon in the mockup made it in —
-  no built-in `LV_SYMBOL_*` match, so the title stands alone rather than pairing with a
-  mismatched glyph, same "built-in symbols for now" convention as everywhere else.
+  zero navigation callbacks. "Stay cozy until" was computed from the poll's plain UTC
+  `now` field at the time of this milestone — the device has no RTC or timezone database
+  of its own, so this read as UTC, not the household's actual local time; **this was
+  fixed in a later milestone** (`waffledBites.ts`'s `now` is now a pre-localized
+  `{hour, minute, weekday, month, day}` object, and the home screen's clock/date —
+  previously hardcoded placeholders — are wired to it too). **Layout reworked to match an
+  updated design mock** (later still): was a single centered column (title above the
+  ring); now a split row — a gold crescent moon + the "Quiet time" title in
+  `wb_font_newsreader_semibold_32` (the same warm serif as the home screen's greeting) +
+  "Stay cozy until…" on the left, the ring on the right. The moon is
+  `wb_icon_moon_solid_128` — the *same* crescent path as the small outline moon icon used
+  on the Evening tile/Nightlight control (`wb_icon_moon_32`/`_40`), just baked filled
+  instead of stroked and at a bigger size (a small outline icon scaled way up at runtime
+  would blur), tinted gold via the usual A8 recolor trick — see
+  `tools/icons/README.md`'s `moon_solid.svg` note.
 - **Set a timer and Bedtime are done.** Both were genuinely ambiguous placeholders until
   direct user feedback pinned them down:
   - **Set a timer** (`src/ui/timer_screen.cpp`) — unlike quiet time, either a parent (web
@@ -318,6 +325,13 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   matching the mock's exact colors/serif-header treatment on the remaining screens
   (routine detail, quiet, wake-light, sounds, nightlight, timer, rewards) is a
   straightforward follow-up using the exact same patterns.
+- **Grown-up-controls tile sizing matches the updated mock.** `make_control_tile`
+  (`settings_screen.cpp`) used to stretch each tile's height to `lv_pct(100)` of the
+  tile row, filling nearly the whole screen below the top bar. The mock shows compact,
+  roughly-square tiles with real breathing room above and below. Tiles are now a fixed
+  height (220px) instead of a percentage, and the row's cross-axis flex alignment is
+  CENTER instead of the default START, so the fixed-height tiles land vertically
+  centered in the remaining space rather than pinned to the top.
 - **Home screen typography/elevation** (an earlier, smaller polish pass, ahead of the
   icon work above): the greeting uses a baked LVGL bitmap font
   (`src/fonts/wb_font_newsreader_semibold_32.c`, generated via `lv_font_conv` from
