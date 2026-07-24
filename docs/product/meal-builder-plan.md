@@ -29,7 +29,7 @@ Locked with the product owner on 2026-07-23. Numbers match the question thread.
 | 7 | Scheduling picks **any meal slot** (breakfast / lunch / dinner) on **any date**, with prev/next week navigation so meals can be planned in advance. |
 | 8 | **iPhone builds meals too** — but tap-to-add via the existing recipe/meal selector, *not* drag-and-drop. Drag-and-drop is web/iPad only. |
 | 9 | Meals stay **REST-only**; they are not added to the PowerSync offline schema (only the calendar domain syncs). |
-| 10 | **Per-dish cook assignment is in scope**, closing the orphaned roadmap item where `meal_plan_entries.cook_person_id` exists in DB + API but no UI ever assigns it. |
+| 10 | **Per-dish cook assignment is in scope** — a four-dish plate has up to four cooks. This addresses the orphaned roadmap item where `meal_plan_entries.cook_person_id` exists in DB + API but no UI ever assigns it. Scope note: what was agreed is the cook picker **on a plate’s dishes**. The roadmap item also wants a picker on ordinary single-recipe planner slots; that half stays open and the roadmap entry is trimmed rather than closed. |
 | 11 | **A saved meal is a first-class citizen of the recipe library.** Searching all recipes returns saved meals too, and a meal can be selected anywhere a recipe can. |
 | 12 | Adding a saved meal to a plate under construction **flattens** it — its recipes come in as individual, editable dishes. Meals never nest. |
 | 13 | The calendar gets **no new concept**. The existing meal event is extended to show all the meal’s recipes. |
