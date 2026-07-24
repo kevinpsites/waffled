@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
 import { MultiSelect } from './components/MultiSelect'
-import { useRecipes, type Recipe } from '../lib/api'
+import { MealCard } from './components/MealCard'
+import { useRecipes, useSavedMeals, type Recipe } from '../lib/api'
 import './../styles/recipe.css'
 
 const GRAD_BY_CATEGORY: Record<string, string> = {
@@ -41,6 +42,12 @@ const SORTS: Array<{ key: string; label: string }> = [
   { key: 'recent', label: 'Recently cooked' },
 ]
 
+// The library is a unified list: recipes AND saved meals (decision 11). The two
+// come from different endpoints — recipes are already loaded client-side and
+// filtered here, while saved meals are searched *server-side* (`GET /api/meals?q=`,
+// which matches the plate name OR any of its dish titles, so "chicken" finds
+// "BBQ Sunday"). Never re-filter the returned meals against the plate name — that
+// would throw away exactly the matches the server worked to find.
 export function RecipesLibrary() {
   const navigate = useNavigate()
   const { recipes, loading, error } = useRecipes()
@@ -55,6 +62,15 @@ export function RecipesLibrary() {
   const [proteins, setProteins] = useState<string[]>(() => initArr('protein'))
   const [diets, setDiets] = useState<string[]>(() => initArr('diet'))
   const [sort, setSort] = useState('name')
+
+  // Debounced so a search doesn't fire a request per keystroke — the recipe list is
+  // already in memory, but the saved-meal search is a round trip.
+  const [mealQ, setMealQ] = useState(() => (params.get('q') ?? '').trim())
+  useEffect(() => {
+    const t = setTimeout(() => setMealQ(q.trim()), 200)
+    return () => clearTimeout(t)
+  }, [q])
+  const { meals: savedMeals } = useSavedMeals(mealQ || undefined)
 
   useTopbarFull(
     () => (
@@ -96,7 +112,17 @@ export function RecipesLibrary() {
     return a.title.localeCompare(b.title)
   })
 
-  const anyFilter = fav || newOnly || collections.length || cuisines.length || proteins.length || diets.length || ql
+  // The structured filters (favorite / never-cooked / collection / cuisine / protein /
+  // dietary) are recipe metadata a plate doesn't carry, so a meal can be neither
+  // included nor excluded by them honestly — with any of them on, this is a recipe
+  // list. Free-text search, by contrast, spans both.
+  const structuredFilter = fav || newOnly || collections.length > 0 || cuisines.length > 0 || proteins.length > 0 || diets.length > 0
+  const mealList = savedMeals ?? []
+  const shownMeals = structuredFilter ? [] : [...mealList].sort((a, b) => a.name.localeCompare(b.name))
+  const shownCount = sorted.length + shownMeals.length
+  const totalCount = recipes.length + mealList.length
+
+  const anyFilter = structuredFilter || ql
   function clearAll() {
     setFav(false); setNewOnly(false); setCollections([]); setCuisines([]); setProteins([]); setDiets([]); setQ('')
   }
@@ -104,7 +130,7 @@ export function RecipesLibrary() {
   return (
     <div className="recipes-lib">
       <div className="recipes-head">
-        <input className="recipes-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search recipes, cuisine, protein, a veggie…" aria-label="Search recipes" />
+        <input className="recipes-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search recipes & meals, cuisine, protein, a veggie…" aria-label="Search recipes and meals" />
         <select className="recipes-filter recipes-sort" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort">
           {SORTS.map((s) => (
             <option key={s.key} value={s.key}>Sort: {s.label}</option>
@@ -123,20 +149,25 @@ export function RecipesLibrary() {
         <MultiSelect label="Cuisine" options={cuisineOpts} selected={cuisines} onChange={setCuisines} />
         <MultiSelect label="Protein" options={proteinOpts} selected={proteins} onChange={setProteins} />
         <MultiSelect label="Dietary" options={dietOpts} selected={diets} onChange={setDiets} />
-        <span className="tiny muted recipes-count">{sorted.length} of {recipes.length}</span>
+        <span className="tiny muted recipes-count">{shownCount} of {totalCount}</span>
         {anyFilter ? <button type="button" className="pill recipes-clear" onClick={clearAll}>Clear</button> : null}
       </div>
 
       {error && <div className="muted" style={{ padding: 20 }}>Couldn't load recipes — try reloading or signing in again.</div>}
-      {!error && !loading && sorted.length === 0 && (
+      {!error && !loading && shownCount === 0 && (
         <div className="muted" style={{ padding: 20, fontWeight: 600 }}>
-          {recipes.length === 0 ? (
+          {totalCount === 0 ? (
             <>No recipes yet — tap <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button> to add your first.</>
-          ) : 'No recipes match these filters.'}
+          ) : 'Nothing matches these filters.'}
         </div>
       )}
 
       <div className="recipes-grid">
+        {/* Saved meals lead the grid — a plate is a bigger idea than one dish, and
+            leading with them keeps the badge visible instead of buried. */}
+        {shownMeals.map((m) => (
+          <MealCard key={m.id} meal={m} className="recipes-card" onOpen={() => navigate(`/meals/build/${m.id}`)} />
+        ))}
         {sorted.map((r) => (
           <div
             key={r.id}
