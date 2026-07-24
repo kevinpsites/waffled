@@ -281,12 +281,12 @@ export function WaffledBiteDevice() {
           <div
             className="tiny"
             style={{
-              fontWeight: 700, marginTop: 6, padding: '6px 10px', borderRadius: 999, display: 'inline-block',
-              background: online ? '#DFF3E4' : '#FBEFD6',
-              color: online ? '#2E7D4F' : '#9A6B12',
+              fontWeight: 700, marginTop: 10, padding: '6px 10px', borderRadius: 999, display: 'inline-block',
+              background: online ? '#DFF3E4' : 'var(--danger-t)',
+              color: online ? '#2E7D4F' : 'var(--danger)',
             }}
           >
-            {online ? '🟢 Online' : `⚪ Offline · last seen ${fmtWhen(device.lastSeenAt)}`}
+            {online ? '🟢 Online' : `🔴 Offline · last seen ${fmtWhen(device.lastSeenAt)}`}
           </div>
         </div>
       </div>

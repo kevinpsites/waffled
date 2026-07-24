@@ -243,7 +243,7 @@ struct WaffledBitesView: View {
             if WaffledBiteStatus.isOnline(lastSeenAt: device.lastSeenAt, now: context.date) {
                 bannerRow("🟢 Online", fg: WF.success, bg: WF.successT)
             } else {
-                bannerRow("⚪ Offline · \(lastSeenText(device.lastSeenAt))", fg: WF.warn, bg: WF.warnT)
+                bannerRow("🔴 Offline · \(lastSeenText(device.lastSeenAt))", fg: WF.danger, bg: WF.dangerT)
             }
         }
     }
