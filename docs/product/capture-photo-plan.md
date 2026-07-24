@@ -69,10 +69,12 @@ intent; **route to it.** That keeps this plan additive.
 
 ## 2. The design decisions (settle these before code)
 
-1. **Photos ride into the *existing* capture parse, not a parallel pipeline.** Add `images?` to the
-   `/api/capture` request and thread it straight into `completeJson`. For single-entity photos the
-   existing `INTENT_SCHEMA` needs **no change** — the model reads the photo and emits the same
-   `CaptureIntent` it would from text.
+1. **Photos parse through a dedicated `POST /api/capture/photo` route that shares the core parser.**
+   Text stays on `/api/capture`; photo gets its own thin route wrapper over the same
+   `parseWithProvider`/`finalizeIntent` (mirroring how recipe ingest splits `/voice` and `/photo`
+   over one service). For single-entity photos the existing `INTENT_SCHEMA` needs **no change** — the
+   model reads the photo and emits the same `CaptureIntent` it would from text. (See §6-Q2 for why a
+   separate route, not folding `images` into `/api/capture`.)
 2. **Photos always confirm-and-edit — no fast path, ever.** The brief's universal rule ("the user
    always confirms") is non-negotiable here: OCR/vision is fuzzier than typed text, so a photo intent
    is **never** eligible for any confident auto-commit. Always render the editable preview.
@@ -85,9 +87,9 @@ intent; **route to it.** That keeps this plan additive.
    copy, never a silent failure. (There is **no on-device heuristic fallback for photos** — unlike
    text, a photo with no vision model simply can't be parsed offline.)
 5. **Reuse every client/transport primitive:** `encodeImageForUpload` / `MediaImage.encodeJPEG` for
-   encoding, the `bodyLimit()` entry for the route, the `IngestInputError` validation shape, and the
-   `recipe_ingest_photos`-style TTL sweep **only if** we decide to persist source photos (see §6 open
-   question).
+   encoding, a `bodyLimit()` entry for the new photo route, and the `IngestInputError` validation
+   shape. **Source photos are not persisted** (see §6-Q1) — no `recipe_ingest_photos` twin, no TTL
+   sweep; the client holds the bytes for the session (retry + recipe handoff).
 
 ---
 
@@ -121,8 +123,8 @@ deterministically). What we lock down with failing tests first is everything *ar
   `{jpeg, png, webp}`, ≤ 10 MB/image, ≤ 6 images, non-empty `data`+`contentType` → `IngestInputError`
   → 400. **Write these assertions before the handler.**
 - **Vision gate** (integration): a household on `heuristic` posting a photo gets **501
-  `AIUnavailable`**, and **stores nothing** (validate-before-store ordering, as recipe ingest
-  documents).
+  `AIUnavailable`** (capture persists nothing regardless, so there's no orphaned-blob concern the
+  recipe path has to guard against).
 - **`images` threading** (unit): `parseWithProvider` passes `images` through to `completeJson` and
   short-circuits to the vision gate when absent-capability — assert with a stubbed `completeJson`.
 - **Router discriminator** (unit): a raw `{ kind: 'recipe' }` from the model normalizes to the
@@ -130,12 +132,15 @@ deterministically). What we lock down with failing tests first is everything *ar
 
 ### 4b. Green — server
 
-- **Request:** add `images?: IngestPhotoInput[]` to the `POST /api/capture` body; validate with the
-  same helper recipe ingest uses (extract it if needed so both share one validator). Add
-  `/api/capture` (or a dedicated `/api/capture/photo`) to `bodyLimit()`.
-- **`parseWithProvider(householdId, text, images?)`:** when `images` present, gate on
-  `visionAvailable`; thread `images` into the `completeJson` call; bump `maxTokens`/`timeoutMs` for
-  the vision path (recipe uses `2000` / `90s`).
+- **Route:** a new `POST /api/capture/photo` taking `{ images: IngestPhotoInput[] }`; validate with
+  the same helper recipe ingest uses (extract it so both share one validator). Add
+  `/api/capture/photo` to `bodyLimit()` (the 84 MB ingest tier) — `/api/capture` stays on the 1 MB
+  default. Error semantics mirror `/api/recipes/ingest/photo`: `IngestInputError` → 400, vision-
+  unavailable → **501 `AIUnavailable`**, model failure → 502 (no `fallback` field — photos have no
+  heuristic path).
+- **`parseWithProvider(householdId, text, images?)`:** the shared core both routes call; when
+  `images` present, gate on `visionAvailable`, thread `images` into `completeJson`, and bump
+  `maxTokens`/`timeoutMs` for the vision path (recipe uses `2000` / `90s`).
 - **Prompt:** a short addition to `systemPrompt` — "You may be given a photo. Extract the single most
   actionable item into one intent. If the photo is a **recipe**, return `{ kind: 'recipe' }` and
   nothing else." (Tier A: single item + recipe handoff. Multi-item is Tier B's schema change.)
@@ -147,8 +152,8 @@ deterministically). What we lock down with failing tests first is everything *ar
 - **Affordance:** a camera/upload button in `CaptureBar.tsx`. Reuse `encodeImageForUpload` for the
   file → `{ data, contentType }` step (handles HEIC, downscale, size); accept
   `image/jpeg,image/png,image/webp` with `capture="environment"` (copy from `RecipeImportModals.tsx`).
-- **Parse:** POST the image(s) to `/api/capture`; render a **loading** state (vision is ~1–3s, slower
-  than text).
+- **Parse:** POST the image(s) to `/api/capture/photo`; render a **loading** state (vision is ~1–3s,
+  slower than text).
 - **Route the result:** a normal intent → the existing editable preview → `commit()`; a `recipe`
   signal → open the existing **PhotoImportModal** pre-seeded with the same photo (hand the bytes over;
   don't re-pick).
@@ -184,17 +189,30 @@ the viewer lacks the capability.
 
 ---
 
-## 6. Open questions (worth resolving alongside the designs)
+## 6. Decisions & open questions
 
-- **Persist source photos?** Recipe ingest stores blobs so a user can retry extraction. Capture is
-  more one-shot — do we keep the photo at all, and if so reuse the `recipe_ingest_photos` TTL sweep
-  or add a `capture_ingest_photos` twin? (Leaning: **don't persist** for Tier A; the client holds the
-  bytes for the recipe handoff and for a retry.)
-- **One route or two?** Fold `images` into `POST /api/capture`, or add `POST /api/capture/photo`?
-  (Leaning: **fold in** — one endpoint, one client method, `bodyLimit()` entry keyed to it.)
-- **Tier B batch schema:** does the vision call return `CaptureIntent[]` directly, or `{ items:
-  CaptureIntent[] }` with a per-item confidence the batch UI can sort/flag? Design the schema when
-  Tier B starts, not before.
+**Q1 — Persist source photos? → DECIDED: no.** Capture stays **ephemeral** — no server-side blob,
+no `capture_ingest_photos` twin, no TTL sweep. The client holds the bytes for the session (covers
+retry + the recipe handoff). Rationale: privacy (receipts, invitations, medical cards are the
+photos here), less to build, and recipe-quality eval is already covered because the recipe **handoff
+persists downstream** in the importer. *Revisit only if* the design introduces a photo history or an
+undo that must survive navigating away.
+
+**Q2 — One route or two? → DECIDED: two.** A dedicated **`POST /api/capture/photo`** sharing
+`parseWithProvider`/`finalizeIntent` internally. Text stays on `/api/capture`. Why not fold in:
+(1) `bodyLimit()` is path-keyed, so folding images in would raise the hot text path to the 84 MB
+tier and lose its 1 MB protection; (2) `/api/capture` is contractually "never fails → heuristic
+fallback", while photo has no heuristic and *must* surface 501/400/502; (3) vision needs a
+90 s / 2000-token profile vs. text's fast 512. Separate routes keep all three clean with one shared
+core.
+
+**Q3 — Tier B batch schema (still open; design-driven).** Current lean, to be locked once the
+batch-review mocks exist: return **`{ items: CaptureIntent[] }`** (object wrapper, not a bare array —
+extensible + friendlier to the strict structured-output transforms); **no model-emitted per-item
+confidence in v1** — derive "needs review" client-side from missing/ambiguous fields; **allow mixed
+kinds** (a newsletter → 2 events + 1 task falls out naturally); **cap the item count (~15–20) and
+surface truncation** rather than silently dropping. The batch-review UI decides what metadata is
+actually worth asking the model for, so hold the final schema until then.
 
 ---
 
@@ -217,8 +235,8 @@ the viewer lacks the capability.
 ## 8. Tier A PR checklist (copy-paste)
 
 - [ ] **RED:** input-validation + vision-gate + `images`-threading + `recipe`-discriminator tests
-- [ ] Server: `images?` on the `/api/capture` body; shared validator (extract from recipe ingest)
-- [ ] Server: `bodyLimit()` entry for the capture-photo route
+- [ ] Server: new `POST /api/capture/photo` route (`{ images }`); shared validator (extract from recipe ingest)
+- [ ] Server: `bodyLimit()` entry for `/api/capture/photo` (84 MB tier); `/api/capture` stays 1 MB
 - [ ] Server: `parseWithProvider` threads `images` → `completeJson`; gates `visionAvailable`
 - [ ] Server: prompt addition (single item + `recipe` handoff); `finalizeIntent` `recipe` branch
 - [ ] Client: photo button in `CaptureBar.tsx` reusing `encodeImageForUpload`
