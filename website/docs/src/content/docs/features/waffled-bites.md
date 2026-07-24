@@ -10,7 +10,7 @@ Waffled-Bites is a kid-facing companion device — a small touchscreen that sits
 ## Highlights
 
 - 🔗 **One device per kid, code-paired** — mint a short one-time code from the kid's profile page and enter it on the device; no shared picker, the device is fixed to that one child.
-- 🟢 **Online status at a glance** — the control panel shows whether the device has checked in recently, or when it was last seen if it hasn't (this isn't an instant heartbeat — it's based on the device's regular check-in, so it can lag up to about 15 minutes behind reality).
+- 🟢 **Online status at a glance** — the control panel shows whether the device has checked in recently, or when it was last seen if it hasn't (this isn't an instant heartbeat — it's based on the device's regular check-in, so it can lag up to about 15 minutes behind reality). The device's own screen shows a small "Offline" pill much sooner — within a couple of poll cycles (about 10 seconds) — if it loses touch with the server while it's still powered on.
 - 🌙 **Live quiet-time control** — start, pause, add 5 minutes, or end a stay-in-room countdown right from your phone or the web, and watch it count down.
 - 💡 **Night light** — pick a color and brightness.
 - 🌅 **Wake-up light schedule** — set per-day-of-week rules; the light glows yellow a few minutes before wake time, then green when it's okay to get up.
@@ -19,7 +19,7 @@ Waffled-Bites is a kid-facing companion device — a small touchscreen that sits
 - 🔆 **Screen & display** — daytime brightness and an auto-dark-at-night option.
 - ⏱️ **Set a timer** — a countdown either a parent or the kid can start, pause, add time to, or end, right on the device.
 - 🛌 **Bedtime preview** — a full-screen glow at the nightlight's real color and brightness, so a kid can see what "lights out" looks like before it locks in for the night.
-- 🧩 **Reuses your existing chores** — the device's routine/task list is just your household's chores, grouped into morning / afternoon / evening windows by their due time (unscheduled chores show under a general bucket); completing one on the device awards stars through the same ledger as everywhere else.
+- 🧩 **Reuses your existing chores** — the device's routine/task list is just your household's chores, grouped into morning / afternoon / evening windows by their due time (unscheduled chores show under a general bucket); completing one on the device awards stars through the same ledger as everywhere else. Tapping a done task again un-completes it, right on the device.
 
 ## Where it works
 
@@ -54,5 +54,6 @@ Waffled-Bites is an **optional module** (`waffledBites`, default **OFF**), toggl
 ## Notes
 
 - 👶 Devices pair to a specific child, not the household — there's no shared profile picker like [Kiosk](/features/kiosk/) uses for a communal tablet.
+- 🔓 **Unpairing works from either side.** Unpair from the parent panel as usual, or right on the device: tap "For a grown-up" on its Settings screen 5 times fast to open a confirmation screen that clears the device's pairing *and* tells the parent panel it's gone — not just a local reset the panel wouldn't know about.
 - ⭐ Task completion on the device is just a chore completion under the hood, so it shows up in the same stars ledger, streaks, and rewards as chores completed anywhere else — see [Chores & tasks](/features/chores/) and [Rewards & economy](/features/rewards/).
 - 🔨 **Real-hardware bring-up is underway.** The on-device app (ESP32-P4 + LVGL) is code-complete and verified against the real backend, and has been bring-up tested on the actual board — display, touch, and on-board Wi-Fi all confirmed working on real silicon, including dozens of reboot tests. Remaining gaps: no over-the-air updates yet, and a few icon assets are still text-only. See the [product roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md) for status.
