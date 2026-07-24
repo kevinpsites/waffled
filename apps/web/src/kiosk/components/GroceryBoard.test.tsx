@@ -470,3 +470,55 @@ describe('GroceryBoard per-meal provenance dots', () => {
     expect((dots[0] as HTMLElement).style.background).toBe(tacoDot.style.background)
   })
 })
+
+// The By-meal view groups items under the meal that wants them. A plate has
+// recipeId null (its dish ids live in `recipes[]`), so grouping that only looks at
+// `meals[].recipeId` skips plates entirely and dumps their shopping into the
+// trailing "Other items" bucket — correct in the rail, wrong here.
+describe('GroceryBoard By-meal grouping with plates', () => {
+  it('groups a scheduled plate’s items under the plate, not "Other items"', async () => {
+    mockBoardWithPlate()
+    renderBoard()
+    await screen.findByText('BBQ sauce')
+
+    fireEvent.click(screen.getByRole('button', { name: 'By meal' }))
+
+    // The plate name also appears in the week rail, so scope to the grouped sections.
+    const plateSection = screen
+      .getAllByText('BBQ Sunday')
+      .map((n) => n.closest('.grocery-section'))
+      .find(Boolean) as HTMLElement
+    expect(plateSection).toBeTruthy()
+    expect(within(plateSection).getByText('BBQ sauce')).toBeInTheDocument()
+    // and it must NOT have fallen through to the catch-all bucket
+    expect(screen.queryByText('Other items')).not.toBeInTheDocument()
+  })
+
+  it('groups an unscheduled plate’s items under that plate too', async () => {
+    const offPlate = {
+      ...plateItem,
+      id: 'pi2',
+      name: 'Peaches',
+      sourceRecipeIds: ['d9'],
+      sourceMealIds: ['M2'],
+    }
+    mockBoardWithPlate({
+      items: [offPlate],
+      unscheduledMeals: [
+        { mealId: 'M2', name: 'Cobbler Night', color: '#7A5AF8', recipes: [{ recipeId: 'd9', title: 'Peach Cobbler', emoji: '🥧', role: 'dessert' }] },
+      ],
+    })
+    renderBoard()
+    await screen.findByText('Peaches')
+
+    fireEvent.click(screen.getByRole('button', { name: 'By meal' }))
+
+    const section = screen
+      .getAllByText('Cobbler Night')
+      .map((n) => n.closest('.grocery-section'))
+      .find(Boolean) as HTMLElement
+    expect(section).toBeTruthy()
+    expect(within(section).getByText('Peaches')).toBeInTheDocument()
+    expect(screen.queryByText('Other items')).not.toBeInTheDocument()
+  })
+})

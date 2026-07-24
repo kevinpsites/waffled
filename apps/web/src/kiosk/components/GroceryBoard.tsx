@@ -407,17 +407,43 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           const byMeal = [...board.meals].sort((a, b) => ord(a.mealType) - ord(b.mealType) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
           const seen = new Set<string>()
           const used = new Set<string>()
-          const claim = (recipeId: string) => {
-            const items = activeItems.filter((i) => !used.has(i.id) && i.sourceRecipeIds.includes(recipeId))
+          // Claim by any of a set of recipe ids (a plate has several) and/or by the
+          // plate id itself — an off-plan plate credits its rows with sourceMealIds,
+          // while the weekly rebuild writes only recipe ids.
+          const claimBy = (recipeIds: string[], mealId?: string | null) => {
+            const items = activeItems.filter(
+              (i) =>
+                !used.has(i.id) &&
+                (recipeIds.some((r) => i.sourceRecipeIds.includes(r)) ||
+                  (!!mealId && (i.sourceMealIds ?? []).includes(mealId))),
+            )
             items.forEach((i) => used.add(i.id))
             return items
           }
+          const claim = (recipeId: string) => claimBy([recipeId])
           const perMeal: BoardSection[] = []
           for (const d of byMeal) {
+            // A plate slot has recipeId null and its dishes in `recipes[]`; keying
+            // only off recipeId would skip it and dump its shopping in "Other items".
+            if (d.mealId) {
+              if (seen.has(d.mealId)) continue
+              seen.add(d.mealId)
+              const items = claimBy((d.recipes ?? []).map((r) => r.recipeId), d.mealId)
+              if (items.length) perMeal.push({ key: `plate|${d.mealId}`, aisle: d.title ?? 'Meal', items, mealType: d.mealType })
+              continue
+            }
             if (!d.recipeId || seen.has(d.recipeId)) continue
             seen.add(d.recipeId)
             const items = claim(d.recipeId)
             if (items.length) perMeal.push({ key: `meal|${d.recipeId}`, aisle: d.title ?? 'Meal', items, mealType: d.mealType })
+          }
+          // Plates added to the list without ever being scheduled get their own
+          // sections alongside the off-plan recipes below.
+          for (const p of board.unscheduledMeals ?? []) {
+            if (seen.has(p.mealId)) continue
+            seen.add(p.mealId)
+            const items = claimBy((p.recipes ?? []).map((r) => r.recipeId), p.mealId)
+            if (items.length) perMeal.push({ key: `unplate|${p.mealId}`, aisle: p.name ?? 'Meal', items, unscheduled: true })
           }
           // Recipes added straight from a recipe page (not planned this week) get
           // their own sections after the planned meals — the "unscheduled" shelf.
