@@ -142,6 +142,40 @@ describe('Goals home (goal-lists model)', () => {
     expect((within(modal).getByPlaceholderText(/Creek hike/) as HTMLInputElement).value).toBe('Creek hike')
   })
 
+  it('de-dupes a suggestion that collides with a default (case-insensitive)', async () => {
+    // "park" (logged, lowercase) collides with the "🏞️ Park" default. It should appear
+    // once, in the logged spelling, and the emoji default must not double it up.
+    mockApi({ lists: [familyList], goals: [featured], noteSuggestions: ['park'] })
+    renderHome()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Log hours/ }))
+    const modal = document.querySelector('.modal-card') as HTMLElement
+    await within(modal).findByRole('button', { name: 'park' })
+    const chips = Array.from(modal.querySelectorAll('.log-act')).map((el) => el.textContent)
+    expect(chips.filter((c) => /park/i.test(c ?? '')).length).toBe(1) // no duplicate
+    expect(chips).toContain('park') // the logged spelling wins
+    expect(chips).not.toContain('🏞️ Park') // the default is dropped
+    expect(chips.length).toBe(6)
+  })
+
+  it('refetches suggestions for the tapped participant (per-person)', async () => {
+    // goal.manage lets the picker show every participant; self is Kevin (p1).
+    const person = { id: 'p1', name: 'Kevin', memberType: 'adult', isAdmin: true, capabilities: ['goal.manage'] }
+    mockApi({ lists: [familyList], goals: [featured], person, noteSuggestions: [] })
+    renderHome()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Log hours/ }))
+    const modal = document.querySelector('.modal-card') as HTMLElement
+    // Tapping Kelly (p2 — not self) makes her the focus person → refetch scoped to p2.
+    fireEvent.click(within(modal).getByRole('button', { name: /Kelly/ }))
+    await waitFor(() =>
+      expect(
+        (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls
+          .some((c) => String(c[0]).includes('/note-suggestions?personId=p2'))
+      ).toBe(true)
+    )
+  })
+
   it('pins a "More" goal from its card (quick PATCH, no edit form)', async () => {
     const patched: { url: string; body: unknown }[] = []
     const person = { id: 'p1', name: 'Kevin', memberType: 'adult', isAdmin: true, capabilities: ['goal.manage'] }
