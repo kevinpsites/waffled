@@ -154,10 +154,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   (no WebSockets). The on-device firmware (ESP32-P4 + LVGL 9.2,
   `apps/waffled-bite-firmware`) is also feature-complete — every screen (home, routines,
   quiet time, timer, bedtime, wake-light lock, settings, pairing, forget-device) is wired
-  to the real API. **Pending:** real-hardware bring-up — the target board (ELECROW
-  CrowPanel Advanced 7") has never been in hand, so the firmware has only run in a
-  desktop simulator (SDL) against the live backend; WiFi provisioning is also still
-  hardcoded credentials, no UI yet.
+  to the real API. Real-hardware bring-up on the target board (ELECROW CrowPanel
+  Advanced 7") is underway, including an on-device WiFi-provisioning UI (scan, pick a
+  network, enter the password on the built-in keyboard — no more hardcoded
+  credentials) and a fix for an intermittent WiFi-chip crash-loop found during
+  bring-up. **Pending:** OTA updates, TLS certificate validation for `https://` server
+  addresses, and custom icon assets — see `apps/waffled-bite-firmware/README.md` for
+  the full list of open items.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
   are REST + live-refresh bus.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend
@@ -169,6 +172,24 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 - **List sharing.** Let a household invite specific people to a list, choose whether
   they can view or edit it, and revoke access later.
+
+- **Waffled-Bite DIY hardware setup guide.** A real, consumer-facing walkthrough for
+  buying the board yourself ([ELECROW CrowPanel Advanced 7", ESP32-P4](https://www.amazon.com/dp/B0G34WGWJR))
+  and flashing it with the open firmware (`apps/waffled-bite-firmware`) via PlatformIO —
+  today there's no pre-flashed device or build service, so this is source-only and
+  undocumented for anyone outside the project. `apps/waffled-bite-firmware/README.md`
+  covers the engineering bring-up log; this would be the "buy this, plug in this cable,
+  run this command" doc on the docs site, paired with the existing pairing walkthrough
+  in [`waffled-bites.md`](../../website/docs/src/content/docs/features/waffled-bites.md).
+
+- **QR-code pairing for Waffled-Bites.** The device has a screen but no camera (the
+  ELECROW board has none), so a QR flow only works one direction: the device renders a
+  QR code — LVGL already ships a QR widget, just currently disabled (`LV_USE_QRCODE 0`
+  in `apps/waffled-bite-firmware/src/lv_conf.h`) — that a parent scans with their phone
+  to jump straight to a "confirm pairing" screen, replacing today's type-a-6-digit-code-
+  on-the-device-keyboard step. Doesn't extend to Wi-Fi setup the same way: the device
+  (not the phone) is the one that needs the SSID/password, and it has no camera to scan
+  a code itself, so that stays the on-device network picker it is today.
 
 - **Recurring-edit scope — give chores the calendar's model, and close two calendar gaps.**
   Calendar events already ship the full **this event / this-and-following / all events** picker

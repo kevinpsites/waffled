@@ -10,6 +10,7 @@ import {
   type WaffledBiteSchedule,
 } from '../lib/api'
 import { moduleEnabled } from '../lib/modules'
+import { wbIsOnline } from '../lib/waffledBiteStatus'
 import { WaffledBitePairModal } from './components/WaffledBitePairModal'
 import '../styles/overview.css'
 import '../styles/settings.css'
@@ -37,6 +38,15 @@ function fmtAmPm(min: number): string {
   const ampm = h24 >= 12 ? 'PM' : 'AM'
   const h12 = h24 % 12 === 0 ? 12 : h24 % 12
   return `${h12}:${pad(min % 60)} ${ampm}`
+}
+// Same formatting as Settings.tsx's device list (kept local rather than
+// shared — same "small formatting helper" duplication as elsewhere in this
+// file, e.g. fmtAmPm/fmtMMSS).
+function fmtWhen(iso: string | null): string {
+  if (!iso) return 'never'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return 'never'
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 function schedName(days: number[]): string {
   const s = [...days].sort().join(',')
@@ -153,6 +163,20 @@ function useLocalCountdown(remainingSec: number, running: boolean) {
   return local
 }
 
+// Ticks `Date.now()` every 30s so the online/offline status (computed from
+// device.lastSeenAt, which only updates on refetch) doesn't silently go
+// stale on a page left open — same self-ticking idea as useLocalCountdown,
+// just on a coarser interval since going from online to offline only needs
+// to be noticed within a minute or so, not every second.
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), intervalMs)
+    return () => clearInterval(t)
+  }, [intervalMs])
+  return now
+}
+
 export function WaffledBiteDevice() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -180,6 +204,8 @@ export function WaffledBiteDevice() {
   )
 
   const enabled = moduleEnabled(household, 'waffledBites')
+  const now = useNow(30_000)
+  const online = device ? wbIsOnline(device.lastSeenAt, now) : false
   const quietRemaining = useLocalCountdown(device?.runtimeState.quiet.remainingSec ?? 0, device?.runtimeState.quiet.running ?? false)
   const timerRemaining = useLocalCountdown(device?.runtimeState.timer.remainingSec ?? 0, device?.runtimeState.timer.running ?? false)
 
@@ -249,6 +275,19 @@ export function WaffledBiteDevice() {
         <div>
           <div className="wf-serif pp-name">{person.name}'s Waffled-Bite</div>
           <div className="pp-sub">{device.label} · paired</div>
+          {/* Same pill treatment as the wake-light status below (sleep/warn/wake) —
+              a device that's stopped checking in is just as worth a glance as
+              quiet time or wake-light state, not a quiet muted-text aside. */}
+          <div
+            className="tiny"
+            style={{
+              fontWeight: 700, marginTop: 10, padding: '6px 10px', borderRadius: 999, display: 'inline-block',
+              background: online ? '#DFF3E4' : 'var(--danger-t)',
+              color: online ? '#2E7D4F' : 'var(--danger)',
+            }}
+          >
+            {online ? '🟢 Online' : `🔴 Offline · last seen ${fmtWhen(device.lastSeenAt)}`}
+          </div>
         </div>
       </div>
 
