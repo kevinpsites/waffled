@@ -41,7 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (sun/sun-high/moon/broom/sound/timer/bed/gear/star) instead of text placeholders, the
   routine tile colors match the design mock's exact values, and the home screen's
   subtitle now reads "Let's have a great morning/afternoon/evening" instead of a
-  hardcoded "day".
+  hardcoded "day". The Waffled logo now appears on the setup screen and the
+  Wi-Fi "Connecting…" screen.
 
 ### Fixed
 
