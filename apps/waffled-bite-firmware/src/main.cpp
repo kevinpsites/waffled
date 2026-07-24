@@ -28,6 +28,7 @@
 #include "ui/quiet_screen.h"
 #include "ui/timer_screen.h"
 #include "ui/bedtime_screen.h"
+#include "icons/wb_icons.h"
 #include <ArduinoJson.h>
 #include <string>
 #include <cstring>
@@ -755,6 +756,9 @@ void setup()
   lv_obj_set_style_bg_opa(boot_scr, LV_OPA_COVER, 0);
   lv_obj_set_flex_flow(boot_scr, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(boot_scr, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_t *boot_logo = lv_image_create(boot_scr);
+  lv_image_set_src(boot_logo, &wb_logo_96);
+  lv_obj_set_style_pad_bottom(boot_logo, 8, 0);
   lv_obj_t *boot_title = lv_label_create(boot_scr);
   lv_label_set_text(boot_title, "Waffled");
   lv_obj_set_style_text_font(boot_title, &lv_font_montserrat_24, 0);
