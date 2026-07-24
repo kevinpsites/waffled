@@ -60,6 +60,18 @@ static void disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_ma
   uint32_t w = area->x2 - area->x1 + 1;
   uint32_t h = area->y2 - area->y1 + 1;
   lcd.pushImageDMA(area->x1, area->y1, w, h, (lgfx::rgb565_t *)px_map);
+  // pushImageDMA only STARTS the transfer — it returns immediately, while the
+  // DMA hardware keeps reading from `buf1` in the background. There's only
+  // one flush buffer (see buf1's comment), so without waiting here,
+  // lv_display_flush_ready() below tells LVGL it's safe to render the NEXT
+  // chunk into the same buffer the DMA engine may still be mid-read on —
+  // a classic single-buffer/async-DMA tear. Previously invisible against
+  // plain color+text content (or just not looked at closely enough); a real
+  // bitmap image on the boot screen — held on-screen for many redraw cycles
+  // by the blocking WiFi-connect wait loop below — made it obvious as
+  // sustained flicker. waitDMA() blocks until the in-flight transfer
+  // actually finishes before the buffer is handed back.
+  lcd.waitDMA();
   lv_display_flush_ready(disp);
 }
 
