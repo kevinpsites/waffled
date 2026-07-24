@@ -46,14 +46,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Waffled-Bite device: tapping a chore that needs a photo or a grown-up's OK now
-  says so.** Tapping any row on the Chores/Morning/Afternoon/Evening list worked, but a
+- **Waffled-Bite device: chores that need a photo or a grown-up's OK no longer look
+  broken.** Tapping any row on the Chores/Morning/Afternoon/Evening list worked, but a
   chore requiring approval silently reverted to unchecked once the server queued it for
   a parent's OK, and one requiring a photo (which the device can't capture) reverted
   with no explanation at all — both read as "tapping does nothing." Approval-required
-  chores now show a "Sent!" pending state instead of reverting; photo-required chores
-  show a "Needs a photo" note and aren't tappable on-device (completed from a parent's
-  phone/web instead).
+  chores now show "Waiting on a parent's approval" instead of reverting; photo-required
+  chores are hidden from the device's list entirely — completed from a parent's
+  phone/web instead — with a note when a whole routine is nothing but those.
 - **Waffled-Bite device: WiFi now connects reliably.** The device's WiFi chip could
   crash-loop unpredictably on boot. Fixed by changing how the firmware is built (the
   underlying networking software is now compiled fresh instead of using a flaky

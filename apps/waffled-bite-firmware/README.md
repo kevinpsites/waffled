@@ -262,19 +262,31 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   through to the same silent revert as a hard failure, which real-device testing
   showed reads exactly like "tapping does nothing" (every chore due that day needed
   either approval or a photo, so *every* tap silently failed). Now an
-  `AwaitingApproval` result shows a "Sent!" pending pill instead of reverting, and
-  freezes the row (no more taps) until the next poll rebuilds the screen. A chore
-  requiring a photo (`WbTask.requiresPhoto`, plumbed through from the device poll's
-  `requiresPhoto` field — `apps/api/.../waffledBites.ts`) isn't tappable on this device
-  at all — no camera-capture flow exists yet, so it'd just 422 `ProofRequiredError`
-  every time — and instead shows an always-on "Needs a photo" note; it's completed
-  from a parent's phone/web instead. A successful complete/uncomplete triggers an
-  immediate poll so stars/progress update everywhere without waiting up to 5s. Mock/
-  placeholder tasks (empty `id`, shown before the first real poll lands) render but
-  aren't tappable, by design. Root-caused via a live serial console on real hardware
-  (`pio device monitor`, wrapped in `script -q` to survive running backgrounded) while
-  tapping real rows, then confirmed against the actual DB rows behind those instance
-  ids — no animation on complete yet.
+  `AwaitingApproval` result drops the row's checkbox circle entirely and shows
+  "Waiting on a parent's approval" as plain text instead — direct feedback was that a
+  circle next to a "Sent!" pill still read as a checkbox waiting to be tapped again —
+  and freezes the row (no more taps) until the kid leaves and re-enters this screen
+  (`tasks_scr` is only ever rebuilt on a routine-tile tap, not on the background 5s
+  poll — see `wb_do_poll`'s comment on why). A chore requiring a photo
+  (`WbTask.requiresPhoto`, plumbed through from the device poll's `requiresPhoto`
+  field — `apps/api/.../waffledBites.ts`) is hidden from this list entirely, not
+  merely disabled — no camera-capture flow exists yet, so it'd just 422
+  `ProofRequiredError` every time, and the first cut (shown-but-disabled with a
+  "Needs a photo" note) still read as broken per direct feedback ("I see chores that
+  require a photo... and I can't do anything with them"). It's completed from a
+  parent's phone/web instead. A routine that's entirely photo-required chores (count
+  > 0 but nothing visible) gets its own message rather than the plain "Nothing here
+  right now," which would wrongly imply nothing's assigned at all. A successful
+  complete/uncomplete triggers an immediate poll so stars/progress update everywhere
+  without waiting up to 5s. Mock/placeholder tasks (empty `id`, shown before the first
+  real poll lands) render but aren't tappable, by design. Root-caused via a live
+  serial console on real hardware (`pio device monitor`, wrapped in `script -q` to
+  survive running backgrounded) while tapping real rows, then confirmed against the
+  actual DB rows behind those instance ids — no animation on complete yet. Known gap:
+  the routine tiles' "X of Y done" counts and progress rings on the home screen still
+  count hidden photo-required tasks in Y, so a routine with some hidden can never
+  visually reach "all done" even though every *visible* row is checked — flagged to
+  the user, not yet resolved one way or the other.
 - **No TLS certificate validation** for `https://` server addresses on `esp32-p4`
   (see the `TODO(hardware bring-up)` comment in `wb_http_esp32.cpp`) — a self-hosted
   household's server is assumed to be plain `http://` on the local LAN for now.

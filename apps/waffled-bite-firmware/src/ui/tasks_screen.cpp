@@ -183,17 +183,14 @@ static void wb_make_task_row(lv_obj_t *parent, const WbTask &task, WbTaskComplet
     make_badge(row, reward_buf, WB_COLOR_STARS_BG, WB_COLOR_GOLD);
   }
 
-  // Hidden unless the row is Awaiting — see wb_set_row_visual. A photo-required
-  // row shows its own always-on pill instead (built separately below), never
-  // this one.
+  // Hidden unless the row is Awaiting — see wb_set_row_visual. Photo-required
+  // tasks never reach this function at all (wb_build_tasks_screen filters
+  // them out before calling this), so there's no "Needs a photo" case here.
   lv_obj_t *status_label = lv_label_create(row);
   lv_label_set_text(status_label, "Waiting on a parent's approval");
   lv_obj_set_style_text_font(status_label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(status_label, WB_COLOR_GOLD, 0);
   lv_obj_add_flag(status_label, LV_OBJ_FLAG_HIDDEN);
-
-  if (task.requiresPhoto)
-    make_badge(row, "Needs a photo", WB_COLOR_BG, WB_COLOR_MUTED);
 
   lv_obj_t *checkbox = lv_obj_create(row);
   lv_obj_remove_style_all(checkbox);
@@ -214,12 +211,11 @@ static void wb_make_task_row(lv_obj_t *parent, const WbTask &task, WbTaskComplet
   wb_set_row_visual(ctx, initial);
 
   // Mock data (native's placeholder before the first real poll) uses empty
-  // ids — nothing to POST against. A photo-required chore isn't tappable on
-  // this device at all (no camera-capture flow — completed from a parent's
-  // phone/web instead); an already-awaiting row is frozen (see
+  // ids — nothing to POST against. An already-awaiting row is frozen (see
   // wb_row_clicked_cb's comment on why). Everything else (undone or done,
-  // real id, not requiring a photo) toggles either direction on tap.
-  bool interactive = task.id[0] != '\0' && !task.requiresPhoto && !task.awaiting;
+  // real id) toggles either direction on tap — a photo-required task never
+  // reaches this function at all (see wb_build_tasks_screen).
+  bool interactive = task.id[0] != '\0' && !task.awaiting;
   if (!interactive)
   {
     lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
@@ -280,15 +276,31 @@ void wb_build_tasks_screen(lv_obj_t *parent, const char *title, const WbRoutine 
   lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_scroll_dir(list, LV_DIR_VER);
 
-  if (routine.count == 0)
+  // Photo-required tasks are hidden from this list entirely, not just
+  // disabled — the device has no camera-capture flow, so there's nothing a
+  // kid can do with one here; it's completed from a parent's phone/web
+  // instead. That can leave a routine with real tasks but nothing to show
+  // (count > 0, but every one of them needs a photo), which needs its own
+  // message — "Nothing here right now" would wrongly imply there's nothing
+  // assigned at all.
+  int visibleCount = 0;
+  for (int i = 0; i < routine.count; i++)
+    if (!routine.tasks[i].requiresPhoto)
+      visibleCount++;
+
+  if (routine.count == 0 || visibleCount == 0)
   {
     lv_obj_t *empty_lbl = lv_label_create(list);
-    lv_label_set_text(empty_lbl, "Nothing here right now.");
+    lv_label_set_text(empty_lbl, routine.count == 0 ? "Nothing here right now."
+                                                      : "These need a grown-up's help — ask them to check on their phone.");
     lv_obj_set_style_text_font(empty_lbl, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(empty_lbl, WB_COLOR_MUTED, 0);
+    lv_obj_set_width(empty_lbl, lv_pct(100));
+    lv_label_set_long_mode(empty_lbl, LV_LABEL_LONG_WRAP);
     return;
   }
 
   for (int i = 0; i < routine.count; i++)
-    wb_make_task_row(list, routine.tasks[i], onComplete, onUncomplete);
+    if (!routine.tasks[i].requiresPhoto)
+      wb_make_task_row(list, routine.tasks[i], onComplete, onUncomplete);
 }

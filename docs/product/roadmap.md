@@ -160,9 +160,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   credentials), a fix for an intermittent WiFi-chip crash-loop found during bring-up,
   and the real "Waffled Buddy" mock's icons/colors/typography, verified on real
   hardware. Tap-to-complete on the device's own task list handles chores needing a
-  parent's OK (shows a "Sent!" pending state rather than silently reverting) and
-  photo-required chores (not tappable on-device at all — no camera-capture flow yet,
-  so those are completed from a parent's phone/web instead). **Pending:** OTA updates,
+  parent's OK (shows "Waiting on a parent's approval" rather than silently reverting)
+  and photo-required chores (hidden from the device's list entirely — no camera-capture
+  flow yet, so those are completed from a parent's phone/web instead). **Pending:** OTA updates,
   TLS certificate validation for `https://` server addresses, and on-device photo
   capture — see `apps/waffled-bite-firmware/README.md` for the full list of open items.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
