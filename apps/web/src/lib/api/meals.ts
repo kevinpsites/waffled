@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiGet, apiSend, apiDelete, localToday } from './client'
 import { tap, useRefetchOn } from './bus'
+import type { OnHandCount } from './mealBuilder'
 
 // ── Recipe authoring (create / edit) ─────────────────────────────────────────
 export interface IngredientInput {
@@ -293,7 +294,13 @@ export const mealsApi = {
   // — feeds the editor's section-name suggestions.
   recipeSections: () => apiGet<{ sections: string[] }>('/api/recipes/sections'),
   recipe: (id: string) =>
-    apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[]; steps: RecipeStep[] }>(`/api/recipes/${id}`),
+    apiGet<{
+      recipe: RecipeDetail
+      ingredients: RecipeIngredient[]
+      steps: RecipeStep[]
+      onHand?: OnHandCount | null
+      toBuy?: number
+    }>(`/api/recipes/${id}`),
   // Compile a recipe into the blessed Markdown format for sharing (native share sheet /
   // clipboard / .md download). Returns the markdown text + a suggested filename.
   recipeMarkdown: (id: string) =>
@@ -387,6 +394,10 @@ export interface RecipeState {
   recipe: RecipeDetail | null
   ingredients: RecipeIngredient[]
   steps: RecipeStep[]
+  // Real, pantry-derived shopping numbers. `onHand` is null when the pantry module
+  // is off — render no on-hand claim at all rather than a misleading zero.
+  onHand: OnHandCount | null
+  toBuy: number
   loading: boolean
   error: boolean
   refetch: () => void
@@ -397,6 +408,8 @@ export function useRecipe(id: string | null): RecipeState {
     recipe: null,
     ingredients: [],
     steps: [],
+    onHand: null,
+    toBuy: 0,
     loading: true,
     error: false,
   })
@@ -408,8 +421,20 @@ export function useRecipe(id: string | null): RecipeState {
     setState((s) => ({ ...s, loading: true }))
     mealsApi
       .recipe(id)
-      .then((d) => alive && setState({ recipe: d.recipe, ingredients: d.ingredients, steps: d.steps ?? [], loading: false, error: false }))
-      .catch(() => alive && setState({ recipe: null, ingredients: [], steps: [], loading: false, error: true }))
+      .then(
+        (d) =>
+          alive &&
+          setState({
+            recipe: d.recipe,
+            ingredients: d.ingredients,
+            steps: d.steps ?? [],
+            onHand: d.onHand ?? null,
+            toBuy: d.toBuy ?? 0,
+            loading: false,
+            error: false,
+          }),
+      )
+      .catch(() => alive && setState({ recipe: null, ingredients: [], steps: [], onHand: null, toBuy: 0, loading: false, error: true }))
     return () => {
       alive = false
     }

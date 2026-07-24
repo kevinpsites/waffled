@@ -40,10 +40,14 @@ vi.mock('../../lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/api')>()
   return {
     ...actual,
+    // The counts ride along on useRecipe now — they come off the same
+    // GET /api/recipes/:id the screen already makes, rather than a second request.
     useRecipe: () => ({
       recipe: recipeRef.current,
       ingredients: ingredientsRef.current,
       steps: [],
+      onHand: onHandRef.current,
+      toBuy: toBuyRef.current,
       loading: false,
       error: false,
       refetch: () => {},
@@ -147,8 +151,8 @@ describe('RecipeView — on-hand banner uses real pantry counts', () => {
     onHandRef.current = null
     toBuyRef.current = 5
     renderView()
-    // wait for the on-hand payload to land, then assert the claim never appears
-    await waitFor(() => expect(recipeFetchMock).toHaveBeenCalled())
+    // The counts arrive with the recipe now, so awaiting the rendered banner is the
+    // whole wait — there's no second request to synchronise against.
     expect(await screen.findByText(/5 to buy/)).toBeInTheDocument()
     expect(screen.queryByText(/on hand/i)).not.toBeInTheDocument()
     expect(screen.queryByText('0 of 9')).not.toBeInTheDocument()
@@ -166,8 +170,7 @@ describe('RecipeView — on-hand banner uses real pantry counts', () => {
     onHandRef.current = null
     toBuyRef.current = 0
     renderView()
-    await waitFor(() => expect(recipeFetchMock).toHaveBeenCalled())
-    expect(screen.queryByText(/on hand/i)).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText(/on hand/i)).not.toBeInTheDocument())
     expect(screen.queryByText(/to buy/i)).not.toBeInTheDocument()
   })
 })

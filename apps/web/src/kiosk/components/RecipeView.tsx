@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { groceryApi, mealBuilderApi, mealsApi, pantryApi, useRecipe, type OnHandCount, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
+import { groceryApi, mealBuilderApi, mealsApi, pantryApi, useRecipe, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
 import { ScheduleModal } from './ScheduleModal'
 import { CookConfirm } from './CookConfirm'
 import { useTopbarFull } from '../topbar-slot'
@@ -146,7 +146,9 @@ function StepRow({ s, onNote }: { s: RecipeStep; onNote: (val: string) => void }
 
 export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: string; onSelect?: () => void; selectLabel?: string; fullScreen?: boolean }) {
   const navigate = useNavigate()
-  const { recipe, ingredients, steps, loading, error, refetch } = useRecipe(id)
+  // onHand/toBuy default here so a caller (or a test) that stubs useRecipe without
+  // them can't turn an absent count into a crash — absent means "no claim", same as null.
+  const { recipe, ingredients, steps, onHand = null, toBuy = 0, loading, error, refetch } = useRecipe(id)
   const [servings, setServings] = useState<number | null>(null)
   const [showAllTags, setShowAllTags] = useState(false)
   const [fav, setFav] = useState(false)
@@ -157,28 +159,12 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const [notes, setNotes] = useState('')
   const [usedMatches, setUsedMatches] = useState<RecipeMatch[] | null>(null)
   const [building, setBuilding] = useState(false)
-  // Real, pantry-derived shopping numbers for the banner. `onHand` is null whenever
-  // we can't make the claim — the pantry module is off, or the counts haven't landed
-  // yet — and the banner then says nothing about what's on hand. It must never fall
-  // back to counting `isStaple` ingredients (the old bug: an empty pantry still read
-  // "4 of 9 on hand") and never render "0 of N", which is a different untruth.
-  // `GET /api/recipes/:id` returns both fields; `useRecipe` doesn't surface them, so
-  // we read them from the same endpoint here.
-  const [shopping, setShopping] = useState<{ onHand: OnHandCount | null; toBuy: number } | null>(null)
-  useEffect(() => {
-    let alive = true
-    setShopping(null)
-    mealsApi
-      .recipe(id)
-      .then((d) => {
-        const withCounts = d as unknown as { onHand?: OnHandCount | null; toBuy?: number }
-        if (alive) setShopping({ onHand: withCounts.onHand ?? null, toBuy: withCounts.toBuy ?? 0 })
-      })
-      .catch(() => alive && setShopping(null))
-    return () => {
-      alive = false
-    }
-  }, [id])
+  // Real, pantry-derived shopping numbers for the banner, carried by useRecipe off the
+  // same GET /api/recipes/:id the screen already makes. `onHand` is null whenever we
+  // can't make the claim — the pantry module is off — and the banner then says nothing
+  // about what's on hand. It must never fall back to counting `isStaple` ingredients
+  // (the old bug: an empty pantry still read "4 of 9 on hand") and never render
+  // "0 of N", which is a different untruth.
   // Compiled shareable markdown, prefetched on load. Native navigator.share() needs the
   // click handler to stay inside the user-gesture (transient activation) — awaiting a
   // fetch inside the handler breaks that on Safari — so we prefetch and share the
@@ -280,8 +266,6 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const base = recipe.servings || 4
   const current = servings ?? base
   const ratio = current / base
-  const onHand = shopping?.onHand ?? null
-  const toBuy = shopping?.toBuy ?? 0
   const nonStaple = ingredients.filter((i) => !i.isStaple).map((i) => i.name)
   // Names are only trustworthy when nothing was matched against the pantry — with the
   // pantry on, `toBuy` is the *unmatched* subset and we don't know which names those
