@@ -133,6 +133,20 @@ describe('GET /api/goals/:id/note-suggestions', () => {
     expect(JSON.parse(res.body).suggestions).toEqual(['family walk', 'Park day', 'Solo run'])
   })
 
+  it('breaks frequency+recency ties deterministically (alphabetical)', async () => {
+    // Three distinct notes, each logged exactly once on the SAME day — so count and
+    // max(logged_at) are identical for all three (backdated logs land at local noon, a
+    // realistic collision). Without a stable tiebreaker Postgres could return them in any
+    // order; assert a fixed alphabetical order so chip order never flickers between requests.
+    const goalId = await makeGoal()
+    for (const note of ['Zebra visit', 'Apple picking', 'Museum trip']) {
+      await call('POST', `/api/goals/${goalId}/log`, kevin, { amount: 1, personIds: [wallyId], note, loggedOn: '2026-03-10' })
+    }
+    const res = await call('GET', `/api/goals/${goalId}/note-suggestions`, kevin)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).suggestions).toEqual(['Apple picking', 'Museum trip', 'Zebra visit'])
+  })
+
   it('scopes to a person by PARTICIPANT credit, not who recorded it', async () => {
     const goalId = await makeGoal()
     // Kevin records every log. Wally is the credited participant on two of them.

@@ -816,7 +816,7 @@ export async function goalNoteSuggestions(
         and note is not null and btrim(note) <> ''
         and ($3::uuid is null or person_id = $3::uuid)
       group by lower(btrim(note))
-      order by count(*) desc, max(logged_at) desc
+      order by count(*) desc, max(logged_at) desc, lower(btrim(note)) asc
       limit $4`,
     [householdId, goalId, personId ?? null, NOTE_SUGGESTION_LIMIT]
   )
