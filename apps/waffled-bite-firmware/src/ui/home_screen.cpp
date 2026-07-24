@@ -413,7 +413,6 @@ struct WbHomeSyncCtx
   lv_obj_t *clock_lbl;
   lv_obj_t *date_lbl;
   lv_obj_t *sub_lbl;
-  lv_obj_t *stars_top_lbl;
   lv_obj_t *stars_greet_lbl;
   lv_obj_t *morning_badge_lbl;
   lv_obj_t *morning_bar;
@@ -469,7 +468,6 @@ void wb_sync_home_screen(lv_obj_t *parent, const WbDeviceState &state)
 
   char stars_buf[24];
   snprintf(stars_buf, sizeof(stars_buf), "%d stars", state.stars);
-  lv_label_set_text(ctx->stars_top_lbl, stars_buf);
   lv_label_set_text(ctx->stars_greet_lbl, stars_buf);
 
   sync_routine_widgets(ctx->morning_badge_lbl, ctx->morning_bar, ctx->morning_check, state.morning);
@@ -505,6 +503,8 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   lv_obj_set_flex_align(clock_col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
   lv_obj_set_style_pad_column(clock_col, 8, 0);
   lv_obj_clear_flag(clock_col, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *clock_logo = lv_image_create(clock_col);
+  lv_image_set_src(clock_logo, &wb_logo_40);
   char clock_buf[8], date_buf[24];
   format_clock_date(clock_buf, sizeof(clock_buf), date_buf, sizeof(date_buf), state);
   lv_obj_t *clock_lbl = lv_label_create(clock_col);
@@ -516,17 +516,13 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   lv_obj_set_style_text_font(date_lbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(date_lbl, WB_COLOR_MUTED, 0);
 
-  lv_obj_t *top_right = lv_obj_create(top);
-  lv_obj_remove_style_all(top_right);
-  lv_obj_set_size(top_right, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(top_right, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(top_right, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_column(top_right, 10, 0);
-  lv_obj_clear_flag(top_right, LV_OBJ_FLAG_SCROLLABLE);
-
-  lv_obj_t *stars_top_lbl = nullptr;
-  make_badge(top_right, stars_buf, WB_COLOR_STARS_BG, WB_COLOR_GOLD, &wb_icon_star_18, &stars_top_lbl);
-  make_gear_button(top_right, settings_scr);
+  // Just the gear now — this used to also hold a small stars badge, but it
+  // duplicated the greeting card's stars pill and rendered too cramped up
+  // here (real-device feedback: "next to the settings icon there is a
+  // little- I think it's supposed to be stars but I'm not entirely sure
+  // what it is"). The greeting card's stars_greet_lbl is still the one
+  // source of truth for the stars count.
+  make_gear_button(top, settings_scr);
 
   // ── middle: greeting card + the three routine tiles + chores bar ────────
   lv_obj_t *middle = lv_obj_create(parent);
@@ -600,7 +596,7 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   // `top`, a real child, not on `parent` itself).
   WbHomeSyncCtx *sync_ctx = new WbHomeSyncCtx{
       clock_lbl, date_lbl, sub_lbl,
-      stars_top_lbl, stars_greet_lbl,
+      stars_greet_lbl,
       morning_badge_lbl, morning_bar, morning_check,
       afternoon_badge_lbl, afternoon_bar, afternoon_check,
       evening_badge_lbl, evening_bar, evening_check,

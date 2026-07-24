@@ -35,8 +35,9 @@ extern const lv_image_dsc_t wb_icon_back_18;     // Spare: back chevron, not yet
 
 // The Waffled logo (apps/web/public/logo.png, resized/baked full-color RGB565 — it has no
 // LVGL-recolor trick like the A8 icons above, it's the real multi-color mark). Onboarding
-// (onboarding_screen.cpp) + WiFi-connecting (wifi_screen.cpp) screens.
+// (onboarding_screen.cpp) + WiFi screens (wifi_screen.cpp).
 extern const lv_image_dsc_t wb_logo_96;
+extern const lv_image_dsc_t wb_logo_40; // Small mark next to the home screen's clock
 
 #ifdef __cplusplus
 }
