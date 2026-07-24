@@ -1,8 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { useMatch, useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { mealsApi, pantryApi, useRecipe, type RecipeMatch } from '../lib/api'
+import {
+  mealsApi,
+  pantryApi,
+  useRecipe,
+  type RecipeIngredient,
+  type RecipeMatch,
+  type RecipeStep,
+} from '../lib/api'
 import { CookConfirm } from './components/CookConfirm'
+import { CookTabs, type CookTabInfo } from './components/CookTabs'
+import { useCookPlate } from './components/CookDishes'
 import './../styles/cookmode.css'
 
 // A running (or fired) per-step countdown shown in the floating dock.
@@ -26,13 +35,189 @@ function fmt(secs: number): string {
 // Full-screen, step-by-step cooking view for the kiosk — large type for across-the-
 // kitchen reading, one step at a time, the step's ingredients pulled out, and a
 // screen wake-lock so the tablet doesn't sleep mid-recipe.
+//
+// Two ways in, one screen:
+//   /meals/recipe/:id/cook — one recipe, exactly as it has always worked.
+//   /meals/meal/:id/cook   — a whole Meal Builder plate, tabbed across its dishes
+//                            with independent step progress per dish.
 export function CookMode() {
   const { id } = useParams()
+  const plate = useMatch('/meals/meal/:id/cook')
+  if (plate) return <CookPlate mealId={id ?? null} />
+  return <CookRecipe recipeId={id ?? null} />
+}
+
+// ── one recipe ────────────────────────────────────────────────────────────────
+function CookRecipe({ recipeId }: { recipeId: string | null }) {
   const navigate = useNavigate()
-  const { recipe, ingredients, steps, loading, error } = useRecipe(id ?? null)
+  const { recipe, ingredients, steps, loading, error } = useRecipe(recipeId)
   const [i, setI] = useState(0)
-  const [showAll, setShowAll] = useState(false)
   const [done, setDone] = useState(false)
+
+  const total = steps.length
+  // Replace (not push) the cook-mode history entry with the recipe so pressing
+  // back from the recipe goes to wherever you came from (Today, the meal plan)
+  // instead of bouncing back into cook mode — that round-trip was an endless loop.
+  const exit = () => navigate(`/meals/recipe/${recipeId}`, { replace: true })
+
+  useTopbarFull(
+    () => (
+      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
+        <button className="pill" style={{ cursor: 'pointer' }} onClick={exit}>✕ Exit cook mode</button>
+        <div className="cm-top-title wf-serif">{recipe?.title ?? ''}</div>
+        <div style={{ marginLeft: 'auto' }} className="cm-top-prog tiny muted">
+          {total > 0 && !done ? `Step ${i + 1} of ${total}` : ''}
+        </div>
+      </div>
+    ),
+    [recipe?.title, i, total, done, recipeId]
+  )
+
+  if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
+  if (error || !recipe) return <div className="muted" style={{ padding: 30 }}>This recipe isn’t available.</div>
+
+  return (
+    <CookSession
+      recipeId={recipe.id}
+      title={recipe.title}
+      ingredients={ingredients}
+      steps={steps}
+      i={i}
+      setI={setI}
+      done={done}
+      setDone={setDone}
+      onExit={exit}
+      exitLabel="Back to recipe"
+    />
+  )
+}
+
+// ── a whole plate ─────────────────────────────────────────────────────────────
+// Every dish keeps its own step position and its own "cooked" state, held here so
+// they survive tab switches. The session below is keyed by dish, so switching tabs
+// gives the new dish a clean slate for its own transient state (timers, sheets) —
+// timer persistence across dishes is a separate piece of work.
+function CookPlate({ mealId }: { mealId: string | null }) {
+  const navigate = useNavigate()
+  const { name, dishes, loading, error } = useCookPlate(mealId)
+  const [active, setActive] = useState(0)
+  const [stepByDish, setStepByDish] = useState<Record<string, number>>({})
+  const [doneByDish, setDoneByDish] = useState<Record<string, boolean>>({})
+
+  const index = dishes.length > 0 ? Math.min(active, dishes.length - 1) : 0
+  const dish = dishes[index] ?? null
+  const rid = dish?.recipeId ?? null
+  const i = rid ? stepByDish[rid] ?? 0 : 0
+  const done = rid ? !!doneByDish[rid] : false
+  const total = dish?.steps.length ?? 0
+
+  // Controlled per-dish setters with the same shape as useState's, so the session
+  // body can keep using setI((n) => n + 1) without knowing it's on a plate.
+  const setI = useCallback<Dispatch<SetStateAction<number>>>(
+    (value) => {
+      if (!rid) return
+      setStepByDish((m) => {
+        const cur = m[rid] ?? 0
+        const next = typeof value === 'function' ? (value as (p: number) => number)(cur) : value
+        return { ...m, [rid]: next }
+      })
+    },
+    [rid]
+  )
+  const setDone = useCallback<Dispatch<SetStateAction<boolean>>>(
+    (value) => {
+      if (!rid) return
+      setDoneByDish((m) => {
+        const cur = !!m[rid]
+        const next = typeof value === 'function' ? (value as (p: boolean) => boolean)(cur) : value
+        return { ...m, [rid]: next }
+      })
+    },
+    [rid]
+  )
+
+  const exit = () => navigate(`/meals/build/${mealId}`, { replace: true })
+
+  useTopbarFull(
+    () => (
+      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
+        <button className="pill" style={{ cursor: 'pointer' }} onClick={exit}>✕ Exit cook mode</button>
+        <div className="cm-top-title wf-serif">{name ?? ''}</div>
+        <div style={{ marginLeft: 'auto' }} className="cm-top-prog tiny muted">
+          {dish && total > 0 && !done ? `${dish.title} · Step ${i + 1} of ${total}` : ''}
+        </div>
+      </div>
+    ),
+    [name, dish?.title, i, total, done, mealId]
+  )
+
+  if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
+  if (error) return <div className="muted" style={{ padding: 30 }}>This meal isn’t available.</div>
+  if (!dish) {
+    return (
+      <div className="muted" style={{ padding: 30 }}>
+        Nothing on this plate yet — add a dish to it and there’ll be something to cook.
+      </div>
+    )
+  }
+
+  const tabs: CookTabInfo[] = dishes.map((d) => ({
+    recipeId: d.recipeId,
+    title: d.title,
+    emoji: d.emoji,
+    stepIndex: stepByDish[d.recipeId] ?? 0,
+    total: d.steps.length,
+    done: !!doneByDish[d.recipeId],
+  }))
+
+  return (
+    <CookSession
+      key={dish.recipeId}
+      recipeId={dish.recipeId}
+      title={dish.title}
+      ingredients={dish.ingredients}
+      steps={dish.steps}
+      i={i}
+      setI={setI}
+      done={done}
+      setDone={setDone}
+      onExit={exit}
+      exitLabel="Back to the plate"
+      header={<CookTabs tabs={tabs} activeIndex={index} onSelect={setActive} />}
+    />
+  )
+}
+
+// ── the cooking body ──────────────────────────────────────────────────────────
+// One dish's worth of cooking: the step stage, the controls, the all-ingredients
+// modal and the timers. Step position and "cooked" live above (per recipe or per
+// dish); everything transient lives here.
+function CookSession({
+  recipeId,
+  title,
+  ingredients,
+  steps,
+  i,
+  setI,
+  done,
+  setDone,
+  onExit,
+  exitLabel,
+  header,
+}: {
+  recipeId: string
+  title: string
+  ingredients: RecipeIngredient[]
+  steps: RecipeStep[]
+  i: number
+  setI: Dispatch<SetStateAction<number>>
+  done: boolean
+  setDone: Dispatch<SetStateAction<boolean>>
+  onExit: () => void
+  exitLabel: string
+  header?: ReactNode
+}) {
+  const [showAll, setShowAll] = useState(false)
   const [usedMatches, setUsedMatches] = useState<RecipeMatch[]>([])
   const [sheetOpen, setSheetOpen] = useState(false)
   // Background timers — survive step navigation (the component never remounts) and
@@ -117,83 +302,67 @@ export function CookMode() {
     setTimers((ts) => ts.map((t) => (t.id === tid ? { ...t, remainingSeconds: secs, running: true, firing: false } : t)))
   }, [])
 
+  const total = steps.length
   const firingTimers = timers.filter((t) => t.firing)
   const runningTimers = timers.filter((t) => !t.firing)
   // "Jump to step" from the alarm: leave the done screen, go to that step, clear it.
   // Dock (still-running timer): return to its step but KEEP the timer running.
   const jumpToStep = useCallback((t: CookTimer) => {
     setDone(false)
-    setI(Math.max(0, Math.min(t.stepIndex, steps.length - 1)))
-  }, [steps.length])
+    setI(Math.max(0, Math.min(t.stepIndex, total - 1)))
+  }, [total, setDone, setI])
   // Alarm (fired timer): jump to the step and clear the finished alarm.
   const jumpToTimer = useCallback((t: CookTimer) => {
     jumpToStep(t)
     dismissTimer(t.id)
   }, [jumpToStep, dismissTimer])
 
-  const total = steps.length
-  // Replace (not push) the cook-mode history entry with the recipe so pressing
-  // back from the recipe goes to wherever you came from (Today, the meal plan)
-  // instead of bouncing back into cook mode — that round-trip was an endless loop.
-  const exit = () => navigate(`/meals/recipe/${id}`, { replace: true })
-
-  useTopbarFull(
-    () => (
-      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
-        <button className="pill" style={{ cursor: 'pointer' }} onClick={exit}>✕ Exit cook mode</button>
-        <div className="cm-top-title wf-serif">{recipe?.title ?? ''}</div>
-        <div style={{ marginLeft: 'auto' }} className="cm-top-prog tiny muted">
-          {total > 0 && !done ? `Step ${i + 1} of ${total}` : ''}
-        </div>
-      </div>
-    ),
-    [recipe?.title, i, total, done, id]
-  )
-
-  if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
-  if (error || !recipe) return <div className="muted" style={{ padding: 30 }}>This recipe isn’t available.</div>
-  if (total === 0) return <div className="muted" style={{ padding: 30 }}>No steps recorded for this recipe — nothing to cook through.</div>
+  if (total === 0) {
+    const empty = <div className="muted" style={{ padding: 30 }}>No steps recorded for this recipe — nothing to cook through.</div>
+    return header ? <div className="cookmode">{header}{empty}</div> : empty
+  }
 
   function finish() {
     setDone(true)
-    if (recipe) {
-      mealsApi.markCooked(recipe.id).catch(() => {})
-      // Offer to update the pantry with what this recipe likely used.
-      pantryApi.forRecipe(recipe.id).then((m) => { if (m.length) { setUsedMatches(m); setSheetOpen(true) } }).catch(() => {})
-    }
+    mealsApi.markCooked(recipeId).catch(() => {})
+    // Offer to update the pantry with what this recipe likely used.
+    pantryApi.forRecipe(recipeId).then((m) => { if (m.length) { setUsedMatches(m); setSheetOpen(true) } }).catch(() => {})
   }
 
   if (done) {
     return (
       <div className="cookmode cm-done">
+        {header}
         <div className="cm-done-emoji">🎉</div>
         <div className="wf-serif cm-done-h">Nicely done.</div>
-        <div className="muted cm-done-sub">“{recipe.title}” is marked as cooked.</div>
+        <div className="muted cm-done-sub">“{title}” is marked as cooked.</div>
         <div className="cm-done-actions">
           <button className="btn btn-ghost" onClick={() => { setDone(false); setI(0) }}>↻ Start over</button>
           {usedMatches.length > 0 && (
             <button className="btn btn-ghost" onClick={() => setSheetOpen(true)}>🧺 Update pantry</button>
           )}
-          <button className="btn btn-primary" onClick={exit}>Back to recipe</button>
+          <button className="btn btn-primary" onClick={onExit}>{exitLabel}</button>
         </div>
         <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} onJump={jumpToStep} />
         <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
         {sheetOpen && (
-          <CookConfirm title={recipe.title} matches={usedMatches} onClose={() => setSheetOpen(false)} />
+          <CookConfirm title={title} matches={usedMatches} onClose={() => setSheetOpen(false)} />
         )}
       </div>
     )
   }
 
-  const step = steps[i]
-  const pct = Math.round(((i + 1) / total) * 100)
+  const at = Math.max(0, Math.min(i, total - 1))
+  const step = steps[at]
+  const pct = Math.round(((at + 1) / total) * 100)
 
   return (
     <div className="cookmode">
+      {header}
       <div className="cm-progress"><span style={{ width: `${pct}%` }} /></div>
 
       <div className="cm-stage">
-        <div className="cm-step-n">Step {i + 1}</div>
+        <div className="cm-step-n">Step {at + 1}</div>
         <div className="cm-instruction wf-serif">{step.instruction}</div>
 
         {step.ingredients.length > 0 && (
@@ -212,22 +381,22 @@ export function CookMode() {
         {step.timerSeconds != null && step.timerSeconds > 0 ? (
           <button
             className="cm-timer-start"
-            onClick={() => startTimer(`Step ${i + 1}`, step.timerSeconds!, i)}
+            onClick={() => startTimer(`Step ${at + 1}`, step.timerSeconds!, at)}
           >
             ⏱ Start {fmt(step.timerSeconds)}
           </button>
         ) : (
           <AddTimer
-            key={i}
-            onStart={(secs) => startTimer(`Step ${i + 1}`, secs, i)}
+            key={at}
+            onStart={(secs) => startTimer(`Step ${at + 1}`, secs, at)}
           />
         )}
       </div>
 
       <div className="cm-controls">
-        <button className="cm-nav" disabled={i === 0} onClick={() => setI((n) => Math.max(0, n - 1))}>‹ Back</button>
+        <button className="cm-nav" disabled={at === 0} onClick={() => setI((n) => Math.max(0, n - 1))}>‹ Back</button>
         <button className="cm-allbtn" onClick={() => setShowAll(true)}>All ingredients</button>
-        {i < total - 1 ? (
+        {at < total - 1 ? (
           <button className="cm-nav cm-next" onClick={() => setI((n) => Math.min(total - 1, n + 1))}>Next ›</button>
         ) : (
           <button className="cm-nav cm-finish" onClick={finish}>✓ Finish &amp; mark cooked</button>
