@@ -1,5 +1,6 @@
 #include "onboarding_screen.h"
 #include "../wb_http.h"
+#include "../icons/wb_icons.h"
 #include <ArduinoJson.h>
 #include <cstdio>
 
@@ -202,6 +203,19 @@ void wb_build_onboarding_screen(lv_obj_t *parent, const char *defaultServerUrl, 
   lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(card, 6, 0);
   lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+  // A plain row wrapper, not lv_obj_set_align on the image directly — `card`
+  // is a flex column and per-child lv_obj_set_align is ignored inside flex
+  // layouts (same reasoning as home_screen.cpp's dedicated alignment rows).
+  lv_obj_t *logo_row = lv_obj_create(card);
+  lv_obj_remove_style_all(logo_row);
+  lv_obj_set_size(logo_row, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(logo_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(logo_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_bottom(logo_row, 4, 0);
+  lv_obj_clear_flag(logo_row, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *logo = lv_image_create(logo_row);
+  lv_image_set_src(logo, &wb_logo_96);
 
   lv_obj_t *title = lv_label_create(card);
   lv_label_set_text(title, "Set up your Waffled-Bite");

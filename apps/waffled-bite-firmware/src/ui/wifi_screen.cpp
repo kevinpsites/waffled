@@ -1,5 +1,6 @@
 #include "wifi_screen.h"
 #include "../wb_wifi.h"
+#include "../icons/wb_icons.h"
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -384,6 +385,10 @@ void wb_build_wifi_screen(lv_obj_t *parent, WbWifiConnectedCallback onConnected)
   lv_obj_clear_flag(connecting_view, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(connecting_view, LV_OBJ_FLAG_HIDDEN);
   ctx->connecting_view = connecting_view;
+
+  lv_obj_t *connecting_logo = lv_image_create(connecting_view);
+  lv_image_set_src(connecting_logo, &wb_logo_96);
+  lv_obj_set_style_pad_bottom(connecting_logo, 8, 0);
 
   lv_obj_t *connecting_lbl = lv_label_create(connecting_view);
   lv_label_set_text(connecting_lbl, "Connecting...");

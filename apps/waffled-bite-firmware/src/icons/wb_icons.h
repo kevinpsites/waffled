@@ -33,6 +33,11 @@ extern const lv_image_dsc_t wb_icon_check_18;    // Spare: checkmark, not yet wi
 extern const lv_image_dsc_t wb_icon_close_18;    // Spare: close/X, not yet wired anywhere
 extern const lv_image_dsc_t wb_icon_back_18;     // Spare: back chevron, not yet wired anywhere
 
+// The Waffled logo (apps/web/public/logo.png, resized/baked full-color RGB565 — it has no
+// LVGL-recolor trick like the A8 icons above, it's the real multi-color mark). Onboarding
+// (onboarding_screen.cpp) + WiFi-connecting (wifi_screen.cpp) screens.
+extern const lv_image_dsc_t wb_logo_96;
+
 #ifdef __cplusplus
 }
 #endif
