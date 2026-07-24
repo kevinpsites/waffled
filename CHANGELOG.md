@@ -30,8 +30,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Waffled-Bite device: home + grown-up-controls screen polish.** The "Hi, {name}!"
+  greeting now renders in the same warm serif (Newsreader) used across the rest of
+  Waffled instead of a generic sans font, the greeting card and routine tiles now have
+  soft drop shadows for a bit of depth, and a fully-completed routine
+  (Morning/Afternoon/Evening/Chores) now shows a small green checkmark badge
+  overlapping its count pill instead of a checkmark crammed into the pill's text. The
+  Morning/Afternoon/Evening/Chores tiles, the Sounds/Nightlight/Set-a-timer/Bedtime
+  grown-up controls, the settings gear, and the stars badges now show real icons
+  (sun/sun-high/moon/broom/sound/timer/bed/gear/star) instead of text placeholders, the
+  routine tile colors match the design mock's exact values, and the home screen's
+  subtitle now reads "Let's have a great morning/afternoon/evening" instead of a
+  hardcoded "day". The Waffled logo now appears on the setup screen and the
+  Wi-Fi "Connecting…" screen.
+- **Waffled-Bite device: quiet-time and grown-up-controls screens match the updated
+  design mock.** Quiet time switches from a single centered column to a split
+  layout — a gold crescent moon, the "Quiet time" title in the same warm serif used
+  elsewhere, and the "Stay cozy until…" line on the left, the countdown ring on the
+  right. The grown-up-controls tiles are now compact and vertically centered instead
+  of stretched to fill the screen's height, matching the mock's proportions.
+
 ### Fixed
 
+- **Waffled-Bite device: chores that need a photo or a grown-up's OK no longer look
+  broken.** Tapping any row on the Chores/Morning/Afternoon/Evening list worked, but a
+  chore requiring approval silently reverted to unchecked once the server queued it for
+  a parent's OK, and one requiring a photo (which the device can't capture) reverted
+  with no explanation at all — both read as "tapping does nothing." Approval-required
+  chores now show "Waiting on a parent's approval" instead of reverting; photo-required
+  chores are hidden from the device's list entirely — completed from a parent's
+  phone/web instead — with a note when a whole routine is nothing but those. A routine
+  tile's "X of Y done" count and progress ring now exclude hidden photo-required
+  chores too, so the numbers match what's actually shown and a routine can still
+  reach "all done" once every visible chore is checked.
 - **Waffled-Bite device: WiFi now connects reliably.** The device's WiFi chip could
   crash-loop unpredictably on boot. Fixed by changing how the firmware is built (the
   underlying networking software is now compiled fresh instead of using a flaky

@@ -1,5 +1,6 @@
 #include "wifi_screen.h"
 #include "../wb_wifi.h"
+#include "../icons/wb_icons.h"
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -275,6 +276,18 @@ void wb_build_wifi_screen(lv_obj_t *parent, WbWifiConnectedCallback onConnected)
   lv_obj_clear_flag(list_view, LV_OBJ_FLAG_SCROLLABLE);
   ctx->list_view = list_view;
 
+  // A plain row wrapper, not lv_obj_set_align on the image directly — same
+  // "flex column ignores per-child align" reasoning as onboarding_screen.cpp's
+  // logo_row.
+  lv_obj_t *logo_row = lv_obj_create(list_view);
+  lv_obj_remove_style_all(logo_row);
+  lv_obj_set_size(logo_row, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(logo_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(logo_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(logo_row, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *logo = lv_image_create(logo_row);
+  lv_image_set_src(logo, &wb_logo_96);
+
   lv_obj_t *title = lv_label_create(list_view);
   lv_label_set_text(title, "Connect to WiFi");
   lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
@@ -384,6 +397,10 @@ void wb_build_wifi_screen(lv_obj_t *parent, WbWifiConnectedCallback onConnected)
   lv_obj_clear_flag(connecting_view, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(connecting_view, LV_OBJ_FLAG_HIDDEN);
   ctx->connecting_view = connecting_view;
+
+  lv_obj_t *connecting_logo = lv_image_create(connecting_view);
+  lv_image_set_src(connecting_logo, &wb_logo_96);
+  lv_obj_set_style_pad_bottom(connecting_logo, 8, 0);
 
   lv_obj_t *connecting_lbl = lv_label_create(connecting_view);
   lv_label_set_text(connecting_lbl, "Connecting...");

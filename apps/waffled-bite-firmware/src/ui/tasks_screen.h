@@ -12,12 +12,23 @@
 #include <string>
 #include "../wb_state.h"
 
+// A tap's outcome — three-way, not pass/fail: a photo-proof/approval-required
+// chore still answers HTTP 200, just with instance.status "awaiting" rather
+// than "done", and that's a meaningfully different row state (see
+// wb_row_clicked_cb) from a hard failure (network error, 401, unexpected
+// body shape).
+enum class WbTaskCompleteResult
+{
+  Failed,
+  Success,
+  AwaitingApproval,
+};
+
 // Synchronous — mirrors this codebase's existing pattern (onboarding's Pair
 // button, main.cpp's poll timer) of blocking network calls straight off an
 // LVGL event/timer callback rather than an async abstraction this small app
-// doesn't otherwise have. Returns true only on a confirmed 200 from the
-// server.
-using WbTaskCompleteCallback = std::function<bool(const std::string &taskId)>;
+// doesn't otherwise have.
+using WbTaskCompleteCallback = std::function<WbTaskCompleteResult(const std::string &taskId)>;
 
 // Builds onto `parent` (a fresh/cleaned screen object, same convention as
 // wb_build_home_screen/wb_build_settings_screen — caller does the

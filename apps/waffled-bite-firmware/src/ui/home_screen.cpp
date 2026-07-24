@@ -1,11 +1,11 @@
 #include "home_screen.h"
+#include "../icons/wb_icons.h"
 #include <cstdio>
 
 // Palette — warm cream/ink, echoing the web app's theme, plus one tint per
-// routine tile matching the latest mocks. No custom icon font yet (see the
-// firmware README's icons note) — LV_SYMBOL_* built-ins stand in wherever
-// they actually match (checkmark, gear); everything else (sun/moon/lightning)
-// is text-only for now rather than a fabricated mismatched icon.
+// routine tile matching the "Waffled Buddy" mock. Routine/gear/star icons are
+// baked A8 images (see icons/wb_icons.h) tinted per-tile via
+// style_image_recolor — see make_icon()'s comment.
 #define WB_COLOR_BG lv_color_hex(0xF5EFE1)
 #define WB_COLOR_CARD lv_color_hex(0xFFFDF8)
 #define WB_COLOR_GREET_CARD lv_color_hex(0xE7E1D6)
@@ -14,14 +14,17 @@
 #define WB_COLOR_GOLD lv_color_hex(0xC98A1E)
 #define WB_COLOR_STARS_BG lv_color_hex(0xFBEFD6)
 
-#define WB_COLOR_MORNING lv_color_hex(0xDCC981)
-#define WB_COLOR_MORNING_TEXT lv_color_hex(0x6B551C)
-#define WB_COLOR_AFTERNOON lv_color_hex(0xCC9E70)
-#define WB_COLOR_AFTERNOON_TEXT lv_color_hex(0x6B3F1B)
-#define WB_COLOR_EVENING lv_color_hex(0xACA8DC)
-#define WB_COLOR_EVENING_TEXT lv_color_hex(0x362F73)
-#define WB_COLOR_CHORES lv_color_hex(0xA7C9AC)
-#define WB_COLOR_CHORES_TEXT lv_color_hex(0x2C5A34)
+// Exact tokens from the "Waffled Buddy" mock's buddy-400.css (--morning/-i etc.),
+// not eyeballed — see tools/icons/README.md for where this mock came from.
+#define WB_COLOR_MORNING lv_color_hex(0xF6E2A0)
+#define WB_COLOR_MORNING_TEXT lv_color_hex(0x8A6A1E)
+#define WB_COLOR_AFTERNOON lv_color_hex(0xF4C9A0)
+#define WB_COLOR_AFTERNOON_TEXT lv_color_hex(0x9C5A2A)
+#define WB_COLOR_EVENING lv_color_hex(0xC6C9F2)
+#define WB_COLOR_EVENING_TEXT lv_color_hex(0x4B4EA8)
+#define WB_COLOR_CHORES lv_color_hex(0xBEE6D6)
+#define WB_COLOR_CHORES_TEXT lv_color_hex(0x1C7A56)
+#define WB_COLOR_DONE_GREEN lv_color_hex(0x4CAF6D)
 
 // Short weekday/month names for the clock's date line — index matches
 // waffledBites.ts's nowLocalView (weekday 0=Sun, month 1-12).
@@ -51,13 +54,55 @@ static void format_clock_date(char *clockBuf, size_t clockLen, char *dateBuf, si
   snprintf(dateBuf, dateLen, "%s, %s %d", weekday, month, state.nowDay);
 }
 
+// "Let's have a great {period}" — matches the mock's dynamic time-of-day
+// subtitle rather than a hardcoded "day". Same morning/afternoon/evening
+// split as the routine tiles' names, not the routines' own schedules (those
+// can be configured per-household; this is just a friendly greeting).
+static const char *greeting_period(const WbDeviceState &state)
+{
+  if (state.nowHour < 0)
+    return "day"; // mock/pre-first-poll state — see format_clock_date's comment
+  if (state.nowHour < 12)
+    return "morning";
+  if (state.nowHour < 17)
+    return "afternoon";
+  return "evening";
+}
+
+// Photo-required tasks are hidden from tasks_screen.cpp entirely (no
+// camera-capture flow), so they're excluded from these counts too — a
+// routine tile's "X of Y" and progress ring should match what's actually
+// achievable on this device, not include chores a kid can never check off
+// here. Both counters below apply the same exclusion for consistency: a
+// photo-required task that happens to be done (completed elsewhere, with a
+// photo) still doesn't count toward Y, so it can't push done > Y either.
+static int routine_visible_count(const WbRoutine &r)
+{
+  int n = 0;
+  for (int i = 0; i < r.count; i++)
+    if (!r.tasks[i].requiresPhoto)
+      n++;
+  return n;
+}
+
 static int routine_done_count(const WbRoutine &r)
 {
   int n = 0;
   for (int i = 0; i < r.count; i++)
-    if (r.tasks[i].done)
+    if (r.tasks[i].done && !r.tasks[i].requiresPhoto)
       n++;
   return n;
+}
+
+// Soft, warm-tinted elevation shared by every card/tile on this screen —
+// matches the mock's gentle drop shadow rather than LVGL's default black one.
+static void apply_card_shadow(lv_obj_t *obj)
+{
+  lv_obj_set_style_shadow_width(obj, 20, 0);
+  lv_obj_set_style_shadow_spread(obj, 0, 0);
+  lv_obj_set_style_shadow_ofs_y(obj, 6, 0);
+  lv_obj_set_style_shadow_color(obj, WB_COLOR_INK, 0);
+  lv_obj_set_style_shadow_opa(obj, LV_OPA_10, 0);
 }
 
 static lv_obj_t *make_card(lv_obj_t *parent)
@@ -68,15 +113,31 @@ static lv_obj_t *make_card(lv_obj_t *parent)
   lv_obj_set_style_radius(card, 16, 0);
   lv_obj_set_style_pad_all(card, 14, 0);
   lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+  apply_card_shadow(card);
   return card;
+}
+
+// A baked A8 icon (see icons/wb_icons.h) tinted to `color` — A8 images carry
+// no color of their own, LVGL fills the shape with style_image_recolor at
+// draw time, so the same baked asset works on any tile/background.
+static lv_obj_t *make_icon(lv_obj_t *parent, const lv_image_dsc_t *src, lv_color_t color)
+{
+  lv_obj_t *img = lv_image_create(parent);
+  lv_image_set_src(img, src);
+  lv_obj_set_style_image_recolor(img, color, 0);
+  lv_obj_set_style_image_recolor_opa(img, LV_OPA_COVER, 0);
+  return img;
 }
 
 // A small rounded pill for counts/status ("1 / 3", "24 stars"). Sized to hug
 // its label — every caller must NOT also set an explicit size, or it falls
 // back to LVGL's 100x100 default object size (bit us once already).
+// `icon`, when given, renders before the label (the mock's star-badge chips) —
+// see make_icon's comment on why it needs `fg` as a recolor.
 // `out_lbl` optionally hands back the inner label so a caller can update its
 // text later without a rebuild (see wb_sync_home_screen).
-static lv_obj_t *make_badge(lv_obj_t *parent, const char *text, lv_color_t bg, lv_color_t fg, lv_obj_t **out_lbl = nullptr)
+static lv_obj_t *make_badge(lv_obj_t *parent, const char *text, lv_color_t bg, lv_color_t fg, const lv_image_dsc_t *icon = nullptr,
+                             lv_obj_t **out_lbl = nullptr)
 {
   lv_obj_t *pill = lv_obj_create(parent);
   lv_obj_remove_style_all(pill);
@@ -86,7 +147,13 @@ static lv_obj_t *make_badge(lv_obj_t *parent, const char *text, lv_color_t bg, l
   lv_obj_set_style_radius(pill, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_pad_hor(pill, 10, 0);
   lv_obj_set_style_pad_ver(pill, 4, 0);
+  lv_obj_set_flex_flow(pill, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(pill, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(pill, 5, 0);
   lv_obj_clear_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
+
+  if (icon)
+    make_icon(pill, icon, fg);
 
   lv_obj_t *lbl = lv_label_create(pill);
   lv_label_set_text(lbl, text);
@@ -95,6 +162,37 @@ static lv_obj_t *make_badge(lv_obj_t *parent, const char *text, lv_color_t bg, l
   if (out_lbl)
     *out_lbl = lbl;
   return pill;
+}
+
+// A small green checkmark circle that overlaps a routine tile's count pill
+// once every task in it is done — matches the mock's overlapping-badge
+// treatment (not a checkmark glyph appended into the pill text, which is
+// what this screen did before). `align`/`ofs_x`/`ofs_y` position it over
+// wherever the pill actually sits (top-right corner for the column-flow
+// tiles, right-middle for the horizontal chores bar). Always created (so
+// wb_sync_home_screen can toggle it without a rebuild) but hidden by
+// default; the caller shows/hides it based on all_done.
+static lv_obj_t *make_done_check(lv_obj_t *tile, lv_align_t align, lv_coord_t ofs_x, lv_coord_t ofs_y)
+{
+  lv_obj_t *badge = lv_obj_create(tile);
+  lv_obj_remove_style_all(badge);
+  lv_obj_set_size(badge, 26, 26);
+  lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(badge, WB_COLOR_DONE_GREEN, 0);
+  lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(badge, 2, 0);
+  lv_obj_set_style_border_color(badge, lv_color_white(), 0);
+  lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(badge, LV_OBJ_FLAG_IGNORE_LAYOUT);
+  lv_obj_add_flag(badge, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_align(badge, align, ofs_x, ofs_y);
+
+  lv_obj_t *icon = lv_label_create(badge);
+  lv_label_set_text(icon, LV_SYMBOL_OK);
+  lv_obj_set_style_text_font(icon, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(icon, lv_color_white(), 0);
+  lv_obj_center(icon);
+  return badge;
 }
 
 // A colored circle standing in for a real avatar image until per-person
@@ -122,11 +220,13 @@ static lv_obj_t *make_avatar_circle(lv_obj_t *parent, char initial, lv_coord_t d
 
 // One of the three scheduled routine tiles: a colored card with a status
 // badge pinned top-right and the name + progress bar pinned to the bottom.
-// `out_badge_lbl`/`out_bar` optionally hand back the two pieces that change
-// between polls (done count, progress) so wb_sync_home_screen can update
-// them in place without tearing this tile down.
+// `out_badge_lbl`/`out_bar`/`out_check` optionally hand back the pieces that
+// change between polls (done count, progress, all-done state) so
+// wb_sync_home_screen can update them in place without tearing this tile
+// down.
 static lv_obj_t *make_routine_tile(lv_obj_t *parent, const char *name, const WbRoutine &r, lv_color_t bg, lv_color_t fg,
-                                    lv_obj_t **out_badge_lbl = nullptr, lv_obj_t **out_bar = nullptr)
+                                    const lv_image_dsc_t *icon,
+                                    lv_obj_t **out_badge_lbl = nullptr, lv_obj_t **out_bar = nullptr, lv_obj_t **out_check = nullptr)
 {
   lv_obj_t *tile = lv_obj_create(parent);
   lv_obj_remove_style_all(tile);
@@ -139,26 +239,33 @@ static lv_obj_t *make_routine_tile(lv_obj_t *parent, const char *name, const WbR
   lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(tile, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
   lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
+  apply_card_shadow(tile);
 
   int done = routine_done_count(r);
-  bool all_done = r.count > 0 && done == r.count;
+  int visible = routine_visible_count(r);
+  bool all_done = visible > 0 && done == visible;
 
   lv_obj_t *top_row = lv_obj_create(tile);
   lv_obj_remove_style_all(top_row);
   lv_obj_set_size(top_row, lv_pct(100), LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(top_row, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(top_row, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_flex_align(top_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(top_row, LV_OBJ_FLAG_SCROLLABLE);
 
+  make_icon(top_row, icon, fg);
+
   char badge_buf[24];
-  if (all_done)
-    snprintf(badge_buf, sizeof(badge_buf), "%d %s", done, LV_SYMBOL_OK);
-  else
-    snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, r.count);
+  snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, visible);
   lv_obj_t *badge_lbl = nullptr;
-  make_badge(top_row, badge_buf, lv_color_white(), fg, &badge_lbl);
+  make_badge(top_row, badge_buf, lv_color_white(), fg, nullptr, &badge_lbl);
   if (out_badge_lbl)
     *out_badge_lbl = badge_lbl;
+
+  lv_obj_t *check = make_done_check(tile, LV_ALIGN_TOP_RIGHT, 6, -6);
+  if (all_done)
+    lv_obj_clear_flag(check, LV_OBJ_FLAG_HIDDEN);
+  if (out_check)
+    *out_check = check;
 
   lv_obj_t *bottom = lv_obj_create(tile);
   lv_obj_remove_style_all(bottom);
@@ -174,7 +281,7 @@ static lv_obj_t *make_routine_tile(lv_obj_t *parent, const char *name, const WbR
 
   lv_obj_t *bar = lv_bar_create(bottom);
   lv_obj_set_size(bar, lv_pct(100), 8);
-  lv_bar_set_range(bar, 0, r.count > 0 ? r.count : 1);
+  lv_bar_set_range(bar, 0, visible > 0 ? visible : 1);
   lv_bar_set_value(bar, done, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(bar, lv_color_white(), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(bar, LV_OPA_40, LV_PART_MAIN);
@@ -188,8 +295,9 @@ static lv_obj_t *make_routine_tile(lv_obj_t *parent, const char *name, const WbR
 }
 
 // The unscheduled "Chores" bucket — a full-width bar below the three tiles.
-// `out_badge_lbl`/`out_bar` — see make_routine_tile's comment, same idea.
-static lv_obj_t *make_chores_bar(lv_obj_t *parent, const WbRoutine &r, lv_obj_t **out_badge_lbl = nullptr, lv_obj_t **out_bar = nullptr)
+// `out_badge_lbl`/`out_bar`/`out_check` — see make_routine_tile's comment, same idea.
+static lv_obj_t *make_chores_bar(lv_obj_t *parent, const WbRoutine &r, lv_obj_t **out_badge_lbl = nullptr, lv_obj_t **out_bar = nullptr,
+                                  lv_obj_t **out_check = nullptr)
 {
   lv_obj_t *bar_card = lv_obj_create(parent);
   lv_obj_remove_style_all(bar_card);
@@ -202,9 +310,13 @@ static lv_obj_t *make_chores_bar(lv_obj_t *parent, const WbRoutine &r, lv_obj_t 
   lv_obj_set_flex_flow(bar_card, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(bar_card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(bar_card, LV_OBJ_FLAG_SCROLLABLE);
+  apply_card_shadow(bar_card);
 
   int done = routine_done_count(r);
-  bool all_done = r.count > 0 && done == r.count;
+  int visible = routine_visible_count(r);
+  bool all_done = visible > 0 && done == visible;
+
+  make_icon(bar_card, &wb_icon_broom_32, WB_COLOR_CHORES_TEXT);
 
   lv_obj_t *title = lv_label_create(bar_card);
   lv_label_set_text(title, "Chores");
@@ -214,7 +326,7 @@ static lv_obj_t *make_chores_bar(lv_obj_t *parent, const WbRoutine &r, lv_obj_t 
   lv_obj_t *bar = lv_bar_create(bar_card);
   lv_obj_set_flex_grow(bar, 1);
   lv_obj_set_height(bar, 8);
-  lv_bar_set_range(bar, 0, r.count > 0 ? r.count : 1);
+  lv_bar_set_range(bar, 0, visible > 0 ? visible : 1);
   lv_bar_set_value(bar, done, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(bar, lv_color_white(), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(bar, LV_OPA_40, LV_PART_MAIN);
@@ -225,14 +337,17 @@ static lv_obj_t *make_chores_bar(lv_obj_t *parent, const WbRoutine &r, lv_obj_t 
     *out_bar = bar;
 
   char badge_buf[24];
-  if (all_done)
-    snprintf(badge_buf, sizeof(badge_buf), "%d %s", done, LV_SYMBOL_OK);
-  else
-    snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, r.count);
+  snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, visible);
   lv_obj_t *badge_lbl = nullptr;
-  make_badge(bar_card, badge_buf, lv_color_white(), WB_COLOR_CHORES_TEXT, &badge_lbl);
+  make_badge(bar_card, badge_buf, lv_color_white(), WB_COLOR_CHORES_TEXT, nullptr, &badge_lbl);
   if (out_badge_lbl)
     *out_badge_lbl = badge_lbl;
+
+  lv_obj_t *check = make_done_check(bar_card, LV_ALIGN_RIGHT_MID, 6, 0);
+  if (all_done)
+    lv_obj_clear_flag(check, LV_OBJ_FLAG_HIDDEN);
+  if (out_check)
+    *out_check = check;
 
   return bar_card;
 }
@@ -298,10 +413,7 @@ static lv_obj_t *make_gear_button(lv_obj_t *parent, lv_obj_t *settings_scr)
   lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t *icon = lv_label_create(btn);
-  lv_label_set_text(icon, LV_SYMBOL_SETTINGS);
-  lv_obj_set_style_text_font(icon, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(icon, WB_COLOR_INK, 0);
+  make_icon(btn, &wb_icon_gear_24, WB_COLOR_INK);
 
   // lv_obj_create's default flags already include CLICKABLE.
   lv_obj_add_event_cb(btn, wb_open_settings_cb, LV_EVENT_CLICKED, settings_scr);
@@ -318,16 +430,20 @@ struct WbHomeSyncCtx
 {
   lv_obj_t *clock_lbl;
   lv_obj_t *date_lbl;
-  lv_obj_t *stars_top_lbl;
+  lv_obj_t *sub_lbl;
   lv_obj_t *stars_greet_lbl;
   lv_obj_t *morning_badge_lbl;
   lv_obj_t *morning_bar;
+  lv_obj_t *morning_check;
   lv_obj_t *afternoon_badge_lbl;
   lv_obj_t *afternoon_bar;
+  lv_obj_t *afternoon_check;
   lv_obj_t *evening_badge_lbl;
   lv_obj_t *evening_bar;
+  lv_obj_t *evening_check;
   lv_obj_t *chores_badge_lbl;
   lv_obj_t *chores_bar_obj;
+  lv_obj_t *chores_check;
 };
 
 static void wb_home_sync_ctx_delete_cb(lv_event_t *e)
@@ -336,20 +452,22 @@ static void wb_home_sync_ctx_delete_cb(lv_event_t *e)
 }
 
 // Shared by wb_build_home_screen (initial values) and wb_sync_home_screen
-// (later polls) so a routine tile's badge+bar are computed identically both
-// places.
-static void sync_routine_widgets(lv_obj_t *badge_lbl, lv_obj_t *bar, const WbRoutine &r)
+// (later polls) so a routine tile's badge+bar+check are computed identically
+// both places.
+static void sync_routine_widgets(lv_obj_t *badge_lbl, lv_obj_t *bar, lv_obj_t *check, const WbRoutine &r)
 {
   int done = routine_done_count(r);
-  bool all_done = r.count > 0 && done == r.count;
+  int visible = routine_visible_count(r);
+  bool all_done = visible > 0 && done == visible;
   char badge_buf[24];
-  if (all_done)
-    snprintf(badge_buf, sizeof(badge_buf), "%d %s", done, LV_SYMBOL_OK);
-  else
-    snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, r.count);
+  snprintf(badge_buf, sizeof(badge_buf), "%d / %d", done, visible);
   lv_label_set_text(badge_lbl, badge_buf);
-  lv_bar_set_range(bar, 0, r.count > 0 ? r.count : 1);
+  lv_bar_set_range(bar, 0, visible > 0 ? visible : 1);
   lv_bar_set_value(bar, done, LV_ANIM_OFF);
+  if (all_done)
+    lv_obj_clear_flag(check, LV_OBJ_FLAG_HIDDEN);
+  else
+    lv_obj_add_flag(check, LV_OBJ_FLAG_HIDDEN);
 }
 
 void wb_sync_home_screen(lv_obj_t *parent, const WbDeviceState &state)
@@ -363,15 +481,18 @@ void wb_sync_home_screen(lv_obj_t *parent, const WbDeviceState &state)
   lv_label_set_text(ctx->clock_lbl, clock_buf);
   lv_label_set_text(ctx->date_lbl, date_buf);
 
+  char sub_buf[40];
+  snprintf(sub_buf, sizeof(sub_buf), "Let's have a great %s", greeting_period(state));
+  lv_label_set_text(ctx->sub_lbl, sub_buf);
+
   char stars_buf[24];
   snprintf(stars_buf, sizeof(stars_buf), "%d stars", state.stars);
-  lv_label_set_text(ctx->stars_top_lbl, stars_buf);
   lv_label_set_text(ctx->stars_greet_lbl, stars_buf);
 
-  sync_routine_widgets(ctx->morning_badge_lbl, ctx->morning_bar, state.morning);
-  sync_routine_widgets(ctx->afternoon_badge_lbl, ctx->afternoon_bar, state.afternoon);
-  sync_routine_widgets(ctx->evening_badge_lbl, ctx->evening_bar, state.evening);
-  sync_routine_widgets(ctx->chores_badge_lbl, ctx->chores_bar_obj, state.chores);
+  sync_routine_widgets(ctx->morning_badge_lbl, ctx->morning_bar, ctx->morning_check, state.morning);
+  sync_routine_widgets(ctx->afternoon_badge_lbl, ctx->afternoon_bar, ctx->afternoon_check, state.afternoon);
+  sync_routine_widgets(ctx->evening_badge_lbl, ctx->evening_bar, ctx->evening_check, state.evening);
+  sync_routine_widgets(ctx->chores_badge_lbl, ctx->chores_bar_obj, ctx->chores_check, state.chores);
 }
 
 void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t *settings_scr, lv_obj_t *tasks_scr,
@@ -401,6 +522,8 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   lv_obj_set_flex_align(clock_col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
   lv_obj_set_style_pad_column(clock_col, 8, 0);
   lv_obj_clear_flag(clock_col, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *clock_logo = lv_image_create(clock_col);
+  lv_image_set_src(clock_logo, &wb_logo_40);
   char clock_buf[8], date_buf[24];
   format_clock_date(clock_buf, sizeof(clock_buf), date_buf, sizeof(date_buf), state);
   lv_obj_t *clock_lbl = lv_label_create(clock_col);
@@ -412,17 +535,13 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   lv_obj_set_style_text_font(date_lbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(date_lbl, WB_COLOR_MUTED, 0);
 
-  lv_obj_t *top_right = lv_obj_create(top);
-  lv_obj_remove_style_all(top_right);
-  lv_obj_set_size(top_right, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(top_right, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(top_right, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_column(top_right, 10, 0);
-  lv_obj_clear_flag(top_right, LV_OBJ_FLAG_SCROLLABLE);
-
-  lv_obj_t *stars_top_lbl = nullptr;
-  make_badge(top_right, stars_buf, WB_COLOR_STARS_BG, WB_COLOR_GOLD, &stars_top_lbl);
-  make_gear_button(top_right, settings_scr);
+  // Just the gear now — this used to also hold a small stars badge, but it
+  // duplicated the greeting card's stars pill and rendered too cramped up
+  // here (real-device feedback: "next to the settings icon there is a
+  // little- I think it's supposed to be stars but I'm not entirely sure
+  // what it is"). The greeting card's stars_greet_lbl is still the one
+  // source of truth for the stars count.
+  make_gear_button(top, settings_scr);
 
   // ── middle: greeting card + the three routine tiles + chores bar ────────
   lv_obj_t *middle = lv_obj_create(parent);
@@ -446,18 +565,20 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   snprintf(hi_buf, sizeof(hi_buf), "Hi, %s!", state.personName);
   lv_obj_t *hi_lbl = lv_label_create(greet);
   lv_label_set_text(hi_lbl, hi_buf);
-  lv_obj_set_style_text_font(hi_lbl, &lv_font_montserrat_32, 0);
+  lv_obj_set_style_text_font(hi_lbl, &wb_font_newsreader_semibold_32, 0);
   lv_obj_set_style_text_color(hi_lbl, WB_COLOR_INK, 0);
   lv_obj_set_style_pad_top(hi_lbl, 8, 0);
 
+  char sub_buf[40];
+  snprintf(sub_buf, sizeof(sub_buf), "Let's have a great %s", greeting_period(state));
   lv_obj_t *sub_lbl = lv_label_create(greet);
-  lv_label_set_text(sub_lbl, "Let's have a great day");
+  lv_label_set_text(sub_lbl, sub_buf);
   lv_obj_set_style_text_font(sub_lbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(sub_lbl, WB_COLOR_MUTED, 0);
   lv_obj_set_style_pad_bottom(sub_lbl, 4, 0);
 
   lv_obj_t *stars_greet_lbl = nullptr;
-  make_badge(greet, stars_buf, WB_COLOR_STARS_BG, WB_COLOR_GOLD, &stars_greet_lbl);
+  make_badge(greet, stars_buf, WB_COLOR_STARS_BG, WB_COLOR_GOLD, &wb_icon_star_18, &stars_greet_lbl);
 
   lv_obj_t *right_col = lv_obj_create(middle);
   lv_obj_remove_style_all(right_col);
@@ -475,30 +596,30 @@ void wb_build_home_screen(lv_obj_t *parent, const WbDeviceState &state, lv_obj_t
   lv_obj_set_style_pad_column(tiles_row, 14, 0);
   lv_obj_clear_flag(tiles_row, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t *morning_badge_lbl = nullptr, *morning_bar = nullptr;
-  lv_obj_t *afternoon_badge_lbl = nullptr, *afternoon_bar = nullptr;
-  lv_obj_t *evening_badge_lbl = nullptr, *evening_bar = nullptr;
-  lv_obj_t *morning_tile = make_routine_tile(tiles_row, "Morning", state.morning, WB_COLOR_MORNING, WB_COLOR_MORNING_TEXT, &morning_badge_lbl, &morning_bar);
-  lv_obj_t *afternoon_tile = make_routine_tile(tiles_row, "Afternoon", state.afternoon, WB_COLOR_AFTERNOON, WB_COLOR_AFTERNOON_TEXT, &afternoon_badge_lbl, &afternoon_bar);
-  lv_obj_t *evening_tile = make_routine_tile(tiles_row, "Evening", state.evening, WB_COLOR_EVENING, WB_COLOR_EVENING_TEXT, &evening_badge_lbl, &evening_bar);
+  lv_obj_t *morning_badge_lbl = nullptr, *morning_bar = nullptr, *morning_check = nullptr;
+  lv_obj_t *afternoon_badge_lbl = nullptr, *afternoon_bar = nullptr, *afternoon_check = nullptr;
+  lv_obj_t *evening_badge_lbl = nullptr, *evening_bar = nullptr, *evening_check = nullptr;
+  lv_obj_t *morning_tile = make_routine_tile(tiles_row, "Morning", state.morning, WB_COLOR_MORNING, WB_COLOR_MORNING_TEXT, &wb_icon_sun_32, &morning_badge_lbl, &morning_bar, &morning_check);
+  lv_obj_t *afternoon_tile = make_routine_tile(tiles_row, "Afternoon", state.afternoon, WB_COLOR_AFTERNOON, WB_COLOR_AFTERNOON_TEXT, &wb_icon_sunhigh_32, &afternoon_badge_lbl, &afternoon_bar, &afternoon_check);
+  lv_obj_t *evening_tile = make_routine_tile(tiles_row, "Evening", state.evening, WB_COLOR_EVENING, WB_COLOR_EVENING_TEXT, &wb_icon_moon_32, &evening_badge_lbl, &evening_bar, &evening_check);
   wb_wire_open_tasks(morning_tile, "Morning", state.morning, tasks_scr, parent, onComplete, onUncomplete);
   wb_wire_open_tasks(afternoon_tile, "Afternoon", state.afternoon, tasks_scr, parent, onComplete, onUncomplete);
   wb_wire_open_tasks(evening_tile, "Evening", state.evening, tasks_scr, parent, onComplete, onUncomplete);
 
-  lv_obj_t *chores_badge_lbl = nullptr, *chores_bar_obj = nullptr;
-  lv_obj_t *chores_bar = make_chores_bar(right_col, state.chores, &chores_badge_lbl, &chores_bar_obj);
+  lv_obj_t *chores_badge_lbl = nullptr, *chores_bar_obj = nullptr, *chores_check = nullptr;
+  lv_obj_t *chores_bar = make_chores_bar(right_col, state.chores, &chores_badge_lbl, &chores_bar_obj, &chores_check);
   wb_wire_open_tasks(chores_bar, "Chores", state.chores, tasks_scr, parent, onComplete, onUncomplete);
 
   // Stash the pieces wb_sync_home_screen updates in place on later polls —
   // see WbHomeSyncCtx's comment for the leak-avoidance rule (delete cb on
   // `top`, a real child, not on `parent` itself).
   WbHomeSyncCtx *sync_ctx = new WbHomeSyncCtx{
-      clock_lbl, date_lbl,
-      stars_top_lbl, stars_greet_lbl,
-      morning_badge_lbl, morning_bar,
-      afternoon_badge_lbl, afternoon_bar,
-      evening_badge_lbl, evening_bar,
-      chores_badge_lbl, chores_bar_obj,
+      clock_lbl, date_lbl, sub_lbl,
+      stars_greet_lbl,
+      morning_badge_lbl, morning_bar, morning_check,
+      afternoon_badge_lbl, afternoon_bar, afternoon_check,
+      evening_badge_lbl, evening_bar, evening_check,
+      chores_badge_lbl, chores_bar_obj, chores_check,
   };
   lv_obj_add_event_cb(top, wb_home_sync_ctx_delete_cb, LV_EVENT_DELETE, sync_ctx);
   lv_obj_set_user_data(parent, sync_ctx);

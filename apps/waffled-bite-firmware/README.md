@@ -167,14 +167,21 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   starting a real quiet session against the demo backend, confirming the poll response
   and the actual compiled `native` binary picked it up (`lastSeenAt` advanced through a
   real pair→poll cycle while quiet was active), and by code review that the screen has
-  zero navigation callbacks. Two things worth flagging: (1) at the time of this milestone,
-  "Stay cozy until" was computed from the poll's plain UTC `now` field — the device has no
-  RTC or timezone database of its own, so this read as UTC, not the household's actual
-  local time; **this was fixed in a later milestone** (`waffledBites.ts`'s `now` is now a
-  pre-localized `{hour, minute, weekday, month, day}` object, and the home screen's clock/
-  date — previously hardcoded placeholders — are wired to it too); (2) no moon icon in the mockup made it in —
-  no built-in `LV_SYMBOL_*` match, so the title stands alone rather than pairing with a
-  mismatched glyph, same "built-in symbols for now" convention as everywhere else.
+  zero navigation callbacks. "Stay cozy until" was computed from the poll's plain UTC
+  `now` field at the time of this milestone — the device has no RTC or timezone database
+  of its own, so this read as UTC, not the household's actual local time; **this was
+  fixed in a later milestone** (`waffledBites.ts`'s `now` is now a pre-localized
+  `{hour, minute, weekday, month, day}` object, and the home screen's clock/date —
+  previously hardcoded placeholders — are wired to it too). **Layout reworked to match an
+  updated design mock** (later still): was a single centered column (title above the
+  ring); now a split row — a gold crescent moon + the "Quiet time" title in
+  `wb_font_newsreader_semibold_32` (the same warm serif as the home screen's greeting) +
+  "Stay cozy until…" on the left, the ring on the right. The moon is
+  `wb_icon_moon_solid_128` — the *same* crescent path as the small outline moon icon used
+  on the Evening tile/Nightlight control (`wb_icon_moon_32`/`_40`), just baked filled
+  instead of stroked and at a bigger size (a small outline icon scaled way up at runtime
+  would blur), tinted gold via the usual A8 recolor trick — see
+  `tools/icons/README.md`'s `moon_solid.svg` note.
 - **Set a timer and Bedtime are done.** Both were genuinely ambiguous placeholders until
   direct user feedback pinned them down:
   - **Set a timer** (`src/ui/timer_screen.cpp`) — unlike quiet time, either a parent (web
@@ -250,30 +257,99 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   - **Parent web app**: added the missing bedtime `<input type="time">` per schedule (with
     the "the night before" hint), plus a live status pill on the card
     ("🌙 Asleep right now" / "🟡 Almost time to wake" / "🟢 Awake").
-- **Tap-to-complete on tasks is done.** Tapping a routine tile or the Chores bar opens
-  a task list (`src/ui/tasks_screen.cpp`) with a checkbox per task; tapping an undone
-  row calls `POST /api/waffled-bites/device/tasks/:instanceId/complete` with the
-  device's access token, optimistically marks the row done, and reverts it if the
-  request fails (network error, or a photo-proof-required chore this device can't
-  satisfy yet — `ProofRequiredError` on the backend). A successful complete triggers
-  an immediate poll so stars/progress update everywhere without waiting up to 5s.
-  Verified against the real demo backend: paired a real device, hit the exact
-  complete endpoint with a real device token (the same request `wb_complete_task` in
-  `main.cpp` builds), confirmed the reward posted (`stars` went 42→48) and the
-  instance flipped to `status: "done"` on a follow-up poll; separately ran the actual
-  compiled `native` binary through a full pair→token→poll cycle to confirm nothing in
-  the port broke the runtime. What's still open: no undo/uncomplete from the device,
-  no animation on complete, and mock/placeholder tasks (empty `id`, shown before the
-  first real poll lands) render but aren't tappable, by design.
+- **Tap-to-complete (and un-complete) on tasks is done, with a three-way result, not
+  pass/fail.** Tapping a routine tile or the Chores bar opens a task list
+  (`src/ui/tasks_screen.cpp`) with a checkbox per row; an undone row calls
+  `POST .../tasks/:instanceId/complete`, a done row calls `.../uncomplete`, both with
+  the device's access token. `WbTaskCompleteResult` (`tasks_screen.h`) distinguishes
+  three outcomes rather than a plain bool: `Success` (optimistic flip stands),
+  `Failed` (network error, 401, or an uncomplete that didn't take — row reverts), and
+  `AwaitingApproval` — a chore requiring a parent's OK still answers HTTP 200, just
+  with `instance.status: "awaiting"` rather than `"done"`. That case used to fall
+  through to the same silent revert as a hard failure, which real-device testing
+  showed reads exactly like "tapping does nothing" (every chore due that day needed
+  either approval or a photo, so *every* tap silently failed). Now an
+  `AwaitingApproval` result drops the row's checkbox circle entirely and shows
+  "Waiting on a parent's approval" as plain text instead — direct feedback was that a
+  circle next to a "Sent!" pill still read as a checkbox waiting to be tapped again —
+  and freezes the row (no more taps) until the kid leaves and re-enters this screen
+  (`tasks_scr` is only ever rebuilt on a routine-tile tap, not on the background 5s
+  poll — see `wb_do_poll`'s comment on why). A chore requiring a photo
+  (`WbTask.requiresPhoto`, plumbed through from the device poll's `requiresPhoto`
+  field — `apps/api/.../waffledBites.ts`) is hidden from this list entirely, not
+  merely disabled — no camera-capture flow exists yet, so it'd just 422
+  `ProofRequiredError` every time, and the first cut (shown-but-disabled with a
+  "Needs a photo" note) still read as broken per direct feedback ("I see chores that
+  require a photo... and I can't do anything with them"). It's completed from a
+  parent's phone/web instead. A routine that's entirely photo-required chores (count
+  > 0 but nothing visible) gets its own message rather than the plain "Nothing here
+  right now," which would wrongly imply nothing's assigned at all. A successful
+  complete/uncomplete triggers an immediate poll so stars/progress update everywhere
+  without waiting up to 5s. Mock/placeholder tasks (empty `id`, shown before the first
+  real poll lands) render but aren't tappable, by design. Root-caused via a live
+  serial console on real hardware (`pio device monitor`, wrapped in `script -q` to
+  survive running backgrounded) while tapping real rows, then confirmed against the
+  actual DB rows behind those instance ids — no animation on complete yet. The routine
+  tiles' "X of Y done" counts and progress rings (`home_screen.cpp`'s
+  `routine_visible_count`/`routine_done_count`) also exclude hidden photo-required
+  tasks from both X and Y, so the numbers match what's actually shown on the opened
+  list and a routine can still reach "all done" once every visible chore is checked —
+  a photo-required task that happens to already be `done` (completed elsewhere, with a
+  photo) still doesn't count toward either side, for consistency.
 - **No TLS certificate validation** for `https://` server addresses on `esp32-p4`
   (see the `TODO(hardware bring-up)` comment in `wb_http_esp32.cpp`) — a self-hosted
   household's server is assumed to be plain `http://` on the local LAN for now.
-- **No custom icons yet** — the mockup's sun/moon/timer/bed/lightning/star glyphs
-  have no LVGL built-in equivalent, so those spots are text-only; gear/speaker/back-
-  chevron/checkmark use LVGL's built-in `LV_SYMBOL_*` set. Real per-kid avatars
-  (the mockup's turtle emoji) are a colored initial-circle placeholder — a real
-  avatar needs a baked bitmap asset, not a font glyph. Flash headroom for these is
-  no longer tight (see below), so this is now just unbuilt, not budget-constrained.
+- **Real icons + exact mock colors are now done for the home and grown-up-controls
+  screens.** The actual "Waffled Buddy" design mock (claude.ai/design project
+  `fb5fb8fb-ed6b-4edd-a02f-bfedc8035966`, pulled via the Claude Design MCP — the
+  800×480-panel variant, since this board is 1024×600, but "the idea and icons are the
+  same" per direct feedback) turned out to have a real SVG icon set and exact CSS color
+  tokens, not just a static screenshot. Both are now baked in: `src/icons/*.c` are the
+  mock's own sun/sunhigh/moon/broom/star/gear/sound/timer/bed icons, rasterized and
+  packed as LVGL 9 A8 (alpha-only) images — see `tools/icons/README.md` for the exact
+  pipeline (`rsvg-convert` + a small stdlib-only Python script; no LVGL image-converter
+  tool was used, `lv_img_conv`'s current npm release doesn't install cleanly) and
+  `home_screen.cpp`'s `make_icon()` for how one baked asset gets tinted per-tile at
+  draw time via `style_image_recolor`. The routine tile colors
+  (`WB_COLOR_MORNING`/`AFTERNOON`/`EVENING`/`CHORES` in `home_screen.cpp`) are now the
+  mock's exact `buddy-400.css` hex values, not eyeballed approximations. The home
+  screen's subtitle is now "Let's have a great {morning/afternoon/evening}" (derived
+  from the poll's `nowHour`), matching the mock's dynamic greeting instead of a
+  hardcoded "day". Real per-kid avatars are still a colored initial-circle placeholder
+  by design, not a gap — the mock's own 800×480-panel adaptation notes explicitly say
+  color+initial, never an emoji/photo, for low-DPI legibility (see
+  `buddy-400.css`'s "800×480 PANEL ADAPTATIONS" section). Icons vendored but not yet
+  wired anywhere: `check`/`close`/`back` (the done-check badge, and the quiet/wake/
+  routine-detail/sounds/nightlight screens' back buttons, still use LVGL's built-in
+  `LV_SYMBOL_*` glyphs, a reasonable stand-in already) — picking these up, plus
+  matching the mock's exact colors/serif-header treatment on the remaining screens
+  (routine detail, quiet, wake-light, sounds, nightlight, timer, rewards) is a
+  straightforward follow-up using the exact same patterns.
+- **Grown-up-controls tile sizing matches the updated mock.** `make_control_tile`
+  (`settings_screen.cpp`) used to stretch each tile's height to `lv_pct(100)` of the
+  tile row, filling nearly the whole screen below the top bar. The mock shows compact,
+  roughly-square tiles with real breathing room above and below. Tiles are now a fixed
+  height (220px) instead of a percentage, and the row's cross-axis flex alignment is
+  CENTER instead of the default START, so the fixed-height tiles land vertically
+  centered in the remaining space rather than pinned to the top.
+- **Home screen typography/elevation** (an earlier, smaller polish pass, ahead of the
+  icon work above): the greeting uses a baked LVGL bitmap font
+  (`src/fonts/wb_font_newsreader_semibold_32.c`, generated via `lv_font_conv` from
+  Newsreader SemiBold — the same brand serif the marketing site loads, see
+  `website/home/src/layouts/Base.astro` — latin range `0x20-0x7E`, 32px/4bpp, ~77KB;
+  regenerate with `tools/fonts/Newsreader-SemiBold.woff` plus the exact `lv_font_conv`
+  invocation in that file's header comment if the range or size ever needs to change)
+  instead of Montserrat, every card/tile has a soft warm-tinted drop shadow
+  (`apply_card_shadow` in `home_screen.cpp`), and a fully-completed routine shows a
+  small green checkmark circle overlapping its count pill (`make_done_check`) instead
+  of a checkmark glyph appended into the pill text.
+- **The Waffled logo** (`apps/web/public/logo.png`, resized to 140×140 — the source is
+  512×512/244KB, too large to bake as-is) is staged but **not placed anywhere on-device
+  yet** — the mock itself has no logo on any kid-device screen (consistent with its
+  no-photos/no-emoji low-DPI philosophy above), so there's no obvious slot for it.
+  Candidate spot: the onboarding/pairing screens (`onboarding_screen.cpp`), which
+  currently have no equivalent brand mark either. Needs a placement decision before
+  it's wired in.
 - **No OTA** — worth having before this ships to an actual kid's room.
 - **`esp32-p4` WiFi reliability: fixed, via a build-mode change.** The on-board
   ESP32-C6 WiFi co-processor talks to the P4 over SDIO (`esp-hosted`), and Arduino's

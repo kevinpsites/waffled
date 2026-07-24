@@ -4,7 +4,7 @@
 # PlatformIO's src_filter has no effect once ESP-IDF is in the framework
 # list, so file selection has to happen here instead.
 idf_component_register(
-  SRC_DIRS "." "ui"
+  SRC_DIRS "." "ui" "fonts" "icons"
   INCLUDE_DIRS "."
   EXCLUDE_SRCS "sdl_main.cpp" "wb_http_native.cpp" "wb_store_native.cpp" "wb_wifi_native.cpp"
 )

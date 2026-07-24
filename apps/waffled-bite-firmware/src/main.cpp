@@ -28,6 +28,7 @@
 #include "ui/quiet_screen.h"
 #include "ui/timer_screen.h"
 #include "ui/bedtime_screen.h"
+#include "icons/wb_icons.h"
 #include <ArduinoJson.h>
 #include <string>
 #include <cstring>
@@ -59,6 +60,18 @@ static void disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_ma
   uint32_t w = area->x2 - area->x1 + 1;
   uint32_t h = area->y2 - area->y1 + 1;
   lcd.pushImageDMA(area->x1, area->y1, w, h, (lgfx::rgb565_t *)px_map);
+  // pushImageDMA only STARTS the transfer — it returns immediately, while the
+  // DMA hardware keeps reading from `buf1` in the background. There's only
+  // one flush buffer (see buf1's comment), so without waiting here,
+  // lv_display_flush_ready() below tells LVGL it's safe to render the NEXT
+  // chunk into the same buffer the DMA engine may still be mid-read on —
+  // a classic single-buffer/async-DMA tear. Previously invisible against
+  // plain color+text content (or just not looked at closely enough); a real
+  // bitmap image on the boot screen — held on-screen for many redraw cycles
+  // by the blocking WiFi-connect wait loop below — made it obvious as
+  // sustained flicker. waitDMA() blocks until the in-flight transfer
+  // actually finishes before the buffer is handed back.
+  lcd.waitDMA();
   lv_display_flush_ready(disp);
 }
 
@@ -233,8 +246,8 @@ static void wb_forget_pairing_and_unpair()
   wb_forget_pairing();
 }
 
-static bool wb_complete_task(const std::string &taskId);
-static bool wb_uncomplete_task(const std::string &taskId);
+static WbTaskCompleteResult wb_complete_task(const std::string &taskId);
+static WbTaskCompleteResult wb_uncomplete_task(const std::string &taskId);
 static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue);
 static bool wb_start_timer(int durationSec);
 static bool wb_end_timer();
@@ -502,51 +515,50 @@ static void wb_poll_timer_cb(lv_timer_t * /*timer*/)
 // update everywhere (home screen tiles, greeting badge) without waiting up
 // to 5s for the next timer tick — the tapped row itself already updated
 // optimistically in tasks_screen.cpp before this was even called.
-static bool wb_complete_task(const std::string &taskId)
+static WbTaskCompleteResult wb_complete_task(const std::string &taskId)
 {
   if (taskId.empty()) // mock/placeholder tasks have no real instance id
-    return false;
+    return WbTaskCompleteResult::Failed;
 
   if (wb_tick_ms() >= g_tokenExpiresAtMs)
   {
     if (!wb_refresh_access_token())
-      return false;
+      return WbTaskCompleteResult::Failed;
   }
 
   std::string url = g_serverUrl + "/api/waffled-bites/device/tasks/" + taskId + "/complete";
   WbHttpResponse resp = wb_http_post(url.c_str(), "{}", g_accessToken.c_str());
-  bool ok = resp.ok && resp.status == 200;
-  if (ok)
-  {
-    // A photo-proof/approval-required chore still answers HTTP 200, but with
-    // instance.status "awaiting", not "done" — treat that as NOT a completed
-    // tap (the row should revert to its un-tapped state via the caller's
-    // existing failure-revert path) instead of leaving it optimistically
-    // checked until the next poll silently un-checks it with no explanation.
-    JsonDocument doc;
-    if (!deserializeJson(doc, resp.body))
-    {
-      const char *status = doc["instance"]["status"].is<const char *>() ? doc["instance"]["status"].as<const char *>() : "";
-      if (strcmp(status, "done") != 0)
-        ok = false;
-    }
-  }
-  if (ok)
+  if (!resp.ok || resp.status != 200)
+    return WbTaskCompleteResult::Failed;
+
+  // A photo-proof/approval-required chore still answers HTTP 200, but with
+  // instance.status "awaiting", not "done" — that's a distinct result from a
+  // plain completion (see WbTaskCompleteResult), not a failure.
+  JsonDocument doc;
+  if (deserializeJson(doc, resp.body))
+    return WbTaskCompleteResult::Failed;
+  const char *status = doc["instance"]["status"].is<const char *>() ? doc["instance"]["status"].as<const char *>() : "";
+  WbTaskCompleteResult result = strcmp(status, "done") == 0     ? WbTaskCompleteResult::Success
+                                 : strcmp(status, "awaiting") == 0 ? WbTaskCompleteResult::AwaitingApproval
+                                                                    : WbTaskCompleteResult::Failed;
+  if (result != WbTaskCompleteResult::Failed)
     wb_do_poll();
-  return ok;
+  return result;
 }
 
 // tasks_screen.h's onUncomplete — un-tapping an already-done row. Mirrors
-// wb_complete_task exactly, just POSTing .../uncomplete instead.
-static bool wb_uncomplete_task(const std::string &taskId)
+// wb_complete_task exactly, just POSTing .../uncomplete instead. Never
+// returns AwaitingApproval — there's no photo/approval ambiguity on the way
+// back to "pending".
+static WbTaskCompleteResult wb_uncomplete_task(const std::string &taskId)
 {
   if (taskId.empty())
-    return false;
+    return WbTaskCompleteResult::Failed;
 
   if (wb_tick_ms() >= g_tokenExpiresAtMs)
   {
     if (!wb_refresh_access_token())
-      return false;
+      return WbTaskCompleteResult::Failed;
   }
 
   std::string url = g_serverUrl + "/api/waffled-bites/device/tasks/" + taskId + "/uncomplete";
@@ -554,7 +566,7 @@ static bool wb_uncomplete_task(const std::string &taskId)
   bool ok = resp.ok && resp.status == 200;
   if (ok)
     wb_do_poll();
-  return ok;
+  return ok ? WbTaskCompleteResult::Success : WbTaskCompleteResult::Failed;
 }
 
 // The settings detail screen's onChange callback (settings_screen.h).
@@ -755,6 +767,9 @@ void setup()
   lv_obj_set_style_bg_opa(boot_scr, LV_OPA_COVER, 0);
   lv_obj_set_flex_flow(boot_scr, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(boot_scr, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_t *boot_logo = lv_image_create(boot_scr);
+  lv_image_set_src(boot_logo, &wb_logo_96);
+  lv_obj_set_style_pad_bottom(boot_logo, 8, 0);
   lv_obj_t *boot_title = lv_label_create(boot_scr);
   lv_label_set_text(boot_title, "Waffled");
   lv_obj_set_style_text_font(boot_title, &lv_font_montserrat_24, 0);

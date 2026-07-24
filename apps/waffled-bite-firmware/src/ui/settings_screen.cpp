@@ -1,6 +1,7 @@
 #include "settings_screen.h"
 #include "control_detail_screen.h"
 #include "../wb_tick_hal.h"
+#include "../icons/wb_icons.h"
 #include <cstdio>
 
 // Palette — kept in sync with home_screen.cpp's by eye; duplicated rather
@@ -30,19 +31,20 @@ static void wb_go_scr_cb(lv_event_t *e)
 }
 
 // One control tile (Sounds/Nightlight/Set a timer/Bedtime). `icon` may be
-// NULL — moon, stopwatch, and bed have no built-in LV_SYMBOL_* match yet;
-// a custom icon font is deferred (see the firmware README), so those render
-// label-only rather than with a mismatched icon standing in.
-// `out_label_lbl`/`out_sub_lbl` optionally hand back the two labels whose
-// color (and the sub-label's text) change when `active` flips — so
+// NULL. `out_label_lbl`/`out_sub_lbl` optionally hand back the two labels
+// whose color (and the sub-label's text) change when `active` flips — so
 // wb_sync_settings_screen can restyle them in place without a rebuild.
-static lv_obj_t *make_control_tile(lv_obj_t *parent, const char *icon, const char *label, const char *sub, bool active,
-                                    lv_obj_t **out_label_lbl = nullptr, lv_obj_t **out_sub_lbl = nullptr)
+static lv_obj_t *make_control_tile(lv_obj_t *parent, const lv_image_dsc_t *icon, const char *label, const char *sub, bool active,
+                                    lv_obj_t **out_label_lbl = nullptr, lv_obj_t **out_sub_lbl = nullptr, lv_obj_t **out_icon_img = nullptr)
 {
   lv_obj_t *tile = lv_obj_create(parent);
   lv_obj_remove_style_all(tile);
   lv_obj_set_flex_grow(tile, 1);
-  lv_obj_set_size(tile, LV_SIZE_CONTENT, lv_pct(100));
+  // Fixed (roughly square) height, not lv_pct(100) — the mock shows compact
+  // squarish tiles vertically centered with room above/below, not tiles
+  // stretched to fill the whole row's height. Centering itself is the row's
+  // job (wb_build_settings_screen sets cross-axis align to CENTER).
+  lv_obj_set_size(tile, LV_SIZE_CONTENT, 220);
   lv_obj_set_style_bg_color(tile, active ? WB_COLOR_TILE_ACTIVE : WB_COLOR_TILE, 0);
   lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(tile, 20, 0);
@@ -56,10 +58,12 @@ static lv_obj_t *make_control_tile(lv_obj_t *parent, const char *icon, const cha
 
   if (icon)
   {
-    lv_obj_t *icon_lbl = lv_label_create(tile);
-    lv_label_set_text(icon_lbl, icon);
-    lv_obj_set_style_text_font(icon_lbl, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(icon_lbl, fg, 0);
+    lv_obj_t *icon_img = lv_image_create(tile);
+    lv_image_set_src(icon_img, icon);
+    lv_obj_set_style_image_recolor(icon_img, fg, 0);
+    lv_obj_set_style_image_recolor_opa(icon_img, LV_OPA_COVER, 0);
+    if (out_icon_img)
+      *out_icon_img = icon_img;
   }
 
   lv_obj_t *lbl = lv_label_create(tile);
@@ -201,9 +205,11 @@ struct WbSettingsSyncCtx
   lv_obj_t *sound_tile;
   lv_obj_t *sound_label_lbl;
   lv_obj_t *sound_sub_lbl;
+  lv_obj_t *sound_icon_img;
   lv_obj_t *night_tile;
   lv_obj_t *night_label_lbl;
   lv_obj_t *night_sub_lbl;
+  lv_obj_t *night_icon_img;
   lv_obj_t *timer_sub_lbl;
 };
 
@@ -223,6 +229,7 @@ void wb_sync_settings_screen(lv_obj_t *parent, const WbDeviceState &state)
   lv_obj_set_style_text_color(ctx->sound_label_lbl, soundOn ? lv_color_white() : WB_COLOR_INK, 0);
   lv_obj_set_style_text_color(ctx->sound_sub_lbl, soundOn ? lv_color_hex(0xC9C4BC) : WB_COLOR_MUTED, 0);
   lv_label_set_text(ctx->sound_sub_lbl, soundOn ? "On" : "Off");
+  lv_obj_set_style_image_recolor(ctx->sound_icon_img, soundOn ? lv_color_white() : WB_COLOR_INK, 0);
 
   bool nightOn = state.night.on;
   lv_obj_set_style_bg_color(ctx->night_tile, nightOn ? WB_COLOR_TILE_ACTIVE : WB_COLOR_TILE, 0);
@@ -231,6 +238,7 @@ void wb_sync_settings_screen(lv_obj_t *parent, const WbDeviceState &state)
   lv_obj_set_style_text_color(ctx->night_label_lbl, fg, 0);
   lv_obj_set_style_text_color(ctx->night_sub_lbl, sub_fg, 0);
   lv_label_set_text(ctx->night_sub_lbl, nightOn ? "On" : "Off");
+  lv_obj_set_style_image_recolor(ctx->night_icon_img, fg, 0);
 
   if (state.timer.active)
   {
@@ -347,17 +355,21 @@ void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_o
   lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
   lv_obj_set_flex_grow(row, 1);
   lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+  // Cross-axis (vertical, since this is a ROW) CENTER — tiles are now a
+  // fixed height (see make_control_tile), so this is what actually vertically
+  // centers them in the remaining space below the top bar, matching the mock.
+  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(row, 16, 0);
   lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t *sound_label_lbl = nullptr, *sound_sub_lbl = nullptr;
-  lv_obj_t *sound_tile = make_control_tile(row, LV_SYMBOL_VOLUME_MAX, "Sounds", state.sound.on ? "On" : "Off", state.sound.on, &sound_label_lbl, &sound_sub_lbl);
+  lv_obj_t *sound_label_lbl = nullptr, *sound_sub_lbl = nullptr, *sound_icon_img = nullptr;
+  lv_obj_t *sound_tile = make_control_tile(row, &wb_icon_sound_40, "Sounds", state.sound.on ? "On" : "Off", state.sound.on, &sound_label_lbl, &sound_sub_lbl, &sound_icon_img);
   wb_wire_open_detail(sound_tile, "Sounds", WbSettingsKey::Sound, &state,
                        WB_SOUND_OPTIONS, sizeof(WB_SOUND_OPTIONS) / sizeof(WB_SOUND_OPTIONS[0]), "Volume",
                        detail_scr, parent, onChange);
 
-  lv_obj_t *night_label_lbl = nullptr, *night_sub_lbl = nullptr;
-  lv_obj_t *night_tile = make_control_tile(row, NULL, "Nightlight", state.night.on ? "On" : "Off", state.night.on, &night_label_lbl, &night_sub_lbl);
+  lv_obj_t *night_label_lbl = nullptr, *night_sub_lbl = nullptr, *night_icon_img = nullptr;
+  lv_obj_t *night_tile = make_control_tile(row, &wb_icon_moon_40, "Nightlight", state.night.on ? "On" : "Off", state.night.on, &night_label_lbl, &night_sub_lbl, &night_icon_img);
   wb_wire_open_detail(night_tile, "Nightlight", WbSettingsKey::Night, &state,
                        WB_NIGHT_OPTIONS, sizeof(WB_NIGHT_OPTIONS) / sizeof(WB_NIGHT_OPTIONS[0]), "Brightness",
                        detail_scr, parent, onChange);
@@ -366,15 +378,16 @@ void wb_build_settings_screen(lv_obj_t *parent, const WbDeviceState &state, lv_o
   // make_control_tile) — "Off"/"Running" here mirrors Sound/Night's own
   // "On"/"Off", which is why their sub labels never hit this gotcha.
   lv_obj_t *timer_sub_lbl = nullptr;
-  lv_obj_t *timer_tile = make_control_tile(row, NULL, "Set a timer", state.timer.active ? "Running" : "Off", false, nullptr, &timer_sub_lbl);
+  lv_obj_t *timer_tile = make_control_tile(row, &wb_icon_timer_40, "Set a timer", state.timer.active ? "Running" : "Off", false, nullptr, &timer_sub_lbl);
   lv_obj_add_event_cb(timer_tile, wb_go_scr_cb, LV_EVENT_CLICKED, timer_scr);
 
-  lv_obj_t *bedtime_tile = make_control_tile(row, NULL, "Bedtime", "Preview", false);
+  lv_obj_t *bedtime_tile = make_control_tile(row, &wb_icon_bed_40, "Bedtime", "Preview", false);
   lv_obj_add_event_cb(bedtime_tile, wb_go_scr_cb, LV_EVENT_CLICKED, bedtime_scr);
 
   // Stash the pieces wb_sync_settings_screen updates in place on later
   // polls — see WbSettingsSyncCtx's comment for the leak-avoidance rule.
-  WbSettingsSyncCtx *sync_ctx = new WbSettingsSyncCtx{sound_tile, sound_label_lbl, sound_sub_lbl, night_tile, night_label_lbl, night_sub_lbl, timer_sub_lbl};
+  WbSettingsSyncCtx *sync_ctx = new WbSettingsSyncCtx{sound_tile, sound_label_lbl, sound_sub_lbl, sound_icon_img,
+                                                        night_tile, night_label_lbl, night_sub_lbl, night_icon_img, timer_sub_lbl};
   lv_obj_add_event_cb(row, wb_settings_sync_ctx_delete_cb, LV_EVENT_DELETE, sync_ctx);
   lv_obj_set_user_data(parent, sync_ctx);
 }

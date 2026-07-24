@@ -524,7 +524,12 @@
 /*Optionally declare custom fonts here.
  *You can use these fonts as default font too and they will be available globally.
  *E.g. #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)*/
-#define LV_FONT_CUSTOM_DECLARE
+// Newsreader SemiBold @ 32px — the brand serif (same family the marketing site
+// loads from Google Fonts; see website/home/src/layouts/Base.astro), baked via
+// lv_font_conv into src/fonts/wb_font_newsreader_semibold_32.c. Used only for
+// the home screen's "Hi, {name}!" headline — everywhere else stays Montserrat,
+// which reads better at the smaller UI-chrome sizes this app also uses.
+#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(wb_font_newsreader_semibold_32)
 
 /*Always set a default font*/
 #define LV_FONT_DEFAULT &lv_font_montserrat_14

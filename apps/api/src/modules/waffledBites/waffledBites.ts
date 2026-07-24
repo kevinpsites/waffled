@@ -414,6 +414,7 @@ export function registerWaffledBiteRoutes(api: Api): void {
         status: inst.status,
         rewardAmount: inst.rewardAmount,
         rewardCurrency: inst.rewardCurrency,
+        requiresPhoto: inst.requiresPhoto,
       })
     }
 

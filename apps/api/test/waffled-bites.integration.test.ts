@@ -147,6 +147,18 @@ describe('waffled-bites device pairing + parent control panel', () => {
     generalId = state.routines.chores.find((t: { choreTitle: string }) => t.choreTitle === 'Feed the dog').id
   })
 
+  // The device (apps/waffled-bite-firmware) has no camera-capture flow, so it needs to
+  // know up front which chores require a photo, to disable tapping them rather than
+  // silently reverting on a 422 ProofRequired — see wb_state.h's WbTask.requiresPhoto.
+  it("flags a photo-required chore's requiresPhoto in the device poll", async () => {
+    await call('POST', '/api/chores', { title: 'Clean garage', personId: kid, requiresPhoto: true }, admin)
+
+    const state = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
+    const task = state.routines.chores.find((t: { choreTitle: string }) => t.choreTitle === 'Clean garage')
+    expect(task.requiresPhoto).toBe(true)
+    expect(state.routines.chores.find((t: { choreTitle: string }) => t.choreTitle === 'Feed the dog').requiresPhoto).toBe(false)
+  })
+
   // The device has no RTC/timezone database of its own (see wb_state.h) — it
   // trusts "now" from this poll verbatim for its clock and quiet-time's
   // "Until H:MM" label, so this MUST already be household-local, not raw UTC.
