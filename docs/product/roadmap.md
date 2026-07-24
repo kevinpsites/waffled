@@ -55,7 +55,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   detail read-model, person + family overview, **calendar → goal** auto-count (single
   and recurring events) with learned suggestions, **swappable data views** on the goal-detail
   page (heatmaps, year grid, pace-to-target, year ring, by-person bars, collection grid,
-  consistency calendar) matched to goal type + timeframe.
+  consistency calendar) matched to goal type + timeframe. The Log sheet's **note chips
+  now suggest a goal's own most-logged notes** (scoped per participant, blended with the
+  defaults) instead of a fixed list — **Tier 1**; smarter ranking is Tier 2 under *Planned*.
 - **Apple Health → goals (iPhone)** — link a goal to an Apple Health / Apple Watch metric
   (steps, flights climbed, exercise minutes, active energy, **distance** — walking + running,
   cycling, swimming, wheelchair; fractional, mi/km per device region — **workouts by type** —
@@ -169,6 +171,14 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   choice.
 
 ## Planned 🚧
+
+- **Smarter goal-note suggestions (Tier 2).** Tier 1 shipped (see **Done**): the Log
+  sheet's "What did you do?" chips now suggest the notes actually logged against that
+  goal, scoped per participant, blended with the defaults. Tier 2 makes the ranking
+  cleverer — weight by recency as well as raw frequency (a note used weekly should beat
+  one used once months ago), merge near-duplicates beyond today's exact case/whitespace
+  match ("family walk" vs "Family walk after dinner"), and consider surfacing a member's
+  cross-goal favourites when a specific goal has little history of its own.
 
 - **List sharing.** Let a household invite specific people to a list, choose whether
   they can view or edit it, and revoke access later.

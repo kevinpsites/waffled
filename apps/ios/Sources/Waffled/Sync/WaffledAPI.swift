@@ -2761,6 +2761,19 @@ struct WaffledAPI: Sendable {
         try await getJSON("/api/goals/\(id)/activity", as: GoalActivity.self)
     }
 
+    /// Smart note-field suggestions for the log sheet — the notes already logged against
+    /// this goal, most-used first. `personId` scopes to the notes where that person was the
+    /// credited participant, so each member's box learns their own history. Failures are the
+    /// caller's to swallow (the sheet just falls back to its defaults).
+    func goalNoteSuggestions(goalId: String, personId: String?) async throws -> [String] {
+        struct Resp: Decodable { let suggestions: [String] }
+        var path = "/api/goals/\(goalId)/note-suggestions"
+        if let personId, !personId.isEmpty {
+            path += "?personId=\(personId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? personId)"
+        }
+        return try await getJSON(path, as: Resp.self).suggestions
+    }
+
     /// Delete a goal (soft-delete server-side).
     func deleteGoal(id: String) async throws {
         try await delete("/api/goals/\(id)")

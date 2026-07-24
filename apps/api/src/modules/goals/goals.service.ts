@@ -791,6 +791,38 @@ export async function goalActivity(
   return { startDate: g[0].created_at, endDate: g[0].deadline, today: t[0].today, days }
 }
 
+// How many note suggestions the log sheet gets to blend with its hardcoded defaults.
+// Slightly more than the default chip count so the client still has fresh options to
+// show after it de-dupes them against the defaults.
+const NOTE_SUGGESTION_LIMIT = 8
+
+// Smart suggestions for the log sheet's free-text "note" field: the notes this household
+// has actually logged against THIS goal, most-used first (ties broken by most-recent).
+// Case/whitespace variants collapse into one (keeping the most recent spelling). When
+// `personId` is given, we scope to the notes where that person was the CREDITED
+// participant (goal_logs.person_id) — not merely whoever recorded the log — so each
+// family member's box learns their own history. Returns null when the goal doesn't exist
+// (so the route can 404), an empty array when there's nothing logged yet.
+export async function goalNoteSuggestions(
+  householdId: string,
+  goalId: string,
+  personId?: string | null
+): Promise<string[] | null> {
+  if (!(await goalExists(householdId, goalId))) return null
+  const { rows } = await query<{ note: string }>(
+    `select (array_agg(btrim(note) order by logged_at desc))[1] as note
+       from goal_logs
+      where household_id = $1 and goal_id = $2 and deleted_at is null
+        and note is not null and btrim(note) <> ''
+        and ($3::uuid is null or person_id = $3::uuid)
+      group by lower(btrim(note))
+      order by count(*) desc, max(logged_at) desc, lower(btrim(note)) asc
+      limit $4`,
+    [householdId, goalId, personId ?? null, NOTE_SUGGESTION_LIMIT]
+  )
+  return rows.map((r) => r.note)
+}
+
 // Tick/untick a checklist step. We keep the step's done_at as the source of truth
 // AND mirror it into goal_logs (source 'checklist_item') so the activity feed and
 // streaks treat a ticked step like any other completion. Returns false if the step
