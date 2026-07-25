@@ -134,6 +134,7 @@ interface BoardSection {
   items: GroceryBoardItem[]
   mealType?: string
   unscheduled?: boolean
+  recipeId?: string
 }
 
 // Group items into ordered aisle sections; manual/uncategorized items lead, ungrouped.
@@ -152,8 +153,29 @@ function aisleSections(items: GroceryBoardItem[]): BoardSection[] {
   return out
 }
 
+// Sunday-anchored week label relative to today: "This week" / "Next week" / "Week of Jul 27".
+function weekLabel(weekStart: string): string {
+  const start = new Date(weekStart + 'T00:00:00')
+  const cur = new Date()
+  cur.setHours(0, 0, 0, 0)
+  cur.setDate(cur.getDate() - cur.getDay())
+  const diffWeeks = Math.round((start.getTime() - cur.getTime()) / (7 * 86400000))
+  if (diffWeeks === 0) return 'This week'
+  if (diffWeeks === 1) return 'Next week'
+  if (diffWeeks === -1) return 'Last week'
+  return `Week of ${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+}
+function addDaysISO(iso: string, n: number): string {
+  const d = new Date(iso + 'T00:00:00')
+  d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function GroceryBoard({ onBack }: { onBack: () => void }) {
-  const { board, loading, error, refetch } = useGroceryBoard()
+  // null = the current week (server default); a date pins a specific week so you can
+  // shop ahead without touching this week's list.
+  const [weekStart, setWeekStart] = useState<string | null>(null)
+  const { board, loading, error, refetch } = useGroceryBoard(weekStart ?? undefined)
   const navigate = useNavigate()
   const [view, setView] = useState<'aisle' | 'meal'>('aisle')
   const [draft, setDraft] = useState('')
@@ -165,15 +187,17 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const toggleSection = (key: string) =>
     setCollapsed((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
   const [railMeal, setRailMeal] = useState<string>('dinner') // which meal type the rail shows
-  const rebuilt = useRef(false)
+  const rebuilt = useRef<Set<string>>(new Set()) // weeks already auto-built (once each)
   const addRef = useRef<HTMLInputElement>(null)
 
-  // First time, if nothing auto-built yet but meals are planned, build it.
+  // The first time a week with planned meals but no auto items is viewed, build it —
+  // keyed PER week so switching to a future week auto-populates it too (not just the
+  // first week loaded). Never re-fires for a week already handled.
   useEffect(() => {
-    if (rebuilt.current || !board) return
+    if (!board || rebuilt.current.has(board.weekStart)) return
     const hasAuto = board.items.some((i) => i.source === 'auto')
     if (!hasAuto && board.meals.length > 0) {
-      rebuilt.current = true
+      rebuilt.current.add(board.weekStart)
       groceryApi.rebuildGrocery(board.weekStart).then(refetch).catch(() => {})
     }
   }, [board, refetch])
@@ -182,10 +206,6 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={onBack}>‹ Lists</button>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
-          <button className="pill" style={{ cursor: 'pointer' }} title="Coming soon">⬆ Send to phone</button>
-          <button className="pill" style={{ cursor: 'pointer' }} title="Coming soon">🛒 Order online</button>
-        </div>
       </div>
     ),
     [onBack]
@@ -232,6 +252,12 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     await Promise.all(completedItems.map((i) => groceryApi.deleteItem(i.id)))
     refetch()
   }
+  // Undo an off-plan "add recipe to grocery" — removes that recipe's items (keeping
+  // any shared with another recipe) so it drops out of the Unscheduled shelf.
+  async function removeUnscheduled(recipeId: string) {
+    await groceryApi.removeRecipeFromGrocery(recipeId, board!.weekStart)
+    refetch()
+  }
   async function addItem(name: string) {
     const n = name.trim()
     if (!n) return
@@ -255,6 +281,12 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     } finally {
       setRefreshing(false)
     }
+  }
+  // "Start over" — un-check everything on this week's list (Refresh keeps checks).
+  async function startOver() {
+    setRecent(new Set())
+    await groceryApi.clearGroceryChecks(board!.weekStart)
+    refetch()
   }
 
   const sections: BoardSection[] =
@@ -288,7 +320,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           // their own sections after the planned meals — the "unscheduled" shelf.
           for (const u of board.unscheduled ?? []) {
             const items = claim(u.recipeId)
-            if (items.length) perMeal.push({ key: `un|${u.recipeId}`, aisle: u.title ?? 'Recipe', items, unscheduled: true })
+            if (items.length) perMeal.push({ key: `un|${u.recipeId}`, aisle: u.title ?? 'Recipe', items, unscheduled: true, recipeId: u.recipeId })
           }
           // Anything not claimed by a planned or unscheduled recipe — hand-added
           // items — still needs a home, or it would vanish in the By-meal view.
@@ -319,6 +351,18 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
             {view === 'meal' && sec.unscheduled && <span className="meal-badge mt-unscheduled">Unscheduled</span>}
             {sec.aisle}
             <span className="ga-n">{sec.items.length}</span>
+            {/* Take an off-plan recipe back off the list (undo "add to grocery"). */}
+            {sec.unscheduled && sec.recipeId && (
+              <button
+                type="button"
+                className="linkbtn"
+                style={{ marginLeft: 'auto' }}
+                title="Remove this recipe's items from the list"
+                onClick={(e) => { e.stopPropagation(); removeUnscheduled(sec.recipeId!) }}
+              >
+                Remove
+              </button>
+            )}
           </div>
         )}
         {!isCollapsed && sec.items.map((it) => (
@@ -362,6 +406,21 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
             <button className={view === 'aisle' ? 'on' : ''} onClick={() => setView('aisle')}>By aisle</button>
             <button className={view === 'meal' ? 'on' : ''} onClick={() => setView('meal')}>By meal</button>
           </div>
+        </div>
+
+        {/* Week switcher — shop ahead for a future week without touching this week's list.
+            Meal-derived items are per week; your typed items + staples show on every week. */}
+        <div className="grocery-weeknav" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 12px' }}>
+          <button type="button" className="pill meals-nav" aria-label="Previous week" onClick={() => setWeekStart(addDaysISO(board.weekStart, -7))}>
+            <Icon name="cl" />
+          </button>
+          <div className="wf-serif" style={{ fontWeight: 700, minWidth: 132, textAlign: 'center' }}>{weekLabel(board.weekStart)}</div>
+          <button type="button" className="pill meals-nav" aria-label="Next week" onClick={() => setWeekStart(addDaysISO(board.weekStart, 7))}>
+            <Icon name="cr" />
+          </button>
+          {weekLabel(board.weekStart) !== 'This week' && (
+            <button type="button" className="pill" style={{ marginLeft: 4 }} onClick={() => setWeekStart(null)}>This week</button>
+          )}
         </div>
 
         <form className="ai-bar grocery-add" onSubmit={onAdd}>
@@ -418,13 +477,20 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
 
       <div className="grocery-rail">
         <div className="card grocery-railcard">
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-            <div className="card-h">This week’s meals</div>
-            {board.meals.length > 0 && (
-              <button type="button" className="pill grocery-refresh" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={rebuild} disabled={refreshing} title="Rebuild the auto items from these meals (keeps what you added or checked off)">
-                ↻ {refreshing ? 'Refreshing…' : 'Refresh'}
-              </button>
-            )}
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, gap: 8 }}>
+            <div className="card-h">{weekLabel(board.weekStart)}’s meals</div>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              {board.items.some((i) => i.checked && i.weekStart) && (
+                <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={startOver} title="Un-check this week’s items (your global manual list keeps its state)">
+                  ⟲ Start over
+                </button>
+              )}
+              {board.meals.length > 0 && (
+                <button type="button" className="pill grocery-refresh" style={{ cursor: 'pointer' }} onClick={rebuild} disabled={refreshing} title="Rebuild the auto items from these meals (keeps what you added or checked off)">
+                  ↻ {refreshing ? 'Refreshing…' : 'Refresh'}
+                </button>
+              )}
+            </div>
           </div>
           {board.meals.length === 0 && <div className="tiny muted" style={{ fontWeight: 600 }}>No meals planned yet.</div>}
           {availableMealTypes.length > 0 && (
@@ -459,6 +525,13 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
                 <div key={u.recipeId} className="gdinner link" role="button" tabIndex={0} onClick={() => navigate(`/meals/recipe/${u.recipeId}`)}>
                   <span className="gdinner-c" style={{ background: u.color }} />
                   <span className="gdinner-t">{u.title}</span>
+                  <button
+                    type="button"
+                    className="gdinner-x"
+                    aria-label={`Remove ${u.title} from list`}
+                    title="Remove from list"
+                    onClick={(e) => { e.stopPropagation(); void removeUnscheduled(u.recipeId) }}
+                  >×</button>
                   <span className="gdinner-chev">›</span>
                   <span className="gdinner-e" style={{ background: `${u.color}1f` }}>{u.emoji ?? '🍽️'}</span>
                 </div>

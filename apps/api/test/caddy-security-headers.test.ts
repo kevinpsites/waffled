@@ -27,7 +27,7 @@ describe('Caddy browser security headers', () => {
     expect(policy).not.toContain("'unsafe-eval'")
     expect(policy).toContain("style-src 'self' 'unsafe-inline'")
     expect(policy).toContain("img-src 'self' data: blob: https:")
-    expect(policy).toContain("connect-src 'self' {$POWERSYNC_PUBLIC_URL}")
+    expect(policy).toContain("connect-src 'self' {$POWERSYNC_PUBLIC_URL} {$POWERSYNC_WS_URL}")
     expect(policy).not.toMatch(/connect-src[^;]*(?:http:|https:|ws:|wss:)/)
     expect(policy).toContain("worker-src 'self' blob:")
     expect(policy).toContain("object-src 'none'")
@@ -36,8 +36,9 @@ describe('Caddy browser security headers', () => {
     expect(policy).toContain("form-action 'self'")
   })
 
-  it('passes the configured PowerSync endpoint into Caddy', async () => {
+  it('passes the configured PowerSync HTTP and WebSocket endpoints into Caddy', async () => {
     const compose = await readFile(resolve(dirname(caddyfile), '..', 'docker-compose.yml'), 'utf8')
     expect(compose).toContain('POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}')
+    expect(compose).toContain('POWERSYNC_WS_URL: ${POWERSYNC_WS_URL:-ws://localhost:8090}')
   })
 })

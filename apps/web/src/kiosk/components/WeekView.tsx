@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { usePersons, type AgendaEvent } from '../../lib/api'
+import { usePersons, type AgendaEvent, type Countdown } from '../../lib/api'
 import { DOW, ymd, addDays, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, eventPeople, packLanes } from './cal-utils'
+import { CountdownChip } from './CountdownChip'
 
 const DAY_START = 0 // midnight — top of the grid (full day so early events are reachable)
 const DAY_END = 23 // 11 PM — bottom
@@ -13,14 +14,18 @@ export function WeekView({
   weekStart,
   events,
   tz,
+  countdownsByDate,
   onOpenEvent,
+  onOpenCountdown,
   onCreate,
   onPickDay,
 }: {
   weekStart: Date
   events: AgendaEvent[]
   tz: string
+  countdownsByDate?: Record<string, Countdown[]>
   onOpenEvent: (e: AgendaEvent) => void
+  onOpenCountdown?: (c: Countdown) => void
   onCreate: (date: string, time?: string) => void
   onPickDay?: (d: Date) => void
 }) {
@@ -121,6 +126,7 @@ export function WeekView({
           {days.map((d) => {
             const key = ymd(d)
             const allday = (byDay[key] ?? []).filter((e) => e.allDay)
+            const dayCountdowns = countdownsByDate?.[key] ?? []
             return (
               <div key={key} className="wk-allday-cell">
                 {allday.map((e) => {
@@ -136,6 +142,9 @@ export function WeekView({
                     </div>
                   )
                 })}
+                {dayCountdowns.map((c) => (
+                  <CountdownChip key={c.id} c={c} onOpen={onOpenCountdown} />
+                ))}
               </div>
             )
           })}

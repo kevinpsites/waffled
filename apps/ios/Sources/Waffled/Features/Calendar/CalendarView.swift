@@ -18,6 +18,7 @@ struct CalendarView: View {
     @State private var showCapture = false
     @State private var dictateOnOpen = false
     @State private var countdowns = CountdownsModel()
+    @State private var editingCountdown: WaffledAPI.Countdown?
 
     enum CalMode: String, CaseIterable { case agenda, month, day
         var label: String { rawValue.capitalized }
@@ -46,6 +47,14 @@ struct CalendarView: View {
     }
     private var groups: [(day: String, items: [SyncedEvent])] {
         Agenda.upcoming(filtered, from: Agenda.todayKey(tz), tz: tz)
+    }
+    /// Agenda day keys = union of event days and countdown days (today forward), sorted —
+    /// so a day with only a countdown still appears (countdowns behave like all-day events).
+    private var agendaDays: [String] {
+        let todayKey = Agenda.todayKey(tz)
+        var days = Set(groups.map { $0.day })
+        for day in countdowns.byDate.keys where day >= todayKey { days.insert(day) }
+        return days.sorted()
     }
 
     var body: some View {
@@ -82,6 +91,11 @@ struct CalendarView: View {
             }
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
+        .sheet(item: $editingCountdown) { c in
+            EditCountdownSheet(countdown: c,
+                onSave: { title, date, emoji in await countdowns.update(c, title: title, date: date, emoji: emoji) },
+                onRemove: { await countdowns.remove(c) })
+        }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
@@ -149,7 +163,7 @@ struct CalendarView: View {
                      onTap: { dictateOnOpen = false; showCapture = true },
                      onMic: { dictateOnOpen = true; showCapture = true })
         personFilter
-        if groups.isEmpty {
+        if agendaDays.isEmpty {
             VStack(spacing: 10) {
                 Image(systemName: "calendar").font(.system(size: 34)).foregroundStyle(WF.ink3)
                 Text(filterPerson == nil ? "No upcoming events." : "Nothing for them coming up.")
@@ -157,11 +171,15 @@ struct CalendarView: View {
             }
             .frame(maxWidth: .infinity).padding(.top, 56)
         } else {
-            ForEach(groups, id: \.day) { group in
+            let eventsByDay = Dictionary(groups.map { ($0.day, $0.items) }, uniquingKeysWith: { a, _ in a })
+            ForEach(agendaDays, id: \.self) { day in
                 VStack(alignment: .leading, spacing: 8) {
-                    dayHeading(group.day)
-                    ForEach(group.items) { ev in
+                    dayHeading(day)
+                    ForEach(eventsByDay[day] ?? []) { ev in
                         EventCard(event: ev, tz: tz) { detailEvent = ev }
+                    }
+                    ForEach(countdownsForDay(day)) { c in
+                        CountdownCard(countdown: c, sleeps: countdowns.sleeps) { openCountdown(c) }
                     }
                 }
             }
@@ -223,7 +241,8 @@ struct CalendarView: View {
 
         dayHeading(selectedDay).padding(.top, 6)
         let dayItems = Agenda.forDay(filtered, day: selectedDay, tz: tz)
-        if dayItems.isEmpty {
+        let dayCountdowns = countdownsForDay(selectedDay)
+        if dayItems.isEmpty && dayCountdowns.isEmpty {
             Button { editing = .new(dayKeyToDate(selectedDay) ?? Date()) } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "plus").font(.system(size: 12, weight: .heavy))
@@ -235,6 +254,7 @@ struct CalendarView: View {
         } else {
             VStack(spacing: 8) {
                 ForEach(dayItems) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
+                ForEach(dayCountdowns) { c in CountdownCard(countdown: c, sleeps: countdowns.sleeps) { openCountdown(c) } }
             }
         }
     }
@@ -242,6 +262,10 @@ struct CalendarView: View {
     private func monthCell(_ cell: MonthCell) -> some View {
         let isSelected = cell.key == selectedDay
         let isToday = cell.key == Agenda.todayKey(tz)
+        // The whole cell is the day-select Button. A countdown is shown only as a
+        // (non-interactive) badge indicator here — tapping the day selects it and the
+        // countdown then appears as an all-day row in the detail list below, where it's
+        // tappable to edit (countdowns are treated like all-day events across the views).
         return Button { withAnimation { selectedDay = cell.key } } label: {
             VStack(spacing: 3) {
                 Text("\(cell.day)")
@@ -273,6 +297,24 @@ struct CalendarView: View {
         .buttonStyle(.plain)
     }
 
+    /// Tapping a countdown row: standalone → inline editor (rename/move/remove); an
+    /// event-source countdown (`id` == event id) → that event's detail (falls back to
+    /// nothing if the id doesn't resolve, e.g. a recurring series); birthday → no-op
+    /// (managed on the person's profile).
+    private func openCountdown(_ c: WaffledAPI.Countdown) {
+        switch c.source {
+        case "standalone": editingCountdown = c
+        case "event": if let ev = sync.events.first(where: { $0.id == c.id }) { detailEvent = ev }
+        default: break
+        }
+    }
+
+    /// Countdowns for a day, only from today forward (past countdowns drop off, like the
+    /// Today card). Keyed by the same `YYYY-MM-DD` as the event day buckets.
+    private func countdownsForDay(_ day: String) -> [WaffledAPI.Countdown] {
+        countdowns.byDate[day] ?? []
+    }
+
     /// Distinct owner colors of events on a day (for the month dots).
     private func dotColors(_ key: String) -> [String] {
         var seen = Set<String>(); var colors: [String] = []
@@ -291,10 +333,12 @@ struct CalendarView: View {
         let all = Agenda.forDay(filtered, day: selectedDay, tz: tz)
         let allDay = all.filter { $0.allDay }
         let timed = all.filter { !$0.allDay && $0.startsAt != nil }
+        let dayCountdowns = countdownsForDay(selectedDay)
 
-        if !allDay.isEmpty {
+        if !allDay.isEmpty || !dayCountdowns.isEmpty {
             VStack(spacing: 6) {
                 ForEach(allDay) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
+                ForEach(dayCountdowns) { c in CountdownCard(countdown: c, sleeps: countdowns.sleeps) { openCountdown(c) } }
             }
         }
         ZStack(alignment: .topLeading) {
@@ -507,6 +551,36 @@ struct EventCard: View {
 
     /// Has this event already ended? Shared with the Today agenda rows via `Agenda.isPast`.
     private var isPast: Bool { Agenda.isPast(event, tz) }
+}
+
+/// A countdown rendered like an all-day event row (same card as `EventCard`), so
+/// countdowns appear inline in the calendar's agenda / day / month-detail lists. The
+/// "time" column shows the days-left. Tap routes via the caller (`onTap`).
+struct CountdownCard: View {
+    let countdown: WaffledAPI.Countdown
+    let sleeps: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                Text(CountdownFormat.label(countdown.daysLeft, sleeps: sleeps))
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.warn)
+                    .frame(width: 72, alignment: .leading)
+                RoundedRectangle(cornerRadius: 99).fill(countdown.color.flatMap { Color(hexString: $0) } ?? WF.warn)
+                    .frame(width: 4, height: 34)
+                Text(countdown.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                Spacer(minLength: 8)
+                Text(countdown.emoji ?? "⏳").font(.system(size: 20))
+            }
+            .padding(.horizontal, 15).padding(.vertical, 13)
+            .frame(maxWidth: .infinity)
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+            .wfShadow1()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 /// Shared empty-state for not-yet-built tabs — keeps the scaffold honest about

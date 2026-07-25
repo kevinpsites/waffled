@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
+import { readFileSync } from 'node:fs'
 import { runMigrations } from '../src/migrate'
 
 const SECRET = 'waffled-local-dev-secret-change-me'
@@ -365,6 +366,44 @@ describe('list items — sections, quantity, assignee', () => {
   })
 })
 
+describe('list item priority', () => {
+  let listId = ''
+
+  beforeAll(async () => {
+    listId = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Errands' })).body).list.id
+  })
+
+  it('defaults new items to priority 3 (normal) and accepts a 1–5 priority on create', async () => {
+    const plain = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Milk' })).body).item
+    expect(plain.priority).toBe(3)
+    const urgent = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Passport', priority: 5 })).body).item
+    expect(urgent.priority).toBe(5)
+  })
+
+  it('patches an item priority and rejects values outside 1–5', async () => {
+    const id = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Batteries' })).body).item.id
+    const up = await call('PATCH', `/api/list-items/${id}`, kevin, { priority: 2 })
+    expect(up.statusCode).toBe(200)
+    expect(JSON.parse(up.body).item.priority).toBe(2)
+    expect((await call('PATCH', `/api/list-items/${id}`, kevin, { priority: 0 })).statusCode).toBe(400)
+    expect((await call('PATCH', `/api/list-items/${id}`, kevin, { priority: 6 })).statusCode).toBe(400)
+    expect((await call('PATCH', `/api/list-items/${id}`, kevin, { priority: 'high' })).statusCode).toBe(400)
+  })
+
+  it('keeps items in manual (insertion) order — priority is stored/returned but does NOT reorder', async () => {
+    const fresh = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Trip prep' })).body).list.id
+    await call('POST', `/api/lists/${fresh}/items`, kevin, { name: 'Snacks' }) // priority 3 (normal)
+    await call('POST', `/api/lists/${fresh}/items`, kevin, { name: 'Tickets', priority: 5 })
+    await call('POST', `/api/lists/${fresh}/items`, kevin, { name: 'Sunhat', priority: 4 })
+    const items = JSON.parse((await call('GET', `/api/lists/${fresh}`, kevin)).body).items as Array<{ name: string; priority: number }>
+    // insertion order preserved (changing priority no longer jumps items around) —
+    // priority-first ordering is now an opt-in client-side view.
+    expect(items.map((i) => i.name)).toEqual(['Snacks', 'Tickets', 'Sunhat'])
+    // ...but priority is still persisted and returned so the client can flag/sort it
+    expect(items.map((i) => i.priority)).toEqual([3, 5, 4])
+  })
+})
+
 describe('grocery auto-build from a recipe', () => {
   let recipeId = ''
 
@@ -474,6 +513,51 @@ describe('grocery auto-build from a recipe', () => {
     )
     expect(names).toContain('ground chicken') // the swap
     expect(names).not.toContain('Ground turkey') // not the original
+  })
+})
+
+describe('remove a recipe from the grocery list', () => {
+  const addRecipe = async (title: string, ingredients: Array<{ name: string; amount?: number; unit?: string }>) => {
+    const r = await call('POST', '/api/recipes', kevin, { title, emoji: '🍲' })
+    const rid = JSON.parse(r.body).recipe.id
+    await call('POST', `/api/recipes/${rid}/ingredients`, kevin, { ingredients })
+    await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin)
+    return rid
+  }
+  const groceryItems = async () => JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items as Array<{ name: string; sourceRecipeIds: string[] }>
+  const unscheduled = async () => JSON.parse((await call('GET', '/api/lists/grocery/board', kevin)).body).unscheduled as Array<{ recipeId: string }>
+
+  it('removes items that belong only to that recipe and drops it from unscheduled', async () => {
+    const rid = await addRecipe('Solo Soup', [{ name: 'Miso paste', amount: 1, unit: 'cup' }, { name: 'Silken tofu', amount: 1 }])
+    expect((await groceryItems()).some((i) => i.name === 'Miso paste')).toBe(true)
+    expect((await unscheduled()).some((u) => u.recipeId === rid)).toBe(true)
+
+    const del = await call('DELETE', `/api/lists/grocery/from-recipe/${rid}`, kevin)
+    expect(del.statusCode).toBe(200)
+    expect(JSON.parse(del.body).removed).toBe(2)
+
+    const items = await groceryItems()
+    expect(items.some((i) => i.name === 'Miso paste')).toBe(false)
+    expect(items.some((i) => i.name === 'Silken tofu')).toBe(false)
+    expect((await unscheduled()).some((u) => u.recipeId === rid)).toBe(false)
+  })
+
+  it('keeps an item shared with another recipe, dropping only the removed recipe’s credit', async () => {
+    const a = await addRecipe('Scallion A', [{ name: 'Fresh scallions', amount: 1, unit: 'bunch' }])
+    const b = await addRecipe('Scallion B', [{ name: 'Fresh scallions', amount: 1, unit: 'bunch' }])
+
+    await call('DELETE', `/api/lists/grocery/from-recipe/${a}`, kevin)
+
+    const scallions = (await groceryItems()).find((i) => i.name === 'Fresh scallions')
+    expect(scallions).toBeDefined() // still on the list — it's also recipe B's
+    expect(scallions!.sourceRecipeIds).toContain(b)
+    expect(scallions!.sourceRecipeIds).not.toContain(a)
+  })
+
+  it('404s an unknown recipe', async () => {
+    expect(
+      (await call('DELETE', '/api/lists/grocery/from-recipe/00000000-0000-0000-0000-000000000000', kevin)).statusCode
+    ).toBe(404)
   })
 })
 
@@ -774,5 +858,334 @@ describe('list templates (mark-as-template converts in place, apply, unmark)', (
     expect((await call('POST', '/api/lists/templates/00000000-0000-0000-0000-000000000000/apply', kevin)).statusCode).toBe(404)
     const kelly = mint('dev|kelly')
     expect((await call('POST', `/api/lists/${listId}/save-as-template`, kelly)).statusCode).toBe(404)
+  })
+})
+
+// The grocery board can be viewed/built one week at a time. Meal-derived ('auto') rows
+// and off-plan recipe adds ('recipe') belong to a week; manually-typed rows are global.
+// Building or checking one week must never touch another week's rows.
+describe('grocery week switching — never clobber', () => {
+  // Use weeks well ahead of thisSunday() so earlier suites' current/next-week data
+  // doesn't bleed in.
+  const addDays = (iso: string, n: number) => {
+    const d = new Date(iso + 'T00:00:00Z')
+    d.setUTCDate(d.getUTCDate() + n)
+    return d.toISOString().slice(0, 10)
+  }
+  const weekA = addDays(thisSunday(), 14)
+  const weekB = addDays(thisSunday(), 21)
+
+  async function recipe(title: string, ingredients: Array<{ name: string; amount?: number; unit?: string }>) {
+    const r = await call('POST', '/api/recipes', kevin, { title, emoji: '🥦' })
+    const rid = JSON.parse(r.body).recipe.id as string
+    await call('POST', `/api/recipes/${rid}/ingredients`, kevin, { ingredients })
+    return rid
+  }
+  const planOn = (week: string, recipeId: string) =>
+    call('POST', '/api/meals/plan', kevin, { date: addDays(week, 2), mealType: 'dinner', recipeId })
+  const board = async (week: string) =>
+    JSON.parse((await call('GET', `/api/lists/grocery/board?weekStart=${week}`, kevin)).body)
+  const rebuild = (week: string) => call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
+  const names = (b: { items: Array<{ name: string }> }) => b.items.map((i) => i.name)
+
+  let alpha = ''
+  let bravo = ''
+  it('builds each week from its own meals and never clobbers the other', async () => {
+    alpha = await recipe('WK Alpha', [{ name: 'Alpha Beef', amount: 2, unit: 'lb' }])
+    bravo = await recipe('WK Bravo', [{ name: 'Bravo Fish', amount: 1, unit: 'lb' }])
+    await planOn(weekA, alpha)
+    await planOn(weekB, bravo)
+
+    expect(rebuild(weekA)).resolves // build week A first
+    await rebuild(weekA)
+    let a = await board(weekA)
+    expect(names(a)).toContain('Alpha Beef')
+    expect(names(a)).not.toContain('Bravo Fish')
+    const alphaRow = a.items.find((i: { name: string }) => i.name === 'Alpha Beef')
+    expect(alphaRow.source).toBe('auto')
+    expect(alphaRow.weekStart).toBe(weekA)
+
+    // building week B must leave week A's auto rows untouched
+    await rebuild(weekB)
+    const b = await board(weekB)
+    expect(names(b)).toContain('Bravo Fish')
+    expect(names(b)).not.toContain('Alpha Beef')
+    a = await board(weekA)
+    expect(names(a)).toContain('Alpha Beef') // still here — not clobbered
+    expect(names(a)).not.toContain('Bravo Fish')
+
+    // rebuilding week A again doesn't disturb week B
+    await rebuild(weekA)
+    expect(names(await board(weekB))).toContain('Bravo Fish')
+  })
+
+  it('shows a manually-typed item on every week (global)', async () => {
+    await call('POST', '/api/lists/grocery/items', kevin, { name: 'Paper towels' })
+    expect(names(await board(weekA))).toContain('Paper towels')
+    expect(names(await board(weekB))).toContain('Paper towels')
+  })
+
+  it('checking a week’s auto item does not affect another week', async () => {
+    const a = await board(weekA)
+    const alphaRow = a.items.find((i: { name: string }) => i.name === 'Alpha Beef')
+    expect((await call('PATCH', `/api/list-items/${alphaRow.id}`, kevin, { checked: true })).statusCode).toBe(200)
+    const b = await board(weekB)
+    const bravoRow = b.items.find((i: { name: string }) => i.name === 'Bravo Fish')
+    expect(bravoRow.checked).toBe(false)
+  })
+
+  it('scopes an off-plan recipe add to the week it is added to', async () => {
+    const charlie = await recipe('WK Charlie', [{ name: 'Charlie Corn', amount: 1, unit: 'can' }])
+    expect((await call('POST', `/api/lists/grocery/from-recipe/${charlie}?weekStart=${weekA}`, kevin)).statusCode).toBe(201)
+    expect(names(await board(weekA))).toContain('Charlie Corn')
+    expect(names(await board(weekB))).not.toContain('Charlie Corn')
+  })
+
+  it('keeps an off-plan row’s quantity coherent — no cross-week accumulation', async () => {
+    // Off-plan "Shared Kale" on week A, plus a planned recipe needing it in EACH week.
+    const offplan = await recipe('WK Kale Salad', [{ name: 'Shared Kale', amount: 1, unit: 'bunch' }])
+    const plannedA = await recipe('WK Kale A', [{ name: 'Shared Kale', amount: 1, unit: 'bunch' }])
+    const plannedB = await recipe('WK Kale B', [{ name: 'Shared Kale', amount: 1, unit: 'bunch' }])
+    await call('POST', `/api/lists/grocery/from-recipe/${offplan}?weekStart=${weekA}`, kevin)
+    await planOn(weekA, plannedA)
+    await planOn(weekB, plannedB)
+
+    await rebuild(weekA) // credits week A's planned portion onto the off-plan row: 1 + 1 = 2
+    let kaleA = (await board(weekA)).items.filter((i: { name: string }) => i.name === 'Shared Kale')
+    expect(kaleA).toHaveLength(1)
+    const qtyAfterA = kaleA[0].quantity
+
+    // rebuilding week B must NOT touch week A's off-plan Shared Kale row
+    await rebuild(weekB)
+    kaleA = (await board(weekA)).items.filter((i: { name: string }) => i.name === 'Shared Kale')
+    expect(kaleA).toHaveLength(1)
+    expect(kaleA[0].quantity).toBe(qtyAfterA) // unchanged by week B's rebuild
+    // week B has its own Shared Kale (from plannedB), independent of week A's
+    expect(names(await board(weekB))).toContain('Shared Kale')
+  })
+
+  it('"start over" clears this week’s checks without touching another week OR the global list', async () => {
+    // check a week-A item (Charlie Corn @ weekA), a week-B item (Shared Kale @ weekB),
+    // and a global manual item (the running list, shown on every week)
+    const wa = (await board(weekA)).items.find((i: { name: string }) => i.name === 'Charlie Corn')
+    await call('PATCH', `/api/list-items/${wa.id}`, kevin, { checked: true })
+    const wb = (await board(weekB)).items.find((i: { name: string }) => i.name === 'Shared Kale')
+    await call('PATCH', `/api/list-items/${wb.id}`, kevin, { checked: true })
+    await call('POST', '/api/lists/grocery/items', kevin, { name: 'Global Napkins' })
+    const napkin = (await board(weekA)).items.find((i: { name: string }) => i.name === 'Global Napkins')
+    await call('PATCH', `/api/list-items/${napkin.id}`, kevin, { checked: true })
+
+    // start over on week A
+    const res = await call('POST', `/api/lists/grocery/clear-checks?weekStart=${weekA}`, kevin)
+    expect(res.statusCode).toBe(200)
+
+    // week A's own item is now unchecked...
+    expect((await board(weekA)).items.find((i: { name: string }) => i.name === 'Charlie Corn').checked).toBe(false)
+    // ...but week B's item is untouched, and the global item keeps its check (it's the
+    // running list — clearing it from one week would un-check it everywhere)
+    expect((await board(weekB)).items.find((i: { name: string }) => i.name === 'Shared Kale').checked).toBe(true)
+    expect((await board(weekA)).items.find((i: { name: string }) => i.name === 'Global Napkins').checked).toBe(true)
+  })
+
+  it('removing an off-plan recipe from one week keeps its credit on another week (no cross-week strip)', async () => {
+    const r = await recipe('WK Cross', [{ name: 'Cross Beef', amount: 1, unit: 'lb' }])
+    // off-plan add to week A, and plan the SAME recipe as a meal in week B (a free slot), built
+    await call('POST', `/api/lists/grocery/from-recipe/${r}?weekStart=${weekA}`, kevin)
+    await call('POST', '/api/meals/plan', kevin, { date: addDays(weekB, 4), mealType: 'dinner', recipeId: r })
+    await rebuild(weekB)
+    expect((await board(weekB)).items.find((i: { name: string }) => i.name === 'Cross Beef').sourceRecipeIds).toContain(r)
+
+    // remove the off-plan add from week A
+    await call('DELETE', `/api/lists/grocery/from-recipe/${r}?weekStart=${weekA}`, kevin)
+
+    // week B's planned-meal row must STILL credit r (its color dot survives)
+    const wbAfter = (await board(weekB)).items.find((i: { name: string }) => i.name === 'Cross Beef')
+    expect(wbAfter).toBeTruthy()
+    expect(wbAfter.sourceRecipeIds).toContain(r)
+    // ...and week A's off-plan Cross Beef is gone
+    expect((await board(weekA)).items.some((i: { name: string }) => i.name === 'Cross Beef')).toBe(false)
+  })
+
+  it('falls back to the current week for an impossible weekStart (no 500)', async () => {
+    const res = await call('GET', '/api/lists/grocery/board?weekStart=2026-13-45', kevin)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).weekStart).not.toBe('2026-13-45')
+  })
+})
+
+// The 0088 backfill must stamp legacy (pre-0087) weekless rows to the SAME date the board
+// shows for "this week" — for BOTH first-day-of-week prefs — or those rows would vanish on
+// deploy (the Sunday-vs-Monday trap). This runs the REAL migration SQL, so a drift between
+// the SQL date math and the server's `householdWeekStart` fails the test.
+describe('grocery week backfill (0088) — legacy rows land on the board default week', () => {
+  const backfillUpSql = readFileSync(new URL('../migrations/0088_backfill_list_item_week.sql', import.meta.url), 'utf8').split('-- Down Migration')[0]
+
+  for (const pref of ['sunday', 'monday'] as const) {
+    it(`stamps a weekless auto row onto this week for a ${pref}-start household`, async () => {
+      // Derive kevin's grocery list + household from HIS board (deterministic — a bare
+      // `households limit 1` can return a different/foreign household across calls).
+      const listId = JSON.parse((await call('GET', '/api/lists/grocery/board', kevin)).body).list.id as string
+      const householdId = (await withClient((c) => c.query<{ household_id: string }>(`select household_id from lists where id=$1`, [listId]))).rows[0].household_id
+      // a non-UTC timezone exercises the tz path in both the SQL and householdWeekStart
+      await withClient((c) => c.query(`update households set week_start=$1, timezone='America/Chicago' where id=$2`, [pref, householdId]))
+      const name = `Legacy ${pref} kale`
+      // a legacy row: meal-derived but weekless (as it would be right after 0087)
+      await withClient((c) => c.query(
+        `insert into list_items (household_id, list_id, name, source, week_start) values ($1,$2,$3,'auto',null)`,
+        [householdId, listId, name]
+      ))
+
+      await withClient((c) => c.query(backfillUpSql)) // run the real 0088 UPDATE
+
+      // The board's DEFAULT week (no ?weekStart=) must now include it — proving the SQL
+      // stamp equals what householdWeekStart returns for this pref/timezone. If they
+      // disagreed, the row's week wouldn't match board.weekStart and it wouldn't appear.
+      const b = JSON.parse((await call('GET', '/api/lists/grocery/board', kevin)).body)
+      const row = b.items.find((i: { name: string }) => i.name === name)
+      expect(row).toBeTruthy()
+      expect(row.weekStart).toBe(b.weekStart)
+    })
+  }
+
+  afterAll(async () => {
+    await withClient((c) => c.query(`update households set week_start='sunday' where id in (select id from households)`))
+  })
+})
+
+// ---- #4 bulk edit + #5 completed-item lifecycle -----------------------------
+describe('list-item bulk edit + completed-item lifecycle', () => {
+  async function newList(name: string): Promise<string> {
+    return JSON.parse((await call('POST', '/api/lists', kevin, { name })).body).list.id
+  }
+  async function addItem(listId: string, name: string, extra: Record<string, unknown> = {}): Promise<string> {
+    return JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name, ...extra })).body).item.id
+  }
+  async function getItems(listId: string): Promise<Array<Record<string, any>>> {
+    return JSON.parse((await call('GET', `/api/lists/${listId}`, kevin)).body).items
+  }
+  async function railCount(listId: string): Promise<number> {
+    const lists = JSON.parse((await call('GET', '/api/lists', kevin)).body).lists as Array<{ id: string; itemCount: number }>
+    return lists.find((l) => l.id === listId)!.itemCount
+  }
+
+  it('list total (itemCount) counts only unchecked items', async () => {
+    const list = await newList('Count list')
+    const a = await addItem(list, 'A')
+    await addItem(list, 'B')
+    expect(await railCount(list)).toBe(2)
+    await call('PATCH', `/api/list-items/${a}`, kevin, { checked: true })
+    expect(await railCount(list)).toBe(1)
+  })
+
+  it('grocery total ticks down as items are checked into the cart', async () => {
+    const groceryId = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).list.id
+    const before = await railCount(groceryId)
+    const gi = JSON.parse((await call('POST', '/api/lists/grocery/items', kevin, { name: 'Count-grocery' })).body).item.id
+    expect(await railCount(groceryId)).toBe(before + 1)
+    // checking it into the cart drops the count (the badge shows what's left to get)
+    await call('PATCH', `/api/list-items/${gi}`, kevin, { checked: true })
+    expect(await railCount(groceryId)).toBe(before)
+  })
+
+  it('auto-clears checked custom-list items older than the window, keeps recent + unchecked', async () => {
+    const list = await newList('Auto clear')
+    const old = await addItem(list, 'Old checked')
+    const fresh = await addItem(list, 'Fresh checked')
+    await addItem(list, 'Still active')
+    await call('PATCH', `/api/list-items/${old}`, kevin, { checked: true })
+    await call('PATCH', `/api/list-items/${fresh}`, kevin, { checked: true })
+    // backdate the old one past the 24h default window
+    await withClient((c) => c.query(`update list_items set checked_at = now() - interval '25 hours' where id=$1`, [old]))
+    const names = (await getItems(list)).map((i) => i.name)
+    expect(names).not.toContain('Old checked')
+    expect(names).toContain('Fresh checked')
+    expect(names).toContain('Still active')
+  })
+
+  it('never auto-clears a custom list whose auto_clear_checked is NULL (the "never" sentinel)', async () => {
+    const list = await newList('No auto clear')
+    const old = await addItem(list, 'Old checked forever')
+    await call('PATCH', `/api/list-items/${old}`, kevin, { checked: true })
+    // Opt this list out of auto-clear (null = never), overriding the 24h default,
+    // and backdate the checked item well past any window.
+    await withClient((c) => c.query(`update lists set auto_clear_checked = null where id=$1`, [list]))
+    await withClient((c) => c.query(`update list_items set checked_at = now() - interval '100 hours' where id=$1`, [old]))
+    const names = (await getItems(list)).map((i) => i.name)
+    expect(names).toContain('Old checked forever')
+  })
+
+  it('never auto-clears the grocery list (checked = in-cart)', async () => {
+    const gi = JSON.parse((await call('POST', '/api/lists/grocery/items', kevin, { name: 'Milk-autoclear' })).body).item.id
+    await call('PATCH', `/api/list-items/${gi}`, kevin, { checked: true })
+    await withClient((c) => c.query(`update list_items set checked_at = now() - interval '25 hours' where id=$1`, [gi]))
+    const items = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items as Array<{ name: string }>
+    expect(items.find((i) => i.name === 'Milk-autoclear')).toBeTruthy()
+  })
+
+  it('manual clear-completed removes checked items, keeps unchecked', async () => {
+    const list = await newList('Clear done')
+    const a = await addItem(list, 'Done 1')
+    const b = await addItem(list, 'Done 2')
+    await addItem(list, 'Not done')
+    await call('PATCH', `/api/list-items/${a}`, kevin, { checked: true })
+    await call('PATCH', `/api/list-items/${b}`, kevin, { checked: true })
+    const res = await call('POST', `/api/lists/${list}/clear-completed`, kevin)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).cleared).toBe(2)
+    expect((await getItems(list)).map((i) => i.name)).toEqual(['Not done'])
+  })
+
+  it('bulk-edits section, priority and assignee across many items', async () => {
+    const list = await newList('Bulk')
+    const a = await addItem(list, 'A')
+    const b = await addItem(list, 'B')
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, {
+      ids: [a, b],
+      patch: { section: 'GEAR', priority: 5 },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).updated).toBe(2)
+    for (const it of await getItems(list)) {
+      expect(it.section).toBe('GEAR')
+      expect(it.priority).toBe(5)
+    }
+  })
+
+  it('bulk-edit prefers `section` over the legacy `category` alias when both are sent', async () => {
+    const list = await newList('Bulk precedence')
+    const a = await addItem(list, 'A')
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, {
+      ids: [a],
+      patch: { section: 'FROM_SECTION', category: 'FROM_CATEGORY' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect((await getItems(list))[0].section).toBe('FROM_SECTION')
+  })
+
+  it('bulk edit is tenant-scoped — cannot touch another household\'s items (IDOR)', async () => {
+    // seed a foreign list+item directly in Kelly's household
+    const foreignItem = await withClient(async (c) => {
+      const hid = (await c.query<{ household_id: string }>(`select household_id from persons where id=$1`, [foreignPersonId])).rows[0].household_id
+      const l = (await c.query<{ id: string }>(`insert into lists (household_id, name, list_type, created_by) values ($1,'KL','custom',$2) returning id`, [hid, foreignPersonId])).rows[0].id
+      return (await c.query<{ id: string }>(`insert into list_items (household_id, list_id, name, priority, created_by) values ($1,$2,'Secret',3,$3) returning id`, [hid, l, foreignPersonId])).rows[0].id
+    })
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, { ids: [foreignItem], patch: { priority: 1 } })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).updated).toBe(0)
+    const still = await withClient((c) => c.query<{ priority: number; deleted_at: string | null }>(`select priority, deleted_at from list_items where id=$1`, [foreignItem]))
+    expect(still.rows[0].priority).toBe(3)
+    expect(still.rows[0].deleted_at).toBeNull()
+  })
+
+  it('bulk edit rejects an assignee outside the household', async () => {
+    const list = await newList('Bulk validate')
+    const a = await addItem(list, 'A')
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, { ids: [a], patch: { assignedTo: foreignPersonId } })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('bulk edit rejects an empty id list', async () => {
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, { ids: [], patch: { priority: 2 } })
+    expect(res.statusCode).toBe(400)
   })
 })

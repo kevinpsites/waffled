@@ -316,8 +316,7 @@ final class HealthKitBridge {
         /// A device setting, read once per query — HealthKit stores meters, so we just pick
         /// the display unit. `distanceLabel` is factored out pure so both branches are testable.
         static var usesMetricDistance: Bool {
-            if #available(iOS 16.0, *) { return Locale.current.measurementSystem == .metric }
-            return Locale.current.usesMetricSystem
+            Locale.current.measurementSystem == .metric
         }
         static func distanceLabel(usesMetric: Bool) -> String { usesMetric ? "km" : "mi" }
         /// A gentle starting target for a daily walk/run goal (~5 km ≈ 3 mi).

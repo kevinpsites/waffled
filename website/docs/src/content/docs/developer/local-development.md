@@ -12,7 +12,8 @@ root `package.json`. Each app manages its own dependencies: `apps/api` and
 ## Requirements
 
 - **Docker** — the full stack runs as a Docker Compose stack.
-- **Node 20** — for running `apps/api` and `apps/web` directly.
+- **Node 24** — the contributor default for running `apps/api` and `apps/web`
+  directly. The production API image remains on Node 20.
 
 ## Two ways to develop
 

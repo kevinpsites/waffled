@@ -57,6 +57,7 @@ export default defineConfig({
 						{ label: 'Family Night', slug: 'features/family-night' },
 						{ label: 'AI capture bar', slug: 'features/capture' },
 						{ label: 'Kiosk & display', slug: 'features/kiosk' },
+						{ label: 'Waffled-Bites', slug: 'features/waffled-bites' },
 						{ label: 'Appearance & dark mode', slug: 'features/appearance' },
 						{ label: 'Mobile app (iOS)', slug: 'features/mobile' },
 					],

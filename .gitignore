@@ -26,6 +26,8 @@ node_modules
 dist/
 build/
 *.tsbuildinfo
+playwright-report/
+test-results/
 
 # astro generated cache/types (website/.astro) — regenerated on dev/build
 .astro/

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import { useCountdowns, countdownsApi, countdownLabel, type Countdown } from '../../lib/api'
 
 // Today card: everything the family is counting down to, soonest first. Standalone
@@ -9,17 +10,32 @@ function fmtDate(date: string): string {
   return new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-function Row({ c, sleeps, onRemove }: { c: Countdown; sleeps: boolean; onRemove?: () => void }) {
+function Row({ c, sleeps, onOpen, onRemove }: { c: Countdown; sleeps: boolean; onOpen: () => void; onRemove?: () => void }) {
   const soon = c.daysLeft <= 7
   return (
-    <div className="cd-row">
+    <div
+      className="cd-row cd-row-btn"
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen() } }}
+    >
       <span className="cd-emoji" style={c.color ? { background: `${c.color}22` } : undefined}>{c.emoji ?? '📅'}</span>
       <div className="cd-main">
         <div className="cd-title">{c.title}</div>
         <div className="tiny muted">{fmtDate(c.date)}</div>
       </div>
       <div className={`cd-days${soon ? ' soon' : ''}`}>{countdownLabel(c.daysLeft, sleeps)}</div>
-      {onRemove && <button type="button" className="cd-x" aria-label={`Remove ${c.title}`} onClick={onRemove}>×</button>}
+      {onRemove && (
+        <button
+          type="button"
+          className="cd-x"
+          aria-label={`Remove ${c.title}`}
+          onClick={(e) => { e.stopPropagation(); onRemove() }}
+        >
+          ×
+        </button>
+      )}
     </div>
   )
 }
@@ -27,6 +43,15 @@ function Row({ c, sleeps, onRemove }: { c: Countdown; sleeps: boolean; onRemove?
 export function CountdownsCard() {
   const { countdowns, sleeps, loading } = useCountdowns()
   const [adding, setAdding] = useState(false)
+  const navigate = useNavigate()
+
+  // Tapping a countdown takes you to what it's counting down to: an event-based
+  // countdown opens that event; standalone/birthday ones jump to the calendar day
+  // (where the countdown shows as an all-day chip).
+  const openCountdown = (c: Countdown) => {
+    if (c.source === 'event') navigate(`/calendar/event/${c.id}`)
+    else navigate(`/calendar?date=${c.date}&view=day`)
+  }
 
   return (
     <div className="card cd-card" style={{ padding: '22px 22px 12px', display: 'flex', flexDirection: 'column' }}>
@@ -45,6 +70,7 @@ export function CountdownsCard() {
           key={c.id}
           c={c}
           sleeps={sleeps}
+          onOpen={() => openCountdown(c)}
           onRemove={c.source === 'standalone' ? () => countdownsApi.remove(c.id) : undefined}
         />
       ))}

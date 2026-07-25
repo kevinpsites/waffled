@@ -1,9 +1,12 @@
 {
   "name": "@waffled/api",
-  "version": "0.9.0",
+  "version": "0.12.0",
   "private": true,
   "description": "Waffled backend API (lambda-api), written in TS, bundled to JS with esbuild. Same code runs as a container locally (server) and on AWS Lambda (lambda).",
   "main": "dist/lambda.js",
+  "engines": {
+    "node": ">=20.19"
+  },
   "scripts": {
     "build": "node esbuild.config.mjs",
     "typecheck": "tsc --noEmit",
@@ -46,7 +49,7 @@
     "vitest": "^2.1.0"
   },
   "overrides": {
-    "brace-expansion@2.0.0 - 2.1.1": "2.1.2",
-    "brace-expansion@3.0.0 - 5.0.6": "5.0.7"
+    "brace-expansion": "5.0.8",
+    "minimatch": "10.2.5"
   }
 }

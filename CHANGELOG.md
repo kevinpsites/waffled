@@ -14,6 +14,327 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+- **The goal Log sheet now suggests what you actually do.** The "What did you do?"
+  chips are no longer a fixed list of six — each goal offers up the notes you've logged
+  against it before, most-used first, so a goal you keep marking "family walk" or "lunch
+  outside" starts offering those with one tap. Suggestions are per person (the notes where
+  that family member took part, not just whoever tapped Log), and until a goal has enough
+  history of its own the familiar defaults fill in the rest.
+
+- **Waffled-Bite device: set up WiFi right on the screen.** Connecting a new device to
+  your home network no longer requires flashing it with hardcoded credentials — it now
+  scans for nearby networks, lets you pick one and enter the password on the device's
+  own keyboard, right during first-time setup. If you pick the wrong network (or move
+  the device to a new one), a "Change Wi-Fi network" option on the setup screen takes
+  you back to the picker — no reflash needed.
+- **See at a glance if a Waffled-Bite has gone offline.** The parent control panel (web,
+  iPhone, iPad) now shows a status pill right at the top — 🟢 Online, or 🔴 Offline with
+  when it was last seen — the same treatment as the quiet-time and wake-light status,
+  so a device that's stopped checking in doesn't go unnoticed. This isn't an instant
+  heartbeat — it's based on the device's regular check-in, so it can lag up to about
+  15 minutes behind reality.
+- **Waffled-Bite device: a real "can't reach the server" screen.** Starting a timer,
+  checking off a chore, and every other on-device action needs to reach your Waffled
+  server — while it can't, those taps used to just silently do nothing. The device now
+  shows a plain "Can't reach the server" screen with a Try again button, a way to change
+  Wi-Fi networks, a way to change the server address directly, and a way to reach
+  Settings — instead of a dead tap with no explanation. It keeps coming back to this
+  screen while the device stays offline (it won't just quietly stay wherever you
+  navigated to), and goes away on its own the moment the device is back online. (It
+  never interrupts quiet time or a bedtime lock, and it won't pull you off the Wi-Fi
+  picker or the change-address screen while you're actively using them.) A sad,
+  unplugged waffle-iron mascot now sits alongside the message so it reads as
+  friendly rather than like an error dialog.
+- **Waffled-Bite device: no more white box around the logo/mascot, and a bigger boot
+  screen.** The Waffled logo and the offline mascot used to sit on a visible white
+  rectangle instead of blending into the app's cream background — now transparent
+  everywhere they appear (onboarding, the Wi-Fi "Connecting…" screen, the home
+  screen's clock corner, and the offline screen). The very first boot screen (shown
+  while the device connects to Wi-Fi) also got the same bigger-everything treatment
+  as the rest of the app — a much bigger logo and bigger "Waffled"/"Connecting…" text.
+
+### Changed
+
+- **Waffled-Bite device: home + grown-up-controls screen polish.** The "Hi, {name}!"
+  greeting now renders in the same warm serif (Newsreader) used across the rest of
+  Waffled instead of a generic sans font, the greeting card and routine tiles now have
+  soft drop shadows for a bit of depth, and a fully-completed routine
+  (Morning/Afternoon/Evening/Chores) now shows a small green checkmark badge
+  overlapping its count pill instead of a checkmark crammed into the pill's text. The
+  Morning/Afternoon/Evening/Chores tiles, the Sounds/Nightlight/Set-a-timer/Bedtime
+  grown-up controls, the settings gear, and the stars badges now show real icons
+  (sun/sun-high/moon/broom/sound/timer/bed/gear/star) instead of text placeholders, the
+  routine tile colors match the design mock's exact values, and the home screen's
+  subtitle now reads "Let's have a great morning/afternoon/evening" instead of a
+  hardcoded "day". The Waffled logo now appears on the setup screen and the
+  Wi-Fi "Connecting…" screen.
+- **Waffled-Bite device: quiet-time and grown-up-controls screens match the updated
+  design mock.** Quiet time switches from a single centered column to a split
+  layout — a gold crescent moon, the "Quiet time" title in the same warm serif used
+  elsewhere, and the "Stay cozy until…" line on the left, the countdown ring on the
+  right. The grown-up-controls tiles are now compact and vertically centered instead
+  of stretched to fill the screen's height, matching the mock's proportions.
+- **Waffled-Bite device: the "Set a timer" countdown now matches quiet time's split
+  layout.** The countdown ring is bigger and moved to the left, with the "Timer
+  running" title and End-timer button on the right, instead of a single stacked
+  column — the same split-row treatment as the quiet-time screen above, mirrored.
+- **Waffled-Bite device: bigger, chunkier buttons everywhere.** Direct feedback: the
+  WiFi setup, "can't reach the server," timer, pairing, and grown-up-controls screens
+  all had small, adult-app-sized buttons and text that didn't match the big, fun home
+  screen. Every button on those screens — Rescan, Connect, Try again, Change Wi-Fi,
+  Pair, Start/End timer, the +/- steppers, Home/Back — is now noticeably bigger with
+  larger text, along with the on/off switches, color swatches, and the volume/
+  brightness slider's knob. The chore rows themselves (Morning/Afternoon/Evening/
+  Chores) got the same treatment — a bigger checkbox and bigger title text, more
+  breathing room between rows. The one thing left deliberately small: the "For a
+  grown-up" chip in Settings, so it stays easy to overlook for a kid.
+- **Waffled-Bite device: bigger icons and text on the home screen's routine tiles.**
+  Direct follow-up: the Morning/Afternoon/Evening/Chores tiles' sun/sun-high/moon/
+  broom icons and "X of Y" count pills were still their original size and looked
+  small next to everything else that's gotten bigger. Icons are now noticeably
+  bigger, and the tile name and count text are bigger too.
+- **Waffled-Bite device: Morning/Afternoon/Evening icons moved to the center and made
+  even bigger.** Direct follow-up: the sun/sun-high/moon icons used to sit in the
+  tile's top-left corner next to the count pill; they're now the big centerpiece of
+  each tile, front and center.
+- **Waffled-Bite device: the quiet-time and timer countdown rings are much bigger.**
+  Direct feedback: both rings were small and hard to read from across a room. The
+  quiet-time ring is now roughly half the screen's width, the timer's ring nearly
+  so, and the countdown numbers inside them are noticeably bigger too.
+- **Waffled-Bite device: quiet time's title is bigger, and the timer screen's text
+  is centered.** Direct follow-up: "Quiet time" now uses a bigger version of the
+  app's warm serif font, "Stay cozy until…" is bigger too (though still smaller than
+  the title), and on the timer screen, "Timer running" and the End-timer button are
+  now centered under each other instead of looking left-aligned.
+- **Waffled-Bite device: the timer screen's ring and text no longer sit at opposite
+  edges.** Direct follow-up with a reference photo: the countdown ring and the
+  "Timer running"/End-timer text used to be pushed to the far left and far right of
+  the screen, leaving a big empty gap in the middle. They now sit together nearer
+  the center, with a consistent gap between them.
+
+### Fixed
+
+- **Waffled-Bite device: the on-screen keyboard was covering the text field you were
+  typing into.** On the setup screen, the "Server address" field was hidden entirely
+  behind the keyboard once it popped up — you had no way to see what you were typing.
+  The screen now shifts up just enough to keep whichever field you tapped visible
+  above the keyboard, and settles back down once you're done. Fixed on the setup
+  screen (confirmed) and the Wi-Fi password screen (same underlying issue, fixed
+  proactively).
+- **Waffled-Bite device: WiFi picker showed a stray blank box in network subtitles.**
+  Each row's "Secured · Strong signal" line used a middle-dot character the device's
+  font doesn't have, which rendered as an empty square instead. Now a plain hyphen.
+- **Waffled-Bite device: chores that need a photo or a grown-up's OK no longer look
+  broken.** Tapping any row on the Chores/Morning/Afternoon/Evening list worked, but a
+  chore requiring approval silently reverted to unchecked once the server queued it for
+  a parent's OK, and one requiring a photo (which the device can't capture) reverted
+  with no explanation at all — both read as "tapping does nothing." Approval-required
+  chores now show "Waiting on a parent's approval" instead of reverting; photo-required
+  chores are hidden from the device's list entirely — completed from a parent's
+  phone/web instead — with a note when a whole routine is nothing but those. A routine
+  tile's "X of Y done" count and progress ring now exclude hidden photo-required
+  chores too, so the numbers match what's actually shown and a routine can still
+  reach "all done" once every visible chore is checked.
+- **Waffled-Bite device: WiFi now connects reliably.** The device's WiFi chip could
+  crash-loop unpredictably on boot. Fixed by changing how the firmware is built (the
+  underlying networking software is now compiled fresh instead of using a flaky
+  pre-packaged version) and disabling an overly aggressive failure-recovery setting that
+  rebooted the whole device over a single transient WiFi hiccup — verified across 30+
+  real-device reboots with no failures.
+- **Waffled-Bite device: WiFi picker no longer shows zero networks in a new location.**
+  On boot the device always retries its previously-saved home network first; if that
+  network isn't in range, the radio gets stuck reporting "no network found" and refuses
+  to scan — even after backing out to the picker, tapping Rescan, or a full power cycle.
+  The scan just silently failed and rendered as an empty list, with no way out short of
+  a reflash. The device now fully resets the WiFi radio before every scan attempt, which
+  clears the stuck state, and a scan that still fails to start is retried automatically
+  instead of being shown as "no networks found." Also: a network broadcast from more
+  than one access point (mesh WiFi, dual-band routers) used to appear once per access
+  point in the list — it now appears once, using its strongest signal. Fixed a related
+  latent bug found during this work: reopening the WiFi picker (the "Change Wi-Fi
+  network" option) while a previous attempt was still in flight leaked memory and left
+  a background timer running against already-closed screens.
+- **Waffled-Bite device: the whole screen no longer freezes every few seconds while
+  offline.** If the device can't reach your Waffled server (e.g. it's paired to a
+  self-hosted server that's only reachable on your home network, and the device is
+  currently somewhere else), it checks in every 5 seconds — and each failed check-in
+  was blocking the entire touchscreen for up to several seconds, making the whole
+  device feel frozen. Once it's been offline for a couple of checks in a row, it now
+  backs off to checking in every 30 seconds instead, and snaps back to normal as soon
+  as it reconnects — so it stays responsive to touch even while waiting to get back
+  online. A self-hosted server that's only reachable on your home network showing
+  "Offline" away from home is expected; this fix is about the device staying usable
+  while it waits.
+- **Waffled-Bite device: "Set a timer" and "Bedtime" could white-screen and strand
+  you.** Both screens were only ever filled in the first time the device successfully
+  checked in with the server after opening the app — if that first check-in failed
+  (e.g. the device is offline, as above), tapping into either from Settings landed on
+  a completely blank screen with no back button and no way out short of a power cycle.
+  Both now show right away, and fill in with real data as soon as the device is back
+  online — no more blank dead end.
+- **Waffled-Bite device: touchscreen input was mirrored left-right.** Most taps landed
+  fine, but the on-screen keyboard's narrow, side-by-side keys made it obvious — tapping
+  a key hit its mirror on the opposite side. Also added a visible way to dismiss the
+  keyboard (there was none before — the only way was tapping elsewhere), and fixed the
+  pairing-code field being hidden behind the keyboard once it popped up.
+- **Web navigation now fits phones.** Narrow screens use a compact app header and
+  accessible slide-out destination menu, while Settings replaces its long stacked
+  index with a section picker and nearby sign-out action.
+- **Unfinished web actions no longer look usable.** Grocery export and online-order
+  buttons, list sharing, plus empty Lists and Notifications settings destinations,
+  stay hidden until they have working behavior.
+- **Backup limitations are now called out after startup and in `./waffled doctor`.**
+  Operators are warned when uploaded media is excluded or all backup copies remain
+  on the Waffled host, with a direct link to the verification guide.
+- **Setup now links to the published troubleshooting guide.** The public-HTTPS
+  PowerSync note no longer points at a repository file that does not exist.
+
+### Security
+
+- **Web routing dependencies now include current security patches.** React Router
+  is updated to 8.3.0, which clears the last outstanding advisory against the web
+  app's production dependencies. The advisory itself (a CSRF bypass in React
+  Router's experimental React Server Components paths) never affected Waffled —
+  the web app uses plain client-side routing and has no server-component surface —
+  but no fix was published for the 7.x line, so clearing the audit means moving to
+  8.x. React and React DOM move to 19.2 alongside it, as React Router 8 requires
+  them. No behaviour changes.
+
+- **Server dependencies pick up a denial-of-service patch.** A flaw in
+  `brace-expansion` — a small pattern-matching library the server pulls in
+  indirectly — let a crafted pattern expand without bound until the process ran
+  out of memory. Waffled never feeds user input to the affected code path, so this
+  was not exploitable in practice, but the patched version is now pinned across
+  the server's dependency tree.
+
+## [0.12.0] - 2026-07-23
+
+### Added
+- **Shop ahead — see and build next week's grocery list.** The grocery board now has a
+  week switcher (‹ ›, with a "This week" reset) on both web and iOS/iPad. Each week's
+  meal-derived items are their own list, so you can shop Saturday for next week's meals
+  without disturbing this week's — building or checking off one week never touches
+  another. Items you type in by hand (and your pantry staples) stay on a single running
+  list shown on every week. Adding a recipe's ingredients off-plan now lands on the week
+  you're viewing. **Refresh** rebuilds a week's items while keeping what you've checked
+  off; a new **Start over** clears that week's checkmarks when you want a fresh list.
+  Existing installs migrate automatically — your current grocery items move onto this
+  week (honoring your first-day-of-week and timezone).
+- **Share a recipe from your library.** Every recipe detail now has a **Share** action that
+  compiles the recipe into Waffled's Markdown format (title, metadata, sectioned
+  ingredients, numbered steps with timers, notes) and hands it to your device's share
+  options — on iPhone/iPad the native share sheet with a `.md` file (Messages, Mail, Save to
+  Files, …), on the web the browser share sheet, falling back to copy-to-clipboard plus a
+  `.md` download. The shared file is the same format the app imports, so anyone can paste it
+  straight back into their own library.
+- **Waffled-Bites parent controls now on iPhone and iPad.** The control panel for a
+  paired kid's companion device — quiet time, wake-light schedule, night light, sound
+  machine, morning alarm, an occasional timer, and screen brightness — was web-only
+  until now; it's a full port, reached the same way as web (Family → tap the kid →
+  Waffled-Bite), including pairing a new device from your phone or tablet.
+- **Edit list items in bulk.** Pick "Select" on any list (web and iOS), tap the items you
+  want, and set their section, assignee, or priority for the whole selection — including
+  moving them into a brand-new section you name on the spot. Your choices apply when you
+  tap **Done** (a stray tap never changes anything), and while selecting each row shows a
+  single clear checkbox so you can't accidentally check an item off.
+- **Rename a list from the list itself, and the iPad list menu.** The list's ⋯ menu
+  (Select items / Save as template / Delete) now also carries a **Rename** action on both
+  iPhone and iPad, and the menu — previously missing from the iPad's list view — is now
+  there too.
+- **Collapsible list sections + a section picker that stays put.** On the web, a list's
+  sections now collapse and expand from their header (iOS already did this). The add bar
+  also gains a section picker that keeps your choice across a run of quick adds — and can
+  create a new section on the spot — so a batch of items all land where you want (matching
+  how iOS already behaves).
+- **Swipe through your goal charts.** The weekly and monthly goal heatmaps on iPhone/iPad
+  now page back and forth with a horizontal swipe, not just the ‹ › arrows; a past week is
+  also labelled by its dates ("Week of Jul 5 – Jul 11") instead of a vague "That week".
+
+### Changed
+- **Completed list items tidy themselves away.** A list's checked-off items now clear
+  automatically a day after you check them, and the Completed section has a **Clear**
+  button to sweep them now. (The grocery board is deliberately untouched — its checked =
+  "in the cart" state is preserved so the weekly rebuild still works.)
+
+### Fixed
+- **Adding a meal from the iOS capture bar works again.** "Chicken bowls on Friday" (or
+  any dish) parsed correctly but failed with a 400 on **Add meal** — the date was sent as
+  a full timestamp instead of a plain calendar day. It now saves to the right day.
+- **A list's item count now shows what's left to do.** The number on the Lists rail (and
+  the list header) counts only unchecked items, so it ticks down as you check things off —
+  on a custom list as you finish them, and on the grocery list as you put them in the cart
+  — instead of always showing the full count.
+- **List sections are ordered A–Z and stay put (web).** Sections were laid out in the
+  API's item order, so adding, checking, or moving an item reshuffled them (and the
+  two-column layout). They're now sorted alphabetically (the no-section "Items" group
+  last), so each section holds a fixed place.
+- **Waffled-Bite: starting a timer now actually shows up on the device.** Previously,
+  starting "Set a timer" (from the device itself or a parent remotely) only updated the
+  timer screen's content in the background — nothing visibly happened until a kid
+  happened to tap into it themselves. It now takes over the screen the same way quiet
+  time does, while staying exitable (its Home button still works, unlike quiet time's
+  on-device lock). Also, quiet-time and timer countdowns over an hour now show as
+  `H:MM:SS` instead of raw minutes (e.g. `1:05:00`, not `65:00`).
+
+## [0.11.0] - 2026-07-22
+
+### Added
+- **Waffled-Bites: pair a kid's companion device and control it from Family.** A new
+  optional module (Settings → Modules) adds a "Waffled-Bite" section to each kid's profile
+  page — pair a device with a short one-time code, then control it live: start/pause/end a
+  quiet-time countdown, set a night light (color + brightness), a wake-up light schedule
+  (per day-of-week, with a yellow "almost time" warning before it turns green), a morning
+  alarm, a sound machine, and screen brightness. A device polls for changes every few
+  seconds — no separate app or account needed on the device side. This release ships the
+  pairing system, the parent control panel, and a code-complete on-device app (ESP32-P4 +
+  LVGL) — but the on-device app has only run in a desktop simulator against the real
+  backend so far, since the physical touchscreen has never been in hand for real hardware
+  bring-up. So pairing still has nothing to actually connect to yet — this is **pending
+  hardware validation**, not a finished, buyable device. An iOS control panel is coming
+  soon as a fast-follow; web ships first.
+
+### Changed
+
+### Fixed
+
+## [0.10.0] - 2026-07-22
+
+### Added
+- **The iPhone Today Goals card is now the full goal hero.** It matches the iPad: a progress
+  ring, each participant's contribution bar, a **Log progress** button (log straight from
+  Today), and a **"Show a different goal"** switcher that opens the grouped goal picker. The
+  old My/Family scope pill is replaced by that picker (which already covers your goals, shared
+  groups, and the rest). One shared card now drives both iPhone and iPad, so they stay in sync.
+- **The iPad's Family Goal card now uses the grouped goal picker.** "Show a different goal"
+  opens the same organized pop-over the iPhone uses — goals grouped by list (your goals,
+  shared groups you're in, then the rest) with member avatars — instead of one flat list.
+- **Start Cook Mode from the iPhone Today card.** Tonight's dinner card now has **View
+  recipe** and **👨‍🍳 Cook Mode** buttons (matching iPad) — Cook Mode drops you straight
+  into the step-by-step cook flow instead of only opening the recipe.
+- **Take a recipe back off the grocery list.** A recipe you added off-plan from its page
+  shows under "Unscheduled" — now you can remove it in one tap. Web: a **Remove** button on
+  the by-meal section, or an **×** on the "This week's meals" Unscheduled rail; iPhone/iPad:
+  an **×** on the "This week's meals" Unscheduled recap rows. Items shared with another recipe
+  stay put; only this recipe's are cleared.
+- **Rank list items on a 1–5 urgency scale.** Every list item has a priority from 1 (not
+  urgent) through 3 (normal) up to 5 (urgent), set from the item editor on web and
+  iPhone/iPad. High and Urgent items get a flag on the row so what matters most is easy to
+  spot. Setting a priority no longer shuffles items around; instead the web list header has a
+  **Sort: manual ⇄ By priority** toggle that, on demand, flattens the list highest-priority
+  first.
+- **Reorganize list items into other sections.** On web, drag an item from one section onto
+  another to refile it; on iPhone/iPad, press and drag a list item across a section header to
+  drop it into that section — the same native row-drag used for reordering, so swipe-to-delete
+  keeps working. (The Details editor also changes an item's section.)
+- **Swipe between steps in cook mode (iPhone/iPad).** Swipe left for the next step, right for
+  the previous — in addition to the Back/Next buttons.
+- **Edit a countdown straight from the calendar.** Tap a countdown to change it: a standalone
+  countdown (the "add anything" kind) opens a small editor to rename, move its date, or remove
+  it; an event-countdown opens its event, where you can rename it or untick "Show a countdown"
+  to stop it. (Birthday countdowns come from a person's profile.) On web, tap it on the
+  calendar; on iPhone/iPad, tap the countdown on the Today card, or in the calendar where it
+  now appears as an all-day row (see below).
 - **Backups can now be restore-tested without touching the live app.** Run
   `./waffled backup verify` to restore the newest database dump into a disposable Postgres
   container, fail on archive or SQL errors, confirm the Waffled schema exists, and clean up the
@@ -21,8 +342,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or retrieved offsite copy.
 
 ### Changed
+- **Countdowns now show up on the calendar, not just the Today card.** They render like
+  all-day events on their target date — on web in the day/week views (with a month-grid
+  badge), and on iPhone/iPad as an all-day row in the agenda, day, and month-detail lists
+  (a countdown-only day now appears in the agenda too) — so "12 days until Hawaii" is visible
+  right where you're planning, and tappable to edit.
+- **The goal month grid marks today.** A red ring around today's date in a goal's month
+  heatmap shows where you are in the month at a glance (web + iPhone/iPad).
+- **The web nav rail no longer shows a permanent "New" badge.** A "New" pill sat under the
+  Waffled logo on every screen with nothing to announce; it's been removed.
 
 ### Fixed
+- **Fixed an iPad crash (and a hidden field) when adding a grocery item from Today.** The
+  Today grocery quick-add was a bottom-pinned field that fought the iPad keyboard — it hid
+  behind the keys, and the code that tried to lift it clear could spiral into an unbounded
+  relayout loop and crash the app in portrait. Tapping **Add** on the Today grocery card now
+  opens a small sheet whose field the system keeps above the keyboard — always visible, no
+  lift math, can't loop. Return adds the item and keeps the keyboard up for the next.
+- **Goal names now read exactly as you typed them, everywhere.** A goal called
+  "10 hours at the gym" appeared title-cased ("10 Hours At The Gym") on the Goals page, the
+  goal detail, the name field, and the editor preview, but as-entered on a person's profile —
+  the same name looked different from screen to screen. Names now render as-typed in all of
+  those places (web).
+- **The goal "week" chart is now the actual calendar week.** It showed a rolling last-7-days
+  window ending today; it now always shows the current week Sunday–Saturday (and paging back
+  steps whole calendar weeks), and each day cell shows its date (e.g. "Sun 14") so the span is
+  obvious — on web and iPhone/iPad.
+- **The goal "year" grid shows the whole year again.** A goal created partway through the
+  year collapsed its GitHub-style square grid to just the current month; it now paints every
+  day from January 1 to today, with the days before the goal started simply sitting empty
+  (web + iPhone/iPad).
+- **"Add anything" events now default to you.** When you type an event into the AI capture
+  bar without naming anyone ("dentist Tuesday at 3"), the person picker now shows — and saves —
+  the logged-in member instead of "Nobody". Naming someone ("dentist for George") still
+  assigns them. Web + iPhone/iPad.
+- **Adding a grocery/list item on iPhone/iPad is easier to tap.** The add-item bar now
+  raises the keyboard when you tap anywhere on it — the icon and padding, not just the tiny
+  text glyphs — so it's no longer a fiddly target.
+- **A half-typed list item is no longer lost when you leave.** If you type an item into the
+  add bar on iPhone/iPad and navigate away without hitting return, it's now saved instead of
+  discarded.
+- **Add a list item with full details from the composer (iPhone/iPad).** The details button
+  on the add bar opens a proper **"Add item"** half-sheet — set the assignee, section, and
+  priority up front, then add — seeded with whatever you'd already typed. (Replaces an
+  unreliable swipe-up gesture.) The five priority pills now scroll horizontally instead of
+  wrapping.
+- **Countdowns on the Today page are now tappable.** Tap a countdown to jump straight to
+  what it's counting down to — an event-based countdown opens that event, while a trip or
+  birthday countdown opens the calendar on its day.
+- **Checked-off list items now have somewhere to go.** On the web custom-list view, items
+  you check off no longer linger in place — they tuck into a collapsible "Completed" section
+  at the bottom (matching the grocery board), with a brief grace window so an accidental tap
+  is easy to undo. Un-checking an item puts it back on the list.
 
 ### Security
 - **Patched a high-severity advisory in a bundled telemetry dependency.** Updated the
@@ -165,6 +536,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **The iPhone and iPad apps now reject malformed server addresses before saving.**
+  Server settings require an HTTP(S) origin, explain invalid input in place, normalize
+  trailing slashes, and no longer force-unwrap request URLs.
 - **Production dependency audits now run in CI.** The API's transitive `protobufjs`
   dependency is updated past its schema-name denial-of-service advisory, and future
   moderate-or-higher production advisories fail the build for both API and web.
@@ -1126,7 +1500,14 @@ is for users and operators, not a commit log — **synthesize** related commits 
 feature-level entry, grouped by product area, and **omit pure-internal churn** (docs,
 tests, tooling, and refactors with no user-visible effect).
 
-**To cut a release:** run **`./waffled release X.Y.Z`** locally on `main`. In one commit it:
+**Before cutting a release:** run **`./waffled release check`** on `main`. It refuses a dirty,
+diverged, or stale checkout; checks that the current API, web, Compose, and iOS versions agree;
+requires user-facing notes under `[Unreleased]`; and runs the CLI, migration, API, web, browser
+(when configured), docs, Docker E2E, and locally available iOS checks. It does not bump versions,
+commit, or tag anything; build tools may refresh ignored local artifacts.
+
+**To cut a release:** run **`./waffled release X.Y.Z`** locally on `main`. It repeats the checks
+before changing anything, then in one commit it:
 1. Reviews the `[Unreleased]` notes with you (**requires at least one entry**), dates the
    section `## [X.Y.Z] - YYYY-MM-DD`, opens a fresh `## [Unreleased]` above it, and adds the
    compare link.
@@ -1163,7 +1544,10 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/kevinpsites/waffled/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/kevinpsites/waffled/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/kevinpsites/waffled/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kevinpsites/waffled/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/kevinpsites/waffled/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kevinpsites/waffled/compare/v0.6.1...v0.7.0

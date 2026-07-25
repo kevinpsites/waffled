@@ -72,10 +72,15 @@ struct MonthHeatmapView: View {
                     let intensity = info.total > 0 ? info.total / monthMax : 0
                     let (r, g, b) = GoalStats.heat(intensity)
                     let dark = intensity > GoalStats.heatDarkThreshold
+                    let isToday = info.dateKey == ctx.stats.today
                     Button { ctx.onDayTap(info.dateKey) } label: {
                         VStack(alignment: .leading, spacing: 2) {
+                            // Today: a red circle around the day number, so you can see where
+                            // you are in the month at a glance (mirrors the week view).
                             Text("\(info.day)").font(.system(size: 11.5, weight: .heavy))
-                                .foregroundStyle(info.future ? WF.ink3 : (dark ? .white : WF.ink2))
+                                .foregroundStyle(isToday ? WF.danger : (info.future ? WF.ink3 : (dark ? .white : WF.ink2)))
+                                .frame(minWidth: isToday ? 16 : nil, minHeight: isToday ? 16 : nil)
+                                .overlay(isToday ? Circle().stroke(WF.danger, lineWidth: 1.5) : nil)
                             if !info.future, info.total > 0 {
                                 Text(GoalViewFmt.num(info.total)).font(WF.serif(12, .semibold))
                                     .foregroundStyle(dark ? .white : WF.ink)
@@ -104,7 +109,7 @@ struct MonthHeatmapView: View {
                 GeometryReader { geo in
                     Color.clear
                         .onAppear { gridWidth = geo.size.width }
-                        .onChange(of: geo.size.width) { gridWidth = $0 }
+                        .onChange(of: geo.size.width) { _, newWidth in gridWidth = newWidth }
                 }
             )
 
@@ -125,5 +130,19 @@ struct MonthHeatmapView: View {
             }
             .padding(.top, 8)
         }
+        // Swipe to page months (same forward-clamp as the chevrons). minimumDistance
+        // keeps per-cell taps working; the horizontal-dominance check ignores scrolls.
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    let dx = value.translation.width
+                    guard abs(dx) > 44, abs(dx) > abs(value.translation.height) else { return }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        if dx < 0 { monthOffset = min(0, monthOffset + 1) }  // drag left → later month
+                        else { monthOffset -= 1 }                             // drag right → earlier month
+                    }
+                }
+        )
     }
 }

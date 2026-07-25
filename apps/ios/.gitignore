@@ -17,7 +17,9 @@ xcuserdata/
 .DS_Store
 
 # Vendored, patched PowerSync SDK — fetch via Scripts/vendor-powersync.sh
-Vendor/
+# No trailing slash so a Vendor *symlink* (used to share the SDK into a worktree)
+# is ignored too, not just a real Vendor/ directory.
+Vendor
 
 # Swift Package Manager
 .swiftpm/

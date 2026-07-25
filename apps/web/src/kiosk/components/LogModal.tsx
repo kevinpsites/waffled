@@ -2,7 +2,35 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api, localToday, type Goal, type GoalStep } from '../../lib/api'
 
 const HOURS = new Set(['hour', 'hours', 'hr', 'hrs'])
-const ACTIVITY_CHIPS = ['🚲 Bike ride', '🏞️ Park', '⚽ Sports', '🌳 Outside play', '📚 Reading', '🎨 Art']
+// Cold-start note chips, shown until this goal has enough of its own logged history to
+// fill the row. `label` is the emoji-prefixed display; tapping sets the plain text.
+const DEFAULT_ACTS = ['🚲 Bike ride', '🏞️ Park', '⚽ Sports', '🌳 Outside play', '📚 Reading', '🎨 Art']
+// How many note chips the row shows. Personalized suggestions fill it first; the defaults
+// only top up the remainder, so once a goal has this many of its own they replace them.
+const NOTE_CHIP_TARGET = 6
+
+// Blend the goal's own most-used notes (personalized, plain text) with the hardcoded
+// defaults: suggestions first, then defaults for any slots left, de-duped case-insensitively
+// against what's already shown. Returns display label + the note text a tap sets.
+function mergeActs(suggested: string[]): Array<{ label: string; note: string }> {
+  const out: Array<{ label: string; note: string }> = []
+  const seen = new Set<string>()
+  const add = (label: string, note: string) => {
+    const key = note.trim().toLowerCase()
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    out.push({ label, note })
+  }
+  for (const s of suggested) {
+    if (out.length >= NOTE_CHIP_TARGET) break
+    add(s, s)
+  }
+  for (const d of DEFAULT_ACTS) {
+    if (out.length >= NOTE_CHIP_TARGET) break
+    add(d, d.replace(/^\S+\s/, ''))
+  }
+  return out
+}
 
 function quickChips(unit: string | null): Array<{ label: string; value: number }> {
   if (unit && HOURS.has(unit.toLowerCase())) {
@@ -113,6 +141,20 @@ export function LogModal({
 
   const toggleWho = (id: string) =>
     setWho((w) => (multi ? (w.includes(id) ? w.filter((x) => x !== id) : [...w, id]) : [id]))
+
+  // Per-goal (and, when unambiguous, per-person) note suggestions for the activity chips.
+  // Focus person = the single participant currently tapped, else the logger themselves —
+  // so "who was there" steers whose history the box learns from; refetches as that changes.
+  const selectedReal = who.filter((id) => id !== FAMILY)
+  const focusPerson = selectedReal.length === 1 ? selectedReal[0] : selfPersonId ?? null
+  const [suggestedActs, setSuggestedActs] = useState<string[]>([])
+  useEffect(() => {
+    if (isChecklist) return // checklists tick steps — no note field
+    let live = true
+    api.noteSuggestions(goal.id, focusPerson).then((r) => { if (live) setSuggestedActs(Array.isArray(r?.suggestions) ? r.suggestions : []) }).catch(() => { if (live) setSuggestedActs([]) })
+    return () => { live = false }
+  }, [goal.id, focusPerson, isChecklist])
+  const acts = mergeActs(suggestedActs)
 
   // One-tap (habit / check-off) = 1; count = whole units; time = hours + minutes
   // folded to decimal hours; total = entered amount.
@@ -337,8 +379,8 @@ export function LogModal({
           <div className="flabel" style={{ marginTop: 16 }}>What did you do? <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600, color: 'var(--ink-3)' }}>· optional</span></div>
           <input className="log-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Creek hike + fort building" />
           <div className="log-acts">
-            {ACTIVITY_CHIPS.map((a) => (
-              <button key={a} type="button" className="log-act" onClick={() => setNote(a.replace(/^\S+\s/, ''))}>{a}</button>
+            {acts.map((a) => (
+              <button key={a.label} type="button" className="log-act" onClick={() => setNote(a.note)}>{a.label}</button>
             ))}
           </div>
 

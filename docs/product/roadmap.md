@@ -55,7 +55,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   detail read-model, person + family overview, **calendar → goal** auto-count (single
   and recurring events) with learned suggestions, **swappable data views** on the goal-detail
   page (heatmaps, year grid, pace-to-target, year ring, by-person bars, collection grid,
-  consistency calendar) matched to goal type + timeframe.
+  consistency calendar) matched to goal type + timeframe. The Log sheet's **note chips
+  now suggest a goal's own most-logged notes** (scoped per participant, blended with the
+  defaults) instead of a fixed list — **Tier 1**; smarter ranking is Tier 2 under *Planned*.
 - **Apple Health → goals (iPhone)** — link a goal to an Apple Health / Apple Watch metric
   (steps, flights climbed, exercise minutes, active energy, **distance** — walking + running,
   cycling, swimming, wheelchair; fractional, mi/km per device region — **workouts by type** —
@@ -85,9 +87,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   off-plan recipes in the grocery board's by-meal view.
 - **Meals & recipes** — week/month planners, recipe library, in-app editor (with
   **ingredient sections** + dividers and cross-section drag-drop), paste-markdown
-  import, overrides, cook mode, **per-step timers** (set in the editor; a floating
+  import **and share-as-markdown export** (a Share action compiles a recipe to the
+  blessed Markdown format for the native share sheet / clipboard / `.md` download),
+  overrides, cook mode, **per-step timers** (set in the editor; a floating
   cook-mode dock that ticks live, jumps to the step on tap, and rings a looping
-  alarm + local-notification fallback), substitution-aware grocery build, AI
+  alarm + local-notification fallback), substitution-aware grocery build with a
+  **per-week grocery board** (switch weeks to shop ahead — each week's meal items are
+  their own list, typed items + staples stay global), AI
   plan-week/month (with a no-AI **shuffle** fallback that fills empty slots from
   your library, skipping recently-planned/cooked dishes), AI metadata auto-fill.
 - **Photos** — wall (masonry), real blob upload (single + multi), albums, edit, multi-
@@ -142,6 +148,25 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Partial / in progress 🟡
 
+- **Waffled-Bites (kid companion device)** — the pairing system and the parent-facing
+  control panel (Family → tap a kid → Waffled-Bite: quiet time, night light, wake-up
+  light schedule, alarm, sound machine, screen brightness) are done on **web and iOS**
+  (iPhone + iPad) — new optional `waffledBites` module, `waffled_bite_devices`/
+  `waffled_bite_pairing_codes` tables, device polls `GET /api/waffled-bites/device/state`
+  (no WebSockets). The on-device firmware (ESP32-P4 + LVGL 9.2,
+  `apps/waffled-bite-firmware`) is also feature-complete — every screen (home, routines,
+  quiet time, timer, bedtime, wake-light lock, settings, pairing, forget-device) is wired
+  to the real API. Real-hardware bring-up on the target board (ELECROW CrowPanel
+  Advanced 7") is underway, including an on-device WiFi-provisioning UI (scan, pick a
+  network, enter the password on the built-in keyboard — no more hardcoded
+  credentials), a fix for an intermittent WiFi-chip crash-loop found during bring-up,
+  and the real "Waffled Buddy" mock's icons/colors/typography, verified on real
+  hardware. Tap-to-complete on the device's own task list handles chores needing a
+  parent's OK (shows "Waiting on a parent's approval" rather than silently reverting)
+  and photo-required chores (hidden from the device's list entirely — no camera-capture
+  flow yet, so those are completed from a parent's phone/web instead). **Pending:** OTA updates,
+  TLS certificate validation for `https://` server addresses, and on-device photo
+  capture — see `apps/waffled-bite-firmware/README.md` for the full list of open items.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
   are REST + live-refresh bus.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend
@@ -150,6 +175,35 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   choice.
 
 ## Planned 🚧
+
+- **Smarter goal-note suggestions (Tier 2).** Tier 1 shipped (see **Done**): the Log
+  sheet's "What did you do?" chips now suggest the notes actually logged against that
+  goal, scoped per participant, blended with the defaults. Tier 2 makes the ranking
+  cleverer — weight by recency as well as raw frequency (a note used weekly should beat
+  one used once months ago), merge near-duplicates beyond today's exact case/whitespace
+  match ("family walk" vs "Family walk after dinner"), and consider surfacing a member's
+  cross-goal favourites when a specific goal has little history of its own.
+
+- **List sharing.** Let a household invite specific people to a list, choose whether
+  they can view or edit it, and revoke access later.
+
+- **Waffled-Bite DIY hardware setup guide.** A real, consumer-facing walkthrough for
+  buying the board yourself ([ELECROW CrowPanel Advanced 7", ESP32-P4](https://www.amazon.com/dp/B0G34WGWJR))
+  and flashing it with the open firmware (`apps/waffled-bite-firmware`) via PlatformIO —
+  today there's no pre-flashed device or build service, so this is source-only and
+  undocumented for anyone outside the project. `apps/waffled-bite-firmware/README.md`
+  covers the engineering bring-up log; this would be the "buy this, plug in this cable,
+  run this command" doc on the docs site, paired with the existing pairing walkthrough
+  in [`waffled-bites.md`](../../website/docs/src/content/docs/features/waffled-bites.md).
+
+- **QR-code pairing for Waffled-Bites.** The device has a screen but no camera (the
+  ELECROW board has none), so a QR flow only works one direction: the device renders a
+  QR code — LVGL already ships a QR widget, just currently disabled (`LV_USE_QRCODE 0`
+  in `apps/waffled-bite-firmware/src/lv_conf.h`) — that a parent scans with their phone
+  to jump straight to a "confirm pairing" screen, replacing today's type-a-6-digit-code-
+  on-the-device-keyboard step. Doesn't extend to Wi-Fi setup the same way: the device
+  (not the phone) is the one that needs the SSID/password, and it has no camera to scan
+  a code itself, so that stays the on-device network picker it is today.
 
 - **Recurring-edit scope — give chores the calendar's model, and close two calendar gaps.**
   Calendar events already ship the full **this event / this-and-following / all events** picker

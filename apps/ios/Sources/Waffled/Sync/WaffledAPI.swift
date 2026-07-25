@@ -58,6 +58,7 @@ struct WaffledAPI: Sendable {
 
     enum APIError: Error {
         case http(Int, String)
+        case invalidServerURL
         /// True for the 422 a photo-required chore returns when completed without proof
         /// (`{ error: "ProofRequired" }`) — lets the capture flow prompt for a photo.
         var isProofRequired: Bool {
@@ -108,7 +109,7 @@ struct WaffledAPI: Sendable {
 
     /// Has this instance been set up, and which sign-in methods are offered.
     func authStatus() async throws -> AuthStatus {
-        let req = URLRequest(url: url("/api/auth/status"))
+        let req = URLRequest(url: try url("/api/auth/status"))
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp, data)
         return try Self.decoder.decode(AuthStatus.self, from: data)
@@ -116,7 +117,7 @@ struct WaffledAPI: Sendable {
 
     /// Exchange email + password for an access + refresh pair.
     func login(email: String, password: String) async throws -> Session {
-        var req = URLRequest(url: url("/api/auth/login"))
+        var req = URLRequest(url: try url("/api/auth/login"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["email": email, "password": password])
@@ -129,14 +130,14 @@ struct WaffledAPI: Sendable {
     static let oidcRedirect = "waffled://auth/callback"
 
     /// The URL that kicks off backend-mediated OIDC, carrying our deep-link redirect.
-    func oidcStartURL() -> URL {
+    func oidcStartURL() throws -> URL {
         let encoded = WaffledAPI.oidcRedirect.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? WaffledAPI.oidcRedirect
-        return url("/api/auth/oidc/start?redirect=\(encoded)")
+        return try url("/api/auth/oidc/start?redirect=\(encoded)")
     }
 
     /// Exchange the one-time handoff `code` (from the deep-link callback) for a session.
     func oidcExchange(code: String) async throws -> Session {
-        var req = URLRequest(url: url("/api/auth/oidc/exchange"))
+        var req = URLRequest(url: try url("/api/auth/oidc/exchange"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["code": code])
@@ -147,7 +148,8 @@ struct WaffledAPI: Sendable {
 
     /// Best-effort server-side revocation of a refresh token (logout).
     func revoke(refreshToken: String) async {
-        var req = URLRequest(url: url("/api/auth/logout"))
+        guard let endpoint = try? url("/api/auth/logout") else { return }
+        var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONEncoder().encode(["refreshToken": refreshToken])
@@ -203,7 +205,7 @@ struct WaffledAPI: Sendable {
     /// Fetch the account's household memberships + pending invites (and which household
     /// is active) for the switcher UI.
     func householdOverview() async throws -> HouseholdOverview {
-        var req = URLRequest(url: url("/api/household"))
+        var req = URLRequest(url: try url("/api/household"))
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
@@ -222,7 +224,7 @@ struct WaffledAPI: Sendable {
     /// the *target* household claim — the caller must persist both and re-scope PowerSync
     /// (the sync token is minted from this claim). 403 if not a member of `householdId`.
     func switchHousehold(householdId: String) async throws -> SwitchResult {
-        var req = URLRequest(url: url("/api/auth/switch"))
+        var req = URLRequest(url: try url("/api/auth/switch"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -235,7 +237,7 @@ struct WaffledAPI: Sendable {
     /// Accept a pending invite (creates the membership; 200 if it already existed). Does
     /// NOT switch you into it — re-fetch the overview, then switch separately.
     func acceptInvite(id: String) async throws {
-        var req = URLRequest(url: url("/api/auth/invites/\(id)/accept"))
+        var req = URLRequest(url: try url("/api/auth/invites/\(id)/accept"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -246,7 +248,7 @@ struct WaffledAPI: Sendable {
 
     /// Exchange the session token for a short-lived PowerSync token + endpoint.
     func fetchPowerSyncToken() async throws -> TokenResponse {
-        var req = URLRequest(url: url("/api/powersync/token"))
+        var req = URLRequest(url: try url("/api/powersync/token"))
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
@@ -261,7 +263,7 @@ struct WaffledAPI: Sendable {
 
     /// Parse free text into an intent via the server's pluggable-LLM endpoint.
     func capture(text: String) async throws -> CaptureResponse {
-        var req = URLRequest(url: url("/api/capture"))
+        var req = URLRequest(url: try url("/api/capture"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -273,7 +275,8 @@ struct WaffledAPI: Sendable {
 
     /// Preload the model (fire-and-forget) so the first parse isn't a cold start.
     func warmCapture() async {
-        var req = URLRequest(url: url("/api/capture/warm"))
+        guard let endpoint = try? url("/api/capture/warm") else { return }
+        var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -314,7 +317,7 @@ struct WaffledAPI: Sendable {
     /// call: `{ verb, targetKind, target: { description }, args }`.
     func resolveMutate(verb: String, targetKind: String?, description: String,
                        args: [String: JSONValue]) async throws -> ResolveResponse {
-        var req = URLRequest(url: url("/api/capture/resolve"))
+        var req = URLRequest(url: try url("/api/capture/resolve"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -335,7 +338,7 @@ struct WaffledAPI: Sendable {
     /// `CaptureCommitError` carrying the server's friendly `message`.
     func commitMutate(verb: String, targetKind: String?, targetId: String,
                       args: [String: JSONValue], meta: [String: JSONValue]?) async throws -> String {
-        var req = URLRequest(url: url("/api/capture/commit"))
+        var req = URLRequest(url: try url("/api/capture/commit"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -365,12 +368,15 @@ struct WaffledAPI: Sendable {
 
     /// Add a grocery item. Capture folds the quantity into `name` ("milk (2)"); the
     /// Lists screen passes a separate `quantity` so the aisle/board keeps it tidy.
-    func addGroceryItem(name: String, quantity: String? = nil, section: String? = nil) async throws {
+    @discardableResult
+    func addGroceryItem(name: String, quantity: String? = nil, section: String? = nil) async throws -> ListItemDTO {
         var body: [String: JSONValue] = ["name": .string(name)]
         if let q = quantity, !q.isEmpty { body["quantity"] = .string(q) }
         if let s = section, !s.isEmpty { body["category"] = .string(s) }
-        try await send("POST", "/api/lists/grocery/items", body: body)
+        return try await sendReturning("POST", "/api/lists/grocery/items", body: body, as: ListItemResponse.self).item
     }
+
+    private struct ListItemResponse: Decodable { let item: ListItemDTO }
 
     /// Create a chore (the "task" intent). personId resolves the assignee; stars map
     /// to the reward amount; rrule carries a recurrence if the LLM inferred one.
@@ -439,7 +445,7 @@ struct WaffledAPI: Sendable {
         // "Try New Recipe" steering: specific dishes to feature + a novelty nudge.
         if let wantToTry, !wantToTry.isEmpty { body["wantToTry"] = .array(wantToTry.map { .string($0) }) }
         if let trySomethingNew, trySomethingNew { body["trySomethingNew"] = .bool(true) }
-        var req = URLRequest(url: url("/api/meals/plan-week"))
+        var req = URLRequest(url: try url("/api/meals/plan-week"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -480,7 +486,7 @@ struct WaffledAPI: Sendable {
         if let weekdayThemes, !weekdayThemes.isEmpty { body["weekdayThemes"] = .object(weekdayThemes.mapValues { .string($0) }) }
         if let weeknightMaxMin { body["weeknightMaxMin"] = .int(weeknightMaxMin) }
         body["leftovers"] = .bool(leftovers)
-        var req = URLRequest(url: url("/api/meals/plan-month"))
+        var req = URLRequest(url: try url("/api/meals/plan-month"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -594,6 +600,18 @@ struct WaffledAPI: Sendable {
     /// Full detail for one recipe: metadata + ingredients + steps.
     func recipeDetail(id: String) async throws -> RecipeDetailDTO {
         try await getJSON("/api/recipes/\(id)", as: RecipeDetailDTO.self)
+    }
+
+    struct RecipeMarkdown: Decodable, Sendable {
+        let markdown: String
+        let filename: String
+    }
+
+    /// The recipe compiled into the blessed Markdown format for sharing, plus a suggested
+    /// `.md` filename. Server-side so it stays identical to the web export and round-trips
+    /// through the same parser.
+    func recipeMarkdown(id: String) async throws -> RecipeMarkdown {
+        try await getJSON("/api/recipes/\(id)/markdown", as: RecipeMarkdown.self)
     }
 
     /// The household's previously-used ingredient section names (a global look across
@@ -1766,12 +1784,12 @@ struct WaffledAPI: Sendable {
         ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?[key] as? Int
     }
     private func deviceGet<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
-        let (data, resp) = try await deviceFetch(URLRequest(url: url(path)))
+        let (data, resp) = try await deviceFetch(URLRequest(url: try url(path)))
         try check(resp, data)
         return try Self.decoder.decode(T.self, from: data)
     }
     private func deviceSend(_ method: String, _ path: String, body: [String: JSONValue], retryOn401: Bool = true) async throws -> (Data, URLResponse) {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(body)
@@ -1788,6 +1806,141 @@ struct WaffledAPI: Sendable {
         var retry = req
         retry.setValue("Bearer \(try await KioskDeviceAuth.shared.refresh())", forHTTPHeaderField: "Authorization")
         return try await URLSession.shared.data(for: retry)
+    }
+
+    // MARK: - Waffled-Bites (kid device pairing + parent controls)
+    //
+    // ⚠️ KEEP IN SYNC with `apps/web/src/lib/api/waffledBites.ts` and the server routes
+    // in `apps/api/src/modules/waffledBites/waffledBites.ts` — endpoints and body shapes
+    // must match. The server does NOT validate `settings` patches (a real deep-merge,
+    // no allowlist) — client-side defaults/clamps below mirror the web app's own
+    // discipline, not a server contract.
+
+    struct WaffledBiteDevice: Decodable, Sendable {
+        let id: String
+        let label: String
+        let settings: WaffledBiteSettings
+        let runtimeState: RuntimeState
+        let lastSeenAt: String?
+        let createdAt: String
+
+        struct RuntimeState: Decodable, Sendable {
+            let quiet: Countdown
+            let timer: Countdown
+            let wakeLight: WakeLight
+        }
+        /// Always fully populated by the server (computed fresh from stored timestamps
+        /// on every read) — never partial, unlike `settings`' sub-objects.
+        struct Countdown: Decodable, Sendable {
+            let active: Bool
+            let running: Bool
+            let remainingSec: Int
+            let durationSec: Int
+        }
+        /// Server-computed wake-light state — render it, don't recompute it client-side.
+        struct WakeLight: Decodable, Sendable {
+            let state: String   // "none" | "sleep" | "warn" | "wake"
+            let wakeAtHour: Int?     // present only when state != "none"
+            let wakeAtMinute: Int?
+        }
+    }
+
+    /// A fresh pairing leaves `settings == {}` server-side, so every top-level key here
+    /// is genuinely absent, not just optional in principle — apply `.withDefaults()`
+    /// (below) after decoding before showing this in the UI.
+    struct WaffledBiteSettings: Decodable, Sendable {
+        let night: Night?
+        let sound: Sound?
+        let alarm: Alarm?
+        let schedules: [Schedule]?
+        let display: Display?
+
+        // `color`/`sound`/`tone` are free-form strings server-side — the option lists
+        // below (WB_NIGHT_COLORS etc.) are a UI-only convention, not a server enum.
+        // `var` (not `let`): `Schedule` in particular needs in-place editing while a
+        // parent edits a wake-light row, before the whole array round-trips in one PATCH.
+        struct Night: Decodable, Sendable { var on: Bool; var color: String; var brightness: Int }
+        struct Sound: Decodable, Sendable { var on: Bool; var sound: String; var volume: Int; var timerMin: Int }
+        struct Alarm: Decodable, Sendable { var on: Bool; var hour: Int; var min: Int; var tone: String }
+        struct Display: Decodable, Sendable { var brightness: Int; var nightDim: Bool }
+        // Not `Identifiable` — edited in place by array index (`schedules.indices`), since
+        // a content-derived id would change identity mid-edit (e.g. every keystroke on a
+        // time field), confusing SwiftUI's ForEach diffing.
+        struct Schedule: Decodable, Sendable, Hashable {
+            var days: [Int]       // 0=Sun..6=Sat
+            var wakeMin: Int      // minutes since midnight, light turns green
+            var leadMin: Int      // minutes before wakeMin, light turns yellow
+            var bedtimeMin: Int?  // optional — minutes since midnight the night before wakeMin
+        }
+    }
+
+    struct WaffledBitePairingCode: Decodable, Sendable {
+        let code: String
+        let personId: String
+        let expiresAt: String
+    }
+
+    /// This kid's paired device + live state, or `nil` if none is paired yet.
+    func waffledBiteDevice(personId: String) async throws -> WaffledBiteDevice? {
+        struct Resp: Decodable { let device: WaffledBiteDevice? }
+        return try await getJSON("/api/persons/\(personId)/waffled-bite", as: Resp.self).device
+    }
+
+    /// Mint a one-time pairing code for this kid's Waffled-Bite (admins, ~10-min TTL,
+    /// same as kiosk pairing). No client-side expiry handling — polling for the device
+    /// simply never succeeds if the code lapses unclaimed, matching the web app.
+    func mintWaffledBitePairingCode(personId: String, label: String?) async throws -> WaffledBitePairingCode {
+        var body: [String: JSONValue] = [:]
+        if let label, !label.isEmpty { body["label"] = .string(label) }
+        return try await sendReturning("POST", "/api/persons/\(personId)/waffled-bite/pairing-code", body: body, as: WaffledBitePairingCode.self)
+    }
+
+    /// Unpair (revoke) a Waffled-Bite device (admins).
+    func unpairWaffledBite(deviceId: String) async throws {
+        try await delete("/api/waffled-bites/\(deviceId)")
+    }
+
+    /// Patch a partial slice of settings (e.g. `["night": .object([...])]`) — the server
+    /// deep-merges it into the stored object, so this never needs the full settings blob.
+    @discardableResult
+    func updateWaffledBiteSettings(deviceId: String, patch: [String: JSONValue]) async throws -> WaffledBiteSettings {
+        struct Resp: Decodable { let settings: WaffledBiteSettings }
+        return try await sendReturning("PATCH", "/api/waffled-bites/\(deviceId)/settings", body: patch, as: Resp.self).settings
+    }
+
+    // Quiet time — server clamps `start`'s duration to [60, 5400]s regardless of what's sent.
+    func waffledBiteQuietStart(deviceId: String, durationSec: Int) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/start", body: ["durationSec": .int(durationSec)])
+    }
+    func waffledBiteQuietPause(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/pause", body: [:])
+    }
+    func waffledBiteQuietResume(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/resume", body: [:])
+    }
+    func waffledBiteQuietAddTime(deviceId: String, seconds: Int = 300) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/add-time", body: ["seconds": .int(seconds)])
+    }
+    func waffledBiteQuietEnd(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/quiet/end", body: [:])
+    }
+
+    // Occasional timer — same shape/semantics as quiet time (default start duration differs
+    // server-side: 5min vs quiet's 15min — both are just defaults for an omitted durationSec).
+    func waffledBiteTimerStart(deviceId: String, durationSec: Int) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/start", body: ["durationSec": .int(durationSec)])
+    }
+    func waffledBiteTimerPause(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/pause", body: [:])
+    }
+    func waffledBiteTimerResume(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/resume", body: [:])
+    }
+    func waffledBiteTimerAddTime(deviceId: String, seconds: Int = 300) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/add-time", body: ["seconds": .int(seconds)])
+    }
+    func waffledBiteTimerEnd(deviceId: String) async throws {
+        try await send("POST", "/api/waffled-bites/\(deviceId)/timer/end", body: [:])
     }
 
     // MARK: - Rewards
@@ -2205,9 +2358,13 @@ struct WaffledAPI: Sendable {
         var quantity: String?
         var checked: Bool
         var section: String?
+        /// 1–5 urgency (1 = not urgent, 3 = normal/default, 5 = urgent). Optional so older servers decode.
+        var priority: Int?
         var assignee: Assignee?
         var aisle: String?
         var sourceRecipeIds: [String]?
+        /// The week this row belongs to (meal-derived + off-plan rows); nil = global manual row.
+        var weekStart: String?
         struct Assignee: Decodable, Sendable {
             let name: String?
             let avatarEmoji: String?
@@ -2249,9 +2406,12 @@ struct WaffledAPI: Sendable {
         }
     }
 
-    /// The grocery board (aisle groupings + meal dots + this week's meals + staples).
-    func groceryBoard() async throws -> GroceryBoardDTO {
-        try await getJSON("/api/lists/grocery/board", as: GroceryBoardDTO.self)
+    /// The grocery board (aisle groupings + meal dots + a week's meals + staples) for a
+    /// given week — meal-derived + off-plan rows are per week; manually-typed rows are
+    /// global. Omit `weekStart` for the current week.
+    func groceryBoard(weekStart: String? = nil) async throws -> GroceryBoardDTO {
+        let q = weekStart.map { "?weekStart=\($0)" } ?? ""
+        return try await getJSON("/api/lists/grocery/board\(q)", as: GroceryBoardDTO.self)
     }
 
     /// Add a recipe's ingredients straight to the grocery list — no meal-plan entry
@@ -2259,9 +2419,22 @@ struct WaffledAPI: Sendable {
     /// on the list, and links every item back to the recipe (so it groups under the
     /// recipe in the by-meal view). Returns how many new rows were added (merges
     /// into existing rows don't count).
-    func groceryFromRecipe(recipeId: String) async throws -> Int {
+    /// `weekStart` scopes the off-plan add to the week being shopped (defaults to the
+    /// current week server-side when omitted, e.g. from a recipe page with no week).
+    func groceryFromRecipe(recipeId: String, weekStart: String? = nil) async throws -> Int {
         struct Resp: Decodable { let added: Int }
-        return try await sendJSON("POST", "/api/lists/grocery/from-recipe/\(recipeId)", as: Resp.self).added
+        let q = weekStart.map { "?weekStart=\($0)" } ?? ""
+        return try await sendJSON("POST", "/api/lists/grocery/from-recipe/\(recipeId)\(q)", as: Resp.self).added
+    }
+
+    /// Take a recipe's ingredients back off the grocery list (undo the off-plan add;
+    /// removes it from the by-meal "Unscheduled" group). Keeps rows shared with
+    /// another recipe. Returns how many rows were removed.
+    @discardableResult
+    func removeRecipeFromGrocery(recipeId: String, weekStart: String? = nil) async throws -> Int {
+        struct Resp: Decodable { let removed: Int }
+        let q = weekStart.map { "?weekStart=\($0)" } ?? ""
+        return try await sendJSON("DELETE", "/api/lists/grocery/from-recipe/\(recipeId)\(q)", as: Resp.self).removed
     }
 
     /// Pantry staples (assumed in-house, left off the list) — the editable master list,
@@ -2283,6 +2456,13 @@ struct WaffledAPI: Sendable {
     func rebuildGrocery(weekStart: String) async throws -> GroceryBoardDTO {
         struct Resp: Decodable { let board: GroceryBoardDTO }
         return try await sendJSON("POST", "/api/lists/grocery/rebuild?weekStart=\(weekStart)", as: Resp.self).board
+    }
+
+    /// "Start over": un-check everything on this week's grocery list (Refresh keeps
+    /// checks instead). Returns the refreshed board.
+    func clearGroceryChecks(weekStart: String) async throws -> GroceryBoardDTO {
+        struct Resp: Decodable { let board: GroceryBoardDTO }
+        return try await sendJSON("POST", "/api/lists/grocery/clear-checks?weekStart=\(weekStart)", as: Resp.self).board
     }
 
     /// All lists in the household (for the Lists index). Templates are excluded
@@ -2322,31 +2502,38 @@ struct WaffledAPI: Sendable {
     }
 
     /// Add an item to a non-grocery list.
-    func addListItem(listId: String, name: String, quantity: String?, section: String? = nil) async throws {
+    @discardableResult
+    func addListItem(listId: String, name: String, quantity: String?, section: String? = nil) async throws -> ListItemDTO {
         var body: [String: JSONValue] = ["name": .string(name)]
         if let q = quantity, !q.isEmpty { body["quantity"] = .string(q) }
         if let s = section, !s.isEmpty { body["category"] = .string(s) }
-        try await send("POST", "/api/lists/\(listId)/items", body: body)
+        return try await sendReturning("POST", "/api/lists/\(listId)/items", body: body, as: ListItemResponse.self).item
     }
 
-    /// Edit a list item (name / quantity / checked). Empty quantity clears it.
-    func patchListItem(id: String, name: String? = nil, quantity: String? = nil, checked: Bool? = nil) async throws {
+    /// Edit a list item (name / quantity / checked / section / priority). Empty
+    /// quantity clears it; `section`/`priority` are only sent when provided (a
+    /// section-move or priority-mark PATCHes just that field).
+    func patchListItem(id: String, name: String? = nil, quantity: String? = nil, checked: Bool? = nil,
+                       section: String? = nil, priority: Int? = nil) async throws {
         var body: [String: JSONValue] = [:]
         if let name { body["name"] = .string(name) }
         if let quantity { body["quantity"] = quantity.isEmpty ? .null : .string(quantity) }
         if let checked { body["checked"] = .bool(checked) }
+        if let section { body["category"] = section.isEmpty ? .null : .string(section) }
+        if let priority { body["priority"] = .int(priority) }
         guard !body.isEmpty else { return }
         try await send("PATCH", "/api/list-items/\(id)", body: body)
     }
 
     /// Full-detail edit (the swipe → Details editor): always sets name, quantity,
-    /// assignee, and section. `assignedTo`/empty section send null to clear.
-    func updateItemDetails(id: String, name: String, quantity: String, assignedTo: String?, section: String) async throws {
+    /// assignee, section, and priority. `assignedTo`/empty section send null to clear.
+    func updateItemDetails(id: String, name: String, quantity: String, assignedTo: String?, section: String, priority: Int) async throws {
         let body: [String: JSONValue] = [
             "name": .string(name),
             "quantity": quantity.isEmpty ? .null : .string(quantity),
             "assignedTo": assignedTo.map(JSONValue.string) ?? .null,
             "category": section.isEmpty ? .null : .string(section),
+            "priority": .int(priority),
         ]
         try await send("PATCH", "/api/list-items/\(id)", body: body)
     }
@@ -2354,6 +2541,23 @@ struct WaffledAPI: Sendable {
     /// Remove a list item.
     func deleteListItem(id: String) async throws {
         try await delete("/api/list-items/\(id)")
+    }
+
+    /// Bulk-edit section / assignee / priority across many items in one call. A
+    /// double-optional distinguishes "leave unchanged" (.none) from "set to null"
+    /// (.some(nil)); e.g. `assignedTo: .some(nil)` unassigns the whole selection.
+    func bulkPatchListItems(ids: [String], section: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) async throws {
+        var patch: [String: JSONValue] = [:]
+        if case let .some(s) = section { patch["section"] = s.map(JSONValue.string) ?? .null }
+        if case let .some(a) = assignedTo { patch["assignedTo"] = a.map(JSONValue.string) ?? .null }
+        if let priority { patch["priority"] = .int(priority) }
+        guard !patch.isEmpty, !ids.isEmpty else { return }
+        try await send("PATCH", "/api/list-items/bulk", body: ["ids": .array(ids.map(JSONValue.string)), "patch": .object(patch)])
+    }
+
+    /// Clear a custom list's Completed section now (soft-deletes its checked items).
+    func clearCompletedList(listId: String) async throws {
+        try await send("POST", "/api/lists/\(listId)/clear-completed", body: [:])
     }
 
     // MARK: List templates (save-as-template / apply)
@@ -2555,6 +2759,19 @@ struct WaffledAPI: Sendable {
     /// A goal's day-bucketed activity, for the data-view switcher.
     func goalActivity(id: String) async throws -> GoalActivity {
         try await getJSON("/api/goals/\(id)/activity", as: GoalActivity.self)
+    }
+
+    /// Smart note-field suggestions for the log sheet — the notes already logged against
+    /// this goal, most-used first. `personId` scopes to the notes where that person was the
+    /// credited participant, so each member's box learns their own history. Failures are the
+    /// caller's to swallow (the sheet just falls back to its defaults).
+    func goalNoteSuggestions(goalId: String, personId: String?) async throws -> [String] {
+        struct Resp: Decodable { let suggestions: [String] }
+        var path = "/api/goals/\(goalId)/note-suggestions"
+        if let personId, !personId.isEmpty {
+            path += "?personId=\(personId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? personId)"
+        }
+        return try await getJSON(path, as: Resp.self).suggestions
     }
 
     /// Delete a goal (soft-delete server-side).
@@ -3062,7 +3279,7 @@ struct WaffledAPI: Sendable {
 
     /// Forward a batch of queued local writes to the server's CRUD sink.
     func uploadCrud(_ ops: [CrudOpDTO]) async throws {
-        var req = URLRequest(url: url("/api/powersync/crud"))
+        var req = URLRequest(url: try url("/api/powersync/crud"))
         req.httpMethod = "POST"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -3116,7 +3333,7 @@ struct WaffledAPI: Sendable {
     /// POST/PATCH a JSON body to `path`, throwing on non-2xx. The response body is
     /// ignored — capture commits only care that the write succeeded.
     private func send(_ method: String, _ path: String, body: [String: JSONValue]) async throws {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         req.httpMethod = method
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -3127,7 +3344,7 @@ struct WaffledAPI: Sendable {
 
     /// POST/PATCH a JSON body and decode the JSON response, throwing on non-2xx.
     private func sendReturning<T: Decodable>(_ method: String, _ path: String, body: [String: JSONValue], as: T.Type) async throws -> T {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         req.httpMethod = method
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -3141,7 +3358,7 @@ struct WaffledAPI: Sendable {
     /// the body are omitted when nil (Swift's `encodeIfPresent`), so only the fields
     /// you set are sent.
     private func patchEncodable<B: Encodable, T: Decodable>(_ path: String, body: B, as: T.Type) async throws -> T {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         req.httpMethod = "PATCH"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -3153,7 +3370,7 @@ struct WaffledAPI: Sendable {
 
     /// POST/PATCH (no body) and decode the JSON response, throwing on non-2xx.
     private func sendJSON<T: Decodable>(_ method: String, _ path: String, as: T.Type) async throws -> T {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         req.httpMethod = method
         authorize(&req)
         let (data, resp) = try await perform(req)
@@ -3163,7 +3380,7 @@ struct WaffledAPI: Sendable {
 
     /// GET `path` and decode the JSON body, throwing on non-2xx.
     private func getJSON<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
@@ -3172,15 +3389,16 @@ struct WaffledAPI: Sendable {
 
     /// DELETE `path`, throwing on non-2xx (204 is success).
     private func delete(_ path: String) async throws {
-        var req = URLRequest(url: url(path))
+        var req = URLRequest(url: try url(path))
         req.httpMethod = "DELETE"
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
     }
 
-    private func url(_ path: String) -> URL {
-        URL(string: AppConfig.apiBaseURL + path)!
+    private func url(_ path: String) throws -> URL {
+        guard let url = AppConfig.apiURL(path: path) else { throw APIError.invalidServerURL }
+        return url
     }
 
     private func authorize(_ req: inout URLRequest) {

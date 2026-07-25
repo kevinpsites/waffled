@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Icon } from './icons'
 import { ListsModal } from './components/ListsModal'
 import { ListItemModal } from './components/ListItemModal'
+import { PriorityFlag } from './components/priority'
 import { GroceryBoard } from './components/GroceryBoard'
 import {
   groceryApi,
@@ -26,12 +27,13 @@ const CHECK = (
   </svg>
 )
 
-// Pluralized summary line under the list name: "12 items · 2 packed".
+// Pluralized summary line under the list name: "12 items · 2 done". The headline
+// count is the active (unchecked) items only — completed items don't pad the total.
 function summaryLine(items: ListItem[]): string {
-  const total = items.length
-  const packed = items.filter((i) => i.checked).length
-  const head = `${total} item${total === 1 ? '' : 's'}`
-  return packed > 0 ? `${head} · ${packed} packed` : head
+  const active = items.filter((i) => !i.checked).length
+  const done = items.length - active
+  const head = `${active} item${active === 1 ? '' : 's'}`
+  return done > 0 ? `${head} · ${done} done` : head
 }
 
 // Person avatar (color-tinted bubble + emoji), matching the handoff `av()`.
@@ -64,6 +66,11 @@ function ItemRow({
   onAssign,
   onEdit,
   onDelete,
+  onDragStart,
+  onDragEnd,
+  selecting,
+  selected,
+  onSelect,
 }: {
   item: ListItem
   people: Person[]
@@ -71,6 +78,11 @@ function ItemRow({
   onAssign: (item: ListItem, personId: string | null) => void
   onEdit: (item: ListItem) => void
   onDelete: (item: ListItem) => void
+  onDragStart?: (item: ListItem) => void
+  onDragEnd?: () => void
+  selecting?: boolean
+  selected?: boolean
+  onSelect?: (item: ListItem) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const a = item.assignee
@@ -79,18 +91,47 @@ function ItemRow({
   const addedBy = item.source !== 'auto' ? item.addedBy : null
 
   return (
-    <div className={`litem ${item.checked ? 'done' : ''}`}>
-      {/* Only the checkbox toggles; tapping the name opens the editor. */}
+    <div
+      className={`litem ${item.checked ? 'done' : ''}${selecting ? ' selecting' : ''}${selected ? ' selected' : ''}`}
+      draggable={!!onDragStart && !selecting}
+      onDragStart={onDragStart && !selecting ? () => onDragStart(item) : undefined}
+      onDragEnd={onDragEnd}
+    >
+      {/* In select mode the row shows ONLY the square selection box — the round
+          completion checkbox is hidden so a tap can't accidentally check an item
+          off while the user is trying to pick it. */}
+      {selecting ? (
+        <button
+          type="button"
+          className={`lck lsel ${selected ? 'on' : ''}`}
+          aria-label={selected ? `Deselect ${item.name}` : `Select ${item.name}`}
+          aria-pressed={!!selected}
+          onClick={() => onSelect?.(item)}
+        >
+          {selected ? CHECK : null}
+        </button>
+      ) : (
+        // Only the checkbox toggles; tapping the name opens the editor.
+        <button
+          type="button"
+          className={`lck ${item.checked ? 'on' : ''}`}
+          aria-label={item.checked ? `Uncheck ${item.name}` : `Check ${item.name}`}
+          aria-pressed={item.checked}
+          onClick={() => onToggle(item)}
+        >
+          {item.checked ? CHECK : null}
+        </button>
+      )}
       <button
         type="button"
-        className={`lck ${item.checked ? 'on' : ''}`}
-        aria-label={item.checked ? `Uncheck ${item.name}` : `Check ${item.name}`}
-        aria-pressed={item.checked}
-        onClick={() => onToggle(item)}
+        className="lnm lnm-btn"
+        // While selecting, the name doubles as a select target; leave its label
+        // implicit (the item text) so it doesn't collide with the checkbox's
+        // "Select {name}" accessible name.
+        aria-label={selecting ? undefined : `Edit ${item.name}`}
+        onClick={() => (selecting ? onSelect?.(item) : onEdit(item))}
       >
-        {item.checked ? CHECK : null}
-      </button>
-      <button type="button" className="lnm lnm-btn" aria-label={`Edit ${item.name}`} onClick={() => onEdit(item)}>
+        <PriorityFlag priority={item.priority} />
         <span className="lnm-text">{item.name}</span>
         {addedBy?.name && (
           <span className="gattr gattr-by">
@@ -151,15 +192,42 @@ function ItemRow({
           </div>
         )}
       </div>
-      {/* × delete always visible on the far right */}
-      <button type="button" className="litem-act litem-del" aria-label={`Delete ${item.name}`} onClick={() => onDelete(item)}>×</button>
+      {/* × delete on the far right — hidden while selecting so a stray tap can't
+          delete an item the user meant to pick. */}
+      {!selecting && (
+        <button type="button" className="litem-act litem-del" aria-label={`Delete ${item.name}`} onClick={() => onDelete(item)}>×</button>
+      )}
     </div>
   )
 }
 
-// Group items into ordered sections (null section → "Other"), preserving the
-// API's order (unchecked first, then checked) within each section.
-function groupBySection(items: ListItem[]): Array<{ title: string; key: string; items: ListItem[] }> {
+// A just-checked item lingers in place this long (undo window) before tucking
+// into the Completed section — mirrors the grocery board so the two list views
+// behave the same.
+const COMPLETE_GRACE_MS = 2000
+
+// Split items into active (still on the list) and completed (checked off, past
+// the grace window). Checked items are pulled OUT of their section into a single
+// Completed group so they visibly "go somewhere" instead of lingering inline.
+export function partitionListItems(
+  items: ListItem[],
+  recent: Set<string>
+): { active: ListItem[]; completed: ListItem[] } {
+  const active: ListItem[] = []
+  const completed: ListItem[] = []
+  for (const it of items) {
+    if (it.checked && !recent.has(it.id)) completed.push(it)
+    else active.push(it)
+  }
+  return { active, completed }
+}
+
+// Group items into sections (null section → "Items"), keeping the API's order
+// (unchecked first, then checked) WITHIN each section. Sections themselves are
+// ordered A–Z by name so they hold a fixed position — the API's item order isn't
+// stable across refetches, and ordering by it made sections hop around as items
+// were added/checked/moved. The no-section "Items" catch-all always sorts last.
+export function groupBySection(items: ListItem[]): Array<{ title: string; key: string; items: ListItem[] }> {
   const order: string[] = []
   const map = new Map<string, ListItem[]>()
   for (const it of items) {
@@ -170,26 +238,110 @@ function groupBySection(items: ListItem[]): Array<{ title: string; key: string; 
     }
     map.get(key)!.push(it)
   }
-  return order.map((key) => ({ key, title: key === '__other__' ? 'Items' : key, items: map.get(key)! }))
+  return order
+    .map((key) => ({ key, title: key === '__other__' ? 'Items' : key, items: map.get(key)! }))
+    .sort((a, b) => {
+      if (a.key === '__other__') return 1
+      if (b.key === '__other__') return -1
+      return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })
+    })
 }
 
-// Balance the sections across two columns by running item count (mirrors the
-// mock's left/right split: Clothes+Kids | Gear).
+// Assign sections to two columns by their position in the section order (even
+// index → left, odd → right). Deliberately NOT balanced by item count: a running-
+// count split reflows every time an item is checked off (its section's count
+// changes), so sections visibly jump between columns. Index parity keeps each
+// section anchored to its column regardless of how many items it has — it only
+// shifts if a section empties out of the list entirely.
 function splitColumns(sections: ReturnType<typeof groupBySection>) {
   const left: typeof sections = []
   const right: typeof sections = []
-  let lc = 0
-  let rc = 0
-  for (const s of sections) {
-    if (lc <= rc) {
-      left.push(s)
-      lc += s.items.length + 1
-    } else {
-      right.push(s)
-      rc += s.items.length + 1
-    }
-  }
+  sections.forEach((s, i) => (i % 2 === 0 ? left : right).push(s))
   return [left, right] as const
+}
+
+// A section chooser that can also create a NEW section inline. Shared by the add
+// bar (pick where a new item lands) and the bulk toolbar (move selected items) so
+// "make a new section" works the same in both. `value === undefined` shows the
+// placeholder (bulk toolbar's unset state); `null` = the "No section" choice.
+function SectionPicker({
+  value,
+  onChange,
+  sections,
+  ariaLabel,
+  placeholder,
+  noneLabel = 'No section',
+  className = '',
+  disabled = false,
+}: {
+  value: string | null | undefined
+  onChange: (v: string | null) => void
+  sections: string[]
+  ariaLabel: string
+  placeholder?: string
+  noneLabel?: string
+  className?: string
+  disabled?: boolean
+}) {
+  const [creating, setCreating] = useState(false)
+  const [draft, setDraft] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { if (creating) inputRef.current?.focus() }, [creating])
+
+  if (creating) {
+    const confirm = () => {
+      const name = draft.trim()
+      if (name) onChange(name)
+      setDraft('')
+      setCreating(false)
+    }
+    const cancel = () => { setDraft(''); setCreating(false) }
+    return (
+      <span className={`lists-secpick-new ${className}`}>
+        <input
+          ref={inputRef}
+          className="lists-secpick-input"
+          value={draft}
+          placeholder="New section"
+          aria-label="New section name"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            // Guard against the enclosing add-bar <form> submitting on Enter.
+            if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirm() }
+            else if (e.key === 'Escape') { e.preventDefault(); cancel() }
+          }}
+        />
+        <button type="button" className="linkbtn" onClick={confirm}>Add</button>
+        <button type="button" className="linkbtn" aria-label="Cancel new section" onClick={cancel}>×</button>
+      </span>
+    )
+  }
+
+  return (
+    <select
+      className={`sel ${className}`}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      value={value === undefined ? '' : (value ?? '__none__')}
+      onChange={(e) => {
+        const v = e.target.value
+        if (v === '__new__') { setCreating(true); return }
+        if (placeholder !== undefined && v === '') return
+        onChange(v === '__none__' ? null : v)
+      }}
+    >
+      {placeholder !== undefined && <option value="">{placeholder}</option>}
+      <option value="__none__">{noneLabel}</option>
+      {sections.map((s) => <option key={s} value={s}>{s}</option>)}
+      {/* A just-created section isn't in `sections` yet (no item uses it until this
+          value is committed) — render it so the select can actually SHOW the choice
+          instead of snapping back to the first option and looking like it cleared. */}
+      {typeof value === 'string' && value && !sections.includes(value) && (
+        <option value={value}>{value}</option>
+      )}
+      <option value="__new__">+ New section…</option>
+    </select>
+  )
 }
 
 export function Lists() {
@@ -208,8 +360,52 @@ export function Lists() {
   const addInputRef = useRef<HTMLInputElement>(null)
   const [filterPerson, setFilterPerson] = useState<string | null>(null)
   const [filterMenu, setFilterMenu] = useState(false)
+  // Opt-in "By priority" view. Off by default so changing an item's priority never
+  // reorders the list (the manual/section order is preserved); on, it flattens the
+  // sections into one list ordered highest-priority first.
+  const [sortByPriority, setSortByPriority] = useState(false)
   const [itemModal, setItemModal] = useState<{ item: ListItem | null } | null>(null)
   const [groceryOpen, setGroceryOpen] = useState(false)
+  // Just-checked items lingering in place during the undo grace window.
+  const [recent, setRecent] = useState<Set<string>>(new Set())
+  // Completed section is collapsed by default (checked items tuck away).
+  const [showDone, setShowDone] = useState(false)
+  // Section chosen in the add bar. Stays selected across quick adds so several
+  // items in a row land in the same section (mirrors iOS's mass-add behavior).
+  const [addSection, setAddSection] = useState<string | null>(null)
+  // Regular sections collapsed by the user (mirrors the grocery board's per-section
+  // collapse). Keyed on the stable section key from groupBySection.
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+  const toggleSectionCollapse = (key: string) =>
+    setCollapsedSections((s) => {
+      const n = new Set(s)
+      if (n.has(key)) n.delete(key)
+      else n.add(key)
+      return n
+    })
+  // Multi-select mode + the set of selected item ids, for bulk edit.
+  const [selecting, setSelecting] = useState(false)
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+  const toggleItemSelected = (item: ListItem) =>
+    setSelectedItems((s) => {
+      const n = new Set(s)
+      if (n.has(item.id)) n.delete(item.id)
+      else n.add(item.id)
+      return n
+    })
+  // Staged bulk edit: a change to section / assignee / priority is held here and
+  // only written on "Done" — choosing a value no longer fires immediately. A key
+  // is present ONLY if the user set it, so Done patches just those fields and
+  // never wipes attributes the user didn't touch (tri-state: absent = leave,
+  // null = clear, value = set).
+  type BulkStaged = { section?: string | null; assignedTo?: string | null; priority?: number }
+  const [bulkStaged, setBulkStaged] = useState<BulkStaged>({})
+  const startSelecting = () => { setSelecting(true); setSelectedItems(new Set()); setBulkStaged({}) }
+  const cancelSelecting = () => { setSelecting(false); setSelectedItems(new Set()); setBulkStaged({}) }
+  // Drag-to-reorganize: the item being dragged (ref, not state, so the drop
+  // handler reads it synchronously) + the section highlighted as a drop target.
+  const dragId = useRef<string | null>(null)
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null)
   // Header overflow (⋯) menu: rename / save-as-template (or move-to-lists) / delete.
   const [actionsMenu, setActionsMenu] = useState(false)
   const actionsRef = useRef<HTMLDivElement>(null)
@@ -261,10 +457,6 @@ export function Lists() {
   useTopbarRight(
     () => (
       <>
-        {/* Share list is cosmetic in the handoff (no sharing backend yet). */}
-        <button type="button" className="pill" aria-label="Share list" style={{ cursor: 'pointer' }}>
-          📤 Share list
-        </button>
         <button type="button" className="pill btn-primary topbar-new" onClick={() => setItemModal({ item: null })}>
           <Icon name="plus" />
           <span>Add item</span>
@@ -274,15 +466,39 @@ export function Lists() {
     []
   )
 
-  // Optimistic check toggle.
+  // Optimistic check toggle. A freshly-checked item lingers in place for a short
+  // grace window (easy undo) before it tucks into the Completed section.
   async function toggle(item: ListItem) {
     const next = !item.checked
+    if (next) {
+      setRecent((s) => new Set(s).add(item.id))
+      setTimeout(() => setRecent((s) => { const n = new Set(s); n.delete(item.id); return n }), COMPLETE_GRACE_MS)
+    } else {
+      setRecent((s) => { const n = new Set(s); n.delete(item.id); return n })
+    }
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, checked: next } : i)))
     try {
       const updated = await groceryApi.patchListItem(item.id, { checked: next })
       setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)))
     } catch {
       setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, checked: item.checked } : i)))
+    }
+  }
+
+  // Move a dragged item into a different section (optimistic; PATCHes category).
+  // Section key '__other__' means the null/"Items" section.
+  async function moveToSection(id: string, sectionKey: string) {
+    const item = items.find((i) => i.id === id)
+    if (!item) return
+    const target = sectionKey === '__other__' ? null : sectionKey
+    if ((item.section ?? null) === target) return
+    const snapshot = items
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, section: target } : i)))
+    try {
+      const updated = await groceryApi.patchListItem(id, { section: target })
+      setItems((prev) => prev.map((i) => (i.id === id ? updated : i)))
+    } catch {
+      setItems(snapshot)
     }
   }
 
@@ -310,12 +526,55 @@ export function Lists() {
     }
   }
 
+  // Manual "Clear completed": drop every checked item from the list now (server
+  // soft-deletes them). Optimistic; restore on failure. Custom lists only.
+  async function clearCompleted() {
+    if (!selected || isTemplate) return
+    let snapshot: ListItem[] = []
+    setItems((prev) => {
+      snapshot = prev
+      return prev.filter((i) => !i.checked)
+    })
+    try {
+      await groceryApi.clearCompleted(selected.id)
+      refetchLists()
+    } catch {
+      setItems(snapshot)
+    }
+  }
+
+  // Apply one attribute (section / assignee / priority) to every selected item in
+  // one round-trip, then refetch. Selection is kept so several attributes can be
+  // applied to the same set.
+  async function applyBulk(patch: { section?: string | null; assignedTo?: string | null; priority?: number }) {
+    const ids = [...selectedItems]
+    if (!ids.length) return
+    try {
+      await groceryApi.bulkPatchItems(ids, patch)
+      refetchItems()
+      refetchLists()
+    } catch {
+      /* keep current state on failure */
+    }
+  }
+
+  // "Done": write only the fields the user actually staged, then leave select
+  // mode. Building the patch from present keys keeps untouched attributes intact.
+  async function commitBulk() {
+    const patch: BulkStaged = {}
+    if ('section' in bulkStaged) patch.section = bulkStaged.section
+    if ('assignedTo' in bulkStaged) patch.assignedTo = bulkStaged.assignedTo
+    if ('priority' in bulkStaged) patch.priority = bulkStaged.priority
+    if (Object.keys(patch).length) await applyBulk(patch)
+    cancelSelecting()
+  }
+
   async function addItem(name: string) {
     const trimmed = name.trim()
     if (!trimmed || !selected || addingRef.current) return
     addingRef.current = true
     try {
-      const item = await groceryApi.addListItem(selected.id, { name: trimmed })
+      const item = await groceryApi.addListItem(selected.id, { name: trimmed, section: addSection })
       setItems((prev) => [...prev, item])
       refetchLists()
     } finally {
@@ -335,6 +594,18 @@ export function Lists() {
       setSelectedId(null)
     }
   }, [lists, templates, selectedId])
+
+  // Clear per-list UI state whenever the selected list changes. This component is
+  // long-lived (only `selectedId` changes when you switch lists), so without this a
+  // pending multi-selection/staging or add-bar section would leak into the next list
+  // — and pressing Done after switching would PATCH the PREVIOUS list's items.
+  useEffect(() => {
+    setSelecting(false)
+    setSelectedItems(new Set())
+    setBulkStaged({})
+    setAddSection(null)
+    setCollapsedSections(new Set())
+  }, [selectedId])
 
   // Delete the selected list (and, server-side, its items). Two-tap confirm since
   // it discards anything not yet checked off.
@@ -393,8 +664,13 @@ export function Lists() {
   }
 
   const visibleItems = filterPerson ? items.filter((i) => i.assignee?.personId === filterPerson) : items
-  const sections = groupBySection(visibleItems)
+  const { active: activeItems, completed: completedItems } = partitionListItems(visibleItems, recent)
+  const sections = groupBySection(activeItems)
   const [leftCol, rightCol] = splitColumns(sections)
+  // Flattened, highest-priority-first view (stable — ties keep manual order).
+  const prioritySorted = [...activeItems].sort((a, b) => (b.priority ?? 3) - (a.priority ?? 3))
+  // Existing section names (for the add-bar picker + the item modal's datalist).
+  const sectionNames = [...new Set(items.map((i) => i.section).filter((s): s is string => !!s))]
 
   return (
     <div className="lists-home">
@@ -491,6 +767,25 @@ export function Lists() {
                   </div>
                 )}
               </div>
+              <button
+                type="button"
+                className={`pill filter-pill${sortByPriority ? ' on' : ''}`}
+                aria-pressed={sortByPriority}
+                title="Sort this list by priority (highest first)"
+                onClick={() => setSortByPriority((v) => !v)}
+              >
+                <Icon name="filter" /> {sortByPriority ? 'By priority' : 'Sort: manual'}
+              </button>
+              {!selecting && (
+                <button
+                  type="button"
+                  className="pill filter-pill lists-select-pill"
+                  title="Select multiple items to edit at once"
+                  onClick={startSelecting}
+                >
+                  <Icon name="tasks" /> Select
+                </button>
+              )}
               {isTemplate && (
                 <button type="button" className="pill btn-primary" style={{ cursor: 'pointer' }} title="Create a new list from this template (current items, unchecked)" onClick={useSelectedTemplate}>
                   ▶ Use template
@@ -547,6 +842,13 @@ export function Lists() {
                 placeholder={'Add to this list… “bug spray and 2 water bottles”'}
                 aria-label="Add to this list"
               />
+              <SectionPicker
+                className="lists-addbar-sec"
+                ariaLabel="Section for new items"
+                value={addSection}
+                sections={sectionNames}
+                onChange={setAddSection}
+              />
               <div className="mic" aria-hidden>
                 <Icon name="mic" />
               </div>
@@ -562,25 +864,163 @@ export function Lists() {
               ))}
             </div>
 
+            {selecting && (
+              <div className="lists-bulkbar" role="toolbar" aria-label="Bulk edit selected items">
+                <span className="lists-bulkbar-n">{selectedItems.size} selected</span>
+                <SectionPicker
+                  ariaLabel="Set section for selected"
+                  placeholder="Section…"
+                  value={'section' in bulkStaged ? bulkStaged.section : undefined}
+                  sections={sectionNames}
+                  disabled={selectedItems.size === 0}
+                  onChange={(v) => setBulkStaged((s) => ({ ...s, section: v }))}
+                />
+                <select
+                  className="sel"
+                  aria-label="Assign selected to"
+                  value={'assignedTo' in bulkStaged ? (bulkStaged.assignedTo ?? '__none__') : ''}
+                  disabled={selectedItems.size === 0}
+                  onChange={(e) => { const v = e.target.value; if (v) setBulkStaged((s) => ({ ...s, assignedTo: v === '__none__' ? null : v })) }}
+                >
+                  <option value="">Assign…</option>
+                  <option value="__none__">Unassign</option>
+                  {persons.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <select
+                  className="sel"
+                  aria-label="Set priority for selected"
+                  value={'priority' in bulkStaged ? String(bulkStaged.priority) : ''}
+                  disabled={selectedItems.size === 0}
+                  onChange={(e) => { const v = e.target.value; if (v) setBulkStaged((s) => ({ ...s, priority: Number(v) })) }}
+                >
+                  <option value="">Priority…</option>
+                  <option value="5">5 · urgent</option>
+                  <option value="4">4</option>
+                  <option value="3">3 · normal</option>
+                  <option value="2">2</option>
+                  <option value="1">1 · not urgent</option>
+                </select>
+                <div className="lists-bulkbar-actions">
+                  <button type="button" className="btn btn-ghost" onClick={cancelSelecting}>
+                    Cancel
+                  </button>
+                  <button type="button" className="btn btn-primary" disabled={selectedItems.size === 0} onClick={commitBulk}>
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
+
             {items.length === 0 && !itemsLoading ? (
               <div className="lists-empty">This list is empty — add something above.</div>
             ) : visibleItems.length === 0 ? (
               <div className="lists-empty">Nothing assigned to {persons.find((p) => p.id === filterPerson)?.name ?? 'them'} here.</div>
             ) : (
-              <div className="lists-grid">
-                {[leftCol, rightCol].map((col, ci) => (
-                  <div key={ci} className="lists-col">
-                    {col.map((sec) => (
-                      <div key={sec.key} className="lists-section">
-                        <div className="lists-section-title">{sec.title}</div>
-                        {sec.items.map((it) => (
-                          <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} onEdit={(i) => setItemModal({ item: i })} onDelete={remove} />
+              <>
+                {activeItems.length > 0 && sortByPriority && (
+                  <div className="lists-section">
+                    <div className="lists-section-title">By priority</div>
+                    {prioritySorted.map((it) => (
+                      <ItemRow
+                        key={it.id}
+                        item={it}
+                        people={persons}
+                        onToggle={toggle}
+                        onAssign={assign}
+                        onEdit={(i) => setItemModal({ item: i })}
+                        onDelete={remove}
+                        selecting={selecting}
+                        selected={selectedItems.has(it.id)}
+                        onSelect={toggleItemSelected}
+                      />
+                    ))}
+                  </div>
+                )}
+                {activeItems.length > 0 && !sortByPriority && (
+                  <div className="lists-grid">
+                    {[leftCol, rightCol].map((col, ci) => (
+                      <div key={ci} className="lists-col">
+                        {col.map((sec) => (
+                          <div
+                            key={sec.key}
+                            className={`lists-section${dragOverKey === sec.key ? ' drag-over' : ''}`}
+                            onDragOver={(e) => { if (dragId.current) { e.preventDefault(); setDragOverKey(sec.key) } }}
+                            onDragLeave={() => setDragOverKey((k) => (k === sec.key ? null : k))}
+                            onDrop={() => {
+                              const id = dragId.current
+                              dragId.current = null
+                              setDragOverKey(null)
+                              if (id) moveToSection(id, sec.key)
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className="lists-section-title lists-section-toggle"
+                              aria-expanded={!collapsedSections.has(sec.key)}
+                              onClick={() => toggleSectionCollapse(sec.key)}
+                            >
+                              <span className={`cal-chev ${collapsedSections.has(sec.key) ? '' : 'open'}`} aria-hidden>›</span>
+                              <span className="lists-section-name">{sec.title}</span>
+                              <span className="ga-n">{sec.items.length}</span>
+                            </button>
+                            {!collapsedSections.has(sec.key) && sec.items.map((it) => (
+                              <ItemRow
+                                key={it.id}
+                                item={it}
+                                people={persons}
+                                onToggle={toggle}
+                                onAssign={assign}
+                                onEdit={(i) => setItemModal({ item: i })}
+                                onDelete={remove}
+                                onDragStart={(i) => { dragId.current = i.id }}
+                                onDragEnd={() => { dragId.current = null; setDragOverKey(null) }}
+                                selecting={selecting}
+                                selected={selectedItems.has(it.id)}
+                                onSelect={toggleItemSelected}
+                              />
+                            ))}
+                          </div>
                         ))}
                       </div>
                     ))}
                   </div>
-                ))}
-              </div>
+                )}
+                {activeItems.length === 0 && completedItems.length > 0 && (
+                  <div className="lists-empty">All done — everything’s checked off. 🎉</div>
+                )}
+                {/* Completed — checked items tuck here; collapsible, un-check to restore. */}
+                {completedItems.length > 0 && (
+                  <div className="lists-section lists-completed">
+                    <div
+                      className="lists-completed-h"
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={showDone}
+                      onClick={() => setShowDone((v) => !v)}
+                    >
+                      <span className={`cal-chev ${showDone ? 'open' : ''}`} aria-hidden>›</span>
+                      <span>Completed</span>
+                      <span className="ga-n">{completedItems.length}</span>
+                      {!isTemplate && (
+                        <button
+                          type="button"
+                          className="linkbtn lists-clear-done"
+                          onClick={(e) => { e.stopPropagation(); clearCompleted() }}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    {showDone && (
+                      <div className="lists-completed-list">
+                        {completedItems.map((it) => (
+                          <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} onEdit={(i) => setItemModal({ item: i })} onDelete={remove} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -620,7 +1060,7 @@ export function Lists() {
           listId={selected.id}
           item={itemModal.item}
           persons={persons}
-          sections={[...new Set(items.map((i) => i.section).filter((s): s is string => !!s))]}
+          sections={sectionNames}
           onClose={() => setItemModal(null)}
           onSaved={() => {
             refetchItems()

@@ -383,6 +383,24 @@
   font-size: 18px;
   flex: none;
 }
+/* Per-row remove for an off-plan (Unscheduled) recipe. Kept always visible (not
+   hover-only) so it's tappable on a touch kiosk; darkens to danger on interaction.
+   Stops the row's drill-into-recipe click. */
+.gdinner-x {
+  flex: none;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink-3);
+  padding: 2px 4px;
+  opacity: .5;
+  transition: opacity .12s, color .12s;
+}
+.gdinner:hover .gdinner-x { opacity: 1; }
+.gdinner-x:hover,
+.gdinner-x:focus-visible { opacity: 1; color: var(--danger); }
 .grocery-staples {
   display: flex;
   flex-wrap: wrap;

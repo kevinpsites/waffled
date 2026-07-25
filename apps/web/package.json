@@ -1,15 +1,19 @@
 {
   "name": "@waffled/web",
-  "version": "0.9.0",
+  "version": "0.12.0",
   "private": true,
   "type": "module",
   "description": "Waffled web app + counter-kiosk (Vite + React + TS). Static SPA served by Caddy/CloudFront.",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@powersync/react": "^1.10.0",
@@ -17,15 +21,16 @@
     "@zxing/browser": "^0.2.0",
     "@zxing/library": "^0.22.0",
     "js-logger": "^1.6.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router": "^7.17.0"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router": "^8.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^16.0.1",
-    "@types/react": "^18.3.11",
-    "@types/react-dom": "^18.3.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.3.2",
     "axe-core": "^4.12.1",
     "jsdom": "^25.0.1",

@@ -105,6 +105,11 @@ struct CookModeView: View {
                         stepScroll(geo)
                     }
                 }
+                // Swipe left/right to move between steps (in addition to the Back/Next
+                // buttons). Simultaneous so it doesn't block the step column's vertical
+                // scroll; acts only on a clearly-horizontal drag.
+                .contentShape(Rectangle())
+                .simultaneousGesture(stepSwipe)
 
                 navBar
             }
@@ -457,6 +462,20 @@ struct CookModeView: View {
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
     }
+
+    /// Horizontal swipe to change steps: left = next, right = back. Only fires on a
+    /// clearly-horizontal flick so it never fights the step column's vertical scroll.
+    private var stepSwipe: some Gesture {
+        DragGesture(minimumDistance: 24, coordinateSpace: .local)
+            .onEnded { v in
+                guard abs(v.translation.width) > abs(v.translation.height) * 1.5,
+                      abs(v.translation.width) > 44 else { return }
+                if v.translation.width < 0 { goNext() } else { goBack() }
+            }
+    }
+
+    private func goNext() { if store.index < steps.count - 1 { withAnimation { store.index += 1 } } }
+    private func goBack() { if store.index > 0 { withAnimation { store.index -= 1 } } }
 
     private var navBar: some View {
         HStack(spacing: 12) {

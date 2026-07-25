@@ -22,6 +22,11 @@ enum GoalViewFmt {
     static func weekday(_ dateKey: String) -> String {
         DateFmt.string(GoalDateKey.parse(dateKey), "EEE", .current).prefix(2).capitalized
     }
+    /// Weekday + day-of-month, e.g. "Sun 14" — the week strip's cell label, so each
+    /// day shows its date (mirrors the web WeekHeatmap).
+    static func weekdayDay(_ dateKey: String) -> String {
+        DateFmt.string(GoalDateKey.parse(dateKey), "EEE d", .current)
+    }
     /// Whole numbers without a decimal, otherwise at most 2 decimals — mirrors `goalFmt`.
     static func num(_ n: Double) -> String {
         let r = (n * 100).rounded() / 100

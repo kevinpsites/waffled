@@ -34,6 +34,10 @@ struct RecipeDetailView: View {
     @State private var subEdit: SubEdit?
     @State private var cookMatches: [WaffledAPI.RecipeMatch] = []
     @State private var showCookSheet = false
+    /// Compiled-on-tap markdown share (written to a temp `.md` file so the share sheet
+    /// offers Messages / Mail / Save to Files with a real attachment). Fetched lazily.
+    @State private var shareItem: RecipeSharePayload?
+    @State private var sharePreparing = false
 
     private let api = WaffledAPI()
 
@@ -76,6 +80,10 @@ struct RecipeDetailView: View {
                         Label(groceryAdded ? "Added to grocery ✓" : "Add to grocery list", systemImage: "cart.badge.plus")
                     }
                     .disabled(groceryAdded)
+                    Button { prepareShare() } label: {
+                        Label(sharePreparing ? "Preparing…" : "Share recipe", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(sharePreparing)
                     Button { editing = true } label: { Label("Edit recipe", systemImage: "pencil") }
                     Button(role: .destructive) { confirmingDelete = true } label: {
                         Label("Delete recipe", systemImage: "trash")
@@ -114,6 +122,9 @@ struct RecipeDetailView: View {
             CookConfirmSheet(title: recipe.title, matches: cookMatches) { n in
                 if n > 0 { withAnimation { cookedMessage = "Marked as cooked — pantry updated." } }
             }
+        }
+        .sheet(item: $shareItem) { payload in
+            RecipeShareSheet(items: [payload.url])
         }
         .sheet(isPresented: $scheduling) {
             RecipeScheduleSheet(title: r.title, recipeId: recipe.id) { label in
@@ -404,6 +415,24 @@ struct RecipeDetailView: View {
                 }
             } catch {
                 withAnimation { cookedMessage = "Couldn’t reach the grocery list — try again." }
+            }
+        }
+    }
+
+    /// Compile the recipe to Markdown (server-side, so it matches the web export), write
+    /// it to a temp `.md` file, and hand that to the native share sheet.
+    private func prepareShare() {
+        guard !sharePreparing else { return }
+        sharePreparing = true
+        Task {
+            defer { sharePreparing = false }
+            do {
+                let md = try await api.recipeMarkdown(id: r.id)
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent(md.filename)
+                try md.markdown.data(using: .utf8)?.write(to: url, options: .atomic)
+                shareItem = RecipeSharePayload(url: url)
+            } catch {
+                withAnimation { cookedMessage = "Couldn’t prepare the recipe to share — try again." }
             }
         }
     }

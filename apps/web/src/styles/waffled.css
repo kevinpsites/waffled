@@ -208,12 +208,10 @@
 .rail { background: var(--rail); display: flex; flex-direction: column;
   align-items: center; padding: 18px 0 14px; gap: 2px; }
 .rail-logo { width: 40px; height: 40px; border-radius: 12px; overflow: hidden;
-  display: block; margin-bottom: 4px;
+  display: block; margin-bottom: 16px;
   text-decoration: none; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
 .rail-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .rail-logo:hover { transform: translateY(-1px); box-shadow: var(--sh-1); }
-.rail-new { font-size: 11px; font-weight: 600; color: var(--on-accent); background: var(--primary);
-  padding: 3px 10px; border-radius: 999px; margin-bottom: 18px; box-shadow: var(--sh-1); }
 .rail-item { width: 72px; padding: 9px 0 7px; border-radius: 16px; display: flex;
   flex-direction: column; align-items: center; gap: 5px; color: var(--ink-2);
   font-size: 10.5px; font-weight: 500; text-decoration: none; cursor: pointer;
@@ -421,6 +419,10 @@ select.cap-edit-sub { cursor: pointer; }
 .cal-cd { position: absolute; top: 5px; right: 5px; display: inline-flex; align-items: center; gap: 3px;
   font-size: 10.5px; font-weight: 800; padding: 2px 6px; border-radius: 999px;
   background: var(--primary-t); color: var(--primary); pointer-events: none; }
+/* Tappable variant: re-enable clicks (the base badge is click-through so the day
+   cell handles taps) so tapping the countdown opens its editor instead. */
+.cal-cd.link { pointer-events: auto; cursor: pointer; }
+.cal-cd.link:hover { filter: brightness(.96); }
 .cal-cd-em { font-size: 11px; }
 .cal-cd-n { opacity: .7; }
 .ev { font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 7px;
@@ -756,7 +758,7 @@ select.cap-edit-sub { cursor: pointer; }
 .goal-card { background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-2); padding: 18px 20px;
   display: flex; flex-direction: column; gap: 12px; position: relative; overflow: hidden; }
 .goal-card .gc-top { display: flex; align-items: flex-start; gap: 12px; }
-.goal-card .gc-t { font-family: var(--serif); font-size: 18px; font-weight: 600; letter-spacing: -.01em; line-height: 1.15; text-transform: capitalize; }
+.goal-card .gc-t { font-family: var(--serif); font-size: 18px; font-weight: 600; letter-spacing: -.01em; line-height: 1.15; }
 .gc-bar { height: 9px; border-radius: 99px; background: var(--panel); overflow: hidden; }
 .gc-bar > div { height: 100%; border-radius: 99px; }
 .goal-meta { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); font-weight: 600; }

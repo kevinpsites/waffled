@@ -63,7 +63,7 @@ describe('GoalDataViews', () => {
     render(<GoalDataViews goal={goal} />)
     await waitFor(() => expect(screen.queryByText(/Loading/)).not.toBeInTheDocument())
     fireEvent.click(screen.getByText('Week'))
-    fireEvent.click(screen.getByText('Fr')) // today's weekday label sits inside the clickable cell button
+    fireEvent.click(screen.getByText('Fri 17')) // today's dated weekday label sits inside the clickable cell button
     expect(await screen.findByText('Creek hike')).toBeInTheDocument()
   })
 

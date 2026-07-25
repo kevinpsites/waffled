@@ -1,6 +1,7 @@
 // Year — Contribution grid (GitHub-style). Consistency at a glance for the whole
-// calendar year so far. Scoped to the current calendar year (Jan 1 -> today),
-// clipped to the goal's own start if it began later in the year.
+// calendar year so far: every day Jan 1 -> today gets a square, even the ones
+// before a mid-year-created goal existed (those just sit empty). `viewStart`
+// (the goal's own start) is used only to scope the "% of days" denominator.
 import { addDaysKey, diffDaysKey, heat, parseLocalDateKey, toLocalDateKey } from '../../lib/goalStats'
 import type { DataViewProps } from './types'
 
@@ -37,7 +38,9 @@ export function YearGrid({ goal, stats, onDayClick, headerRight }: DataViewProps
   const squares: Array<{ x: number; y: number; dateKey: string; total: number }> = []
   weeks.forEach((col, ci) => {
     col.forEach((dateKey, ri) => {
-      if (dateKey < viewStart || dateKey > today) return
+      // Paint the whole calendar year so far (Jan 1 → today) — days before the
+      // goal started just render empty (0), rather than clipping to its start.
+      if (dateKey < jan1 || dateKey > today) return
       squares.push({ x: ci * (CELL + GAP), y: ri * (CELL + GAP), dateKey, total: stats.dayEntry(dateKey).total })
     })
   })

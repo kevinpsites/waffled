@@ -47,6 +47,13 @@ enum GoalDateKey {
     static func diffDays(_ a: String, _ b: String) -> Int {
         calendar.dateComponents([.day], from: parse(b), to: parse(a)).day!
     }
+
+    /// The Sunday that starts the week containing `key`. Anchors the week heatmap to
+    /// a fixed Sun–Sat calendar week instead of a rolling 7-day window.
+    static func startOfWeek(_ key: String) -> String {
+        let weekday = calendar.component(.weekday, from: parse(key)) // 1 = Sunday
+        return addDays(key, -(weekday - 1))
+    }
 }
 
 enum GoalTimeframe: Sendable, Equatable {

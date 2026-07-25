@@ -30,8 +30,11 @@ struct WeekHeatmapView: View {
     private var cellSize: CGFloat { max(24, (gridWidth - Self.cellSpacing * 6) / 7) }
 
     private var today: String { ctx.stats.today }
-    private var windowEnd: String { GoalDateKey.addDays(today, weekOffset * 7) }
-    private var weekKeys: [String] { (0..<7).map { GoalDateKey.addDays(windowEnd, $0 - 6) } }
+    // Anchor to the fixed calendar week (Sun–Sat) containing today (± weekOffset
+    // weeks), NOT a rolling 7-day window ending today.
+    private var weekStart: String { GoalDateKey.startOfWeek(GoalDateKey.addDays(today, weekOffset * 7)) }
+    private var weekEnd: String { GoalDateKey.addDays(weekStart, 6) }
+    private var weekKeys: [String] { (0..<7).map { GoalDateKey.addDays(weekStart, $0) } }
     private var canGoForward: Bool { weekOffset < 0 }
 
     private var weekMax: Double {
@@ -41,7 +44,7 @@ struct WeekHeatmapView: View {
         weekKeys.reduce(0) { $0 + ctx.stats.dayEntry($1).total }
     }
     private var prevWeekTotal: Double {
-        (0..<7).map { GoalDateKey.addDays(windowEnd, $0 - 13) }.reduce(0) { $0 + ctx.stats.dayEntry($1).total }
+        (0..<7).map { GoalDateKey.addDays(weekStart, $0 - 7) }.reduce(0) { $0 + ctx.stats.dayEntry($1).total }
     }
     private var delta: Double { ((weekTotal - prevWeekTotal) * 10).rounded() / 10 }
 
@@ -51,9 +54,16 @@ struct WeekHeatmapView: View {
                 Button { weekOffset -= 1 } label: { Image(systemName: "chevron.left") }
                     .buttonStyle(.plain).foregroundStyle(WF.ink2)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(weekOffset == 0 ? "This week" : "That week")
+                    Text(weekOffset == 0
+                         ? "This week"
+                         : "Week of \(GoalViewFmt.monthDay(weekKeys[0])) – \(GoalViewFmt.monthDay(weekEnd))")
                         .font(WF.serif(17, .semibold)).foregroundStyle(WF.ink)
-                    Text("\(GoalViewFmt.monthDay(weekKeys[0])) – \(GoalViewFmt.monthDay(windowEnd)) · the rhythm of your week")
+                    // For the current week the title is just "This week", so the date range
+                    // lives in the subtitle; for other weeks the title already carries the
+                    // range, so the subtitle is just the tagline (no duplicated dates).
+                    Text(weekOffset == 0
+                         ? "\(GoalViewFmt.monthDay(weekKeys[0])) – \(GoalViewFmt.monthDay(weekEnd)) · the rhythm of your week"
+                         : "the rhythm of your week")
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 8)
@@ -89,7 +99,7 @@ struct WeekHeatmapView: View {
                             .frame(width: cellSize, height: cellSize)
                             .background(entry.total > 0 ? Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255) : WF.panel)
                             .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                            Text(GoalViewFmt.weekday(dateKey))
+                            Text(GoalViewFmt.weekdayDay(dateKey))
                                 .font(.system(size: 11, weight: .heavy))
                                 .foregroundStyle(isToday ? WF.primary : WF.ink3)
                         }
@@ -101,7 +111,7 @@ struct WeekHeatmapView: View {
                 GeometryReader { geo in
                     Color.clear
                         .onAppear { gridWidth = geo.size.width }
-                        .onChange(of: geo.size.width) { gridWidth = $0 }
+                        .onChange(of: geo.size.width) { _, newWidth in gridWidth = newWidth }
                 }
             )
 
@@ -113,5 +123,20 @@ struct WeekHeatmapView: View {
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(delta >= 0 ? WF.success : WF.danger)
                     : Text("")))
         }
+        // Swipe to page weeks (same forward-clamp as the chevrons). A minimumDistance
+        // keeps per-cell taps working — a tap moves < the threshold, so the drag never
+        // claims it; the horizontal-dominance check ignores vertical scroll drags.
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    let dx = value.translation.width
+                    guard abs(dx) > 44, abs(dx) > abs(value.translation.height) else { return }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        if dx < 0 { weekOffset = min(0, weekOffset + 1) }  // drag left → later week
+                        else { weekOffset -= 1 }                            // drag right → earlier week
+                    }
+                }
+        )
     }
 }

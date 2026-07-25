@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
 import { defineConfig, type ProxyOptions } from 'vite'
+import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 // Proxy /api to the local api container so the SPA and api share an origin (no
@@ -46,6 +47,8 @@ export default defineConfig({
     proxy: apiProxy,
   },
   test: {
+    // Browser smoke specs use Playwright's runner and must never be collected by Vitest.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],

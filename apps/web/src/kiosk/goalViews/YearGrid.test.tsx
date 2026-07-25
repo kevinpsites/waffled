@@ -33,6 +33,15 @@ describe('YearGrid', () => {
     expect(rects.length).toBeGreaterThanOrEqual(198)
   })
 
+  it('shows the whole year-to-date even for a goal created mid-year (empty before it started)', () => {
+    // BUG: a goal created 2026-07-01 collapsed the grid to only July. The year grid
+    // should still paint Jan 1 → today (198 days), with the pre-July squares empty.
+    const midYear = computeGoalStats({ today: '2026-07-17', startDate: '2026-07-01', endDate: null, target: 1000, days })
+    const { container } = render(<YearGrid goal={makeGoal({ createdAt: '2026-07-01T00:00:00Z' })} stats={midYear} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const rects = container.querySelectorAll('rect')
+    expect(rects.length).toBeGreaterThanOrEqual(198)
+  })
+
   it('shows the streak + active-day footer stats', () => {
     render(<YearGrid goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
     expect(screen.getByText(/current streak/)).toBeInTheDocument()

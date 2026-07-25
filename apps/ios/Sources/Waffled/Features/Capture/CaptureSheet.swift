@@ -990,7 +990,10 @@ struct CaptureSheet: View {
         }
         switch i {
         case let .event(title, startsAt, allDay, personName, rrule, _, _):
-            editKind = "event"; editName = title; evAllDay = allDay; evPerson = personName
+            // Default a bare event's owner to the signed-in viewer (matches the web
+            // capture bar) so the picker shows "me", not "Nobody"; a parsed name wins.
+            editKind = "event"; editName = title; evAllDay = allDay
+            evPerson = personName ?? sync.members.first { $0.id == sync.currentPersonId }?.name
             evDate = date(startsAt) ?? Date()
             evRepeat = Recurrence.parseRepeat(rrule)
             evUntilOn = false
@@ -1098,7 +1101,10 @@ struct CaptureSheet: View {
                                            stars: taskStars > 0 ? taskStars : nil,
                                            rewardCurrency: taskCurrency, rrule: taskRrule)
             case "meal":
-                let d = Self.isoDF.string(from: mealDate)
+                // The meals API wants a bare calendar day (YYYY-MM-DD). isoDF is a full
+                // ISO8601 date-TIME formatter ("…T00:00:00Z"), which the server rejects
+                // as an invalid date — format the day only, like the countdown case.
+                let d = DateFmt.string(mealDate, "yyyy-MM-dd", sync.householdTz)
                 ok = await sync.commitMeal(title: name, date: d, mealType: mealSlot)
             case "list":
                 ok = await sync.commitListItem(item: name, listName: editListName, quantity: qty)

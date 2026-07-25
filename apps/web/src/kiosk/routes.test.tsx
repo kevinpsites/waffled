@@ -15,6 +15,20 @@ function rail() {
 }
 
 describe('kiosk navigation', () => {
+  it('opens and closes the compact primary navigation', () => {
+    renderAt('/')
+    const trigger = screen.getByRole('button', { name: 'Open navigation' })
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(trigger)
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    expect(rail()).toHaveClass('mobile-open')
+
+    fireEvent.click(within(rail()).getByText('Calendar'))
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(rail()).not.toHaveClass('mobile-open')
+  })
+
   it('renders the Today dashboard at /', async () => {
     renderAt('/')
     expect(screen.getByText('Family Chores')).toBeInTheDocument()

@@ -19,13 +19,9 @@ struct TodayView: View {
     /// trigger: AppRoot reloads it at launch, on the chore/reward buses, and on
     /// return to the foreground.
     var approvals: ApprovalsModel
-    /// Which goal the card highlights: "mine" (the logged-in member's) or "family"
-    /// (a whole-family goal). Per-device preference; defaults to mine.
-    @AppStorage("waffled.todayGoalScope") private var goalScope = "mine"
-    /// A specific goal pinned to the Today card (empty = follow the My/Family spotlight scope).
-    /// Per-device; falls back to the scope pick if the pinned goal is gone.
+    /// A specific goal pinned to the Today card (empty = auto/featured). Per-device; the
+    /// hero's grouped picker sets it. Falls back to the featured pick if the goal is gone.
     @AppStorage("waffled.todayGoalId") private var todayGoalId = ""
-    @State private var showingGoalPicker = false
     /// The resolved card layout (order + hidden) from the server, plus whether this
     /// member may edit the shared family default. Drives which cards render and how.
     @State private var cardOrder: [String] = ["agenda", "tonight", "chores", "grocery", "goals"]
@@ -222,7 +218,7 @@ struct TodayView: View {
                 .background(LinearGradient(colors: [WF.ai2, WF.ai], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(reviewTitle(nR, nS)).font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
+                Text(reviewRecapTitle(nR, nS)).font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
                 Text(reviewSubtitle).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
             }
             Spacer(minLength: 6)
@@ -232,12 +228,6 @@ struct TodayView: View {
         .background(WF.ai.opacity(0.07))
         .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.ai.opacity(0.22), lineWidth: 1))
-    }
-
-    private func reviewTitle(_ nR: Int, _ nS: Int) -> String {
-        if nR > 0 && nS > 0 { return "\(nR) to review · \(nS) to link" }
-        if nR > 0 { return nR == 1 ? "1 event to log" : "\(nR) events to log" }
-        return nS == 1 ? "1 event might count" : "\(nS) events might count"
     }
 
     private var reviewSubtitle: String {
@@ -289,25 +279,36 @@ struct TodayView: View {
     // MARK: tonight's meal (split media card, live from the meal plan)
     @ViewBuilder private var tonightCard: some View {
         if let meal = dash.tonight {
-            HStack(spacing: 0) {
-                LinearGradient(colors: meal.eatingOut
-                                   ? [Color(hex: 0xD9E7F6), Color(hex: 0xBCD0E9)]
-                                   : [Color(hex: 0xF6D9C6), Color(hex: 0xE9B596)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-                    .frame(width: 104)
-                    .overlay(Text(meal.emoji).font(.system(size: 36)))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("TONIGHT · DINNER")
-                        .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                        .foregroundStyle(FamilyColor.person4.solid)
-                    Text(meal.title)
-                        .font(WF.serif(18)).foregroundStyle(WF.ink)
-                    if let sub = mealSubtitle(meal) {
-                        Text(sub).font(.system(size: 12)).foregroundStyle(WF.ink3)
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    LinearGradient(colors: meal.eatingOut
+                                       ? [Color(hex: 0xD9E7F6), Color(hex: 0xBCD0E9)]
+                                       : [Color(hex: 0xF6D9C6), Color(hex: 0xE9B596)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .frame(width: 104)
+                        .overlay(Text(meal.emoji).font(.system(size: 36)))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("TONIGHT · DINNER")
+                            .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                            .foregroundStyle(FamilyColor.person4.solid)
+                        Text(meal.title)
+                            .font(WF.serif(18)).foregroundStyle(WF.ink)
+                        if let sub = mealSubtitle(meal) {
+                            Text(sub).font(.system(size: 12)).foregroundStyle(WF.ink3)
+                        }
                     }
+                    .padding(.horizontal, 15).padding(.vertical, 13)
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 15).padding(.vertical, 13)
-                Spacer(minLength: 0)
+                // Cook Mode + View recipe (parity with the iPad card) — a planned recipe
+                // opens its detail, or drops straight into Cook Mode.
+                if let summary = meal.recipeSummary {
+                    HStack(spacing: 10) {
+                        tonightButton("View recipe", primary: false) { path.append(.recipe(summary)) }
+                        tonightButton("👨‍🍳 Cook Mode", primary: true) { path.append(.recipeCook(summary)) }
+                    }
+                    .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 12)
+                }
             }
             .background(WF.card)
             .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
@@ -334,6 +335,22 @@ struct TodayView: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// A tonight-card action button — primary (coral fill) for Cook Mode, outline for
+    /// View recipe. Matches the app's button chrome at Today-card scale.
+    private func tonightButton(_ title: String, primary: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(primary ? .white : WF.ink)
+                .frame(maxWidth: .infinity).padding(.vertical, 10)
+                .background(primary ? WF.primary : WF.panel)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                    .strokeBorder(primary ? Color.clear : WF.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: chores + grocery summary (live)
 
     /// A synthetic grocery list so the Today grocery card opens the board directly
@@ -345,136 +362,25 @@ struct TodayView: View {
 
     // MARK: goals card (featured goal + a shortcut to all goals)
 
-    /// The headline goal to surface, honoring the user's scope preference. "Mine"
-    /// prefers a goal the logged-in member is in; "Family" prefers a whole-family
-    /// goal. Either way featured wins within the bucket, and we never get stuck — a
-    /// sub-group goal (e.g. kids-only) only shows if nothing better exists.
-    private var featuredGoal: WaffledAPI.Goal? {
-        let goals = dash.goals
-        // A specific goal pinned to the card wins, if it still exists.
-        if !todayGoalId.isEmpty, let pinned = goals.first(where: { $0.id == todayGoalId }) { return pinned }
-        // The token-resolved person if we have it, else the greeting member (first adult).
-        let me = sync.currentPersonId ?? greetingMember?.id
-        let everyone = Set(sync.members.map(\.id))
-        // "Mine" = a goal that's solo to me (my personal list), not a shared/group goal.
-        func isMine(_ g: WaffledAPI.Goal) -> Bool {
-            guard let me else { return false }
-            return Set(g.participants.map(\.personId)) == [me]
-        }
-        // "Family" = a goal the whole household shares.
-        func isFamily(_ g: WaffledAPI.Goal) -> Bool {
-            everyone.count > 1 && everyone.isSubset(of: Set(g.participants.map(\.personId)))
-        }
-        // Prefer the Spotlight, then a Pinned (isFeatured) goal, then any — within scope.
-        func spot(_ g: WaffledAPI.Goal) -> Bool { g.isSpotlight ?? false }
-        let mineFirst: [(WaffledAPI.Goal) -> Bool] = [
-            { isMine($0) && spot($0) }, { isMine($0) && $0.isFeatured }, { isMine($0) },
-            { isFamily($0) && spot($0) }, { isFamily($0) && $0.isFeatured }, { isFamily($0) },
-        ]
-        let familyFirst: [(WaffledAPI.Goal) -> Bool] = [
-            { isFamily($0) && spot($0) }, { isFamily($0) && $0.isFeatured }, { isFamily($0) },
-            { isMine($0) && spot($0) }, { isMine($0) && $0.isFeatured }, { isMine($0) },
-        ]
-        let order = goalScope == "family" ? familyFirst : mineFirst
-        for matches in order { if let g = goals.first(where: matches) { return g } }
-        return goals.first(where: spot) ?? goals.first { $0.isFeatured } ?? goals.first
-    }
-
-    private static let goalGreen = WF.success
-
-    /// A full-width card showing the featured goal's progress (taps into that goal),
-    /// with a "See all" shortcut to the goals hub.
+    /// The featured-goal hero, shared with the iPad Today card (`GoalHeroCard`). Adopts the
+    /// iPad's pinned/auto model — the grouped picker (in the card's switcher) replaces the
+    /// old My/Family scope pill. Logging refreshes the goals + bus.
+    ///
+    /// BY DESIGN: the former `waffled.todayGoalScope` ("mine"/"family") preference was
+    /// intentionally dropped for this unified card (no migration). It isn't needed —
+    /// `featuredGoal`'s fallback already prefers a whole-household goal before `goals.first`,
+    /// so households that relied on "Family spotlight" keep seeing the family goal; anyone
+    /// wanting a specific goal pins it via the grouped picker.
     @ViewBuilder private var goalsCard: some View {
-        WaffledCard(padding: 15) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Text("Goals").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
-                    scopeMenu
-                    Spacer()
-                    Button { path.append(.goals) } label: {
-                        HStack(spacing: 3) {
-                            Text("See all").font(.system(size: 12, weight: .semibold))
-                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
-                        }
-                        .foregroundStyle(WF.ai)
-                    }
-                    .buttonStyle(.plain)
-                }
-                if let g = featuredGoal {
-                    Button { path.append(.goal(g)) } label: { featuredGoalRow(g) }.buttonStyle(.plain)
-                } else {
-                    // Key the empty state off the goals fetch itself — `dash.loaded`
-                    // (meals/chores/grocery) usually finishes first, and used to flash
-                    // "Set a family goal →" at people who have goals.
-                    Button { path.append(.goals) } label: {
-                        Text(dash.goalsLoaded ? "Set a family goal →" : "Loading…")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .sheet(isPresented: $showingGoalPicker) {
-            TodayGoalPickerSheet(goals: dash.goals, myPersonId: sync.currentPersonId ?? greetingMember?.id, selectedId: todayGoalId) { id in todayGoalId = id }
-        }
-    }
-
-    /// A small pill-menu to switch the card between the logged-in member's goal and a
-    /// whole-family goal. Only shown when there's more than one goal to choose from.
-    @ViewBuilder private var scopeMenu: some View {
-        if dash.goals.count > 1 {
-            // The pinned goal's title (if one is pinned and still exists), else the scope name.
-            let pinnedTitle = todayGoalId.isEmpty ? nil : dash.goals.first { $0.id == todayGoalId }?.title
-            Menu {
-                Button { goalScope = "mine"; todayGoalId = "" } label: {
-                    Label("My spotlight", systemImage: (todayGoalId.isEmpty && goalScope == "mine") ? "checkmark" : "person")
-                }
-                Button { goalScope = "family"; todayGoalId = "" } label: {
-                    Label("Family spotlight", systemImage: (todayGoalId.isEmpty && goalScope == "family") ? "checkmark" : "person.3")
-                }
-                Divider()
-                Button { showingGoalPicker = true } label: {
-                    Label("Choose a goal…", systemImage: "pin")
-                }
-            } label: {
-                HStack(spacing: 3) {
-                    Text(pinnedTitle ?? (goalScope == "family" ? "Family" : "Mine"))
-                        .font(.system(size: 11, weight: .bold)).lineLimit(1).frame(maxWidth: 120)
-                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
-                }
-                .foregroundStyle(WF.ink3)
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(WF.panel)
-                .clipShape(Capsule())
-            }
-        }
-    }
-
-    private func featuredGoalRow(_ g: WaffledAPI.Goal) -> some View {
-        let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 8) {
-                Text(g.emoji ?? "🎯").font(.system(size: 20))
-                Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
-                if g.isSpotlight ?? false { Text("🌟").font(.system(size: 11)) }
-                else if g.isFeatured { Text("📌").font(.system(size: 11)) }
-                Spacer(minLength: 6)
-                if g.streakDays >= 2 {
-                    Text("🔥 \(g.streakDays)").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink2)
-                }
-            }
-            if let target = g.target, target > 0 {
-                ProgressBar(value: frac, tint: Self.goalGreen, track: Self.goalGreen.opacity(0.18))
-                (Text("\(goalFmt(g.totalProgress)) ").foregroundStyle(WF.ink).bold()
-                 + Text("of \(goalFmt(target))\(g.unit.map { " \($0)" } ?? "")").foregroundStyle(WF.ink3))
-                    .font(.system(size: 12))
-            } else if g.streakDays > 0 {
-                Text("\(g.streakDays)-day streak").font(.system(size: 12)).foregroundStyle(WF.ink3)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
+        GoalHeroCard(kiosk: false,
+                     goal: KioskDashboard.featuredGoal(dash.goals, pinnedId: todayGoalId,
+                                                       memberIds: Set(sync.members.map(\.id))),
+                     goals: dash.goals, goalsLoaded: dash.goalsLoaded,
+                     myPersonId: sync.currentPersonId ?? greetingMember?.id,
+                     householdMemberIds: Set(sync.members.map(\.id)), selectedId: todayGoalId,
+                     onOpen: { path.append(.goal($0)) }, onSeeAll: { path.append(.goals) },
+                     onPin: { todayGoalId = $0 },
+                     onLogged: { Task { await dash.loadGoals(); sync.touchGoals() } })
     }
 
     // MARK: layout-driven card rendering
@@ -528,12 +434,7 @@ struct TodayView: View {
         switch key {
         case "agenda": todayCard
         case "countdowns": CountdownsCard()
-        case "tonight":
-            if let summary = dash.tonight?.recipeSummary {
-                Button { path.append(.recipe(summary)) } label: { tonightCard }.buttonStyle(.plain)
-            } else {
-                tonightCard
-            }
+        case "tonight": tonightCard
         case "chores": Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
         case "grocery": Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
         case "pantry": PantryTodayCard { path.append(.pantry) }
@@ -617,7 +518,11 @@ struct TodayView: View {
 /// Thin rounded progress bar used in the summary cards.
 /// A modal goal chooser for the Today card — "Follow the spotlight" plus a scrollable
 /// list of every goal (reuses the goal-card styling), instead of a long inline menu.
-private struct TodayGoalPickerSheet: View {
+/// The grouped goal picker used by the Today Goals card on both iPhone and iPad: goals
+/// grouped by list (My goals → shared groups I'm in → other), each an expandable section
+/// with member avatars, plus a "Follow the spotlight" auto row. `selectedId` = "" means
+/// auto; otherwise the pinned goal. Shared so the iPad no longer shows a flat menu list.
+struct TodayGoalPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     let goals: [WaffledAPI.Goal]
     let myPersonId: String?
@@ -752,14 +657,15 @@ struct ProgressBar: View {
     let value: Double      // 0...1
     let tint: Color
     let track: Color
+    var height: CGFloat = 7
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(track)
-                Capsule().fill(tint).frame(width: geo.size.width * value)
+                Capsule().fill(tint).frame(width: geo.size.width * max(0, min(value, 1)))
             }
         }
-        .frame(height: 7)
+        .frame(height: height)
     }
 }
 

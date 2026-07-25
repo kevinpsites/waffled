@@ -75,3 +75,49 @@ private func offPlan(_ rid: String, _ title: String) -> WaffledAPI.GroceryBoardD
         #expect(groups[0].meal == nil && groups[0].unscheduled == nil)
     }
 }
+
+// Section grouping: the "Items" fallback header must NOT be a real category. A drag into
+// it writes `sectionValue` (nil), not the display "Items" — otherwise the moved item
+// splits off a second "ITEMS" group (the bug the drag-and-drop first shipped).
+private func sectioned(_ id: String, _ name: String, section: String?) -> WaffledAPI.ListItemDTO {
+    let sec = section.map { "\"\($0)\"" } ?? "null"
+    let json = "{\"id\":\"\(id)\",\"name\":\"\(name)\",\"checked\":false,\"section\":\(sec)}"
+    return try! JSONDecoder().decode(WaffledAPI.ListItemDTO.self, from: Data(json.utf8))
+}
+
+@Suite struct ListSectionGroupingTests {
+    @Test func ungroupedFallbackShowsItemsHeaderButNilCategory() {
+        let groups = ListGrouping.sections([
+            sectioned("a", "Rain jacket", section: "Clothes"),
+            sectioned("b", "Trash bags", section: nil),
+            sectioned("c", "Beach towel", section: nil),
+        ])
+        let ungrouped = groups.last!
+        #expect(ungrouped.title == "Items")       // display header
+        #expect(ungrouped.sectionValue == nil)     // real category — the fix
+        #expect(ungrouped.items.count == 2)
+    }
+
+    @Test func realSectionKeepsItsValueAndDoesNotCollideWithUngrouped() {
+        // A user-named "Items" section AND uncategorized items: distinct groups, distinct ids.
+        let groups = ListGrouping.sections([
+            sectioned("a", "Boxed", section: "Items"),
+            sectioned("b", "Loose", section: nil),
+        ])
+        let ids = Set(groups.map(\.id))
+        #expect(ids.count == groups.count)         // no id collision
+        let real = groups.first { $0.sectionValue == "Items" }
+        #expect(real?.title == "Items")
+        let fallback = groups.first { $0.sectionValue == nil }
+        #expect(fallback?.title == "Items" && fallback?.id == "__ungrouped__")
+    }
+
+    @Test func allUngroupedIsASingleHeaderlessGroup() {
+        let groups = ListGrouping.sections([
+            sectioned("a", "One", section: nil),
+            sectioned("b", "Two", section: nil),
+        ])
+        #expect(groups.count == 1)
+        #expect(groups[0].title == nil && groups[0].sectionValue == nil)
+    }
+}

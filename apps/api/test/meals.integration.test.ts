@@ -290,6 +290,65 @@ describe('recipes api', () => {
   })
 })
 
+describe('recipe markdown export (share)', () => {
+  let recipeId = ''
+
+  it('creates a full recipe to export', async () => {
+    const add = await call('POST', '/api/recipes', kevin, {
+      title: 'Chicken Parmesan',
+      emoji: '🍗',
+      servings: 4,
+      prepTimeMinutes: 15,
+      cookTimeMinutes: 25,
+      mealType: 'dinner',
+      protein: 'chicken',
+      cuisine: 'Italian',
+      dietary: ['gluten-free'],
+      tags: ['family-favorite'],
+      notes: 'Kids like it with extra cheese.',
+      sourceName: "Grandma's kitchen",
+      ingredients: [
+        { name: 'chicken breasts', amount: 2, prepNote: 'pounded thin', display: '2 chicken breasts, pounded thin', section: 'Chicken' },
+        { name: 'marinara', amount: 2, unit: 'cups', display: '2 cups marinara', section: 'Sauce' },
+      ],
+      steps: [
+        { instruction: 'Bread the chicken.', ingredients: ['2 eggs'] },
+        { instruction: 'Pan-fry until golden.', timerSeconds: 240 },
+      ],
+    })
+    expect(add.statusCode).toBe(201)
+    recipeId = JSON.parse(add.body).recipe.id
+  })
+
+  it('exports the recipe as blessed markdown + a filename', async () => {
+    const res = await call('GET', `/api/recipes/${recipeId}/markdown`, kevin)
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body) as { markdown: string; filename: string }
+    expect(body.filename).toBe('chicken-parmesan.md')
+    const md = body.markdown
+    expect(md).toContain('type: dinner')
+    expect(md).toContain('tags: [family-favorite]')
+    expect(md).toContain('# Chicken Parmesan')
+    expect(md).toContain('*4 servings | 40 min*')
+    expect(md).toContain('### Chicken')
+    expect(md).toContain('- 2 chicken breasts, pounded thin')
+    expect(md).toContain('**Timer:** 4 minutes')
+    // source appears exactly once even though notes + sourceName are both set
+    expect(md.match(/^Source:/gim) ?? []).toHaveLength(1)
+  })
+
+  it('404s for an unknown / malformed id', async () => {
+    expect((await call('GET', '/api/recipes/not-a-uuid/markdown', kevin)).statusCode).toBe(404)
+    expect(
+      (await call('GET', '/api/recipes/00000000-0000-0000-0000-000000000000/markdown', kevin)).statusCode
+    ).toBe(404)
+  })
+
+  it('403s for a caller with no household', async () => {
+    expect((await call('GET', `/api/recipes/${recipeId}/markdown`, mint('dev|nobody'))).statusCode).toBe(403)
+  })
+})
+
 describe('recipe ingredients api', () => {
   let recipeId = ''
 

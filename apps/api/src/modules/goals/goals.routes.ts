@@ -18,6 +18,7 @@ import {
   listGoals,
   goalDetail,
   goalActivity,
+  goalNoteSuggestions,
   updateGoal,
   softDeleteGoal,
   toggleGoalStep,
@@ -195,6 +196,19 @@ export function registerGoalRoutes(api: Api): void {
     const activity = await goalActivity(tenant.householdId, id)
     if (!activity) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
     return activity
+  }))
+
+  // Smart note suggestions for the log sheet's "What did you do?" field — the notes
+  // already logged against this goal, most-used first. Optional ?personId scopes to the
+  // notes where that person was the credited participant, so the box learns per-person.
+  api.get('/api/goals/:id/note-suggestions', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    const personIdRaw = req.query?.personId
+    const personId = typeof personIdRaw === 'string' && UUID_RE.test(personIdRaw) ? personIdRaw : null
+    const suggestions = await goalNoteSuggestions(tenant.householdId, id, personId)
+    if (suggestions == null) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    return { suggestions }
   }))
 
   api.patch('/api/goals/:id', tenantRoute(async (tenant, req: Request, res: Response) => {

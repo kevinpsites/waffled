@@ -9,6 +9,7 @@ struct AboutSettingsView: View {
     @State private var serverAddress = AppConfig.apiBaseURL
     @State private var devToken = AppConfig.storedDevToken
     @State private var savedNote: String?
+    @State private var serverError: String?
     @State private var test: TestState = .idle
     @State private var showToken = false
     @State private var tokenSaved = false
@@ -86,6 +87,12 @@ struct AboutSettingsView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .padding(.horizontal, 13).padding(.vertical, 12).wfField(fill: WF.panel)
+                    .onChange(of: serverAddress) { _, _ in serverError = nil }
+
+                if let serverError {
+                    Text(serverError).font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(WF.primaryD).fixedSize(horizontal: false, vertical: true)
+                }
 
                 HStack(spacing: 10) {
                     Button { saveServer() } label: {
@@ -191,7 +198,12 @@ struct AboutSettingsView: View {
     // MARK: actions
 
     private func saveServer() {
-        AppConfig.setApiBaseURL(serverAddress)
+        guard AppConfig.setApiBaseURL(serverAddress) else {
+            serverError = "Enter a full server address beginning with http:// or https://."
+            savedNote = nil
+            return
+        }
+        serverError = nil
         // Reflect the cleaned/normalized value (trailing slash stripped, blank → default).
         serverAddress = AppConfig.apiBaseURL
         test = .idle
@@ -254,10 +266,12 @@ struct AboutSettingsView: View {
     }
 
     private func testConnection() {
-        let base = serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: base.hasSuffix("/") ? base + "api/health" : base + "/api/health") else {
-            test = .fail; return
+        guard let url = AppConfig.apiURL(path: "/api/health", baseURL: serverAddress) else {
+            serverError = "Enter a full server address beginning with http:// or https://."
+            test = .idle
+            return
         }
+        serverError = nil
         test = .testing
         Task {
             do {
