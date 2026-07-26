@@ -232,6 +232,9 @@ services:
       - "${POWERSYNC_PORT:-8090}:8090"          # Caddy-fronted PowerSync (HTTP locally, TLS in hostname mode)
       # - "443:443"                              # enable for tailnet/prod TLS (later)
     environment:
+      # Exact non-self endpoints allowed by connect-src for PowerSync traffic.
+      POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}
+      POWERSYNC_WS_URL: ${POWERSYNC_WS_URL:-ws://localhost:8090}
       # unset locally → ":80" (plain HTTP); set to your MagicDNS name for auto-TLS
       CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
       # Separate listener for PowerSync; hostname mode uses https://host:8090.
