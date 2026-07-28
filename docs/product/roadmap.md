@@ -203,9 +203,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   [`waffled-bites-audio-plan.md`](waffled-bites-audio-plan.md). Phase 1 **synthesises** white
   noise, ocean, rain, box fan and heartbeat on the device itself — no audio files, no
   streaming, so a kid's room stays quiet-not-silent even if the home server reboots at 2am
-  — plus one-shot tones for the wake-up light, which currently offers six alarm tones that
-  do nothing. Phase 2 adds the two sounds that need real recordings (forest, lullaby),
-  downloaded once from the server and cached on the device.
+  — plus the morning alarm's tone, which today is a setting you can pick from six options
+  and never hear. Phase 2 adds the sounds that need real recordings (forest, lullaby,
+  birdsong), downloaded once from the server and cached on the device. Signed off: the sound
+  machine plays straight through quiet time and bedtime, and the alarm gets its own volume
+  separate from the sound machine's.
 
 - **QR-code pairing for Waffled-Bites.** The device has a screen but no camera (the
   ELECROW board has none), so a QR flow only works one direction: the device renders a

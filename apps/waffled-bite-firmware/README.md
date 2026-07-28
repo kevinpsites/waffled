@@ -126,11 +126,14 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 - **No audio at all.** The Sounds tile, the seven sound options, the volume slider and the
   sleep timer are fully wired end to end (device screen → `PATCH /api/waffled-bites/device/settings`
   → parent web panel → poll), and nothing in this firmware touches I2S — the speaker is
-  silent. The six `ALARM_TONES` behind the wake light are likewise decorative. Planned in
+  silent. The morning alarm's six `ALARM_TONES` are likewise decorative — and note the
+  device doesn't even parse `settings.alarm` today (`GET /device/state` returns it, but
+  `WbDeviceState` has no field for it). Planned in
   [`docs/product/waffled-bites-audio-plan.md`](../../docs/product/waffled-bites-audio-plan.md):
   phase 1 synthesises white/ocean/rain/fan/heartbeat on-device (no assets, no streaming, works
-  through a network outage), phase 2 adds sampled forest/lullaby cached in the unused `spiffs`
-  partition.
+  through a network outage), phase 2 adds sampled forest/lullaby/birdsong cached in the unused
+  `spiffs` partition. Signed off: audio is independent of the quiet-time/bedtime locks (they
+  must not touch `wb_audio`), no reboot persistence, and the alarm gets its own `alarm.volume`.
 
 - **Sounds and Nightlight are done.** Tapping either tile on the Grown-up controls
   screen opens a shared toggle+picker+slider detail screen (`src/ui/control_detail_screen.cpp` —

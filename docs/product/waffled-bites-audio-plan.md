@@ -10,7 +10,7 @@ environments, and the HAL conventions this plan reuses.
 
 ## 1. Scope
 
-**In:** actual audio output for the sound machine (`settings.sound`), one-shot wake-light
+**In:** actual audio output for the sound machine (`settings.sound`), the one-shot morning-alarm
 tones, and the fade/volume/timer behaviours around them.
 
 **Out (deliberately):** the microphone, voice control, and anything TTS. The board's mic
@@ -161,28 +161,53 @@ before playing.
    deltas on `{on, tone, volume}`. Local taps call the HAL directly first (§3.5).
 5. **Sleep timer** — `timerMin` (0/15/30/60/120) fades out and stops, and must survive a
    poll failure: the countdown is local, not server-driven.
-6. **Interaction with the locks** — quiet time and the wake-light `sleep`/`warn` states
-   force-navigate the UI; decide and encode whether they also duck or stop audio (§9).
+6. **Interaction with the locks — none.** Quiet time and the wake-light `sleep`/`warn`
+   states force-navigate the UI, and audio is deliberately **independent of all of them**
+   (decision D1). The sound machine keeps playing through quiet time and through bedtime,
+   unchanged. Nothing in the lock code paths should touch `wb_audio` — that's the whole
+   point of a sound machine, and coupling them would be a bug, not a feature.
 
-## 5. Phase 1b — wake-light tones (small, high value)
+## 5. Phase 1b — the morning alarm tone (small, high value)
 
-The wake light already ships and already locks the device overnight, and the web UI already
-lists six `ALARM_TONES` (`WaffledBiteDevice.tsx:26`) that do nothing. **A wake light with no
-sound is half a feature.**
+The web UI already offers six `ALARM_TONES` (`WaffledBiteDevice.tsx:26`) that do nothing.
+**An alarm that makes no sound is not an alarm.** Worth doing in the same body of work as
+phase 1 while the audio path is fresh.
 
 One-shot tones are the easy case: a few seconds long, no looping problem, trivially small,
 and — for chime, bells, harp, ocean tide and twinkle — synthesisable as enveloped sine
 partials, so phase 1b keeps §3.2's zero-assets rule. **Birdsong is the one exception**: it
 needs a real recording, so it moves to phase 2 alongside `forest` and `lullaby` and is shown
-disabled until then. Fires on the `Wake` transition in `WbWakeLightInfo`, at a volume
-separate from the sound-machine volume. Worth doing in the same body of work as phase 1
-while the audio path is fresh.
+disabled until then.
+
+**Careful: the alarm and the wake light are two different features.** The tones belong to
+`settings.alarm` (`{on, hour, min, tone}`) and fire at that clock time. The wake light is
+the separate per-day schedule driving `WbWakeLightInfo`'s `sleep`/`warn`/`wake` glow, and it
+stays silent — whether *it* should also chime is question Q2 below, not an assumption to
+build on.
+
+Three concrete gaps this opens up:
+
+1. **The device never parses `alarm` at all.** `GET /device/state` already returns the whole
+   settings blob verbatim (`settings: deviceRow?.settings ?? {}`), so the alarm *is* on the
+   wire today — but `WbDeviceState` (`wb_state.h:94`) has no alarm field, so
+   `wb_state_from_json` drops it. Add the struct field + parse, and a local minute-tick
+   comparison against `nowHour`/`nowMin` (already present) to fire it. The device has no RTC,
+   so a missed alarm during an offline stretch is expected and acceptable.
+2. **Wake tones get their own volume** (decision D3) — a new `alarm.volume`, independent of
+   `sound.volume`. This needs **no API change**: the parent route
+   `PATCH /api/waffled-bites/:id/settings` deep-merges arbitrary JSON with no allowlist
+   (`waffledBites.ts:531`), so the field simply starts existing. It does need a slider on the
+   **web panel and the iOS panel**, and a parse on the device. It does *not* belong in
+   `DEVICE_WRITABLE_SETTINGS_KEYS` — alarm stays parent-only, and the device has no alarm UI.
+3. **`alarm.tone` is a display string, not a key.** It's stored as `'Sunrise chime'`, unlike
+   the sound list which uses stable keys (`white`, `ocean`). Matching on prose in firmware is
+   fragile — a copy tweak silently breaks the alarm, and it can never be localised. Recommend
+   migrating to keys with a back-compat mapping for existing rows as part of this work, since
+   phase 1b is the first thing that actually reads the field.
 
 ## 6. Phase 2 — sampled sounds (`forest`, `lullaby`, birdsong)
 
 Deferred deliberately, but the shape is known:
-
-Covers `forest`, `lullaby`, and the birdsong wake tone.
 
 - **Distribution.** A versioned sound pack published as a release asset (**not** committed
   binaries in git), fetched over the existing HTTP client into `spiffs`, with a manifest so
@@ -241,19 +266,40 @@ first, in this order:
 Then: `native` listening pass for tuning (does the ocean actually sound like an ocean), and
 a hardware bring-up pass once the board lands.
 
-## 9. Open questions — need a decision before phase 1
+## 9. Decisions (signed off)
 
-1. **Do quiet time and wake-light `sleep`/`warn` interact with the sound machine?** Options:
-   independent (simplest), quiet time ducks it, or bedtime auto-starts it. Product call.
-2. **Does the sound machine survive a reboot?** Persisting "was playing" to NVS and
-   resuming before the first poll means a 3am power blip doesn't leave a kid in silence.
-   Recommend yes.
-3. **Should `forest`/`lullaby`/birdsong be hidden or shown-disabled** during phase 1 — and
-   note that lands on all three surfaces (device, web panel, iOS), each with its own
-   hardcoded list.
-4. **Speaker choice.** A bare 28 mm driver will sound thin and hissy, which is most of the
-   perceived quality of a sleep device. Recommend a 40–50 mm 8 Ω 2 W driver in a
-   sealed-ish enclosure — the enclosure matters more than the driver. Connector is a 2-pin
-   PH2.0 header.
-5. **Is a separate wake-tone volume exposed to parents**, or derived from the sound-machine
-   volume?
+**D1 — The sound machine is independent of quiet time and bedtime.** It plays right through
+both. No ducking, no auto-stop, no auto-start; the lock screens must not touch `wb_audio`
+(§4.6). Simplest option and the right one — a sound machine that switches itself off at
+bedtime is backwards.
+
+**D2 — No reboot persistence.** A power blip mid-sleep is a rare enough edge case that
+persisting "was playing" to NVS and resuming pre-poll isn't worth the complexity. Explicitly
+out of scope; don't build it. (After a reboot the device simply comes up silent and the next
+poll restores the *settings*, not playback.)
+
+**D3 — Wake tones get their own volume**, independent of the sound-machine volume — a new
+`alarm.volume`. Implementation consequences in §5, gap 2: no API change needed, but a slider on
+both parent surfaces and a parse on the device.
+
+## 10. Still open
+
+**Q1 — Hidden or shown-disabled?** During phase 1, do `forest`/`lullaby`/birdsong disappear
+from the pickers or show greyed with a "coming soon" note? Lands on all three surfaces
+(device, web, iOS), each with its own hardcoded list. Recommend shown-disabled — a sound
+that vanishes and reappears looks like a bug, and it advertises what's coming.
+
+**Q2 — Should the wake light chime too?** D1 and D3 settle the sound machine and the alarm,
+but the wake light going green is still silent. Options: stays silent (simplest, and the
+green glow is the whole point of a *visual* wake cue for pre-clock-reading kids), or reuses
+the alarm tone at its own volume. Recommend silent until asked for.
+
+**Q3 — Does the alarm tone interrupt the sound machine?** A live consequence of D1: white
+noise plays all night, so at alarm time the tone fires *over* it. Recommend ducking the
+sound machine under the tone and then stopping it — it's morning, the kid is meant to be
+waking up — but that's a product call, and "both play at once at full volume" is the
+accidental default if nobody decides.
+
+**Q4 — Speaker choice.** A bare 28 mm driver will sound thin and hissy, which is most of the
+perceived quality of a sleep device. Recommend a 40–50 mm 8 Ω 2 W driver in a sealed-ish
+enclosure — the enclosure matters more than the driver. Connector is a 2-pin PH2.0 header.
