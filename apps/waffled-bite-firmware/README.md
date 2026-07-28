@@ -49,8 +49,10 @@ remaining rough edges.
   real touchscreen has no keyboard to trigger this. If clicks stop landing right in the
   simulator, close the window and re-run `pio run -e native -t exec` rather than debugging
   the app.
-- **`esp32-p4`** — the real board. **Unverified** — no board in hand yet (ordered);
-  compiles clean against the real toolchain, that's as far as this has been proven.
+- **`esp32-p4`** — the real board, **in hand and bring-up tested** (WiFi provisioning +
+  dozens of reboot tests — see the status paragraph above). This bullet previously read
+  "no board in hand yet (ordered)"; that was written at the 20 Jul port and went stale
+  three days later.
 
 Both environments build the same `src/main.cpp`; only `src/lgfx_device.h` branches
 (`#if defined(ARDUINO)`) to pick the real DSI-panel/GT911-touch HAL vs. the SDL one.
@@ -115,11 +117,23 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 ## What's not done
 
 > **Status summary:** the app itself is now code-complete — every screen described below
-> is wired to the real API and has been run against the real `./waffled-demo` backend. But
-> all of that verification happened in the `native` desktop simulator; the `esp32-p4`
-> target has never run on the actual board (still not in hand — see "unverified on real
-> silicon" below). Treat everything above the hardware-bring-up entries as **simulator-proven,
-> not hardware-proven**.
+> is wired to the real API and has been run against the real `./waffled-demo` backend.
+> Most of that verification happened in the `native` desktop simulator; the board itself is
+> in hand and has been bring-up tested (WiFi provisioning, reboot reliability), but the
+> individual screens below have not each been re-verified on real silicon. Treat everything
+> above the hardware-bring-up entries as **simulator-proven, not hardware-proven**.
+
+- **No audio at all.** The Sounds tile, the seven sound options, the volume slider and the
+  sleep timer are fully wired end to end (device screen → `PATCH /api/waffled-bites/device/settings`
+  → parent web panel → poll), and nothing in this firmware touches I2S — the speaker is
+  silent. The morning alarm's six `ALARM_TONES` are likewise decorative — and note the
+  device doesn't even parse `settings.alarm` today (`GET /device/state` returns it, but
+  `WbDeviceState` has no field for it). Planned in
+  [`docs/product/waffled-bites-audio-plan.md`](../../docs/product/waffled-bites-audio-plan.md):
+  phase 1 synthesises white/ocean/rain/fan/heartbeat on-device (no assets, no streaming, works
+  through a network outage), phase 2 adds sampled forest/lullaby/birdsong cached in the unused
+  `spiffs` partition. Signed off: audio is independent of the quiet-time/bedtime locks (they
+  must not touch `wb_audio`), no reboot persistence, and the alarm gets its own `alarm.volume`.
 
 - **Sounds and Nightlight are done.** Tapping either tile on the Grown-up controls
   screen opens a shared toggle+picker+slider detail screen (`src/ui/control_detail_screen.cpp` —
