@@ -182,8 +182,7 @@ disabled until then.
 **Careful: the alarm and the wake light are two different features.** The tones belong to
 `settings.alarm` (`{on, hour, min, tone}`) and fire at that clock time. The wake light is
 the separate per-day schedule driving `WbWakeLightInfo`'s `sleep`/`warn`/`wake` glow, and it
-stays silent — whether *it* should also chime is question Q2 below, not an assumption to
-build on.
+stays silent by default (D1's scope note), so don't wire tones to the wake-light transitions.
 
 Three concrete gaps this opens up:
 
@@ -269,9 +268,15 @@ a hardware bring-up pass once the board lands.
 ## 9. Decisions (signed off)
 
 **D1 — The sound machine is independent of quiet time and bedtime.** It plays right through
-both. No ducking, no auto-stop, no auto-start; the lock screens must not touch `wb_audio`
-(§4.6). Simplest option and the right one — a sound machine that switches itself off at
-bedtime is backwards.
+both. No ducking, no auto-stop, no auto-start; **the quiet-time and wake-light lock screens
+must not touch `wb_audio`** (§4.6). Simplest option and the right one — a sound machine that
+switches itself off at bedtime is backwards.
+
+*Scope note:* D1 constrains **the lock screens specifically**, not the audio subsystem in
+general. Alarm time is a separate trigger and may legitimately stop or duck the sound
+machine — that's Q3, and it does not violate this rule. Likewise the wake light going green
+stays **silent** by default (it's a visual cue for kids who can't read a clock); revisit only
+if someone asks for a chime.
 
 **D2 — No reboot persistence.** A power blip mid-sleep is a rare enough edge case that
 persisting "was playing" to NVS and resuming pre-poll isn't worth the complexity. Explicitly
@@ -289,17 +294,12 @@ from the pickers or show greyed with a "coming soon" note? Lands on all three su
 (device, web, iOS), each with its own hardcoded list. Recommend shown-disabled — a sound
 that vanishes and reappears looks like a bug, and it advertises what's coming.
 
-**Q2 — Should the wake light chime too?** D1 and D3 settle the sound machine and the alarm,
-but the wake light going green is still silent. Options: stays silent (simplest, and the
-green glow is the whole point of a *visual* wake cue for pre-clock-reading kids), or reuses
-the alarm tone at its own volume. Recommend silent until asked for.
-
-**Q3 — Does the alarm tone interrupt the sound machine?** A live consequence of D1: white
+**Q2 — Does the alarm tone interrupt the sound machine?** A live consequence of D1: white
 noise plays all night, so at alarm time the tone fires *over* it. Recommend ducking the
 sound machine under the tone and then stopping it — it's morning, the kid is meant to be
 waking up — but that's a product call, and "both play at once at full volume" is the
 accidental default if nobody decides.
 
-**Q4 — Speaker choice.** A bare 28 mm driver will sound thin and hissy, which is most of the
+**Q3 — Speaker choice.** A bare 28 mm driver will sound thin and hissy, which is most of the
 perceived quality of a sleep device. Recommend a 40–50 mm 8 Ω 2 W driver in a sealed-ish
 enclosure — the enclosure matters more than the driver. Connector is a 2-pin PH2.0 header.
