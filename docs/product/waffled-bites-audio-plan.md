@@ -75,8 +75,12 @@ one stroke: the audio **licensing** question (no CC-BY assets in an AGPL repo), 
 **download-progress UI** question. It also sidesteps the single hardest quality problem in
 a sleep device — an audible loop seam — because there is no loop.
 
-Until phase 2, `forest` and `lullaby` render as disabled chips on the device's Sounds
-screen with a short "coming soon" note, rather than silently playing the wrong thing.
+Until phase 2, `forest` and `lullaby` render as disabled chips with a short "coming soon"
+note rather than silently playing the wrong thing — and that's **three** surfaces, not one:
+the device's own Sounds screen (`src/ui/control_detail_screen.cpp`), the parent web panel
+(`WaffledBiteDevice.tsx:22`), and the iOS panel (`WaffledBitesModel.swift:18`), which
+carries its own hardcoded copy of the same seven-sound list. All three have to agree, or a
+parent picks a sound on their phone that the device won't play.
 
 ### 3.3 NS4168 is an amplifier, not a codec
 
@@ -167,14 +171,18 @@ lists six `ALARM_TONES` (`WaffledBiteDevice.tsx:26`) that do nothing. **A wake l
 sound is half a feature.**
 
 One-shot tones are the easy case: a few seconds long, no looping problem, trivially small,
-and mostly synthesisable (chime, bells, harp = enveloped sine partials; birdsong needs a
-sample). Fires on the `Wake` transition in `WbWakeLightInfo`, at a volume that is separate
-from the sound-machine volume. Worth doing in the same body of work as phase 1 while the
-audio path is fresh.
+and — for chime, bells, harp, ocean tide and twinkle — synthesisable as enveloped sine
+partials, so phase 1b keeps §3.2's zero-assets rule. **Birdsong is the one exception**: it
+needs a real recording, so it moves to phase 2 alongside `forest` and `lullaby` and is shown
+disabled until then. Fires on the `Wake` transition in `WbWakeLightInfo`, at a volume
+separate from the sound-machine volume. Worth doing in the same body of work as phase 1
+while the audio path is fresh.
 
 ## 6. Phase 2 — sampled sounds (`forest`, `lullaby`, birdsong)
 
 Deferred deliberately, but the shape is known:
+
+Covers `forest`, `lullaby`, and the birdsong wake tone.
 
 - **Distribution.** A versioned sound pack published as a release asset (**not** committed
   binaries in git), fetched over the existing HTTP client into `spiffs`, with a manifest so
@@ -240,8 +248,9 @@ a hardware bring-up pass once the board lands.
 2. **Does the sound machine survive a reboot?** Persisting "was playing" to NVS and
    resuming before the first poll means a 3am power blip doesn't leave a kid in silence.
    Recommend yes.
-3. **Should `forest`/`lullaby` be hidden or shown-disabled** on both the device and the
-   parent web panel during phase 1?
+3. **Should `forest`/`lullaby`/birdsong be hidden or shown-disabled** during phase 1 — and
+   note that lands on all three surfaces (device, web panel, iOS), each with its own
+   hardcoded list.
 4. **Speaker choice.** A bare 28 mm driver will sound thin and hissy, which is most of the
    perceived quality of a sleep device. Recommend a 40–50 mm 8 Ω 2 W driver in a
    sealed-ish enclosure — the enclosure matters more than the driver. Connector is a 2-pin
