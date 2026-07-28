@@ -1,0 +1,250 @@
+# Waffled-Bite device audio — the sound machine (implementation plan)
+
+The Waffled-Bite's Sounds tile is fully wired end to end — parent web panel, device
+screen, settings sync — and makes **no sound at all**. Nothing in
+`apps/waffled-bite-firmware` touches I2S today. This plan closes that, in two phases.
+
+Written as a follow-on to the firmware's milestone 8 (see
+`apps/waffled-bite-firmware/README.md`). Read that first for the board, the two build
+environments, and the HAL conventions this plan reuses.
+
+## 1. Scope
+
+**In:** actual audio output for the sound machine (`settings.sound`), one-shot wake-light
+tones, and the fade/volume/timer behaviours around them.
+
+**Out (deliberately):** the microphone, voice control, and anything TTS. The board's mic
+array is a separate PDM-RX path into the P4 (`sdkconfig.defaults` confirms
+`CONFIG_SOC_I2S_SUPPORTS_PDM_RX` and even LP-I2S voice-activity detection) and has nothing
+to do with playing white noise. It is a "Hey Waffles" feature for a much later milestone;
+scoping it in here would triple the work for zero benefit to a kid trying to sleep.
+
+## 2. What already exists
+
+| Piece | Status |
+| --- | --- |
+| `settings.sound.{on,sound,volume,timerMin}` in the API | Done (`waffledBites.ts`) |
+| Parent-side control (7 sounds, volume, sleep timer) | Done (`apps/web/src/kiosk/WaffledBiteDevice.tsx:22`) |
+| Device-side control screen + device-authed write | Done (`src/ui/control_detail_screen.cpp`, `PATCH /api/waffled-bites/device/settings`) |
+| Device state struct | Done (`WbSoundSettings`, `src/wb_state.h:22`) |
+| 5s poll keeping both sides in sync | Done (`wb_do_poll` in `main.cpp`) |
+| **Anything that produces audio** | **Nothing. No I2S, no HAL, no assets.** |
+
+So this is not a feature that needs designing — it needs a speaker driver behind an
+interface that already exists.
+
+## 3. The load-bearing decisions
+
+### 3.1 Audio is generated and played on-device. Never streamed.
+
+Two reasons, the first decisive:
+
+**The failure mode is a kid's bedroom.** If the self-hosted box reboots for an upgrade at
+2am, or Wi-Fi blips, streamed audio stops and a child wakes up in silence. Continuous
+overnight playback must have no network dependency whatsoever. The device already has an
+offline screen and a poll-failure streak (`wb_mark_poll_failed`) precisely because the
+network is assumed to be unreliable — audio has to hold to the same standard.
+
+**The Wi-Fi path is the weakest link on this board.** The ESP32-P4 has no radio. Wi-Fi is
+remoted through the on-board ESP32-C6 co-processor over ESP-HOSTED/SDIO — extra latency,
+extra jitter, and CPU cost per packet, on a link that already needed a crash-loop fix
+during bring-up. It is the worst available transport to hang ten continuous hours of audio
+off.
+
+Playback must therefore keep running unchanged through a total network outage. That is a
+testable requirement, not a nice-to-have (see §8).
+
+### 3.2 Phase 1 ships zero audio assets — the sounds are synthesised
+
+Of the seven sounds in the web UI, **five are filtered noise plus a slow modulator**, which
+the P4 generates with CPU to spare:
+
+| Sound | Recipe |
+| --- | --- |
+| `white` | Raw noise, gently shelved so it isn't harsh |
+| `fan` | Brown noise, low-passed ~500 Hz, with a faint tonal hum underneath |
+| `rain` | High-passed noise + sparse randomly-enveloped droplet transients |
+| `ocean` | Band-passed noise with a ~0.1 Hz amplitude swell and a correlated filter sweep |
+| `heartbeat` | Two enveloped low-frequency sine bursts per cycle at ~60 bpm |
+| `forest` | **Needs real recordings** (birds, crickets) — phase 2 |
+| `lullaby` | **Needs a real recording** (a synthesised melody sounds cheap) — phase 2 |
+
+Drawing the phase boundary here is the whole point of the plan. Synthesis-only kills, in
+one stroke: the audio **licensing** question (no CC-BY assets in an AGPL repo), the
+**storage** question, the **download/cache-invalidation** question, and the
+**download-progress UI** question. It also sidesteps the single hardest quality problem in
+a sleep device — an audible loop seam — because there is no loop.
+
+Until phase 2, `forest` and `lullaby` render as disabled chips on the device's Sounds
+screen with a short "coming soon" note, rather than silently playing the wrong thing.
+
+### 3.3 NS4168 is an amplifier, not a codec
+
+The product page calls it an "audio codec"; it isn't. It's a class-D amp with an I2S
+digital input, fixed hardware gain, and a shutdown pin. **No I2C register configuration, no
+codec init sequence, no driver library.** You write I2S frames and it makes sound. This is
+a meaningful chunk of expected effort that simply doesn't exist.
+
+Consequences:
+
+- **Volume 0–100 is applied in software** by scaling PCM before it hits I2S. It must use a
+  logarithmic curve — with linear scaling the bottom half of the slider does nothing
+  audible, which will read as a bug.
+- **The amp's enable pin must be sequenced around fades** (enable → fade in; fade out →
+  short wait → disable) or every toggle pops. On a bedtime device a pop at lights-out is
+  disqualifying, so this is a correctness requirement, not polish.
+
+### 3.4 A `wb_audio` HAL, mirroring `wb_http` / `wb_wifi` / `wb_store`
+
+The firmware already has a clean three-file pattern for everything hardware-dependent, and
+audio gets the same:
+
+```
+src/wb_audio.h          // interface — start(sound, volume), stop(), set_volume(), fade
+src/wb_audio_esp32.cpp  // I2S TX to the NS4168 + amp enable GPIO
+src/wb_audio_native.cpp // SDL2 audio callback
+src/wb_synth.cpp/.h     // pure DSP — no platform, no LVGL, unit-testable
+```
+
+Screens never learn which target they're on, exactly as with networking today.
+
+**SDL2 is already linked for the simulator** (`platformio.ini`'s `[env:native]` links
+`-lSDL2` for LovyanGFX's display panel), so `native` audio costs an audio callback and
+nothing else. The entire synth engine can be written, heard, and tuned on a desktop with no
+board attached, then bring-up on hardware becomes purely an I2S-plumbing exercise (§7).
+
+### 3.5 A local tap is instant; only parent-side changes wait for the poll
+
+The device's own Sounds screen must start/stop audio **immediately** on tap, then PATCH.
+Routing local taps through the 5s poll would mean a kid taps "off" and waits five seconds
+in the dark — indistinguishable from broken. Parent-side changes made from the web app
+legitimately arrive on the next poll; that's fine and already how every other setting
+behaves.
+
+This mirrors the existing optimistic path in `wb_patch_settings`.
+
+### 3.6 Phase 2 is server-as-library, device-as-cache — still not streaming
+
+When real recordings land, the server hosts them and the device **downloads once, caches
+locally, and plays from flash**. That keeps the upside people actually want from
+server-hosted audio — add or replace sounds without reflashing firmware, and eventually
+parent-recorded voice or a bedtime story — with none of the runtime fragility of §3.1.
+
+The cache goes in the **`spiffs` partition, which already exists and is entirely unused**
+(`default_16MB.csv` reserves `0x360000` = 3.5 MB; `LV_USE_FS_LITTLEFS` is `0` and nothing
+mounts it — fonts and the mascot are compiled-in C arrays). Two reasons that beats both an
+SD card and compiled-in assets:
+
+- **It survives OTA.** `app0`/`app1` get overwritten by an update; the data partition
+  doesn't. Re-downloading the whole sound library after every firmware update would be
+  absurd.
+- **No SD card required.** At mono 22.05 kHz, a 30-second forest loop is roughly 360 KB as
+  MP3. The full library fits several times over in 3.5 MB.
+
+Genuine streaming stays reserved for short, ephemeral, failure-survivable one-shots (a
+parent's recorded voice message, later TTS nudges) — and even those should buffer fully
+before playing.
+
+## 4. Phase 1 — the sound machine, synthesised
+
+1. **`wb_synth`** — an xorshift noise source, a small biquad set, an LFO, and a per-sound
+   parameter table implementing §3.2's five recipes. Pure C++, no platform headers.
+2. **`wb_audio` HAL** — ring buffer filled by the synth, drained by an I2S write task
+   pinned to its own core on `esp32-p4`, and by the SDL audio callback on `native`.
+3. **Volume + fades** — log curve; fade in/out over ~400 ms; amp enable/disable sequenced
+   around the fades per §3.3.
+4. **State wiring** — `wb_do_poll` already parses `settings.sound`; playback reacts to
+   deltas on `{on, tone, volume}`. Local taps call the HAL directly first (§3.5).
+5. **Sleep timer** — `timerMin` (0/15/30/60/120) fades out and stops, and must survive a
+   poll failure: the countdown is local, not server-driven.
+6. **Interaction with the locks** — quiet time and the wake-light `sleep`/`warn` states
+   force-navigate the UI; decide and encode whether they also duck or stop audio (§9).
+
+## 5. Phase 1b — wake-light tones (small, high value)
+
+The wake light already ships and already locks the device overnight, and the web UI already
+lists six `ALARM_TONES` (`WaffledBiteDevice.tsx:26`) that do nothing. **A wake light with no
+sound is half a feature.**
+
+One-shot tones are the easy case: a few seconds long, no looping problem, trivially small,
+and mostly synthesisable (chime, bells, harp = enveloped sine partials; birdsong needs a
+sample). Fires on the `Wake` transition in `WbWakeLightInfo`, at a volume that is separate
+from the sound-machine volume. Worth doing in the same body of work as phase 1 while the
+audio path is fresh.
+
+## 6. Phase 2 — sampled sounds (`forest`, `lullaby`, birdsong)
+
+Deferred deliberately, but the shape is known:
+
+- **Distribution.** A versioned sound pack published as a release asset (**not** committed
+  binaries in git), fetched over the existing HTTP client into `spiffs`, with a manifest so
+  the device knows what it has. Every asset must be CC0 or otherwise AGPL-compatible, with
+  provenance recorded in-repo.
+- **The thing that will actually bite is gapless looping, not decode cost.** MP3 encoder
+  padding makes seam-free loops painful. With 32 MB of PSRAM, decode the whole loop to PCM
+  **once** at track start and loop the buffer with a short crossfade — keep the decoder out
+  of the audio path entirely.
+- **Cache eviction / partial-download recovery**, plus what the device plays if the
+  selected sound isn't cached yet and the server is unreachable (proposal: fall back to the
+  nearest synth bed rather than silence).
+
+## 7. Verification path
+
+The board **is** in hand — the README's two "no board in hand yet (ordered)" notes are
+stale leftovers from the 20 Jul port commit, superseded three days later by real-hardware
+WiFi bring-up including reboot testing (`a9e9121b`). They're corrected as part of this
+work. So both halves of the verification are available:
+
+- **Simulator first.** The synth, fades, volume curve, and sleep timer are all written,
+  unit-tested, and *listened to* on `native` with no board attached. This is where the
+  sound design actually happens.
+- **Then hardware**, which reduces to I2S plumbing plus the things a simulator can never
+  prove: amp-enable pop timing, speaker and enclosure quality, and current draw at volume
+  (relevant if the battery socket is ever used).
+- The vendor repo (`Elecrow-RD/CrowPanel-Advanced-7inch-…`) documents the I2S pins
+  (`AUDIO_GPIO_LRCLK 21`, `BCLK 22`, `SDATA 23`, `AUDIO_GPIO_CTRL 30` for amp enable) and
+  ships Eagle schematics under `Eagle_SCH&PCB/`. **Confirm against the schematic** before
+  trusting those numbers — the same board family has an ESP32-S3 variant and vendor docs
+  mix them up.
+
+## 8. TDD plan
+
+The synth is the rare firmware component that unit-tests cleanly, so it gets real TDD
+rather than the simulator-verification fallback the LVGL screens rely on.
+
+`pio test -e native_test` already exists (`test/test_boot_flow/`, Unity). Add
+`test/test_synth/`, extending `build_src_filter` to include `wb_synth.cpp`. Failing tests
+first, in this order:
+
+1. Each sound id produces non-silent output, and an unknown id fails closed (silence, not
+   noise).
+2. The volume curve is logarithmic and monotonic; 0 is true digital silence; 100 doesn't
+   clip.
+3. Fade in/out reaches its target in the expected sample count and starts/ends at zero
+   amplitude — the anti-pop guarantee, asserted on samples.
+4. The sleep timer stops output after exactly `timerMin`, driven by injected time (the same
+   pattern `wb_tick_hal` already uses).
+5. Generated output never repeats bit-for-bit over a long window — the no-audible-loop
+   guarantee.
+6. **Playback survives a simulated network outage**: with the HTTP layer stubbed to fail
+   past the offline threshold, audio state is unchanged. This is §3.1 as an executable
+   assertion and is the single most important test here.
+
+Then: `native` listening pass for tuning (does the ocean actually sound like an ocean), and
+a hardware bring-up pass once the board lands.
+
+## 9. Open questions — need a decision before phase 1
+
+1. **Do quiet time and wake-light `sleep`/`warn` interact with the sound machine?** Options:
+   independent (simplest), quiet time ducks it, or bedtime auto-starts it. Product call.
+2. **Does the sound machine survive a reboot?** Persisting "was playing" to NVS and
+   resuming before the first poll means a 3am power blip doesn't leave a kid in silence.
+   Recommend yes.
+3. **Should `forest`/`lullaby` be hidden or shown-disabled** on both the device and the
+   parent web panel during phase 1?
+4. **Speaker choice.** A bare 28 mm driver will sound thin and hissy, which is most of the
+   perceived quality of a sleep device. Recommend a 40–50 mm 8 Ω 2 W driver in a
+   sealed-ish enclosure — the enclosure matters more than the driver. Connector is a 2-pin
+   PH2.0 header.
+5. **Is a separate wake-tone volume exposed to parents**, or derived from the sound-machine
+   volume?

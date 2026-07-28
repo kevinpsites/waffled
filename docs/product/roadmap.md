@@ -164,9 +164,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   hardware. Tap-to-complete on the device's own task list handles chores needing a
   parent's OK (shows "Waiting on a parent's approval" rather than silently reverting)
   and photo-required chores (hidden from the device's list entirely — no camera-capture
-  flow yet, so those are completed from a parent's phone/web instead). **Pending:** OTA updates,
-  TLS certificate validation for `https://` server addresses, and on-device photo
-  capture — see `apps/waffled-bite-firmware/README.md` for the full list of open items.
+  flow yet, so those are completed from a parent's phone/web instead). **Pending:** device
+  audio (see below), OTA updates, TLS certificate validation for `https://` server
+  addresses, and on-device photo capture — see `apps/waffled-bite-firmware/README.md` for
+  the full list of open items.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
   are REST + live-refresh bus.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend
@@ -195,6 +196,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   covers the engineering bring-up log; this would be the "buy this, plug in this cable,
   run this command" doc on the docs site, paired with the existing pairing walkthrough
   in [`waffled-bites.md`](../../website/docs/src/content/docs/features/waffled-bites.md).
+
+- **Waffled-Bite sound machine — make the speaker actually work.** The Sounds tile, its
+  seven sounds, the volume slider and the sleep timer all sync end to end today and produce
+  no sound; the firmware has no audio path at all. Plan:
+  [`waffled-bites-audio-plan.md`](waffled-bites-audio-plan.md). Phase 1 **synthesises** white
+  noise, ocean, rain, box fan and heartbeat on the device itself — no audio files, no
+  streaming, so a kid's room stays quiet-not-silent even if the home server reboots at 2am
+  — plus one-shot tones for the wake-up light, which currently offers six alarm tones that
+  do nothing. Phase 2 adds the two sounds that need real recordings (forest, lullaby),
+  downloaded once from the server and cached on the device.
 
 - **QR-code pairing for Waffled-Bites.** The device has a screen but no camera (the
   ELECROW board has none), so a QR flow only works one direction: the device renders a
