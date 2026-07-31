@@ -9,6 +9,7 @@ import { requireTenant, requireAdmin, type Tenant } from '../households/househol
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
 import { assertPersonInHousehold } from '../../platform/household-refs'
 import { requireCapability } from '../../platform/permissions'
+import { lockLedgerSubject } from '../../platform/ledger-lock'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -250,6 +251,7 @@ export async function applyConversion(
   const client = await getPool().connect()
   try {
     await client.query('begin')
+    await lockLedgerSubject(client, tenant.householdId, personId)
     const cur = await client.query<ConversionRow>(
       `select * from currency_conversions where household_id=$1 and id=$2 and deleted_at is null`,
       [tenant.householdId, id]
