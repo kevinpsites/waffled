@@ -840,7 +840,7 @@ private let fixtureRestScope = RestDataScopeKey(
         let signOutResult = await signOut.value
         #expect(updateResult == .transitionInProgress)
         #expect(signOutResult)
-        #expect(recorder.events == ["stop:false", "stop:false"])
+        #expect(recorder.events == ["stop:false", "stop:true"])
     }
 
     @Test func signOutPreemptsReauthenticationBeforeCredentialAdoptionOrRestart() async {
@@ -860,14 +860,14 @@ private let fixtureRestScope = RestDataScopeKey(
 
         let signOut = Task { await sync.signOut() }
         await waitForScopeRotation(sync, from: oldScope)
-        #expect(recorder.events == ["stop:false"])
+        #expect(recorder.events == ["stop:true"])
         await firstStop.succeed(true)
 
         let reauthenticationResult = await reauthentication.value
         let signOutResult = await signOut.value
         #expect(!reauthenticationResult)
         #expect(signOutResult)
-        #expect(recorder.events == ["stop:false", "stop:false"])
+        #expect(recorder.events == ["stop:true", "stop:true"])
     }
 
     @Test func completedSignOutRejectsALateResponseBoundToItsOldScope() async {
@@ -888,7 +888,7 @@ private let fixtureRestScope = RestDataScopeKey(
         }
 
         #expect(!didReauthenticate)
-        #expect(recorder.events == ["stop:false"])
+        #expect(recorder.events == ["stop:true"])
     }
 }
 

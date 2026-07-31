@@ -510,16 +510,14 @@ final class SyncManager {
     /// swaps in a different person's token. Tears the PowerSync session down and stands
     /// it back up against whatever token `AppConfig` now reports, the same path a fresh
     /// launch takes. `signOut()` resets `started`, so `start()` runs clean.
-    /// `clearLocal` wipes the on-device mirror as part of the teardown — needed when the
-    /// *household* changes (not just the person), because the local SQLite is one shared
-    /// file: a plain disconnect can leave the previous household's rows visible (and the
-    /// `households LIMIT 1` write path picking the wrong one) until PowerSync reconciles
-    /// buckets. The kiosk person-switch keeps the default (`false`): same household, so
-    /// the cheap disconnect is correct.
+    /// `clearLocal` wipes the on-device mirror as part of the teardown. It defaults to
+    /// true for every principal change — household switches, kiosk profile claims, and
+    /// future account switches — because a shared SQLite file must never bridge two
+    /// authenticated people, even when they belong to the same household.
     @discardableResult
     func reauthenticate(
         expectedScope: RestDataScopeKey,
-        clearLocal: Bool = false,
+        clearLocal: Bool = true,
         adoptCredentials: (() -> Void)? = nil
     ) async -> Bool {
         await connectionTransitions.run(
@@ -544,14 +542,11 @@ final class SyncManager {
     /// PowerSync, drop the observable state, and reset so the next `start()` runs
     /// fresh. Keychain tokens are cleared separately by `Session`.
     ///
-    /// By default we `disconnect()` (not `disconnectAndClear()`): clearing the local
-    /// mirror is heavy work to run during teardown and isn't needed for plain sign-out
-    /// or a same-household person-switch — on the next login PowerSync re-scopes its
-    /// buckets to the new token, the same as the web. Keeping teardown light also avoids
-    /// a memory/Keychain spike at sign-out. A **household switch** passes `clearLocal:
-    /// true` so the previous household's rows can't linger in the shared SQLite file.
+    /// Clearing is the secure default: ordinary sign-out, token expiry, household
+    /// changes, and kiosk profile changes are all principal boundaries. Same-principal
+    /// transport reconnects use `stopSync(clearLocal: false)` directly.
     @discardableResult
-    func signOut(clearLocal: Bool = false) async -> Bool {
+    func signOut(clearLocal: Bool = true) async -> Bool {
         await connectionTransitions.run(
             preempting: true,
             busyResult: false,
@@ -592,7 +587,6 @@ final class SyncManager {
         // A newer account-exit transition owns all observable cleanup. The stale
         // predecessor must not publish teardown state after it was superseded.
         guard connectionTransitions.isCurrent(epoch) else { return false }
-
         members = []; allEvents = []
         personCount = 0; eventCount = 0; pendingUploads = 0
         lastSyncedAt = nil

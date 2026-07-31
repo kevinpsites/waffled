@@ -133,8 +133,11 @@ final class KioskMode {
     /// Drop the per-person session + tear down the live sync (no server revoke — the
     /// next claim re-scopes it). Leaves the device pairing intact.
     private func dropToPicker(sync: SyncManager) async {
+        // Clear the previous profile's mirror before exposing the shared picker or
+        // accepting another profile. Same-household identities are still separate
+        // privacy principals.
+        await sync.signOut()
         AuthTokens.clear()
         hasProfile = false
-        await sync.signOut()
     }
 }

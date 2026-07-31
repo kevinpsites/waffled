@@ -89,7 +89,7 @@ final class Session {
     /// Tear down auth and sync as one principal boundary. The loading gate prevents a
     /// new login from starting while the previous PowerSync connection is still being
     /// disconnected; `SyncManager.signOut` rotates the REST scope before it suspends.
-    func signOut(sync: SyncManager, clearLocal: Bool = false) async {
+    func signOut(sync: SyncManager, clearLocal: Bool = true) async {
         guard case .authed = phase else { return }
         let refresh = AuthTokens.refreshToken
         AuthTokens.clear()
