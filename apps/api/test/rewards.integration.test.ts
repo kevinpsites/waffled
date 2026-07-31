@@ -433,6 +433,91 @@ describe('reward approval — per-reward flag + household default', () => {
   })
 })
 
+describe('reward redemption concurrency', () => {
+  it('serializes auto-approved redemptions so parallel requests cannot overspend', async () => {
+    const personId = await addMember('Concurrent auto', 'kid', false, 'dev|concurrent-auto')
+    await grantStars(personId, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Concurrent instant reward',
+      cost: 8,
+      requiresApproval: false,
+    })).body).reward
+
+    const results = await Promise.all([
+      call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId }),
+      call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId }),
+    ])
+
+    expect(results.map((result) => result.statusCode).sort()).toEqual([201, 409])
+    expect(await starsOf(personId)).toBe(2)
+    const approved = await withClient((c) => c.query(
+      `select id from reward_redemptions
+        where household_id=$1 and person_id=$2 and reward_id=$3 and status='approved'`,
+      [householdId, personId, reward.id]
+    ))
+    expect(approved.rowCount).toBe(1)
+  })
+
+  it('serializes approvals for different pending requests against the same balance', async () => {
+    const personId = await addMember('Concurrent approval', 'kid', false, 'dev|concurrent-approval')
+    await grantStars(personId, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Concurrent gated reward',
+      cost: 8,
+      requiresApproval: true,
+    })).body).reward
+    const first = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).body).redemption
+    const second = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).body).redemption
+
+    const results = await Promise.all([
+      call('POST', `/api/redemptions/${first.id}/approve`, kevin),
+      call('POST', `/api/redemptions/${second.id}/approve`, kevin),
+    ])
+
+    expect(results.map((result) => result.statusCode).sort()).toEqual([200, 409])
+    expect(await starsOf(personId)).toBe(2)
+    const statuses = await withClient((c) => c.query<{ status: string }>(
+      `select status from reward_redemptions where id = any($1::uuid[]) order by status`,
+      [[first.id, second.id]]
+    ))
+    expect(statuses.rows.map((row) => row.status)).toEqual(['approved', 'pending'])
+  })
+
+  it('uses the same balance lock for a reward and a currency conversion', async () => {
+    const personId = await addMember('Concurrent ledger', 'kid', false, 'dev|concurrent-ledger')
+    await grantStars(personId, 10)
+    const currency = JSON.parse((await call('POST', '/api/currencies', kevin, {
+      label: 'Race points',
+      symbol: 'R',
+    })).body).currency
+    const conversion = JSON.parse((await call('POST', '/api/conversions', kevin, {
+      fromCurrency: 'stars',
+      toCurrency: currency.key,
+      fromAmount: 8,
+      toAmount: 1,
+    })).body).conversion
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Concurrent cross-path reward',
+      cost: 8,
+      requiresApproval: false,
+    })).body).reward
+
+    const results = await Promise.all([
+      call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId }),
+      call('POST', `/api/conversions/${conversion.id}/apply`, kevin, { personId, times: 1 }),
+    ])
+
+    expect(results.filter((result) => result.statusCode < 300)).toHaveLength(1)
+    expect(results.filter((result) => result.statusCode === 409)).toHaveLength(1)
+    expect(await starsOf(personId)).toBe(2)
+    const debits = await withClient((c) => c.query(
+      `select 1 from ledger_entries where household_id=$1 and person_id=$2 and currency='stars' and amount < 0`,
+      [householdId, personId]
+    ))
+    expect(debits.rowCount).toBe(1)
+  })
+})
+
 describe('reward capability gating (non-admin members)', () => {
   let adultId = '', kidId = '', adultToken = '', kidToken = ''
 
