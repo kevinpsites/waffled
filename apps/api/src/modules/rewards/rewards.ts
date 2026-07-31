@@ -7,6 +7,8 @@ import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { rewardsRoutes, moduleRoutes } from '../../platform/route-guards'
+import { assertPersonInHousehold, HouseholdReferenceError } from '../../platform/household-refs'
+import { requireCapability } from '../../platform/permissions'
 import { registerRewardCaptureTarget } from './rewards-capture'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
@@ -88,6 +90,15 @@ export async function getRewardsRequireApproval(householdId: string): Promise<bo
   return rows[0]?.v ?? true
 }
 
+async function assertSpendableCurrencyInHousehold(householdId: string, currency: string): Promise<void> {
+  const { rowCount } = await query(
+    `select 1 from currencies
+      where household_id=$1 and key=$2 and spendable=true and deleted_at is null`,
+    [householdId, currency]
+  )
+  if (!rowCount) throw new HouseholdReferenceError('currency not found')
+}
+
 export async function balanceFor(householdId: string, personId: string, currency = 'stars'): Promise<number> {
   const { rows } = await query<{ balance: string | null }>(
     `select coalesce(sum(amount),0) as balance from ledger_entries
@@ -109,6 +120,8 @@ export async function awardSpot(
   note?: string | null
 ): Promise<{ id: string }> {
   const cur = currency?.trim() || (await getDefaultCurrencyKey(tenant.householdId))
+  await assertPersonInHousehold(tenant.householdId, personId)
+  await assertSpendableCurrencyInHousehold(tenant.householdId, cur)
   const { rows } = await query<{ id: string }>(
     `insert into ledger_entries (household_id, person_id, currency, amount, reason, ref_type, ref_id, note, created_by)
      values ($1,$2,$3,$4,'spot_award',null,null,$5,$6) returning id`,
@@ -175,6 +188,13 @@ export async function requestRedemption(tenant: Tenant, rewardId: string, person
   )
   const reward = rows[0]
   if (!reward) return null
+
+  // `personId` is client-controlled (and capture commits call this service
+  // directly), so prove the redemption subject belongs to the active household
+  // before either the pending or auto-approved path can persist a relationship.
+  await assertPersonInHousehold(tenant.householdId, personId)
+  if (personId !== tenant.personId) await requireCapability(tenant, 'reward.manage')
+  await assertSpendableCurrencyInHousehold(tenant.householdId, reward.currency)
 
   // This reward needs a parent → a pending request for the approval queue.
   if (reward.requires_approval) {
@@ -290,6 +310,7 @@ export function registerRewardRoutes(api: Api): void {
     const title = body.title?.trim()
     if (!title) return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
     const currency = body.currency?.trim() || (await getDefaultCurrencyKey(tenant.householdId))
+    await assertSpendableCurrencyInHousehold(tenant.householdId, currency)
     const category = body.category?.trim() || null
     // Inherit the household default unless the create form set it explicitly.
     const requiresApproval = typeof body.requiresApproval === 'boolean'
@@ -317,7 +338,11 @@ export function registerRewardRoutes(api: Api): void {
     }
     if ('emoji' in body) { sets.push(`emoji = $${i++}`); vals.push(body.emoji ?? null) }
     if (typeof body.cost === 'number') { sets.push(`cost = $${i++}`); vals.push(Math.max(0, Math.round(body.cost))) }
-    if (typeof body.currency === 'string' && body.currency.trim()) { sets.push(`currency = $${i++}`); vals.push(body.currency.trim()) }
+    if (typeof body.currency === 'string' && body.currency.trim()) {
+      const currency = body.currency.trim()
+      await assertSpendableCurrencyInHousehold(tenant.householdId, currency)
+      sets.push(`currency = $${i++}`); vals.push(currency)
+    }
     if ('category' in body) { sets.push(`category = $${i++}`); vals.push(body.category?.trim() || null) }
     if (typeof body.requiresApproval === 'boolean') { sets.push(`requires_approval = $${i++}`); vals.push(body.requiresApproval) }
     if (sets.length === 0) return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields' })
