@@ -16,7 +16,7 @@ unless you want to — Caddy already:
 - Proxies `/api/*` → the api container.
 - Proxies the Google OAuth callback → the api container.
 - Proxies the device-facing PowerSync port → the private PowerSync container.
-- Serves uploaded media at `/media/*`.
+- Serves uploaded media at short-lived signed `/media/*` URLs after API authorization.
 - Can provision **automatic HTTPS** for a real hostname.
 
 ## The easy path: `./waffled setup`

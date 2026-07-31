@@ -39,8 +39,8 @@ Compose project `waffled`. Startup order: `postgres → api → powersync → ca
 | **migrate** | `waffled-api` | One-shot; applies migrations then exits. Idempotent — re-runs safely on every `up`/upgrade. |
 | **api** | `waffled-api` | The Node/TypeScript backend. Serves `/api/*`, mints PowerSync tokens, writes media, runs background jobs. Health at `/healthz`. |
 | **powersync** | `journeyapps/powersync-service` | The offline-sync engine. Replicates the app DB to per-household buckets; iOS + the kiosk calendar sync against it. |
-| **caddy** | `waffled-caddy` | Reverse proxy **and** web server — the React SPA is baked into this image. Proxies `/api/*` → api, serves `/media/*`, SPA fallback. |
-| **backup** | `waffled-backup` | Nightly `pg_dump` sidecar (on by default). Local + optional S3, optional media. Records every run for the health check. |
+| **caddy** | `waffled-caddy` | Reverse proxy **and** web server — the React SPA is baked into this image. Proxies `/api/*` → api, authorizes signed `/media/*`, SPA fallback. |
+| **backup** | `waffled-backup` | Nightly database-and-media sidecar (on by default), with optional S3. Records every run for the health check. |
 | **lgtm** *(optional)* | `grafana/otel-lgtm` | All-in-one Grafana/Prometheus/Tempo/Loki. Only with `./waffled observability up`. |
 
 The web app and the kiosk are the **same build** served by Caddy — the kiosk is a fullscreen/PWA

@@ -152,6 +152,17 @@ describe('Compose network defaults', () => {
     expect(example).toContain('GOOGLE_CALENDAR_REDIRECT_URI=http://localhost:8080/auth/google/calendar/callback')
   })
 
+  it('authorizes signed media URLs before serving private files', async () => {
+    const caddyfile = await readFile(resolve(root, 'infra/compose/caddy/Caddyfile'), 'utf8')
+    expect(caddyfile).toContain('forward_auth api:3000')
+    expect(caddyfile).toContain('uri /api/media/authorize')
+    expect(caddyfile).toContain('Cache-Control "private, max-age=300, no-transform"')
+    expect(caddyfile).not.toContain('Cache-Control "public, max-age=31536000, immutable"')
+
+    const compose = await readFile(resolve(root, 'infra/compose/docker-compose.yml'), 'utf8')
+    expect(compose).toContain('BACKUP_INCLUDE_MEDIA: ${BACKUP_INCLUDE_MEDIA:-true}')
+  })
+
   it('configures the PowerSync Caddy listener in every setup mode', async () => {
     const cli = await readFile(resolve(root, 'waffled'), 'utf8')
     expect(cli.match(/set_env_var POWERSYNC_CADDY_ADDRESS/g)?.length).toBeGreaterThanOrEqual(3)

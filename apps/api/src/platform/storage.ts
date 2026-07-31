@@ -5,9 +5,9 @@
 // factory style in platform/llm.ts: a small interface + a driver-keyed factory.
 //
 // Keys are `<householdId>/<hex>.<ext>` so blobs are namespaced per household and the
-// random hex avoids collisions. The public URL is resolved at READ time from the
-// key via mediaUrl(), so MEDIA_BASE_URL can change without a migration.
-import { randomBytes } from 'node:crypto'
+// random hex avoids collisions. A short-lived signed URL is resolved at READ time
+// from the key via mediaUrl(), so MEDIA_BASE_URL can change without a migration.
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { mkdir, writeFile, unlink } from 'node:fs/promises'
 import { dirname, resolve, sep } from 'node:path'
 
@@ -32,6 +32,29 @@ function mediaDir(): string {
 }
 
 const MEDIA_KEY_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/([0-9a-f]{32})\.(jpg|png|webp)$/
+const DEFAULT_MEDIA_URL_TTL_SECONDS = 10 * 60
+const MAX_MEDIA_URL_TTL_SECONDS = 60 * 60
+
+function mediaUrlTtlSeconds(): number {
+  const configured = Number.parseInt(process.env.MEDIA_URL_TTL_SECONDS ?? '', 10)
+  if (!Number.isFinite(configured)) return DEFAULT_MEDIA_URL_TTL_SECONDS
+  return Math.min(Math.max(configured, 30), MAX_MEDIA_URL_TTL_SECONDS)
+}
+
+// Domain-separate media signatures from JWTs even when both intentionally share the
+// deployment's required LOCAL_JWT_SECRET. Operators can rotate media links separately
+// by setting MEDIA_SIGNING_KEY without rewriting any stored database keys.
+function mediaSigningSecret(): string {
+  return process.env.MEDIA_SIGNING_KEY?.trim()
+    || process.env.LOCAL_JWT_SECRET?.trim()
+    || 'waffled-local-dev-secret-change-me'
+}
+
+function mediaSignature(key: string, expires: number): string {
+  return createHmac('sha256', mediaSigningSecret())
+    .update(`waffled-media-v1\n${key}\n${expires}`)
+    .digest('base64url')
+}
 
 export function mediaKeyBelongsToHousehold(key: string, householdId: string): boolean {
   const match = MEDIA_KEY_RE.exec(key)
@@ -91,10 +114,35 @@ export function mediaKey(householdId: string, contentType: string): string {
   return `${householdId}/${hex}.${extFor(contentType)}`
 }
 
-// Resolve a stored key to its public URL (or null when there's no key). The base is
-// MEDIA_BASE_URL (default '/media'), so it can change without rewriting stored keys.
-export function mediaUrl(key: string | null | undefined): string | null {
+// Resolve a stored key to a short-lived signed URL (or null when there's no key).
+// The key stays stable in the database; every API read emits a fresh bearer URL. Caddy
+// asks /api/media/authorize to validate the signature before serving the local blob.
+export function mediaUrl(key: string | null | undefined, nowMs = Date.now()): string | null {
   if (!key || !MEDIA_KEY_RE.test(key)) return null
-  const base = process.env.MEDIA_BASE_URL || '/media'
-  return `${base}/${key}`
+  const base = (process.env.MEDIA_BASE_URL || '/media').replace(/\/$/, '')
+  const ttl = mediaUrlTtlSeconds()
+  // Bucket signatures so repeated API refreshes return the same image URL for about
+  // half its lifetime. This preserves browser/decoded-image caching without turning
+  // the URL back into a durable bearer credential.
+  const bucket = Math.max(30, Math.floor(ttl / 2))
+  const expires = Math.floor(Math.floor(nowMs / 1000) / bucket) * bucket + ttl
+  const sig = mediaSignature(key, expires)
+  return `${base}/${key}?expires=${expires}&sig=${sig}`
+}
+
+/** Validate the short-lived URL Caddy received before it reads from the media volume. */
+export function verifyMediaUrl(
+  key: string,
+  expiresRaw: string | null | undefined,
+  signature: string | null | undefined,
+  nowMs = Date.now()
+): boolean {
+  if (!MEDIA_KEY_RE.test(key) || !expiresRaw || !/^\d{10}$/.test(expiresRaw) || !signature) return false
+  const expires = Number(expiresRaw)
+  const now = Math.floor(nowMs / 1000)
+  if (!Number.isSafeInteger(expires) || expires < now || expires - now > mediaUrlTtlSeconds()) return false
+
+  const expected = Buffer.from(mediaSignature(key, expires))
+  const supplied = Buffer.from(signature)
+  return expected.length === supplied.length && timingSafeEqual(expected, supplied)
 }

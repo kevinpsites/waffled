@@ -5,7 +5,7 @@ import { readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomBytes } from 'node:crypto'
-import { getBlobStore, mediaKey, mediaKeyBelongsToHousehold, mediaUrl } from '../src/platform/storage'
+import { getBlobStore, mediaKey, mediaKeyBelongsToHousehold, mediaUrl, verifyMediaUrl } from '../src/platform/storage'
 
 const HOUSEHOLD = '11111111-1111-1111-1111-111111111111'
 
@@ -16,15 +16,21 @@ beforeEach(() => {
   savedEnv.MEDIA_DIR = process.env.MEDIA_DIR
   savedEnv.MEDIA_BASE_URL = process.env.MEDIA_BASE_URL
   savedEnv.STORAGE_DRIVER = process.env.STORAGE_DRIVER
+  savedEnv.LOCAL_JWT_SECRET = process.env.LOCAL_JWT_SECRET
+  savedEnv.MEDIA_SIGNING_KEY = process.env.MEDIA_SIGNING_KEY
+  savedEnv.MEDIA_URL_TTL_SECONDS = process.env.MEDIA_URL_TTL_SECONDS
   dir = join(tmpdir(), `waffled-storage-${randomBytes(8).toString('hex')}`)
   process.env.MEDIA_DIR = dir
+  process.env.LOCAL_JWT_SECRET = 'test-media-signing-secret-that-is-long-enough'
   delete process.env.MEDIA_BASE_URL
+  delete process.env.MEDIA_SIGNING_KEY
+  delete process.env.MEDIA_URL_TTL_SECONDS
   delete process.env.STORAGE_DRIVER
 })
 
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
-  for (const k of ['MEDIA_DIR', 'MEDIA_BASE_URL', 'STORAGE_DRIVER'] as const) {
+  for (const k of ['MEDIA_DIR', 'MEDIA_BASE_URL', 'STORAGE_DRIVER', 'LOCAL_JWT_SECRET', 'MEDIA_SIGNING_KEY', 'MEDIA_URL_TTL_SECONDS'] as const) {
     if (savedEnv[k] === undefined) delete process.env[k]
     else process.env[k] = savedEnv[k]
   }
@@ -91,13 +97,41 @@ describe('mediaUrl', () => {
 
   it('builds from the default base', () => {
     const key = `${HOUSEHOLD}/${'a'.repeat(32)}.jpg`
-    expect(mediaUrl(key)).toBe(`/media/${key}`)
+    const url = new URL(mediaUrl(key, 1_700_000_000_000)!, 'http://local.test')
+    expect(url.pathname).toBe(`/media/${key}`)
+    expect(url.searchParams.get('expires')).toBe('1700000400')
+    expect(url.searchParams.get('sig')).toMatch(/^[A-Za-z0-9_-]{43}$/)
   })
 
   it('honors a custom MEDIA_BASE_URL', () => {
     process.env.MEDIA_BASE_URL = 'https://cdn.example.com/m'
     const key = `${HOUSEHOLD}/${'a'.repeat(32)}.jpg`
-    expect(mediaUrl(key)).toBe(`https://cdn.example.com/m/${key}`)
+    expect(mediaUrl(key, 1_700_000_000_000)).toMatch(
+      new RegExp(`^https://cdn\\.example\\.com/m/${key}\\?expires=1700000400&sig=`)
+    )
+  })
+
+  it('validates an unmodified URL only within its short lifetime', () => {
+    const key = `${HOUSEHOLD}/${'a'.repeat(32)}.jpg`
+    const now = 1_700_000_000_000
+    const url = new URL(mediaUrl(key, now)!, 'http://local.test')
+    const expires = url.searchParams.get('expires')
+    const sig = url.searchParams.get('sig')
+
+    expect(verifyMediaUrl(key, expires, sig, now)).toBe(true)
+    expect(verifyMediaUrl(key, expires, sig, Number(expires) * 1000 + 1_000)).toBe(false)
+    expect(verifyMediaUrl(key.replace(/a/, 'b'), expires, sig, now)).toBe(false)
+    expect(verifyMediaUrl(key, expires, `${sig}x`, now)).toBe(false)
+  })
+
+  it('honors a dedicated signing key and clamps overly long URL lifetimes', () => {
+    process.env.MEDIA_SIGNING_KEY = 'separate-media-key'
+    process.env.MEDIA_URL_TTL_SECONDS = '999999'
+    const key = `${HOUSEHOLD}/${'a'.repeat(32)}.jpg`
+    const now = 1_700_000_000_000
+    const url = new URL(mediaUrl(key, now)!, 'http://local.test')
+    expect(url.searchParams.get('expires')).toBe('1700002800')
+    expect(verifyMediaUrl(key, url.searchParams.get('expires'), url.searchParams.get('sig'), now)).toBe(true)
   })
 
   it('does not expose malformed stored keys', () => {
