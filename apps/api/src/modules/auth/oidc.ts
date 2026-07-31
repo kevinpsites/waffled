@@ -14,6 +14,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
 import { config } from '../../platform/config'
 import { encryptSecret, decryptSecret, encryptionAvailable } from '../../platform/crypto'
+import { allowedOAuthRedirect, escapeOAuthHtml, oauthBaseUrl, secureOAuthResult } from '../../platform/oauth-security'
 import { mintAccess, issueRefresh } from './auth'
 import { requireTenant, requireInstallationOwner, findTenantBySub, findPersonByEmail, linkIdentity } from '../households/households'
 import {
@@ -155,12 +156,7 @@ function oidcSubject(issuer: string, sub: string): string {
 // PUBLIC_BASE_URL (set it when behind a proxy that rewrites host), else derives
 // from the forwarded request headers (Caddy sets x-forwarded-proto/host).
 function baseUrl(req: Request): string {
-  const env = process.env.PUBLIC_BASE_URL?.replace(/\/$/, '')
-  if (env) return env
-  const h = req.headers as Record<string, string | undefined>
-  const proto = h['x-forwarded-proto'] ?? 'http'
-  const host = h['x-forwarded-host'] ?? h.host ?? 'localhost:8080'
-  return `${proto}://${host}`
+  return oauthBaseUrl(req)
 }
 function callbackUri(req: Request): string {
   return `${baseUrl(req)}/api/auth/oidc/callback`
@@ -174,16 +170,10 @@ function nativeRedirectUri(): string {
 // allowlist rather than a general return URL. Web callers may return only to this
 // Waffled origin; the native app has one registered callback URI.
 function allowedRedirect(req: Request, raw: string | null): string | null {
-  if (!raw) return null
-  try {
-    const u = new URL(raw)
-    if (u.protocol === 'http:' || u.protocol === 'https:') {
-      return u.origin === new URL(baseUrl(req)).origin ? `${u.origin}/` : null
-    }
-    return u.toString() === new URL(nativeRedirectUri()).toString() ? nativeRedirectUri() : null
-  } catch {
-    return null
-  }
+  return allowedOAuthRedirect(req, raw, {
+    nativeRedirect: nativeRedirectUri(),
+    webDestination: 'origin',
+  })
 }
 
 export function registerOidcRoutes(api: Api): void {
@@ -507,7 +497,7 @@ function failSignIn(
     res.redirect(`${redirectTo}${sep}error=${encodeURIComponent(errorCode)}&error_description=${encodeURIComponent(message)}`)
     return
   }
-  res.status(status).html(resultPage(title, message, appOrigin(req, redirectTo)))
+  secureOAuthResult(res).status(status).html(resultPage(title, message, appOrigin(req, redirectTo)))
 }
 
 // The SPA's origin: prefer the redirect the /start call carried (the real browser
@@ -527,9 +517,9 @@ function appOrigin(req: Request, redirectTo?: string | null): string {
 // (errors). Matches the Google-calendar callback's resultPage convention. backUrl
 // is absolute so "Back to Waffled" lands on the SPA, not wherever the api was reached.
 function resultPage(title: string, message: string, backUrl = '/'): string {
-  const safeTitle = escapeHtml(title)
-  const safeMessage = escapeHtml(message)
-  const safeBackUrl = escapeHtml(backUrl)
+  const safeTitle = escapeOAuthHtml(title)
+  const safeMessage = escapeOAuthHtml(message)
+  const safeBackUrl = escapeOAuthHtml(backUrl)
   return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${safeTitle}</title>
 <body style="font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f3ee;color:#2b2b2b">
@@ -538,14 +528,4 @@ function resultPage(title: string, message: string, backUrl = '/'): string {
 <div style="color:#6b6b6b;font-weight:500">${safeMessage}</div>
 <a href="${safeBackUrl}" style="display:inline-block;margin-top:18px;color:#e0653f;font-weight:700;text-decoration:none">← Back to Waffled</a>
 </div></body>`
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (ch) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  })[ch]!)
 }
