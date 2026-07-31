@@ -18,6 +18,7 @@ import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { adminRoute } from '../../platform/route-guards'
 import { assertPersonInHousehold } from '../../platform/household-refs'
+import { allowedOAuthRedirect, escapeOAuthHtml, secureOAuthResult } from '../../platform/oauth-security'
 import { encryptSecret, encryptionAvailable } from '../../platform/crypto'
 import {
   googleConfigured,
@@ -34,6 +35,7 @@ type Api = ReturnType<typeof createAPI>
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const STATE_TTL_MIN = 15
+const NATIVE_CALENDAR_REDIRECT = 'waffled://calendar-connected'
 
 interface AccountRow extends QueryResultRow {
   id: string
@@ -203,11 +205,29 @@ function presentCalendar(c: CalendarRow) {
 // Minimal self-contained page shown when the OAuth dance ends without a redirect
 // target (e.g. the kiosk popped a tab just for the grant).
 function resultPage(title: string, message: string): string {
+  const safeTitle = escapeOAuthHtml(title)
+  const safeMessage = escapeOAuthHtml(message)
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title}</title><style>body{font-family:system-ui,sans-serif;background:#faf7f2;color:#2b2b2b;display:grid;place-items:center;height:100vh;margin:0}
+<title>${safeTitle}</title><style>body{font-family:system-ui,sans-serif;background:#faf7f2;color:#2b2b2b;display:grid;place-items:center;height:100vh;margin:0}
 .card{background:#fff;border-radius:16px;padding:2.5rem 3rem;box-shadow:0 10px 40px rgba(0,0,0,.08);text-align:center;max-width:28rem}
 h1{margin:0 0 .5rem;font-size:1.25rem}p{margin:0;color:#666}</style></head>
-<body><div class="card"><h1>${title}</h1><p>${message}</p></div></body></html>`
+<body><div class="card"><h1>${safeTitle}</h1><p>${safeMessage}</p></div></body></html>`
+}
+
+// Redirects carry the result of an authenticated admin action. Web callers may
+// return only to the current Waffled origin; native callers have one exact deep
+// link. Revalidate stored destinations at callback time as defense in depth.
+function allowedCalendarRedirect(req: Request, raw: string | null): string | null {
+  return allowedOAuthRedirect(req, raw, {
+    nativeRedirect: NATIVE_CALENDAR_REDIRECT,
+    webDestination: 'full',
+  })
+}
+
+function htmlResult(res: Response, status: number, title: string, message: string) {
+  return secureOAuthResult(res)
+    .status(status)
+    .html(resultPage(title, message))
 }
 
 // ── Routes ───────────────────────────────────────────────────────────────────
@@ -228,10 +248,14 @@ export function registerCalendarRoutes(api: Api): void {
         message: 'TOKEN_ENCRYPTION_KEY is not set; refresh tokens cannot be stored encrypted',
       })
     }
-    const redirectTo =
+    const rawRedirect =
       typeof (req.body as { redirectTo?: unknown })?.redirectTo === 'string'
         ? (req.body as { redirectTo: string }).redirectTo
         : null
+    const redirectTo = allowedCalendarRedirect(req, rawRedirect)
+    if (rawRedirect && !redirectTo) {
+      return res.status(400).json({ error: 'BadRequest', message: 'redirectTo is not an allowed Waffled callback' })
+    }
     const state = randomBytes(24).toString('base64url')
     await query(
       `insert into calendar_oauth_states (state, household_id, person_id, redirect_to)
@@ -245,13 +269,9 @@ export function registerCalendarRoutes(api: Api): void {
   // one-time state resolves the household. Renders an HTML result (or redirects).
   api.get('/auth/google/calendar/callback', async (req: Request, res: Response) => {
     const q = (req.query ?? {}) as Record<string, string | undefined>
-    if (q.error) {
-      return res.status(400).html(resultPage('Connection cancelled', `Google returned: ${q.error}`))
-    }
-    const code = typeof q.code === 'string' ? q.code : ''
     const state = typeof q.state === 'string' ? q.state : ''
-    if (!code || !state) {
-      return res.status(400).html(resultPage('Connection failed', 'Missing authorization code or state.'))
+    if (!state) {
+      return htmlResult(res, 400, 'Connection failed', 'Missing authorization state. Please try connecting again.')
     }
 
     // Consume the state (one-time) and drop any other expired states while here.
@@ -264,9 +284,16 @@ export function registerCalendarRoutes(api: Api): void {
     await query(`delete from calendar_oauth_states where created_at <= now() - interval '${STATE_TTL_MIN} minutes'`)
     const st = rows[0]
     if (!st) {
-      return res
-        .status(400)
-        .html(resultPage('Link expired', 'This connection link has expired. Please try connecting again.'))
+      return htmlResult(res, 400, 'Link expired', 'This connection link has expired. Please try connecting again.')
+    }
+
+    if (q.error) {
+      return htmlResult(res, 400, 'Connection cancelled', 'Google Calendar access was not granted. No connection was saved.')
+    }
+
+    const code = typeof q.code === 'string' ? q.code : ''
+    if (!code) {
+      return htmlResult(res, 400, 'Connection failed', 'Missing authorization code. Please try connecting again.')
     }
 
     try {
@@ -282,13 +309,12 @@ export function registerCalendarRoutes(api: Api): void {
       })
     } catch (err) {
       console.error('calendar callback failed', err)
-      return res
-        .status(502)
-        .html(resultPage('Connection failed', 'Could not complete the Google connection. Please try again.'))
+      return htmlResult(res, 502, 'Connection failed', 'Could not complete the Google connection. Please try again.')
     }
 
-    if (st.redirect_to) return res.redirect(st.redirect_to)
-    return res.html(resultPage('Calendar connected', 'You can close this tab and return to Waffled.'))
+    const redirectTo = allowedCalendarRedirect(req, st.redirect_to)
+    if (redirectTo) return secureOAuthResult(res).redirect(redirectTo)
+    return htmlResult(res, 200, 'Calendar connected', 'You can close this tab and return to Waffled.')
   })
 
   // What's connected: accounts + their calendars (with person mapping).
