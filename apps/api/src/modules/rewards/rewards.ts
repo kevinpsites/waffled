@@ -9,6 +9,7 @@ import { type Tenant } from '../households/households'
 import { rewardsRoutes, moduleRoutes } from '../../platform/route-guards'
 import { assertPersonInHousehold, HouseholdReferenceError } from '../../platform/household-refs'
 import { requireCapability } from '../../platform/permissions'
+import { lockLedgerSubject } from '../../platform/ledger-lock'
 import { registerRewardCaptureTarget } from './rewards-capture'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
@@ -213,6 +214,7 @@ export async function requestRedemption(tenant: Tenant, rewardId: string, person
   const client = await getPool().connect()
   try {
     await client.query('begin')
+    await lockLedgerSubject(client, tenant.householdId, personId)
     const bal = await client.query<{ balance: string | null }>(
       `select coalesce(sum(amount),0) as balance from ledger_entries
          where household_id=$1 and person_id=$2 and currency=$3 and deleted_at is null`,
@@ -271,6 +273,7 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
       return { redemption: upd.rows[0] }
     }
 
+    await lockLedgerSubject(client, tenant.householdId, red.person_id)
     const bal = await client.query<{ balance: string | null }>(
       `select coalesce(sum(amount),0) as balance from ledger_entries
          where household_id=$1 and person_id=$2 and currency=$3 and deleted_at is null`,
