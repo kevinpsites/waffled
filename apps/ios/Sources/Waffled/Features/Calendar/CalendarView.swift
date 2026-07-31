@@ -632,6 +632,27 @@ enum RecurringEventEditPolicy {
     }
 }
 
+/// Keeps destructive event UI open until the server or local mirror confirms the
+/// deletion. Both event-delete surfaces share this policy so a rejected request can
+/// never be mistaken for success just because the sheet disappeared.
+enum EventDeletionPolicy {
+    static func perform(
+        isRecurring: Bool,
+        deleteRecurring: () async throws -> Void,
+        deleteSingle: () async -> Bool
+    ) async -> Bool {
+        if isRecurring {
+            do {
+                try await deleteRecurring()
+                return true
+            } catch {
+                return false
+            }
+        }
+        return await deleteSingle()
+    }
+}
+
 /// Create or edit a calendar event — title, date, time + duration (or all-day),
 /// participants, calendar (Google destination, create only), and location. Each
 /// field is its own labeled card, mirroring the web EventModal. Writes to the
@@ -676,6 +697,7 @@ struct EventEditSheet: View {
     enum ScopePrompt { case save, delete }
     @State private var originalSeriesFields: RecurringEventSeriesFields?
     @State private var saveError: String?
+    @State private var deleting = false
     // Google calendar picker (create only).
     @State private var calendars: [WaffledAPI.CalendarLink] = []
     @State private var calendarId: String?
@@ -735,6 +757,7 @@ struct EventEditSheet: View {
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty
         && (!wasRecurring || originalSeriesFields != nil)
+        && !deleting
     }
     /// True when editing a materialized occurrence of a recurring series (the local
     /// mirror sets `occurrenceStart` only for those). Drives the scope chooser.
@@ -923,13 +946,14 @@ struct EventEditSheet: View {
                 Button {
                     // Recurring events choose a scope; single events use tap-again confirm.
                     if wasRecurring { scopePrompt = .delete }
-                    else if confirmDelete { performDelete(scope: nil); dismiss() }
+                    else if confirmDelete { performDelete(scope: nil) }
                     else { withAnimation { confirmDelete = true } }
                 } label: {
                     Text(confirmDelete && !wasRecurring ? "Tap again" : "Delete")
                         .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.primary)
                 }
                 .buttonStyle(.plain)
+                .disabled(deleting)
             }
             WaffledPrimaryCTA(
                 label: editing ? "Save" : "Add event",
@@ -1515,16 +1539,27 @@ struct EventEditSheet: View {
 
     private func performDelete(scope: String?) {
         guard let id = editId else { return }
+        deleting = true
+        saveError = nil
         Task {
-            if wasRecurring {
-                // 'this' cancels one occurrence, 'following' caps the series, 'all' (or
-                // nil) drops the whole series — all server-side over REST.
-                try? await WaffledAPI().deleteEvent(id: id, scope: scope, occurrenceStart: event?.occurrenceStart)
-                sync.touchGoals()
-            } else {
-                _ = await sync.deleteEvent(id: id)
+            let deleted = await EventDeletionPolicy.perform(
+                isRecurring: wasRecurring,
+                deleteRecurring: {
+                    // 'this' cancels one occurrence, 'following' caps the series, 'all'
+                    // (or nil) drops the whole series — all server-side over REST.
+                    try await WaffledAPI().deleteEvent(
+                        id: id, scope: scope, occurrenceStart: event?.occurrenceStart
+                    )
+                },
+                deleteSingle: { await sync.deleteEvent(id: id) }
+            )
+            guard deleted else {
+                deleting = false
+                saveError = "Couldn’t delete this event. Check your connection and try again."
+                return
             }
-            dismiss()
+            if wasRecurring { sync.touchGoals() }
+            dismiss() // only after confirmed deletion
         }
     }
 
