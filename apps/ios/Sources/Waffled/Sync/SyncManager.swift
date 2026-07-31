@@ -148,6 +148,7 @@ final class SyncManager {
     }
 
     private let db: PowerSyncDatabaseProtocol
+    private let disconnectDatabase: (_ clearLocal: Bool) async -> Void
     private let connector = WaffledConnector()
     private let api = WaffledAPI()
     static let iso8601 = ISO8601DateFormatter()
@@ -156,8 +157,16 @@ final class SyncManager {
     private var eventsTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
 
-    init() {
-        db = PowerSyncDatabase(schema: SyncSchema.schema, dbFilename: "waffled.sqlite")
+    init(disconnectDatabase: ((_ clearLocal: Bool) async -> Void)? = nil) {
+        let database = PowerSyncDatabase(schema: SyncSchema.schema, dbFilename: "waffled.sqlite")
+        db = database
+        self.disconnectDatabase = disconnectDatabase ?? { clearLocal in
+            if clearLocal {
+                try? await database.disconnectAndClear()
+            } else {
+                try? await database.disconnect()
+            }
+        }
         // A dead refresh token (caught mid-request) tears the sync session down too,
         // so we don't keep retrying with a token that will never be accepted.
         NotificationCenter.default.addObserver(forName: .waffledAuthExpired, object: nil, queue: .main) { [weak self] _ in
@@ -203,13 +212,11 @@ final class SyncManager {
     /// swaps in a different person's token. Tears the PowerSync session down and stands
     /// it back up against whatever token `AppConfig` now reports, the same path a fresh
     /// launch takes. `signOut()` resets `started`, so `start()` runs clean.
-    /// `clearLocal` wipes the on-device mirror as part of the teardown — needed when the
-    /// *household* changes (not just the person), because the local SQLite is one shared
-    /// file: a plain disconnect can leave the previous household's rows visible (and the
-    /// `households LIMIT 1` write path picking the wrong one) until PowerSync reconciles
-    /// buckets. The kiosk person-switch keeps the default (`false`): same household, so
-    /// the cheap disconnect is correct.
-    func reauthenticate(clearLocal: Bool = false) async {
+    /// `clearLocal` wipes the on-device mirror as part of the teardown. It defaults to
+    /// true for every principal change — household switches, kiosk profile claims, and
+    /// future account switches — because a shared SQLite file must never bridge two
+    /// authenticated people, even when they belong to the same household.
+    func reauthenticate(clearLocal: Bool = true) async {
         await signOut(clearLocal: clearLocal)
         await start()
     }
@@ -218,18 +225,15 @@ final class SyncManager {
     /// PowerSync, drop the observable state, and reset so the next `start()` runs
     /// fresh. Keychain tokens are cleared separately by `Session`.
     ///
-    /// By default we `disconnect()` (not `disconnectAndClear()`): clearing the local
-    /// mirror is heavy work to run during teardown and isn't needed for plain sign-out
-    /// or a same-household person-switch — on the next login PowerSync re-scopes its
-    /// buckets to the new token, the same as the web. Keeping teardown light also avoids
-    /// a memory/Keychain spike at sign-out. A **household switch** passes `clearLocal:
-    /// true` so the previous household's rows can't linger in the shared SQLite file.
-    func signOut(clearLocal: Bool = false) async {
+    /// Clearing is the secure default: ordinary sign-out, token expiry, household
+    /// changes, and kiosk profile changes are all principal boundaries. Callers may
+    /// explicitly pass `false` only for a same-principal transport reconnect.
+    func signOut(clearLocal: Bool = true) async {
         // Stop consuming the live queries BEFORE disconnecting so a watcher can't
         // race the teardown.
         watchTask?.cancel(); eventsTask?.cancel(); statusTask?.cancel()
         watchTask = nil; eventsTask = nil; statusTask = nil
-        if clearLocal { try? await db.disconnectAndClear() } else { try? await db.disconnect() }
+        await disconnectDatabase(clearLocal)
         members = []; allEvents = []
         personCount = 0; eventCount = 0; pendingUploads = 0
         lastSyncedAt = nil; lastError = nil

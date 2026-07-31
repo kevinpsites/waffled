@@ -30,6 +30,7 @@ struct SettingsView: View {
     @Environment(Session.self) private var session
     @Environment(NotificationManager.self) private var notifications
     @State private var confirmSignOut = false
+    @State private var showUnsyncedSignOutWarning = false
     @State private var busy = false
     private var isAdmin: Bool { sync.currentPerson?.isAdmin == true }
 
@@ -88,6 +89,14 @@ struct SettingsView: View {
         .background(WF.canvas)
         .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
         .task { await sync.loadIdentity() }
+        .alert("Unsynced changes", isPresented: $showUnsyncedSignOutWarning) {
+            Button("Wait for sync", role: .cancel) {}
+            Button("Discard changes and sign out", role: .destructive) {
+                Task { await signOut() }
+            }
+        } message: {
+            Text("This device has \(sync.pendingUploads) change\(sync.pendingUploads == 1 ? "" : "s") that haven’t reached the server. Signing out now will permanently discard them.")
+        }
     }
 
     /// Sign out lives right on the Settings landing (mirrors the web's footer).
@@ -97,7 +106,16 @@ struct SettingsView: View {
                 Text("Signed in as \(name)").font(.system(size: 12.5)).foregroundStyle(WF.ink3)
             }
             Button {
-                if confirmSignOut { Task { await signOut() } } else { confirmSignOut = true }
+                if confirmSignOut {
+                    confirmSignOut = false
+                    if sync.pendingUploads > 0 {
+                        showUnsyncedSignOutWarning = true
+                    } else {
+                        Task { await signOut() }
+                    }
+                } else {
+                    confirmSignOut = true
+                }
             } label: {
                 Text(busy ? "Signing out…" : (confirmSignOut ? "Tap again to sign out" : "Sign out"))
                     .font(.system(size: 15, weight: .bold))
@@ -119,8 +137,9 @@ struct SettingsView: View {
 
     private func signOut() async {
         busy = true
-        await session.signOut()    // clear session, → login (Button's Task survives)
-        await sync.signOut()       // disconnect sync
+        // Purge the old principal before the login UI can accept another account.
+        await sync.signOut()
+        await session.signOut()
         await notifications.clearEventReminders() // drop this household's event reminders
     }
 
