@@ -19,14 +19,22 @@
 		reverse_proxy api:3000
 	}
 
-	# Uploaded media blobs. The api writes to the waffled_media volume (/data/media);
-	# Caddy serves it read-only so the api stays out of the read path. handle_path
-	# strips the /media prefix, so /media/<household>/<hex>.jpg → /data/media/<household>/<hex>.jpg.
-	# Must precede the SPA catch-all below so these requests don't fall through to index.html.
-	handle_path /media/* {
-		root * /data/media
-		file_server
-		header Cache-Control "public, max-age=31536000, immutable"
+	# Uploaded family media. API responses contain short-lived HMAC-signed URLs; Caddy
+	# asks the API to validate each URL before reading the file from its read-only volume.
+	# The route then strips /media, mapping the safe storage key under /data/media.
+	handle /media/* {
+		route {
+			# `route` preserves this order: authorization sees the original /media URI,
+			# then the prefix is stripped only for the local file lookup.
+			forward_auth api:3000 {
+				uri /api/media/authorize
+			}
+			uri strip_prefix /media
+			root * /data/media
+			header Cache-Control "private, max-age=300, no-transform"
+			header X-Content-Type-Options "nosniff"
+			file_server
+		}
 	}
 
 	# the web SPA (built into this image from apps/web); SPA fallback to index.html

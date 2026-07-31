@@ -103,7 +103,9 @@ Independent of login. See [Google Calendar](/administration/google-calendar/).
 |---|---|---|
 | `STORAGE_DRIVER` | Blob storage backend | `local` |
 | `MEDIA_DIR` | Where the api writes blobs (the `waffled_media` volume) | `/data/media` |
-| `MEDIA_BASE_URL` | Public path Caddy serves blobs at | `/media` |
+| `MEDIA_BASE_URL` | Signed path Caddy serves blobs at | `/media` |
+| `MEDIA_URL_TTL_SECONDS` | Maximum lifetime of a signed media URL, clamped to 30–3600 seconds | `600` |
+| `MEDIA_SIGNING_KEY` | Optional dedicated HMAC key for media URLs; defaults to `LOCAL_JWT_SECRET` | empty |
 
 ## Backups & S3
 
@@ -116,7 +118,7 @@ Full guide: [Backup & restore](/operations/backup/).
 | `TZ` | Container timezone | `UTC` |
 | `BACKUP_ON_START` | Also back up right after start | `false` |
 | `BACKUP_RETENTION_DAYS` | Prune local dumps older than this | `14` |
-| `BACKUP_INCLUDE_MEDIA` | Also tar the media dir | `false` |
+| `BACKUP_INCLUDE_MEDIA` | Also tar the media dir | `true` |
 | `BACKUP_HOST_PATH` | Write dumps to a host folder instead of the volume | volume |
 | `BACKUP_S3_BUCKET` | e.g. `s3://my-bucket/waffled`; empty = local-only | empty |
 | `BACKUP_S3_ENDPOINT` | Set for B2 / R2 / MinIO; empty = AWS | empty |

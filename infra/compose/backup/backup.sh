@@ -9,7 +9,7 @@ set -uo pipefail
 
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
-INCLUDE_MEDIA="${BACKUP_INCLUDE_MEDIA:-false}"
+INCLUDE_MEDIA="${BACKUP_INCLUDE_MEDIA:-true}"
 MEDIA_DIR="${MEDIA_DIR:-/data/media}"
 S3_BUCKET="${BACKUP_S3_BUCKET:-}"      # e.g. s3://my-bucket/waffled  (empty → local only)
 S3_ENDPOINT="${BACKUP_S3_ENDPOINT:-}"  # set for B2 / R2 / MinIO; empty → real AWS
@@ -63,7 +63,7 @@ fi
 SIZE="$(stat -c %s "$DUMP_FILE" 2>/dev/null || echo 0)"
 [ "$SIZE" -gt 0 ] || fail "dump file is empty"
 
-# --- Optional media archive ------------------------------------------------------
+# --- Media archive (on by default; operators may explicitly disable it) ---------
 if [ "$INCLUDE_MEDIA" = "true" ]; then
   if [ -d "$MEDIA_DIR" ]; then
     MEDIA_FILE="$BACKUP_DIR/waffled-media-$TS.tar.gz"
