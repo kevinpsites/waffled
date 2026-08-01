@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Reward mistakes can now be corrected without rewriting history.** Adults with the
+  new `reward.correct` capability can reverse a mistaken spot award, replace it with
+  the right amount, or refund an approved redemption from a person profile on web,
+  iPhone, and iPad. Every correction records who made it and why as linked,
+  append-only ledger entries; pending requests can instead be canceled by their
+  requester or a reward approver before any balance is spent.
+
 - **The goal Log sheet now suggests what you actually do.** The "What did you do?"
   chips are no longer a fixed list of six — each goal offers up the notes you've logged
   against it before, most-used first, so a goal you keep marking "family walk" or "lunch

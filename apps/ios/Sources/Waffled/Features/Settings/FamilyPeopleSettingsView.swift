@@ -182,17 +182,22 @@ struct PermissionsCard: View {
     private let api = WaffledAPI()
 
     private static let roles = ["adult", "teen", "kid"]
-    private static let caps = ["chore.manage", "chore.approve", "reward.manage", "reward.approve"]
+    private static let caps = ["chore.manage", "chore.approve", "reward.manage", "reward.approve", "reward.grant", "reward.correct", "goal.manage"]
     private static let roleLabel: [String: String] = ["adult": "Adults", "teen": "Teens", "kid": "Kids"]
     private static let capLabel: [String: String] = [
         "chore.manage": "Manage chores", "chore.approve": "Approve chores",
         "reward.manage": "Manage rewards", "reward.approve": "Approve redemptions",
+        "reward.grant": "Award stars", "reward.correct": "Correct reward history",
+        "goal.manage": "Manage goals",
     ]
     private static let capSub: [String: String] = [
         "chore.manage": "Create & edit chores for everyone",
         "chore.approve": "OK or send back finished chores",
         "reward.manage": "Add & edit rewards and currencies",
         "reward.approve": "OK or deny reward redemptions",
+        "reward.grant": "Give one-off currency awards",
+        "reward.correct": "Reverse or correct settled reward activity",
+        "goal.manage": "Create & edit goals for everyone",
     ]
 
     var body: some View {

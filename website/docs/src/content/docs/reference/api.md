@@ -126,6 +126,9 @@ capability X · **module(X)** = requires module X enabled · **device** = kiosk 
 | POST | `/api/rewards/:id/redeem` | Redeem a reward | tenant |
 | POST | `/api/persons/:id/award` | Spot-award currency | cap:reward.grant |
 | POST | `/api/redemptions/:id/approve` · `/deny` | Approve / deny a redemption | cap:reward.approve |
+| POST | `/api/redemptions/:id/cancel` | Cancel a pending redemption | requester or cap:reward.approve |
+| POST | `/api/redemptions/:id/refund` | Refund an approved redemption | cap:reward.correct |
+| POST | `/api/ledger-entries/:id/correct` | Append a reversal / corrected replacement | cap:reward.correct |
 | GET · PUT | `/api/rewards/settings` | Reward settings | tenant / cap:reward.manage |
 | GET · POST · PATCH · DELETE | `/api/currencies[/:id]` · `/api/conversions[/:id]` · `/:id/apply` | Currencies & conversions | tenant / admin |
 

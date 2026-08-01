@@ -16,6 +16,7 @@ Rewards is the *spend* half of the family economy: an append-only stars ledger, 
 - 🎯 **Saving-toward** — pin a reward per person, rendered as **bar or jar** progress with inline redeem; any household member can set it (kids pick their own).
 - ✨ **Spot-award** — a parent hands out ad-hoc stars untied to any chore (optional note, no balance guard); the ledger row reads **"spot award — {reason}"**.
 - ✔️ **Redeem → approve → debit** — redemptions go through parent approval before the ledger is debited.
+- ↩️ **Explainable corrections** — reverse or replace a mistaken spot award and refund an approved redemption without editing the original ledger row. Each compensating entry records the actor and a required reason.
 
 ## Where it works
 
@@ -38,5 +39,6 @@ Rewards is a **sub-toggle of chores** (`settings.chores.rewards`, default **on**
 ## Notes
 
 - 🏺 **"Rewards jar"** is the saving-toward jar/bar progress UI, **not** a separate object — it's just how a pinned reward renders.
-- 🔒 **Capability-gated where it has stakes** — `reward.manage` (catalog, currencies, conversions), `reward.approve` (redemptions), `reward.grant` (spot-awards). Anyone may **redeem for themselves** and convert their own balance. See [Permissions](/concepts/permissions/).
+- 🔒 **Capability-gated where it has stakes** — `reward.manage` (catalog, currencies, conversions), `reward.approve` (redemptions), `reward.grant` (spot-awards), and `reward.correct` (settled ledger corrections/refunds). Anyone may **redeem for themselves**, convert their own balance, and cancel a pending request they made. See [Permissions](/concepts/permissions/).
+- 📒 **Corrections remain append-only** — the original amount is never edited or hidden. A linked reversal restores it, an optional replacement records the corrected amount, and retries use an idempotency key so they cannot apply twice.
 - 🚧 **Milestone reward payouts** are deferred — the design is done, but auto-paying a [Goals](/features/goals/) milestone into the ledger hasn't shipped yet.
