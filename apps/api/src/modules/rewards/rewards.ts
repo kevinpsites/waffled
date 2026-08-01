@@ -23,6 +23,8 @@ const { tenantRoute, capRoute } = rewardsRoutes()
 const { capRoute: choresCapRoute } = moduleRoutes('chores')
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const CORRECTABLE_LEDGER_REASONS = new Set(['spot_award', 'ledger_correction'])
+const PG_INT_MIN = -2_147_483_648
+const PG_INT_MAX = 2_147_483_647
 
 interface RewardRow extends QueryResultRow {
   id: string
@@ -93,6 +95,7 @@ function presentRedemption(r: RedemptionRow & { person_name?: string | null; ava
     cost: r.cost,
     currency: r.currency,
     status: r.status,
+    requestedBy: r.requested_by,
     ledgerId: r.ledger_id,
     refundLedgerId: r.refund_ledger_id,
     decidedAt: r.decided_at,
@@ -110,8 +113,8 @@ interface CorrectionResult {
 
 function validateCorrection(originalAmount: number, replacementAmount: number | undefined): void {
   if (replacementAmount === undefined) return
-  if (!Number.isSafeInteger(replacementAmount)) {
-    throw new LedgerCorrectionError('replacementAmount must be a whole number')
+  if (!isPostgresInteger(replacementAmount)) {
+    throw new LedgerCorrectionError('replacementAmount must fit a 32-bit signed integer')
   }
   if (replacementAmount === originalAmount) {
     throw new LedgerCorrectionError('replacementAmount must differ from the original amount')
@@ -119,6 +122,27 @@ function validateCorrection(originalAmount: number, replacementAmount: number | 
   if (replacementAmount !== 0 && Math.sign(replacementAmount) !== Math.sign(originalAmount)) {
     throw new LedgerCorrectionError('replacementAmount must keep the original credit or debit direction')
   }
+}
+
+function isPostgresInteger(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isInteger(value)
+    && value >= PG_INT_MIN
+    && value <= PG_INT_MAX
+}
+
+async function lockCorrectionRequest(
+  client: PoolClient,
+  householdId: string,
+  idempotencyKey: string
+): Promise<void> {
+  // The unique index is the final integrity guard, but it cannot turn two
+  // simultaneous pre-insert replay checks into a clean replay/409 response.
+  // Serialize on the household-scoped request key before checking its use.
+  await client.query(
+    `select pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
+    [`reward-correction:${householdId}:${idempotencyKey}`]
+  )
 }
 
 async function correctionResult(
@@ -165,6 +189,10 @@ async function correctLockedLedgerEntry(
     throw new LedgerCorrectionError('a reversal entry cannot itself be corrected', 409)
   }
   validateCorrection(original.amount, replacementAmount)
+  const reversalAmount = -original.amount
+  if (!isPostgresInteger(reversalAmount)) {
+    throw new LedgerCorrectionError('the original amount cannot be reversed within the supported range', 409)
+  }
   const already = await client.query<{ id: string }>(
     `select id from ledger_entries where household_id=$1 and reverses_entry_id=$2`,
     [tenant.householdId, original.id]
@@ -180,7 +208,7 @@ async function correctLockedLedgerEntry(
         created_by, reverses_entry_id, correction_group_id, correction_reason, idempotency_key)
      values ($1,$2,$3,$4,'ledger_reversal',$5,$6,$7,$8,$9,$10,$7,$11)
      returning id`,
-    [tenant.householdId, original.person_id, original.currency, -original.amount,
+    [tenant.householdId, original.person_id, original.currency, reversalAmount,
       original.ref_type, original.ref_id, reason, tenant.personId, original.id, groupId, idempotencyKey]
   )
   let replacementId: string | null = null
@@ -220,6 +248,7 @@ export async function correctLedgerEntry(
   const client = await getPool().connect()
   try {
     await client.query('begin')
+    await lockCorrectionRequest(client, tenant.householdId, idempotencyKey)
     const replay = await client.query<{ reverses_entry_id: string }>(
       `select reverses_entry_id from ledger_entries
         where household_id=$1 and idempotency_key=$2 and reverses_entry_id is not null`,
@@ -297,6 +326,7 @@ export async function refundRedemption(
   const client = await getPool().connect()
   try {
     await client.query('begin')
+    await lockCorrectionRequest(client, tenant.householdId, idempotencyKey)
     const replay = await client.query<RedemptionRow>(
       `select * from reward_redemptions
         where household_id=$1 and id=$2 and deleted_at is null for update`,
@@ -738,8 +768,8 @@ export function registerRewardRoutes(api: Api): void {
     if (!UUID_RE.test(idempotencyKey)) {
       return res.status(400).json({ error: 'BadRequest', message: 'valid idempotencyKey required' })
     }
-    if ('replacementAmount' in body && !Number.isSafeInteger(body.replacementAmount)) {
-      return res.status(400).json({ error: 'BadRequest', message: 'replacementAmount must be a whole number' })
+    if ('replacementAmount' in body && !isPostgresInteger(body.replacementAmount)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'replacementAmount must fit a 32-bit signed integer' })
     }
     try {
       const correction = await correctLedgerEntry(tenant, id, reason, body.replacementAmount, idempotencyKey)

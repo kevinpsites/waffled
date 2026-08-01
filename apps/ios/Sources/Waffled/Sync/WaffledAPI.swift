@@ -2498,6 +2498,7 @@ struct WaffledAPI: Sendable {
         let cost: Int
         let currency: String
         let status: String          // pending | approved | denied
+        let requestedBy: String?
         let ledgerId: String?
         let refundLedgerId: String?
         let decidedAt: String?
@@ -2823,6 +2824,7 @@ struct WaffledAPI: Sendable {
             let emoji: String?
             let cost: Int
             let currency, status: String
+            let requestedBy: String?
             let ledgerId: String?
             let refundLedgerId: String?
             let createdAt: String

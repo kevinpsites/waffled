@@ -731,6 +731,73 @@ describe('append-only reward corrections and reversals', () => {
     expect(reversals.rowCount).toBe(1)
   })
 
+  it('serializes concurrent retries and rejects concurrent key reuse for another entry', async () => {
+    const firstAward = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, { amount: 9 })).body)
+    const retryBody = {
+      reason: 'Concurrent retry test',
+      replacementAmount: 7,
+      idempotencyKey: '99999999-9999-4999-8999-999999999999',
+    }
+    const retries = await Promise.all([
+      call('POST', `/api/ledger-entries/${firstAward.id}/correct`, kevin, retryBody),
+      call('POST', `/api/ledger-entries/${firstAward.id}/correct`, kevin, retryBody),
+    ])
+    expect(retries.map((r) => r.statusCode).sort()).toEqual([200, 201])
+    expect(retries.map((r) => JSON.parse(r.body).correction.replayed).sort()).toEqual([false, true])
+
+    const secondAward = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, { amount: 5 })).body)
+    const thirdAward = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, { amount: 6 })).body)
+    const sharedKey = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const collisions = await Promise.all([
+      call('POST', `/api/ledger-entries/${secondAward.id}/correct`, kevin, {
+        reason: 'First use of shared key', idempotencyKey: sharedKey,
+      }),
+      call('POST', `/api/ledger-entries/${thirdAward.id}/correct`, kevin, {
+        reason: 'Second use of shared key', idempotencyKey: sharedKey,
+      }),
+    ])
+    expect(collisions.map((r) => r.statusCode).sort()).toEqual([201, 409])
+    expect(collisions.find((r) => r.statusCode === 409)?.body).toContain('another correction')
+
+    const sharedKeyRows = await withClient((c) => c.query(
+      `select id from ledger_entries where household_id=$1 and idempotency_key=$2`,
+      [householdId, sharedKey]
+    ))
+    expect(sharedKeyRows.rowCount).toBe(1)
+  })
+
+  it('rejects values that cannot be stored or reversed as PostgreSQL integers', async () => {
+    const award = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, { amount: 2 })).body)
+    const oversized = await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+      reason: 'Amount is outside the ledger range',
+      replacementAmount: 2_147_483_648,
+      idempotencyKey: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    })
+    expect(oversized.statusCode).toBe(400)
+    expect(JSON.parse(oversized.body).message).toContain('32-bit signed integer')
+
+    const minimumPersonId = await addMember('Minimum integer ledger', 'kid', false, 'dev|min-ledger')
+    const minimumEntry = await withClient(async (c) => {
+      const row = await c.query<{ id: string }>(
+        `insert into ledger_entries (household_id, person_id, currency, amount, reason, created_by)
+         values ($1,$2,'stars',$3,'spot_award',$4) returning id`,
+        [householdId, minimumPersonId, -2_147_483_648, kevinId]
+      )
+      return row.rows[0].id
+    })
+    const unrepresentableReversal = await call('POST', `/api/ledger-entries/${minimumEntry}/correct`, kevin, {
+      reason: 'Cannot negate the minimum integer',
+      idempotencyKey: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    })
+    expect(unrepresentableReversal.statusCode).toBe(409)
+    expect(JSON.parse(unrepresentableReversal.body).message).toContain('cannot be reversed')
+    const reversals = await withClient((c) => c.query(
+      `select id from ledger_entries where household_id=$1 and reverses_entry_id=$2`,
+      [householdId, minimumEntry]
+    ))
+    expect(reversals.rowCount).toBe(0)
+  })
+
   it('enforces tenant and reward.correct capability boundaries', async () => {
     const foreignEntry = await withClient(async (c) => {
       const row = await c.query<{ id: string }>(
@@ -782,6 +849,7 @@ describe('append-only reward corrections and reversals', () => {
     const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, {
       personId: kevinId,
     })).body).redemption
+    expect(redemption.requestedBy).toBe(kevinId)
 
     const canceled = await call('POST', `/api/redemptions/${redemption.id}/cancel`, kevin)
     expect(canceled.statusCode).toBe(200)
@@ -791,6 +859,29 @@ describe('append-only reward corrections and reversals', () => {
       reason: 'Pending is not settled',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
     })).statusCode).toBe(409)
+  })
+
+  it('authorizes cancellation by requester, not merely by redemption subject', async () => {
+    const subjectId = await addMember('Cancellation subject', 'kid', false, 'dev|cancel-subject')
+    const subjectToken = mint('dev|cancel-subject')
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Requester-aware cancellation', cost: 1, requiresApproval: true,
+    })).body).reward
+
+    const requestedForSubject = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, {
+      personId: subjectId,
+    })).body).redemption
+    expect(requestedForSubject).toMatchObject({ personId: subjectId, requestedBy: kevinId, status: 'pending' })
+    const overview = JSON.parse((await call('GET', `/api/persons/${subjectId}/overview`, kevin)).body)
+    expect(overview.redemptions.find((r: { id: string }) => r.id === requestedForSubject.id)?.requestedBy).toBe(kevinId)
+    expect((await call('POST', `/api/redemptions/${requestedForSubject.id}/cancel`, subjectToken)).statusCode).toBe(403)
+    expect((await call('POST', `/api/redemptions/${requestedForSubject.id}/cancel`, kevin)).statusCode).toBe(200)
+
+    const selfRequested = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, subjectToken, {
+      personId: subjectId,
+    })).body).redemption
+    expect(selfRequested.requestedBy).toBe(subjectId)
+    expect((await call('POST', `/api/redemptions/${selfRequested.id}/cancel`, subjectToken)).statusCode).toBe(200)
   })
 
   it('refunds an approved redemption once and restores the balance', async () => {
@@ -817,6 +908,34 @@ describe('append-only reward corrections and reversals', () => {
     expect(replay.statusCode).toBe(200)
     expect(JSON.parse(replay.body).correction.replayed).toBe(true)
     expect(await starsOf(kevinId)).toBe(beforeRedeem)
+  })
+
+  it('serializes a refund key reused concurrently for different redemptions', async () => {
+    const redemptions: Array<{ id: string }> = []
+    for (const title of ['First refund collision', 'Second refund collision']) {
+      const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+        title, cost: 1, requiresApproval: false,
+      })).body).reward
+      await grantStars(kevinId, 1)
+      const redeemed = await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, {
+        personId: kevinId,
+      })
+      expect(redeemed.statusCode).toBe(201)
+      redemptions.push(JSON.parse(redeemed.body).redemption)
+    }
+    const idempotencyKey = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+    const refunds = await Promise.all(redemptions.map((redemption) =>
+      call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, {
+        reason: 'Concurrent refund key collision', idempotencyKey,
+      })
+    ))
+    expect(refunds.map((r) => r.statusCode).sort()).toEqual([200, 409])
+    expect(refunds.find((r) => r.statusCode === 409)?.body).toContain('another correction')
+    const keyRows = await withClient((c) => c.query(
+      `select id from ledger_entries where household_id=$1 and idempotency_key=$2`,
+      [householdId, idempotencyKey]
+    ))
+    expect(keyRows.rowCount).toBe(1)
   })
 })
 

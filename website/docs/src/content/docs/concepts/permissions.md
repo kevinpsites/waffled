@@ -43,6 +43,8 @@ owner can flip any cell per household in **Settings → Family & People**. The m
 | `chore.approve` | Approve/reject completed chores |
 | `reward.manage` | Manage the rewards catalog, currencies, conversions |
 | `reward.approve` | Approve/deny redemptions |
+| `reward.grant` | Give a person an ad-hoc spot award |
+| `reward.correct` | Reverse/replace settled reward activity or refund a redemption |
 | `goal.manage` | Log progress *for others*, edit/delete shared or others' goals, manage goal lists |
 
 Clients never "show, then 403". `/api/household` returns the caller's resolved
@@ -54,7 +56,7 @@ Gating never blocks acting on *yourself*. These are always allowed regardless of
 
 - **Chores** — complete/claim any chore; create a chore for *yourself* or *up-for-grabs*
   (assigning it to someone else needs `chore.manage`).
-- **Rewards** — redeem a reward for yourself; convert your own balance.
+- **Rewards** — redeem a reward for yourself; convert your own balance; cancel a pending redemption you requested.
 - **Goals** — log progress *for yourself* (or a family/shared log); create a *personal* goal
   (one with no other participants); tick a checklist step (it's self-attributed); create a
   goal list. Logging attributed to **another person**, or editing/deleting a goal that isn't

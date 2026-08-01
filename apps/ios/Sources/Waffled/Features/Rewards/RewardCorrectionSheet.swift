@@ -35,6 +35,7 @@ enum RewardCorrectionTarget: Identifiable {
 /// linked compensating entries; this sheet makes that behavior explicit before a
 /// balance-changing action is submitted.
 struct RewardCorrectionSheet: View {
+    private static let maxLedgerAmount = 2_147_483_647
     @Environment(\.dismiss) private var dismiss
     let target: RewardCorrectionTarget
     let onApply: (_ reason: String, _ replacementAmount: Int?, _ idempotencyKey: String) async -> Bool
@@ -118,8 +119,10 @@ struct RewardCorrectionSheet: View {
         let cleanReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         var replacement: Int?
         if !target.isRefund, replaceAmount {
-            guard let amount = Int(magnitude), amount > 0, amount != abs(target.originalAmount) else {
-                error = "Enter a different positive whole-number amount."
+            guard let amount = Int(magnitude), amount > 0,
+                  amount <= Self.maxLedgerAmount,
+                  amount != abs(target.originalAmount) else {
+                error = "Enter a different positive whole-number amount up to 2,147,483,647."
                 return
             }
             replacement = target.originalAmount < 0 ? -amount : amount

@@ -36,7 +36,7 @@ describe('LedgerCorrectionModal', () => {
     mockApi(calls)
     render(<LedgerCorrectionModal target={{ kind: 'refund', redemption: {
       id: '22222222-2222-4222-8222-222222222222', title: 'Ice cream', emoji: '🍦', cost: 5,
-      currency: 'stars', status: 'approved', ledgerId: entry.id, refundLedgerId: null, createdAt: '2026-07-31T12:00:00Z',
+      currency: 'stars', status: 'approved', requestedBy: 'p1', ledgerId: entry.id, refundLedgerId: null, createdAt: '2026-07-31T12:00:00Z',
     } }} onClose={vi.fn()} onSaved={vi.fn()} />)
 
     fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: 'Reward was not delivered' } })
@@ -45,5 +45,19 @@ describe('LedgerCorrectionModal', () => {
     await waitFor(() => expect(calls).toHaveLength(1))
     expect(calls[0].url).toContain('/api/redemptions/22222222-2222-4222-8222-222222222222/refund')
     expect(calls[0].body).toMatchObject({ reason: 'Reward was not delivered' })
+  })
+
+  it('rejects a replacement outside the database integer range before sending', async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = []
+    mockApi(calls)
+    render(<LedgerCorrectionModal target={{ kind: 'entry', entry }} onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Replace amount' }))
+    fireEvent.change(screen.getByLabelText(/Correct amount/), { target: { value: '2147483648' } })
+    fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: 'Outside supported range' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply correction' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/2,147,483,647/)
+    expect(calls).toHaveLength(0)
   })
 })

@@ -10,6 +10,8 @@ function correctionKey(): string {
   return globalThis.crypto.randomUUID()
 }
 
+const PG_INT_MAX = 2_147_483_647
+
 export function LedgerCorrectionModal({ target, onClose, onSaved }: {
   target: LedgerCorrectionTarget
   onClose: () => void
@@ -34,8 +36,8 @@ export function LedgerCorrectionModal({ target, onClose, onSaved }: {
         await rewardsApi.refundRedemption(target.redemption.id, cleanReason, requestKey)
       } else {
         const n = Math.round(Number(magnitude))
-        if (mode === 'replace' && (!Number.isSafeInteger(n) || n <= 0 || n === Math.abs(original))) {
-          setError('Enter a different positive whole-number amount.')
+        if (mode === 'replace' && (!Number.isInteger(n) || n <= 0 || n > PG_INT_MAX || n === Math.abs(original))) {
+          setError('Enter a different positive whole-number amount up to 2,147,483,647.')
           setSaving(false)
           return
         }
@@ -81,7 +83,7 @@ export function LedgerCorrectionModal({ target, onClose, onSaved }: {
         {!isRefund && mode === 'replace' && (
           <label className="field" style={{ marginBottom: 12 }}>
             <span>Correct amount</span>
-            <input type="number" min={1} step={1} value={magnitude} onChange={(e) => setMagnitude(e.target.value)} />
+            <input type="number" min={1} max={PG_INT_MAX} step={1} value={magnitude} onChange={(e) => setMagnitude(e.target.value)} />
             <span className="tiny muted">Keep this as a {original >= 0 ? 'credit' : 'debit'}; use Reverse entirely to remove it.</span>
           </label>
         )}

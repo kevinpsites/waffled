@@ -52,6 +52,7 @@ export interface PersonRedemption {
   cost: number
   currency: string
   status: string
+  requestedBy: string | null
   ledgerId: string | null
   refundLedgerId: string | null
   createdAt: string
