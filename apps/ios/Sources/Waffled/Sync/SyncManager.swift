@@ -193,7 +193,7 @@ final class SyncManager {
 
     /// Whether the signed-in person holds a capability — mirrors the web `can()`:
     /// admins implicitly have everything; otherwise it must be in their granted set.
-    /// Capabilities: "chore.manage", "chore.approve", "reward.manage", "reward.approve".
+    /// Server-defined household capabilities such as chore, reward, and goal management.
     func can(_ capability: String) -> Bool {
         guard let p = currentPerson else { return false }
         return p.isAdmin || p.capabilities.contains(capability)
@@ -713,6 +713,34 @@ final class SyncManager {
     @discardableResult
     func denyRedemption(id: String) async -> Bool {
         let ok = await restCommit { _ = try await api.denyRedemption(id: id) }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
+    /// Cancel a pending request (no balance mutation has happened yet).
+    @discardableResult
+    func cancelRedemption(id: String) async -> Bool {
+        let ok = await restCommit { try await api.cancelRedemption(id: id) }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
+    /// Refund an approved redemption through a linked compensating entry.
+    @discardableResult
+    func refundRedemption(id: String, reason: String, idempotencyKey: String) async -> Bool {
+        let ok = await restCommit { try await api.refundRedemption(id: id, reason: reason, idempotencyKey: idempotencyKey) }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
+    /// Reverse a ledger entry and optionally replace it with the corrected amount.
+    @discardableResult
+    func correctLedgerEntry(id: String, reason: String, replacementAmount: Int?, idempotencyKey: String) async -> Bool {
+        let ok = await restCommit {
+            try await api.correctLedgerEntry(id: id, reason: reason,
+                                             replacementAmount: replacementAmount,
+                                             idempotencyKey: idempotencyKey)
+        }
         if ok { rewardsRev += 1 }
         return ok
     }

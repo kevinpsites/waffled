@@ -2498,6 +2498,8 @@ struct WaffledAPI: Sendable {
         let cost: Int
         let currency: String
         let status: String          // pending | approved | denied
+        let ledgerId: String?
+        let refundLedgerId: String?
         let decidedAt: String?
         let createdAt: String
     }
@@ -2579,6 +2581,29 @@ struct WaffledAPI: Sendable {
     func denyRedemption(id: String) async throws -> RewardRedemption {
         struct Resp: Decodable { let redemption: RewardRedemption }
         return try await sendJSON("POST", "/api/redemptions/\(id)/deny", as: Resp.self).redemption
+    }
+
+    /// Cancel a pending redemption. No ledger entry exists yet, so this only
+    /// changes request state and never adjusts the balance.
+    func cancelRedemption(id: String) async throws {
+        try await send("POST", "/api/redemptions/\(id)/cancel", body: [:])
+    }
+
+    /// Refund a settled redemption with an append-only compensating ledger row.
+    func refundRedemption(id: String, reason: String, idempotencyKey: String) async throws {
+        try await send("POST", "/api/redemptions/\(id)/refund", body: [
+            "reason": .string(reason), "idempotencyKey": .string(idempotencyKey),
+        ])
+    }
+
+    /// Reverse a settled ledger entry and optionally replace it with a corrected
+    /// amount. The original entry remains visible for auditability.
+    func correctLedgerEntry(id: String, reason: String, replacementAmount: Int?, idempotencyKey: String) async throws {
+        var body: [String: JSONValue] = [
+            "reason": .string(reason), "idempotencyKey": .string(idempotencyKey),
+        ]
+        if let replacementAmount { body["replacementAmount"] = .int(replacementAmount) }
+        try await send("POST", "/api/ledger-entries/\(id)/correct", body: body)
     }
 
     /// Pin (or clear, with `nil`) the reward a person is saving toward.
@@ -2763,17 +2788,28 @@ struct WaffledAPI: Sendable {
             let text: String
         }
         struct LedgerEntry: Decodable, Sendable, Identifiable {
+            let id: String
             let amount: Int
             let reason, currency: String
             let detail: String?
             let note: String?          // free-text on ad-hoc entries (e.g. a spot award's reason)
+            let correctionReason: String?
+            let correctionOfId: String?
+            let reversedById: String?
+            let reversible: Bool
+            let redemptionId: String?
             let createdAt: String
-            var id: String { createdAt + reason + "\(amount)" + (detail ?? "") }
 
             /// Human label for the ledger row: a chore/reward title when present, else
             /// the humanized reason — and for a spot award, append the parent's note
             /// ("spot award — being so helpful").
             var label: String {
+                if reason == "ledger_reversal" {
+                    return "Reversal" + (detail.map { " · \($0)" } ?? "")
+                }
+                if reason == "ledger_correction" {
+                    return "Corrected" + (detail.map { " · \($0)" } ?? "")
+                }
                 if let d = detail, !d.isEmpty { return d }
                 let base = reason.replacingOccurrences(of: "_", with: " ")
                 if reason == "spot_award", let n = note?.trimmingCharacters(in: .whitespaces), !n.isEmpty {
@@ -2787,6 +2823,8 @@ struct WaffledAPI: Sendable {
             let emoji: String?
             let cost: Int
             let currency, status: String
+            let ledgerId: String?
+            let refundLedgerId: String?
             let createdAt: String
         }
         /// The reward a person is saving toward — drives the shop's hero card.

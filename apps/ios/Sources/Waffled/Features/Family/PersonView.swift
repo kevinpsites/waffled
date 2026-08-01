@@ -59,6 +59,8 @@ struct PersonView: View {
     @State private var showSavingPicker = false
     @State private var showTrade = false
     @State private var showAward = false
+    @State private var correctionTarget: RewardCorrectionTarget?
+    @State private var cancelingRedemption: WaffledAPI.PersonOverview.Redemption?
     @State private var waffledBiteDevice: WaffledAPI.WaffledBiteDevice?
     @State private var showWaffledBitePair = false
     // Collapse state for the iPad spotlight's grouped sections.
@@ -155,6 +157,41 @@ struct PersonView: View {
         .sheet(isPresented: $showAward) {
             AwardStarsSheet(personName: firstName, personId: personId,
                             currencies: model.overview?.currencies ?? []) { await model.load() }
+        }
+        .sheet(item: $correctionTarget) { target in
+            RewardCorrectionSheet(target: target) { reason, replacement, key in
+                let ok: Bool
+                switch target {
+                case let .ledger(entry):
+                    ok = await sync.correctLedgerEntry(id: entry.id, reason: reason,
+                                                       replacementAmount: replacement,
+                                                       idempotencyKey: key)
+                case let .refund(redemption):
+                    ok = await sync.refundRedemption(id: redemption.id, reason: reason,
+                                                     idempotencyKey: key)
+                }
+                if ok { await model.load() }
+                return ok
+            }
+        }
+        .confirmationDialog(
+            "Cancel this pending redemption?",
+            isPresented: Binding(
+                get: { cancelingRedemption != nil },
+                set: { if !$0 { cancelingRedemption = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Cancel request", role: .destructive) {
+                guard let redemption = cancelingRedemption else { return }
+                cancelingRedemption = nil
+                Task {
+                    if await sync.cancelRedemption(id: redemption.id) { await model.load() }
+                }
+            }
+            Button("Keep request", role: .cancel) { cancelingRedemption = nil }
+        } message: {
+            Text("No balance has been spent yet.")
         }
     }
 
@@ -549,6 +586,13 @@ struct PersonView: View {
                             Text(e.label)
                                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                             Spacer()
+                            if e.reversedById != nil {
+                                Text("CORRECTED").font(.system(size: 9, weight: .heavy)).foregroundStyle(WF.ink3)
+                            } else if sync.can("reward.correct"), e.reversible, e.redemptionId == nil {
+                                Button("Correct") { correctionTarget = .ledger(e) }
+                                    .font(.system(size: 11, weight: .bold)).buttonStyle(.plain)
+                                    .foregroundStyle(WF.ai)
+                            }
                         }
                         .padding(.vertical, 7)
                         if i < min(ov.recentLedger.count, 6) - 1 { Rectangle().fill(WF.hair2).frame(height: 1) }
@@ -573,6 +617,17 @@ struct PersonView: View {
                         HStack(spacing: 2) {
                             Text(symbol(for: r.currency)).font(.system(size: 11))
                             Text("\(r.cost)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
+                        }
+                        if r.status == "pending",
+                           sync.currentPersonId == personId || sync.can("reward.approve") {
+                            Button("Cancel") { cancelingRedemption = r }
+                                .font(.system(size: 11, weight: .bold)).buttonStyle(.plain)
+                                .foregroundStyle(WF.ink3)
+                        } else if r.status == "approved", r.ledgerId != nil,
+                                  sync.can("reward.correct") {
+                            Button("Refund") { correctionTarget = .refund(r) }
+                                .font(.system(size: 11, weight: .bold)).buttonStyle(.plain)
+                                .foregroundStyle(WF.ai)
                         }
                     }
                     .padding(.vertical, 8)

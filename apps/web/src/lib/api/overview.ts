@@ -31,10 +31,17 @@ export interface CategoryBalance {
 }
 
 export interface OverviewLedgerEntry {
+  id: string
   amount: number
   reason: string
   currency: string
   detail: string | null // the specific chore / reward title, when known
+  note: string | null
+  correctionReason: string | null
+  correctionOfId: string | null
+  reversedById: string | null
+  reversible: boolean
+  redemptionId: string | null
   createdAt: string
 }
 
@@ -45,6 +52,8 @@ export interface PersonRedemption {
   cost: number
   currency: string
   status: string
+  ledgerId: string | null
+  refundLedgerId: string | null
   createdAt: string
 }
 

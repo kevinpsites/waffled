@@ -25,6 +25,7 @@ describe('DEFAULT_PERMISSIONS', () => {
       'reward.manage',
       'reward.approve',
       'reward.grant',
+      'reward.correct',
       'goal.manage',
     ])
     expect(DEFAULT_PERMISSIONS.adult['goal.manage']).toBe(true)
