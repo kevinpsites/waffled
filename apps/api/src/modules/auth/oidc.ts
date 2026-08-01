@@ -280,12 +280,15 @@ export function registerOidcRoutes(api: Api): void {
             // An account whose only temporary access expired has no active tenant
             // in which to accept another invite. A verified OIDC login therefore
             // bootstraps its first fresh invite, matching first-time OIDC signup.
-            const invite = await firstPendingInviteForEmail(email)
+            const invite = await firstPendingInviteForEmail(account.email)
             if (!invite) {
               return failSignIn(req, res, redirectTo, 403, 'Access expired', 'This account has no active household access. Ask a household admin to restore it.', 'access_expired')
             }
-            await createMembershipFromInvite(account.id, email, invite)
+            await createMembershipFromInvite(account.id, account.email, invite)
             memberships = await listMemberships(account.id)
+            if (memberships.length === 0) {
+              return failSignIn(req, res, redirectTo, 403, 'Access expired', 'This account has no active household access. Ask a household admin to restore it.', 'access_expired')
+            }
           }
           const active = await pickActiveHousehold(account.id, memberships)
           const m = memberships.find((x) => x.householdId === active)!

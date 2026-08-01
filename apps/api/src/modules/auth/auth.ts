@@ -155,8 +155,8 @@ export function registerAuthRoutes(api: Api): void {
     if (!email || !password) return res.status(400).json({ error: 'BadRequest', message: 'email and password are required' })
     // Authenticate the *account* (the global human login, keyed by lower(email)).
     // The credentials table is gone — accounts.password_hash is the password mirror.
-    const { rows } = await query<{ id: string; password_hash: string | null }>(
-      `select id, password_hash from accounts where lower(email) = lower($1) and deleted_at is null limit 1`,
+    const { rows } = await query<{ id: string; email: string; password_hash: string | null }>(
+      `select id, email, password_hash from accounts where lower(email) = lower($1) and deleted_at is null limit 1`,
       [email]
     )
     const account = rows[0]
@@ -172,12 +172,15 @@ export function registerAuthRoutes(api: Api): void {
     // invite-accept screen, so a successful credential login accepts its first
     // pending invite (the same bootstrap behavior used by first-time OIDC).
     if (memberships.length === 0) {
-      const invite = await firstPendingInviteForEmail(email)
+      const invite = await firstPendingInviteForEmail(account.email)
       if (!invite) {
         return res.status(403).json({ error: 'Forbidden', message: 'No active household access for this account.' })
       }
-      await createMembershipFromInvite(accountId, email, invite)
+      await createMembershipFromInvite(accountId, account.email, invite)
       memberships = await listMemberships(accountId)
+      if (memberships.length === 0) {
+        return res.status(403).json({ error: 'Forbidden', message: 'No active household access for this account.' })
+      }
     }
     const active = await pickActiveHousehold(accountId, memberships)
     await setLastHousehold(accountId, active)
@@ -189,7 +192,7 @@ export function registerAuthRoutes(api: Api): void {
       refreshToken,
       expiresIn: accessTk.expiresIn,
       memberships,
-      pendingInvites: await pendingInvitesForEmail(email),
+      pendingInvites: await pendingInvitesForEmail(account.email),
     })
   })
 

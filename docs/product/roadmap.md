@@ -75,7 +75,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   prune sessions, regenerate the PowerSync key) that run in-container with no login required.
 - **Identity** — built-in email/password auth (rotating refresh), backend-mediated **OIDC
   SSO** (invite-gated, admin-configured), member management (grant logins), **role-based
-  permissions** (per-role capability grid for managing/approving chores, rewards & goals —
+  permissions** (adult/caregiver/guest/teen/kid; optional expiry for temporary roles;
+  hard read-only guests; per-role capability grid for managing/approving chores, rewards & goals —
   see the [permission model](./permissions.md): *gate what touches currency or someone
   else's record; attribute collaborative actions; leave the rest open*).
 - **Kiosk** — device pairing, profile picker, optional PINs, idle screensaver.
@@ -188,7 +189,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Web/Kiosk — Today, Calendar (incl. **recurring events** — create, per-occurrence edit/
   delete scope, end condition, and a live "now" line on the time grids), Chores (incl.
   **photo-proof**), Rewards, Goals, Lists, Meals, Photos, AI capture, **role-based permission
-  gating** + the permissions matrix editor, native sign-in (password + OIDC), offline-first
+  gating** + the permissions matrix editor, caregiver/guest temporary access with read-only
+  guest guards, native sign-in (password + OIDC), offline-first
   calendar over PowerSync, and local event notifications (Snooze/View). The iPad also has the
   **family-display screensaver** (idle
   photo slideshow · clock · weather · next event · night-dim). The newer modules reached

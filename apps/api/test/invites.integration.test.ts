@@ -91,7 +91,17 @@ beforeAll(async () => {
   await query(
     `insert into persons (household_id, name, member_type, account_id, access_expires_at)
      values ($1,'Locked Helper','caregiver',$2,now() - interval '1 day')`,
-    [householdB, lockedAcct.rows[0].id]
+    [householdA, lockedAcct.rows[0].id]
+  )
+
+  const strandedAcct = await query(
+    `insert into accounts (email, password_hash, last_household_id) values ('stranded@example.com',$1,$2) returning id`,
+    [hashPassword('strandedpass12'), householdB]
+  )
+  await query(
+    `insert into persons (household_id, name, member_type, account_id, access_expires_at)
+     values ($1,'Stranded Helper','caregiver',$2,now() - interval '1 day')`,
+    [householdB, strandedAcct.rows[0].id]
   )
 }, 60_000)
 
@@ -143,6 +153,23 @@ describe('P2.4 invite-and-accept', () => {
     expect(session.memberships).toHaveLength(1)
     expect(session.memberships[0]).toMatchObject({ householdId: householdA, memberType: 'guest' })
     expect(session.pendingInvites).toHaveLength(0)
+
+    const restored = await query(
+      `select member_type, access_expires_at from persons p join accounts a on a.id = p.account_id
+        where p.household_id = $1 and lower(a.email) = 'locked@example.com'`,
+      [householdA]
+    )
+    expect(restored.rows).toHaveLength(1)
+    expect(restored.rows[0].member_type).toBe('guest')
+    expect(new Date(restored.rows[0].access_expires_at).toISOString()).toBe(future)
+  })
+
+  it('returns a controlled denial when an expired-only account has no fresh invite', async () => {
+    const denied = await call('POST', '/api/auth/login', undefined, {
+      email: 'stranded@example.com', password: 'strandedpass12',
+    })
+    expect(denied.statusCode).toBe(403)
+    expect(json(denied)).toMatchObject({ error: 'Forbidden', message: 'No active household access for this account.' })
   })
 
   it('cannot invite someone already a member of the household (409)', async () => {

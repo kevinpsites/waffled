@@ -45,6 +45,7 @@ final class Session {
         do {
             let s = try await api.login(email: email, password: password)
             AuthTokens.save(access: s.accessToken, refresh: s.refreshToken)
+            AppConfig.setCurrentMemberType(nil)
             AppConfig.clearSignedOut()
             phase = .authed
             return nil
@@ -81,6 +82,7 @@ final class Session {
         do {
             let s = try await api.oidcExchange(code: code)
             AuthTokens.save(access: s.accessToken, refresh: s.refreshToken)
+            AppConfig.setCurrentMemberType(nil)
             AppConfig.clearSignedOut()
             phase = .authed
             return nil
@@ -99,6 +101,7 @@ final class Session {
     func signOut() async {
         let refresh = AuthTokens.refreshToken
         AuthTokens.clear()
+        AppConfig.setCurrentMemberType(nil)
         AppConfig.markSignedOut()   // else the dev-token fallback re-auths us
         phase = .login
         if let refresh { await api.revoke(refreshToken: refresh) }   // best-effort
@@ -111,6 +114,7 @@ final class Session {
     /// flips/keeps the gate at authed.
     func enterClaimedSession(access: String, refresh: String) {
         AuthTokens.save(access: access, refresh: refresh)
+        AppConfig.setCurrentMemberType(nil)
         AppConfig.clearSignedOut()
         phase = .authed
     }

@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Refunds preserve the original approval attribution and reject mismatched or
   corrupted redemption-to-ledger links, including during idempotent replay.
 
+- **Caregiver and read-only guest household roles.** Admins can now invite or edit
+  temporary helpers with an optional access-expiration date. Caregivers receive the
+  routine chore approval/management defaults without reward or goal administration;
+  guests can browse the household but cannot change shared data. Expired memberships
+  disappear from active sessions and can be restored in place with a fresh invite.
+
 ### Changed
 
 ### Fixed

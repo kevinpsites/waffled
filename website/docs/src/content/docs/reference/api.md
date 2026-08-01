@@ -32,6 +32,12 @@ guarded by `tenantRoute` (any member), `adminRoute` (admin/owner), or `capRoute(
 specific capability). Optional [modules](/administration/modules/) add a `moduleRoutes(key)` gate
 that 403s when the module is off.
 
+Household memberships use `adult`, `caregiver`, `guest`, `teen`, or `kid`. Caregiver and
+guest memberships may carry `accessExpiresAt`; expired memberships are excluded from
+authentication and household switching. Guest access is read-only across shared-state API
+routes, with narrow exemptions for account maintenance, accepting invites, and switching
+households.
+
 ## API keys
 
 Create and manage keys in the app (they're minted by a signed-in session, not by another key):
