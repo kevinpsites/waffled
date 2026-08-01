@@ -115,6 +115,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Fast Family Night schedule changes are no longer dropped on iPhone or iPad.** When
+  the time picker emits another value while a save is in flight, Waffled now serializes the
+  latest day and time and keeps the controls aligned with the server. Retrying an initial
+  Calendar settings load also clears its stale connection error after the retry succeeds.
+
 - **Recurring event edits now keep the whole series intact.** "This and following" carries
   all-day, countdown, people, goal, and repeat settings into the new series, while changing
   the time for "All events" no longer removes earlier occurrences. Locally synced web events

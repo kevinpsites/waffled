@@ -1,6 +1,79 @@
 import SwiftUI
 import AuthenticationServices
 
+@MainActor
+@Observable
+final class CountdownSettingsModel {
+    typealias Fetch = () async throws -> (sleeps: Bool, birthdayHorizonDays: Int)
+    typealias SetSleeps = (Bool) async throws -> Void
+    typealias SetHorizon = (Int) async throws -> Void
+
+    private(set) var sleeps = false
+    private(set) var birthdayHorizon = 183
+    private(set) var loaded = false
+    private(set) var busy = false
+    var errorMessage: String?
+
+    private let fetch: Fetch
+    private let setSleeps: SetSleeps
+    private let setHorizon: SetHorizon
+
+    init(
+        fetch: @escaping Fetch = {
+            let response = try await WaffledAPI().countdowns()
+            return (response.sleeps, response.birthdayHorizonDays)
+        },
+        setSleeps: @escaping SetSleeps = { try await WaffledAPI().setCountdownSleeps($0) },
+        setHorizon: @escaping SetHorizon = { try await WaffledAPI().setCountdownBirthdayHorizon($0) }
+    ) {
+        self.fetch = fetch
+        self.setSleeps = setSleeps
+        self.setHorizon = setHorizon
+    }
+
+    func load() async {
+        errorMessage = nil
+        do {
+            let confirmed = try await fetch()
+            sleeps = confirmed.sleeps
+            birthdayHorizon = confirmed.birthdayHorizonDays
+            loaded = true
+        } catch {
+            errorMessage = "Couldn’t load Countdown settings."
+        }
+    }
+
+    func changeSleeps(to enabled: Bool) async {
+        guard !busy, enabled != sleeps else { return }
+        let previous = sleeps
+        sleeps = enabled
+        busy = true
+        errorMessage = nil
+        defer { busy = false }
+        do {
+            try await setSleeps(enabled)
+        } catch {
+            sleeps = previous
+            errorMessage = "The Countdown wording wasn’t changed. Check your connection and try again."
+        }
+    }
+
+    func changeHorizon(to days: Int) async {
+        guard !busy, days != birthdayHorizon else { return }
+        let previous = birthdayHorizon
+        birthdayHorizon = days
+        busy = true
+        errorMessage = nil
+        defer { busy = false }
+        do {
+            try await setHorizon(days)
+        } catch {
+            birthdayHorizon = previous
+            errorMessage = "The birthday window wasn’t changed. Check your connection and try again."
+        }
+    }
+}
+
 /// Drives the Google-calendar OAuth consent in a system web session and resolves
 /// when the server redirects back to the `waffled://` callback.
 @MainActor
@@ -47,11 +120,10 @@ struct CalendarsSettingsView: View {
     @State private var connecting = false
     @State private var message: String?
     @State private var launcher = OAuthLauncher()
+    @State private var countdownSettings = CountdownSettingsModel()
     // filters (web parity)
     @State private var hideReadOnly = true
     @State private var syncedOnly = false
-    @State private var sleeps = false
-    @State private var birthdayHorizon = 183   // days a member birthday stays hidden until it's close
     @State private var search = ""
     @State private var collapsed: Set<String> = []   // account ids
 
@@ -79,6 +151,12 @@ struct CalendarsSettingsView: View {
                     }
                 } else if loading {
                     WaffledLoading(top: 40)
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        notice(message ?? "Couldn’t load calendar settings.")
+                        Button("Try again") { Task { _ = await load() } }
+                            .font(.system(size: 14, weight: .bold)).tint(WF.primary)
+                    }
                 }
             }
             .padding(16).padding(.bottom, 110)
@@ -96,15 +174,17 @@ struct CalendarsSettingsView: View {
                 }
             }
         }
-        .task { await load() }
-        .task { if let r = try? await api.countdowns() { sleeps = r.sleeps; birthdayHorizon = r.birthdayHorizonDays } }
+        .task { _ = await load() }
+        .task { await countdownSettings.load() }
     }
 
     /// Friendly presets for the birthday-horizon window.
     private static let horizonOptions: [(label: String, days: Int)] =
         [("1 month", 31), ("3 months", 92), ("6 months", 183), ("1 year", 366)]
     private var horizonLabel: String {
-        Self.horizonOptions.min(by: { abs($0.days - birthdayHorizon) < abs($1.days - birthdayHorizon) })?.label ?? "6 months"
+        Self.horizonOptions.min(by: {
+            abs($0.days - countdownSettings.birthdayHorizon) < abs($1.days - countdownSettings.birthdayHorizon)
+        })?.label ?? "6 months"
     }
 
     /// The household "N sleeps" vs "N days" wording toggle (mirrors the web Countdowns
@@ -112,15 +192,23 @@ struct CalendarsSettingsView: View {
     private var countdownsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("⏳ Countdowns").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
-            Button { toggleSleeps() } label: {
+            if let error = countdownSettings.errorMessage {
+                HStack {
+                    Text(error).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.primaryD)
+                    Spacer(minLength: 8)
+                    Button("Retry") { Task { await countdownSettings.load() } }
+                        .font(.system(size: 12, weight: .bold)).tint(WF.primary)
+                }
+            }
+            Button { Task { await countdownSettings.changeSleeps(to: !countdownSettings.sleeps) } } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: sleeps ? "checkmark.square.fill" : "square")
-                        .font(.system(size: 17)).foregroundStyle(sleeps ? WF.primary : WF.ink3)
+                    Image(systemName: countdownSettings.sleeps ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 17)).foregroundStyle(countdownSettings.sleeps ? WF.primary : WF.ink3)
                     Text("Count in “sleeps” instead of “days” (kid-friendly)")
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
                     Spacer(minLength: 0)
                 }
-            }.buttonStyle(.plain)
+            }.buttonStyle(.plain).disabled(countdownSettings.busy || !countdownSettings.loaded)
 
             Divider().background(WF.hair)
             HStack(spacing: 8) {
@@ -129,11 +217,12 @@ struct CalendarsSettingsView: View {
                 Spacer(minLength: 0)
                 Menu {
                     ForEach(Self.horizonOptions, id: \.days) { opt in
-                        Button(opt.label) { setHorizon(opt.days) }
+                        Button(opt.label) { Task { await countdownSettings.changeHorizon(to: opt.days) } }
                     }
                 } label: {
                     WaffledMenuPill(text: horizonLabel)
                 }
+                .disabled(countdownSettings.busy || !countdownSettings.loaded)
             }
             Text("A birthday further out than this stays hidden until it’s close (keeps a year of family birthdays off the list).")
                 .font(.system(size: 12)).foregroundStyle(WF.ink3)
@@ -144,17 +233,6 @@ struct CalendarsSettingsView: View {
         .padding(14)
         .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
-    }
-
-    private func toggleSleeps() {
-        sleeps.toggle()
-        let v = sleeps
-        Task { try? await api.setCountdownSleeps(v) }
-    }
-
-    private func setHorizon(_ days: Int) {
-        birthdayHorizon = days
-        Task { try? await api.setCountdownBirthdayHorizon(days) }
     }
 
     private var filterControls: some View {
@@ -287,9 +365,23 @@ struct CalendarsSettingsView: View {
     }
 
     private func setAllSync(_ accountId: String, _ selected: Bool) async {
+        message = nil
         let cals = status?.calendars.filter { $0.accountId == accountId && $0.selected != selected } ?? []
-        for c in cals { try? await api.updateCalendarLink(id: c.id, ["selected": .bool(selected)]) }
-        await load()
+        var updated = 0
+        for c in cals {
+            do {
+                try await api.updateCalendarLink(id: c.id, ["selected": .bool(selected)])
+                updated += 1
+            } catch {
+                break
+            }
+        }
+        let refreshed = await load()
+        if updated < cals.count {
+            message = "Updated \(updated) of \(cals.count) calendars. The rest weren’t changed; try again."
+        } else if !refreshed {
+            message = "The calendars were updated, but the latest status couldn’t be loaded."
+        }
     }
 
     private func shortDay(_ iso: String) -> String {
@@ -382,19 +474,45 @@ struct CalendarsSettingsView: View {
 
     // MARK: actions
 
-    private func load() async {
-        status = try? await api.calendarStatus()
-        loading = false
+    @discardableResult
+    private func load() async -> Bool {
+        let recoveringInitialLoad = status == nil
+        do {
+            status = try await api.calendarStatus()
+            if recoveringInitialLoad { message = nil }
+            loading = false
+            return true
+        } catch {
+            if status == nil { message = "Couldn’t load calendar settings. Check your connection and try again." }
+            loading = false
+            return false
+        }
     }
 
     private func patch(_ id: String, _ body: [String: JSONValue]) async {
-        try? await api.updateCalendarLink(id: id, body)
-        await load()
+        message = nil
+        do {
+            try await api.updateCalendarLink(id: id, body)
+        } catch {
+            message = "That calendar setting wasn’t changed. Check your connection and try again."
+            return
+        }
+        if !(await load()) {
+            message = "The calendar setting was saved, but the latest status couldn’t be loaded."
+        }
     }
 
     private func disconnect(_ accountId: String) async {
-        try? await api.disconnectCalendarAccount(id: accountId)
-        await load()
+        message = nil
+        do {
+            try await api.disconnectCalendarAccount(id: accountId)
+        } catch {
+            message = "The Google account wasn’t disconnected. Check your connection and try again."
+            return
+        }
+        if !(await load()) {
+            message = "The Google account was disconnected, but the latest status couldn’t be loaded."
+        }
     }
 
     private func syncNow() async {
@@ -408,7 +526,7 @@ struct CalendarsSettingsView: View {
             message = "Couldn’t sync — check your connection."
         }
         syncing = false
-        await load()
+        _ = await load()
     }
 
     private func connect() async {
@@ -418,7 +536,7 @@ struct CalendarsSettingsView: View {
             let urlStr = try await api.connectCalendarURL(redirectTo: "waffled://calendar-connected")
             guard let url = URL(string: urlStr) else { return }
             let ok = await launcher.start(url: url, scheme: "waffled")
-            if ok { await load() }
+            if ok { _ = await load() }
         } catch {
             message = "Couldn’t start the Google connection."
         }
