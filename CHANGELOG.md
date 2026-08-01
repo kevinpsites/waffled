@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Incomplete uploaded-media backups no longer report success.** Uploaded media is included
+  when `BACKUP_INCLUDE_MEDIA` is omitted, matching the documented default, and a missing media
+  mount, failed archive, or failed offsite upload now marks the backup run as failed so System
+  Health and `./waffled doctor` can alert the household administrator.
+
 ## [0.14.3] - 2026-09-02
 
 ### Added
