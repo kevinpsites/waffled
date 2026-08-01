@@ -9,9 +9,11 @@ to S3-compatible storage and include uploaded media. Every run is recorded so
 **Settings → System Health** and `./waffled doctor` show you the last backup at a glance.
 
 After `./waffled up` and during `./waffled doctor`, the CLI also warns when uploaded
-media is excluded or every backup copy still lives on the Waffled host. These are
+media is explicitly excluded or every backup copy still lives on the Waffled host. These are
 planning warnings, not failed health checks; they disappear when the corresponding
-media and host-folder/offsite settings below are configured.
+media and host-folder/offsite settings below are configured. When media is enabled, a missing
+media mount, failed archive, or failed offsite media upload makes the backup run fail visibly
+instead of recording an incomplete backup as successful.
 
 > **On by default, zero-config.** A fresh `./waffled up` starts nightly local backups with
 > no setup. To be safe against a lost machine, point them at a folder you control
@@ -22,7 +24,7 @@ media and host-folder/offsite settings below are configured.
 | | Included | Where |
 |---|---|---|
 | **Database** (all app data: calendar, chores, goals, meals, lists, people, settings…) | Always | `waffled-<timestamp>.sql.gz` |
-| **Uploaded media** (photos, recipe images, chore proofs) | Opt-in — `BACKUP_INCLUDE_MEDIA=true` | `waffled-media-<timestamp>.tar.gz` |
+| **Uploaded media** (photos, recipe images, chore proofs) | Included by default; disable only with `BACKUP_INCLUDE_MEDIA=false` | `waffled-media-<timestamp>.tar.gz` |
 
 The database dump is plain SQL (gzipped), created with `pg_dump --clean --if-exists`, so a
 restore is a simple `gunzip | psql` and works into any role. PowerSync's own bucket storage
@@ -55,7 +57,7 @@ All optional — set in `infra/compose/.env` (documented in `.env.example`). Def
 BACKUP_TIME=02:00               # daily HH:MM (container timezone; set TZ to change)
 BACKUP_RETENTION_DAYS=14        # delete local dumps older than this
 BACKUP_ON_START=false           # also back up right after the container starts
-BACKUP_INCLUDE_MEDIA=false      # also archive uploaded media
+BACKUP_INCLUDE_MEDIA=true       # archive uploaded media (the default)
 BACKUP_HOST_PATH=               # write dumps to a host folder instead of the volume
 BACKUP_ENABLED=true             # set false only if you REMOVE the backup service (stops health nagging)
 
@@ -134,5 +136,5 @@ successful one is more than ~48 h old (two missed daily cycles). A failure hint 
 
 For real safety, keep **3** copies on **2** kinds of media with **1** offsite: the local
 volume/host folder gives you fast local restores; `BACKUP_S3_*` gives you the offsite copy.
-Turn on `BACKUP_INCLUDE_MEDIA` if you rely on uploaded photos/recipe images. Periodically do a
+Keep `BACKUP_INCLUDE_MEDIA=true` if you rely on uploaded photos/recipe images. Periodically do a
 `./waffled backup verify` of a recent dump so you know it works before you need it.

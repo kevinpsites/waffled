@@ -90,6 +90,9 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/oidc/start',
   '/api/auth/oidc/callback',
   '/api/auth/oidc/exchange',
+  // Caddy validates short-lived media bearer URLs here before serving a blob. The
+  // URL signature is the credential; ordinary API/session auth is intentionally absent.
+  '/api/media/authorize',
   // Kiosk pairing: both authenticate via a code/secret in the body, pre-session.
   '/api/kiosk/pair',
   '/api/kiosk/device/token',

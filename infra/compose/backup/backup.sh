@@ -9,7 +9,7 @@ set -uo pipefail
 
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
-INCLUDE_MEDIA="${BACKUP_INCLUDE_MEDIA:-false}"
+INCLUDE_MEDIA="${BACKUP_INCLUDE_MEDIA:-true}"
 MEDIA_DIR="${MEDIA_DIR:-/data/media}"
 S3_BUCKET="${BACKUP_S3_BUCKET:-}"      # e.g. s3://my-bucket/waffled  (empty → local only)
 S3_ENDPOINT="${BACKUP_S3_ENDPOINT:-}"  # set for B2 / R2 / MinIO; empty → real AWS
@@ -63,14 +63,14 @@ fi
 SIZE="$(stat -c %s "$DUMP_FILE" 2>/dev/null || echo 0)"
 [ "$SIZE" -gt 0 ] || fail "dump file is empty"
 
-# --- Optional media archive ------------------------------------------------------
+# --- Media archive (on by default; operators may explicitly disable it) ---------
 if [ "$INCLUDE_MEDIA" = "true" ]; then
-  if [ -d "$MEDIA_DIR" ]; then
-    MEDIA_FILE="$BACKUP_DIR/waffled-media-$TS.tar.gz"
-    log "archiving media → $MEDIA_FILE"
-    tar -czf "$MEDIA_FILE" -C "$MEDIA_DIR" . || { log "media archive failed (continuing with DB backup)"; MEDIA_FILE=""; }
-  else
-    log "BACKUP_INCLUDE_MEDIA=true but $MEDIA_DIR not mounted — skipping media"
+  [ -d "$MEDIA_DIR" ] || fail "BACKUP_INCLUDE_MEDIA=true but $MEDIA_DIR is not mounted"
+  MEDIA_FILE="$BACKUP_DIR/waffled-media-$TS.tar.gz"
+  log "archiving media → $MEDIA_FILE"
+  if ! tar -czf "$MEDIA_FILE" -C "$MEDIA_DIR" .; then
+    rm -f "$MEDIA_FILE"
+    fail "media archive failed"
   fi
 fi
 
@@ -79,7 +79,10 @@ if [ -n "$S3_BUCKET" ]; then
   aws_args=(s3 cp); [ -n "$S3_ENDPOINT" ] && aws_args+=(--endpoint-url "$S3_ENDPOINT")
   log "uploading to $S3_BUCKET"
   aws "${aws_args[@]}" "$DUMP_FILE" "$S3_BUCKET/" || fail "S3 upload failed (check BACKUP_S3_* creds/endpoint)"
-  [ -n "$MEDIA_FILE" ] && { aws "${aws_args[@]}" "$MEDIA_FILE" "$S3_BUCKET/" || log "media S3 upload failed (DB dump uploaded OK)"; }
+  if [ -n "$MEDIA_FILE" ]; then
+    aws "${aws_args[@]}" "$MEDIA_FILE" "$S3_BUCKET/" \
+      || fail "media S3 upload failed (check BACKUP_S3_* creds/endpoint)"
+  fi
 fi
 
 # --- Local retention (S3 retention → use a bucket lifecycle rule) -----------------

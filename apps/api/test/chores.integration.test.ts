@@ -568,7 +568,7 @@ describe('photo-proof chores', () => {
     expect(done.statusCode).toBe(200)
     expect(JSON.parse(done.body).instance.status).toBe('done')
     const after = (await instances()).find((i) => i.choreTitle === 'Tidy room')!
-    expect(after.proofUrl).toMatch(/\/media\/.*a{32}\.jpg$/)
+    expect(after.proofUrl).toMatch(/\/media\/.*a{32}\.jpg\?expires=\d{10}&sig=[A-Za-z0-9_-]{43}$/)
   })
 
   it('combines with approval: proof shows in the awaiting queue; reject clears it', async () => {
@@ -581,7 +581,7 @@ describe('photo-proof chores', () => {
     expect(JSON.parse(done.body).instance.status).toBe('awaiting')
 
     const queue = JSON.parse((await call('GET', '/api/chore-instances/awaiting', kevin)).body).instances as Inst[]
-    expect(queue.find((i) => i.choreTitle === 'Wash car')!.proofUrl).toMatch(/b{32}\.webp$/)
+    expect(queue.find((i) => i.choreTitle === 'Wash car')!.proofUrl).toMatch(/b{32}\.webp\?expires=\d{10}&sig=[A-Za-z0-9_-]{43}$/)
 
     expect((await call('POST', `/api/chore-instances/${inst.id}/reject`, kevin)).statusCode).toBe(200)
     const back = (await instances()).find((i) => i.choreTitle === 'Wash car')!
@@ -631,7 +631,7 @@ describe('photo-proof retention', () => {
     const i = (await instances()).find((x) => x.choreTitle === 'Vacuum')!
     expect(i.status).toBe('done')
     expect(i.hadProof).toBe(true)
-    expect(i.proofUrl).toMatch(/[0-9a-f]{32}\.jpg$/)
+    expect(i.proofUrl).toMatch(/[0-9a-f]{32}\.jpg\?expires=\d{10}&sig=[A-Za-z0-9_-]{43}$/)
   })
 
   it('the sweep deletes aged proofs (keeping hadProof) but spares fresh + awaiting ones', async () => {
@@ -655,9 +655,9 @@ describe('photo-proof retention', () => {
     const aged = after.find((i) => i.choreTitle === 'Old proof')!
     expect(aged.proofUrl).toBeNull()   // blob + key gone
     expect(aged.hadProof).toBe(true)   // …but we still remember a photo was attached
-    expect(after.find((i) => i.choreTitle === 'Fresh proof')!.proofUrl).toMatch(/[0-9a-f]{32}\.jpg$/)
+    expect(after.find((i) => i.choreTitle === 'Fresh proof')!.proofUrl).toMatch(/[0-9a-f]{32}\.jpg\?expires=\d{10}&sig=[A-Za-z0-9_-]{43}$/)
     // awaiting one keeps its proof despite being backdated
-    expect(after.find((i) => i.choreTitle === 'Pending proof')!.proofUrl).toMatch(/c{32}\.jpg$/)
+    expect(after.find((i) => i.choreTitle === 'Pending proof')!.proofUrl).toMatch(/c{32}\.jpg\?expires=\d{10}&sig=[A-Za-z0-9_-]{43}$/)
   })
 })
 
@@ -684,7 +684,7 @@ describe('stored proof photos (review/manage)', () => {
     let proofs = await listProofs()
     const a = proofs.find((p) => p.choreTitle === 'Proof A')!
     expect(a.instanceId).toBe(aId)
-    expect(a.proofUrl).toMatch(/[0-9a-f]{32}\.jpg$/)
+    expect(a.proofUrl).toMatch(/[0-9a-f]{32}\.jpg\?expires=\d{10}&sig=[A-Za-z0-9_-]{43}$/)
     expect(proofs.some((p) => p.choreTitle === 'Proof B')).toBe(true)
 
     // delete one
