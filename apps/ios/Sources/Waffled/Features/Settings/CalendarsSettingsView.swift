@@ -476,8 +476,10 @@ struct CalendarsSettingsView: View {
 
     @discardableResult
     private func load() async -> Bool {
+        let recoveringInitialLoad = status == nil
         do {
             status = try await api.calendarStatus()
+            if recoveringInitialLoad { message = nil }
             loading = false
             return true
         } catch {
