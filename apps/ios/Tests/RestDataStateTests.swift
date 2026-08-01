@@ -69,6 +69,15 @@ private let fixtureDate = Date(timeIntervalSince1970: 1_785_500_000)
         else { Issue.record("Expected a partial response to be stale") }
         #expect(!state.isAuthoritative)
     }
+
+    @Test func offlineDomainDoesNotBorrowAFreshSiblingsTimestamp() {
+        let state = RestState.combined([
+            .offline(updatedAt: nil),
+            .ready(updatedAt: fixtureDate),
+        ])
+
+        #expect(state == .offline(updatedAt: nil))
+    }
 }
 
 @MainActor
