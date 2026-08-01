@@ -14,6 +14,7 @@ export interface ChoreDraft {
   dueOn?: string | null
   requiresApproval?: boolean
   requiresPhoto?: boolean
+  status?: string
 }
 
 const DAYS: Array<[string, string]> = [
@@ -103,11 +104,14 @@ export function ChoreModal({
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [scopeAction, setScopeAction] = useState<ScopeAction | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const selectedOccurrenceIsPending = chore?.status === 'pending'
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!form.title.trim() || saving) return
+    setSaveError(null)
     setSaving(true)
     const payload = {
       title: form.title.trim(),
@@ -134,6 +138,7 @@ export function ChoreModal({
       onSaved()
       onClose()
     } catch {
+      setSaveError('Couldn\'t save this chore. Check your connection and try again.')
       setSaving(false)
     }
   }
@@ -150,17 +155,20 @@ export function ChoreModal({
       return
     }
     setSaving(true)
+    setSaveError(null)
     try {
       await api.deleteChore(chore!.id)
       onSaved()
       onClose()
     } catch {
+      setSaveError('Couldn\'t delete this chore. Check your connection and try again.')
       setSaving(false)
     }
   }
 
   async function applyScope(scope: ChoreScope) {
     if (!scopeAction || !chore?.instanceId) return
+    setSaveError(null)
     setSaving(true)
     try {
       const target = { scope, instanceId: chore.instanceId }
@@ -169,8 +177,12 @@ export function ChoreModal({
       onSaved()
       onClose()
     } catch {
+      setSaveError(
+        scopeAction.kind === 'save'
+          ? 'Couldn\'t save this chore. Check your connection and try again.'
+          : 'Couldn\'t delete this chore. Check your connection and try again.'
+      )
       setSaving(false)
-      setScopeAction(null)
     }
   }
 
@@ -183,6 +195,12 @@ export function ChoreModal({
         <div className="wf-serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>
           {editing ? 'Edit chore' : 'New chore'}
         </div>
+
+        {saveError && (
+          <div role="alert" className="tiny" style={{ color: 'var(--primary)', fontWeight: 700, marginBottom: 12 }}>
+            {saveError}
+          </div>
+        )}
 
         <form onSubmit={submit}>
           <div className="field-row">
@@ -309,10 +327,12 @@ export function ChoreModal({
                 {scopeAction.kind === 'save' ? 'Which chores should change?' : 'Which chores should be deleted?'}
               </div>
               <div className="tiny muted" style={{ marginBottom: 10 }}>
-                Completed chores and items awaiting approval always stay unchanged.
+                {selectedOccurrenceIsPending
+                  ? 'Completed chores and items awaiting approval always stay unchanged.'
+                  : 'The selected completed or awaiting-approval chore stays unchanged. Only future pending chores are affected.'}
               </div>
               <div style={{ display: 'grid', gap: 7 }}>
-                {!scopeAction.repeatChanged && (
+                {!scopeAction.repeatChanged && selectedOccurrenceIsPending && (
                   <button type="button" className="btn" disabled={saving} onClick={() => applyScope('this')}>
                     This chore only
                   </button>
@@ -323,7 +343,7 @@ export function ChoreModal({
                 <button type="button" className="btn" disabled={saving} onClick={() => applyScope('all')}>
                   Entire active series
                 </button>
-                <button type="button" className="btn btn-ghost" disabled={saving} onClick={() => setScopeAction(null)}>
+                <button type="button" className="btn btn-ghost" disabled={saving} onClick={() => { setScopeAction(null); setSaveError(null) }}>
                   Cancel
                 </button>
               </div>

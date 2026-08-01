@@ -571,7 +571,6 @@ export async function updateChore(
     if (scope === 'following') {
       if (!current.rrule) throw new ChoreScopeError('a one-off chore has no following occurrences')
       const instance = await lockedInstance(client, householdId, id, instanceId)
-      requireMutableInstance(instance)
       const dueOn = instanceDate(instance)
 
       await client.query(
@@ -687,7 +686,6 @@ export async function softDeleteChore(
     } else if (scope === 'following') {
       if (!current.rows[0].rrule) throw new ChoreScopeError('a one-off chore has no following occurrences')
       const instance = await lockedInstance(client, householdId, id, instanceId)
-      requireMutableInstance(instance)
       const dueOn = instanceDate(instance)
       await client.query(
         `update chores set recurrence_end_at = ($1::date - 1)::timestamptz where id = $2`,
