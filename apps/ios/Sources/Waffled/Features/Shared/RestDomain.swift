@@ -51,8 +51,14 @@ enum RestState: Equatable, Sendable {
            case let .queued(pending, date) = queued {
             return .queued(pending: pending, updatedAt: date ?? latest)
         }
+        let offlineDates = states.compactMap { state -> Date? in
+            guard case let .offline(updatedAt) = state else { return nil }
+            return updatedAt
+        }
         if states.contains(where: { if case .offline = $0 { true } else { false } }) {
-            return .offline(updatedAt: latest)
+            // A fresh sibling says nothing about when the offline domain last loaded.
+            // Preserve only timestamps carried by offline states themselves.
+            return .offline(updatedAt: offlineDates.max())
         }
         if let stale = states.first(where: { if case .stale = $0 { true } else { false } }),
            case let .stale(date, message) = stale {
