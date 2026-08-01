@@ -380,6 +380,154 @@ describe('reward redemption concurrency', () => {
   })
 })
 
+describe('append-only reward corrections and reversals', () => {
+  it('reverses an award and writes a corrected replacement without editing the original', async () => {
+    const before = await starsOf(kevinId)
+    const award = await call('POST', `/api/persons/${kevinId}/award`, kevin, {
+      amount: 10,
+      note: 'Original award',
+    })
+    expect(award.statusCode).toBe(201)
+    const originalId = JSON.parse(award.body).id as string
+
+    const corrected = await call('POST', `/api/ledger-entries/${originalId}/correct`, kevin, {
+      reason: 'Awarded four too many',
+      replacementAmount: 6,
+      idempotencyKey: '11111111-1111-4111-8111-111111111111',
+    })
+    expect(corrected.statusCode).toBe(201)
+    expect(JSON.parse(corrected.body).correction).toMatchObject({
+      originalId,
+      balance: before + 6,
+      replayed: false,
+    })
+
+    const rows = await withClient((c) => c.query<{
+      id: string; amount: number; reason: string; reverses_entry_id: string | null; correction_of_id: string | null; correction_reason: string | null
+    }>(
+      `select id, amount, reason, reverses_entry_id, correction_of_id, correction_reason
+         from ledger_entries
+        where id=$1 or reverses_entry_id=$1 or correction_of_id=$1
+        order by created_at`,
+      [originalId]
+    ))
+    expect(rows.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: originalId, amount: 10, reason: 'spot_award', reverses_entry_id: null, correction_of_id: null }),
+      expect.objectContaining({ amount: -10, reason: 'ledger_reversal', reverses_entry_id: originalId, correction_reason: 'Awarded four too many' }),
+      expect.objectContaining({ amount: 6, reason: 'ledger_correction', correction_of_id: originalId, correction_reason: 'Awarded four too many' }),
+    ]))
+  })
+
+  it('replays the same correction idempotently and blocks a second reversal', async () => {
+    const award = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, { amount: 3 })).body)
+    const body = {
+      reason: 'Duplicate request test',
+      idempotencyKey: '22222222-2222-4222-8222-222222222222',
+    }
+    expect((await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, body)).statusCode).toBe(201)
+    const replay = await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, body)
+    expect(replay.statusCode).toBe(200)
+    expect(JSON.parse(replay.body).correction.replayed).toBe(true)
+    expect((await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+      reason: 'Try a second reversal',
+      idempotencyKey: '33333333-3333-4333-8333-333333333333',
+    })).statusCode).toBe(409)
+    const reversals = await withClient((c) => c.query(
+      `select id from ledger_entries where household_id=$1 and reverses_entry_id=$2`,
+      [householdId, award.id]
+    ))
+    expect(reversals.rowCount).toBe(1)
+  })
+
+  it('enforces tenant and reward.correct capability boundaries', async () => {
+    const foreignEntry = await withClient(async (c) => {
+      const row = await c.query<{ id: string }>(
+        `insert into ledger_entries (household_id, person_id, currency, amount, reason)
+         select household_id, id, 'stars', 5, 'spot_award' from persons where id=$1 returning id`,
+        [foreignPersonId]
+      )
+      return row.rows[0].id
+    })
+    expect((await call('POST', `/api/ledger-entries/${foreignEntry}/correct`, kevin, {
+      reason: 'Cross tenant attempt',
+      idempotencyKey: '44444444-4444-4444-8444-444444444444',
+    })).statusCode).toBe(404)
+
+    const kidId = await addMember('No corrections', 'kid', false, 'dev|no-corrections')
+    const kid = mint('dev|no-corrections')
+    const ownEntry = JSON.parse((await call('POST', `/api/persons/${kidId}/award`, kevin, { amount: 2 })).body).id
+    expect((await call('POST', `/api/ledger-entries/${ownEntry}/correct`, kid, {
+      reason: 'Not permitted',
+      idempotencyKey: '55555555-5555-4555-8555-555555555555',
+    })).statusCode).toBe(403)
+  })
+
+  it('does not allow a one-sided correction of a paired currency conversion', async () => {
+    const conversionEntry = await withClient(async (c) => {
+      const row = await c.query<{ id: string }>(
+        `insert into ledger_entries
+           (household_id, person_id, currency, amount, reason, ref_type, created_by)
+         values ($1,$2,'stars',-2,'conversion','currency_conversion',$2) returning id`,
+        [householdId, kevinId]
+      )
+      return row.rows[0].id
+    })
+    const before = await starsOf(kevinId)
+    const response = await call('POST', `/api/ledger-entries/${conversionEntry}/correct`, kevin, {
+      reason: 'Would break the paired conversion',
+      idempotencyKey: '88888888-8888-4888-8888-888888888888',
+    })
+    expect(response.statusCode).toBe(409)
+    expect(JSON.parse(response.body).message).toContain('original feature')
+    expect(await starsOf(kevinId)).toBe(before)
+  })
+
+  it('cancels pending requests without touching the balance', async () => {
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Pending cancellation', cost: 1, requiresApproval: true,
+    })).body).reward
+    const before = await starsOf(kevinId)
+    const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, {
+      personId: kevinId,
+    })).body).redemption
+
+    const canceled = await call('POST', `/api/redemptions/${redemption.id}/cancel`, kevin)
+    expect(canceled.statusCode).toBe(200)
+    expect(JSON.parse(canceled.body).redemption.status).toBe('canceled')
+    expect(await starsOf(kevinId)).toBe(before)
+    expect((await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, {
+      reason: 'Pending is not settled',
+      idempotencyKey: '66666666-6666-4666-8666-666666666666',
+    })).statusCode).toBe(409)
+  })
+
+  it('refunds an approved redemption once and restores the balance', async () => {
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Refundable reward', cost: 4, requiresApproval: false,
+    })).body).reward
+    await grantStars(kevinId, 4)
+    const beforeRedeem = await starsOf(kevinId)
+    const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, {
+      personId: kevinId,
+    })).body).redemption
+    expect(await starsOf(kevinId)).toBe(beforeRedeem - 4)
+
+    const body = {
+      reason: 'Reward could not be delivered',
+      idempotencyKey: '77777777-7777-4777-8777-777777777777',
+    }
+    const refunded = await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, body)
+    expect(refunded.statusCode).toBe(200)
+    expect(JSON.parse(refunded.body).redemption.status).toBe('refunded')
+    expect(await starsOf(kevinId)).toBe(beforeRedeem)
+
+    const replay = await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, body)
+    expect(replay.statusCode).toBe(200)
+    expect(JSON.parse(replay.body).correction.replayed).toBe(true)
+    expect(await starsOf(kevinId)).toBe(beforeRedeem)
+  })
+})
+
 describe('reward capability gating (non-admin members)', () => {
   let adultId = '', kidId = '', adultToken = '', kidToken = ''
 
