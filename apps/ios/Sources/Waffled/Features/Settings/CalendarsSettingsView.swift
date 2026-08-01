@@ -466,7 +466,9 @@ struct CalendarsSettingsView: View {
                         .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
-                Button(role: .destructive) { Task { await disconnect(acct.id) } } label: {
+                Button(role: .destructive) {
+                    Task { await disconnect(acct.id, provider: acct.provider) }
+                } label: {
                     Text("Disconnect").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
                         .padding(.horizontal, 11).padding(.vertical, 6).background(WF.panel).clipShape(Capsule())
                 }
@@ -617,8 +619,10 @@ struct CalendarsSettingsView: View {
 
     @discardableResult
     private func load() async -> Bool {
+        let recoveringInitialLoad = status == nil
         do {
             status = try await api.calendarStatus()
+            if recoveringInitialLoad { message = nil }
             loading = false
             return true
         } catch {
@@ -641,16 +645,17 @@ struct CalendarsSettingsView: View {
         }
     }
 
-    private func disconnect(_ accountId: String) async {
+    private func disconnect(_ accountId: String, provider: String?) async {
         message = nil
+        let accountName = CalendarProvider.accountLabel(for: provider)
         do {
             try await api.disconnectCalendarAccount(id: accountId)
         } catch {
-            message = "The Google account wasn’t disconnected. Check your connection and try again."
+            message = "The \(accountName) wasn’t disconnected. Check your connection and try again."
             return
         }
         if !(await load()) {
-            message = "The Google account was disconnected, but the latest status couldn’t be loaded."
+            message = "The \(accountName) was disconnected, but the latest status couldn’t be loaded."
         }
     }
 

@@ -23,6 +23,9 @@ final class FamilyNightSettingsModel {
     private let setConfig: SetConfig
     private let schedule: Schedule
     private let unschedule: Unschedule
+    private var confirmedDayOfWeek = 1
+    private var confirmedTime = "19:00"
+    private var pendingSchedule: (day: Int, time: String)?
 
     init(
         fetch: @escaping Fetch = { try await WaffledAPI().familyNight() },
@@ -49,44 +52,62 @@ final class FamilyNightSettingsModel {
     }
 
     func setDay(_ newDay: Int) async {
-        guard !busySchedule, newDay != dayOfWeek else { return }
-        let previous = (dayOfWeek, time)
+        guard newDay != dayOfWeek else { return }
         dayOfWeek = newDay
-        await persistSchedule(previous: previous)
+        pendingSchedule = (dayOfWeek, time)
+        await persistPendingSchedule()
     }
 
     func setTime(_ newTime: String) async {
-        guard !busySchedule, newTime != time else { return }
-        let previous = (dayOfWeek, time)
+        guard newTime != time else { return }
         time = newTime
-        await persistSchedule(previous: previous)
+        pendingSchedule = (dayOfWeek, time)
+        await persistPendingSchedule()
     }
 
-    /// A schedule write and its calendar refresh are separate server operations. If
-    /// only the second one fails, keep the confirmed new day/time and say exactly what
-    /// remains stale instead of rolling back a write that already succeeded.
-    private func persistSchedule(previous: (day: Int, time: String)) async {
+    /// DatePicker can emit several values while its first request is suspended. Keep
+    /// only the newest pending value, then serialize complete day/time writes so the
+    /// final wheel position cannot be dropped or overwritten by an older response.
+    private func persistPendingSchedule() async {
+        guard !busySchedule else { return }
         busySchedule = true
-        errorMessage = nil
         defer { busySchedule = false }
-        do {
-            let confirmed = try await setConfig([
-                "dayOfWeek": .int(dayOfWeek),
-                "time": .string(time),
-            ])
-            dayOfWeek = confirmed.dayOfWeek
-            time = confirmed.time
-            if onCalendar {
-                do {
-                    _ = try await schedule()
-                } catch {
-                    errorMessage = "The Family Night schedule was saved, but its calendar event couldn’t be updated. Try again."
+
+        while let requested = pendingSchedule {
+            pendingSchedule = nil
+            errorMessage = nil
+            do {
+                let confirmed = try await setConfig([
+                    "dayOfWeek": .int(requested.day),
+                    "time": .string(requested.time),
+                ])
+                confirmedDayOfWeek = confirmed.dayOfWeek
+                confirmedTime = confirmed.time
+
+                // Do not let this older response move a picker that has already queued
+                // a newer value. The next loop iteration sends the complete latest pair.
+                guard pendingSchedule == nil else { continue }
+                dayOfWeek = confirmed.dayOfWeek
+                time = confirmed.time
+
+                // A schedule write and its calendar refresh are separate server
+                // operations. If only this refresh fails, keep the confirmed schedule.
+                if onCalendar {
+                    do {
+                        _ = try await schedule()
+                    } catch {
+                        guard pendingSchedule == nil else { continue }
+                        errorMessage = "The Family Night schedule was saved, but its calendar event couldn’t be updated. Try again."
+                    }
                 }
+            } catch {
+                // A newer wheel value is already waiting, so let that complete payload
+                // retry against the last confirmed server state before showing failure.
+                guard pendingSchedule == nil else { continue }
+                dayOfWeek = confirmedDayOfWeek
+                time = confirmedTime
+                errorMessage = "The Family Night schedule wasn’t saved. Your previous schedule is still in place."
             }
-        } catch {
-            dayOfWeek = previous.day
-            time = previous.time
-            errorMessage = "The Family Night schedule wasn’t saved. Your previous schedule is still in place."
         }
     }
 
@@ -133,6 +154,9 @@ final class FamilyNightSettingsModel {
         parts = config.parts
         dayOfWeek = config.dayOfWeek
         time = config.time
+        confirmedDayOfWeek = config.dayOfWeek
+        confirmedTime = config.time
+        pendingSchedule = nil
         onCalendar = config.eventId != nil
     }
 }

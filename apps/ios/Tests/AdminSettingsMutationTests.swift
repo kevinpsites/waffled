@@ -99,6 +99,38 @@ private func familyNightView(_ config: WaffledAPI.FamilyNightConfig) -> WaffledA
         #expect(model.errorMessage?.contains("calendar event") == true)
     }
 
+    @Test func familyNightTimePickerPersistsItsLatestQueuedValue() async {
+        let original = familyNightConfig(day: 1, time: "19:00")
+        var requests: [[String: JSONValue]] = []
+        var firstRequest: CheckedContinuation<WaffledAPI.FamilyNightConfig, any Error>?
+        let model = FamilyNightSettingsModel(
+            fetch: { familyNightView(original) },
+            setConfig: { body in
+                requests.append(body)
+                if requests.count == 1 {
+                    return try await withCheckedThrowingContinuation { firstRequest = $0 }
+                }
+                return familyNightConfig(day: 1, time: "20:00")
+            },
+            schedule: { "event-1" },
+            unschedule: {}
+        )
+        await model.load()
+
+        let first = Task { await model.setTime("19:30") }
+        while firstRequest == nil { await Task.yield() }
+        let latest = Task { await model.setTime("20:00") }
+        await Task.yield()
+        firstRequest?.resume(returning: familyNightConfig(day: 1, time: "19:30"))
+        await first.value
+        await latest.value
+
+        #expect(requests.count == 2)
+        #expect(requests[1]["time"] == .string("20:00"))
+        #expect(model.time == "20:00")
+        #expect(!model.busySchedule)
+    }
+
     @Test func failedFamilyNightCalendarToggleRollsBack() async {
         let original = familyNightConfig(eventId: nil)
         let model = FamilyNightSettingsModel(
