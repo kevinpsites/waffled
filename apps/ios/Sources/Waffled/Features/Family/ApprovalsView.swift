@@ -5,25 +5,41 @@ import SwiftUI
 @MainActor
 @Observable
 final class ApprovalsModel {
-    private(set) var redemptions: [WaffledAPI.RewardRedemption] = []
-    private(set) var chores: [WaffledAPI.ChoreInstanceDTO] = []
-    private(set) var loading = true
+    typealias FetchRedemptions = @Sendable () async throws -> [WaffledAPI.RewardRedemption]
+    typealias FetchChores = @Sendable () async throws -> [WaffledAPI.ChoreInstanceDTO]
 
-    private let api = WaffledAPI()
+    private let redemptionsD = RestDomain<[WaffledAPI.RewardRedemption]>([], isEmpty: \.isEmpty)
+    private let choresD = RestDomain<[WaffledAPI.ChoreInstanceDTO]>([], isEmpty: \.isEmpty)
+    private let fetchRedemptions: FetchRedemptions
+    private let fetchChores: FetchChores
+
+    init(fetchRedemptions: FetchRedemptions? = nil, fetchChores: FetchChores? = nil) {
+        let api = WaffledAPI()
+        self.fetchRedemptions = fetchRedemptions ?? { try await api.redemptions(status: "pending") }
+        self.fetchChores = fetchChores ?? { try await api.awaitingChores() }
+    }
+
+    var redemptions: [WaffledAPI.RewardRedemption] { redemptionsD.value }
+    var chores: [WaffledAPI.ChoreInstanceDTO] { choresD.value }
+    var state: RestState { .combined([redemptionsD.state, choresD.state]) }
+    var loading: Bool { state == .loading }
 
     var total: Int { redemptions.count + chores.count }
     var isEmpty: Bool { total == 0 }
 
     func load() async {
-        async let red = try? await api.redemptions(status: "pending")
-        async let ch = try? await api.awaitingChores()
-        redemptions = await red ?? []
-        chores = await ch ?? []
-        loading = false
+        redemptionsD.beginLoading()
+        choresD.beginLoading()
+        async let redemptions = fetchRedemptions()
+        async let chores = fetchChores()
+        do { redemptionsD.apply(.success(try await redemptions)) }
+        catch { redemptionsD.apply(.failure(error)) }
+        do { choresD.apply(.success(try await chores)) }
+        catch { choresD.apply(.failure(error)) }
     }
 
-    func drop(redemption id: String) { redemptions.removeAll { $0.id == id } }
-    func drop(chore id: String) { chores.removeAll { $0.id == id } }
+    func drop(redemption id: String) { redemptionsD.value.removeAll { $0.id == id } }
+    func drop(chore id: String) { choresD.value.removeAll { $0.id == id } }
 }
 
 /// The gold "N to approve" entry card, shown wherever a parent might jump to the
@@ -86,10 +102,12 @@ struct ApprovalsView: View {
                     let showChores = sync.can("chore.approve") && !model.chores.isEmpty
                     if model.loading && model.isEmpty {
                         WaffledLoading()
-                    } else if !showRedemptions && !showChores {
-                        WaffledEmptyState(emoji: "🎉", title: "All caught up",
-                                       message: "No reward purchases or chores waiting on you.")
                     } else {
+                        RestStateNotice(state: model.state, retry: { Task { await model.load() } })
+                        if !showRedemptions && !showChores && model.state.isAuthoritative {
+                            WaffledEmptyState(emoji: "🎉", title: "All caught up",
+                                           message: "No reward purchases or chores waiting on you.")
+                        }
                         if showRedemptions {
                             SectionLabel(text: "Reward purchases")
                             ForEach(model.redemptions) { redemptionRow($0) }
