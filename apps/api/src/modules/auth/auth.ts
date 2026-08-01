@@ -15,6 +15,8 @@ import {
   pickActiveHousehold,
   setLastHousehold,
   pendingInvitesForEmail,
+  firstPendingInviteForEmail,
+  createMembershipFromInvite,
 } from './accounts'
 import { HEX_COLOR } from '../persons/persons'
 
@@ -164,7 +166,19 @@ export function registerAuthRoutes(api: Api): void {
     }
     // Mint an account-scoped token landing on the last-active household.
     const accountId = account.id
-    const memberships = await listMemberships(accountId)
+    let memberships = await listMemberships(accountId)
+    // A temporary-only account must still be able to return later through a fresh
+    // invite. With no active household there is nowhere to host the normal
+    // invite-accept screen, so a successful credential login accepts its first
+    // pending invite (the same bootstrap behavior used by first-time OIDC).
+    if (memberships.length === 0) {
+      const invite = await firstPendingInviteForEmail(email)
+      if (!invite) {
+        return res.status(403).json({ error: 'Forbidden', message: 'No active household access for this account.' })
+      }
+      await createMembershipFromInvite(accountId, email, invite)
+      memberships = await listMemberships(accountId)
+    }
     const active = await pickActiveHousehold(accountId, memberships)
     await setLastHousehold(accountId, active)
     const activePersonId = memberships.find((m) => m.householdId === active)!.personId
@@ -190,10 +204,12 @@ export function registerAuthRoutes(api: Api): void {
     // scoped session. Persons without an account (kiosk/device/no-account) keep the
     // legacy claim-less subject.
     const pr = await query<{ household_id: string; account_id: string | null }>(
-      `select household_id, account_id from persons where id = $1`,
+      `select household_id, account_id from persons where id = $1 and deleted_at is null
+        and (access_expires_at is null or access_expires_at > now())`,
       [r.personId]
     )
     const person = pr.rows[0]
+    if (!person) return res.status(401).json({ error: 'Unauthorized', message: 'Household access has expired.' })
     let access: { token: string; expiresIn: number }
     let newSubject: string
     if (person?.account_id) {

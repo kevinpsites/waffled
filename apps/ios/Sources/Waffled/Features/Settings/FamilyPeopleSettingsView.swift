@@ -100,7 +100,16 @@ struct FamilyPeopleSettingsView: View {
         var parts = [m.memberType.capitalized]
         if m.isOwner { parts.append("Owner") }
         if m.isAdmin && !m.isOwner { parts.append("Admin") }
+        if let raw = m.accessExpiresAt, let expiry = Self.accessDate(raw) {
+            parts.append(expiry <= Date() ? "Access expired" : "Access ends \(DateFmt.string(expiry, "MMM d", .current))")
+        }
         return parts.joined(separator: " · ")
+    }
+
+    private static func accessDate(_ raw: String) -> Date? {
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return withFraction.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
     }
 
     // MARK: household
@@ -228,8 +237,8 @@ struct FamilyPeopleSettingsView: View {
     }
 }
 
-/// Role-based permissions grid (admin-only). One card per role (Adults / Teens / Kids)
-/// with a toggle for each of the four capabilities — admins always have everything, so
+/// Role-based permissions grid (admin-only). Guests are hard read-only; the other
+/// roles expose configurable capability toggles — admins always have everything, so
 /// they aren't listed. Saves the whole matrix on each toggle (optimistic, reverts on
 /// failure), mirroring the web's `PermissionsCard`. Non-admins get a 403 on load and the
 /// card simply removes itself, so it needs no separate admin check.
@@ -240,9 +249,12 @@ struct PermissionsCard: View {
 
     private let api = WaffledAPI()
 
-    private static let roles = ["adult", "teen", "kid"]
+    private static let roles = ["adult", "caregiver", "guest", "teen", "kid"]
     private static let caps = ["chore.manage", "chore.approve", "reward.manage", "reward.approve", "reward.grant", "reward.correct", "goal.manage"]
-    private static let roleLabel: [String: String] = ["adult": "Adults", "teen": "Teens", "kid": "Kids"]
+    private static let roleLabel: [String: String] = [
+        "adult": "Adults", "caregiver": "Caregivers", "guest": "Guests (read-only)",
+        "teen": "Teens", "kid": "Kids",
+    ]
     private static let capLabel: [String: String] = [
         "chore.manage": "Manage chores", "chore.approve": "Approve chores",
         "reward.manage": "Manage rewards", "reward.approve": "Approve redemptions",
@@ -296,7 +308,7 @@ struct PermissionsCard: View {
                             .font(.system(size: 11.5)).foregroundStyle(WF.ink3)
                     }
                 }
-                .tint(WF.primary).disabled(saving).padding(.vertical, 9)
+                .tint(WF.primary).disabled(saving || role == "guest").padding(.vertical, 9)
             }
         }
         .padding(.horizontal, 14).padding(.bottom, 6)
@@ -350,6 +362,8 @@ struct PersonEditorSheet: View {
     @State private var birthday: Date
     @State private var isAdmin: Bool
     @State private var showOnKiosk: Bool
+    @State private var hasAccessExpiry: Bool
+    @State private var accessExpiry: Date
     @State private var busy = false
     @State private var confirmDelete = false
     @State private var error: String?
@@ -370,7 +384,17 @@ struct PersonEditorSheet: View {
     @State private var pinNote: String?
     @State private var confirmRemovePin = false
 
-    private let types = ["adult", "teen", "kid"]
+    private let types = ["adult", "caregiver", "guest", "teen", "kid"]
+    private var temporaryRole: Bool { memberType == "caregiver" || memberType == "guest" }
+    private var roleHelp: String {
+        switch memberType {
+        case "caregiver": return "Operational access for a babysitter, grandparent, or helper. Never an admin."
+        case "guest": return "Read-only household access. Never an admin."
+        case "teen": return "A managed family member with permissions chosen by an admin."
+        case "kid": return "A managed family member with no management permissions by default."
+        default: return "A regular household member who may be promoted to admin."
+        }
+    }
 
     init(editing: WaffledAPI.HouseholdSettings.Member?, onDone: @escaping () async -> Void) {
         self.editing = editing
@@ -384,6 +408,9 @@ struct PersonEditorSheet: View {
         _birthday = State(initialValue: parsed ?? Date())
         _isAdmin = State(initialValue: editing?.isAdmin ?? false)
         _showOnKiosk = State(initialValue: editing?.showOnKiosk ?? true)
+        let expiry = editing?.accessExpiresAt.flatMap(Self.parseAccessExpiry)
+        _hasAccessExpiry = State(initialValue: expiry != nil)
+        _accessExpiry = State(initialValue: expiry ?? Calendar.current.date(byAdding: .day, value: 7, to: Date())!)
         _email = State(initialValue: editing?.loginEmail ?? "")
         _hasLogin = State(initialValue: editing?.hasLogin ?? false)
         _hasPassword = State(initialValue: editing?.hasPassword ?? false)
@@ -443,21 +470,31 @@ struct PersonEditorSheet: View {
 
         VStack(alignment: .leading, spacing: 9) {
             SectionLabel(text: "Type")
-            HStack(spacing: 0) {
+            Menu {
                 ForEach(types, id: \.self) { t in
-                    Button { memberType = t } label: {
-                        Text(t.capitalized)
-                            .font(.system(size: 14, weight: memberType == t ? .bold : .medium))
-                            .foregroundStyle(memberType == t ? WF.ink : WF.ink3)
-                            .frame(maxWidth: .infinity).padding(.vertical, 9)
-                            .background(memberType == t
-                                ? AnyView(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).fill(WF.card))
-                                : AnyView(Color.clear))
-                    }
-                    .buttonStyle(.plain)
+                    Button(t.capitalized) { selectRole(t) }
                 }
+            } label: {
+                WaffledSettingsMenuLabel(value: memberType.capitalized)
             }
-            .padding(3).background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .disabled(editing?.isOwner == true)
+            Text(editing?.isOwner == true ? "The household owner must remain an adult admin." : roleHelp)
+                .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        if temporaryRole {
+            Toggle(isOn: $hasAccessExpiry) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Access expires").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                    Text("Existing sessions stop automatically at the end of that day.")
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                }
+            }.tint(WF.primary)
+            if hasAccessExpiry {
+                DatePicker("Access ends", selection: $accessExpiry, in: Date()..., displayedComponents: .date)
+                    .datePickerStyle(.compact)
+            }
         }
 
         VStack(alignment: .leading, spacing: 9) {
@@ -474,12 +511,21 @@ struct PersonEditorSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
 
-        Toggle(isOn: $isAdmin) {
-            VStack(alignment: .leading, spacing: 1) {
+        if memberType == "adult" && editing?.isOwner != true {
+            Toggle(isOn: $isAdmin) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Admin").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                    Text("Can add people & change settings").font(.system(size: 12)).foregroundStyle(WF.ink3)
+                }
+            }.tint(WF.primary)
+        } else {
+            HStack {
                 Text("Admin").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
-                Text("Can add people & change settings").font(.system(size: 12)).foregroundStyle(WF.ink3)
+                Spacer()
+                Text(editing?.isOwner == true ? "Required" : "Not available")
+                    .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
             }
-        }.tint(WF.primary)
+        }
         Toggle(isOn: $showOnKiosk) {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Show on kiosk").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
@@ -618,7 +664,20 @@ struct PersonEditorSheet: View {
         ]
         b["avatarEmoji"] = emoji.isEmpty ? .null : .string(emoji)
         if hasBirthday { b["birthday"] = .string(Self.format(birthday)) }
+        if temporaryRole, hasAccessExpiry {
+            let end = Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: accessExpiry) ?? accessExpiry
+            b["accessExpiresAt"] = .string(Self.iso.string(from: end))
+        } else {
+            b["accessExpiresAt"] = .null
+        }
         return b
+    }
+
+    private func selectRole(_ role: String) {
+        memberType = role
+        if role != "adult" { isAdmin = false }
+        if role == "caregiver" || role == "guest" { showOnKiosk = false }
+        else { hasAccessExpiry = false }
     }
 
     private func save() async {
@@ -701,6 +760,15 @@ struct PersonEditorSheet: View {
     private static func parse(_ s: String?) -> Date? {
         guard let s, !s.isEmpty else { return nil }
         return DateFmt.date(String(s.prefix(10)), "yyyy-MM-dd", DateFmt.utc)
+    }
+    private static let iso = ISO8601DateFormatter()
+    private static let isoFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static func parseAccessExpiry(_ raw: String) -> Date? {
+        isoFractional.date(from: raw) ?? iso.date(from: raw)
     }
     private static func format(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", DateFmt.utc) }
 }

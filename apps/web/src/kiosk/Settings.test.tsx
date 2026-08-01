@@ -175,7 +175,13 @@ describe('Settings screen', () => {
   it('renders the permissions grid with a Manage goals column and toggles it', async () => {
     const puts: PermissionMatrix[] = []
     const emptyRow = { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'reward.correct': false, 'goal.manage': false }
-    const matrix: PermissionMatrix = { adult: { ...emptyRow }, teen: { ...emptyRow }, kid: { ...emptyRow } }
+    const matrix: PermissionMatrix = {
+      adult: { ...emptyRow },
+      caregiver: { ...emptyRow },
+      guest: { ...emptyRow },
+      teen: { ...emptyRow },
+      kid: { ...emptyRow },
+    }
     globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
       const u = String(url)
       if (u.includes('/api/permissions')) {

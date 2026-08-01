@@ -11,12 +11,15 @@ import type { PoolClient } from 'pg'
 export type Capability = 'chore.manage' | 'chore.approve' | 'reward.manage' | 'reward.approve' | 'reward.grant' | 'reward.correct' | 'goal.manage'
 export const CAPABILITIES: Capability[] = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'reward.correct', 'goal.manage']
 
-export type MemberRole = 'adult' | 'teen' | 'kid'
-export const ROLES: MemberRole[] = ['adult', 'teen', 'kid']
+export type MemberRole = 'adult' | 'caregiver' | 'guest' | 'teen' | 'kid'
+export const ROLES: MemberRole[] = ['adult', 'caregiver', 'guest', 'teen', 'kid']
 
-// adult = full rights; teen/kid = nothing until an admin grants it.
+// adult = full rights; caregiver = routine operational rights; teen/kid = nothing
+// until an admin grants it; guest remains hard read-only.
 export const DEFAULT_PERMISSIONS: Record<MemberRole, Record<Capability, boolean>> = {
   adult: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': true, 'reward.approve': true, 'reward.grant': true, 'reward.correct': true, 'goal.manage': true },
+  caregiver: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': false, 'reward.approve': true, 'reward.grant': false, 'reward.correct': false, 'goal.manage': false },
+  guest: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'reward.correct': false, 'goal.manage': false },
   teen: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'reward.correct': false, 'goal.manage': false },
   kid: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'reward.correct': false, 'goal.manage': false },
 }
@@ -31,6 +34,8 @@ function isObject(v: unknown): v is Record<string, unknown> {
 export function getPermissions(settings: unknown): Record<MemberRole, Record<Capability, boolean>> {
   const out: Record<MemberRole, Record<Capability, boolean>> = {
     adult: { ...DEFAULT_PERMISSIONS.adult },
+    caregiver: { ...DEFAULT_PERMISSIONS.caregiver },
+    guest: { ...DEFAULT_PERMISSIONS.guest },
     teen: { ...DEFAULT_PERMISSIONS.teen },
     kid: { ...DEFAULT_PERMISSIONS.kid },
   }
@@ -40,7 +45,9 @@ export function getPermissions(settings: unknown): Record<MemberRole, Record<Cap
     const row = stored[role]
     if (!isObject(row)) continue
     for (const cap of CAPABILITIES) {
-      if (typeof row[cap] === 'boolean') out[role][cap] = row[cap] as boolean
+      // Guest is a hard read-only role. Ignore any stale or hand-edited settings
+      // that try to grant it a mutation capability.
+      if (role !== 'guest' && typeof row[cap] === 'boolean') out[role][cap] = row[cap] as boolean
     }
   }
   return out
@@ -53,6 +60,7 @@ function asRole(memberType: string): MemberRole | null {
 // Admin ⇒ always allowed. Otherwise look up the role's cell; an unknown/invalid
 // role has no capabilities.
 export function can(memberType: string, isAdmin: boolean, cap: Capability, settings: unknown): boolean {
+  if (memberType === 'guest') return false
   if (isAdmin) return true
   const role = asRole(memberType)
   if (!role) return false
@@ -62,6 +70,7 @@ export function can(memberType: string, isAdmin: boolean, cap: Capability, setti
 // The full list of capabilities a person holds (admin ⇒ all). Powers the
 // `capabilities` field on /api/household so clients can gate UI without guessing.
 export function resolveCapabilities(memberType: string, isAdmin: boolean, settings: unknown): Capability[] {
+  if (memberType === 'guest') return []
   if (isAdmin) return [...CAPABILITIES]
   const role = asRole(memberType)
   if (!role) return []

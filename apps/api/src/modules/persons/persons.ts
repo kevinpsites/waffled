@@ -8,7 +8,8 @@ import { cleanAllergens } from '../../platform/allergens'
 
 type Api = ReturnType<typeof createAPI>
 
-const MEMBER_TYPES = new Set(['adult', 'teen', 'kid'])
+const MEMBER_TYPES = new Set(['adult', 'caregiver', 'guest', 'teen', 'kid'])
+const TEMPORARY_MEMBER_TYPES = new Set(['caregiver', 'guest'])
 const WEEK_STARTS = new Set(['sunday', 'monday'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -27,6 +28,7 @@ const UPDATABLE: Record<string, string> = {
   allergens: 'allergens',
   rewardStyle: 'reward_style',
   showOnKiosk: 'show_on_kiosk',
+  accessExpiresAt: 'access_expires_at',
   sortOrder: 'sort_order',
 }
 
@@ -49,6 +51,8 @@ export interface CreatePersonInput {
   isAdmin?: boolean
   rewardStyle?: string
   sortOrder?: number
+  showOnKiosk?: boolean
+  accessExpiresAt?: string | null
 }
 
 export async function createPerson(
@@ -57,8 +61,9 @@ export async function createPerson(
 ): Promise<PersonRow> {
   const { rows } = await query<PersonRow>(
     `insert into persons
-       (household_id, name, member_type, is_admin, avatar_emoji, color_hex, birthday, reward_style, sort_order)
-     values ($1, $2, $3, $4, $5, $6, $7, coalesce($8,'stars'), coalesce($9,0))
+       (household_id, name, member_type, is_admin, avatar_emoji, color_hex, birthday,
+        reward_style, sort_order, show_on_kiosk, access_expires_at)
+     values ($1, $2, $3, $4, $5, $6, $7, coalesce($8,'stars'), coalesce($9,0), $10, $11)
      returning *`,
     [
       householdId,
@@ -70,6 +75,8 @@ export async function createPerson(
       input.birthday ?? null,
       input.rewardStyle ?? null,
       input.sortOrder ?? null,
+      input.showOnKiosk ?? !TEMPORARY_MEMBER_TYPES.has(input.memberType),
+      input.accessExpiresAt ?? null,
     ]
   )
   return rows[0]
@@ -81,6 +88,21 @@ export async function getPerson(householdId: string, id: string): Promise<Person
     [householdId, id]
   )
   return rows[0] ?? null
+}
+
+async function ownerPersonId(householdId: string): Promise<string | null> {
+  const { rows } = await query<{ owner_person_id: string | null }>(
+    `select owner_person_id from households where id=$1`,
+    [householdId]
+  )
+  return rows[0]?.owner_person_id ?? null
+}
+
+function validFutureExpiry(value: unknown): value is string | null {
+  if (value === null) return true
+  if (typeof value !== 'string' || !value.trim()) return false
+  const time = Date.parse(value)
+  return Number.isFinite(time) && time > Date.now()
 }
 
 // Patch is a whitelisted, household-scoped update. Returns null if no such
@@ -412,11 +434,26 @@ export function registerPersonRoutes(api: Api): void {
     if (!body.name || !body.memberType || !MEMBER_TYPES.has(body.memberType)) {
       return res.status(400).json({
         error: 'BadRequest',
-        message: 'name and memberType (adult|teen|kid) are required',
+        message: 'name and a valid memberType are required',
       })
     }
     if (body.colorHex != null && !HEX_COLOR.test(String(body.colorHex))) {
       return res.status(400).json({ error: 'BadRequest', message: 'colorHex must be a #RRGGBB hex color' })
+    }
+    if (body.isAdmin !== undefined && typeof body.isAdmin !== 'boolean') {
+      return res.status(400).json({ error: 'BadRequest', message: 'isAdmin must be a boolean' })
+    }
+    if (body.showOnKiosk !== undefined && typeof body.showOnKiosk !== 'boolean') {
+      return res.status(400).json({ error: 'BadRequest', message: 'showOnKiosk must be a boolean' })
+    }
+    if (body.isAdmin && body.memberType !== 'adult') {
+      return res.status(400).json({ error: 'BadRequest', message: 'only an adult role can be an admin' })
+    }
+    if (body.accessExpiresAt !== undefined && !validFutureExpiry(body.accessExpiresAt)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'accessExpiresAt must be null or a future ISO date' })
+    }
+    if (!TEMPORARY_MEMBER_TYPES.has(body.memberType) && body.accessExpiresAt) {
+      return res.status(400).json({ error: 'BadRequest', message: 'access expiration is only available for caregiver and guest roles' })
     }
     const person = await createPerson(tenant.householdId, body as CreatePersonInput)
     return res.status(201).json({ person: presentPerson(person) })
@@ -451,10 +488,34 @@ export function registerPersonRoutes(api: Api): void {
       }
       patch.colorHex = resolved
     }
+    if (patch.isAdmin !== undefined && typeof patch.isAdmin !== 'boolean') {
+      return res.status(400).json({ error: 'BadRequest', message: 'isAdmin must be a boolean' })
+    }
+    if (patch.showOnKiosk !== undefined && typeof patch.showOnKiosk !== 'boolean') {
+      return res.status(400).json({ error: 'BadRequest', message: 'showOnKiosk must be a boolean' })
+    }
     if ('allergens' in patch) patch.allergens = cleanAllergens(patch.allergens)
     if (!Object.keys(UPDATABLE).some((field) => field in patch)) {
       return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
     }
+
+    const current = await getPerson(tenant.householdId, id)
+    if (!current) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    const nextType = String(patch.memberType ?? current.member_type)
+    const nextAdmin = typeof patch.isAdmin === 'boolean' ? patch.isAdmin : current.is_admin
+    if (id === await ownerPersonId(tenant.householdId) && (nextType !== 'adult' || nextAdmin === false)) {
+      return res.status(409).json({ error: 'Conflict', message: 'the household owner must remain an adult admin' })
+    }
+    if (nextAdmin && nextType !== 'adult') {
+      return res.status(400).json({ error: 'BadRequest', message: 'only an adult role can be an admin' })
+    }
+    if (patch.accessExpiresAt !== undefined && !validFutureExpiry(patch.accessExpiresAt)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'accessExpiresAt must be null or a future ISO date' })
+    }
+    if (patch.accessExpiresAt && !TEMPORARY_MEMBER_TYPES.has(nextType)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'access expiration is only available for caregiver and guest roles' })
+    }
+    if (!TEMPORARY_MEMBER_TYPES.has(nextType)) patch.accessExpiresAt = null
 
     const person = await updatePerson(tenant.householdId, id, patch)
     if (!person) return res.status(404).json({ error: 'NotFound', message: 'person not found' })

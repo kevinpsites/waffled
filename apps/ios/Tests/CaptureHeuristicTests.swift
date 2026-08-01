@@ -318,6 +318,17 @@ private func dowOfDate(_ s: String) -> Int {
         #expect(m.name == "Sara")
         #expect(m.memberType == "adult")
     }
+    @Test func caregiverAndGuestRelationshipsUseRestrictedRoles() {
+        let caregiver = asPerson(p("add my babysitter Casey"))!
+        #expect(caregiver.name == "Casey")
+        #expect(caregiver.memberType == "caregiver")
+        #expect(caregiver.isAdmin == false)
+
+        let guest = asPerson(p("add a guest named Robin"))!
+        #expect(guest.name == "Robin")
+        #expect(guest.memberType == "guest")
+        #expect(guest.isAdmin == false)
+    }
     @Test func familyMemberDefaultsAdult() {
         let m = asPerson(p("add a family member named Robin"))!
         #expect(m.name == "Robin")

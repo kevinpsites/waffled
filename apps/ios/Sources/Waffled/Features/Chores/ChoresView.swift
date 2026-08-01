@@ -1029,7 +1029,8 @@ struct ChoreEditSheet: View {
     /// chore is assigned to an adult. Still shown for kids, teens, and up-for-grabs.
     private var assigneeIsAdult: Bool {
         guard let pid = personId else { return false }
-        return assignableMembers.first(where: { $0.id == pid })?.memberType == "adult"
+        let role = assignableMembers.first(where: { $0.id == pid })?.memberType
+        return role == "adult" || role == "caregiver"
     }
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty && (freq != "weekly" || !days.isEmpty)

@@ -6,10 +6,26 @@ import { ColorPicker, COLOR_SWATCHES } from './ColorPicker'
 
 const SWATCHES = COLOR_SWATCHES
 const MEMBER_TYPES = [
-  { key: 'adult', label: 'Adult' },
-  { key: 'teen', label: 'Teen' },
-  { key: 'kid', label: 'Kid' },
+  { key: 'adult', label: 'Adult', help: 'A regular household member; may be promoted to admin.' },
+  { key: 'caregiver', label: 'Caregiver', help: 'Operational access for a babysitter, grandparent, or helper. Never an admin.' },
+  { key: 'guest', label: 'Guest', help: 'Read-only household access. Never an admin.' },
+  { key: 'teen', label: 'Teen', help: 'A managed family member with permissions chosen below.' },
+  { key: 'kid', label: 'Kid', help: 'A managed family member with no management permissions by default.' },
 ]
+
+function accessEndDate(value: string | null | undefined): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 10)
+}
+
+function endOfLocalDay(value: string): string | null {
+  if (!value) return null
+  const date = new Date(`${value}T23:59:59.999`)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -30,6 +46,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
     birthday: person?.birthday ? String(person.birthday).slice(0, 10) : '',
     isAdmin: person?.isAdmin ?? false,
     showOnKiosk: person?.showOnKiosk ?? true,
+    accessEnds: accessEndDate(person?.accessExpiresAt),
     allergens: person?.allergens ?? [],
   })
   const [saving, setSaving] = useState(false)
@@ -37,12 +54,26 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [tab, setTab] = useState<'general' | 'signin'>('general')
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
+  const temporaryRole = form.memberType === 'caregiver' || form.memberType === 'guest'
+  const role = MEMBER_TYPES.find((r) => r.key === form.memberType) ?? MEMBER_TYPES[0]
+
+  function selectMemberType(memberType: string) {
+    const temporary = memberType === 'caregiver' || memberType === 'guest'
+    setForm((f) => ({
+      ...f,
+      memberType,
+      isAdmin: memberType === 'adult' ? f.isAdmin : false,
+      showOnKiosk: temporary ? false : f.showOnKiosk,
+      accessEnds: temporary ? f.accessEnds : '',
+    }))
+  }
 
   // Admin + kiosk visibility apply the instant you flip them when editing — they
   // don't wait on the "Save changes" button. Otherwise toggling Admin and then
   // saving the Login card (its own button) would quietly discard the admin change.
   // For a brand-new person there's no id yet, so we just stage it until create.
   async function toggleField(k: 'isAdmin' | 'showOnKiosk') {
+    if (k === 'isAdmin' && (form.memberType !== 'adult' || person?.isOwner)) return
     const next = !form[k]
     set(k, next)
     if (!editing) return
@@ -149,6 +180,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
       birthday: form.birthday || null,
       isAdmin: form.isAdmin,
       showOnKiosk: form.showOnKiosk,
+      accessExpiresAt: temporaryRole ? endOfLocalDay(form.accessEnds) : null,
       allergens: form.allergens,
     }
     setSaveErr(null)
@@ -203,14 +235,21 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
             </label>
           </div>
 
-          <div className="field">
-            <span>Member type</span>
-            <div className="seg" style={{ width: 'fit-content' }}>
-              {MEMBER_TYPES.map((t) => (
-                <button type="button" key={t.key} className={form.memberType === t.key ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => set('memberType', t.key)}>{t.label}</button>
-              ))}
-            </div>
-          </div>
+          <label className="field">
+            <span>Role</span>
+            <select value={form.memberType} onChange={(e) => selectMemberType(e.target.value)} disabled={person?.isOwner}>
+              {MEMBER_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+            </select>
+            <span className="tiny muted">{person?.isOwner ? 'The household owner must remain an adult admin.' : role.help}</span>
+          </label>
+
+          {temporaryRole && (
+            <label className="field">
+              <span>Access ends (optional)</span>
+              <input type="date" min={new Date().toISOString().slice(0, 10)} value={form.accessEnds} onChange={(e) => set('accessEnds', e.target.value)} />
+              <span className="tiny muted">At the end of this date, existing sessions, API keys, and kiosk access stop working automatically.</span>
+            </label>
+          )}
 
           <div className="field">
             <span>Color</span>
@@ -248,7 +287,9 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
                 <div style={{ fontWeight: 700, fontSize: 14 }}>Admin (full management)</div>
                 <div className="tiny muted" style={{ fontWeight: 600 }}>Can add people, edit settings</div>
               </div>
-              <Toggle on={form.isAdmin} onClick={() => toggleField('isAdmin')} />
+              {form.memberType === 'adult' && !person?.isOwner
+                ? <Toggle on={form.isAdmin} onClick={() => toggleField('isAdmin')} />
+                : <span className="tiny muted" style={{ fontWeight: 700 }}>{person?.isOwner ? 'Required' : 'Not available'}</span>}
             </div>
             <div className="set-row" style={{ padding: '12px 0', borderTop: '1px solid var(--hair-2)', display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ flex: 1 }}>

@@ -189,6 +189,75 @@ describe('POST /api/persons', () => {
     expect(JSON.parse(res.body).person.colorHex).toBe('#0f9d58')
   })
 
+  it('creates temporary caregiver and guest roles hidden from the shared kiosk by default', async () => {
+    const accessExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    const caregiver = await call('POST', '/api/persons', kevin, {
+      name: 'Casey',
+      memberType: 'caregiver',
+      accessExpiresAt,
+    })
+    expect(caregiver.statusCode).toBe(201)
+    expect(JSON.parse(caregiver.body).person).toMatchObject({
+      name: 'Casey',
+      memberType: 'caregiver',
+      isAdmin: false,
+      showOnKiosk: false,
+    })
+    expect(new Date(JSON.parse(caregiver.body).person.accessExpiresAt).toISOString()).toBe(accessExpiresAt)
+
+    const guest = await call('POST', '/api/persons', kevin, { name: 'Grace', memberType: 'guest' })
+    expect(guest.statusCode).toBe(201)
+    expect(JSON.parse(guest.body).person).toMatchObject({ memberType: 'guest', isAdmin: false, showOnKiosk: false })
+  })
+
+  it('rejects admin rights for restricted roles and expiration on permanent roles', async () => {
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    expect((await call('POST', '/api/persons', kevin, {
+      name: 'Admin Guest', memberType: 'guest', isAdmin: true,
+    })).statusCode).toBe(400)
+    expect((await call('POST', '/api/persons', kevin, {
+      name: 'Temporary Adult', memberType: 'adult', accessExpiresAt: future,
+    })).statusCode).toBe(400)
+    expect((await call('POST', '/api/persons', kevin, {
+      name: 'Already Expired', memberType: 'caregiver', accessExpiresAt: '2020-01-01T00:00:00.000Z',
+    })).statusCode).toBe(400)
+    expect((await call('POST', '/api/persons', kevin, {
+      name: 'Bad Visibility', memberType: 'guest', showOnKiosk: 'yes',
+    })).statusCode).toBe(400)
+  })
+
+  it('enforces guest read-only access centrally while preserving reads', async () => {
+    const created = JSON.parse((await call('POST', '/api/persons', kevin, {
+      name: 'Read Only', memberType: 'guest',
+    })).body).person
+    const { query } = await import('../src/platform/db')
+    await query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id)
+       values ($1,$2,'password','dev|readonly-guest')`,
+      [kevinHouseholdId, created.id]
+    )
+    const guestToken = mint('dev|readonly-guest')
+    expect((await call('GET', '/api/persons', guestToken)).statusCode).toBe(200)
+    expect((await call('POST', `/api/persons/${created.id}/saving-toward`, guestToken, {
+      rewardId: null,
+    })).statusCode).toBe(403)
+  })
+
+  it('rejects requests after a temporary membership expires', async () => {
+    const { query } = await import('../src/platform/db')
+    const p = await query<{ id: string }>(
+      `insert into persons (household_id, name, member_type, access_expires_at)
+       values ($1,'Expired Helper','caregiver',now() - interval '1 minute') returning id`,
+      [kevinHouseholdId]
+    )
+    await query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id)
+       values ($1,$2,'password','dev|expired-helper')`,
+      [kevinHouseholdId, p.rows[0].id]
+    )
+    expect((await call('GET', '/api/persons', mint('dev|expired-helper'))).statusCode).toBe(403)
+  })
+
   it('forbids a non-admin member from adding people (403)', async () => {
     await seedNonAdmin('dev|teen', kevinHouseholdId)
     const res = await call('POST', '/api/persons', mint('dev|teen'), {
@@ -265,6 +334,28 @@ describe('GET / PATCH /api/persons/:id', () => {
     await query(`update persons set color_hex = 'person-3' where id = $1`, [targetId])
     expect((await call('PATCH', `/api/persons/${targetId}`, kevin, { colorHex: 'person-4' })).statusCode).toBe(400)
     await query(`update persons set color_hex = '#111111' where id = $1`, [targetId])
+  })
+
+  it('clears temporary access expiration when changing to a permanent role', async () => {
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    const created = JSON.parse((await call('POST', '/api/persons', kevin, {
+      name: 'Morgan', memberType: 'caregiver', accessExpiresAt: future,
+    })).body).person
+    const updated = await call('PATCH', `/api/persons/${created.id}`, kevin, { memberType: 'adult' })
+    expect(updated.statusCode).toBe(200)
+    expect(JSON.parse(updated.body).person).toMatchObject({ memberType: 'adult', accessExpiresAt: null })
+  })
+
+  it('rejects an expiration on an existing permanent role', async () => {
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    expect((await call('PATCH', `/api/persons/${targetId}`, kevin, {
+      accessExpiresAt: future,
+    })).statusCode).toBe(400)
+  })
+
+  it('keeps the household owner an adult admin', async () => {
+    expect((await call('PATCH', `/api/persons/${kevinOwnerId}`, kevin, { memberType: 'caregiver' })).statusCode).toBe(409)
+    expect((await call('PATCH', `/api/persons/${kevinOwnerId}`, kevin, { isAdmin: false })).statusCode).toBe(409)
   })
 
   it('404s for an unknown or non-uuid id', async () => {

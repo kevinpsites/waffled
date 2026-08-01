@@ -69,9 +69,13 @@ function roleLine(m: SettingsMember): string {
   if (m.isOwner) parts.push('Owner')
   else if (m.isAdmin) parts.push('Admin')
   const age = ageFrom(m.birthday)
-  if (age != null && m.memberType !== 'adult') parts.push(`age ${age}`)
+  if (age != null && (m.memberType === 'teen' || m.memberType === 'kid')) parts.push(`age ${age}`)
   if (m.hasLogin) parts.push('signed in')
-  else if (m.memberType !== 'adult') parts.push('managed by parents')
+  else if (m.memberType === 'teen' || m.memberType === 'kid') parts.push('managed by parents')
+  if (m.accessExpiresAt) {
+    const expires = new Date(m.accessExpiresAt)
+    parts.push(expires.getTime() <= Date.now() ? 'access expired' : `access ends ${expires.toLocaleDateString()}`)
+  }
   return parts.join(' · ')
 }
 
@@ -124,11 +128,12 @@ function CardHeader({ title, sub, mid }: { title: React.ReactNode; sub?: React.R
   )
 }
 
-// Role-based permissions grid (admin-only). Rows = roles (Adult/Teen/Kid),
+// Role-based permissions grid (admin-only). Guest is hard read-only; the other
+// non-admin roles can be tuned per household.
 // columns = the capabilities. Saves the whole matrix on each toggle (optimistic,
 // reverts on failure) — matches the auto-save feel of the other settings cards.
 // Admins always have everything, so they're not a row here.
-const PERM_ROLES: Role[] = ['adult', 'teen', 'kid']
+const PERM_ROLES: Role[] = ['adult', 'caregiver', 'guest', 'teen', 'kid']
 function PermissionsCard() {
   const [matrix, setMatrix] = useState<PermissionMatrix | null>(null)
   const [error, setError] = useState(false)
@@ -175,7 +180,7 @@ function PermissionsCard() {
                     type="checkbox"
                     className="set-check"
                     checked={matrix[role][cap]}
-                    disabled={saving}
+                    disabled={saving || role === 'guest'}
                     aria-label={`${ROLE_LABELS[role]}: ${CAPABILITY_LABELS[cap]}`}
                     onChange={() => toggle(role, cap)}
                   />
