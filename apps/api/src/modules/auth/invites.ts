@@ -12,6 +12,8 @@ import { pendingInvitesForEmail, createMembershipFromInvite } from './accounts'
 type Api = ReturnType<typeof createAPI>
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+const MEMBER_TYPES = new Set(['adult', 'caregiver', 'guest', 'teen', 'kid'])
+const TEMPORARY_MEMBER_TYPES = new Set(['caregiver', 'guest'])
 
 // Resolve the caller's account (id + email) from their active membership person.
 // Returns null when the session has no account (kiosk/device/legacy person).
@@ -32,13 +34,33 @@ export function registerInviteRoutes(api: Api): void {
   api.post('/api/households/invites', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
     requireAdmin(tenant)
-    const b = (req.body ?? {}) as { email?: string; memberType?: string; isAdmin?: boolean }
+    const b = (req.body ?? {}) as { email?: string; memberType?: string; isAdmin?: boolean; accessExpiresAt?: string | null }
     const email = b.email?.trim()
     if (!email || !EMAIL_RE.test(email)) {
       return res.status(400).json({ error: 'BadRequest', message: 'a valid email is required' })
     }
+    if (b.memberType !== undefined && typeof b.memberType !== 'string') {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid memberType' })
+    }
+    if (b.isAdmin !== undefined && typeof b.isAdmin !== 'boolean') {
+      return res.status(400).json({ error: 'BadRequest', message: 'isAdmin must be a boolean' })
+    }
     const memberType = b.memberType?.trim() || 'adult'
     const isAdmin = b.isAdmin === true
+    if (!MEMBER_TYPES.has(memberType)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid memberType' })
+    }
+    if (isAdmin && memberType !== 'adult') {
+      return res.status(400).json({ error: 'BadRequest', message: 'only an adult role can be an admin' })
+    }
+    const accessExpiresAt = b.accessExpiresAt ?? null
+    if (accessExpiresAt !== null &&
+        (typeof accessExpiresAt !== 'string' || !Number.isFinite(Date.parse(accessExpiresAt)) || Date.parse(accessExpiresAt) <= Date.now())) {
+      return res.status(400).json({ error: 'BadRequest', message: 'accessExpiresAt must be null or a future ISO date' })
+    }
+    if (accessExpiresAt && !TEMPORARY_MEMBER_TYPES.has(memberType)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'access expiration is only available for caregiver and guest roles' })
+    }
 
     // Already a member of this household — an active person linked to an account
     // with that email. (The legacy credentials table is retired; accounts is the
@@ -46,7 +68,8 @@ export function registerInviteRoutes(api: Api): void {
     const member = await query(
       `select 1 where exists(
          select 1 from persons p join accounts a on a.id = p.account_id and a.deleted_at is null
-          where p.household_id = $1 and p.deleted_at is null and lower(a.email) = lower($2))`,
+          where p.household_id = $1 and p.deleted_at is null and lower(a.email) = lower($2)
+            and (p.access_expires_at is null or p.access_expires_at > now()))`,
       [tenant.householdId, email]
     )
     if (member.rows.length) {
@@ -57,18 +80,19 @@ export function registerInviteRoutes(api: Api): void {
     const dup = await query(
       `select 1 from household_invites
         where household_id = $1 and lower(email) = lower($2)
-          and accepted_at is null and revoked_at is null`,
+          and accepted_at is null and revoked_at is null
+          and (access_expires_at is null or access_expires_at > now())`,
       [tenant.householdId, email]
     )
     if (dup.rows.length) {
       return res.status(409).json({ error: 'Conflict', message: 'A pending invite for that email already exists.' })
     }
 
-    const { rows } = await query<{ id: string; member_type: string; is_admin: boolean }>(
-      `insert into household_invites (household_id, email, member_type, is_admin, invited_by)
-       values ($1, $2, $3, $4, $5)
-       returning id, member_type, is_admin`,
-      [tenant.householdId, email, memberType, isAdmin, tenant.personId]
+    const { rows } = await query<{ id: string; member_type: string; is_admin: boolean; access_expires_at: Date | null }>(
+      `insert into household_invites (household_id, email, member_type, is_admin, invited_by, access_expires_at)
+       values ($1, $2, $3, $4, $5, $6)
+       returning id, member_type, is_admin, access_expires_at`,
+      [tenant.householdId, email, memberType, isAdmin, tenant.personId, accessExpiresAt]
     )
     const inv = rows[0]
     return res.status(201).json({
@@ -78,6 +102,7 @@ export function registerInviteRoutes(api: Api): void {
         email,
         memberType: inv.member_type,
         isAdmin: inv.is_admin,
+        accessExpiresAt: inv.access_expires_at,
       },
     })
   })
@@ -86,8 +111,8 @@ export function registerInviteRoutes(api: Api): void {
   api.get('/api/households/invites', async (req: Request) => {
     const tenant = await requireTenant(req)
     requireAdmin(tenant)
-    const { rows } = await query<{ id: string; email: string; member_type: string; is_admin: boolean; created_at: Date }>(
-      `select id, email, member_type, is_admin, created_at
+    const { rows } = await query<{ id: string; email: string; member_type: string; is_admin: boolean; access_expires_at: Date | null; created_at: Date }>(
+      `select id, email, member_type, is_admin, access_expires_at, created_at
          from household_invites
         where household_id = $1 and accepted_at is null and revoked_at is null
         order by created_at`,
@@ -99,6 +124,7 @@ export function registerInviteRoutes(api: Api): void {
         email: r.email,
         memberType: r.member_type,
         isAdmin: r.is_admin,
+        accessExpiresAt: r.access_expires_at,
         createdAt: r.created_at,
       })),
     }
@@ -141,8 +167,9 @@ export function registerInviteRoutes(api: Api): void {
       is_admin: boolean
       accepted_at: Date | null
       revoked_at: Date | null
+      access_expires_at: Date | null
     }>(
-      `select id, household_id, email, member_type, is_admin, accepted_at, revoked_at
+      `select id, household_id, email, member_type, is_admin, accepted_at, revoked_at, access_expires_at
          from household_invites where id = $1`,
       [id]
     )
@@ -150,6 +177,9 @@ export function registerInviteRoutes(api: Api): void {
     if (!invite) return res.status(404).json({ error: 'NotFound', message: 'invite not found' })
     if (invite.accepted_at || invite.revoked_at) {
       return res.status(403).json({ error: 'Forbidden', message: 'This invite is no longer pending.' })
+    }
+    if (invite.access_expires_at && invite.access_expires_at.getTime() <= Date.now()) {
+      return res.status(403).json({ error: 'Forbidden', message: 'This invite has expired.' })
     }
     // You may only accept an invite addressed to your own account email.
     if (invite.email.toLowerCase() !== account.email.toLowerCase()) {
@@ -162,6 +192,7 @@ export function registerInviteRoutes(api: Api): void {
       householdId: invite.household_id,
       memberType: invite.member_type,
       isAdmin: invite.is_admin,
+      accessExpiresAt: invite.access_expires_at,
     })
     return res.status(result.created ? 201 : 200).json({
       membership: {
@@ -169,6 +200,7 @@ export function registerInviteRoutes(api: Api): void {
         personId: result.personId,
         isAdmin: result.isAdmin,
         memberType: result.memberType,
+        accessExpiresAt: result.accessExpiresAt,
       },
     })
   })

@@ -86,6 +86,7 @@ export function enterKioskMode(): void {
 // Unpair entirely (admin revoked the device, or the operator un-kiosks it): drop
 // the device + any profile session → back to the normal login screen.
 export function clearKioskDevice(): void {
+  setCurrentViewerMemberType(null)
   try {
     for (const k of [DEVICE_SECRET_KEY, DEVICE_ID_KEY, DEVICE_ACCESS_KEY, KIOSK_MODE_KEY, ACCESS_KEY, REFRESH_KEY]) {
       localStorage.removeItem(k)
@@ -98,6 +99,7 @@ export function clearKioskDevice(): void {
 // End just the claimed-profile session (switch profile / idle), keeping the device
 // paired. The AuthGate re-resolves to the picker because kiosk mode is still on.
 export function clearProfileSession(): void {
+  setCurrentViewerMemberType(null)
   try {
     localStorage.removeItem(ACCESS_KEY)
     localStorage.removeItem(REFRESH_KEY)
@@ -113,11 +115,15 @@ export function clearProfileSession(): void {
 // Kept in a module so the offline agenda reads (events-local) can filter locally
 // without every call site threading it through; useHousehold() keeps it current.
 let viewerPersonId: string | null = null
+let viewerMemberType: string | null = null
 export function currentViewerPersonId(): string | null {
   return viewerPersonId
 }
 export function setCurrentViewerPersonId(id: string | null): void {
   viewerPersonId = id
+}
+export function setCurrentViewerMemberType(memberType: string | null): void {
+  viewerMemberType = memberType
 }
 
 export function getAccessToken(): string | undefined {
@@ -135,6 +141,7 @@ function getRefreshToken(): string | undefined {
   }
 }
 export function setSession(accessToken: string, refreshToken: string): void {
+  setCurrentViewerMemberType(null)
   try {
     localStorage.setItem(ACCESS_KEY, accessToken)
     localStorage.setItem(REFRESH_KEY, refreshToken)
@@ -145,6 +152,7 @@ export function setSession(accessToken: string, refreshToken: string): void {
   window.dispatchEvent(new Event('waffled:auth-changed'))
 }
 export function clearSession(): void {
+  setCurrentViewerMemberType(null)
   try {
     localStorage.removeItem(ACCESS_KEY)
     localStorage.removeItem(REFRESH_KEY)
@@ -301,7 +309,27 @@ export class ApiSendError extends Error {
   }
 }
 
+// The server is authoritative, but rejecting guest writes here keeps every web
+// mutation path consistent and avoids optimistic UI that can only roll back with
+// a 403. Account/session maintenance stays available so a guest can switch away
+// from the read-only household or accept access elsewhere.
+export function guestRequestAllowed(method: string, path: string): boolean {
+  const verb = method.toUpperCase()
+  if (verb === 'GET' || verb === 'HEAD' || verb === 'OPTIONS') return true
+  if (path === '/api/auth/switch' || path.startsWith('/api/account/')) return true
+  return path.startsWith('/api/auth/invites/') && path.endsWith('/accept')
+}
+
+function assertMutationAllowed(method: string, path: string): void {
+  if (viewerMemberType !== 'guest' || guestRequestAllowed(method, path)) return
+  throw new ApiSendError(method, path, 403, {
+    error: 'Forbidden',
+    message: 'Guest access is read-only.',
+  })
+}
+
 export async function apiSend<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  assertMutationAllowed(method, path)
   const res = await authFetch(path, {
     method,
     headers: body !== undefined ? { 'content-type': 'application/json' } : {},
@@ -316,6 +344,7 @@ export async function apiSend<T>(method: string, path: string, body?: unknown, s
 }
 
 export async function apiDelete(path: string): Promise<void> {
+  assertMutationAllowed('DELETE', path)
   const res = await authFetch(path, { method: 'DELETE' })
   if (!res.ok) throw new Error(`DELETE ${path} -> ${res.status}`)
 }

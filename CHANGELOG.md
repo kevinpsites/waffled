@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Caregiver and read-only guest household roles.** Admins can now invite or edit
+  temporary helpers with an optional access-expiration date. Caregivers receive the
+  routine chore approval/management defaults without reward or goal administration;
+  guests can browse the household but cannot change shared data. Expired memberships
+  disappear from active sessions and can be restored in place with a fresh invite.
+
 - **The goal Log sheet now suggests what you actually do.** The "What did you do?"
   chips are no longer a fixed list of six — each goal offers up the notes you've logged
   against it before, most-used first, so a goal you keep marking "family walk" or "lunch

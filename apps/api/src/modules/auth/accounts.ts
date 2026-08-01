@@ -11,6 +11,7 @@ export interface Membership {
   personId: string
   isAdmin: boolean
   memberType: string
+  accessExpiresAt: Date | null
 }
 
 // All of an account's memberships (one per household it belongs to), ordered by
@@ -22,11 +23,14 @@ export async function listMemberships(accountId: string): Promise<Membership[]> 
     person_id: string
     is_admin: boolean
     member_type: string
+    access_expires_at: Date | null
   }>(
-    `select p.household_id, h.name as household_name, p.id as person_id, p.is_admin, p.member_type
+    `select p.household_id, h.name as household_name, p.id as person_id, p.is_admin,
+            p.member_type, p.access_expires_at
        from persons p
        join households h on h.id = p.household_id and h.deleted_at is null
       where p.account_id = $1 and p.deleted_at is null
+        and (p.access_expires_at is null or p.access_expires_at > now())
       order by h.name`,
     [accountId]
   )
@@ -36,6 +40,7 @@ export async function listMemberships(accountId: string): Promise<Membership[]> 
     personId: r.person_id,
     isAdmin: r.is_admin,
     memberType: r.member_type,
+    accessExpiresAt: r.access_expires_at,
   }))
 }
 
@@ -111,15 +116,16 @@ export async function linkPersonAccount(personId: string, accountId: string): Pr
 // Earliest pending (un-accepted, un-revoked) invite for an email, or null.
 export async function firstPendingInviteForEmail(
   email: string
-): Promise<{ id: string; householdId: string; memberType: string; isAdmin: boolean } | null> {
-  const { rows } = await query<{ id: string; household_id: string; member_type: string; is_admin: boolean }>(
-    `select id, household_id, member_type, is_admin from household_invites
+): Promise<{ id: string; householdId: string; memberType: string; isAdmin: boolean; accessExpiresAt: Date | null } | null> {
+  const { rows } = await query<{ id: string; household_id: string; member_type: string; is_admin: boolean; access_expires_at: Date | null }>(
+    `select id, household_id, member_type, is_admin, access_expires_at from household_invites
       where lower(email) = lower($1) and accepted_at is null and revoked_at is null
+        and (access_expires_at is null or access_expires_at > now())
       order by created_at limit 1`,
     [email]
   )
   const r = rows[0]
-  return r ? { id: r.id, householdId: r.household_id, memberType: r.member_type, isAdmin: r.is_admin } : null
+  return r ? { id: r.id, householdId: r.household_id, memberType: r.member_type, isAdmin: r.is_admin, accessExpiresAt: r.access_expires_at } : null
 }
 
 // Create the membership for an accepted invite + mark it accepted, atomically.
@@ -130,22 +136,42 @@ export async function firstPendingInviteForEmail(
 export async function createMembershipFromInvite(
   accountId: string,
   accountEmail: string,
-  invite: { id: string; householdId: string; memberType: string; isAdmin: boolean }
-): Promise<{ personId: string; householdId: string; memberType: string; isAdmin: boolean; created: boolean }> {
+  invite: { id: string; householdId: string; memberType: string; isAdmin: boolean; accessExpiresAt: Date | null }
+): Promise<{ personId: string; householdId: string; memberType: string; isAdmin: boolean; accessExpiresAt: Date | null; created: boolean }> {
   const client = await getPool().connect()
   try {
     await client.query('begin')
-    const existing = await client.query<{ id: string; member_type: string; is_admin: boolean }>(
-      `select id, member_type, is_admin from persons
+    const existing = await client.query<{ id: string; member_type: string; is_admin: boolean; access_expires_at: Date | null; has_active_access: boolean }>(
+      `select id, member_type, is_admin, access_expires_at,
+              (access_expires_at is null or access_expires_at > now()) as has_active_access
+         from persons
         where household_id = $1 and account_id = $2 and deleted_at is null
-        order by created_at limit 1`,
+        order by created_at limit 1
+        for update`,
       [invite.householdId, accountId]
     )
     if (existing.rows[0]) {
+      const current = existing.rows[0]
+      // A fresh invite restores an expired membership in place. Reusing the row
+      // preserves its person identity and history while applying the new role and
+      // deadline. An already-active membership remains untouched for idempotency.
+      let membership = current
+      if (!current.has_active_access) {
+        const reactivated = await client.query<{ id: string; member_type: string; is_admin: boolean; access_expires_at: Date | null; has_active_access: boolean }>(
+          `update persons
+              set member_type = $3, is_admin = $4, access_expires_at = $5,
+                  show_on_kiosk = $6, updated_at = now()
+            where household_id = $1 and account_id = $2 and deleted_at is null
+            returning id, member_type, is_admin, access_expires_at, true as has_active_access`,
+          [invite.householdId, accountId, invite.memberType, invite.isAdmin,
+            invite.accessExpiresAt, !['caregiver', 'guest'].includes(invite.memberType)]
+        )
+        membership = reactivated.rows[0]
+      }
       await client.query(`update household_invites set accepted_at = now() where id = $1`, [invite.id])
       await client.query('commit')
-      const m = existing.rows[0]
-      return { personId: m.id, householdId: invite.householdId, memberType: m.member_type, isAdmin: m.is_admin, created: false }
+      const m = membership
+      return { personId: m.id, householdId: invite.householdId, memberType: m.member_type, isAdmin: m.is_admin, accessExpiresAt: m.access_expires_at, created: false }
     }
     const nameRow = await client.query<{ name: string }>(
       `select name from persons where account_id = $1 and deleted_at is null order by created_at limit 1`,
@@ -153,13 +179,14 @@ export async function createMembershipFromInvite(
     )
     const name = nameRow.rows[0]?.name ?? accountEmail.split('@')[0]
     const personRow = await client.query<{ id: string }>(
-      `insert into persons (household_id, name, member_type, is_admin, account_id)
-       values ($1, $2, $3, $4, $5) returning id`,
-      [invite.householdId, name, invite.memberType, invite.isAdmin, accountId]
+      `insert into persons (household_id, name, member_type, is_admin, account_id, show_on_kiosk, access_expires_at)
+       values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+      [invite.householdId, name, invite.memberType, invite.isAdmin, accountId,
+        !['caregiver', 'guest'].includes(invite.memberType), invite.accessExpiresAt]
     )
     await client.query(`update household_invites set accepted_at = now() where id = $1`, [invite.id])
     await client.query('commit')
-    return { personId: personRow.rows[0].id, householdId: invite.householdId, memberType: invite.memberType, isAdmin: invite.isAdmin, created: true }
+    return { personId: personRow.rows[0].id, householdId: invite.householdId, memberType: invite.memberType, isAdmin: invite.isAdmin, accessExpiresAt: invite.accessExpiresAt, created: true }
   } catch (err) {
     await client.query('rollback')
     throw err
@@ -172,17 +199,19 @@ export async function createMembershipFromInvite(
 // household name so callers (login response, GET /api/auth/invites) can render them.
 export async function pendingInvitesForEmail(
   email: string
-): Promise<Array<{ id: string; householdId: string; householdName: string; memberType: string; isAdmin: boolean }>> {
+): Promise<Array<{ id: string; householdId: string; householdName: string; memberType: string; isAdmin: boolean; accessExpiresAt: Date | null }>> {
   const { rows } = await query<{
     id: string
     household_id: string
     household_name: string
     member_type: string
     is_admin: boolean
+    access_expires_at: Date | null
   }>(
-    `select hi.id, hi.household_id, h.name as household_name, hi.member_type, hi.is_admin
+    `select hi.id, hi.household_id, h.name as household_name, hi.member_type, hi.is_admin, hi.access_expires_at
        from household_invites hi join households h on h.id = hi.household_id
-      where lower(hi.email) = lower($1) and hi.accepted_at is null and hi.revoked_at is null`,
+      where lower(hi.email) = lower($1) and hi.accepted_at is null and hi.revoked_at is null
+        and (hi.access_expires_at is null or hi.access_expires_at > now())`,
     [email]
   )
   return rows.map((r) => ({
@@ -191,5 +220,6 @@ export async function pendingInvitesForEmail(
     householdName: r.household_name,
     memberType: r.member_type,
     isAdmin: r.is_admin,
+    accessExpiresAt: r.access_expires_at,
   }))
 }

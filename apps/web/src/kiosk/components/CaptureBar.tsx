@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../icons'
-import { usePersons, useHousehold, api, countdownsApi, pantryApi, can, localToday, emit, emitHouseholdChanged, type Topic, type Person, type ListSummary, type Candidate } from '../../lib/api'
+import { usePersons, useHousehold, api, countdownsApi, pantryApi, can, localToday, emit, emitHouseholdChanged, type Topic, type Person, type Household, type ListSummary, type Candidate } from '../../lib/api'
 import { parseCapture, intentSummary, looksConfident, memberTypeLabel, MEMBER_TYPES, goalTypeLabel, GOAL_TYPES, mutateTargetLabel, type ParsedIntent } from '../../lib/capture/parse'
 import { moduleEnabled, rewardsEnabled } from '../../lib/modules'
 import { describeRrule } from './recurrence'
@@ -537,11 +537,20 @@ function CandidatePicker({ intent, state, chosenId, onPick, onCommit, busy }: {
 
 export function CaptureBar() {
   const { persons } = usePersons()
+  const { person: viewer, household } = useHousehold()
+  if (viewer?.memberType === 'guest') return null
+  return <CaptureBarEditor persons={persons} viewer={viewer} household={household} />
+}
+
+function CaptureBarEditor({ persons, viewer, household }: {
+  persons: Person[]
+  viewer: Person | null
+  household: Household | null
+}) {
   // The current viewer's admin state gates the `person` (add-a-member) commit —
   // creating a household member is an adminRoute, so non-admins get a graceful
   // "unsupported" preview instead of a 403 on POST. The household drives the `goal`
   // module gate (Goals is default-on but a household can turn it off).
-  const { person: viewer, household } = useHousehold()
   const isAdmin = !!viewer?.isAdmin
   const goalsOn = moduleEnabled(household, 'goals')
   // Pantry defaults OFF, so its intent is SUPPRESSED unless the module is enabled —

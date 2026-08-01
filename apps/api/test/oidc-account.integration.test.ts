@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createServer, type Server } from 'node:http'
-import { generateKeyPairSync, randomUUID, type KeyObject } from 'node:crypto'
+import { createHash, generateKeyPairSync, randomUUID, type KeyObject } from 'node:crypto'
 import { AddressInfo } from 'node:net'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
@@ -191,6 +191,79 @@ describe('P2.5 OIDC match-by-account', () => {
     // the oidc identity is linked to grace's account
     const ident = await query(`select account_id from identities where provider='oidc' and email='grace@example.com'`)
     expect(ident.rows[0].account_id).toBe(graceAccountId)
+  })
+
+  it('keeps a returning OIDC subject on its account after the linked temporary membership expires', async () => {
+    const linked = await query(`select person_id from identities where provider='oidc' and account_id=$1`, [kevinAccountId])
+    await query(
+      `update persons set member_type='caregiver', is_admin=false, access_expires_at=now() - interval '1 minute'
+        where id=$1`,
+      [linked.rows[0].person_id]
+    )
+    await query(`update accounts set last_household_id=$1 where id=$2`, [householdB, kevinAccountId])
+
+    // The stable provider subject, not a possibly changed email claim, identifies
+    // the account. The identity is rebound to the remaining active membership.
+    stubUser = { sub: 'idp-kevin', email: 'kevin-renamed@example.com', email_verified: true }
+    const session = await ssoLogin()
+    expect(decode(session.accessToken).sub).toBe(kevinAccountId)
+    expect(decode(session.accessToken)[HH_CLAIM]).toBe(householdB)
+    const rebound = await query(
+      `select i.person_id from identities i join persons p on p.id=i.person_id
+        where i.provider='oidc' and i.account_id=$1 and p.household_id=$2`,
+      [kevinAccountId, householdB]
+    )
+    expect(rebound.rows).toHaveLength(1)
+
+    await query(
+      `update persons set member_type='adult', is_admin=true, access_expires_at=null where id=$1`,
+      [linked.rows[0].person_id]
+    )
+  })
+
+  it('uses the canonical account email to restore an expired-only OIDC membership', async () => {
+    const canonicalEmail = 'returning@example.com'
+    const oidcSub = 'idp-returning'
+    const subject = `oidc:${createHash('sha256').update(issuer).digest('hex').slice(0, 12)}:${oidcSub}`
+    const account = await query(
+      `insert into accounts (email, last_household_id) values ($1, $2) returning id`,
+      [canonicalEmail, householdA]
+    )
+    const accountId = account.rows[0].id
+    const person = await query(
+      `insert into persons (household_id, name, member_type, account_id, access_expires_at)
+       values ($1, 'Returning helper', 'caregiver', $2, now() - interval '1 day') returning id`,
+      [householdA, accountId]
+    )
+    await query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified, account_id)
+       values ($1, $2, 'oidc', $3, $4, true, $5)`,
+      [householdA, person.rows[0].id, subject, canonicalEmail, accountId]
+    )
+
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    const invite = await call('POST', '/api/households/invites', {
+      token: adminToken,
+      body: { email: canonicalEmail, memberType: 'guest', accessExpiresAt: expiresAt },
+    })
+    expect(invite.statusCode).toBe(201)
+
+    // The provider changed its email claim, but the stable subject still resolves
+    // the account and the invite addressed to that account's canonical email.
+    stubUser = { sub: oidcSub, email: 'renamed@example.com', email_verified: true }
+    const session = await ssoLogin()
+    expect(decode(session.accessToken).sub).toBe(accountId)
+    expect(decode(session.accessToken)[HH_CLAIM]).toBe(householdA)
+
+    const restored = await query(
+      `select id, member_type, access_expires_at from persons
+        where household_id = $1 and account_id = $2 and deleted_at is null`,
+      [householdA, accountId]
+    )
+    expect(restored.rows).toHaveLength(1)
+    expect(restored.rows[0].id).toBe(person.rows[0].id)
+    expect(restored.rows[0].member_type).toBe('guest')
+    expect(new Date(restored.rows[0].access_expires_at).toISOString()).toBe(expiresAt)
   })
 
   it('an uninvited, unknown SSO email is still rejected (403)', async () => {

@@ -7,6 +7,7 @@ import { UpdateModal } from './components/UpdateModal'
 import { TopbarSlotProvider } from './topbar-slot'
 import { Icon } from './icons'
 import { SCREENS, SETTINGS } from './nav'
+import { useHousehold } from '../lib/api'
 import '../styles/kiosk-profiles.css'
 
 // The persistent kiosk chrome (responsive, fills the viewport). The active
@@ -16,6 +17,8 @@ export function KioskLayout() {
   const [navOpen, setNavOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const location = useLocation()
+  const { person } = useHousehold()
+  const readOnlyGuest = person?.memberType === 'guest'
   const active = [...SCREENS, SETTINGS]
     .filter((screen) => screen.path === '/' ? location.pathname === '/' : location.pathname.startsWith(screen.path))
     .sort((a, b) => b.path.length - a.path.length)[0]
@@ -63,6 +66,11 @@ export function KioskLayout() {
         <Rail mobileOpen={navOpen} onNavigate={() => setNavOpen(false)} />
         <div className="kiosk-main">
           <OfflineBanner />
+          {readOnlyGuest && (
+            <div role="status" style={{ padding: '8px 18px', background: 'var(--panel)', borderBottom: '1px solid var(--hair)', color: 'var(--ink-2)', fontSize: 12, fontWeight: 700 }}>
+              Guest access · Read-only. Ask a household admin if you need to make changes.
+            </div>
+          )}
           <Topbar />
           <Outlet />
         </div>

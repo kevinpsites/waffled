@@ -15,7 +15,7 @@ import { query } from '../../platform/db'
 import { config } from '../../platform/config'
 import { encryptSecret, decryptSecret, encryptionAvailable } from '../../platform/crypto'
 import { mintAccess, issueRefresh } from './auth'
-import { requireTenant, requireInstallationOwner, findTenantBySub, findPersonByEmail, linkIdentity } from '../households/households'
+import { requireTenant, requireInstallationOwner, findTenantBySub, findPersonByEmail, findAccountByIdentitySubject, linkIdentity } from '../households/households'
 import {
   listMemberships,
   pickActiveHousehold,
@@ -271,11 +271,25 @@ export function registerOidcRoutes(api: Api): void {
         // Match the verified email to an ACCOUNT (not just a person). The account is
         // the global login; we link the OIDC identity to it and land on its active
         // household so the handoff exchange mints an account-scoped token.
-        const account = await findAccountByEmail(email)
+        const account = (await findAccountByIdentitySubject(subject)) ?? (await findAccountByEmail(email))
         let personId: string
         let householdId: string
         if (account) {
-          const memberships = await listMemberships(account.id) // an account always has >=1
+          let memberships = await listMemberships(account.id)
+          if (memberships.length === 0) {
+            // An account whose only temporary access expired has no active tenant
+            // in which to accept another invite. A verified OIDC login therefore
+            // bootstraps its first fresh invite, matching first-time OIDC signup.
+            const invite = await firstPendingInviteForEmail(account.email)
+            if (!invite) {
+              return failSignIn(req, res, redirectTo, 403, 'Access expired', 'This account has no active household access. Ask a household admin to restore it.', 'access_expired')
+            }
+            await createMembershipFromInvite(account.id, account.email, invite)
+            memberships = await listMemberships(account.id)
+            if (memberships.length === 0) {
+              return failSignIn(req, res, redirectTo, 403, 'Access expired', 'This account has no active household access. Ask a household admin to restore it.', 'access_expired')
+            }
+          }
           const active = await pickActiveHousehold(account.id, memberships)
           const m = memberships.find((x) => x.householdId === active)!
           personId = m.personId
@@ -329,12 +343,17 @@ export function registerOidcRoutes(api: Api): void {
     // the account's last-active household — same as password login. Persons without
     // an account (legacy/kiosk) keep the claim-less subject.
     const pr = await query<{ account_id: string | null; household_id: string }>(
-      `select account_id, household_id from persons where id = $1`,
+      `select account_id, household_id from persons where id = $1 and deleted_at is null
+        and (access_expires_at is null or access_expires_at > now())`,
       [h.person_id]
     )
     const person = pr.rows[0]
+    if (!person) return res.status(401).json({ error: 'Unauthorized', message: 'Household access has expired.' })
     if (person?.account_id) {
       const memberships = await listMemberships(person.account_id)
+      if (memberships.length === 0) {
+        return res.status(401).json({ error: 'Unauthorized', message: 'Household access has expired.' })
+      }
       const active = await pickActiveHousehold(person.account_id, memberships)
       await setLastHousehold(person.account_id, active)
       const activePersonId = memberships.find((m) => m.householdId === active)!.personId

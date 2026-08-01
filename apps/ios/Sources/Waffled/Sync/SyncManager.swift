@@ -73,9 +73,11 @@ final class SyncManager {
     private(set) var currentPerson: WaffledAPI.CurrentPerson? { didSet { rebuildEventIndex() } }
     /// The logged-in person's id (convenience; nil until identity loads).
     var currentPersonId: String? { currentPerson?.id }
+    var isReadOnlyGuest: Bool { currentPerson?.memberType == "guest" }
     func loadIdentity() async {
         guard currentPerson == nil else { return }
         currentPerson = try? await api.currentPerson()
+        AppConfig.setCurrentMemberType(currentPerson?.memberType)
         await reloadModules()
     }
 
@@ -212,6 +214,7 @@ final class SyncManager {
     func reauthenticate(clearLocal: Bool = false) async {
         await signOut(clearLocal: clearLocal)
         await start()
+        await loadIdentity()
     }
 
     /// Tear down the sync session on sign-out: stop the live queries, disconnect
@@ -234,6 +237,7 @@ final class SyncManager {
         personCount = 0; eventCount = 0; pendingUploads = 0
         lastSyncedAt = nil; lastError = nil
         currentPerson = nil; currencies = []
+        AppConfig.setCurrentMemberType(nil)
         status = .idle
         started = false
     }
@@ -256,6 +260,7 @@ final class SyncManager {
     /// Insert an event locally. It commits to SQLite immediately (offline-safe) and
     /// PowerSync queues it for upload — the write half of the airplane-mode demo.
     func addTestEvent() async {
+        guard mutationAllowed() else { return }
         guard let owner = try? await db.getOptional(
             sql: "SELECT id, household_id FROM persons ORDER BY sort_order, name LIMIT 1",
             parameters: [],
@@ -321,6 +326,7 @@ final class SyncManager {
     /// (events need none — a server-side reschedule/delete down-syncs through PowerSync).
     func commitMutate(verb: String, targetKind: String?, targetId: String,
                       args: [String: JSONValue], meta: [String: JSONValue]?) async -> (ok: Bool, message: String) {
+        guard mutationAllowed() else { return (false, "Guest access is read-only.") }
         do {
             let message = try await api.commitMutate(verb: verb, targetKind: targetKind,
                                                      targetId: targetId, args: args, meta: meta)
@@ -352,6 +358,7 @@ final class SyncManager {
     /// never talks to Google). Returns false on failure.
     func commitEvent(title: String, startsAtISO: String, allDay: Bool, personName: String?,
                      rrule: String? = nil, recurrenceEndAt: String? = nil) async -> Bool {
+        guard mutationAllowed() else { return false }
         // Resolve the named assignee to a person id and route through the same path the
         // editor uses, so the capture also writes the `event_participants` row (not just
         // `person_id`) — otherwise the person never shows up as a participant.
@@ -408,6 +415,7 @@ final class SyncManager {
     func createCalendarEvent(title: String, startsAtISO: String, endsAtISO: String?,
                              allDay: Bool, location: String?, personIds: [String],
                              calendarId: String?, isCountdown: Bool = false) async -> Bool {
+        guard mutationAllowed() else { return false }
         guard let hh = await householdRowId() else { lastError = "No household synced yet."; return false }
         let id = UUID().uuidString.lowercased()
         do {
@@ -428,6 +436,7 @@ final class SyncManager {
     /// Update an event + its participants in the local mirror.
     func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
                      allDay: Bool, location: String?, personIds: [String], isCountdown: Bool = false) async -> Bool {
+        guard mutationAllowed() else { return false }
         guard let hh = await householdRowId() else { lastError = "No household synced yet."; return false }
         do {
             try await db.execute(
@@ -441,6 +450,7 @@ final class SyncManager {
 
     /// Delete an event + its participants from the local mirror.
     func deleteEvent(id: String) async -> Bool {
+        guard mutationAllowed() else { return false }
         do {
             try await db.execute(sql: "DELETE FROM event_participants WHERE event_id = ?", parameters: [id])
             try await db.execute(sql: "DELETE FROM events WHERE id = ?", parameters: [id])
@@ -585,6 +595,7 @@ final class SyncManager {
     /// (e.g. balance changed underfoot) the error surfaces via `lastError`.
     @discardableResult
     func giveReward(rewardId: String, personId: String) async -> Bool {
+        guard mutationAllowed() else { return false }
         do {
             let redemption = try await api.redeemReward(rewardId: rewardId, personId: personId)
             _ = try await api.approveRedemption(id: redemption.id)
@@ -722,6 +733,7 @@ final class SyncManager {
     /// Trade a person's balance through a conversion N times. Returns success + an
     /// optional error message (e.g. "not enough to trade"). Bumps `rewardsRev`.
     func applyConversion(id: String, personId: String, times: Int) async -> (ok: Bool, error: String?) {
+        guard mutationAllowed() else { return (false, "Guest access is read-only.") }
         do {
             let r = try await api.applyConversion(id: id, personId: personId, times: times)
             if r.ok { rewardsRev += 1 }
@@ -755,6 +767,7 @@ final class SyncManager {
     /// Commit a captured "add X to <list>" intent: resolve the named list and add
     /// the item. Mirrors the web kiosk's list-intent commit.
     func commitListItem(item: String, listName: String?, quantity: String?) async -> Bool {
+        guard mutationAllowed() else { return false }
         do {
             let lists = try await api.listSummaries()
             var target = listName.flatMap { name in
@@ -798,6 +811,7 @@ final class SyncManager {
     /// Run a REST capture commit, surfacing any failure via `lastError`. Returns
     /// false on throw so the sheet can keep the preview up and show the error.
     private func restCommit(_ op: () async throws -> Void) async -> Bool {
+        guard mutationAllowed() else { return false }
         do {
             try await op()
             return true
@@ -807,17 +821,26 @@ final class SyncManager {
         }
     }
 
+    private func mutationAllowed() -> Bool {
+        guard !isReadOnlyGuest else {
+            lastError = "Guest access is read-only."
+            return false
+        }
+        return true
+    }
+
     /// The person a captured name resolves to (for the preview chip + routing hint).
     func member(named name: String?) -> SyncedMember? {
         guard let name else { return nil }
         return members.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
-    /// Whether the signed-in person is an adult — gates the approval surfaces (badge,
-    /// banners, inline cards). Kids can't act on approvals (server-gated too).
+    /// Whether the signed-in person can operate adult-style approval surfaces. Caregivers
+    /// may approve routine work; guests and children remain server-gated.
     var isParent: Bool {
         guard let id = currentPersonId else { return false }
-        return members.first { $0.id == id }?.memberType == "adult"
+        let role = members.first { $0.id == id }?.memberType
+        return role == "adult" || role == "caregiver"
     }
 
     // MARK: live state

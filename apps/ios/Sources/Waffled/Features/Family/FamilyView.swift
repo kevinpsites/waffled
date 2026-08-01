@@ -102,7 +102,7 @@ struct FamilyView: View {
                     if !sync.members.isEmpty { break }
                     try? await Task.sleep(nanoseconds: 200_000_000)
                 }
-                let kid = sync.members.first { $0.memberType != "adult" } ?? sync.members.first
+                let kid = sync.members.first { $0.memberType == "kid" || $0.memberType == "teen" } ?? sync.members.first
                 if let kid { path = [.rewardShop(kid.id)] }
             }
             return

@@ -171,6 +171,7 @@ struct WaffledAPI: Sendable {
         let personId: String
         let isAdmin: Bool
         let memberType: String
+        let accessExpiresAt: String?
         var id: String { householdId }
     }
 
@@ -180,6 +181,7 @@ struct WaffledAPI: Sendable {
         let householdName: String
         let memberType: String
         let isAdmin: Bool
+        let accessExpiresAt: String?
     }
 
     /// `GET /api/household`, decoded for the switcher: the active household plus the
@@ -281,7 +283,7 @@ struct WaffledAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = "{}".data(using: .utf8)
-        _ = try? await URLSession.shared.data(for: req)
+        _ = try? await perform(req)
     }
 
     // MARK: capture Tier 2 (mutate — resolve → commit)
@@ -1235,6 +1237,7 @@ struct WaffledAPI: Sendable {
             let isAdmin: Bool
             let avatarEmoji, colorHex, birthday, dietaryNotes: String?
             let showOnKiosk: Bool
+            let accessExpiresAt: String?
             let hasLogin: Bool
             let loginEmail: String?
             let hasPassword: Bool
@@ -1547,7 +1550,7 @@ struct WaffledAPI: Sendable {
     /// account hasn't been provisioned yet.
     struct CurrentPerson: Decodable, Sendable, Equatable {
         let id: String
-        let memberType: String       // "adult" | "teen" | "kid"
+        let memberType: String       // adult | caregiver | guest | teen | kid
         let isAdmin: Bool
         let capabilities: [String]   // e.g. "chore.manage", "chore.approve", "reward.manage", "reward.approve"
     }
@@ -3447,12 +3450,26 @@ struct WaffledAPI: Sendable {
         req.setValue("Bearer \(AppConfig.bearerToken)", forHTTPHeaderField: "Authorization")
     }
 
+    /// Mirror the API's guest-write middleware. Reads remain open, along with the
+    /// account/session routes a guest needs to leave this household or restore
+    /// access elsewhere. Kept pure so the contract has a focused unit test.
+    nonisolated static func guestRequestAllowed(method: String?, path: String) -> Bool {
+        let verb = (method ?? "GET").uppercased()
+        if ["GET", "HEAD", "OPTIONS"].contains(verb) { return true }
+        if path == "/api/auth/switch" || path.hasPrefix("/api/account/") { return true }
+        return path.hasPrefix("/api/auth/invites/") && path.hasSuffix("/accept")
+    }
+
     /// Run an authed request, transparently refreshing the access token once on a
     /// 401 and retrying. Mirrors the web's `authFetch`: a single rotating-refresh
     /// (coordinated by `TokenRefresher`) recovers an expired access token without the
     /// user noticing; if the refresh token is dead, the original 401 is returned and
     /// `.waffledAuthExpired` (fired by the refresher) sends the user to login.
     private func perform(_ req: URLRequest) async throws -> (Data, URLResponse) {
+        if AppConfig.currentMemberType == "guest",
+           !Self.guestRequestAllowed(method: req.httpMethod, path: req.url?.path ?? "") {
+            throw APIError.http(403, #"{"error":"Forbidden","message":"Guest access is read-only."}"#)
+        }
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard (resp as? HTTPURLResponse)?.statusCode == 401,
               AuthTokens.refreshToken != nil,

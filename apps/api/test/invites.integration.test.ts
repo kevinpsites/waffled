@@ -73,6 +73,36 @@ beforeAll(async () => {
     `insert into persons (household_id, name, member_type, is_admin, account_id) values ($1,'Bob','adult',true,$2) returning id`,
     [householdB, bobAccountId]
   )
+
+  const helperAcct = await query(
+    `insert into accounts (email, password_hash, last_household_id) values ('helper@example.com',$1,$2) returning id`,
+    [hashPassword('helperpass12'), householdB]
+  )
+  await query(
+    `insert into persons (household_id, name, member_type, is_admin, account_id)
+     values ($1,'Helper','adult',false,$2)`,
+    [householdB, helperAcct.rows[0].id]
+  )
+
+  const lockedAcct = await query(
+    `insert into accounts (email, password_hash, last_household_id) values ('locked@example.com',$1,$2) returning id`,
+    [hashPassword('lockedpass12'), householdB]
+  )
+  await query(
+    `insert into persons (household_id, name, member_type, account_id, access_expires_at)
+     values ($1,'Locked Helper','caregiver',$2,now() - interval '1 day')`,
+    [householdA, lockedAcct.rows[0].id]
+  )
+
+  const strandedAcct = await query(
+    `insert into accounts (email, password_hash, last_household_id) values ('stranded@example.com',$1,$2) returning id`,
+    [hashPassword('strandedpass12'), householdB]
+  )
+  await query(
+    `insert into persons (household_id, name, member_type, account_id, access_expires_at)
+     values ($1,'Stranded Helper','caregiver',$2,now() - interval '1 day')`,
+    [householdB, strandedAcct.rows[0].id]
+  )
 }, 60_000)
 
 afterAll(async () => {
@@ -95,6 +125,51 @@ describe('P2.4 invite-and-accept', () => {
 
   it('a non-admin cannot invite (403)', async () => {
     expect((await call('POST', '/api/households/invites', teenToken, { email: 'x@example.com' })).statusCode).toBe(403)
+  })
+
+  it('validates temporary role, admin, and expiration combinations', async () => {
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    expect((await call('POST', '/api/households/invites', kevinToken, {
+      email: 'bad-admin@example.com', memberType: 'guest', isAdmin: true,
+    })).statusCode).toBe(400)
+    expect((await call('POST', '/api/households/invites', kevinToken, {
+      email: 'bad-expiry@example.com', memberType: 'adult', accessExpiresAt: future,
+    })).statusCode).toBe(400)
+    expect((await call('POST', '/api/households/invites', kevinToken, {
+      email: 'past@example.com', memberType: 'caregiver', accessExpiresAt: '2020-01-01T00:00:00.000Z',
+    })).statusCode).toBe(400)
+  })
+
+  it('lets an expired-only account return through a fresh temporary invite', async () => {
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    const invitation = await call('POST', '/api/households/invites', kevinToken, {
+      email: 'locked@example.com', memberType: 'guest', accessExpiresAt: future,
+    })
+    expect(invitation.statusCode).toBe(201)
+
+    // There is no active tenant in which to show an accept screen. Successful
+    // credential login bootstraps the fresh invite and lands in that household.
+    const session = await login('locked@example.com', 'lockedpass12')
+    expect(session.memberships).toHaveLength(1)
+    expect(session.memberships[0]).toMatchObject({ householdId: householdA, memberType: 'guest' })
+    expect(session.pendingInvites).toHaveLength(0)
+
+    const restored = await query(
+      `select member_type, access_expires_at from persons p join accounts a on a.id = p.account_id
+        where p.household_id = $1 and lower(a.email) = 'locked@example.com'`,
+      [householdA]
+    )
+    expect(restored.rows).toHaveLength(1)
+    expect(restored.rows[0].member_type).toBe('guest')
+    expect(new Date(restored.rows[0].access_expires_at).toISOString()).toBe(future)
+  })
+
+  it('returns a controlled denial when an expired-only account has no fresh invite', async () => {
+    const denied = await call('POST', '/api/auth/login', undefined, {
+      email: 'stranded@example.com', password: 'strandedpass12',
+    })
+    expect(denied.statusCode).toBe(403)
+    expect(json(denied)).toMatchObject({ error: 'Forbidden', message: 'No active household access for this account.' })
   })
 
   it('cannot invite someone already a member of the household (409)', async () => {
@@ -130,6 +205,29 @@ describe('P2.4 invite-and-accept', () => {
 
     // the invite is no longer pending
     expect((await login('bob@example.com', 'bobpass12')).pendingInvites).toHaveLength(0)
+  })
+
+  it('carries caregiver access expiration into a hidden membership', async () => {
+    const accessExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    const invite = json(await call('POST', '/api/households/invites', kevinToken, {
+      email: 'helper@example.com', memberType: 'caregiver', accessExpiresAt,
+    })).invite
+    expect(invite).toMatchObject({ memberType: 'caregiver', isAdmin: false })
+    expect(new Date(invite.accessExpiresAt).toISOString()).toBe(accessExpiresAt)
+
+    const helperToken = (await login('helper@example.com', 'helperpass12')).accessToken
+    const accepted = await call('POST', `/api/auth/invites/${invite.id}/accept`, helperToken)
+    expect(accepted.statusCode).toBe(201)
+    expect(json(accepted).membership).toMatchObject({ memberType: 'caregiver', isAdmin: false })
+
+    const membership = await query(
+      `select p.member_type, p.is_admin, p.show_on_kiosk, p.access_expires_at
+         from persons p join accounts a on a.id=p.account_id
+        where p.household_id=$1 and lower(a.email)='helper@example.com'`,
+      [householdA]
+    )
+    expect(membership.rows[0]).toMatchObject({ member_type: 'caregiver', is_admin: false, show_on_kiosk: false })
+    expect(membership.rows[0].access_expires_at.toISOString()).toBe(accessExpiresAt)
   })
 
   it('rejects accepting an invite addressed to a different email (403)', async () => {

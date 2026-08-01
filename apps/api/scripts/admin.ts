@@ -190,7 +190,18 @@ async function makeAdmin(grant: boolean): Promise<void> {
     if (rows[0]?.owner) die("The household owner is always an admin and can't be demoted.")
   }
   if (p.is_admin === grant) { console.log(c.dim + `${p.name} is already ${grant ? 'an admin' : 'not an admin'} — no change.` + c.reset); return }
-  await query(`update persons set is_admin = $1, updated_at = now() where id = $2`, [grant, p.id])
+  // Admin privileges are only valid for permanent adult memberships. Promote
+  // the role and clear any temporary-access expiry in the same statement so
+  // the break-glass CLI cannot violate the membership invariants.
+  await query(
+    `update persons
+        set is_admin = $1,
+            member_type = case when $1 then 'adult' else member_type end,
+            access_expires_at = case when $1 then null else access_expires_at end,
+            updated_at = now()
+      where id = $2`,
+    [grant, p.id]
+  )
   console.log(ok(`✓ ${p.name} is now ${grant ? 'an admin' : 'a regular member'}.`))
 }
 
