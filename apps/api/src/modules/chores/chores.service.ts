@@ -6,7 +6,7 @@ import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { getDefaultCurrencyKey } from '../currencies/currencies'
 import { getBlobStore, mediaUrl } from '../../platform/storage'
-import type { ChoreRow, CreateChoreInput, PersonChoreSummary, TodayInstance } from './chores.types'
+import type { ChoreEditScope, ChoreRow, CreateChoreInput, PersonChoreSummary, TodayInstance } from './chores.types'
 
 // Rewards sub-toggle (settings.chores.rewards) — the spend half of the chores
 // economy. Defaults on; read/written from Settings → Chores & rewards.
@@ -33,6 +33,7 @@ export async function setChoreRewardsEnabled(householdId: string, on: boolean): 
 
 interface ChoreInstanceRow extends QueryResultRow {
   id: string
+  due_on: string | Date
   person_id: string | null
   status: string
   completed_at: Date | null
@@ -44,6 +45,10 @@ interface ChoreInstanceRow extends QueryResultRow {
   proof_storage_key: string | null
   proof_content_type: string | null
   had_proof: boolean
+  title_snapshot: string
+  emoji_snapshot: string | null
+  due_time_snapshot: string | null
+  rrule_snapshot: string | null
 }
 
 // Thrown by completeInstance when a photo-proof chore is completed without a proof
@@ -123,8 +128,11 @@ export async function createChore(tenant: Tenant, input: CreateChoreInput): Prom
     const dueOn = input.dueOn?.trim() || todayDate(await householdTz(tenant.householdId))
     await query(
       `insert into chore_instances
-         (household_id, chore_id, person_id, due_on, reward_currency, reward_amount, requires_approval, requires_photo)
-       select household_id, id, person_id, $2::date, reward_currency, reward_amount, requires_approval, requires_photo
+         (household_id, chore_id, person_id, due_on, reward_currency, reward_amount,
+          requires_approval, requires_photo, title_snapshot, emoji_snapshot,
+          due_time_snapshot, rrule_snapshot)
+       select household_id, id, person_id, $2::date, reward_currency, reward_amount,
+              requires_approval, requires_photo, title, emoji, due_time, rrule
          from chores where id = $1
        on conflict (chore_id, due_on) do nothing`,
       [chore.id, dueOn]
@@ -142,10 +150,15 @@ export async function ensureTodayInstances(householdId: string, dueOn: string): 
   const dow = WEEKDAY_CODES[new Date(dueOn + 'T00:00:00').getDay()]
   await query(
     `insert into chore_instances
-       (household_id, chore_id, person_id, due_on, reward_currency, reward_amount, requires_approval, requires_photo)
-     select household_id, id, person_id, $2::date, reward_currency, reward_amount, requires_approval, requires_photo
+       (household_id, chore_id, person_id, due_on, reward_currency, reward_amount,
+        requires_approval, requires_photo, title_snapshot, emoji_snapshot,
+        due_time_snapshot, rrule_snapshot)
+     select household_id, id, person_id, $2::date, reward_currency, reward_amount,
+            requires_approval, requires_photo, title, emoji, due_time, rrule
        from chores
       where household_id = $1 and is_active and deleted_at is null and rrule is not null
+        and (recurrence_start_on is null or recurrence_start_on <= $2::date)
+        and (recurrence_end_at is null or recurrence_end_at::date >= $2::date)
         and (
           rrule ilike '%FREQ=DAILY%'
           or (rrule ilike '%FREQ=WEEKLY%' and rrule ~ ('BYDAY=[A-Z,]*' || $3))
@@ -209,7 +222,8 @@ export async function todaySummary(householdId: string, dueOn: string, tz = 'UTC
        left join chore_instances ci
          on ci.person_id = p.id and ci.deleted_at is null
        left join chores c
-         on c.id = ci.chore_id and c.deleted_at is null
+         on c.id = ci.chore_id
+         and (c.deleted_at is null or ci.status in ('done', 'awaiting'))
          and (ci.due_on = $2::date
               or (ci.due_on < $2::date and ci.status = 'pending' and c.rrule is null and c.rollover)
               or (ci.due_on > $2::date and ci.status = 'pending' and c.rrule is null
@@ -297,18 +311,20 @@ export async function listTodayInstances(
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
             ci.requires_photo, ci.proof_storage_key, ci.had_proof, ci.due_on::text as due_on,
-            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule, c.due_time::text as due_time,
+            c.id as chore_id, ci.title_snapshot as chore_title, ci.emoji_snapshot as emoji,
+            ci.rrule_snapshot as rrule, ci.due_time_snapshot::text as due_time,
             p.name as person_name, p.avatar_emoji, p.color_hex
        from chore_instances ci
-       join chores c on c.id = ci.chore_id and c.deleted_at is null
+       join chores c on c.id = ci.chore_id
        left join persons p on p.id = ci.person_id
       where ci.household_id = $1 and ci.deleted_at is null
+        and (c.deleted_at is null or ci.status in ('done', 'awaiting'))
         and (ci.due_on = $2::date
              or (ci.due_on < $2::date and ci.status = 'pending' and c.rrule is null and c.rollover)
              or (ci.due_on > $2::date and ci.status = 'pending' and c.rrule is null
                  and (ci.created_at at time zone $3)::date <= $2::date))
         and ($4::uuid is null or ci.person_id = $4::uuid)
-      order by p.sort_order nulls last, c.due_time nulls last, c.title`,
+      order by p.sort_order nulls last, ci.due_time_snapshot nulls last, ci.title_snapshot`,
     [householdId, dueOn, tz, opts?.personId ?? null]
   )
   const streaks = opts?.streaks === false ? new Map<string, number>() : await streaksByChore(householdId, dueOn)
@@ -341,13 +357,14 @@ export async function listAwaitingInstances(householdId: string): Promise<TodayI
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
             ci.requires_photo, ci.proof_storage_key, ci.had_proof, ci.due_on::text as due_on,
-            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule, c.due_time::text as due_time,
+            c.id as chore_id, ci.title_snapshot as chore_title, ci.emoji_snapshot as emoji,
+            ci.rrule_snapshot as rrule, ci.due_time_snapshot::text as due_time,
             p.name as person_name, p.avatar_emoji, p.color_hex
        from chore_instances ci
-       join chores c on c.id = ci.chore_id and c.deleted_at is null
+       join chores c on c.id = ci.chore_id
        left join persons p on p.id = ci.person_id
       where ci.household_id = $1 and ci.status = 'awaiting' and ci.deleted_at is null
-      order by ci.due_on desc, p.sort_order nulls last, c.title`,
+      order by ci.due_on desc, p.sort_order nulls last, ci.title_snapshot`,
     [householdId]
   )
   return rows.map((r) => ({
@@ -387,106 +404,317 @@ export const UPDATABLE_CHORE: Record<string, string> = {
   rollover: 'rollover',
 }
 
-export async function updateChore(
+const INSTANCE_PATCH: Record<string, string> = {
+  title: 'title_snapshot',
+  emoji: 'emoji_snapshot',
+  personId: 'person_id',
+  rewardAmount: 'reward_amount',
+  rewardCurrency: 'reward_currency',
+  dueTime: 'due_time_snapshot',
+  requiresApproval: 'requires_approval',
+  requiresPhoto: 'requires_photo',
+}
+
+export class ChoreScopeError extends Error {
+  constructor(message: string, readonly statusCode: 400 | 409 = 400) {
+    super(message)
+    this.name = 'ChoreScopeError'
+  }
+}
+
+function assignments(
+  patch: Record<string, unknown>,
+  fields: Record<string, string>,
+  start = 1
+): { sql: string[]; values: unknown[]; next: number } {
+  const sql: string[] = []
+  const values: unknown[] = []
+  let next = start
+  for (const [field, column] of Object.entries(fields)) {
+    if (field in patch && patch[field] !== undefined) {
+      sql.push(`${column} = $${next++}`)
+      values.push(patch[field])
+    }
+  }
+  return { sql, values, next }
+}
+
+async function lockedInstance(
+  client: PoolClient,
+  householdId: string,
+  choreId: string,
+  instanceId: string | undefined
+): Promise<ChoreInstanceRow> {
+  if (!instanceId) throw new ChoreScopeError('instanceId is required for this edit scope')
+  const { rows } = await client.query<ChoreInstanceRow>(
+    `select * from chore_instances
+      where household_id = $1 and chore_id = $2 and id = $3 and deleted_at is null
+      for update`,
+    [householdId, choreId, instanceId]
+  )
+  if (!rows[0]) throw new ChoreScopeError('chore occurrence not found', 409)
+  return rows[0]
+}
+
+function requireMutableInstance(instance: ChoreInstanceRow): void {
+  if (instance.status !== 'pending') {
+    throw new ChoreScopeError('completed and awaiting-approval chores are immutable history', 409)
+  }
+}
+
+function instanceDate(instance: ChoreInstanceRow): string {
+  return instance.due_on instanceof Date
+    ? instance.due_on.toISOString().slice(0, 10)
+    : instance.due_on.slice(0, 10)
+}
+
+async function updateTemplate(
+  client: PoolClient,
   householdId: string,
   id: string,
   patch: Record<string, unknown>
 ): Promise<ChoreRow | null> {
-  const sets: string[] = []
-  const values: unknown[] = []
-  let i = 1
-  for (const [field, column] of Object.entries(UPDATABLE_CHORE)) {
-    if (field in patch && patch[field] !== undefined) {
-      sets.push(`${column} = $${i++}`)
-      values.push(patch[field])
-    }
-  }
-  values.push(householdId, id)
-  const { rows } = await query<ChoreRow>(
-    `update chores set ${sets.join(', ')}
-       where household_id = $${i++} and id = $${i} and deleted_at is null
-       returning *`,
-    values
+  const set = assignments(patch, UPDATABLE_CHORE)
+  if (!set.sql.length) return null
+  const { rows } = await client.query<ChoreRow>(
+    `update chores set ${set.sql.join(', ')}
+      where household_id = $${set.next} and id = $${set.next + 1} and deleted_at is null
+      returning *`,
+    [...set.values, householdId, id]
   )
-  const updated = rows[0] ?? null
-
-  // Reassigning the chore's "Who" should follow through to its not-yet-acted-on
-  // instances from today forward, so editing the assignee (including back to
-  // "up for grabs", person_id null) moves it on the board. Done/awaiting
-  // instances keep whoever completed/submitted them, for stars-ledger integrity.
-  if (updated && 'personId' in patch) {
-    await query(
-      `update chore_instances ci
-          set person_id = $1
-         from households h
-        where ci.household_id = h.id
-          and ci.household_id = $2
-          and ci.chore_id = $3
-          and ci.deleted_at is null
-          and ci.status = 'pending'
-          and ci.due_on >= (now() at time zone h.timezone)::date`,
-      [(patch.personId as string | null) ?? null, householdId, id]
-    )
-  }
-
-  // Reward + approval settings are copied onto each instance when it materializes, and
-  // the instance's copy is what drives completion (requires_approval → awaiting) and
-  // the editor's prefill. So a change to them must also flow to not-yet-acted-on
-  // instances — otherwise toggling "Needs a parent's OK" leaves today's instance
-  // unchanged and the edit looks lost (and wouldn't actually gate the next completion).
-  // Done/awaiting instances are left alone, for stars-ledger integrity.
-  if (updated) {
-    const sets2: string[] = []
-    const values2: unknown[] = []
-    let j = 1
-    for (const [field, column] of [
-      ['requiresApproval', 'requires_approval'],
-      ['requiresPhoto', 'requires_photo'],
-      ['rewardAmount', 'reward_amount'],
-      ['rewardCurrency', 'reward_currency'],
-    ] as const) {
-      if (field in patch && patch[field] !== undefined) {
-        sets2.push(`${column} = $${j++}`)
-        values2.push(patch[field])
-      }
-    }
-    if (sets2.length) {
-      values2.push(householdId, id)
-      await query(
-        `update chore_instances ci
-            set ${sets2.join(', ')}
-           from households h
-          where ci.household_id = h.id
-            and ci.household_id = $${j++}
-            and ci.chore_id = $${j}
-            and ci.deleted_at is null
-            and ci.status = 'pending'
-            and ci.due_on >= (now() at time zone h.timezone)::date`,
-        values2
-      )
-    }
-  }
-
-  // A one-off's "On" day lives on its single pending instance, not the chore row — so an
-  // edit that changes the due date must move that instance. Recurring chores (rrule set)
-  // ignore dueOn. Done/awaiting instances are left alone (stars-ledger integrity).
-  if (updated && updated.rrule === null && typeof patch.dueOn === 'string' && patch.dueOn.trim()) {
-    await query(
-      `update chore_instances
-          set due_on = $1
-        where household_id = $2 and chore_id = $3 and deleted_at is null and status = 'pending'`,
-      [patch.dueOn.trim(), householdId, id]
-    )
-  }
-  return updated
+  return rows[0] ?? null
 }
 
-export async function softDeleteChore(householdId: string, id: string): Promise<boolean> {
-  const { rowCount } = await query(
-    `update chores set deleted_at = now() where household_id = $1 and id = $2 and deleted_at is null`,
-    [householdId, id]
+async function updatePendingSnapshots(
+  client: PoolClient,
+  householdId: string,
+  choreId: string,
+  patch: Record<string, unknown>,
+  fromDate?: string
+): Promise<void> {
+  const set = assignments(patch, INSTANCE_PATCH)
+  if ('rrule' in patch && patch.rrule !== undefined) {
+    set.sql.push(`rrule_snapshot = $${set.next++}`)
+    set.values.push(patch.rrule)
+  }
+  if (!set.sql.length) return
+  const dateClause = fromDate
+    ? `and ci.due_on >= $${set.next + 2}::date`
+    : `and ci.due_on >= (now() at time zone h.timezone)::date`
+  const values = [...set.values, householdId, choreId]
+  if (fromDate) values.push(fromDate)
+  await client.query(
+    `update chore_instances ci
+        set ${set.sql.join(', ')}
+       from households h
+      where ci.household_id = h.id
+        and ci.household_id = $${set.next}
+        and ci.chore_id = $${set.next + 1}
+        and ci.deleted_at is null
+        and ci.status = 'pending'
+        ${dateClause}`,
+    values
   )
-  return !!rowCount
+}
+
+async function insertOneOffInstance(
+  client: PoolClient,
+  choreId: string,
+  dueOn: string
+): Promise<void> {
+  await client.query(
+    `insert into chore_instances
+       (household_id, chore_id, person_id, due_on, reward_currency, reward_amount,
+        requires_approval, requires_photo, title_snapshot, emoji_snapshot,
+        due_time_snapshot, rrule_snapshot)
+     select household_id, id, person_id, $2::date, reward_currency, reward_amount,
+            requires_approval, requires_photo, title, emoji, due_time, rrule
+       from chores where id = $1
+     on conflict (chore_id, due_on) do nothing`,
+    [choreId, dueOn]
+  )
+}
+
+export async function updateChore(
+  householdId: string,
+  id: string,
+  patch: Record<string, unknown>,
+  scope: ChoreEditScope = 'all',
+  instanceId?: string
+): Promise<ChoreRow | null> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const currentResult = await client.query<ChoreRow>(
+      `select * from chores where household_id = $1 and id = $2 and deleted_at is null for update`,
+      [householdId, id]
+    )
+    const current = currentResult.rows[0]
+    if (!current) { await client.query('rollback'); return null }
+
+    if (scope === 'this') {
+      const instance = await lockedInstance(client, householdId, id, instanceId)
+      requireMutableInstance(instance)
+      if ('rrule' in patch && patch.rrule !== instance.rrule_snapshot) {
+        throw new ChoreScopeError('repeat changes must apply to this and future chores or the entire series')
+      }
+      const set = assignments(patch, INSTANCE_PATCH)
+      if (!set.sql.length) throw new ChoreScopeError('no occurrence fields provided')
+      await client.query(
+        `update chore_instances set ${set.sql.join(', ')} where id = $${set.next}`,
+        [...set.values, instance.id]
+      )
+      await client.query('commit')
+      return current
+    }
+
+    if (scope === 'following') {
+      if (!current.rrule) throw new ChoreScopeError('a one-off chore has no following occurrences')
+      const instance = await lockedInstance(client, householdId, id, instanceId)
+      requireMutableInstance(instance)
+      const dueOn = instanceDate(instance)
+
+      await client.query(
+        `update chores set recurrence_end_at = ($1::date - 1)::timestamptz where id = $2`,
+        [dueOn, current.id]
+      )
+      const split = await client.query<ChoreRow>(
+        `insert into chores
+           (household_id, title, emoji, person_id, rrule, recurrence_start_on,
+            recurrence_end_at, reward_currency, reward_amount, due_time,
+            requires_approval, requires_photo, rollover, is_active, show_on_kiosk)
+         select household_id, title, emoji, person_id, rrule, $2::date,
+                $3::timestamptz, reward_currency, reward_amount, due_time,
+                requires_approval, requires_photo, rollover, is_active, show_on_kiosk
+           from chores where id = $1
+         returning *`,
+        [current.id, dueOn, current.recurrence_end_at]
+      )
+      const newId = split.rows[0].id
+      const updated = await updateTemplate(client, householdId, newId, patch)
+      if (!updated) throw new ChoreScopeError('no updatable fields provided')
+
+      const repeatChanged = 'rrule' in patch && patch.rrule !== current.rrule
+      await client.query(
+        `update chore_instances
+            set chore_id = $1
+          where household_id = $2 and chore_id = $3 and due_on >= $4::date
+            and deleted_at is null and status <> 'pending'`,
+        [newId, householdId, current.id, dueOn]
+      )
+      if (repeatChanged) {
+        await client.query(
+          `update chore_instances set deleted_at = now()
+            where household_id = $1 and chore_id = $2 and due_on >= $3::date
+              and deleted_at is null and status = 'pending'`,
+          [householdId, current.id, dueOn]
+        )
+        if (updated.rrule === null) {
+          const oneOffDate = typeof patch.dueOn === 'string' && patch.dueOn ? patch.dueOn : dueOn
+          await insertOneOffInstance(client, newId, oneOffDate)
+        }
+      } else {
+        await client.query(
+          `update chore_instances set chore_id = $1
+            where household_id = $2 and chore_id = $3 and due_on >= $4::date
+              and deleted_at is null and status = 'pending'`,
+          [newId, householdId, current.id, dueOn]
+        )
+        await updatePendingSnapshots(client, householdId, newId, patch, dueOn)
+      }
+      await client.query('commit')
+      return updated
+    }
+
+    const updated = await updateTemplate(client, householdId, id, patch)
+    if (!updated) throw new ChoreScopeError('no updatable fields provided')
+    const repeatChanged = 'rrule' in patch && patch.rrule !== current.rrule
+    const fallbackDate = instanceId
+      ? instanceDate(await lockedInstance(client, householdId, id, instanceId))
+      : todayDate(await householdTz(householdId))
+    if (repeatChanged) {
+      await client.query(
+        `delete from chore_instances ci
+          using households h
+         where ci.household_id = h.id and ci.household_id = $1 and ci.chore_id = $2
+           and ci.deleted_at is null and ci.status = 'pending'
+           and ci.due_on >= (now() at time zone h.timezone)::date`,
+        [householdId, id]
+      )
+      if (updated.rrule === null) {
+        const oneOffDate = typeof patch.dueOn === 'string' && patch.dueOn ? patch.dueOn : fallbackDate
+        await insertOneOffInstance(client, id, oneOffDate)
+      }
+    } else {
+      await updatePendingSnapshots(client, householdId, id, patch)
+    }
+    if (updated.rrule === null && typeof patch.dueOn === 'string' && patch.dueOn.trim()) {
+      await client.query(
+        `update chore_instances set due_on = $1
+          where household_id = $2 and chore_id = $3 and deleted_at is null and status = 'pending'`,
+        [patch.dueOn.trim(), householdId, id]
+      )
+    }
+    await client.query('commit')
+    return updated
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+export async function softDeleteChore(
+  householdId: string,
+  id: string,
+  scope: ChoreEditScope = 'all',
+  instanceId?: string
+): Promise<boolean> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const current = await client.query<ChoreRow>(
+      `select * from chores where household_id = $1 and id = $2 and deleted_at is null for update`,
+      [householdId, id]
+    )
+    if (!current.rows[0]) { await client.query('rollback'); return false }
+
+    if (scope === 'this') {
+      const instance = await lockedInstance(client, householdId, id, instanceId)
+      requireMutableInstance(instance)
+      await client.query(`update chore_instances set deleted_at = now() where id = $1`, [instance.id])
+    } else if (scope === 'following') {
+      if (!current.rows[0].rrule) throw new ChoreScopeError('a one-off chore has no following occurrences')
+      const instance = await lockedInstance(client, householdId, id, instanceId)
+      requireMutableInstance(instance)
+      const dueOn = instanceDate(instance)
+      await client.query(
+        `update chores set recurrence_end_at = ($1::date - 1)::timestamptz where id = $2`,
+        [dueOn, id]
+      )
+      await client.query(
+        `update chore_instances set deleted_at = now()
+          where household_id = $1 and chore_id = $2 and due_on >= $3::date
+            and deleted_at is null and status = 'pending'`,
+        [householdId, id, dueOn]
+      )
+    } else {
+      await client.query(`update chores set deleted_at = now() where id = $1`, [id])
+      await client.query(
+        `update chore_instances set deleted_at = now()
+          where household_id = $1 and chore_id = $2 and deleted_at is null and status = 'pending'`,
+        [householdId, id]
+      )
+    }
+    await client.query('commit')
+    return true
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+  }
 }
 
 export function presentInstance(i: ChoreInstanceRow) {
@@ -696,7 +924,7 @@ export interface StoredProof {
 export async function listStoredProofs(householdId: string): Promise<StoredProof[]> {
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.proof_storage_key, ci.completed_at,
-            c.title as chore_title, c.emoji,
+            ci.title_snapshot as chore_title, ci.emoji_snapshot as emoji,
             p.name as person_name, p.avatar_emoji, p.color_hex
        from chore_instances ci
        join chores c on c.id = ci.chore_id

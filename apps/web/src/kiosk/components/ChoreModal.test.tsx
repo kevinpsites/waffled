@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ChoreModal } from './ChoreModal'
 
-function mockApi(opts: { created?: unknown[]; patched?: unknown[]; deleted?: string[] }) {
+function mockApi(opts: { created?: unknown[]; patched?: unknown[]; deleted?: unknown[] }) {
   globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const u = String(url)
     const m = init?.method
@@ -25,7 +25,7 @@ function mockApi(opts: { created?: unknown[]; patched?: unknown[]; deleted?: str
       return { ok: true, json: async () => ({ chore: { id: 'c1' } }) }
     }
     if (/\/api\/chores\/[^/]+$/.test(u) && m === 'DELETE') {
-      opts.deleted?.push(u)
+      opts.deleted?.push({ url: u, body: init?.body ? JSON.parse(init.body) : null })
       return { ok: true, status: 204, json: async () => ({}) }
     }
     return { ok: false, status: 404, json: async () => ({}) }
@@ -72,12 +72,37 @@ describe('ChoreModal', () => {
   })
 
   it('deletes only after a confirm tap', async () => {
-    const deleted: string[] = []
+    const deleted: unknown[] = []
     mockApi({ deleted })
     render(<ChoreModal chore={chore} onClose={vi.fn()} onSaved={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     expect(deleted).toHaveLength(0)
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to delete' }))
     await waitFor(() => expect(deleted).toHaveLength(1))
+  })
+
+  it('asks for a recurring scope and sends the selected occurrence', async () => {
+    const patched: unknown[] = []
+    mockApi({ patched })
+    render(<ChoreModal chore={{ ...chore, instanceId: 'i1', rrule: 'FREQ=DAILY', dueOn: '2026-07-31' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    fireEvent.change(screen.getByDisplayValue('Old chore'), { target: { value: 'New chore' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Choose recurring chore scope' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'This chore only' }))
+
+    await waitFor(() => expect(patched).toHaveLength(1))
+    expect(patched[0]).toMatchObject({ title: 'New chore', scope: 'this', instanceId: 'i1' })
+  })
+
+  it('does not offer a single occurrence for a repeat-rule change', async () => {
+    mockApi({})
+    render(<ChoreModal chore={{ ...chore, instanceId: 'i1', rrule: 'FREQ=DAILY', dueOn: '2026-07-31' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Just once' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Choose recurring chore scope' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'This chore only' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Repeat changes must apply/)).toBeInTheDocument()
   })
 })

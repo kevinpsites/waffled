@@ -137,9 +137,16 @@ final class ChoresModel {
         }
     }
 
-    func delete(choreId: String) async {
-        do { try await api.deleteChore(id: choreId); await load() }
-        catch { self.error = true }
+    func delete(choreId: String, body: [String: JSONValue] = [:]) async -> String? {
+        do {
+            try await api.deleteChore(id: choreId, body)
+            await load()
+            return nil
+        } catch let WaffledAPI.APIError.http(_, message) {
+            return message.isEmpty ? "Couldn’t delete this chore — please try again." : message
+        } catch {
+            return "Couldn’t delete this chore — please try again."
+        }
     }
 }
 
@@ -290,7 +297,7 @@ struct ChoresView: View {
                 // A brand-new chore defaults its "On" date to the day being viewed.
                 initialDate: DateFmt.date(model.date, "yyyy-MM-dd", .current) ?? Date(),
                 onSave: { choreId, body in await model.save(choreId: choreId, body: body) },
-                onDelete: { choreId in Task { await model.delete(choreId: choreId) } })
+                onDelete: { choreId, body in await model.delete(choreId: choreId, body: body) })
         }
         // ── Photo-proof capture ──────────────────────────────────────────────
         // Tapping the tick of a photo-required chore opens this Take Photo / Library
@@ -952,6 +959,11 @@ struct ChoresView: View {
 /// Create or edit a chore definition — title, emoji, repeat schedule (every day /
 /// certain weekdays), who (or up-for-grabs), star reward, and a parent-approval
 /// toggle. Delete when editing. Mirrors the web ChoreModal. WF-styled.
+private enum ChoreScopeAction {
+    case save(body: [String: JSONValue], repeatChanged: Bool)
+    case delete
+}
+
 struct ChoreEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     /// Snapshotted by the presenter from SyncManager so the sheet does NOT observe the
@@ -965,13 +977,15 @@ struct ChoreEditSheet: View {
     /// Persist the chore. Returns nil on success, else a user-facing error message
     /// (so the sheet stays open and shows why, instead of dismissing on a silent fail).
     let onSave: (String?, [String: JSONValue]) async -> String?
-    let onDelete: (String) -> Void
+    let onDelete: (String, [String: JSONValue]) async -> String?
 
     private static let days: [(code: String, label: String)] = [
         ("MO", "Mon"), ("TU", "Tue"), ("WE", "Wed"), ("TH", "Thu"), ("FR", "Fri"), ("SA", "Sat"), ("SU", "Sun"),
     ]
 
     private let editChoreId: String?
+    private let editInstanceId: String?
+    private let originalRrule: String?
     @State private var title: String
     @State private var emoji: String
     @State private var personId: String?
@@ -988,16 +1002,20 @@ struct ChoreEditSheet: View {
     @State private var confirmDelete = false
     @State private var saving = false
     @State private var saveError: String?
+    @State private var scopeAction: ChoreScopeAction?
     @FocusState private var titleFocused: Bool
 
     init(assignableMembers: [SyncedMember], currencies: [WaffledAPI.Currency],
          target: ChoresView.ChoreEditorTarget, initialDate: Date = Date(),
-         onSave: @escaping (String?, [String: JSONValue]) async -> String?, onDelete: @escaping (String) -> Void) {
+         onSave: @escaping (String?, [String: JSONValue]) async -> String?,
+         onDelete: @escaping (String, [String: JSONValue]) async -> String?) {
         self.assignableMembers = assignableMembers; self.currencies = currencies
         self.target = target; self.onSave = onSave; self.onDelete = onDelete
         switch target {
         case let .new(pid):
             editChoreId = nil
+            editInstanceId = nil
+            originalRrule = nil
             _title = State(initialValue: ""); _emoji = State(initialValue: "")
             _personId = State(initialValue: pid); _stars = State(initialValue: 1)
             _currencyKey = State(initialValue: nil)
@@ -1010,6 +1028,8 @@ struct ChoreEditSheet: View {
             _requiresPhoto = State(initialValue: false)
         case let .edit(i):
             editChoreId = i.choreId
+            editInstanceId = i.id
+            originalRrule = i.rrule
             _title = State(initialValue: i.choreTitle); _emoji = State(initialValue: i.emoji ?? "")
             _personId = State(initialValue: i.personId); _stars = State(initialValue: i.rewardAmount)
             _currencyKey = State(initialValue: i.rewardCurrency)
@@ -1206,7 +1226,10 @@ struct ChoreEditSheet: View {
 
                     if editing {
                         Button {
-                            if confirmDelete { onDelete(editChoreId!); dismiss() }
+                            if confirmDelete {
+                                if originalRrule != nil { scopeAction = .delete }
+                                else { performDelete(scope: "all") }
+                            }
                             else { withAnimation { confirmDelete = true } }
                         } label: {
                             Text(confirmDelete ? "Tap again to delete this chore" : "Delete chore")
@@ -1229,7 +1252,36 @@ struct ChoreEditSheet: View {
             // New chore: land in the title field.
             .task { if !editing { try? await Task.sleep(for: .milliseconds(300)); titleFocused = true } }
         }
+        .confirmationDialog(
+            scopeTitle,
+            isPresented: Binding(
+                get: { scopeAction != nil },
+                set: { if !$0 { scopeAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if case let .save(_, repeatChanged)? = scopeAction, !repeatChanged {
+                Button("This chore only") { performScope("this") }
+            } else if case .delete? = scopeAction {
+                Button("This chore only", role: .destructive) { performScope("this") }
+            }
+            if case .delete? = scopeAction {
+                Button("This and future chores", role: .destructive) { performScope("following") }
+                Button("Entire active series", role: .destructive) { performScope("all") }
+            } else {
+                Button("This and future chores") { performScope("following") }
+                Button("Entire active series") { performScope("all") }
+            }
+            Button("Cancel", role: .cancel) { scopeAction = nil }
+        } message: {
+            Text("Completed chores and items awaiting approval always stay unchanged.")
+        }
         .presentationDetents([.large])
+    }
+
+    private var scopeTitle: String {
+        if case .delete? = scopeAction { return "Which chores should be deleted?" }
+        return "Which chores should change?"
     }
 
     private func labeled<V: View>(_ label: String, width: CGFloat? = nil, @ViewBuilder _ content: () -> V) -> some View {
@@ -1289,11 +1341,46 @@ struct ChoreEditSheet: View {
         if freq == "once" {
             body["dueOn"] = .string(DateFmt.string(dueOn, "yyyy-MM-dd", .current))
         }
+        if editing, originalRrule != nil {
+            scopeAction = .save(body: body, repeatChanged: buildRrule() != originalRrule)
+        } else {
+            performSave(body: body, scope: "all")
+        }
+    }
+
+    private func performScope(_ scope: String) {
+        guard let action = scopeAction else { return }
+        scopeAction = nil
+        switch action {
+        case let .save(body, _): performSave(body: body, scope: scope)
+        case .delete: performDelete(scope: scope)
+        }
+    }
+
+    private func targetBody(_ body: [String: JSONValue], scope: String) -> [String: JSONValue] {
+        var targeted = body
+        targeted["scope"] = .string(scope)
+        if let editInstanceId { targeted["instanceId"] = .string(editInstanceId) }
+        return targeted
+    }
+
+    private func performSave(body: [String: JSONValue], scope: String) {
         Task {
             saving = true; saveError = nil
-            let err = await onSave(editChoreId, body)
+            let payload = editing ? targetBody(body, scope: scope) : body
+            let err = await onSave(editChoreId, payload)
             saving = false
             if let err { saveError = err } else { dismiss() }
+        }
+    }
+
+    private func performDelete(scope: String) {
+        guard let editChoreId else { return }
+        Task {
+            saving = true; saveError = nil
+            let err = await onDelete(editChoreId, targetBody([:], scope: scope))
+            saving = false
+            if let err { saveError = err; confirmDelete = false } else { dismiss() }
         }
     }
 
