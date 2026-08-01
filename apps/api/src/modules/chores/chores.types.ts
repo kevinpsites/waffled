@@ -7,6 +7,8 @@ export interface ChoreRow extends QueryResultRow {
   emoji: string | null
   person_id: string | null
   rrule: string | null
+  recurrence_start_on: string | null
+  recurrence_end_at: Date | null
   reward_currency: string | null
   reward_amount: number
   due_time: string | null
@@ -65,3 +67,5 @@ export interface TodayInstance {
   hadProof: boolean
   streak: number
 }
+
+export type ChoreEditScope = 'this' | 'following' | 'all'
