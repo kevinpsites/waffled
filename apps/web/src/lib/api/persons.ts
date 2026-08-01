@@ -18,6 +18,7 @@ export interface Person {
   allergens?: string[]
   rewardStyle?: string
   showOnKiosk?: boolean
+  accessExpiresAt?: string | null
   // Resolved capabilities for the *current* caller (from /api/household). Admins &
   // default adults get them all; teen/kid get only what the household grants.
   capabilities?: string[]
@@ -62,6 +63,7 @@ export interface Membership {
   personId: string
   isAdmin: boolean
   memberType: string
+  accessExpiresAt?: string | null
 }
 
 // An outstanding invitation to join another household.
@@ -71,6 +73,7 @@ export interface PendingInvite {
   householdName: string
   memberType: string
   isAdmin: boolean
+  accessExpiresAt?: string | null
 }
 
 export const personsApi = {

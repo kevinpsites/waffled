@@ -9,6 +9,8 @@ const ok = (body: unknown) => ({ ok: true, json: async () => body })
 function mockApi(onPut: (body: unknown) => void) {
   const matrix = {
     adult: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': true, 'reward.approve': true },
+    caregiver: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': false, 'reward.approve': true },
+    guest: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false },
     teen: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false },
     kid: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false },
   }
@@ -17,7 +19,7 @@ function mockApi(onPut: (body: unknown) => void) {
     const m = init?.method ?? 'GET'
     if (u.includes('/api/household/settings')) return ok({ household: { id: 'h', name: 'Home', timezone: 'UTC', weekStart: 'sunday', location: null, ownerPersonId: null }, members: [] })
     if (u.includes('/api/household')) return ok({ provisioned: true, household: { id: 'h', name: 'Home', timezone: 'UTC', weekStart: 'sunday' }, person: { id: 'me', name: 'Me', memberType: 'adult', isAdmin: true, capabilities: [] } })
-    if (u.includes('/api/permissions') && m === 'GET') return ok({ permissions: matrix, capabilities: Object.keys(matrix.adult), roles: ['adult', 'teen', 'kid'] })
+    if (u.includes('/api/permissions') && m === 'GET') return ok({ permissions: matrix, capabilities: Object.keys(matrix.adult), roles: ['adult', 'caregiver', 'guest', 'teen', 'kid'] })
     if (u.includes('/api/permissions') && m === 'PUT') {
       const body = JSON.parse(init!.body!)
       onPut(body)
@@ -35,6 +37,8 @@ describe('Permissions grid', () => {
     // Column headers (capabilities) + role rows (grid loads async).
     expect(await screen.findByText('Manage chores')).toBeInTheDocument()
     expect(screen.getByText('Approve redemptions')).toBeInTheDocument()
+    expect(screen.getByText('Caregiver')).toBeInTheDocument()
+    expect(screen.getByText('Guest')).toBeInTheDocument()
     expect(screen.getByText('Teen')).toBeInTheDocument()
     expect(screen.getByText('Kid')).toBeInTheDocument()
   })

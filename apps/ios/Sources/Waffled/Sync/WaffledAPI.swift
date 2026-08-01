@@ -171,6 +171,7 @@ struct WaffledAPI: Sendable {
         let personId: String
         let isAdmin: Bool
         let memberType: String
+        let accessExpiresAt: String?
         var id: String { householdId }
     }
 
@@ -180,6 +181,7 @@ struct WaffledAPI: Sendable {
         let householdName: String
         let memberType: String
         let isAdmin: Bool
+        let accessExpiresAt: String?
     }
 
     /// `GET /api/household`, decoded for the switcher: the active household plus the
@@ -1235,6 +1237,7 @@ struct WaffledAPI: Sendable {
             let isAdmin: Bool
             let avatarEmoji, colorHex, birthday, dietaryNotes: String?
             let showOnKiosk: Bool
+            let accessExpiresAt: String?
             let hasLogin: Bool
             let loginEmail: String?
             let hasPassword: Bool
@@ -1547,7 +1550,7 @@ struct WaffledAPI: Sendable {
     /// account hasn't been provisioned yet.
     struct CurrentPerson: Decodable, Sendable, Equatable {
         let id: String
-        let memberType: String       // "adult" | "teen" | "kid"
+        let memberType: String       // adult | caregiver | guest | teen | kid
         let isAdmin: Bool
         let capabilities: [String]   // e.g. "chore.manage", "chore.approve", "reward.manage", "reward.approve"
     }

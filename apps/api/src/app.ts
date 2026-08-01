@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto'
 import createAPI, { type Request, type Response, type NextFunction } from 'lambda-api'
 import { config } from './platform/config'
-import { requireAuth } from './platform/auth'
+import { AuthError, requireAuth } from './platform/auth'
 import { query } from './platform/db'
 import { log } from './platform/logger'
 import { version } from './platform/version'
@@ -112,6 +112,20 @@ api.use(async (req: Request, res: Response, next: NextFunction) => {
     return next()
   }
   await requireAuth(req)
+  next()
+})
+
+// A guest can inspect the household but cannot mutate shared household state.
+// Keep account/session maintenance available so a guest can update credentials,
+// accept another invite, or switch away from the read-only household.
+const GUEST_WRITE_EXEMPT = new Set(['/api/auth/switch'])
+api.use(async (req: Request, _res: Response, next: NextFunction) => {
+  if (req.method === 'OPTIONS' || req.method === 'GET' || req.method === 'HEAD' || PUBLIC_PATHS.has(req.path)) return next()
+  if (GUEST_WRITE_EXEMPT.has(req.path) || req.path.startsWith('/api/account/') ||
+      (req.path.startsWith('/api/auth/invites/') && req.path.endsWith('/accept'))) return next()
+  const tenant = (req as Request & { apiKeyTenant?: Tenant }).apiKeyTenant ??
+    (req.principal ? await resolveTenant(req.principal) : null)
+  if (tenant?.memberType === 'guest') throw new AuthError('Guest access is read-only', 403)
   next()
 })
 

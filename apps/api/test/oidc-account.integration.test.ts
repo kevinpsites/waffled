@@ -193,6 +193,34 @@ describe('P2.5 OIDC match-by-account', () => {
     expect(ident.rows[0].account_id).toBe(graceAccountId)
   })
 
+  it('keeps a returning OIDC subject on its account after the linked temporary membership expires', async () => {
+    const linked = await query(`select person_id from identities where provider='oidc' and account_id=$1`, [kevinAccountId])
+    await query(
+      `update persons set member_type='caregiver', is_admin=false, access_expires_at=now() - interval '1 minute'
+        where id=$1`,
+      [linked.rows[0].person_id]
+    )
+    await query(`update accounts set last_household_id=$1 where id=$2`, [householdB, kevinAccountId])
+
+    // The stable provider subject, not a possibly changed email claim, identifies
+    // the account. The identity is rebound to the remaining active membership.
+    stubUser = { sub: 'idp-kevin', email: 'kevin-renamed@example.com', email_verified: true }
+    const session = await ssoLogin()
+    expect(decode(session.accessToken).sub).toBe(kevinAccountId)
+    expect(decode(session.accessToken)[HH_CLAIM]).toBe(householdB)
+    const rebound = await query(
+      `select i.person_id from identities i join persons p on p.id=i.person_id
+        where i.provider='oidc' and i.account_id=$1 and p.household_id=$2`,
+      [kevinAccountId, householdB]
+    )
+    expect(rebound.rows).toHaveLength(1)
+
+    await query(
+      `update persons set member_type='adult', is_admin=true, access_expires_at=null where id=$1`,
+      [linked.rows[0].person_id]
+    )
+  })
+
   it('an uninvited, unknown SSO email is still rejected (403)', async () => {
     stubUser = { sub: 'idp-stranger', email: 'stranger@example.com', email_verified: true }
     const cb = await ssoCallback()

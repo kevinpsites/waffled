@@ -15,7 +15,7 @@ export interface Tenant {
   personId: string
   householdId: string
   isAdmin: boolean
-  memberType: string // adult | teen | kid — drives the capability matrix (see platform/permissions)
+  memberType: string // adult | caregiver | guest | teen | kid
 }
 
 export interface HouseholdRow extends QueryResultRow {
@@ -46,6 +46,7 @@ export interface PersonRow extends QueryResultRow {
   allergens: string[] | null
   reward_style: string
   show_on_kiosk: boolean
+  access_expires_at: Date | null
   sort_order: number
   created_at: Date
 }
@@ -68,7 +69,8 @@ export async function resolveTenant(principal: Principal): Promise<Tenant | null
       `select p.id as person_id, p.is_admin, p.member_type
          from persons p
          join accounts a on a.id = p.account_id and a.deleted_at is null
-        where p.account_id = $1 and p.household_id = $2 and p.deleted_at is null`,
+        where p.account_id = $1 and p.household_id = $2 and p.deleted_at is null
+          and (p.access_expires_at is null or p.access_expires_at > now())`,
       [principal.sub, claim]
     )
     const r = rows[0]
@@ -119,8 +121,9 @@ export async function findTenantBySub(sub: string): Promise<Tenant | null> {
   const { rows } = await query<{ person_id: string; household_id: string; is_admin: boolean; member_type: string }>(
     `select i.person_id, p.household_id, p.is_admin, p.member_type
        from identities i
-       join persons p on p.id = i.person_id and p.deleted_at is null
-      where i.auth0_user_id = $1 and i.deleted_at is null`,
+      join persons p on p.id = i.person_id and p.deleted_at is null
+      where i.auth0_user_id = $1 and i.deleted_at is null
+        and (p.access_expires_at is null or p.access_expires_at > now())`,
     [sub]
   )
   const r = rows[0]
@@ -142,6 +145,7 @@ export async function findPersonByEmail(
     `select i.person_id, p.household_id
        from identities i join persons p on p.id = i.person_id and p.deleted_at is null
       where lower(i.email) = lower($1) and i.deleted_at is null
+        and (p.access_expires_at is null or p.access_expires_at > now())
      limit 1`,
     [email]
   )
@@ -149,9 +153,28 @@ export async function findPersonByEmail(
   return r ? { personId: r.person_id, householdId: r.household_id } : null
 }
 
-// Link a new auth identity (e.g. OIDC) to an existing person, so subsequent logins
-// resolve straight through findTenantBySub. is_primary stays false — the original
-// (password/setup) identity remains primary.
+// Resolve the global account already bound to an OIDC subject even when the
+// subject's current household membership has expired. The stable provider
+// subject remains authoritative if the IdP email later changes.
+export async function findAccountByIdentitySubject(
+  subject: string
+): Promise<{ id: string; email: string } | null> {
+  const { rows } = await query<{ id: string; email: string }>(
+    `select a.id, a.email
+       from identities i
+       join persons p on p.id = i.person_id
+       join accounts a on a.id = coalesce(i.account_id, p.account_id) and a.deleted_at is null
+      where i.auth0_user_id = $1 and i.deleted_at is null
+      limit 1`,
+    [subject]
+  )
+  return rows[0] ?? null
+}
+
+// Link an auth identity (e.g. OIDC) to an existing person, so subsequent logins
+// resolve straight through findTenantBySub. A returning provider subject may move
+// to another active membership after temporary access expires; upsert rebinds that
+// same global identity without creating a duplicate. is_primary stays false.
 export async function linkIdentity(input: {
   householdId: string
   personId: string
@@ -163,7 +186,15 @@ export async function linkIdentity(input: {
 }): Promise<void> {
   await query(
     `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified, is_primary, account_id)
-     values ($1, $2, $3, $4, $5, $6, false, $7)`,
+     values ($1, $2, $3, $4, $5, $6, false, $7)
+     on conflict (auth0_user_id) do update set
+       household_id = excluded.household_id,
+       person_id = excluded.person_id,
+       provider = excluded.provider,
+       email = excluded.email,
+       email_verified = excluded.email_verified,
+       account_id = excluded.account_id,
+       deleted_at = null`,
     [input.householdId, input.personId, input.provider, input.subject, input.email, input.emailVerified, input.accountId]
   )
 }
@@ -357,5 +388,6 @@ export function presentPerson(p: PersonRow) {
     allergens: p.allergens ?? [],
     rewardStyle: p.reward_style ?? 'stars',
     showOnKiosk: p.show_on_kiosk ?? true,
+    accessExpiresAt: p.access_expires_at ?? null,
   }
 }

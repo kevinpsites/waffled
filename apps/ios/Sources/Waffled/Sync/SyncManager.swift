@@ -73,6 +73,7 @@ final class SyncManager {
     private(set) var currentPerson: WaffledAPI.CurrentPerson? { didSet { rebuildEventIndex() } }
     /// The logged-in person's id (convenience; nil until identity loads).
     var currentPersonId: String? { currentPerson?.id }
+    var isReadOnlyGuest: Bool { currentPerson?.memberType == "guest" }
     func loadIdentity() async {
         guard currentPerson == nil else { return }
         currentPerson = try? await api.currentPerson()
@@ -813,11 +814,12 @@ final class SyncManager {
         return members.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
-    /// Whether the signed-in person is an adult — gates the approval surfaces (badge,
-    /// banners, inline cards). Kids can't act on approvals (server-gated too).
+    /// Whether the signed-in person can operate adult-style approval surfaces. Caregivers
+    /// may approve routine work; guests and children remain server-gated.
     var isParent: Bool {
         guard let id = currentPersonId else { return false }
-        return members.first { $0.id == id }?.memberType == "adult"
+        let role = members.first { $0.id == id }?.memberType
+        return role == "adult" || role == "caregiver"
     }
 
     // MARK: live state
