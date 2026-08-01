@@ -407,7 +407,7 @@ export function PersonProfile() {
                 <span className="pp-redeem-t">{r.title}</span>
                 <span className={`pp-redeem-status st-${r.status}`}>{r.status}</span>
                 <span className="pp-redeem-cost">{symOf(r.currency)?.symbol ?? '⭐'} {r.cost}</span>
-                {(isSelf || can(me, 'reward.approve')) && r.status === 'pending' && (
+                {(r.requestedBy === me?.id || can(me, 'reward.approve')) && r.status === 'pending' && (
                   <button type="button" className="pp-trade" onClick={() => cancelPendingRedemption(r.id)}>Cancel</button>
                 )}
                 {canCorrect && r.status === 'approved' && r.ledgerId && (

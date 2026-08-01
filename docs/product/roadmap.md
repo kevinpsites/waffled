@@ -50,7 +50,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   drag-to-reassign, parent approval, **photo-proof on completion**, streaks, append-only
   stars ledger.
 - **Rewards & economy** — catalog → redeem → approve → debit, multi-currency, conversions
-  ("Trade"), saving-toward jar/bar.
+  ("Trade"), saving-toward jar/bar, and append-only correction tools for mistaken
+  spot awards and settled redemptions (linked reversal/replacement rows with required
+  reasons and idempotent retries).
 - **Goals** — types (count/total/habit/checklist), shared vs each-tracks, create/edit/
   detail read-model, person + family overview, **calendar → goal** auto-count (single
   and recurring events) with learned suggestions, **swappable data views** on the goal-detail

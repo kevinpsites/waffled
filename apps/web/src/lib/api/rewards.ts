@@ -50,6 +50,7 @@ export interface Redemption {
   cost: number
   currency: string
   status: 'pending' | 'approved' | 'denied' | 'canceled' | 'refunded'
+  requestedBy: string | null
   ledgerId: string | null
   refundLedgerId: string | null
   decidedAt: string | null

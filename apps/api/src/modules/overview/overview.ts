@@ -184,8 +184,8 @@ export async function personOverview(householdId: string, personId: string) {
       order by le.created_at desc limit 20`,
     [householdId, personId]
   )
-  const redemptions = await query<{ id: string; title: string; emoji: string | null; cost: number; currency: string; status: string; ledger_id: string | null; refund_ledger_id: string | null; created_at: string }>(
-    `select id, title, emoji, cost, currency, status, ledger_id, refund_ledger_id, created_at from reward_redemptions
+  const redemptions = await query<{ id: string; title: string; emoji: string | null; cost: number; currency: string; status: string; requested_by: string | null; ledger_id: string | null; refund_ledger_id: string | null; created_at: string }>(
+    `select id, title, emoji, cost, currency, status, requested_by, ledger_id, refund_ledger_id, created_at from reward_redemptions
        where household_id=$1 and person_id=$2 and deleted_at is null order by created_at desc limit 8`,
     [householdId, personId]
   )
@@ -261,6 +261,7 @@ export async function personOverview(householdId: string, personId: string) {
       cost: r.cost,
       currency: r.currency,
       status: r.status,
+      requestedBy: r.requested_by,
       ledgerId: r.ledger_id,
       refundLedgerId: r.refund_ledger_id,
       createdAt: r.created_at,

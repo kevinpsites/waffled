@@ -1,6 +1,12 @@
 import SwiftUI
 import Observation
 
+enum RewardRedemptionActionPolicy {
+    static func canCancel(requestedBy: String?, currentPersonId: String?, canApprove: Bool) -> Bool {
+        canApprove || (requestedBy != nil && requestedBy == currentPersonId)
+    }
+}
+
 /// The Family per-person spotlight — tap a kid (or anyone) on the Family hub.
 /// Their stars + streak, today's chores and a featured goal, a merged day list
 /// (events + chores), the whole-person category balance, their goals, recent stars
@@ -618,7 +624,11 @@ struct PersonView: View {
                             Text("\(r.cost)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
                         }
                         if r.status == "pending",
-                           sync.currentPersonId == personId || sync.can("reward.approve") {
+                           RewardRedemptionActionPolicy.canCancel(
+                            requestedBy: r.requestedBy,
+                            currentPersonId: sync.currentPersonId,
+                            canApprove: sync.can("reward.approve")
+                           ) {
                             Button("Cancel") { cancelingRedemption = r }
                                 .font(.system(size: 11, weight: .bold)).buttonStyle(.plain)
                                 .foregroundStyle(WF.ink3)
