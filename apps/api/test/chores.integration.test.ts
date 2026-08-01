@@ -478,6 +478,25 @@ describe('recurring chore history and edit scopes', () => {
     expect((await day(afterTomorrow)).some((i) => i.choreId === newChoreId && i.choreTitle === 'Later sweep')).toBe(true)
   })
 
+  it('uses a completed occurrence as the following boundary without rewriting it', async () => {
+    const current = await recurring('Finished boundary sweep')
+    const next = (await day(tomorrow)).find((i) => i.choreId === current.choreId)!
+    expect((await call('POST', `/api/chore-instances/${current.id}/complete`, kevin)).statusCode).toBe(200)
+
+    const edited = await call('PATCH', `/api/chores/${current.choreId}`, kevin, {
+      title: 'Future boundary sweep', scope: 'following', instanceId: current.id,
+    })
+    expect(edited.statusCode).toBe(200)
+    const newChoreId = JSON.parse(edited.body).chore.id as string
+
+    expect((await day(today)).find((i) => i.id === current.id)).toMatchObject({
+      choreTitle: 'Finished boundary sweep', status: 'done',
+    })
+    expect((await day(tomorrow)).find((i) => i.id === next.id)).toMatchObject({
+      choreId: newChoreId, choreTitle: 'Future boundary sweep', status: 'pending',
+    })
+  })
+
   it('can replace future materialization when the entire repeat rule changes', async () => {
     const current = await recurring('Daily becomes once')
     await day(tomorrow)
@@ -504,9 +523,29 @@ describe('recurring chore history and edit scopes', () => {
     expect((await day(tomorrow)).some((i) => i.choreId === instance.choreId)).toBe(false)
   })
 
-  it('rejects edits to completed occurrence history', async () => {
-    const instance = await recurring('Immutable sweep')
+  it('deletes following pending work from an awaiting occurrence boundary', async () => {
+    const current = await recurring('Awaiting boundary sweep', { requiresApproval: true })
+    const next = (await day(tomorrow)).find((i) => i.choreId === current.choreId)!
+    expect((await call('POST', `/api/chore-instances/${current.id}/complete`, kevin)).statusCode).toBe(200)
+    expect((await day(today)).find((i) => i.id === current.id)?.status).toBe('awaiting')
+
+    const removed = await call('DELETE', `/api/chores/${current.choreId}`, kevin, {
+      scope: 'following', instanceId: current.id,
+    })
+    expect(removed.statusCode).toBe(204)
+    expect((await day(today)).find((i) => i.id === current.id)).toMatchObject({
+      choreTitle: 'Awaiting boundary sweep', status: 'awaiting',
+    })
+    expect((await day(tomorrow)).some((i) => i.id === next.id)).toBe(false)
+  })
+
+  it.each([
+    { title: 'Completed immutable sweep', requiresApproval: false, status: 'done' },
+    { title: 'Awaiting immutable sweep', requiresApproval: true, status: 'awaiting' },
+  ])('rejects a this-only edit to $status occurrence history', async ({ title, requiresApproval, status }) => {
+    const instance = await recurring(title, { requiresApproval })
     await call('POST', `/api/chore-instances/${instance.id}/complete`, kevin)
+    expect((await day(today)).find((i) => i.id === instance.id)?.status).toBe(status)
     const edited = await call('PATCH', `/api/chores/${instance.choreId}`, kevin, {
       title: 'Rewrite history', scope: 'this', instanceId: instance.id,
     })

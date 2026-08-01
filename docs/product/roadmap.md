@@ -392,26 +392,18 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   (not the phone) is the one that needs the SSID/password, and it has no camera to scan
   a code itself, so that stays the on-device network picker it is today.
 
-- **Recurring-edit scope — give chores the calendar's model, and close two calendar gaps.**
-  Calendar events already ship the full **this event / this-and-following / all events** picker
-  (per-occurrence `event_overrides`, a new master via a series split for "following", `exdate`
-  cancel tombstones for deletes). **Repeating chores have no scope choice at all** — editing a
-  chore always rewrites the whole template, and it's inconsistent about the past: title / emoji /
-  due-time / rrule are read live from the template so they **rewrite past occurrences too**, while
-  reward / assignee / approval / photo only touch *future* unfinished instances, and delete removes
-  the entire series **including completed history**. Same dialog, three different rules. The work:
-  1. **Port the calendar's this / this-and-following / whole-series model to chores** — a
-     per-instance override, a "this and following" split, and a scope dialog in `ChoreEditSheet`
-     (today `ChoreEditorTarget` only has `.new`/`.edit`, and the PATCH always hits the template).
-     Decide whether chore title/time should be snapshotted like reward already is, so past
-     occurrences stop silently changing.
-  2. **Fix a calendar edit bug:** under "this" / "this-and-following", the iOS sheet still lets you
+- **Recurring-edit scope — chore scopes shipped; two calendar gaps remain.**
+  Repeating chores now offer **this chore / this-and-following / whole series** on web,
+  iPhone, and iPad. Occurrence snapshots keep completed and awaiting-approval history
+  immutable; a settled occurrence can anchor a following edit or delete without itself
+  changing. Remaining calendar work:
+  1. **Fix a calendar edit bug:** under "this" / "this-and-following", the iOS sheet still lets you
      change **assignee, goal link, and the countdown flag**, but the server silently drops them
      (they're master-only / absent from `OVERRIDE_FIELDS`) — a save the UI implies but never
      persists. Either store them as per-occurrence overrides or disable those fields for non-"all"
      scope. (Also clean up the stale `CalendarView.swift` comment claiming iOS has no scope dialog —
      it does.)
-  3. **Decide** whether "all" should keep retroactively rewriting the recent past (it re-materializes
+  2. **Decide** whether calendar "all" should keep retroactively rewriting the recent past (it re-materializes
      the past ~3 months today) or leave already-passed occurrences untouched, the way delete already
      is deliberately guarded against wiping history.
 

@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ChoreModal } from './ChoreModal'
 
-function mockApi(opts: { created?: unknown[]; patched?: unknown[]; deleted?: unknown[] }) {
+function mockApi(opts: { created?: unknown[]; patched?: unknown[]; deleted?: unknown[]; failNextPatch?: boolean }) {
   globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const u = String(url)
     const m = init?.method
@@ -22,6 +22,10 @@ function mockApi(opts: { created?: unknown[]; patched?: unknown[]; deleted?: unk
     }
     if (/\/api\/chores\/[^/]+$/.test(u) && m === 'PATCH') {
       opts.patched?.push(JSON.parse(init!.body!))
+      if (opts.failNextPatch) {
+        opts.failNextPatch = false
+        return { ok: false, status: 503, json: async () => ({ error: 'temporarily unavailable' }) }
+      }
       return { ok: true, json: async () => ({ chore: { id: 'c1' } }) }
     }
     if (/\/api\/chores\/[^/]+$/.test(u) && m === 'DELETE') {
@@ -84,7 +88,7 @@ describe('ChoreModal', () => {
   it('asks for a recurring scope and sends the selected occurrence', async () => {
     const patched: unknown[] = []
     mockApi({ patched })
-    render(<ChoreModal chore={{ ...chore, instanceId: 'i1', rrule: 'FREQ=DAILY', dueOn: '2026-07-31' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    render(<ChoreModal chore={{ ...chore, instanceId: 'i1', rrule: 'FREQ=DAILY', dueOn: '2026-07-31', status: 'pending' }} onClose={vi.fn()} onSaved={vi.fn()} />)
     fireEvent.change(screen.getByDisplayValue('Old chore'), { target: { value: 'New chore' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
@@ -97,12 +101,42 @@ describe('ChoreModal', () => {
 
   it('does not offer a single occurrence for a repeat-rule change', async () => {
     mockApi({})
-    render(<ChoreModal chore={{ ...chore, instanceId: 'i1', rrule: 'FREQ=DAILY', dueOn: '2026-07-31' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    render(<ChoreModal chore={{ ...chore, instanceId: 'i1', rrule: 'FREQ=DAILY', dueOn: '2026-07-31', status: 'pending' }} onClose={vi.fn()} onSaved={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Just once' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(await screen.findByRole('dialog', { name: 'Choose recurring chore scope' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'This chore only' })).not.toBeInTheDocument()
     expect(screen.getByText(/Repeat changes must apply/)).toBeInTheDocument()
+  })
+
+  it.each(['done', 'awaiting'])('does not offer a single-occurrence action for a %s chore', async (status) => {
+    mockApi({})
+    render(<ChoreModal chore={{ ...chore, instanceId: 'i1', rrule: 'FREQ=DAILY', status }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    fireEvent.change(screen.getByDisplayValue('Old chore'), { target: { value: 'Future chore' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Choose recurring chore scope' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'This chore only' })).not.toBeInTheDocument()
+    expect(screen.getByText(/selected completed or awaiting-approval chore stays unchanged/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'This and future chores' })).toBeInTheDocument()
+  })
+
+  it('keeps a failed recurring edit visible and retryable', async () => {
+    const patched: unknown[] = []
+    const onClose = vi.fn()
+    mockApi({ patched, failNextPatch: true })
+    render(<ChoreModal chore={{ ...chore, instanceId: 'i1', rrule: 'FREQ=DAILY', status: 'pending' }} onClose={onClose} onSaved={vi.fn()} />)
+    fireEvent.change(screen.getByDisplayValue('Old chore'), { target: { value: 'Retry chore' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'This and future chores' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/try again/i)
+    expect(screen.getByRole('dialog', { name: 'Choose recurring chore scope' })).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'This and future chores' }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    expect(patched).toHaveLength(2)
   })
 })

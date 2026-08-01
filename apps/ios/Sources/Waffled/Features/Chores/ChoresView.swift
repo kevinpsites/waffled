@@ -964,6 +964,19 @@ private enum ChoreScopeAction {
     case delete
 }
 
+enum ChoreScopePolicy {
+    static func allowsSingleOccurrence(status: String?, repeatChanged: Bool) -> Bool {
+        status == "pending" && !repeatChanged
+    }
+
+    static func explanation(status: String?) -> String {
+        if status == "pending" {
+            return "Completed chores and items awaiting approval always stay unchanged."
+        }
+        return "The selected completed or awaiting-approval chore stays unchanged. Only future pending chores are affected."
+    }
+}
+
 struct ChoreEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     /// Snapshotted by the presenter from SyncManager so the sheet does NOT observe the
@@ -985,6 +998,7 @@ struct ChoreEditSheet: View {
 
     private let editChoreId: String?
     private let editInstanceId: String?
+    private let editStatus: String?
     private let originalRrule: String?
     @State private var title: String
     @State private var emoji: String
@@ -1015,6 +1029,7 @@ struct ChoreEditSheet: View {
         case let .new(pid):
             editChoreId = nil
             editInstanceId = nil
+            editStatus = nil
             originalRrule = nil
             _title = State(initialValue: ""); _emoji = State(initialValue: "")
             _personId = State(initialValue: pid); _stars = State(initialValue: 1)
@@ -1029,6 +1044,7 @@ struct ChoreEditSheet: View {
         case let .edit(i):
             editChoreId = i.choreId
             editInstanceId = i.id
+            editStatus = i.status
             originalRrule = i.rrule
             _title = State(initialValue: i.choreTitle); _emoji = State(initialValue: i.emoji ?? "")
             _personId = State(initialValue: i.personId); _stars = State(initialValue: i.rewardAmount)
@@ -1260,9 +1276,11 @@ struct ChoreEditSheet: View {
             ),
             titleVisibility: .visible
         ) {
-            if case let .save(_, repeatChanged)? = scopeAction, !repeatChanged {
+            if case let .save(_, repeatChanged)? = scopeAction,
+               ChoreScopePolicy.allowsSingleOccurrence(status: editStatus, repeatChanged: repeatChanged) {
                 Button("This chore only") { performScope("this") }
-            } else if case .delete? = scopeAction {
+            } else if case .delete? = scopeAction,
+                      ChoreScopePolicy.allowsSingleOccurrence(status: editStatus, repeatChanged: false) {
                 Button("This chore only", role: .destructive) { performScope("this") }
             }
             if case .delete? = scopeAction {
@@ -1274,7 +1292,7 @@ struct ChoreEditSheet: View {
             }
             Button("Cancel", role: .cancel) { scopeAction = nil }
         } message: {
-            Text("Completed chores and items awaiting approval always stay unchanged.")
+            Text(ChoreScopePolicy.explanation(status: editStatus))
         }
         .presentationDetents([.large])
     }

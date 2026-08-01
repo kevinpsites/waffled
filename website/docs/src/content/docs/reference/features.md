@@ -121,6 +121,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Family-chores **rings** (Today) + Tasks board | ✅ | ✅ | ✅ | ✅ Done (iPad = wrapping Kanban) |
 | **Weekly/custom schedules** (specific weekdays) | ✅ | ✅ | ✅ | ✅ Done |
 | **One-off / carry-over task** (single day, stays until done) | ✅ | ✅ | ✅ | ✅ Done ("Just once" repeat + due date in create/edit; unfinished one-offs roll forward, **overdue · since …** badge; `rollover` toggle) |
+| Recurring chore **edit scope** (this / following / all) with immutable completed history | ✅ | ✅ | ✅ | ✅ Done (single-occurrence changes are pending-only; settled rows can anchor future changes) |
 | **Up-for-grabs** claim (unassigned → person) | ✅ | ✅ | ✅ | ✅ Done |
 | **Drag-to-reassign** chores between columns | ✅ | ✅ | ✅ | ✅ Done |
 | **Parent-approval** step (awaiting → approve/reject) | ✅ | ✅ | ✅ | ✅ Done |
