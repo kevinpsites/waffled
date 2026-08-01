@@ -3,6 +3,7 @@ import { api, usePersons, useCurrencies, localToday } from '../../lib/api'
 
 export interface ChoreDraft {
   id: string
+  instanceId?: string
   title: string
   emoji: string | null
   personId: string | null
@@ -10,6 +11,7 @@ export interface ChoreDraft {
   rewardCurrency?: string | null
   rrule?: string | null
   dueTime?: string | null
+  dueOn?: string | null
   requiresApproval?: boolean
   requiresPhoto?: boolean
 }
@@ -19,6 +21,10 @@ const DAYS: Array<[string, string]> = [
 ]
 
 type Freq = 'once' | 'daily' | 'weekly'
+type ChoreScope = 'this' | 'following' | 'all'
+type ScopeAction =
+  | { kind: 'save'; payload: Record<string, unknown>; repeatChanged: boolean }
+  | { kind: 'delete'; repeatChanged: false }
 
 function parseRrule(rrule: string | null | undefined, editing: boolean): { freq: Freq; days: string[] } {
   if (rrule && /FREQ=WEEKLY/i.test(rrule)) {
@@ -55,7 +61,7 @@ function initialForm(chore?: ChoreDraft, personId?: string | null, canAssignOthe
     days: sched.days,
     // One-off (freq === 'once') only: which day the single task lands on. New
     // one-offs default to today; editing can't move an already-materialized one.
-    dueOn: localToday(),
+    dueOn: chore?.dueOn ?? localToday(),
     // Optional time-of-day the chore is due (HH:MM). Applies to one-offs and each
     // recurring occurrence; empty = no specific time.
     dueTime: (chore?.dueTime ?? '').slice(0, 5),
@@ -96,6 +102,7 @@ export function ChoreModal({
   const selectedCur = currencies.find((c) => c.key === curKey)
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [scopeAction, setScopeAction] = useState<ScopeAction | null>(null)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   async function submit(e: FormEvent) {
@@ -115,6 +122,11 @@ export function ChoreModal({
       requiresPhoto: form.requiresPhoto,
     }
     try {
+      if (editing && chore?.rrule && chore.instanceId) {
+        setSaving(false)
+        setScopeAction({ kind: 'save', payload, repeatChanged: buildRrule(form.freq, form.days) !== chore.rrule })
+        return
+      }
       if (editing) await api.updateChore(chore!.id, payload)
       // On create, a one-off also carries its due date (where its single instance
       // lands). Editing can't move an already-materialized one-off's date.
@@ -132,6 +144,11 @@ export function ChoreModal({
       setConfirmDelete(true)
       return
     }
+    if (chore?.rrule && chore.instanceId) {
+      setConfirmDelete(false)
+      setScopeAction({ kind: 'delete', repeatChanged: false })
+      return
+    }
     setSaving(true)
     try {
       await api.deleteChore(chore!.id)
@@ -139,6 +156,21 @@ export function ChoreModal({
       onClose()
     } catch {
       setSaving(false)
+    }
+  }
+
+  async function applyScope(scope: ChoreScope) {
+    if (!scopeAction || !chore?.instanceId) return
+    setSaving(true)
+    try {
+      const target = { scope, instanceId: chore.instanceId }
+      if (scopeAction.kind === 'save') await api.updateChore(chore.id, scopeAction.payload, target)
+      else await api.deleteChore(chore.id, target)
+      onSaved()
+      onClose()
+    } catch {
+      setSaving(false)
+      setScopeAction(null)
     }
   }
 
@@ -270,6 +302,38 @@ export function ChoreModal({
               <span className="chore-approval-s">A snapshot of the finished job is needed to complete it.</span>
             </span>
           </button>
+
+          {scopeAction && (
+            <div role="dialog" aria-label="Choose recurring chore scope" className="wf-field" style={{ marginTop: 12, padding: 13 }}>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>
+                {scopeAction.kind === 'save' ? 'Which chores should change?' : 'Which chores should be deleted?'}
+              </div>
+              <div className="tiny muted" style={{ marginBottom: 10 }}>
+                Completed chores and items awaiting approval always stay unchanged.
+              </div>
+              <div style={{ display: 'grid', gap: 7 }}>
+                {!scopeAction.repeatChanged && (
+                  <button type="button" className="btn" disabled={saving} onClick={() => applyScope('this')}>
+                    This chore only
+                  </button>
+                )}
+                <button type="button" className="btn" disabled={saving} onClick={() => applyScope('following')}>
+                  This and future chores
+                </button>
+                <button type="button" className="btn" disabled={saving} onClick={() => applyScope('all')}>
+                  Entire active series
+                </button>
+                <button type="button" className="btn btn-ghost" disabled={saving} onClick={() => setScopeAction(null)}>
+                  Cancel
+                </button>
+              </div>
+              {scopeAction.repeatChanged && (
+                <div className="tiny muted" style={{ marginTop: 8 }}>
+                  Repeat changes must apply from this chore forward or to the entire series.
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 9, marginTop: 6, alignItems: 'center' }}>
             {editing && (

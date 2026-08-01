@@ -61,6 +61,12 @@ function todayInTz(tz: string): string {
   return `${m.year}-${m.month}-${m.day}`
 }
 
+function shiftDate(d: string, days: number): string {
+  const date = new Date(`${d}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
   url = pg.getConnectionUri()
@@ -400,6 +406,111 @@ describe('chore management (edit/delete)', () => {
     expect((await instances()).some((i) => i.choreId === choreId)).toBe(false)
     expect(await kevinTotal()).toBe(before - 1)
     expect((await call('DELETE', `/api/chores/${choreId}`, kevin)).statusCode).toBe(404)
+  })
+})
+
+describe('recurring chore history and edit scopes', () => {
+  type Inst = {
+    id: string
+    choreId: string
+    choreTitle: string
+    emoji: string | null
+    dueTime: string | null
+    rrule: string | null
+    status: string
+  }
+  const today = todayInTz(TZ)
+  const tomorrow = shiftDate(today, 1)
+  const afterTomorrow = shiftDate(today, 2)
+
+  async function day(date: string): Promise<Inst[]> {
+    return JSON.parse((await call('GET', `/api/chore-instances/today?date=${date}`, kevin)).body).instances as Inst[]
+  }
+
+  async function recurring(title: string, extra: Record<string, unknown> = {}): Promise<Inst> {
+    const created = await call('POST', '/api/chores', kevin, {
+      title, emoji: '🧹', personId: kevinId, rrule: 'FREQ=DAILY', dueTime: '08:00', ...extra,
+    })
+    expect(created.statusCode).toBe(201)
+    return (await day(today)).find((i) => i.choreTitle === title)!
+  }
+
+  it('keeps a completed occurrence display immutable after an all-series edit', async () => {
+    const instance = await recurring('Historical sweep')
+    expect((await call('POST', `/api/chore-instances/${instance.id}/complete`, kevin)).statusCode).toBe(200)
+
+    const edited = await call('PATCH', `/api/chores/${instance.choreId}`, kevin, {
+      title: 'New sweep name', emoji: '✨', dueTime: '09:30', scope: 'all', instanceId: instance.id,
+    })
+    expect(edited.statusCode).toBe(200)
+
+    const historical = (await day(today)).find((i) => i.id === instance.id)!
+    expect(historical).toMatchObject({ choreTitle: 'Historical sweep', emoji: '🧹', dueTime: '08:00', status: 'done' })
+    const future = (await day(tomorrow)).find((i) => i.choreId === instance.choreId)!
+    expect(future).toMatchObject({ choreTitle: 'New sweep name', emoji: '✨', dueTime: '09:30' })
+  })
+
+  it('edits only the selected pending occurrence', async () => {
+    const current = await recurring('One special sweep')
+    const future = (await day(tomorrow)).find((i) => i.choreId === current.choreId)!
+
+    const edited = await call('PATCH', `/api/chores/${current.choreId}`, kevin, {
+      title: 'Birthday sweep', scope: 'this', instanceId: current.id,
+    })
+    expect(edited.statusCode).toBe(200)
+    expect((await day(today)).find((i) => i.id === current.id)?.choreTitle).toBe('Birthday sweep')
+    expect((await day(tomorrow)).find((i) => i.id === future.id)?.choreTitle).toBe('One special sweep')
+  })
+
+  it('splits this-and-following without rewriting the earlier occurrence', async () => {
+    const current = await recurring('Split sweep')
+    const next = (await day(tomorrow)).find((i) => i.choreId === current.choreId)!
+    await day(afterTomorrow)
+
+    const edited = await call('PATCH', `/api/chores/${current.choreId}`, kevin, {
+      title: 'Later sweep', scope: 'following', instanceId: next.id,
+    })
+    expect(edited.statusCode).toBe(200)
+    const newChoreId = JSON.parse(edited.body).chore.id as string
+    expect(newChoreId).not.toBe(current.choreId)
+    expect((await day(today)).find((i) => i.id === current.id)?.choreTitle).toBe('Split sweep')
+    expect((await day(tomorrow)).find((i) => i.id === next.id)).toMatchObject({ choreId: newChoreId, choreTitle: 'Later sweep' })
+    expect((await day(afterTomorrow)).some((i) => i.choreId === newChoreId && i.choreTitle === 'Later sweep')).toBe(true)
+  })
+
+  it('can replace future materialization when the entire repeat rule changes', async () => {
+    const current = await recurring('Daily becomes once')
+    await day(tomorrow)
+
+    const edited = await call('PATCH', `/api/chores/${current.choreId}`, kevin, {
+      rrule: null, dueOn: today, scope: 'all', instanceId: current.id,
+    })
+    expect(edited.statusCode).toBe(200)
+    const currentRows = (await day(today)).filter((i) => i.choreId === current.choreId)
+    expect(currentRows).toHaveLength(1)
+    expect(currentRows[0].rrule).toBeNull()
+    const carriedOneOff = (await day(tomorrow)).filter((i) => i.choreId === current.choreId)
+    expect(carriedOneOff).toHaveLength(1)
+    expect(carriedOneOff[0].rrule).toBeNull()
+  })
+
+  it('deleting a series removes pending work but preserves completed history', async () => {
+    const instance = await recurring('Keep finished sweep')
+    expect((await call('POST', `/api/chore-instances/${instance.id}/complete`, kevin)).statusCode).toBe(200)
+    await day(tomorrow)
+
+    expect((await call('DELETE', `/api/chores/${instance.choreId}`, kevin, { scope: 'all', instanceId: instance.id })).statusCode).toBe(204)
+    expect((await day(today)).find((i) => i.id === instance.id)).toMatchObject({ choreTitle: 'Keep finished sweep', status: 'done' })
+    expect((await day(tomorrow)).some((i) => i.choreId === instance.choreId)).toBe(false)
+  })
+
+  it('rejects edits to completed occurrence history', async () => {
+    const instance = await recurring('Immutable sweep')
+    await call('POST', `/api/chore-instances/${instance.id}/complete`, kevin)
+    const edited = await call('PATCH', `/api/chores/${instance.choreId}`, kevin, {
+      title: 'Rewrite history', scope: 'this', instanceId: instance.id,
+    })
+    expect(edited.statusCode).toBe(409)
   })
 })
 
