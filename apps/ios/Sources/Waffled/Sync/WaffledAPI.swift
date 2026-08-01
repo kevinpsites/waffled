@@ -2258,8 +2258,8 @@ struct WaffledAPI: Sendable {
 
     // MARK: Family hub tile counts (non-synced domains, fetched over REST)
 
-    struct GoalDTO: Decodable { let id: String; let isFeatured: Bool; let isSpotlight: Bool? }
-    struct ListRefDTO: Decodable { let id: String }
+    struct GoalDTO: Decodable, Sendable { let id: String; let isFeatured: Bool; let isSpotlight: Bool? }
+    struct ListRefDTO: Decodable, Sendable { let id: String }
     struct FamilyStarsDTO: Decodable, Sendable { let name: String?; let stars: Int }
 
     /// Active goals across the household (for the Goals tile count).

@@ -6,11 +6,20 @@ import Observation
 @MainActor
 @Observable
 final class PhotosModel {
-    private(set) var photos: [WaffledAPI.Photo] = []
-    private(set) var loading = false
-    private(set) var error = false
+    typealias FetchPhotos = @Sendable () async throws -> [WaffledAPI.Photo]
 
-    private let api = WaffledAPI()
+    private let photosD = RestDomain<[WaffledAPI.Photo]>([], isEmpty: \.isEmpty)
+    private let fetchPhotos: FetchPhotos
+    private let api: WaffledAPI
+
+    init(fetchPhotos: FetchPhotos? = nil, api: WaffledAPI = WaffledAPI()) {
+        self.api = api
+        self.fetchPhotos = fetchPhotos ?? { try await api.photos() }
+    }
+
+    var photos: [WaffledAPI.Photo] { photosD.value }
+    var state: RestState { photosD.state }
+    var loading: Bool { state == .loading }
 
     /// The distinct album labels in the current wall (for the add/edit album pickers).
     var albums: [String] {
@@ -23,13 +32,11 @@ final class PhotosModel {
     }
 
     func load() async {
-        loading = true
-        defer { loading = false }
+        photosD.beginLoading()
         do {
-            photos = try await api.photos()
-            error = false
+            photosD.apply(.success(try await fetchPhotos()))
         } catch {
-            self.error = true
+            photosD.apply(.failure(error))
         }
     }
 

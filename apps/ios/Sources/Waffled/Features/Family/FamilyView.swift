@@ -54,6 +54,8 @@ struct FamilyView: View {
                     .padding(.top, 8).padding(.bottom, 18)
 
                 SectionLabel(text: "Everything else").padding(.bottom, 11)
+                RestStateNotice(state: hub.state, retry: { Task { await hub.load() } })
+                    .padding(.bottom, hub.state.isAuthoritative ? 0 : 11)
                 // Module-gated tiles drop out when a household turns that feature off
                 // (Settings → Modules). Photos + Settings are core and never gated.
                 LazyVGrid(columns: cols, spacing: 12) {
