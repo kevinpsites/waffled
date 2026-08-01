@@ -136,15 +136,35 @@ t "setup links to the published troubleshooting guide" '
   fi
 '
 
-# --- 7. backup warnings surface the two default durability gaps ----------------------
-t "backup_safety_warnings explains the default media and same-host gaps" '
+# --- 7. backup warnings surface default and explicit durability gaps -----------------
+t "backup_safety_warnings explains the default same-host gap" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
   ENV_FILE="$tmp/.env"
   : > "$ENV_FILE"
   out="$(backup_safety_warnings)"
   case "$out" in
-    *"uploaded media is not included"*"same machine"*"https://docs.waffled.app/operations/backup/"*) echo "PASS" ;;
+    *"same machine"*"https://docs.waffled.app/operations/backup/"*)
+      case "$out" in
+        *"uploaded media is not included"*) echo "FAIL: default media backup produced an opt-out warning" ;;
+        *) echo "PASS" ;;
+      esac
+      ;;
+    *) echo "FAIL: unexpected warning output: $out" ;;
+  esac
+'
+
+t "backup_safety_warnings explains an explicit media opt-out" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  ENV_FILE="$tmp/.env"
+  {
+    echo "BACKUP_INCLUDE_MEDIA=false"
+    echo "BACKUP_S3_BUCKET=s3://family-backups/waffled"
+  } > "$ENV_FILE"
+  out="$(backup_safety_warnings)"
+  case "$out" in
+    *"uploaded media is not included"*"https://docs.waffled.app/operations/backup/"*) echo "PASS" ;;
     *) echo "FAIL: unexpected warning output: $out" ;;
   esac
 '
