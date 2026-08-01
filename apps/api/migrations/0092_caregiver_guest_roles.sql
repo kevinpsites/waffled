@@ -9,6 +9,32 @@ alter table persons
 alter table household_invites
   add column access_expires_at timestamptz;
 
+-- Earlier schemas accepted arbitrary member_type values and did not tie admin
+-- status to a role. Normalize those legacy rows before installing the checks so
+-- an upgrade cannot stop halfway through. Unknown non-admin roles become the
+-- least-privileged guest role; admins remain admins but are normalized to adult.
+update persons
+   set member_type = case when is_admin then 'adult' else 'guest' end
+ where member_type not in ('adult', 'caregiver', 'guest', 'teen', 'kid')
+    or (is_admin and member_type <> 'adult');
+
+update household_invites
+   set member_type = case when is_admin then 'adult' else 'guest' end
+ where member_type not in ('adult', 'caregiver', 'guest', 'teen', 'kid')
+    or (is_admin and member_type <> 'adult');
+
+-- Be defensive if an operator tested a pre-release version of this migration:
+-- permanent roles must never retain a temporary-access deadline.
+update persons
+   set access_expires_at = null
+ where access_expires_at is not null
+   and member_type not in ('caregiver', 'guest');
+
+update household_invites
+   set access_expires_at = null
+ where access_expires_at is not null
+   and member_type not in ('caregiver', 'guest');
+
 alter table persons
   add constraint chk_person_member_type
   check (member_type in ('adult', 'caregiver', 'guest', 'teen', 'kid')),

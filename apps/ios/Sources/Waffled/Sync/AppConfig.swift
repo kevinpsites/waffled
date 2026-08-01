@@ -8,6 +8,8 @@ import Foundation
 enum AppConfig {
     private static let urlKey = "waffled.apiBaseURL"
     private static let tokenKey = "waffled.devToken"
+    private static let memberTypeLock = NSLock()
+    private static var memberType: String?
 
     /// The built-in fallback server address — the compose stack's Caddy origin (serves
     /// /api + /media). Exposed so the About screen can show/reset to it.
@@ -50,6 +52,17 @@ enum AppConfig {
     /// effect on the next request.
     static var bearerToken: String {
         AuthTokens.accessToken ?? devToken
+    }
+
+    /// The active household role, loaded from `/api/household`. WaffledAPI reads
+    /// this shared value so every feature client applies the guest read-only rule,
+    /// including models that do not hold the app's SyncManager environment object.
+    static var currentMemberType: String? {
+        memberTypeLock.lock(); defer { memberTypeLock.unlock() }
+        return memberType
+    }
+    static func setCurrentMemberType(_ value: String?) {
+        memberTypeLock.lock(); memberType = value; memberTypeLock.unlock()
     }
 
     /// Whether the app has *any* usable token — a real session or a dev token. Used

@@ -68,7 +68,8 @@ export function registerInviteRoutes(api: Api): void {
     const member = await query(
       `select 1 where exists(
          select 1 from persons p join accounts a on a.id = p.account_id and a.deleted_at is null
-          where p.household_id = $1 and p.deleted_at is null and lower(a.email) = lower($2))`,
+          where p.household_id = $1 and p.deleted_at is null and lower(a.email) = lower($2)
+            and (p.access_expires_at is null or p.access_expires_at > now()))`,
       [tenant.householdId, email]
     )
     if (member.rows.length) {
@@ -79,7 +80,8 @@ export function registerInviteRoutes(api: Api): void {
     const dup = await query(
       `select 1 from household_invites
         where household_id = $1 and lower(email) = lower($2)
-          and accepted_at is null and revoked_at is null`,
+          and accepted_at is null and revoked_at is null
+          and (access_expires_at is null or access_expires_at > now())`,
       [tenant.householdId, email]
     )
     if (dup.rows.length) {

@@ -93,7 +93,8 @@ function dropTargetAt(x: number, y: number): { col: number; index: number } | nu
 // mode via drag-and-drop, then saved for just you or the whole family.
 export function Today() {
   const { resolved, source, loading, save, reset } = useTodayLayout()
-  const { household } = useHousehold()
+  const { household, person } = useHousehold()
+  const readOnlyGuest = person?.memberType === 'guest'
   // Optional-module cards: shown when the module is enabled and not hidden from Today.
   // Pantry appears when on (not in the default layout); chores/meals/grocery cards
   // ship in the default layout, so we only strip them when their module is off.
@@ -144,6 +145,14 @@ export function Today() {
   const targetRef = useRef<{ col: number; index: number } | null>(null)
   targetRef.current = target
 
+  useEffect(() => {
+    if (!readOnlyGuest) return
+    setEditing(false)
+    setDrag(null)
+    setLayout(effectiveResolved.cols)
+    setHidden(effectiveResolved.hidden)
+  }, [readOnlyGuest, effectiveResolved])
+
   // Keep the working copy in sync with the server layout (+ module cards) when not editing.
   useEffect(() => {
     if (!editing) {
@@ -185,7 +194,7 @@ export function Today() {
   // is kept synced to resolved while not editing, so entering edit needs no snapshot.)
   useTopbarRight(
     () =>
-      editing ? (
+      readOnlyGuest ? null : editing ? (
         <CaptureBar />
       ) : (
         <div className="tb-today-actions">
@@ -196,7 +205,7 @@ export function Today() {
           <CaptureBar />
         </div>
       ),
-    [editing, source, loading]
+    [readOnlyGuest, editing, source, loading]
   )
 
   function startDrag(e: ReactPointerEvent, card: string) {

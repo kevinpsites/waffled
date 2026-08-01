@@ -141,16 +141,36 @@ export async function createMembershipFromInvite(
   const client = await getPool().connect()
   try {
     await client.query('begin')
-    const existing = await client.query<{ id: string; member_type: string; is_admin: boolean; access_expires_at: Date | null }>(
-      `select id, member_type, is_admin, access_expires_at from persons
+    const existing = await client.query<{ id: string; member_type: string; is_admin: boolean; access_expires_at: Date | null; has_active_access: boolean }>(
+      `select id, member_type, is_admin, access_expires_at,
+              (access_expires_at is null or access_expires_at > now()) as has_active_access
+         from persons
         where household_id = $1 and account_id = $2 and deleted_at is null
-        order by created_at limit 1`,
+        order by created_at limit 1
+        for update`,
       [invite.householdId, accountId]
     )
     if (existing.rows[0]) {
+      const current = existing.rows[0]
+      // A fresh invite restores an expired membership in place. Reusing the row
+      // preserves its person identity and history while applying the new role and
+      // deadline. An already-active membership remains untouched for idempotency.
+      let membership = current
+      if (!current.has_active_access) {
+        const reactivated = await client.query<{ id: string; member_type: string; is_admin: boolean; access_expires_at: Date | null; has_active_access: boolean }>(
+          `update persons
+              set member_type = $3, is_admin = $4, access_expires_at = $5,
+                  show_on_kiosk = $6, updated_at = now()
+            where household_id = $1 and account_id = $2 and deleted_at is null
+            returning id, member_type, is_admin, access_expires_at, true as has_active_access`,
+          [invite.householdId, accountId, invite.memberType, invite.isAdmin,
+            invite.accessExpiresAt, !['caregiver', 'guest'].includes(invite.memberType)]
+        )
+        membership = reactivated.rows[0]
+      }
       await client.query(`update household_invites set accepted_at = now() where id = $1`, [invite.id])
       await client.query('commit')
-      const m = existing.rows[0]
+      const m = membership
       return { personId: m.id, householdId: invite.householdId, memberType: m.member_type, isAdmin: m.is_admin, accessExpiresAt: m.access_expires_at, created: false }
     }
     const nameRow = await client.query<{ name: string }>(

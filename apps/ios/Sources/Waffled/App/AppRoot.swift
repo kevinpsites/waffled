@@ -163,6 +163,9 @@ struct AppRoot: View {
         .onChange(of: sync.choresRev) { _, _ in Task { await refreshApprovalBadge() } }
         .onChange(of: sync.rewardsRev) { _, _ in Task { await refreshApprovalBadge() } }
         .onChange(of: sync.currentPersonId) { _, _ in Task { await refreshApprovalBadge() } }
+        .onChange(of: sync.isReadOnlyGuest) { _, readOnly in
+            if readOnly { showCapture = false }
+        }
         // A tapped reminder deep-links to its event on the Calendar tab.
         .onChange(of: notifications.pendingEventId) { _, id in
             guard let id else { return }
