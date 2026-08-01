@@ -37,7 +37,13 @@ const household = {
 
 const capabilities = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage']
 const permissionRow = Object.fromEntries(capabilities.map((capability) => [capability, false]))
-const permissions = { adult: permissionRow, teen: permissionRow, kid: permissionRow }
+const permissions = {
+  adult: permissionRow,
+  caregiver: permissionRow,
+  guest: permissionRow,
+  teen: permissionRow,
+  kid: permissionRow,
+}
 const empty = {
   balances: [],
   chores: [],
@@ -75,7 +81,7 @@ async function mockApi(page: Page) {
         members: [{ ...person, hasLogin: true, loginEmail: 'alex@example.test', hasPassword: true, hasPin: false, isOwner: true }],
       }
     } else if (path === '/api/persons') body = { persons: [person] }
-    else if (path === '/api/permissions') body = { permissions, capabilities, roles: ['adult', 'teen', 'kid'] }
+    else if (path === '/api/permissions') body = { permissions, capabilities, roles: ['adult', 'caregiver', 'guest', 'teen', 'kid'] }
     else if (path === '/api/weather') body = { weather: null }
     else if (path === '/api/updates') body = { enabled: false, updateAvailable: false }
     else if (path === '/api/calendar/status') body = { connected: false, configured: false }
