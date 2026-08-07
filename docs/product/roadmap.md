@@ -81,10 +81,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   [staged plan](../design/healthkit-goals.md); background sync + a rewards tie-in remain — see
   below.)*
 - **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
-  staples, live cross-surface refresh, **item attribution** ("added by …" / from a meal plan
-  or recipe), **add any recipe's ingredients from its page** (no meal-plan entry needed —
-  these survive the weekly rebuild), and **"Unscheduled" sections + week-rail rows** for
-  off-plan recipes in the grocery board's by-meal view.
+  staples, live cross-surface refresh **plus cross-device refresh** (foreground + ~20s poll,
+  since lists aren't on PowerSync), **item attribution** ("added by …" / from a meal plan
+  or recipe), **add any recipe's ingredients from its page** — now with a **pick-specific
+  picker** (add all or just what you need) — (no meal-plan entry needed; these survive the
+  weekly rebuild), **assign a store to an item + a By-store board view** (free-text
+  quick-select over your previously-used stores), and **"Unscheduled" sections + week-rail
+  rows** for off-plan recipes in the grocery board's by-meal view.
 - **Meals & recipes** — week/month planners, recipe library, in-app editor (with
   **ingredient sections** + dividers and cross-section drag-drop), paste-markdown
   import **and share-as-markdown export** (a Share action compiles a recipe to the
@@ -168,7 +171,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   TLS certificate validation for `https://` server addresses, and on-device photo
   capture — see `apps/waffled-bite-firmware/README.md` for the full list of open items.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
-  are REST + live-refresh bus.
+  are REST + live-refresh bus, plus a **cross-device refresh** for lists (foreground + ~20s
+  poll on the open list) so a family member's edit lands without a manual reload.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend
   blips.
 - **Public ingress** (7.3) — configurable (Caddy auto-TLS / Cloudflare Tunnel), operator's
