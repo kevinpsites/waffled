@@ -366,6 +366,52 @@ describe('list items — sections, quantity, assignee', () => {
   })
 })
 
+describe('list items — store assignment + quick-select', () => {
+  let listId = ''
+  let itemId = ''
+
+  beforeAll(async () => {
+    listId = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Store test', emoji: '🏪' })).body).list.id
+  })
+
+  it('creates an item with a store and returns it', async () => {
+    const res = await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Rotisserie chicken', store: 'Costco' })
+    expect(res.statusCode).toBe(201)
+    const item = JSON.parse(res.body).item
+    expect(item).toMatchObject({ name: 'Rotisserie chicken', store: 'Costco' })
+    itemId = item.id
+  })
+
+  it('patches an item to set, change, then clear its store', async () => {
+    let item = JSON.parse((await call('PATCH', `/api/list-items/${itemId}`, kevin, { store: 'Walmart' })).body).item
+    expect(item.store).toBe('Walmart')
+    item = JSON.parse((await call('PATCH', `/api/list-items/${itemId}`, kevin, { store: null })).body).item
+    expect(item.store).toBeNull()
+  })
+
+  it('GET /api/lists/stores returns previously-used stores, most-used first', async () => {
+    // Costco used on 3 items, Trader Joe's on 1 → Costco leads.
+    await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Muffins', store: 'Costco' })
+    await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Batteries', store: 'Costco' })
+    await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Wine', store: "Trader Joe's" })
+    const stores = JSON.parse((await call('GET', '/api/lists/stores', kevin)).body).stores as string[]
+    expect(stores).toContain('Costco')
+    expect(stores).toContain("Trader Joe's")
+    expect(stores.indexOf('Costco')).toBeLessThan(stores.indexOf("Trader Joe's"))
+  })
+
+  it('bulk-assigns a store across a multi-selection', async () => {
+    const a = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Paper towels' })).body).item.id
+    const b = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Napkins' })).body).item.id
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, { ids: [a, b], patch: { store: 'Target' } })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).updated).toBe(2)
+    const items = JSON.parse((await call('GET', `/api/lists/${listId}`, kevin)).body).items as Array<{ id: string; store: string | null }>
+    expect(items.find((i) => i.id === a)!.store).toBe('Target')
+    expect(items.find((i) => i.id === b)!.store).toBe('Target')
+  })
+})
+
 describe('list item priority', () => {
   let listId = ''
 

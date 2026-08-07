@@ -2358,6 +2358,8 @@ struct WaffledAPI: Sendable {
         var quantity: String?
         var checked: Bool
         var section: String?
+        /// Free-text store/vendor (Costco, Walmart, …); nil = unassigned.
+        var store: String?
         /// 1–5 urgency (1 = not urgent, 3 = normal/default, 5 = urgent). Optional so older servers decode.
         var priority: Int?
         var assignee: Assignee?
@@ -2510,10 +2512,11 @@ struct WaffledAPI: Sendable {
 
     /// Add an item to a non-grocery list.
     @discardableResult
-    func addListItem(listId: String, name: String, quantity: String?, section: String? = nil) async throws -> ListItemDTO {
+    func addListItem(listId: String, name: String, quantity: String?, section: String? = nil, store: String? = nil) async throws -> ListItemDTO {
         var body: [String: JSONValue] = ["name": .string(name)]
         if let q = quantity, !q.isEmpty { body["quantity"] = .string(q) }
         if let s = section, !s.isEmpty { body["category"] = .string(s) }
+        if let st = store, !st.isEmpty { body["store"] = .string(st) }
         return try await sendReturning("POST", "/api/lists/\(listId)/items", body: body, as: ListItemResponse.self).item
     }
 
@@ -2521,12 +2524,14 @@ struct WaffledAPI: Sendable {
     /// quantity clears it; `section`/`priority` are only sent when provided (a
     /// section-move or priority-mark PATCHes just that field).
     func patchListItem(id: String, name: String? = nil, quantity: String? = nil, checked: Bool? = nil,
-                       section: String? = nil, priority: Int? = nil) async throws {
+                       section: String? = nil, store: String?? = .none, priority: Int? = nil) async throws {
         var body: [String: JSONValue] = [:]
         if let name { body["name"] = .string(name) }
         if let quantity { body["quantity"] = quantity.isEmpty ? .null : .string(quantity) }
         if let checked { body["checked"] = .bool(checked) }
         if let section { body["category"] = section.isEmpty ? .null : .string(section) }
+        // Double-optional: .none = leave unchanged; .some(nil)/.some("") = clear.
+        if case let .some(s) = store { body["store"] = (s?.isEmpty == false) ? .string(s!) : .null }
         if let priority { body["priority"] = .int(priority) }
         guard !body.isEmpty else { return }
         try await send("PATCH", "/api/list-items/\(id)", body: body)
@@ -2534,12 +2539,13 @@ struct WaffledAPI: Sendable {
 
     /// Full-detail edit (the swipe → Details editor): always sets name, quantity,
     /// assignee, section, and priority. `assignedTo`/empty section send null to clear.
-    func updateItemDetails(id: String, name: String, quantity: String, assignedTo: String?, section: String, priority: Int) async throws {
+    func updateItemDetails(id: String, name: String, quantity: String, assignedTo: String?, section: String, store: String, priority: Int) async throws {
         let body: [String: JSONValue] = [
             "name": .string(name),
             "quantity": quantity.isEmpty ? .null : .string(quantity),
             "assignedTo": assignedTo.map(JSONValue.string) ?? .null,
             "category": section.isEmpty ? .null : .string(section),
+            "store": store.isEmpty ? .null : .string(store),
             "priority": .int(priority),
         ]
         try await send("PATCH", "/api/list-items/\(id)", body: body)
@@ -2553,13 +2559,21 @@ struct WaffledAPI: Sendable {
     /// Bulk-edit section / assignee / priority across many items in one call. A
     /// double-optional distinguishes "leave unchanged" (.none) from "set to null"
     /// (.some(nil)); e.g. `assignedTo: .some(nil)` unassigns the whole selection.
-    func bulkPatchListItems(ids: [String], section: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) async throws {
+    func bulkPatchListItems(ids: [String], section: String?? = .none, store: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) async throws {
         var patch: [String: JSONValue] = [:]
         if case let .some(s) = section { patch["section"] = s.map(JSONValue.string) ?? .null }
+        if case let .some(st) = store { patch["store"] = st.map(JSONValue.string) ?? .null }
         if case let .some(a) = assignedTo { patch["assignedTo"] = a.map(JSONValue.string) ?? .null }
         if let priority { patch["priority"] = .int(priority) }
         guard !patch.isEmpty, !ids.isEmpty else { return }
         try await send("PATCH", "/api/list-items/bulk", body: ["ids": .array(ids.map(JSONValue.string)), "patch": .object(patch)])
+    }
+
+    /// The household's previously-used store names (most-used first) — quick-select
+    /// for a grocery item's store field.
+    func listStores() async throws -> [String] {
+        struct Resp: Decodable { let stores: [String] }
+        return try await sendJSON("GET", "/api/lists/stores", as: Resp.self).stores
     }
 
     /// Clear a custom list's Completed section now (soft-deletes its checked items).

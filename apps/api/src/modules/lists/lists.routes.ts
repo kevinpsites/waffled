@@ -17,6 +17,7 @@ import {
   patchItem,
   softDeleteItem,
   bulkPatchItems,
+  listStores,
   autoClearCheckedItems,
   clearCompletedItems,
   addRecipeToGrocery,
@@ -114,6 +115,13 @@ export function registerListRoutes(api: Api): void {
     return res.status(201).json({ list: presentList(list) })
   }))
 
+  // The household's previously-used store names (most-used first) — the durable
+  // quick-select for a grocery item's store field. Registered before `/api/lists/:id`
+  // so the literal `stores` segment wins over the id param.
+  api.get('/api/lists/stores', tenantRoute(async (tenant) => {
+    return { stores: await listStores(tenant.householdId) }
+  }))
+
   api.patch('/api/lists/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
@@ -166,7 +174,7 @@ export function registerListRoutes(api: Api): void {
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
     const list = await getList(tenant.householdId, id)
     if (!list) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
-    const body = (req.body ?? {}) as { name?: string; quantity?: string; category?: string; assignedTo?: string; priority?: number }
+    const body = (req.body ?? {}) as { name?: string; quantity?: string; category?: string; store?: string; assignedTo?: string; priority?: number }
     if (!body.name || !body.name.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
     }
@@ -178,6 +186,7 @@ export function registerListRoutes(api: Api): void {
       name: body.name.trim(),
       quantity: body.quantity ?? null,
       category: body.category ?? null,
+      store: body.store ?? null,
       assignedTo: body.assignedTo ?? null,
       priority: body.priority,
     })
@@ -192,7 +201,7 @@ export function registerListRoutes(api: Api): void {
   }))
 
   api.post('/api/lists/grocery/items', tenantRoute(async (tenant, req: Request, res: Response) => {
-    const body = (req.body ?? {}) as { name?: string; quantity?: string; category?: string }
+    const body = (req.body ?? {}) as { name?: string; quantity?: string; category?: string; store?: string }
     if (!body.name || !body.name.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
     }
@@ -201,6 +210,7 @@ export function registerListRoutes(api: Api): void {
       name: body.name.trim(),
       quantity: body.quantity ?? null,
       category: body.category ?? null,
+      store: body.store ?? null,
     })
     return res.status(201).json({ item: presentListItem(item) })
   }))
@@ -214,12 +224,13 @@ export function registerListRoutes(api: Api): void {
     if (!Array.isArray(ids) || ids.length === 0 || !ids.every((x) => typeof x === 'string' && UUID_RE.test(x))) {
       return res.status(400).json({ error: 'BadRequest', message: 'ids must be a non-empty array of item ids' })
     }
-    const p = (body.patch ?? {}) as { section?: string | null; category?: string | null; assignedTo?: string | null; priority?: number }
-    const patch: { category?: string | null; assignedTo?: string | null; priority?: number } = {}
+    const p = (body.patch ?? {}) as { section?: string | null; category?: string | null; store?: string | null; assignedTo?: string | null; priority?: number }
+    const patch: { category?: string | null; store?: string | null; assignedTo?: string | null; priority?: number } = {}
     // `section` is the client-facing key; `category` is a legacy alias for the same
     // column. Apply the alias first so that if both are ever sent, `section` wins.
     if ('category' in p) patch.category = p.category ?? null
     if ('section' in p) patch.category = p.section ?? null
+    if ('store' in p) patch.store = p.store ?? null
     if ('assignedTo' in p) patch.assignedTo = p.assignedTo ?? null
     if ('priority' in p) {
       if (!isValidPriority(p.priority)) {
@@ -227,7 +238,7 @@ export function registerListRoutes(api: Api): void {
       }
       patch.priority = p.priority
     }
-    if (!('category' in patch) && !('assignedTo' in patch) && !('priority' in patch)) {
+    if (!('category' in patch) && !('store' in patch) && !('assignedTo' in patch) && !('priority' in patch)) {
       return res.status(400).json({ error: 'BadRequest', message: 'no patchable fields provided' })
     }
     if (patch.assignedTo != null) await assertPersonInHousehold(tenant.householdId, patch.assignedTo)
@@ -240,7 +251,7 @@ export function registerListRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
     const body = (req.body ?? {}) as PatchItemInput
-    const known = ['checked', 'assignedTo', 'quantity', 'category', 'priority', 'name']
+    const known = ['checked', 'assignedTo', 'quantity', 'category', 'store', 'priority', 'name']
     if (!known.some((k) => k in body)) {
       return res.status(400).json({ error: 'BadRequest', message: 'no patchable fields provided' })
     }

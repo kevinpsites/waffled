@@ -69,14 +69,16 @@ function ItemAttribution({ item }: { item: GroceryBoardItem }) {
 function ItemRow({
   item,
   colors,
+  storeOptions,
   onToggle,
   onSave,
   onDelete,
 }: {
   item: GroceryBoardItem
   colors: string[]
+  storeOptions: string[]
   onToggle: () => void
-  onSave: (patch: { name: string; quantity: string | null; section: string | null }) => void
+  onSave: (patch: { name: string; quantity: string | null; section: string | null; store: string | null }) => void
   onDelete: () => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -85,6 +87,9 @@ function ItemRow({
   // The aisle the item currently sits in (an explicit override, or '' = auto-filed
   // by name). Picking one writes `section` (category); "Auto" clears it.
   const [sec, setSec] = useState(item.section ?? '')
+  // Free-text store, backed by a datalist of previously-used names so "Costco" typed
+  // once comes back as a suggestion (collapsing the Costco/costco split). '' = none.
+  const [store, setStore] = useState(item.store ?? '')
 
   if (editing) {
     return (
@@ -98,7 +103,9 @@ function ItemRow({
             <option value="">Auto (by name)</option>
             {AISLE_PICKER.map((a) => <option key={a} value={a}>{AISLE_EMOJI[a] ? `${AISLE_EMOJI[a]} ` : ''}{a}</option>)}
           </select>
-          <button type="button" className="gact ok" title="Save" onClick={() => { onSave({ name: name.trim() || item.name, quantity: qty.trim() || null, section: sec || null }); setEditing(false) }}>✓</button>
+          <input className="gedit-store" value={store} onChange={(e) => setStore(e.target.value)} placeholder="store" aria-label="Store" list="grocery-stores" />
+          <datalist id="grocery-stores">{storeOptions.map((s) => <option key={s} value={s} />)}</datalist>
+          <button type="button" className="gact ok" title="Save" onClick={() => { onSave({ name: name.trim() || item.name, quantity: qty.trim() || null, section: sec || null, store: store.trim() || null }); setEditing(false) }}>✓</button>
           <button type="button" className="gact" title="Cancel" onClick={() => setEditing(false)}>×</button>
         </div>
       </div>
@@ -116,9 +123,10 @@ function ItemRow({
           <span key={i} className="gdot" style={{ background: c }} />
         ))}
       </span>
+      {item.store && <span className="gstore" title={`Store: ${item.store}`}>🏬 {item.store}</span>}
       {item.quantity && <span className="gqty">{item.quantity}</span>}
       <span className="gitem-acts" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="gact" title="Edit" onClick={() => { setName(item.name); setQty(item.quantity ?? ''); setSec(item.section ?? ''); setEditing(true) }}>✎</button>
+        <button type="button" className="gact" title="Edit" onClick={() => { setName(item.name); setQty(item.quantity ?? ''); setSec(item.section ?? ''); setStore(item.store ?? ''); setEditing(true) }}>✎</button>
         <button type="button" className="gact" title="Remove" onClick={onDelete}>🗑</button>
       </span>
     </div>
@@ -135,6 +143,7 @@ interface BoardSection {
   mealType?: string
   unscheduled?: boolean
   recipeId?: string
+  store?: string
 }
 
 // Group items into ordered aisle sections; manual/uncategorized items lead, ungrouped.
@@ -150,6 +159,24 @@ function aisleSections(items: GroceryBoardItem[]): BoardSection[] {
   if (ungrouped.length) out.push({ key: '__none__', aisle: null, items: ungrouped })
   for (const a of AISLE_ORDER) if (byAisle.has(a)) out.push({ key: a, aisle: a, items: byAisle.get(a)! })
   for (const [a, list] of byAisle) if (!AISLE_ORDER.includes(a)) out.push({ key: a, aisle: a, items: list })
+  return out
+}
+
+// Group items by their assigned store (alphabetical), with unassigned items in a
+// trailing "No store" section so nothing goes missing in the By-store view.
+function storeSections(items: GroceryBoardItem[]): BoardSection[] {
+  const byStore = new Map<string, GroceryBoardItem[]>()
+  const none: GroceryBoardItem[] = []
+  for (const i of items) {
+    const s = i.store?.trim()
+    if (!s) { none.push(i); continue }
+    if (!byStore.has(s)) byStore.set(s, [])
+    byStore.get(s)!.push(i)
+  }
+  const out: BoardSection[] = [...byStore.keys()]
+    .sort((a, b) => a.localeCompare(b))
+    .map((s) => ({ key: `store|${s}`, aisle: s, items: byStore.get(s)!, store: s }))
+  if (none.length) out.push({ key: '__nostore__', aisle: 'No store', items: none })
   return out
 }
 
@@ -177,7 +204,10 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const [weekStart, setWeekStart] = useState<string | null>(null)
   const { board, loading, error, refetch } = useGroceryBoard(weekStart ?? undefined)
   const navigate = useNavigate()
-  const [view, setView] = useState<'aisle' | 'meal'>('aisle')
+  const [view, setView] = useState<'aisle' | 'meal' | 'store'>('aisle')
+  // Durable store quick-select (server distinct list), merged with stores in use on the
+  // board so a just-typed one shows immediately too.
+  const [storeSuggestions, setStoreSuggestions] = useState<string[]>([])
   const [draft, setDraft] = useState('')
   const [editStaples, setEditStaples] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -218,6 +248,20 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     return (ids: string[]) => ids.map((id) => m.get(id)).filter(Boolean) as string[]
   }, [board])
 
+  // Load the durable store quick-select (refetched when the board changes so a
+  // just-assigned store persists as a suggestion).
+  useEffect(() => {
+    groceryApi.stores().then(setStoreSuggestions).catch(() => {})
+  }, [board])
+
+  // Merge server suggestions with stores in use on the current board (deduped) so a
+  // store typed this session shows up before the next server round-trip.
+  const storeOptions = useMemo(() => {
+    const set = new Set<string>(storeSuggestions)
+    board?.items.forEach((i) => { const s = i.store?.trim(); if (s) set.add(s) })
+    return [...set]
+  }, [storeSuggestions, board])
+
   if (loading && !board) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
   if (error || !board) return <div className="muted" style={{ padding: 30 }}>Couldn’t load the grocery list.</div>
 
@@ -239,7 +283,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     await groceryApi.patchListItem(item.id, { checked: next })
     refetch()
   }
-  async function saveItem(item: GroceryBoardItem, patch: { name: string; quantity: string | null; section: string | null }) {
+  async function saveItem(item: GroceryBoardItem, patch: { name: string; quantity: string | null; section: string | null; store: string | null }) {
     await groceryApi.patchListItem(item.id, patch)
     refetch()
   }
@@ -292,6 +336,8 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const sections: BoardSection[] =
     view === 'aisle'
       ? aisleSections(activeItems)
+      : view === 'store'
+      ? storeSections(activeItems)
       : (() => {
           // One section per planned recipe (deduped — a dish planned in two slots
           // shows once), tagged with the meal type so the breakdown reads
@@ -347,6 +393,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           <div className="grocery-section-h" role="button" tabIndex={0} onClick={() => toggleSection(key)}>
             <span className={`cal-chev ${isCollapsed ? '' : 'open'}`}>›</span>
             {view === 'aisle' && AISLE_EMOJI[sec.aisle] && <span className="ga-emo">{AISLE_EMOJI[sec.aisle]}</span>}
+            {view === 'store' && <span className="ga-emo">{sec.store ? '🏬' : '🛒'}</span>}
             {view === 'meal' && sec.mealType && <span className={`meal-badge mt-${sec.mealType}`}>{MEAL_EMOJI[sec.mealType]} {MEAL_LABEL[sec.mealType]}</span>}
             {view === 'meal' && sec.unscheduled && <span className="meal-badge mt-unscheduled">Unscheduled</span>}
             {sec.aisle}
@@ -370,6 +417,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
             key={it.id}
             item={it}
             colors={colorFor(it.sourceRecipeIds)}
+            storeOptions={storeOptions}
             onToggle={() => toggle(it)}
             onSave={(patch) => saveItem(it, patch)}
             onDelete={() => deleteItem(it)}
@@ -404,6 +452,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           </div>
           <div className="seg" style={{ marginLeft: 'auto' }}>
             <button className={view === 'aisle' ? 'on' : ''} onClick={() => setView('aisle')}>By aisle</button>
+            <button className={view === 'store' ? 'on' : ''} onClick={() => setView('store')}>By store</button>
             <button className={view === 'meal' ? 'on' : ''} onClick={() => setView('meal')}>By meal</button>
           </div>
         </div>

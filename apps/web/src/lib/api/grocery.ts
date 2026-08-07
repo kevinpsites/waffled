@@ -53,6 +53,8 @@ export interface ListItem {
   checked: boolean
   checkedAt: string | null
   section: string | null
+  // Free-text store/vendor (Costco, Walmart, …); null = unassigned.
+  store?: string | null
   // 1–5 urgency scale: 1 = not urgent, 3 = normal, 5 = urgent. Higher sorts first.
   priority?: number
   sortOrder: number | null
@@ -76,6 +78,7 @@ export interface PatchItemBody {
   assignedTo?: string | null
   quantity?: string | null
   section?: string | null
+  store?: string | null
   priority?: number
   name?: string
 }
@@ -87,6 +90,7 @@ function patchBody(b: PatchItemBody): Record<string, unknown> {
   if ('assignedTo' in b) out.assignedTo = b.assignedTo
   if ('quantity' in b) out.quantity = b.quantity
   if ('section' in b) out.category = b.section
+  if ('store' in b) out.store = b.store
   if ('priority' in b) out.priority = b.priority
   if ('name' in b) out.name = b.name
   return out
@@ -127,18 +131,22 @@ export const groceryApi = {
   applyTemplate: (templateId: string, name?: string) =>
     apiSend<{ list: ListSummary }>('POST', `/api/lists/templates/${templateId}/apply`, name ? { name } : {}).then((r) => r.list).then(tap('grocery')),
 
-  addListItem: (listId: string, input: { name: string; quantity?: string | null; section?: string | null; assignedTo?: string | null; priority?: number }) =>
+  addListItem: (listId: string, input: { name: string; quantity?: string | null; section?: string | null; store?: string | null; assignedTo?: string | null; priority?: number }) =>
     apiSend<{ item: ListItem }>('POST', `/api/lists/${listId}/items`, {
       name: input.name,
       quantity: input.quantity ?? null,
       category: input.section ?? null,
+      ...(input.store !== undefined ? { store: input.store } : {}),
       assignedTo: input.assignedTo ?? null,
       ...(input.priority ? { priority: input.priority } : {}),
     }).then((r) => r.item).then(tap('grocery')),
   patchListItem: (id: string, patch: PatchItemBody) =>
     apiSend<{ item: ListItem }>('PATCH', `/api/list-items/${id}`, patchBody(patch)).then((r) => r.item).then(tap('grocery')),
-  // Bulk-edit section/assignee/priority across a multi-selection (one round-trip).
-  bulkPatchItems: (ids: string[], patch: { section?: string | null; assignedTo?: string | null; priority?: number }) =>
+  // The household's previously-used store names (most-used first) — quick-select for
+  // a grocery item's store field.
+  stores: () => apiGet<{ stores: string[] }>('/api/lists/stores').then((r) => r.stores),
+  // Bulk-edit section/store/assignee/priority across a multi-selection (one round-trip).
+  bulkPatchItems: (ids: string[], patch: { section?: string | null; store?: string | null; assignedTo?: string | null; priority?: number }) =>
     apiSend<{ updated: number }>('PATCH', '/api/list-items/bulk', { ids, patch }).then((r) => r.updated).then(tap('grocery')),
   // Clear a custom list's Completed section now (soft-deletes its checked items).
   clearCompleted: (listId: string) =>

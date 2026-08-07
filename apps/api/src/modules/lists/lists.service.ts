@@ -219,8 +219,8 @@ export async function applyTemplate(
     const list = created.rows[0]
     await client.query(
       `insert into list_items
-         (household_id, list_id, name, quantity, category, source, sort_order, created_by, checked)
-       select household_id, $2, name, quantity, category, source, sort_order, $3, false
+         (household_id, list_id, name, quantity, category, store, source, sort_order, created_by, checked)
+       select household_id, $2, name, quantity, category, store, source, sort_order, $3, false
          from list_items
         where household_id = $1 and list_id = $4 and deleted_at is null`,
       [tenant.householdId, list.id, tenant.personId, templateId]
@@ -252,12 +252,12 @@ export async function listItems(householdId: string, listId: string): Promise<Li
 export async function addItem(
   tenant: Tenant,
   listId: string,
-  input: { name: string; quantity?: string | null; category?: string | null; assignedTo?: string | null; priority?: number }
+  input: { name: string; quantity?: string | null; category?: string | null; store?: string | null; assignedTo?: string | null; priority?: number }
 ): Promise<ListItemRow> {
   const { rows } = await query<ListItemRow>(
     `with ins as (
-       insert into list_items (household_id, list_id, name, quantity, category, assigned_to, priority, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       insert into list_items (household_id, list_id, name, quantity, category, store, assigned_to, priority, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        returning *
      )
      select ins.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
@@ -271,6 +271,7 @@ export async function addItem(
       input.name,
       input.quantity ?? null,
       input.category ?? null,
+      input.store ?? null,
       input.assignedTo ?? null,
       input.priority ?? 3,
       tenant.personId,
@@ -332,6 +333,10 @@ export async function patchItem(
     sets.push(`category = $${i++}`)
     vals.push(patch.category ?? null)
   }
+  if ('store' in patch) {
+    sets.push(`store = $${i++}`)
+    vals.push(patch.store ?? null)
+  }
   if (typeof patch.priority === 'number') {
     sets.push(`priority = $${i++}`)
     vals.push(patch.priority)
@@ -391,7 +396,7 @@ export async function softDeleteItem(householdId: string, id: string): Promise<b
 export async function bulkPatchItems(
   householdId: string,
   ids: string[],
-  patch: { category?: string | null; assignedTo?: string | null; priority?: number }
+  patch: { category?: string | null; store?: string | null; assignedTo?: string | null; priority?: number }
 ): Promise<number> {
   const sets: string[] = []
   const vals: unknown[] = []
@@ -399,6 +404,10 @@ export async function bulkPatchItems(
   if ('category' in patch) {
     sets.push(`category = $${i++}`)
     vals.push(patch.category ?? null)
+  }
+  if ('store' in patch) {
+    sets.push(`store = $${i++}`)
+    vals.push(patch.store ?? null)
   }
   if ('assignedTo' in patch) {
     sets.push(`assigned_to = $${i++}`)
@@ -890,6 +899,23 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
   }
 }
 
+// The household's previously-used store names, most-used first — the durable
+// quick-select for the store field (so a store you typed once stays offered even
+// after that week's items are cleared). Distinct over all non-deleted items, so
+// "Costco" typed before comes back as a chip rather than being retyped.
+export async function listStores(householdId: string): Promise<string[]> {
+  const { rows } = await query<{ store: string }>(
+    `select store from list_items
+       where household_id = $1 and deleted_at is null
+         and store is not null and btrim(store) <> ''
+       group by store
+       order by count(*) desc, store
+       limit 50`,
+    [householdId]
+  )
+  return rows.map((r) => r.store)
+}
+
 export function presentList(l: ListRow) {
   return {
     id: l.id,
@@ -920,6 +946,7 @@ export function presentListItem(i: ListItemRow) {
     checkedAt: i.checked_at,
     weekStart: isoDateOnly(i.week_start),
     section: i.category,
+    store: i.store,
     priority: i.priority ?? 3,
     sortOrder: i.sort_order,
     source: i.source,
