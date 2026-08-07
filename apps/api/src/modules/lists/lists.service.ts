@@ -463,13 +463,19 @@ export async function clearCompletedItems(householdId: string, listId: string): 
 export async function addRecipeToGrocery(
   tenant: Tenant,
   recipeId: string,
-  weekStart: string
+  weekStart: string,
+  // When provided, only these recipe-ingredient ids are added (the "choose specific
+  // ingredients" picker) — the shopper already has the rest on hand. `undefined`/`null`
+  // keeps the original all-non-staple behavior.
+  ingredientIds?: string[] | null
 ): Promise<ListItemRow[] | null> {
   const recipe = await getRecipe(tenant.householdId, recipeId)
   if (!recipe) return null
 
   const list = await getOrCreateGroceryList(tenant)
-  const ingredients = await listIngredients(tenant.householdId, recipeId)
+  const allIngredients = await listIngredients(tenant.householdId, recipeId)
+  const pick = ingredientIds == null ? null : new Set(ingredientIds)
+  const ingredients = pick ? allIngredients.filter((ing) => pick.has(ing.id)) : allIngredients
   const subs = getOverrides(recipe).subs ?? {}
   // Merge/credit only against THIS week's rows + the global manual list — an off-plan
   // add belongs to the week you're shopping, so it can't collide with another week.

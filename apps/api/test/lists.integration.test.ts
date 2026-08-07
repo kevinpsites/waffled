@@ -447,6 +447,43 @@ describe('grocery auto-build from a recipe', () => {
     ).toBe(404)
   })
 
+  it('adds only the selected subset when ingredientIds is provided', async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Subset Stew', emoji: '🍲' })
+    const rid = JSON.parse(r.body).recipe.id
+    await call('POST', `/api/recipes/${rid}/ingredients`, kevin, {
+      ingredients: [
+        { name: 'Beef chuck', amount: 2, unit: 'lb' },
+        { name: 'Rutabaga', amount: 1 },
+        { name: 'Parsnip', amount: 3 },
+      ],
+    })
+    const ings = (
+      await withClient((c) =>
+        c.query<{ id: string; name: string }>(
+          `select id, name from recipe_ingredients where recipe_id=$1`,
+          [rid]
+        )
+      )
+    ).rows
+    const keep = ings.filter((i) => i.name !== 'Parsnip').map((i) => i.id)
+
+    const res = await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin, { ingredientIds: keep })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).added).toBe(2)
+
+    const names = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.map((i: { name: string }) => i.name)
+    expect(names).toContain('Beef chuck')
+    expect(names).toContain('Rutabaga')
+    expect(names).not.toContain('Parsnip') // left off — the shopper had it on hand
+  })
+
+  it('rejects a non-array / bad ingredientIds (400)', async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Bad Subset', emoji: '🥔' })
+    const rid = JSON.parse(r.body).recipe.id
+    expect((await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin, { ingredientIds: 'nope' })).statusCode).toBe(400)
+    expect((await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin, { ingredientIds: ['not-a-uuid'] })).statusCode).toBe(400)
+  })
+
   it('bumps the quantity when two recipes need the same item (no silent skip)', async () => {
     const mk = async (title: string) => {
       const r = await call('POST', '/api/recipes', kevin, { title, emoji: '🍋' })

@@ -25,6 +25,8 @@ struct RecipeDetailView: View {
     @State private var tagsExpanded = false
     @State private var groceryAdded = false
     @State private var groceryBusy = false
+    /// Presents the "add all / pick specific ingredients" sheet.
+    @State private var pickingGrocery = false
     /// Local check-off (like the web) — tick ingredients as you shop/cook; not persisted.
     @State private var checkedIngredients: Set<String> = []
     @State private var scheduling = false
@@ -76,10 +78,9 @@ struct RecipeDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { scheduling = true } label: { Label("Schedule…", systemImage: "calendar") }
-                    Button { addRecipeToGrocery() } label: {
+                    Button { pickingGrocery = true } label: {
                         Label(groceryAdded ? "Added to grocery ✓" : "Add to grocery list", systemImage: "cart.badge.plus")
                     }
-                    .disabled(groceryAdded)
                     Button { prepareShare() } label: {
                         Label(sharePreparing ? "Preparing…" : "Share recipe", systemImage: "square.and.arrow.up")
                     }
@@ -129,6 +130,12 @@ struct RecipeDetailView: View {
         .sheet(isPresented: $scheduling) {
             RecipeScheduleSheet(title: r.title, recipeId: recipe.id) { label in
                 withAnimation { cookedMessage = "Scheduled for \(label)." }
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $pickingGrocery) {
+            RecipeGrocerySheet(title: r.title, ingredients: ingredients) { ids in
+                addRecipeToGrocery(ingredientIds: ids)
             }
             .presentationDetents([.medium, .large])
         }
@@ -377,11 +384,11 @@ struct RecipeDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             if !missing.isEmpty {
-                Button { addRecipeToGrocery() } label: {
+                Button { pickingGrocery = true } label: {
                     Text(groceryAdded ? "Added ✓" : "Add to grocery")
                         .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(WF.primaryD)
                 }
-                .buttonStyle(.plain).disabled(groceryAdded)
+                .buttonStyle(.plain)
             }
         }
         .padding(13)
@@ -389,24 +396,18 @@ struct RecipeDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
-    /// One call adds every non-staple ingredient — the server merges quantities into
-    /// rows already on the list and links items back to this recipe, so they group
-    /// under it in the grocery board's by-meal view (no meal-plan entry needed).
-    /// `groceryAdded` (which disables the banner button) only flips on success, so
-    /// a failed request stays retryable and never reads as "Added ✓".
-    private func addRecipeToGrocery() {
-        if groceryAdded {
-            // the ⋯-menu entry can still fire after the banner shows "Added ✓" —
-            // acknowledge instead of silently no-oping
-            withAnimation { cookedMessage = "Already on your grocery list." }
-            return
-        }
-        guard !groceryBusy else { return }
+    /// Adds the picked subset of ingredients — the server merges quantities into rows
+    /// already on the list and links items back to this recipe, so they group under it
+    /// in the grocery board's by-meal view (no meal-plan entry needed). `groceryAdded`
+    /// only flips on success, so a failed request stays retryable and never reads
+    /// as "Added ✓".
+    private func addRecipeToGrocery(ingredientIds: [String]) {
+        guard !groceryBusy, !ingredientIds.isEmpty else { return }
         groceryBusy = true
         Task {
             defer { groceryBusy = false }
             do {
-                let added = try await api.groceryFromRecipe(recipeId: r.id)
+                let added = try await api.groceryFromRecipe(recipeId: r.id, ingredientIds: ingredientIds)
                 groceryAdded = true
                 withAnimation {
                     cookedMessage = added > 0
@@ -760,6 +761,107 @@ struct RecipeScheduleSheet: View {
                 savingDay = nil
             }
         }
+    }
+}
+
+/// "Add all, or pick specific ingredients" — the shopper may already have some on hand.
+/// Defaults to every NON-staple ingredient selected (staples are assumed in the pantry,
+/// matching the server's add-all behavior) and adds only the checked subset.
+struct RecipeGrocerySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    let ingredients: [WaffledAPI.RecipeIngredientDTO]
+    let onAdd: ([String]) -> Void
+
+    @State private var selected: Set<String>
+
+    init(title: String, ingredients: [WaffledAPI.RecipeIngredientDTO], onAdd: @escaping ([String]) -> Void) {
+        self.title = title
+        self.ingredients = ingredients
+        self.onAdd = onAdd
+        _selected = State(initialValue: Set(ingredients.filter { !$0.isStaple }.map(\.id)))
+    }
+
+    private var allOn: Bool { selected.count == ingredients.count }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Add to grocery list").font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink3).tracking(0.4)
+                    Text(title).font(WF.serif(22, .bold)).foregroundStyle(WF.ink).lineLimit(2)
+                    Text("Uncheck anything you already have on hand.")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2)
+                }
+                .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 10)
+
+                HStack {
+                    Button { selected = allOn ? [] : Set(ingredients.map(\.id)) } label: {
+                        Text(allOn ? "Select none" : "Select all")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink)
+                            .padding(.horizontal, 13).padding(.vertical, 7)
+                            .background(WF.panel).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                }
+                .padding(.horizontal, 20).padding(.bottom, 6)
+
+                List {
+                    ForEach(ingredients) { ing in
+                        Button { toggle(ing.id) } label: { row(ing) }
+                            .buttonStyle(.plain)
+                            .listRowBackground(WF.canvas)
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+
+                Button { onAdd(Array(selected)); dismiss() } label: {
+                    Text(selected.isEmpty ? "Choose ingredients" : "Add \(selected.count) item\(selected.count == 1 ? "" : "s")")
+                        .font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.onInk)
+                        .frame(maxWidth: .infinity).padding(.vertical, 15)
+                        .background(WF.ink).clipShape(Capsule())
+                }
+                .buttonStyle(.plain).disabled(selected.isEmpty).opacity(selected.isEmpty ? 0.5 : 1)
+                .padding(.horizontal, 20).padding(.vertical, 14)
+            }
+            .background(WF.canvas)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+
+    private func toggle(_ id: String) {
+        if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
+    }
+
+    private func row(_ ing: WaffledAPI.RecipeIngredientDTO) -> some View {
+        let on = selected.contains(ing.id)
+        let amount: String = {
+            guard let amt = ing.amount else { return "" }
+            let n = RecipeAmount.format(amt)
+            return n.isEmpty ? "" : n + (ing.unit.map { " \($0)" } ?? "")
+        }()
+        return HStack(alignment: .top, spacing: 11) {
+            Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 20)).foregroundStyle(on ? WF.primary : WF.ink3.opacity(0.55))
+            if !amount.isEmpty {
+                Text(amount).font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(WF.ink2).frame(width: 58, alignment: .trailing)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(ing.prepNote.map { "\(ing.name), \($0)" } ?? ing.name)
+                    .font(.system(size: 15)).foregroundStyle(WF.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                if ing.isStaple {
+                    Text("pantry staple — likely on hand").font(.system(size: 12)).foregroundStyle(WF.ink3)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+        .opacity(on ? 1 : 0.6)
     }
 }
 

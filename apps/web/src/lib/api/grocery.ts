@@ -102,8 +102,10 @@ export const groceryApi = {
   deleteItem: (id: string) => apiDelete(`/api/list-items/${id}`).then(tap('grocery')),
   // weekStart scopes an off-plan add/remove to the week being shopped (defaults to the
   // current week server-side when omitted, e.g. from a recipe page with no week context).
-  groceryFromRecipe: (recipeId: string, weekStart?: string) =>
-    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
+  // `ingredientIds` (optional) adds only the picked subset — the shopper already has the
+  // rest on hand. Omit it to add every non-staple ingredient (the original behavior).
+  groceryFromRecipe: (recipeId: string, weekStart?: string, ingredientIds?: string[]) =>
+    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`, ingredientIds ? { ingredientIds } : undefined).then(tap('grocery')),
   removeRecipeFromGrocery: (recipeId: string, weekStart?: string) =>
     apiDelete(`/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
 

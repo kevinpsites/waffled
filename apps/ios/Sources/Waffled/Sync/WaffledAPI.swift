@@ -2421,10 +2421,17 @@ struct WaffledAPI: Sendable {
     /// into existing rows don't count).
     /// `weekStart` scopes the off-plan add to the week being shopped (defaults to the
     /// current week server-side when omitted, e.g. from a recipe page with no week).
-    func groceryFromRecipe(recipeId: String, weekStart: String? = nil) async throws -> Int {
+    /// `ingredientIds` (optional) adds only the picked subset — the shopper already has
+    /// the rest on hand. Omit it to add every non-staple ingredient (the default).
+    func groceryFromRecipe(recipeId: String, weekStart: String? = nil, ingredientIds: [String]? = nil) async throws -> Int {
         struct Resp: Decodable { let added: Int }
         let q = weekStart.map { "?weekStart=\($0)" } ?? ""
-        return try await sendJSON("POST", "/api/lists/grocery/from-recipe/\(recipeId)\(q)", as: Resp.self).added
+        let path = "/api/lists/grocery/from-recipe/\(recipeId)\(q)"
+        if let ingredientIds {
+            let body: [String: JSONValue] = ["ingredientIds": .array(ingredientIds.map(JSONValue.string))]
+            return try await sendReturning("POST", path, body: body, as: Resp.self).added
+        }
+        return try await sendJSON("POST", path, as: Resp.self).added
     }
 
     /// Take a recipe's ingredients back off the grocery list (undo the off-plan add;

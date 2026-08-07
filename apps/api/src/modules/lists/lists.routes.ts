@@ -269,7 +269,17 @@ export function registerListRoutes(api: Api): void {
   api.post('/api/lists/grocery/from-recipe/:recipeId', tenantRoute(async (tenant, req: Request, res: Response) => {
     const recipeId = req.params.recipeId ?? ''
     if (!UUID_RE.test(recipeId)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
-    const added = await addRecipeToGrocery(tenant, recipeId, await weekStartFor(tenant, req))
+    // Optional subset: the "choose specific ingredients" picker sends the ids to add;
+    // omitting it keeps the original add-all-non-staples behavior.
+    const body = (req.body ?? {}) as { ingredientIds?: unknown }
+    let ingredientIds: string[] | undefined
+    if ('ingredientIds' in body && body.ingredientIds != null) {
+      if (!Array.isArray(body.ingredientIds) || !body.ingredientIds.every((v) => typeof v === 'string' && UUID_RE.test(v))) {
+        return res.status(400).json({ error: 'BadRequest', message: 'ingredientIds must be an array of ingredient ids' })
+      }
+      ingredientIds = body.ingredientIds as string[]
+    }
+    const added = await addRecipeToGrocery(tenant, recipeId, await weekStartFor(tenant, req), ingredientIds)
     if (added === null) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     return res.status(201).json({ added: added.length, items: added.map(presentListItem) })
   }))
