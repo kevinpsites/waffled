@@ -383,12 +383,13 @@ final class ListDetailModel {
         }
     }
 
-    /// Rename the list (keeps its emoji). Updates the header (`list.name` drives the
-    /// nav title) and rail. Returns true on success.
-    func rename(to name: String) async -> Bool {
-        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Edit the list's name AND emoji (the ⋯ → Edit list sheet). Updates the header
+    /// (`list.name`/`list.emoji` drive the nav title + rail). Returns true on success.
+    func edit(name rawName: String, emoji rawEmoji: String) async -> Bool {
+        let n = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !n.isEmpty else { return false }
-        do { list = try await api.updateList(id: list.id, name: n); return true }
+        let e = rawEmoji.trimmingCharacters(in: .whitespaces)
+        do { list = try await api.updateList(id: list.id, name: n, emoji: e); return true }
         catch { self.error = true; return false }
     }
 
@@ -440,8 +441,7 @@ struct ListDetailView: View {
     @State private var stagedPriority: Int? = nil
     @State private var bulkNewSectionPrompt = false
     @State private var bulkNewSectionName = ""
-    @State private var renamePrompt = false
-    @State private var renameText = ""
+    @State private var editingList = false
     @FocusState private var focus: Field?
 
     /// Meal-type ordering for the summary filter (matches the web rail).
@@ -576,12 +576,11 @@ struct ListDetailView: View {
                 bulkNewSectionName = ""
             }
         } message: { Text("Move the selected items into this new section.") }
-        .alert("Rename list", isPresented: $renamePrompt) {
-            TextField("List name", text: $renameText)
-            Button("Cancel", role: .cancel) { renameText = "" }
-            Button("Save") {
-                let n = renameText; renameText = ""
-                Task { if await model.rename(to: n) { sync.bumpLists() } }
+        .sheet(isPresented: $editingList) {
+            // The same name + emoji editor used from the Lists index, so the list's icon
+            // is editable in place (no more leaving the list to change its emoji).
+            EditListSheet(list: model.list) { name, emoji in
+                Task { if await model.edit(name: name, emoji: emoji) { sync.bumpLists() } }
             }
         }
     }
@@ -774,15 +773,15 @@ struct ListDetailView: View {
         }
     }
 
-    /// Menu contents — same options on iPhone and iPad: Select, Rename, template
+    /// Menu contents — same options on iPhone and iPad: Select, Edit list, template
     /// actions, Delete.
     @ViewBuilder private var listActionButtons: some View {
         // Enter multi-select to bulk-edit section / assignee / priority.
         Button { withAnimation { selecting = true; selectedIDs = []; resetBulkStaging() } } label: {
             Label("Select items to edit", systemImage: "checklist")
         }
-        Button { renameText = model.list.name; renamePrompt = true } label: {
-            Label("Rename", systemImage: "pencil")
+        Button { editingList = true } label: {
+            Label("Edit name & icon", systemImage: "pencil")
         }
         if model.isTemplate {
             Button {
