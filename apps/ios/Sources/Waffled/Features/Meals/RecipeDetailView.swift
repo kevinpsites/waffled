@@ -177,16 +177,17 @@ struct RecipeDetailView: View {
     // MARK: sections
 
     private var hero: some View {
-        ZStack {
-            RecipeGradient.forCategory(r.category)
-            if let urlStr = r.imageUrl, let url = URL(string: urlStr) {
-                AsyncImage(url: url) { $0.resizable().scaledToFill() }
-                placeholder: { Text(r.emoji ?? RecipeGradient.emoji(r.category)).font(.system(size: 64)) }
-            } else {
+        // CachedImage resolves the (often server-relative) image URL via MediaURL — a raw
+        // URL(string:) can't load an uploaded "/media/…" path, which is why the photo used
+        // to fall back to the emoji here even though the web showed it. Placeholder = the
+        // category gradient + emoji, shown until/unless a real photo loads.
+        CachedImage(r.imageUrl, contentMode: .fill) {
+            ZStack {
+                RecipeGradient.forCategory(r.category)
                 Text(r.emoji ?? RecipeGradient.emoji(r.category)).font(.system(size: 64))
             }
         }
-        .frame(height: 190).frame(maxWidth: .infinity)
+        .frame(height: 190).frame(maxWidth: .infinity).clipped()
         .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
     }
 

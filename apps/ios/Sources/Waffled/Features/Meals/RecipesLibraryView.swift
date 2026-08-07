@@ -310,15 +310,20 @@ struct RecipeCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topTrailing) {
-                RecipeGradient.forCategory(recipe.category)
-                    .overlay(Text(recipe.emoji ?? RecipeGradient.emoji(recipe.category)).font(.system(size: 42)))
-                    .frame(height: 104)
-                    .overlay(alignment: .topLeading) {
-                        // Never cooked → a "🆕" corner badge (mirrors the kiosk library).
-                        if recipe.cookedCount == 0 {
-                            Text("🆕").font(.system(size: 15)).padding(7)
-                        }
+                // CachedImage (NSCache-backed, resolves relative /media URLs) shows the real
+                // photo when there is one; otherwise the category gradient + emoji. Cards
+                // live in a LazyVGrid, so AsyncImage would re-fetch on every scroll/keystroke.
+                CachedImage(recipe.imageUrl, contentMode: .fill) {
+                    RecipeGradient.forCategory(recipe.category)
+                        .overlay(Text(recipe.emoji ?? RecipeGradient.emoji(recipe.category)).font(.system(size: 42)))
+                }
+                .frame(height: 104).frame(maxWidth: .infinity).clipped()
+                .overlay(alignment: .topLeading) {
+                    // Never cooked → a "🆕" corner badge (mirrors the kiosk library).
+                    if recipe.cookedCount == 0 {
+                        Text("🆕").font(.system(size: 15)).padding(7)
                     }
+                }
                 if recipe.isFavorite {
                     Text("❤️").font(.system(size: 15)).padding(7)
                 }
