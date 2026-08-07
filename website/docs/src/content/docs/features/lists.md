@@ -11,11 +11,13 @@ Lists is where "things to buy or do" live — shared custom lists you build by h
 
 - 📝 **Custom multi-lists** — sectioned items with quantities and assignees; create, rename, and delete (deletes cascade), each with its own emoji.
 - 🗂️ **List templates** — save any list as a template (items stored unchecked, hidden from the rail); apply it to spin up a fresh custom list, long-press to delete. A template is just a lists row — there's no separate table.
-- 🛒 **Auto-built grocery board** — the week's dinners become a shopping list with aisle grouping and quantity merge; flip between **By aisle** and **By meal**.
+- 🛒 **Auto-built grocery board** — the week's dinners become a shopping list with aisle grouping and quantity merge; flip between **By aisle**, **By store**, and **By meal**.
 - 🏷️ **Shared aisle classification** — a regex table sorts items into Produce, Dairy & Chilled, Meat & Seafood, Bakery, Frozen, Pantry, or Other; canned and jarred forms file to [Pantry](/features/pantry/).
+- 🏬 **Assign a store** — tag an item with where you'll buy it (Costco, Walmart, …) from its editor and group the board **By store**. The store box is a quick-select over the stores you've used before, so the same shop doesn't split into "Costco" and "costco".
 - 🧂 **Staples stay off the list** — staple detection keeps the salt-and-pepper basics out of your grocery run.
 - 🎯 **Re-aisle an item** — section chips in its editor move it, and an **Auto** chip clears the override.
 - ✅ **Check off / add / delete** — everything persists, with attribution ("added by {name}" or "🍽 from meal plan"), and the grocery build honors recipe substitutions.
+- 🔄 **Stays fresh across devices** — a list you're looking at refreshes on its own (when you return to the app, and every ~20 s while it's open) so a family member's check on another phone shows up without a manual reload.
 - 🔄 **Live cross-surface refresh** — Today, Lists, and Rewards stay in sync through the in-app refresh bus.
 
 ## Where it works

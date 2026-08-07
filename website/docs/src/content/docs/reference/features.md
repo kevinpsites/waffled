@@ -54,7 +54,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Optional per-person **PIN** to open a profile (throttled) | ✅ | ❌ N/A | ✅ | ✅ Done — `KioskPinPad` (4–8 digits, "N tries left" on 401, lockout countdown on 429) |
 | "Switch profile" + idle return to picker | ✅ | ❌ N/A | ✅ | ✅ Done — tap the rail avatar (swap badge) or Settings → Display & Kiosk "Switch profile"; `returnToPicker` also drops to the picker on screensaver wake |
 | **Exit kiosk mode** on the device (un-pair this iPad) | ✅ | ❌ N/A | ✅ | ✅ Done — picker gear → "Exit shared kiosk" (no sign-in needed) or parent Settings → "Stop sharing"; local-only, returns to normal login |
-| Idle **screensaver** auto-start (after N min of no touch) | ✅ | ❌ N/A | ✅ | ✅ Done |
+| Idle **screensaver** auto-start (after N min of no touch) | ✅ | ❌ N/A | ✅ | ✅ Done — holds off while a text field is focused (keyboard up), and resigns first responder if it does start, so it never drops over the keyboard mid-typing |
 | Screensaver **photo slideshow** + **crossfade** transitions | ✅ | 🟡 | ✅ | ✅ Done (iPhone via manual "Play"; iPad idle + manual) |
 | Screensaver chrome: clock · date · **weather** · **next event** · album | ✅ | 🟡 | ✅ | ✅ Done (iPhone bare "Play" omits chrome) |
 | Screensaver settings (source all/favorites/album, speed, shuffle) | ✅ | ✅ | ✅ | ✅ Done (Display & Kiosk) |
@@ -171,10 +171,12 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
 | Custom **multi-lists** (sectioned items, quantities, assignees) | ✅ | ✅ | ✅ | ✅ Done (iPad = master/detail) |
-| Create / rename / delete lists (cascade) | ✅ | ✅ | ✅ | ✅ Done — mobile: **swipe** a list → **Edit** (rename/emoji, `PATCH /api/lists/:id`) + **Delete**; **Delete list** also in the list-detail ⋯ menu |
+| Create / rename / delete lists (cascade) | ✅ | ✅ | ✅ | ✅ Done — mobile: **swipe** a list → **Edit** (rename/emoji, `PATCH /api/lists/:id`) + **Delete**; the list-detail ⋯ menu's **Edit name & icon** opens that same name+emoji editor (so the icon is editable from inside the list), and **Delete list** is there too |
 | **List templates** — save a list as a reusable template, apply → a fresh unchecked copy, manage (delete) | ✅ | ✅ | ✅ | ✅ Done — mobile: one New-list modal (name + emoji + Create) with an "Or start from a template" picker (**select-then-Create**, name pre-fills from the template); long-press a template to delete |
 | **Auto-built grocery board** from the week's dinners | ✅ | ✅ | ✅ | ✅ Done |
 | **Add a recipe's ingredients to the grocery list from its page** — no meal-plan entry needed (one-off dinners, sides, snacks); staples skipped, quantities merged, items linked back to the recipe | ✅ | ✅ | ✅ | ✅ Done — web: cart icon in the recipe actions (plus the on-hand banner button); mobile: "Add to grocery list" in the recipe ⋯ menu + the banner button |
+| **Choose which ingredients to add** — "Add to grocery" opens a picker to add all or just the ones you need (pantry staples start unchecked), instead of always adding everything | ✅ | ✅ | ✅ | ✅ Done — web + iOS; `POST /api/lists/grocery/from-recipe/:id` takes an optional `ingredientIds` subset (omit = add all non-staples) |
+| **Assign a store to a grocery item + group by store** — tag items with where you'll buy them (Costco, Walmart, …) and switch the board to a **By store** view; the store field is a free-text quick-select backed by your previously-used stores | ✅ | ✅ | ✅ | ✅ Done — web + iOS; migration 0090 adds `list_items.store`, `GET /api/lists/stores` returns the household's stores (most-used first), merged with in-use values so "Costco" typed once comes back as a chip |
 | **Remove an off-plan recipe from the grocery list** — undo the above; the recipe drops out of the by-meal "Unscheduled" shelf, keeping any items it shares with another recipe | ✅ | ✅ | ✅ | ✅ Done — web: **Remove** on the by-meal Unscheduled section, or an **×** on the "This week's meals" Unscheduled rail; mobile: long-press the section → **Remove from list** (`DELETE /api/lists/grocery/from-recipe/:id`) |
 | **Unscheduled recipe sections in By-meal view** — off-plan recipes group under their own "Unscheduled" header with their own dot color, instead of lumping into "Other items"; they're also listed in the "This week's meals" card below a divider, completing the dot-color legend | ✅ | ✅ | ✅ | ✅ Done |
 | **Aisle grouping** + **quantity merge** (By aisle / By meal) | ✅ | ✅ | ✅ | ✅ Done |
@@ -189,6 +191,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Collapsible sections** on a custom list — collapse/expand each section from its header | ✅ | ✅ | ✅ | ✅ Done — web now matches iOS |
 | **Sticky add section** — the add bar's section picker keeps its choice across quick adds, so a run of items lands in the same section; the picker can also **create a new section** inline (even on a list with none yet) | ✅ | ✅ | ✅ | ✅ Done — web now matches iOS |
 | **Cross-surface live refresh** (Today ↔ Lists ↔ Rewards) | ✅ | ✅ | ✅ | ✅ Done (in-app refresh bus) |
+| **Cross-device list refresh** — a family member's edit on another device shows up without a manual reload | ✅ | ✅ | ✅ | ✅ Done — lists aren't on PowerSync (only the calendar is), so both clients refetch a list on app/tab foreground and poll ~20s while it's on screen (silent; iOS skips while editing/multi-selecting). Not instant push — up to ~20s |
 
 ## Meals & recipes
 
@@ -197,11 +200,11 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Weekly** meal planner grid + recipe picker | ✅ | ✅ | ✅ | ✅ Done |
 | **Month** meal view + planner | ✅ | ✅ | ✅ | ✅ Done |
 | Drag-to-swap on week/month grid | ✅ | ✅ | ✅ | ✅ Done |
-| Full-screen **recipe detail** (hero image, metadata chips, servings scaler) | ✅ | ✅ | ✅ | ✅ Done |
+| Full-screen **recipe detail** (hero image, metadata chips, servings scaler) | ✅ | ✅ | ✅ | ✅ Done — mobile now renders **uploaded photos** in the hero **and** the library cards (via the cached, URL-resolving image loader), not just the emoji placeholder |
 | **Total time** on the card (prep + cook); prep/cook split on the detail | ✅ | ✅ | ✅ | ✅ Done (mobile) |
 | **Recipes library** (search-all, multi-select filters, sort) | ✅ | ✅ | ✅ | ✅ Done |
 | **Never-cooked "🆕 New" tag + filter** (recipes you haven't tried) | ✅ | ✅ | ✅ | ✅ Done — mobile: "New" library toggle (`cookedCount == 0`), 🆕 card badge, tappable 🆕 New chip on the detail → library filtered to New |
-| Create / **edit** recipes in-app (all metadata + ingredients + steps) | ✅ | ✅ | ✅ | ✅ Done (full editor — shared iPhone/iPad; **per-step ingredient amounts**; **ingredient sections** with dividers + cross-section drag-drop; delete is web-only) |
+| Create / **edit** recipes in-app (all metadata + ingredients + steps) | ✅ | ✅ | ✅ | ✅ Done (full editor — shared iPhone/iPad; **per-step ingredient amounts**; **ingredient sections** with dividers + cross-section drag-drop; **remove the photo** via a trash button next to the image field — clears the stored blob, not just the link; delete is web-only) |
 | **Paste-markdown** recipe import (template/example) | ✅ | ✅ | ✅ | ✅ Done (paste → parse → fills the editor for review, then save) |
 | **Share a recipe** as a Markdown file (the inverse of paste-markdown import) | ✅ | ✅ | ✅ | ✅ Done — a **Share** action on the recipe detail compiles the recipe into the blessed Markdown format (`GET /api/recipes/:id/markdown`) and hands it to the platform share options: iOS native share sheet with a `.md` file (Messages / Mail / Save to Files); web `navigator.share`, falling back to copy-to-clipboard + `.md` download. Round-trips back through paste-markdown import |
 | Per-recipe **overrides** (substitutions, notes) | ✅ | ✅ | ✅ | ✅ Done — mobile now edits **ingredient substitutions** (⇄ per row → `overrides.subs`, feeds the substitution-aware grocery build) alongside per-step + recipe notes |

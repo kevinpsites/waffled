@@ -2,7 +2,7 @@ import SwiftUI
 import Observation
 
 /// Grocery board view modes.
-enum GroceryViewMode: Hashable { case aisle, meal }
+enum GroceryViewMode: Hashable { case aisle, store, meal }
 
 /// A run of items under one meal in "By meal" mode. `unscheduled` set = a recipe
 /// on the list but not on this week's plan; both nil = the trailing
@@ -38,6 +38,8 @@ final class ListDetailModel {
     private(set) var unscheduled: [WaffledAPI.GroceryBoardDTO.UnscheduledRecipe] = []
     /// Pantry staples (assumed in-house, left off the list) — tap to add anyway.
     private(set) var staples: [WaffledAPI.GroceryBoardDTO.Staple] = []
+    /// Previously-used store names (durable quick-select), loaded for grocery lists.
+    private(set) var knownStores: [String] = []
     /// The week the board covers (YYYY-MM-DD) — passed to rebuild.
     private(set) var weekStart = ""
     /// Which week to request (YYYY-MM-DD); nil = the current week (server default). The
@@ -88,6 +90,22 @@ final class ListDetailModel {
         MealGrouping.sections(items: activeItems, meals: meals, unscheduled: unscheduled)
     }
 
+    /// "By store" grouping: each active item under its assigned store (alphabetical),
+    /// with unassigned items in a trailing "No store" group. Read-only (no drag).
+    func storeSections() -> [ListSectionGroup] {
+        var buckets: [String: [WaffledAPI.ListItemDTO]] = [:]
+        var none: [WaffledAPI.ListItemDTO] = []
+        for item in activeItems {
+            if let s = item.store, !s.isEmpty { buckets[s, default: []].append(item) }
+            else { none.append(item) }
+        }
+        var groups = buckets.keys
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+            .map { ListSectionGroup(title: $0, items: buckets[$0] ?? [], sectionValue: $0) }
+        if !none.isEmpty { groups.append(ListSectionGroup(title: "No store", items: none, sectionValue: nil)) }
+        return groups
+    }
+
     /// One meal-color dot per *distinct recipe* the item belongs to (a recipe planned
     /// in two slots is the same dot, not two). Unscheduled recipes get dots too.
     func dotColors(for item: WaffledAPI.ListItemDTO) -> [String] {
@@ -106,9 +124,11 @@ final class ListDetailModel {
     /// Settled, checked items — shown in the collapsed Completed section.
     var completed: [WaffledAPI.ListItemDTO] { items.filter { $0.checked && !settling.contains($0.id) && matches($0) } }
 
-    func load() async {
-        loading = true
-        settling = []
+    /// `silent` keeps the current items on screen (no spinner) — used by the
+    /// foreground refresh + background poll so another device's edits fold in without
+    /// a visible reload flash.
+    func load(silent: Bool = false) async {
+        if !silent { loading = true; settling = [] }
         do {
             if isGrocery {
                 let board = try await api.groceryBoard(weekStart: requestedWeekStart)
@@ -117,6 +137,7 @@ final class ListDetailModel {
                 staples = board.staples
                 weekStart = board.weekStart
                 items = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
+                knownStores = (try? await api.listStores()) ?? knownStores
             } else {
                 items = try await api.listItems(listId: list.id)
             }
@@ -124,7 +145,7 @@ final class ListDetailModel {
         } catch {
             self.error = true
         }
-        loading = false
+        if !silent { loading = false }
     }
 
     @discardableResult
@@ -202,20 +223,22 @@ final class ListDetailModel {
     /// Optimistic full-detail edit (name / quantity / assignee / section); revert on
     /// failure. `member` is the chosen assignee (nil = unassigned).
     func editDetails(_ id: String, name rawName: String, quantity rawQty: String,
-                     member: SyncedMember?, section rawSection: String, priority: Int) async {
+                     member: SyncedMember?, section rawSection: String, store rawStore: String, priority: Int) async {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
         let qty = rawQty.trimmingCharacters(in: .whitespacesAndNewlines)
         let section = rawSection.trimmingCharacters(in: .whitespacesAndNewlines)
+        let store = rawStore.trimmingCharacters(in: .whitespacesAndNewlines)
         let prev = items[idx]
         items[idx].name = name
         items[idx].quantity = qty.isEmpty ? nil : qty
         items[idx].section = section.isEmpty ? nil : section
+        items[idx].store = store.isEmpty ? nil : store
         items[idx].priority = priority
         items[idx].assignee = member.map { .init(name: $0.name, avatarEmoji: $0.emoji, colorHex: $0.colorHex) }
         do {
-            try await api.updateItemDetails(id: id, name: name, quantity: qty, assignedTo: member?.id, section: section, priority: priority)
+            try await api.updateItemDetails(id: id, name: name, quantity: qty, assignedTo: member?.id, section: section, store: store, priority: priority)
         } catch {
             if let i = items.firstIndex(where: { $0.id == id }) { items[i] = prev }
         }
@@ -362,12 +385,13 @@ final class ListDetailModel {
         }
     }
 
-    /// Rename the list (keeps its emoji). Updates the header (`list.name` drives the
-    /// nav title) and rail. Returns true on success.
-    func rename(to name: String) async -> Bool {
-        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Edit the list's name AND emoji (the ⋯ → Edit list sheet). Updates the header
+    /// (`list.name`/`list.emoji` drive the nav title + rail). Returns true on success.
+    func edit(name rawName: String, emoji rawEmoji: String) async -> Bool {
+        let n = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !n.isEmpty else { return false }
-        do { list = try await api.updateList(id: list.id, name: n); return true }
+        let e = rawEmoji.trimmingCharacters(in: .whitespaces)
+        do { list = try await api.updateList(id: list.id, name: n, emoji: e); return true }
         catch { self.error = true; return false }
     }
 
@@ -381,6 +405,9 @@ final class ListDetailModel {
 struct ListDetailView: View {
     @Environment(SyncManager.self) private var sync
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+    /// Drives the cross-device liveness poll while this list is on screen.
+    private let pollTimer = Timer.publish(every: 20, on: .main, in: .common).autoconnect()
     @State private var model: ListDetailModel
     @State private var confirmingDelete = false
     @State private var draftName = ""
@@ -419,8 +446,7 @@ struct ListDetailView: View {
     @State private var stagedPriority: Int? = nil
     @State private var bulkNewSectionPrompt = false
     @State private var bulkNewSectionName = ""
-    @State private var renamePrompt = false
-    @State private var renameText = ""
+    @State private var editingList = false
     @FocusState private var focus: Field?
 
     /// Meal-type ordering for the summary filter (matches the web rail).
@@ -494,6 +520,18 @@ struct ListDetailView: View {
         .refreshable { await model.load() }
         .onChange(of: sync.groceryRev) { _, _ in if model.isGrocery { Task { await model.load() } } }
         .onChange(of: sync.listsRev) { _, _ in if !model.isGrocery { Task { await model.load() } } }
+        // Cross-device liveness: another family member's check appears without a manual
+        // pull-to-refresh. Refetch when the app returns to the foreground, and poll every
+        // 20s while this list is on screen. Both are silent (no spinner) and skip while
+        // editing / multi-selecting so they can't clobber an in-progress change. The
+        // timer handler reads live view state each tick (an async .task loop would capture
+        // stale scenePhase/editingId).
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, editingId == nil, !selecting { Task { await model.load(silent: true) } }
+        }
+        .onReceive(pollTimer) { _ in
+            if scenePhase == .active, editingId == nil, !selecting { Task { await model.load(silent: true) } }
+        }
         .onChange(of: focus) { _, new in
             // Tapping away from an inline edit commits it.
             if editingId != nil, new != .editName, new != .editQty { commitEdit() }
@@ -508,17 +546,19 @@ struct ListDetailView: View {
             }
         }
         .sheet(item: $detailItem) { item in
-            ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section, priority in
-                Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section, priority: priority) }
+            ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions,
+                             storeSuggestions: storeSuggestions, showStore: model.isGrocery) { name, qty, member, section, store, priority in
+                Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section, store: store, priority: priority) }
             }
         }
         // The "Add item with details" sheet (from the add bar's sliders button): create the
-        // item, then apply assignee/section/priority in one go.
+        // item, then apply assignee/section/store/priority in one go.
         .sheet(isPresented: $showAddDetail) {
-            ItemDetailEditor(newItemName: addDetailName, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section, priority in
+            ItemDetailEditor(newItemName: addDetailName, members: sync.members, suggestions: sectionSuggestions,
+                             storeSuggestions: storeSuggestions, showStore: model.isGrocery) { name, qty, member, section, store, priority in
                 Task {
                     if let created = await model.add(name: name, quantity: qty, section: section) {
-                        await model.editDetails(created.id, name: name, quantity: qty, member: member, section: section, priority: priority)
+                        await model.editDetails(created.id, name: name, quantity: qty, member: member, section: section, store: store, priority: priority)
                     }
                 }
             }
@@ -553,12 +593,11 @@ struct ListDetailView: View {
                 bulkNewSectionName = ""
             }
         } message: { Text("Move the selected items into this new section.") }
-        .alert("Rename list", isPresented: $renamePrompt) {
-            TextField("List name", text: $renameText)
-            Button("Cancel", role: .cancel) { renameText = "" }
-            Button("Save") {
-                let n = renameText; renameText = ""
-                Task { if await model.rename(to: n) { sync.bumpLists() } }
+        .sheet(isPresented: $editingList) {
+            // The same name + emoji editor used from the Lists index, so the list's icon
+            // is editable in place (no more leaving the list to change its emoji).
+            EditListSheet(list: model.list) { name, emoji in
+                Task { if await model.edit(name: name, emoji: emoji) { sync.bumpLists() } }
             }
         }
     }
@@ -641,7 +680,16 @@ struct ListDetailView: View {
                 .font(.system(size: 14)).foregroundStyle(WF.ink3)
                 .listRowSeparator(.hidden).listRowBackground(Color.clear)
         }
-        if model.isGrocery && mode == .meal {
+        if model.isGrocery && mode == .store {
+            // Read-only store grouping (no cross-section drag — that writes `section`).
+            ForEach(model.storeSections()) { group in
+                Section {
+                    if !collapsed.contains(group.id) {
+                        ForEach(group.items) { item in itemRow(item) }
+                    }
+                } header: { storeHeader(group) }
+            }
+        } else if model.isGrocery && mode == .meal {
             ForEach(model.mealSections()) { group in
                 Section {
                     if !collapsed.contains(group.id) {
@@ -742,15 +790,15 @@ struct ListDetailView: View {
         }
     }
 
-    /// Menu contents — same options on iPhone and iPad: Select, Rename, template
+    /// Menu contents — same options on iPhone and iPad: Select, Edit list, template
     /// actions, Delete.
     @ViewBuilder private var listActionButtons: some View {
         // Enter multi-select to bulk-edit section / assignee / priority.
         Button { withAnimation { selecting = true; selectedIDs = []; resetBulkStaging() } } label: {
             Label("Select items to edit", systemImage: "checklist")
         }
-        Button { renameText = model.list.name; renamePrompt = true } label: {
-            Label("Rename", systemImage: "pencil")
+        Button { editingList = true } label: {
+            Label("Edit name & icon", systemImage: "pencil")
         }
         if model.isTemplate {
             Button {
@@ -889,6 +937,16 @@ struct ListDetailView: View {
     private var sectionSuggestions: [String] {
         var result = model.list.listType.lowercased() == "grocery" ? ListDetailModel.groceryAisles : []
         for s in model.items.compactMap(\.section) where !s.isEmpty && !result.contains(s) {
+            result.append(s)
+        }
+        return result
+    }
+
+    /// Store quick-select: the household's previously-used stores (durable, from the
+    /// server) merged with any store already in use on this list, deduped.
+    private var storeSuggestions: [String] {
+        var result = model.knownStores
+        for s in model.items.compactMap(\.store) where !s.isEmpty && !result.contains(s) {
             result.append(s)
         }
         return result
@@ -1108,6 +1166,7 @@ struct ListDetailView: View {
         if model.isGrocery {
             Picker("View", selection: $mode) {
                 Text("By aisle").tag(GroceryViewMode.aisle)
+                Text("By store").tag(GroceryViewMode.store)
                 Text("By meal").tag(GroceryViewMode.meal)
             }
             .pickerStyle(.segmented)
@@ -1164,6 +1223,23 @@ struct ListDetailView: View {
                 Button(role: .destructive) {
                     Task { await model.removeRecipe(recipe.recipeId) }
                 } label: { Label("Remove from list", systemImage: "trash") }
+            }
+        }
+    }
+
+    /// "By store" section header — a store tag + the store name + item count.
+    @ViewBuilder private func storeHeader(_ group: ListSectionGroup) -> some View {
+        headerChrome {
+            collapseButton(id: group.id) {
+                chevron(for: group.id)
+                Text(group.sectionValue == nil ? "🛒" : "🏬").font(.system(size: 12))
+                Text((group.title ?? "No store").uppercased())
+                    .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                    .foregroundStyle(WF.ink3)
+                    .lineLimit(1)
+                Spacer(minLength: 6)
+                Text("\(group.items.count)")
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             }
         }
     }
@@ -1486,6 +1562,14 @@ struct ListDetailView: View {
                             .foregroundStyle(item.checked ? WF.ink3 : WF.ink)
                         Spacer(minLength: 8)
                         mealDots(for: item)
+                        // Store tag (hidden in the By-store view, where the header already says it).
+                        if mode != .store, let st = item.store, !st.isEmpty {
+                            Text("🏬 \(st)")
+                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
+                                .lineLimit(1)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(WF.panel).clipShape(Capsule())
+                        }
                         if let q = item.quantity, !q.isEmpty {
                             Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
@@ -1689,25 +1773,35 @@ struct ItemDetailEditor: View {
     let isNew: Bool
     let members: [SyncedMember]
     let suggestions: [String]
-    let onSave: (String, String, SyncedMember?, String, Int) -> Void
+    /// Previously-used stores for the store quick-select (empty on non-grocery lists,
+    /// which hide the store field entirely).
+    let storeSuggestions: [String]
+    let showStore: Bool
+    // (name, quantity, member, section, store, priority)
+    let onSave: (String, String, SyncedMember?, String, String, Int) -> Void
 
     @State private var name: String
     @State private var quantity: String
     @State private var assigneeId: String?
     @State private var section: String
+    @State private var store: String
     @State private var priority: Int
     @FocusState private var nameFocused: Bool
 
     init(item: WaffledAPI.ListItemDTO, members: [SyncedMember], suggestions: [String],
-         onSave: @escaping (String, String, SyncedMember?, String, Int) -> Void) {
+         storeSuggestions: [String] = [], showStore: Bool = false,
+         onSave: @escaping (String, String, SyncedMember?, String, String, Int) -> Void) {
         self.originalName = item.name
         self.isNew = false
         self.members = members
         self.suggestions = suggestions
+        self.storeSuggestions = storeSuggestions
+        self.showStore = showStore
         self.onSave = onSave
         _name = State(initialValue: item.name)
         _quantity = State(initialValue: item.quantity ?? "")
         _section = State(initialValue: item.section ?? "")
+        _store = State(initialValue: item.store ?? "")
         _priority = State(initialValue: item.priority ?? ListItemPriority.normal)
         // The item's assignee carries no id, so resolve it to a member by name.
         let assigneeName = item.assignee?.name
@@ -1715,17 +1809,21 @@ struct ItemDetailEditor: View {
     }
 
     /// Add mode — a blank "Add item" sheet (optionally seeded with a name already typed in
-    /// the add bar) so you can set assignee / section / priority up front, then add.
+    /// the add bar) so you can set assignee / section / store / priority up front, then add.
     init(newItemName: String, members: [SyncedMember], suggestions: [String],
-         onSave: @escaping (String, String, SyncedMember?, String, Int) -> Void) {
+         storeSuggestions: [String] = [], showStore: Bool = false,
+         onSave: @escaping (String, String, SyncedMember?, String, String, Int) -> Void) {
         self.originalName = ""
         self.isNew = true
         self.members = members
         self.suggestions = suggestions
+        self.storeSuggestions = storeSuggestions
+        self.showStore = showStore
         self.onSave = onSave
         _name = State(initialValue: newItemName)
         _quantity = State(initialValue: "")
         _section = State(initialValue: "")
+        _store = State(initialValue: "")
         _priority = State(initialValue: ListItemPriority.normal)
         _assigneeId = State(initialValue: nil)
     }
@@ -1756,6 +1854,18 @@ struct ItemDetailEditor: View {
                              : "Filed under “\(section.trimmingCharacters(in: .whitespaces))”.")
                             .font(.system(size: 12)).foregroundStyle(WF.ink3)
                     }
+
+                    if showStore {
+                        VStack(alignment: .leading, spacing: 9) {
+                            SectionLabel(text: "Store")
+                            storeChips
+                            inputCard { TextField("e.g. Costco", text: $store).textInputAutocapitalization(.words) }
+                            Text(storeIsNone
+                                 ? "No store — shows in the list as usual."
+                                 : "Shop at “\(store.trimmingCharacters(in: .whitespaces))”.")
+                                .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                        }
+                    }
                 }
                 .padding(20)
             }
@@ -1767,7 +1877,7 @@ struct ItemDetailEditor: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(isNew ? "Add" : "Save") {
-                        onSave(name, quantity, members.first { $0.id == assigneeId }, section, priority)
+                        onSave(name, quantity, members.first { $0.id == assigneeId }, section, store, priority)
                         dismiss()
                     }
                     .fontWeight(.semibold)
@@ -1871,6 +1981,35 @@ struct ItemDetailEditor: View {
                 ForEach(suggestions, id: \.self) { s in
                     let selected = section.caseInsensitiveCompare(s) == .orderedSame
                     Button { section = s } label: {
+                        Text(s).font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(selected ? WF.ink : WF.ink2)
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .wfChip(selected: selected)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 1)
+        }
+    }
+
+    private var storeIsNone: Bool { store.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// "None" (clear the store) followed by each previously-used store. Free-text field
+    /// below lets you type a brand-new one; typing it once makes it a future chip.
+    private var storeChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Button { store = "" } label: {
+                    Text("None").font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(storeIsNone ? WF.ink : WF.ink2)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .wfChip(selected: storeIsNone)
+                }
+                .buttonStyle(.plain)
+                ForEach(storeSuggestions, id: \.self) { s in
+                    let selected = store.caseInsensitiveCompare(s) == .orderedSame
+                    Button { store = s } label: {
                         Text(s).font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(selected ? WF.ink : WF.ink2)
                             .padding(.horizontal, 12).padding(.vertical, 7)

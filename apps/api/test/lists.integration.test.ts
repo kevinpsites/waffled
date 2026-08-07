@@ -366,6 +366,52 @@ describe('list items — sections, quantity, assignee', () => {
   })
 })
 
+describe('list items — store assignment + quick-select', () => {
+  let listId = ''
+  let itemId = ''
+
+  beforeAll(async () => {
+    listId = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Store test', emoji: '🏪' })).body).list.id
+  })
+
+  it('creates an item with a store and returns it', async () => {
+    const res = await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Rotisserie chicken', store: 'Costco' })
+    expect(res.statusCode).toBe(201)
+    const item = JSON.parse(res.body).item
+    expect(item).toMatchObject({ name: 'Rotisserie chicken', store: 'Costco' })
+    itemId = item.id
+  })
+
+  it('patches an item to set, change, then clear its store', async () => {
+    let item = JSON.parse((await call('PATCH', `/api/list-items/${itemId}`, kevin, { store: 'Walmart' })).body).item
+    expect(item.store).toBe('Walmart')
+    item = JSON.parse((await call('PATCH', `/api/list-items/${itemId}`, kevin, { store: null })).body).item
+    expect(item.store).toBeNull()
+  })
+
+  it('GET /api/lists/stores returns previously-used stores, most-used first', async () => {
+    // Costco used on 3 items, Trader Joe's on 1 → Costco leads.
+    await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Muffins', store: 'Costco' })
+    await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Batteries', store: 'Costco' })
+    await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Wine', store: "Trader Joe's" })
+    const stores = JSON.parse((await call('GET', '/api/lists/stores', kevin)).body).stores as string[]
+    expect(stores).toContain('Costco')
+    expect(stores).toContain("Trader Joe's")
+    expect(stores.indexOf('Costco')).toBeLessThan(stores.indexOf("Trader Joe's"))
+  })
+
+  it('bulk-assigns a store across a multi-selection', async () => {
+    const a = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Paper towels' })).body).item.id
+    const b = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Napkins' })).body).item.id
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, { ids: [a, b], patch: { store: 'Target' } })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).updated).toBe(2)
+    const items = JSON.parse((await call('GET', `/api/lists/${listId}`, kevin)).body).items as Array<{ id: string; store: string | null }>
+    expect(items.find((i) => i.id === a)!.store).toBe('Target')
+    expect(items.find((i) => i.id === b)!.store).toBe('Target')
+  })
+})
+
 describe('list item priority', () => {
   let listId = ''
 
@@ -445,6 +491,43 @@ describe('grocery auto-build from a recipe', () => {
       (await call('POST', '/api/lists/grocery/from-recipe/00000000-0000-0000-0000-000000000000', kevin))
         .statusCode
     ).toBe(404)
+  })
+
+  it('adds only the selected subset when ingredientIds is provided', async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Subset Stew', emoji: '🍲' })
+    const rid = JSON.parse(r.body).recipe.id
+    await call('POST', `/api/recipes/${rid}/ingredients`, kevin, {
+      ingredients: [
+        { name: 'Beef chuck', amount: 2, unit: 'lb' },
+        { name: 'Rutabaga', amount: 1 },
+        { name: 'Parsnip', amount: 3 },
+      ],
+    })
+    const ings = (
+      await withClient((c) =>
+        c.query<{ id: string; name: string }>(
+          `select id, name from recipe_ingredients where recipe_id=$1`,
+          [rid]
+        )
+      )
+    ).rows
+    const keep = ings.filter((i) => i.name !== 'Parsnip').map((i) => i.id)
+
+    const res = await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin, { ingredientIds: keep })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).added).toBe(2)
+
+    const names = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.map((i: { name: string }) => i.name)
+    expect(names).toContain('Beef chuck')
+    expect(names).toContain('Rutabaga')
+    expect(names).not.toContain('Parsnip') // left off — the shopper had it on hand
+  })
+
+  it('rejects a non-array / bad ingredientIds (400)', async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Bad Subset', emoji: '🥔' })
+    const rid = JSON.parse(r.body).recipe.id
+    expect((await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin, { ingredientIds: 'nope' })).statusCode).toBe(400)
+    expect((await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin, { ingredientIds: ['not-a-uuid'] })).statusCode).toBe(400)
   })
 
   it('bumps the quantity when two recipes need the same item (no silent skip)', async () => {

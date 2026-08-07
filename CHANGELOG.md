@@ -15,6 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Choose which recipe ingredients go on the grocery list.** "Add to grocery" now opens
+  a picker so you can add everything or just the items you actually need — pantry staples
+  start unchecked since you probably have them — instead of always dumping the whole recipe
+  onto the list. Works on web and iOS.
+- **Assign a store to grocery items and shop by store.** Tag an item with where you'll buy
+  it (Costco, Walmart, the corner market) and flip the grocery board to a **By store** view
+  that groups the list by shop. The store box is a quick-select over the stores you've used
+  before, so "Costco" typed once comes back as a tap and never splits into "costco".
+- **Lists now refresh across devices on their own.** When another family member checks
+  something off on their phone, the list you're looking at updates without a manual reload —
+  it refreshes when you return to the app and quietly re-checks every ~20 seconds while a
+  list is open. (It's a poll, not instant push, so give it a few seconds.)
+
 - **The goal Log sheet now suggests what you actually do.** The "What did you do?"
   chips are no longer a fixed list of six — each goal offers up the notes you've logged
   against it before, most-used first, so a goal you keep marking "family walk" or "lunch
@@ -114,6 +127,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the center, with a consistent gap between them.
 
 ### Fixed
+
+- **Recipe photos now show on iPhone and iPad.** Uploaded recipe images were falling back to
+  the emoji placeholder in the detail hero and the library cards, even though the web showed
+  the picture — the app wasn't resolving the stored image's address. They now render (and are
+  cached for smooth scrolling).
+- **You can remove a recipe's photo when editing.** The recipe editor had no way to clear an
+  image — now there's a trash button next to the photo, and removing it actually deletes the
+  stored photo instead of leaving it in place.
+- **Change a list's emoji from inside the list.** The in-list ⋯ menu only let you rename a
+  list; changing its icon meant backing out to the Lists screen. The menu now opens the full
+  name-and-icon editor in place.
+- **The iPad screensaver no longer drops over the keyboard.** If you were typing when the
+  idle timer fired, the screensaver could cover a lit keyboard. It now waits while a text
+  field is focused, and dismisses the keyboard if it does start.
 
 - **Recurring event edits now keep the whole series intact.** "This and following" carries
   all-day, countdown, people, goal, and repeat settings into the new series, while changing

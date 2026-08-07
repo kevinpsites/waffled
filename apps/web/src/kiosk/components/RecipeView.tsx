@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { groceryApi, mealsApi, pantryApi, useRecipe, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
+import { mealsApi, pantryApi, useRecipe, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
 import { ScheduleModal } from './ScheduleModal'
+import { RecipeGroceryModal } from './RecipeGroceryModal'
 import { CookConfirm } from './CookConfirm'
 import { useTopbarFull } from '../topbar-slot'
 import '../../styles/recipe.css'
@@ -152,7 +153,7 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const [fav, setFav] = useState(false)
   const [scheduling, setScheduling] = useState(false)
   const [addedNote, setAddedNote] = useState<string | null>(null)
-  const addingGrocery = useRef(false) // in-flight guard for addToGrocery
+  const [pickingGrocery, setPickingGrocery] = useState(false)
   const [cooked, setCooked] = useState(0)
   const [notes, setNotes] = useState('')
   const [usedMatches, setUsedMatches] = useState<RecipeMatch[] | null>(null)
@@ -260,17 +261,14 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const onHand = ingredients.filter((i) => i.isStaple).length
   const missing = ingredients.filter((i) => !i.isStaple).map((i) => i.name)
 
-  async function addToGrocery() {
-    if (addingGrocery.current) return // three controls share this handler — no double-fire
-    addingGrocery.current = true
-    try {
-      const { added } = await groceryApi.groceryFromRecipe(recipe!.id)
-      setAddedNote(added > 0 ? `Added ${added} item${added === 1 ? '' : 's'} to this week’s grocery list.` : 'Everything’s already on the list or on hand — nothing to add.')
-    } catch {
-      setAddedNote('Couldn’t reach the grocery list — try again.')
-    } finally {
-      addingGrocery.current = false
-    }
+  // Opens the picker so the shopper can add all or choose specific ingredients
+  // (they may already have some on hand). The actual add happens in the modal.
+  function addToGrocery() {
+    setPickingGrocery(true)
+  }
+  function onGroceryAdded(added: number) {
+    if (added < 0) setAddedNote('Couldn’t reach the grocery list — try again.')
+    else setAddedNote(added > 0 ? `Added ${added} item${added === 1 ? '' : 's'} to this week’s grocery list.` : 'Everything’s already on the list — nothing to add.')
   }
 
   async function shareRecipe() {
@@ -453,6 +451,9 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
 
       {scheduling && (
         <ScheduleModal recipe={recipe} onClose={() => setScheduling(false)} onScheduled={(label) => setAddedNote(`Scheduled for ${label}.`)} />
+      )}
+      {pickingGrocery && (
+        <RecipeGroceryModal recipeId={recipe.id} title={recipe.title} ingredients={ingredients} onClose={() => setPickingGrocery(false)} onAdded={onGroceryAdded} />
       )}
       {usedMatches && (
         <CookConfirm
