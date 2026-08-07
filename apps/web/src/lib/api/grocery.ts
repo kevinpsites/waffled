@@ -3,7 +3,7 @@
 // Grocery card (the original grocery exports are kept intact).
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
-import { tap, useRefetchOn } from './bus'
+import { tap, useRefetchOn, useLiveRefresh } from './bus'
 
 // ---- grocery (Today dashboard) ---------------------------------------------
 
@@ -226,6 +226,8 @@ export function useGroceryBoard(weekStart?: string): GroceryBoardState {
   }, [weekStart, nonce])
   // a dinner being planned changes the board's "this week's dinners" + auto items
   useRefetchOn(['grocery', 'meals'], () => setNonce((n) => n + 1))
+  // Cross-device liveness: poll + refetch on focus so another family member's edits appear.
+  useLiveRefresh(() => setNonce((n) => n + 1))
   return { board, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
 
@@ -269,6 +271,8 @@ export function useGrocery(): GroceryState {
   // keep the Today grocery card in sync with edits made on the Lists board, a
   // recipe's "add to grocery", etc.
   useRefetchOn(['grocery'], () => setNonce((n) => n + 1))
+  // Cross-device liveness: another family member checking an item shows up here too.
+  useLiveRefresh(() => setNonce((n) => n + 1))
 
   async function add(name: string): Promise<void> {
     const item = await groceryApi.addGroceryItem(name)
@@ -329,6 +333,8 @@ export function useLists(): ListsState {
   // Converting a list to/from a template (and item add/remove) taps 'grocery';
   // refetch so the Lists rail and the Templates group stay in lockstep.
   useRefetchOn(['grocery'], () => setNonce((n) => n + 1))
+  // Cross-device liveness: keep the rail counts fresh when another device edits a list.
+  useLiveRefresh(() => setNonce((n) => n + 1))
   return { lists, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
 
@@ -388,5 +394,7 @@ export function useListDetail(id: string | null): ListDetailState {
       alive = false
     }
   }, [id, nonce])
+  // Cross-device liveness: poll + refetch on focus so another family member's edits appear.
+  useLiveRefresh(() => { if (id) setNonce((n) => n + 1) })
   return { items, loading, error, setItems, refetch: () => setNonce((n) => n + 1) }
 }

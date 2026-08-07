@@ -124,9 +124,11 @@ final class ListDetailModel {
     /// Settled, checked items — shown in the collapsed Completed section.
     var completed: [WaffledAPI.ListItemDTO] { items.filter { $0.checked && !settling.contains($0.id) && matches($0) } }
 
-    func load() async {
-        loading = true
-        settling = []
+    /// `silent` keeps the current items on screen (no spinner) — used by the
+    /// foreground refresh + background poll so another device's edits fold in without
+    /// a visible reload flash.
+    func load(silent: Bool = false) async {
+        if !silent { loading = true; settling = [] }
         do {
             if isGrocery {
                 let board = try await api.groceryBoard(weekStart: requestedWeekStart)
@@ -143,7 +145,7 @@ final class ListDetailModel {
         } catch {
             self.error = true
         }
-        loading = false
+        if !silent { loading = false }
     }
 
     @discardableResult
@@ -403,6 +405,9 @@ final class ListDetailModel {
 struct ListDetailView: View {
     @Environment(SyncManager.self) private var sync
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+    /// Drives the cross-device liveness poll while this list is on screen.
+    private let pollTimer = Timer.publish(every: 20, on: .main, in: .common).autoconnect()
     @State private var model: ListDetailModel
     @State private var confirmingDelete = false
     @State private var draftName = ""
@@ -515,6 +520,18 @@ struct ListDetailView: View {
         .refreshable { await model.load() }
         .onChange(of: sync.groceryRev) { _, _ in if model.isGrocery { Task { await model.load() } } }
         .onChange(of: sync.listsRev) { _, _ in if !model.isGrocery { Task { await model.load() } } }
+        // Cross-device liveness: another family member's check appears without a manual
+        // pull-to-refresh. Refetch when the app returns to the foreground, and poll every
+        // 20s while this list is on screen. Both are silent (no spinner) and skip while
+        // editing / multi-selecting so they can't clobber an in-progress change. The
+        // timer handler reads live view state each tick (an async .task loop would capture
+        // stale scenePhase/editingId).
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, editingId == nil, !selecting { Task { await model.load(silent: true) } }
+        }
+        .onReceive(pollTimer) { _ in
+            if scenePhase == .active, editingId == nil, !selecting { Task { await model.load(silent: true) } }
+        }
         .onChange(of: focus) { _, new in
             // Tapping away from an inline edit commits it.
             if editingId != nil, new != .editName, new != .editQty { commitEdit() }
