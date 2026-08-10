@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatAmount, normalizeQuantity, parseQuantity } from '../src/modules/lists/quantity'
+import { formatAmount, normalizeQuantity, parseQuantity, plainQuantity } from '../src/modules/lists/quantity'
 import { mergeQuantity } from '../src/modules/lists/lists.service'
 
 // Recipe amounts are stored as numbers, so a "⅔ cup" ingredient round-trips out of the
@@ -62,6 +62,41 @@ describe('normalizeQuantity', () => {
     expect(normalizeQuantity('2 x 400g tins')).toBe('2 x 400g tins')
     expect(normalizeQuantity(null)).toBe(null)
     expect(normalizeQuantity('')).toBe('')
+  })
+})
+
+// "½" is the right thing to READ and the wrong thing to have sitting in a text box —
+// there is no key for it. The editor is handed an ASCII form instead, and whatever the
+// person types back parses to the same number.
+describe('plainQuantity (what goes in the edit box)', () => {
+  it('spells fraction glyphs out with characters a keyboard has', () => {
+    expect(plainQuantity('⅔ cup')).toBe('2/3 cup')
+    expect(plainQuantity('1½ lb')).toBe('1 1/2 lb')
+    expect(plainQuantity('¼')).toBe('1/4')
+    expect(plainQuantity('2¾ cups')).toBe('2 3/4 cups')
+  })
+
+  it('leaves anything without a glyph exactly as it is', () => {
+    expect(plainQuantity('2 cups')).toBe('2 cups')
+    expect(plainQuantity('a pinch')).toBe('a pinch')
+    expect(plainQuantity('1 cup + 2 tbsp')).toBe('1 cup + 2 tbsp')
+    expect(plainQuantity(null)).toBe(null)
+  })
+})
+
+describe('typed fractions round-trip', () => {
+  it('parses the mixed fraction the edit box now shows', () => {
+    expect(parseQuantity('1 1/2 lb').n).toBeCloseTo(1.5, 4)
+    expect(parseQuantity('1 1/2 lb').unit).toBe('lb')
+    expect(parseQuantity('2 3/4 cups').n).toBeCloseTo(2.75, 4)
+  })
+
+  it('normalizes what someone types back into the display form', () => {
+    expect(normalizeQuantity('1 1/2 lb')).toBe('1½ lb')
+    expect(normalizeQuantity('2/3 cup')).toBe('⅔ cup')
+    expect(normalizeQuantity('0.5 cup')).toBe('½ cup')
+    // edit box → save → edit box again lands on the same text
+    expect(plainQuantity(normalizeQuantity('1 1/2 lb'))).toBe('1 1/2 lb')
   })
 })
 

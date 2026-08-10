@@ -605,6 +605,18 @@ describe('grocery auto-build from a recipe', () => {
     const items = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items
     const milk = items.find((i: { name: string }) => i.name === 'evaporated milk')
     expect(milk.quantity).toBe('⅔ cup')
+    // …and the edit box gets a version someone can actually retype
+    expect(milk.quantityInput).toBe('2/3 cup')
+  })
+
+  it('accepts a typed fraction back and stores it as the display form', async () => {
+    const listId = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).list.id
+    const created = await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'buttermilk', quantity: '1 1/2 cup' })
+    expect(created.statusCode).toBe(201)
+    const items = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items
+    const bm = items.find((i: { name: string }) => i.name === 'buttermilk')
+    expect(bm.quantity).toBe('1½ cup')
+    expect(bm.quantityInput).toBe('1 1/2 cup')
   })
 
   it('tidies a raw float already stored on a row when serving the board', async () => {

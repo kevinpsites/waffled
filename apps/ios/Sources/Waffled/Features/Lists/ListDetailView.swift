@@ -1691,7 +1691,8 @@ struct ListDetailView: View {
     private func startEdit(_ item: WaffledAPI.ListItemDTO) {
         if editingId != nil, editingId != item.id { commitEdit() }
         editName = item.name
-        editQty = item.quantity ?? ""
+        // the typable form — a ½ in a text field can only be deleted, not amended
+        editQty = item.quantityInput ?? item.quantity ?? ""
         editingId = item.id
         focus = .editName
     }
@@ -1799,7 +1800,7 @@ struct ItemDetailEditor: View {
         self.showStore = showStore
         self.onSave = onSave
         _name = State(initialValue: item.name)
-        _quantity = State(initialValue: item.quantity ?? "")
+        _quantity = State(initialValue: item.quantityInput ?? item.quantity ?? "")
         _section = State(initialValue: item.section ?? "")
         _store = State(initialValue: item.store ?? "")
         _priority = State(initialValue: item.priority ?? ListItemPriority.normal)

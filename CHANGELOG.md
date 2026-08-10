@@ -132,7 +132,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Grocery quantities read like a recipe again.** An ingredient measured in thirds landed on
   the list as "0.6666666666666666 cup" — the number the computer kept rather than the ⅔ cup
   you'd actually write down. Quantities now show as fractions (⅔ cup, 1½ lb), including on
-  lists you built before this fix, and adding two half-cups still totals one cup.
+  lists you built before this fix, and adding two half-cups still totals one cup. Editing an
+  item hands you a version you can type — the box reads "1 1/2 lb" — and typing a fraction
+  that way (or as a decimal) saves it back in the tidy form.
 - **The grocery item editor lines up.** Editing an item put its two rows at different widths,
   and once an item had a store the lower row could spill outside the card at some window
   sizes. Both rows now fill the card, and the store box wraps instead of squashing the aisle

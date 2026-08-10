@@ -39,12 +39,28 @@ export function formatAmount(n: number): string {
 export function parseQuantity(q: string | null): { n: number | null; unit: string } {
   if (!q) return { n: null, unit: '' }
   const t = q.trim()
+  // Order matters: the mixed forms have to be tried before the bare integer, or "1 1/2"
+  // would parse as 1 with "1/2" left over as the unit.
   const m = new RegExp(
-    `^(\\d+\\s*[${GLYPH_CLASS}]|[${GLYPH_CLASS}]|\\d+\\s*/\\s*\\d+|\\d*\\.\\d+|\\d+)\\s*(.*)$`
+    `^(\\d+\\s*[${GLYPH_CLASS}]` + // 1½
+      `|[${GLYPH_CLASS}]` + // ½
+      `|\\d+\\s+\\d+\\s*/\\s*\\d+` + // 1 1/2 — what the edit box now shows
+      `|\\d+\\s*/\\s*\\d+` + // 2/3
+      `|\\d*\\.\\d+` + // 0.5
+      `|\\d+)\\s*(.*)$` // 2
   ).exec(t)
   if (!m) return { n: null, unit: t }
-  const token = m[1].replace(/\s+/g, '')
+  const raw = m[1]
   const unit = m[2].trim()
+
+  // "1 1/2" → whole 1 plus 1/2. Detected before whitespace is stripped, since that space
+  // is the only thing separating the whole part from the fraction.
+  const mixed = /^(\d+)\s+(\d+)\s*\/\s*(\d+)$/.exec(raw)
+  if (mixed) {
+    const den = Number(mixed[3])
+    return { n: den ? Number(mixed[1]) + Number(mixed[2]) / den : null, unit }
+  }
+  const token = raw.replace(/\s+/g, '')
 
   const glyph = [...token].find((c) => GLYPH_VALUE[c] != null)
   if (glyph) {
@@ -70,6 +86,20 @@ const UNIT_ONLY = /^[A-Za-z][A-Za-z. ]*$/
  * person typed, and the "1 cup + 2 tbsp" form mergeQuantity produces when units differ,
  * pass through byte-identical.
  */
+// "⅔" is right to read and impossible to type. Editors get this instead: the same value
+// spelled with keyboard characters ("2/3 cup", "1 1/2 lb"). Saving it round-trips back
+// through normalizeQuantity to the glyph form, so display stays tidy either way.
+const GLYPH_ASCII: Record<string, string> = {
+  '½': '1/2', '⅓': '1/3', '⅔': '2/3', '¼': '1/4', '¾': '3/4',
+  '⅕': '1/5', '⅖': '2/5', '⅛': '1/8', '⅜': '3/8', '⅝': '5/8', '⅞': '7/8',
+}
+export function plainQuantity(q: string | null): string | null {
+  if (q == null) return null
+  return q.replace(new RegExp(`(\\d*)\\s*([${GLYPH_CLASS}])`, 'g'), (_all, whole: string, glyph: string) =>
+    whole ? `${whole} ${GLYPH_ASCII[glyph]}` : GLYPH_ASCII[glyph]
+  )
+}
+
 export function normalizeQuantity(q: string | null): string | null {
   if (q == null) return null
   const t = q.trim()

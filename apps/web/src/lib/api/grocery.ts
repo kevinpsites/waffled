@@ -20,6 +20,8 @@ export interface GroceryItem {
   id: string
   name: string
   quantity: string | null
+  // see ListItem.quantityInput — the typable form, for edit fields
+  quantityInput?: string | null
   checked: boolean
   // ambient attribution (see ListItem) — who hand-added it + where it came from
   addedBy?: ListItemPersonRef | null
@@ -50,6 +52,9 @@ export interface ListItem {
   id: string
   name: string
   quantity: string | null
+  // `quantity` with fraction glyphs spelled out ("1 1/2 lb" for a displayed "1½ lb").
+  // Use it to seed edit fields — a ½ can be read but not typed. Saving it round-trips.
+  quantityInput?: string | null
   checked: boolean
   checkedAt: string | null
   section: string | null

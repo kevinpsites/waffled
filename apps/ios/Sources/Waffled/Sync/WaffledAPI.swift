@@ -2356,6 +2356,10 @@ struct WaffledAPI: Sendable {
         let id: String
         var name: String
         var quantity: String?
+        /// `quantity` with fraction glyphs spelled out ("1 1/2 lb" for a displayed
+        /// "1½ lb") — seed edit fields from this, since ½ can be read but not typed.
+        /// Optional so older servers decode.
+        var quantityInput: String?
         var checked: Bool
         var section: String?
         /// Free-text store/vendor (Costco, Walmart, …); nil = unassigned.

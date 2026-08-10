@@ -83,7 +83,9 @@ function ItemRow({
 }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(item.name)
-  const [qty, setQty] = useState(item.quantity ?? '')
+  // Seed from the typable form ("1 1/2 lb"), not the displayed "1½ lb" — a glyph in a
+  // text box is something you can only delete, not amend.
+  const [qty, setQty] = useState(item.quantityInput ?? item.quantity ?? '')
   // The aisle the item currently sits in (an explicit override, or '' = auto-filed
   // by name). Picking one writes `section` (category); "Auto" clears it.
   const [sec, setSec] = useState(item.section ?? '')
@@ -126,7 +128,7 @@ function ItemRow({
       {item.store && <span className="gstore" title={`Store: ${item.store}`}>🏬 {item.store}</span>}
       {item.quantity && <span className="gqty">{item.quantity}</span>}
       <span className="gitem-acts" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="gact" title="Edit" onClick={() => { setName(item.name); setQty(item.quantity ?? ''); setSec(item.section ?? ''); setStore(item.store ?? ''); setEditing(true) }}>✎</button>
+        <button type="button" className="gact" title="Edit" onClick={() => { setName(item.name); setQty(item.quantityInput ?? item.quantity ?? ''); setSec(item.section ?? ''); setStore(item.store ?? ''); setEditing(true) }}>✎</button>
         <button type="button" className="gact" title="Remove" onClick={onDelete}>🗑</button>
       </span>
     </div>

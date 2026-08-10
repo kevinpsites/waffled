@@ -8,7 +8,7 @@ import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { getRecipe, listIngredients, getOverrides } from '../meals/meals.service'
 import { aisleFor, isStaple } from './aisles'
-import { formatAmount, normalizeQuantity, parseQuantity } from './quantity'
+import { formatAmount, normalizeQuantity, parseQuantity, plainQuantity } from './quantity'
 import type { ListRow, ListItemRow, CreateListInput, PatchItemInput } from './lists.types'
 
 export async function getOrCreateGroceryList(tenant: Tenant): Promise<ListRow> {
@@ -972,6 +972,9 @@ export function presentListItem(i: ListItemRow) {
     // formatter existed stop showing "0.6666666666666666 cup" without a data migration.
     // Anything that doesn't parse cleanly is returned untouched.
     quantity: normalizeQuantity(i.quantity),
+    // The same value with the fraction spelled out ("1 1/2 lb"), for edit fields —
+    // nobody can type ½ on a keyboard. Saving it normalizes straight back.
+    quantityInput: plainQuantity(normalizeQuantity(i.quantity)),
     checked: i.checked,
     checkedAt: i.checked_at,
     weekStart: isoDateOnly(i.week_start),
