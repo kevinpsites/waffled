@@ -163,19 +163,23 @@ function aisleSections(items: GroceryBoardItem[]): BoardSection[] {
 }
 
 // Group items by their assigned store (alphabetical), with unassigned items in a
-// trailing "No store" section so nothing goes missing in the By-store view.
+// trailing "No store" section so nothing goes missing in the By-store view. Keyed
+// case-insensitively: the server snaps new writes onto one casing, but any row saved
+// before that would otherwise get its own identically-labelled section (the header is
+// uppercased in CSS, so "costco" and "Costco" both read as "COSTCO").
 function storeSections(items: GroceryBoardItem[]): BoardSection[] {
-  const byStore = new Map<string, GroceryBoardItem[]>()
+  const byStore = new Map<string, { label: string; items: GroceryBoardItem[] }>()
   const none: GroceryBoardItem[] = []
   for (const i of items) {
     const s = i.store?.trim()
     if (!s) { none.push(i); continue }
-    if (!byStore.has(s)) byStore.set(s, [])
-    byStore.get(s)!.push(i)
+    const key = s.toLowerCase()
+    if (!byStore.has(key)) byStore.set(key, { label: s, items: [] })
+    byStore.get(key)!.items.push(i)
   }
-  const out: BoardSection[] = [...byStore.keys()]
-    .sort((a, b) => a.localeCompare(b))
-    .map((s) => ({ key: `store|${s}`, aisle: s, items: byStore.get(s)!, store: s }))
+  const out: BoardSection[] = [...byStore.values()]
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .map(({ label, items: group }) => ({ key: `store|${label.toLowerCase()}`, aisle: label, items: group, store: label }))
   if (none.length) out.push({ key: '__nostore__', aisle: 'No store', items: none })
   return out
 }
@@ -251,15 +255,23 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   // Load the durable store quick-select (refetched when the board changes so a
   // just-assigned store persists as a suggestion).
   useEffect(() => {
-    groceryApi.stores().then(setStoreSuggestions).catch(() => {})
+    // Tolerate a partial/garbled payload — the quick-select is a nicety, and letting a
+    // non-array through here would throw while grouping and blank the whole board.
+    groceryApi.stores().then((s) => setStoreSuggestions(Array.isArray(s) ? s : [])).catch(() => {})
   }, [board])
 
   // Merge server suggestions with stores in use on the current board (deduped) so a
-  // store typed this session shows up before the next server round-trip.
+  // store typed this session shows up before the next server round-trip. Deduped
+  // case-insensitively — offering both "Costco" and "costco" defeats a quick-select.
   const storeOptions = useMemo(() => {
-    const set = new Set<string>(storeSuggestions)
-    board?.items.forEach((i) => { const s = i.store?.trim(); if (s) set.add(s) })
-    return [...set]
+    const byKey = new Map<string, string>()
+    const add = (s: string | null | undefined) => {
+      const v = s?.trim()
+      if (v && !byKey.has(v.toLowerCase())) byKey.set(v.toLowerCase(), v)
+    }
+    storeSuggestions.forEach(add)
+    board?.items.forEach((i) => add(i.store))
+    return [...byKey.values()]
   }, [storeSuggestions, board])
 
   if (loading && !board) return <div className="muted" style={{ padding: 30 }}>Loading…</div>

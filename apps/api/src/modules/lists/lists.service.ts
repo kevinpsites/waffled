@@ -249,6 +249,26 @@ export async function listItems(householdId: string, listId: string): Promise<Li
   return rows
 }
 
+// The store box is free text and every client writes it (web + iOS), so the same shop
+// typed with different capitalisation has to land on one store — otherwise the By-store
+// view splits into two identically-labelled sections and the quick-select offers both.
+// Trims, then snaps onto the casing the household already uses (most-used wins); a
+// genuinely new store keeps whatever the user typed.
+export async function canonicalStore(householdId: string, store: string | null | undefined): Promise<string | null> {
+  const trimmed = store?.trim()
+  if (!trimmed) return null
+  const { rows } = await query<{ store: string }>(
+    `select store from list_items
+       where household_id = $1 and deleted_at is null
+         and store is not null and lower(btrim(store)) = lower($2)
+       group by store
+       order by count(*) desc, store
+       limit 1`,
+    [householdId, trimmed]
+  )
+  return rows[0]?.store ?? trimmed
+}
+
 export async function addItem(
   tenant: Tenant,
   listId: string,
@@ -271,7 +291,7 @@ export async function addItem(
       input.name,
       input.quantity ?? null,
       input.category ?? null,
-      input.store ?? null,
+      await canonicalStore(tenant.householdId, input.store),
       input.assignedTo ?? null,
       input.priority ?? 3,
       tenant.personId,
@@ -335,7 +355,7 @@ export async function patchItem(
   }
   if ('store' in patch) {
     sets.push(`store = $${i++}`)
-    vals.push(patch.store ?? null)
+    vals.push(await canonicalStore(tenant.householdId, patch.store))
   }
   if (typeof patch.priority === 'number') {
     sets.push(`priority = $${i++}`)
@@ -407,7 +427,7 @@ export async function bulkPatchItems(
   }
   if ('store' in patch) {
     sets.push(`store = $${i++}`)
-    vals.push(patch.store ?? null)
+    vals.push(await canonicalStore(householdId, patch.store))
   }
   if ('assignedTo' in patch) {
     sets.push(`assigned_to = $${i++}`)
@@ -903,14 +923,22 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
 // quick-select for the store field (so a store you typed once stays offered even
 // after that week's items are cleared). Distinct over all non-deleted items, so
 // "Costco" typed before comes back as a chip rather than being retyped.
+// Folded case-insensitively (offering both "Costco" and "costco" defeats the point of a
+// quick-select), each variant group reported under its most-used casing. New writes are
+// snapped by canonicalStore; this also tidies rows written before that existed.
 export async function listStores(householdId: string): Promise<string[]> {
   const { rows } = await query<{ store: string }>(
-    `select store from list_items
-       where household_id = $1 and deleted_at is null
-         and store is not null and btrim(store) <> ''
-       group by store
-       order by count(*) desc, store
-       limit 50`,
+    `select (array_agg(store order by cnt desc, store))[1] as store
+       from (
+         select store, count(*)::int as cnt
+           from list_items
+          where household_id = $1 and deleted_at is null
+            and store is not null and btrim(store) <> ''
+          group by store
+       ) variants
+      group by lower(btrim(store))
+      order by sum(cnt) desc, min(store)
+      limit 50`,
     [householdId]
   )
   return rows.map((r) => r.store)

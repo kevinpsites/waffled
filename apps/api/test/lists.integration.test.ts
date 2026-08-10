@@ -410,6 +410,30 @@ describe('list items — store assignment + quick-select', () => {
     expect(items.find((i) => i.id === a)!.store).toBe('Target')
     expect(items.find((i) => i.id === b)!.store).toBe('Target')
   })
+
+  // The store box is free text and every client writes it (web + iOS), so the same
+  // shop typed with different capitalisation must land on one store — otherwise the
+  // By-store view shows two identically-labelled sections.
+  it('snaps a differently-cased store onto the casing already in use', async () => {
+    const created = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Hot dogs', store: 'costco' })).body).item
+    expect(created.store).toBe('Costco')
+
+    const patched = JSON.parse((await call('PATCH', `/api/list-items/${itemId}`, kevin, { store: 'COSTCO' })).body).item
+    expect(patched.store).toBe('Costco')
+
+    const bulkId = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Buns' })).body).item.id
+    await call('PATCH', '/api/list-items/bulk', kevin, { ids: [bulkId], patch: { store: 'cOsTcO' } })
+    const items = JSON.parse((await call('GET', `/api/lists/${listId}`, kevin)).body).items as Array<{ id: string; store: string | null }>
+    expect(items.find((i) => i.id === bulkId)!.store).toBe('Costco')
+
+    const stores = JSON.parse((await call('GET', '/api/lists/stores', kevin)).body).stores as string[]
+    expect(stores.filter((s) => s.toLowerCase() === 'costco')).toHaveLength(1)
+  })
+
+  it('keeps a genuinely new store as typed, and trims surrounding space', async () => {
+    const item = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Sourdough', store: '  Whole Foods  ' })).body).item
+    expect(item.store).toBe('Whole Foods')
+  })
 })
 
 describe('list item priority', () => {
