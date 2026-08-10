@@ -144,7 +144,12 @@ export function MealBuilderPlate({
             data-role={role.key}
             onDragOver={(e) => {
               e.preventDefault()
-              e.dataTransfer.dropEffect = 'move'
+              // Answer the drag in its own terms. A browser refuses a drop whose
+              // dropEffect contradicts the source's effectAllowed — and refuses it
+              // silently, by never firing `drop` at all. Library rows drag as
+              // 'copy' (adding a dish), plate rows as 'move' (re-roleing one), so
+              // hardcoding either one kills the other.
+              e.dataTransfer.dropEffect = e.dataTransfer.effectAllowed === 'move' ? 'move' : 'copy'
               setHover(role.key)
             }}
             onDragEnter={(e) => {

@@ -812,3 +812,48 @@ describe('MealBuilder — where a ＋ tap files the dish', () => {
     expect(groupOf('Roast Chicken')).toBe('side')
   })
 })
+
+// A real browser REJECTS a drop whose target dropEffect contradicts the source's
+// effectAllowed — it never fires the drop event at all. jsdom enforces none of
+// that, so this is asserted directly: library rows drag as 'copy' (they add a
+// dish), plate rows as 'move' (they re-role one), and the group must answer each
+// in its own terms. Hardcoding 'move' silently killed library → plate drags while
+// leaving plate → plate working, which is exactly how it presented.
+describe('MealBuilder — the drop target speaks both drag dialects', () => {
+  beforeEach(() => {
+    reset({
+      plate: plate({ recipes: [dish({ recipeId: 'r1', title: 'Coleslaw', role: 'side' })] }),
+      recipes: [recipe({ id: 'r2', title: 'Roast Chicken', category: 'dinner' })],
+    })
+    mockServer()
+  })
+
+  it('answers a copy drag with copy and a move drag with move', async () => {
+    renderBuilder()
+    await screen.findByText('Coleslaw')
+    const main = group('Main')
+
+    const copy = { ...dataTransfer(), effectAllowed: 'copy' }
+    fireEvent.dragOver(main, { dataTransfer: copy })
+    expect(copy.dropEffect).toBe('copy')
+
+    const move = { ...dataTransfer(), effectAllowed: 'move' }
+    fireEvent.dragOver(main, { dataTransfer: move })
+    expect(move.dropEffect).toBe('move')
+  })
+
+  it('adds a library recipe dropped straight onto a group', async () => {
+    renderBuilder()
+    await screen.findByText('Coleslaw')
+
+    const dt = { ...dataTransfer(), effectAllowed: 'copy' }
+    const row = within(document.querySelector('.mb-lib') as HTMLElement)
+      .getByText('Roast Chicken')
+      .closest('.mb-lib-row') as HTMLElement
+    fireEvent.dragStart(row, { dataTransfer: dt })
+    fireEvent.dragOver(group('Main'), { dataTransfer: dt })
+    fireEvent.drop(group('Main'), { dataTransfer: dt })
+
+    await waitFor(() => expect(groupOf('Roast Chicken')).toBe('main'))
+  })
+})
