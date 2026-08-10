@@ -129,6 +129,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Grocery quantities read like a recipe again.** An ingredient measured in thirds landed on
+  the list as "0.6666666666666666 cup" — the number the computer kept rather than the ⅔ cup
+  you'd actually write down. Quantities now show as fractions (⅔ cup, 1½ lb), including on
+  lists you built before this fix, and adding two half-cups still totals one cup.
+- **The grocery item editor lines up.** Editing an item put its two rows at different widths,
+  and once an item had a store the lower row could spill outside the card at some window
+  sizes. Both rows now fill the card, and the store box wraps instead of squashing the aisle
+  picker and the save button.
 - **Recipe photos now show on iPhone and iPad.** Uploaded recipe images were falling back to
   the emoji placeholder in the detail hero and the library cards, even though the web showed
   the picture — the app wasn't resolving the stored image's address. They now render (and are

@@ -258,6 +258,11 @@
 .gitem.editing {
   display: flex;
   flex-direction: column;
+  /* Both rows span the card. Without this each .gedit-line sized itself to its own
+     max-content — the name+qty row to one width, the aisle+store+buttons row to a
+     wider one — so the two rows sat at different widths and the lower one spilled
+     out of the card at mid widths. */
+  align-items: stretch;
   gap: 8px;
   padding: 9px 12px;
   background: var(--card);
@@ -269,9 +274,17 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
+  /* the store input is the first thing to wrap, rather than squeezing the aisle
+     select and the save/cancel buttons until they clip */
+  flex-wrap: wrap;
+}
+.gedit-line > .gact {
+  flex: none;
 }
 .gedit-sec {
-  flex: 1;
+  flex: 1 1 132px;
   min-width: 0;
   font: inherit;
   font-size: 14px;
@@ -283,7 +296,7 @@
   color: var(--ink);
 }
 .gedit-name {
-  flex: 1;
+  flex: 2 1 140px;
   min-width: 0;
   font: inherit;
   font-size: 15px;
@@ -294,8 +307,10 @@
   padding: 8px 12px;
 }
 .gedit-qty {
-  width: 72px;
-  flex: none;
+  /* wide enough for "1½ lb" without stealing the name's room */
+  flex: 0 1 96px;
+  width: auto;
+  min-width: 0;
   font: inherit;
   font-size: 14px;
   border: 0;
@@ -305,7 +320,7 @@
 }
 /* Free-text store input in the item editor (backed by a datalist of prior stores). */
 .gedit-store {
-  flex: 1;
+  flex: 1 1 110px;
   min-width: 0;
   font: inherit;
   font-size: 14px;
