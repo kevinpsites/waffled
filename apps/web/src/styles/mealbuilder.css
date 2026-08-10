@@ -425,6 +425,31 @@
   background: var(--ink);
   color: var(--on-inverse);
 }
+/* `background: var(--ink)` is the repo's inverted-fill idiom, and it inverts in
+   BOTH directions — in dark mode --ink is cream, so this bar became a bright slab
+   across the bottom of a dark screen. That reads fine on a chip or a toast (the
+   only other places we use it) but not on a full-width persistent footer, where it
+   dominates the page and drags the toggle's translucent track down with it until
+   only the knob is visible. In dark mode the bar is just an elevated surface. */
+:root[data-theme="dark"] .mb-bar,
+.dark .mb-bar {
+  background: var(--card-2);
+  color: var(--ink);
+  border-top: 1px solid var(--hair-2);
+}
+:root[data-theme="dark"] .mb-bar .mb-step,
+.dark .mb-bar .mb-step {
+  background: var(--panel);
+}
+:root[data-theme="dark"] .mb-bar .mb-step button,
+.dark .mb-bar .mb-step button {
+  color: var(--ink);
+}
+:root[data-theme="dark"] .mb-bar-actions .btn-ghost,
+.dark .mb-bar-actions .btn-ghost {
+  background: var(--panel);
+  color: var(--ink);
+}
 .mb-bar-stat {
   display: flex;
   align-items: center;
