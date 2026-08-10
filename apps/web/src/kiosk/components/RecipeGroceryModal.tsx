@@ -76,7 +76,7 @@ export function RecipeGroceryModal({
             return (
               <div
                 key={ing.id}
-                className={`ring-row ${on ? 'on' : ''}`}
+                className={`ring-row picking ${on ? 'on' : ''}`}
                 role="button"
                 tabIndex={0}
                 onClick={() => toggle(ing.id)}

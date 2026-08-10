@@ -87,7 +87,7 @@ function IngredientRow({ ing, ratio, onSub }: { ing: RecipeIngredient; ratio: nu
     )
   }
   return (
-    <div className={`ring-row ${checked ? 'on' : ''} ${ing.sub ? 'subbed' : ''}`}>
+    <div className={`ring-row checklist ${checked ? 'on' : ''} ${ing.sub ? 'subbed' : ''}`}>
       <span className="ring-ck" aria-hidden role="button" tabIndex={0} onClick={() => setChecked((v) => !v)}>{checked ? '✓' : ''}</span>
       <span className="ring-amt" onClick={() => setChecked((v) => !v)}>{left}</span>
       <span className="ring-name" onClick={() => setChecked((v) => !v)}>

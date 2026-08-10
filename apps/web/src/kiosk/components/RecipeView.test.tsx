@@ -142,6 +142,19 @@ describe('RecipeView — add ingredients to grocery', () => {
     expect(modal.getByRole('button', { name: 'Add 1 item' })).toBeInTheDocument()
   })
 
+  // The picker reuses `.ring-row` from the cooking checklist, where "on" means "already
+  // got it" and is struck through. In the picker "on" means "will be added", so the two
+  // must not share the struck-through treatment — see the `checklist` / `picking` split.
+  it('does not give picked ingredients the checklist strike-through styling', async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ added: 3 }) })) as unknown as typeof fetch
+    renderView()
+
+    const modal = await openPicker()
+    const picked = modal.getByRole('button', { name: /avocado/ })
+    expect(picked.className).toContain('picking')
+    expect(picked.className).not.toContain('checklist')
+  })
+
   it('shows an error note when the request fails instead of failing silently', async () => {
     globalThis.fetch = vi.fn(async () => {
       throw new Error('network down')
