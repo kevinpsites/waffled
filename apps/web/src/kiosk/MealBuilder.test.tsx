@@ -143,17 +143,22 @@ function mockServer() {
       return ok({ meal: server.plate })
     }
 
-    // PATCH /api/meals/:id/recipes/:recipeId — per-dish cook assignment
+    // PATCH /api/meals/:id/recipes/:recipeId — per-dish cook assignment, and
+    // re-roleing a dish that's already on the plate (dragging Sides → Main).
     const patchDish = u.match(/^\/api\/meals\/[^/]+\/recipes\/([^/]+)$/)
     if (patchDish && method === 'PATCH') {
       const p = server.persons.find((x) => x.id === body.cookPersonId) ?? null
       server.plate = recalc({
         ...server.plate!,
-        recipes: server.plate!.recipes.map((r) =>
-          r.recipeId === patchDish[1]
-            ? { ...r, cook: p ? { personId: p.id, name: p.name, avatarEmoji: p.avatarEmoji, colorHex: p.colorHex } : null }
-            : r,
-        ),
+        recipes: server.plate!.recipes.map((r) => {
+          if (r.recipeId !== patchDish[1]) return r
+          const next = { ...r }
+          if (typeof body.role === 'string') next.role = body.role
+          if ('cookPersonId' in body) {
+            next.cook = p ? { personId: p.id, name: p.name, avatarEmoji: p.avatarEmoji, colorHex: p.colorHex } : null
+          }
+          return next
+        }),
       })
       return ok({ meal: server.plate })
     }
@@ -568,7 +573,8 @@ describe('MealBuilder — a brand-new plate', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Add BBQ Chicken' }))
     await waitFor(() => expect(server.calls.some((c) => c.method === 'POST' && c.url === '/api/meals')).toBe(true))
-    await waitFor(() => expect(within(group('Sides')).getByText('BBQ Chicken')).toBeInTheDocument())
+    // The first savoury dish on an empty plate becomes the Main, not a side.
+    await waitFor(() => expect(within(group('Main')).getByText('BBQ Chicken')).toBeInTheDocument())
   })
 
   it('creates the meal lazily on the first rename', async () => {
@@ -670,5 +676,139 @@ describe('MealBuilder — who cooks each dish', () => {
       expect(patch?.body).toEqual({ cookPersonId: null })
     })
     await waitFor(() => expect(screen.queryByText(/Kevin/, { selector: '.mb-cook-badge' })).not.toBeInTheDocument())
+  })
+})
+
+// A drag payload that behaves like the real one. jsdom gives fireEvent no
+// DataTransfer, and the drag source calls setData() with a bespoke mime type, so
+// without this the handler throws before any of the interesting code runs.
+function dataTransfer() {
+  const store: Record<string, string> = {}
+  return {
+    dropEffect: '',
+    effectAllowed: '',
+    setData: (k: string, v: string) => { store[k] = v },
+    getData: (k: string) => store[k] ?? '',
+    setDragImage: () => {},
+  }
+}
+
+// Every query below is scoped to the plate: a dish's title also appears in the
+// library list on the right, so an unscoped getByText is ambiguous the moment a
+// recipe is on the plate.
+function plateEl(): HTMLElement {
+  return document.querySelector('.mb-plate') as HTMLElement
+}
+
+function dishRow(title: string): HTMLElement {
+  return within(plateEl()).getByText(title).closest('.mb-dish') as HTMLElement
+}
+
+function groupOf(title: string): string {
+  const g = within(plateEl()).getByText(title).closest('.mb-group') as HTMLElement
+  return g.dataset.role ?? ''
+}
+
+// The plate scaffolds three roles, but a dish could only ever be filed by the
+// library on the way IN — once it landed in the wrong group there was no way to
+// move it. Dragging a dish between groups re-roles it in place.
+describe('MealBuilder — moving a dish between roles', () => {
+  beforeEach(() => {
+    reset({
+      plate: plate({
+        recipes: [dish({ recipeId: 'r1', title: 'Coleslaw', role: 'side' })],
+      }),
+    })
+    mockServer()
+  })
+
+  it('re-roles a dish dragged from Sides onto Main', async () => {
+    renderBuilder()
+    expect(await screen.findByText('Coleslaw')).toBeInTheDocument()
+    expect(groupOf('Coleslaw')).toBe('side')
+
+    const dt = dataTransfer()
+    fireEvent.dragStart(dishRow('Coleslaw'), { dataTransfer: dt })
+    fireEvent.drop(screen.getByLabelText('Add a main'), { dataTransfer: dt })
+
+    await waitFor(() => expect(groupOf('Coleslaw')).toBe('main'))
+    // Re-roleing is an UPDATE, never a second insert — meal_recipes is keyed on
+    // (meal_id, recipe_id), so a dish can only appear once on a plate.
+    const patches = server.calls.filter((c) => c.method === 'PATCH' && /\/recipes\//.test(c.url))
+    expect(patches).toHaveLength(1)
+    expect(patches[0].body).toMatchObject({ role: 'main' })
+    expect(server.calls.filter((c) => c.method === 'POST' && /\/recipes$/.test(c.url))).toHaveLength(0)
+  })
+
+  it('does nothing when a dish is dropped back on the role it already has', async () => {
+    renderBuilder()
+    expect(await screen.findByText('Coleslaw')).toBeInTheDocument()
+
+    const dt = dataTransfer()
+    fireEvent.dragStart(dishRow('Coleslaw'), { dataTransfer: dt })
+    fireEvent.drop(screen.getByLabelText('Add a side'), { dataTransfer: dt })
+
+    await waitFor(() => expect(groupOf('Coleslaw')).toBe('side'))
+    expect(server.calls.filter((c) => c.method === 'PATCH' && /\/recipes\//.test(c.url))).toHaveLength(0)
+  })
+})
+
+// With the segment on "All" every ＋ tap hardcoded the dish to Sides, so a plate
+// built entirely from the library ended up with an empty Main and everything
+// piled under Sides — which is exactly what it looked like in use.
+describe('MealBuilder — where a ＋ tap files the dish', () => {
+  it('makes the first savoury dish the Main rather than a side', async () => {
+    reset({
+      plate: plate({ recipes: [] }),
+      recipes: [recipe({ id: 'r1', title: 'Roast Chicken', category: 'dinner' })],
+    })
+    mockServer()
+    renderBuilder()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Roast Chicken' }))
+    await waitFor(() => expect(screen.getByText('Roast Chicken')).toBeInTheDocument())
+    expect(groupOf('Roast Chicken')).toBe('main')
+  })
+
+  it('files later savoury dishes under Sides once a Main exists', async () => {
+    reset({
+      plate: plate({ recipes: [dish({ recipeId: 'r0', title: 'Roast Chicken', role: 'main' })] }),
+      recipes: [recipe({ id: 'r1', title: 'Coleslaw', category: 'dinner' })],
+    })
+    mockServer()
+    renderBuilder()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Coleslaw' }))
+    await waitFor(() => expect(screen.getByText('Coleslaw')).toBeInTheDocument())
+    expect(groupOf('Coleslaw')).toBe('side')
+    expect(groupOf('Roast Chicken')).toBe('main')
+  })
+
+  it('always files a dessert under Dessert, even as the first dish', async () => {
+    reset({
+      plate: plate({ recipes: [] }),
+      recipes: [recipe({ id: 'r1', title: 'Peach Cobbler', category: 'dessert' })],
+    })
+    mockServer()
+    renderBuilder()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Peach Cobbler' }))
+    await waitFor(() => expect(screen.getByText('Peach Cobbler')).toBeInTheDocument())
+    expect(groupOf('Peach Cobbler')).toBe('dessert')
+  })
+
+  it('still honours the slot you tapped — that is an explicit destination', async () => {
+    reset({
+      plate: plate({ recipes: [] }),
+      recipes: [recipe({ id: 'r1', title: 'Roast Chicken', category: 'dinner' })],
+    })
+    mockServer()
+    renderBuilder()
+
+    // Tapping "Add a side" means the user chose Sides; inference must not override it.
+    fireEvent.click(await screen.findByLabelText('Add a side'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Roast Chicken' }))
+    await waitFor(() => expect(screen.getByText('Roast Chicken')).toBeInTheDocument())
+    expect(groupOf('Roast Chicken')).toBe('side')
   })
 })

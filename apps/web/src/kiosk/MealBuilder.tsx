@@ -188,7 +188,12 @@ export function MealBuilder() {
     dragRef.current = null
     if (!item) return
     if (item.kind === 'meal') addMeal(item.id)
-    else addRecipe(item.id, role)
+    else if (item.kind === 'dish') {
+      // Already on the plate: this is a move, so it's an UPDATE. Dropping a dish
+      // back where it started must not round-trip to the server at all.
+      if (item.from === role) return
+      void run((mealId) => mealBuilderApi.patchDish(mealId, item.id, { role }))
+    } else addRecipe(item.id, role)
   }
 
   if (error) return <div className="mb-shell mb-empty">Couldn’t load that meal.</div>
@@ -225,9 +230,13 @@ export function MealBuilder() {
           onAssignCook={assignCook}
           onPickRole={(role) => setAddingRole(role)}
           onDropOnRole={dropOnRole}
+          onDragItem={(payload) => {
+            dragRef.current = payload
+          }}
         />
         <MealBuilderLibrary
           onPlate={onPlate}
+          hasMain={dishes.some((d) => d.role === 'main')}
           addingRole={addingRole}
           onCancelAdding={() => setAddingRole(null)}
           onAddRecipe={addRecipe}

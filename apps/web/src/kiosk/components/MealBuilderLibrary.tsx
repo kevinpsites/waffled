@@ -82,8 +82,10 @@ export function MealBuilderLibrary({
   onAddRecipe,
   onAddMeal,
   onDragItem,
+  hasMain,
 }: {
   onPlate: Set<string>
+  hasMain: boolean
   addingRole: PlateRole | null
   onCancelAdding: () => void
   onAddRecipe: (recipeId: string, role: PlateRole) => void
@@ -123,10 +125,21 @@ export function MealBuilderLibrary({
 
   const empty = shownRecipes.length === 0 && shownMeals.length === 0
 
-  // Tapping ＋ files the dish under the role you're looking at: the banner's role
-  // if a plate slot asked for one, otherwise the segment. "All" has no role of its
-  // own, so it falls back to the plate's catch-all group.
-  const addRole: PlateRole = addingRole ?? (segment === 'all' ? 'side' : segment)
+  // Where a ＋ tap files the dish. An explicit destination always wins: the slot
+  // the user tapped on the plate, else the segment they're browsing. Only "All"
+  // has no role of its own — and there, filing everything under Sides left plates
+  // with an empty Main and a pile of sides, which is not what anyone meant. So
+  // infer per recipe: a dessert is a dessert, the first savoury dish is the Main,
+  // and everything after it is a side.
+  function roleFor(r: Recipe): PlateRole {
+    if (addingRole) return addingRole
+    if (segment !== 'all') return segment
+    if (isDessert(r)) return 'dessert'
+    return hasMain ? 'side' : 'main'
+  }
+  // Only used for the footer hint, which can only name a role when there IS one
+  // role for every row.
+  const fixedRole: PlateRole | null = addingRole ?? (segment === 'all' ? null : segment)
 
   return (
     <aside className="mb-lib">
@@ -185,7 +198,7 @@ export function MealBuilderLibrary({
               emoji={r.emoji ?? '🍽️'}
               meta={[kind, mins > 0 ? `${mins} min` : null].filter(Boolean).join(' · ')}
               onPlate={onPlate.has(r.id)}
-              onAdd={() => onAddRecipe(r.id, addRole)}
+              onAdd={() => onAddRecipe(r.id, roleFor(r))}
               onDragStart={() => onDragItem({ kind: 'recipe', id: r.id })}
             />
           )
@@ -194,7 +207,9 @@ export function MealBuilderLibrary({
       </div>
 
       <div className="mb-lib-foot tiny muted">
-        Drag a row onto a slot, or tap ＋ to add it to {roleLabel(addRole)}.
+        {fixedRole
+          ? `Drag a row onto a slot, or tap ＋ to add it to ${roleLabel(fixedRole)}.`
+          : 'Drag a row onto a slot, or tap ＋ and we’ll file it for you.'}
       </div>
     </aside>
   )

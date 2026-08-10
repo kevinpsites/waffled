@@ -18,9 +18,15 @@ export function roleLabel(role: string): string {
   return PLATE_ROLES.find((r) => r.key === role)?.label ?? 'Sides'
 }
 
-// What a library row hands to a drop zone. A saved meal FLATTENS on drop — its
-// dishes come in as individual rows and keep their own roles (decision 12).
-export type DragPayload = { kind: 'recipe'; id: string } | { kind: 'meal'; id: string }
+// What a drag hands to a drop zone. A saved meal FLATTENS on drop — its dishes
+// come in as individual rows and keep their own roles (decision 12). A `dish` is
+// already ON the plate: dropping it re-roles it in place rather than adding it
+// again, which matters because meal_recipes is keyed on (meal_id, recipe_id) and
+// a recipe can therefore only appear once per plate.
+export type DragPayload =
+  | { kind: 'recipe'; id: string }
+  | { kind: 'meal'; id: string }
+  | { kind: 'dish'; id: string; from: PlateRole }
 
 export function dishMinutes(d: { prepTimeMinutes: number | null; cookTimeMinutes: number | null }): number {
   return (d.prepTimeMinutes ?? 0) + (d.cookTimeMinutes ?? 0)
@@ -41,17 +47,19 @@ function DishRow({
   onOpen,
   onRemove,
   onAssignCook,
+  onDragDish,
 }: {
   dish: MealDish
   persons: Person[]
   onOpen: () => void
   onRemove: () => void
   onAssignCook: (personId: string | null) => void
+  onDragDish: (e: React.DragEvent) => void
 }) {
   const mins = dishMinutes(dish)
   const title = dish.title ?? 'Untitled recipe'
   return (
-    <div className="mb-dish">
+    <div className="mb-dish" draggable onDragStart={onDragDish}>
       <button type="button" className="mb-dish-open" onClick={onOpen}>
         <span className="mb-thumb">{dish.emoji ?? '🍽️'}</span>
         <span className="mb-dish-b">
@@ -105,6 +113,7 @@ export function MealBuilderPlate({
   onAssignCook,
   onPickRole,
   onDropOnRole,
+  onDragItem,
 }: {
   dishes: MealDish[]
   persons: Person[]
@@ -114,6 +123,7 @@ export function MealBuilderPlate({
   onAssignCook: (recipeId: string, personId: string | null) => void
   onPickRole: (role: PlateRole) => void
   onDropOnRole: (role: PlateRole) => void
+  onDragItem: (payload: DragPayload | null) => void
 }) {
   // Which drop zone the pointer is currently over — HTML5 drag has no :hover.
   const [hover, setHover] = useState<PlateRole | null>(null)
@@ -125,7 +135,34 @@ export function MealBuilderPlate({
           .filter((d) => (role.key === 'side' ? d.role !== 'main' && d.role !== 'dessert' : d.role === role.key))
           .sort((a, b) => a.sortOrder - b.sortOrder)
         return (
-          <section className="mb-group" key={role.key} data-role={role.key}>
+          // The whole group is the drop target, not just its trailing slot — a
+          // populated group's slot sits below its rows, so requiring a hit on it
+          // would make Sides → Main a game of pixel-hunting.
+          <section
+            className="mb-group"
+            key={role.key}
+            data-role={role.key}
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'move'
+              setHover(role.key)
+            }}
+            onDragEnter={(e) => {
+              e.preventDefault()
+              setHover(role.key)
+            }}
+            onDragLeave={(e) => {
+              // Moving between children fires dragleave on the parent; ignore it
+              // unless the pointer actually left the group.
+              if (e.currentTarget.contains(e.relatedTarget as Node)) return
+              setHover((h) => (h === role.key ? null : h))
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              setHover(null)
+              onDropOnRole(role.key)
+            }}
+          >
             <div className="mb-group-head">
               <span className={`mb-dot mb-dot-${role.key}`} />
               <span className="mb-group-label">{role.label}</span>
@@ -140,6 +177,13 @@ export function MealBuilderPlate({
                 onOpen={() => onOpenDish(d.recipeId)}
                 onRemove={() => onRemoveDish(d.recipeId)}
                 onAssignCook={(personId) => onAssignCook(d.recipeId, personId)}
+                onDragDish={(e) => {
+                  // A bespoke mime type, never text/plain — a text payload gets
+                  // pasted into whatever input the drag happens to end over.
+                  e.dataTransfer.setData('application/x-waffled-dish', d.recipeId)
+                  e.dataTransfer.effectAllowed = 'move'
+                  onDragItem({ kind: 'dish', id: d.recipeId, from: role.key })
+                }}
               />
             ))}
 
@@ -150,21 +194,6 @@ export function MealBuilderPlate({
               aria-label={role.slot}
               className={`mb-slot${hover === role.key ? ' is-over' : ''}${addingRole === role.key ? ' is-adding' : ''}`}
               onClick={() => onPickRole(role.key)}
-              onDragOver={(e) => {
-                e.preventDefault()
-                e.dataTransfer.dropEffect = 'copy'
-                setHover(role.key)
-              }}
-              onDragEnter={(e) => {
-                e.preventDefault()
-                setHover(role.key)
-              }}
-              onDragLeave={() => setHover((h) => (h === role.key ? null : h))}
-              onDrop={(e) => {
-                e.preventDefault()
-                setHover(null)
-                onDropOnRole(role.key)
-              }}
             >
               <span className="mb-slot-plus">＋</span>
               <span className="mb-slot-label">{role.slot}</span>
