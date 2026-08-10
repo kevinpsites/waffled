@@ -137,3 +137,102 @@ private let TUE_2ND = date("2026-06-09T12:00:00Z")
         #expect(Recurrence.nthWeekdayOfMonth(date("2026-06-02T12:00:00Z"), cal) == 1)
     }
 }
+
+@Suite struct RecurringEventEditPolicyTests {
+    private let original = RecurringEventSeriesFields(
+        allDay: false,
+        isCountdown: false,
+        participantIds: ["person-a"],
+        goalId: "goal-a",
+        goalStepId: "step-a",
+        rrule: "FREQ=WEEKLY;BYDAY=MO",
+        recurrenceEndAt: nil)
+
+    @Test func singleOccurrenceAcceptsOnlyUnchangedSeriesFields() {
+        #expect(RecurringEventEditPolicy.canApplyToSingleOccurrence(original: original, edited: original))
+        #expect(!RecurringEventEditPolicy.canApplyToSingleOccurrence(
+            original: original,
+            edited: RecurringEventSeriesFields(
+                allDay: false,
+                isCountdown: true,
+                participantIds: ["person-a"],
+                goalId: "goal-a",
+                goalStepId: "step-a",
+                rrule: "FREQ=WEEKLY;BYDAY=MO",
+                recurrenceEndAt: nil)))
+    }
+
+    @Test func participantOrderDoesNotChangeTheSeries() {
+        let twoPeople = RecurringEventSeriesFields(
+            allDay: false,
+            isCountdown: false,
+            participantIds: ["person-a", "person-b"],
+            goalId: nil,
+            goalStepId: nil,
+            rrule: "FREQ=WEEKLY;BYDAY=MO",
+            recurrenceEndAt: nil)
+        let reordered = RecurringEventSeriesFields(
+            allDay: false,
+            isCountdown: false,
+            participantIds: ["person-b", "person-a"],
+            goalId: nil,
+            goalStepId: nil,
+            rrule: "FREQ=WEEKLY;BYDAY=MO",
+            recurrenceEndAt: nil)
+
+        #expect(RecurringEventEditPolicy.canApplyToSingleOccurrence(original: twoPeople, edited: reordered))
+    }
+
+    @Test func oneOccurrenceRequestOmitsSeriesOnlyFields() {
+        let body = WaffledAPI.eventUpdateBody(
+            title: "Special practice",
+            startsAtISO: "2026-06-22T22:00:00Z",
+            endsAtISO: nil,
+            allDay: true,
+            location: "Gym",
+            personIds: ["person-a"],
+            goalId: "goal-a",
+            goalStepId: "step-a",
+            rrule: "FREQ=DAILY",
+            clearRrule: false,
+            recurrenceEndAt: nil,
+            clearRecurrenceEndAt: false,
+            scope: "this",
+            occurrenceStart: "2026-06-22T22:00:00Z",
+            isCountdown: true)
+
+        #expect(body["title"] == .string("Special practice"))
+        #expect(body["location"] == .string("Gym"))
+        #expect(body["allDay"] == nil)
+        #expect(body["isCountdown"] == nil)
+        #expect(body["participantIds"] == nil)
+        #expect(body["goalId"] == nil)
+        #expect(body["rrule"] == nil)
+    }
+
+    @Test func followingRequestIncludesSeriesFieldsAndRecurrence() {
+        let body = WaffledAPI.eventUpdateBody(
+            title: "Special practice",
+            startsAtISO: "2026-06-22T22:00:00Z",
+            endsAtISO: nil,
+            allDay: true,
+            location: nil,
+            personIds: ["person-a"],
+            goalId: "goal-a",
+            goalStepId: "step-a",
+            rrule: "FREQ=DAILY",
+            clearRrule: false,
+            recurrenceEndAt: nil,
+            clearRecurrenceEndAt: true,
+            scope: "following",
+            occurrenceStart: "2026-06-22T22:00:00Z",
+            isCountdown: true)
+
+        #expect(body["allDay"] == .bool(true))
+        #expect(body["isCountdown"] == .bool(true))
+        #expect(body["participantIds"] == .array([.string("person-a")]))
+        #expect(body["goalId"] == .string("goal-a"))
+        #expect(body["rrule"] == .string("FREQ=DAILY"))
+        #expect(body["recurrenceEndAt"] == .null)
+    }
+}

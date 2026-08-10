@@ -38,20 +38,40 @@ enum FamilyNightFormat {
 @MainActor
 @Observable
 final class FamilyNightModel {
+    typealias FetchFamilyNight = () async throws -> WaffledAPI.FamilyNightView
+    typealias SaveAssignment = (_ date: String, _ partId: String, _ personId: String?) async throws -> Void
+
     private(set) var view: WaffledAPI.FamilyNightView?
     private(set) var loaded = false
-    private let api = WaffledAPI()
+
+    private let fetchFamilyNight: FetchFamilyNight
+    private let saveAssignment: SaveAssignment
+
+    init(
+        fetchFamilyNight: @escaping FetchFamilyNight = {
+            try await WaffledAPI().familyNight()
+        },
+        saveAssignment: @escaping SaveAssignment = { date, partId, personId in
+            _ = try await WaffledAPI().saveFamilyNightOccurrence(
+                date: date, assignments: [(partId, personId)])
+        }
+    ) {
+        self.fetchFamilyNight = fetchFamilyNight
+        self.saveAssignment = saveAssignment
+    }
 
     func load() async {
-        view = try? await api.familyNight()
+        if let latest = try? await fetchFamilyNight() {
+            view = latest
+        }
         loaded = true
     }
 
     /// Assign (or clear, `personId == nil`) a single agenda part for the upcoming
     /// gathering — a per-week override of the rotation. Reloads to reflect the write.
-    func assign(partId: String, personId: String?) async {
+    func assign(partId: String, personId: String?) async throws {
         guard let date = view?.next.date else { return }
-        _ = try? await api.saveFamilyNightOccurrence(date: date, assignments: [(partId, personId)])
+        try await saveAssignment(date, partId, personId)
         await load()
     }
 }
@@ -64,12 +84,25 @@ final class FamilyNightModel {
 struct FamilyNightCard: View {
     var kiosk = false
     @State private var model = FamilyNightModel()
+    @State private var busy = false
+    @State private var errorMessage: String?
 
     var body: some View {
         Group {
             if kiosk { KioskCard { inner } } else { WaffledCard(padding: 15) { inner } }
         }
         .task { await model.load() }
+        .alert("Family Night unchanged", isPresented: errorPresented) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "The assignment could not be changed.")
+        }
+    }
+
+    private var errorPresented: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } })
     }
 
     @ViewBuilder private var inner: some View {
@@ -79,6 +112,12 @@ struct FamilyNightCard: View {
                     .font(kiosk ? .system(size: 16, weight: .heavy) : .system(size: 12.5, weight: .bold))
                     .foregroundStyle(kiosk ? WF.ink : WF.ink2)
                 Spacer(minLength: 6)
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 16, height: 16)
+                    .opacity(busy ? 1 : 0)
+                    .accessibilityHidden(!busy)
+                    .accessibilityLabel("Saving Family Night assignment")
                 if let d = model.view?.next.date {
                     Text(FamilyNightFormat.dateLabel(d))
                         .font(.system(size: kiosk ? 14 : 12, weight: .semibold)).foregroundStyle(WF.ink3)
@@ -125,7 +164,7 @@ struct FamilyNightCard: View {
         Menu {
             ForEach(members) { m in
                 Button {
-                    Task { await model.assign(partId: a.partId, personId: m.id) }
+                    assign(partId: a.partId, personId: m.id)
                 } label: {
                     if m.id == a.personId { Label(m.name, systemImage: "checkmark") } else { Text(m.name) }
                 }
@@ -133,7 +172,7 @@ struct FamilyNightCard: View {
             if a.personId != nil {
                 Divider()
                 Button(role: .destructive) {
-                    Task { await model.assign(partId: a.partId, personId: nil) }
+                    assign(partId: a.partId, personId: nil)
                 } label: { Label("Clear", systemImage: "xmark") }
             }
         } label: {
@@ -152,6 +191,20 @@ struct FamilyNightCard: View {
                     Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
                 }
                 .foregroundStyle(WF.ai)
+            }
+        }
+        .disabled(busy)
+    }
+
+    private func assign(partId: String, personId: String?) {
+        guard !busy else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                try await model.assign(partId: partId, personId: personId)
+            } catch {
+                errorMessage = "Couldn’t change this assignment. Check your connection and try again."
             }
         }
     }

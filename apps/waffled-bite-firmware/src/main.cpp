@@ -18,13 +18,19 @@
 #include "wb_http.h"
 #include "wb_store.h"
 #include "wb_tick_hal.h"
+#include "wb_wifi.h"
+#include "wb_boot_flow.h"
 #include "ui/home_screen.h"
 #include "ui/settings_screen.h"
 #include "ui/control_detail_screen.h"
 #include "ui/onboarding_screen.h"
+#include "ui/wifi_screen.h"
 #include "ui/quiet_screen.h"
 #include "ui/timer_screen.h"
 #include "ui/bedtime_screen.h"
+#include "ui/offline_screen.h"
+#include "ui/forget_confirm_screen.h"
+#include "icons/wb_icons.h"
 #include <ArduinoJson.h>
 #include <string>
 #include <cstring>
@@ -32,14 +38,7 @@
 #if defined(ARDUINO)
 #include <Wire.h>
 #include <TAMC_GT911.h>
-#include <WiFi.h>
 static TAMC_GT911 ts = TAMC_GT911(WB_TOUCH_SDA, WB_TOUCH_SCL, WB_TOUCH_INT, WB_TOUCH_RST, 1024, 600);
-#ifndef WB_WIFI_SSID
-#define WB_WIFI_SSID "" // set via platformio.ini's esp32-p4 build_flags
-#endif
-#ifndef WB_WIFI_PASS
-#define WB_WIFI_PASS ""
-#endif
 #else
 #include <chrono>
 #include <thread>
@@ -63,6 +62,18 @@ static void disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_ma
   uint32_t w = area->x2 - area->x1 + 1;
   uint32_t h = area->y2 - area->y1 + 1;
   lcd.pushImageDMA(area->x1, area->y1, w, h, (lgfx::rgb565_t *)px_map);
+  // pushImageDMA only STARTS the transfer — it returns immediately, while the
+  // DMA hardware keeps reading from `buf1` in the background. There's only
+  // one flush buffer (see buf1's comment), so without waiting here,
+  // lv_display_flush_ready() below tells LVGL it's safe to render the NEXT
+  // chunk into the same buffer the DMA engine may still be mid-read on —
+  // a classic single-buffer/async-DMA tear. Previously invisible against
+  // plain color+text content (or just not looked at closely enough); a real
+  // bitmap image on the boot screen — held on-screen for many redraw cycles
+  // by the blocking WiFi-connect wait loop below — made it obvious as
+  // sustained flicker. waitDMA() blocks until the in-flight transfer
+  // actually finishes before the buffer is handed back.
+  lcd.waitDMA();
   lv_display_flush_ready(disp);
 }
 
@@ -75,8 +86,26 @@ static void touchpad_read(lv_indev_t * /*indev*/, lv_indev_data_t *data)
   if (ts.isTouched)
   {
     data->state = LV_INDEV_STATE_PR;
-    data->point.x = ts.points[0].x;
-    data->point.y = ts.points[0].y;
+    // TAMC_GT911's ROTATION_NORMAL (set in setup(), below) flips BOTH axes
+    // (x = width - x_raw, y = height - y_raw internally). The Y half needed
+    // undoing (confirmed on real hardware: swiping up scrolled the list
+    // down, backwards from every phone/tablet's "content follows your
+    // finger" convention) — see the on-screen keyboard's floating-flag fix
+    // nearby for the same "confirmed on real hardware" bar. The X half
+    // looked correct at first only because it was tested against full-width
+    // tap targets (list rows, wide chips), where a mirrored X still lands in
+    // the same row; the on-screen keyboard's narrow, side-by-side keys
+    // exposed it for real (confirmed: tapping a key hit the mirrored key on
+    // the opposite side) — undo it the same way. None of TAMC_GT911's four
+    // rotation presets express "flip neither axis, this board's touch
+    // controller and panel orientation just don't line up otherwise," so
+    // both axes end up hand-corrected here rather than picking a different
+    // preset.
+    // 1023/599, not 1024/600: valid coordinates on this 1024x600 panel are
+    // 0..1023 / 0..599, so flipping against the raw panel size put an edge
+    // touch (raw 0) one pixel past the last valid column/row.
+    data->point.x = 1023 - ts.points[0].x;
+    data->point.y = 599 - ts.points[0].y;
   }
   else
   {
@@ -104,12 +133,14 @@ static void touchpad_read(lv_indev_t * /*indev*/, lv_indev_data_t *data)
 static lv_obj_t *home_scr;
 static lv_obj_t *settings_scr;
 static lv_obj_t *onboarding_scr;
+static lv_obj_t *wifi_scr; // WiFi picker — shown before onboarding_scr whenever there's no saved/working WiFi (see wb_boot_next)
 static lv_obj_t *tasks_scr;  // rebuilt fresh each time a routine tile is tapped — see home_screen.cpp
 static lv_obj_t *detail_scr;  // rebuilt fresh each time the Sounds/Nightlight tile is tapped — see settings_screen.cpp
 static lv_obj_t *quiet_scr;   // force-shown whenever the poll reports quiet time active — see wb_do_poll
 static lv_obj_t *timer_scr;   // picker <-> countdown, kept correctly built by every poll — see wb_do_poll
 static lv_obj_t *bedtime_scr; // plain preview OR wake-light sleep/warn/wake — see wb_bedtime_claim_of
 static lv_obj_t *forget_scr;  // rebuilt fresh each time (see settings_screen.cpp's 5-tap sequence), no live state to sync
+static lv_obj_t *offline_scr; // force-shown on the offline-badge threshold (see wb_mark_poll_failed) unless a lock (quiet/bedtime) is already active
 static bool onboarding_built = false;
 static bool g_quietWasActive = false;
 static bool g_timerWasActive = false; // tracks timer_scr's built shape (picker vs countdown), same role as g_quietWasActive
@@ -164,21 +195,61 @@ static lv_timer_t *g_pollTimer = nullptr;
 // A single miss doesn't show it (transient hiccups are normal on real
 // WiFi) — only WB_OFFLINE_AFTER_MISSES consecutive ones do.
 #define WB_OFFLINE_AFTER_MISSES 2
+// Every poll runs synchronously on the LVGL thread (wb_http_esp32.cpp has no
+// task offload), so a poll against an unreachable server blocks the whole UI
+// for up to its connect timeout (~3s — see wb_http_esp32.cpp) before the
+// display/touch loop can run again. At the normal 5s cadence that's most of
+// the time spent frozen rather than responsive — confirmed live: this is
+// what looked like a device-wide slowdown/possible memory issue after a
+// device moved to a new network with a now-unreachable saved server address.
+// Once offline (WB_OFFLINE_AFTER_MISSES misses), back off to a much slower
+// cadence so the device stays USABLE (if briefly stuttering every half
+// minute) instead of stuttering every 5 seconds indefinitely; a single
+// success snaps it back to normal polling.
+#define WB_POLL_INTERVAL_MS 5000
+#define WB_POLL_INTERVAL_OFFLINE_MS 30000
 static lv_obj_t *g_offlineBadge = nullptr;
 static int g_pollFailStreak = 0;
 static void wb_mark_poll_failed()
 {
   g_pollFailStreak++;
   if (g_pollFailStreak >= WB_OFFLINE_AFTER_MISSES)
+  {
     lv_obj_clear_flag(g_offlineBadge, LV_OBJ_FLAG_HIDDEN);
+    if (g_pollTimer)
+      lv_timer_set_period(g_pollTimer, WB_POLL_INTERVAL_OFFLINE_MS);
+    // Force onto offline_scr so device-initiated actions (which all need a
+    // live request — starting a timer, completing a chore...) don't just
+    // silently fail with no explanation, same "confirmed live" story as the
+    // freeze fix above. Re-asserted on EVERY offline poll (not just the
+    // first edge into the state) — confirmed live: backing out to another
+    // screen while still offline used to just quietly stay there forever
+    // instead of coming back. Never preempt a parent-forced lock (quiet
+    // time, or bedtime's Sleep/Warn/Wake claim) — that would hand a kid a
+    // way OUT of a lock just by taking the device offline on purpose — and
+    // never yank someone off a screen they're actively mid-recovery on
+    // (the WiFi picker, onboarding, or the forget-pairing confirm screen
+    // offline_scr's own buttons lead to) or off offline_scr itself.
+    lv_obj_t *active = lv_screen_active();
+    bool locked = active == quiet_scr ||
+                  (active == bedtime_scr && g_bedtimeClaim != WbBedtimeClaim::Preview);
+    bool inRecoveryFlow = active == wifi_scr || active == onboarding_scr || active == forget_scr || active == offline_scr;
+    if (!locked && !inRecoveryFlow)
+      lv_scr_load(offline_scr);
+  }
 }
 static void wb_mark_poll_ok()
 {
   g_pollFailStreak = 0;
+  if (lv_screen_active() == offline_scr)
+    lv_scr_load(home_scr);
   lv_obj_add_flag(g_offlineBadge, LV_OBJ_FLAG_HIDDEN);
+  if (g_pollTimer)
+    lv_timer_set_period(g_pollTimer, WB_POLL_INTERVAL_MS);
 }
 
 static void wb_show_onboarding();
+static void wb_show_wifi_picker();
 static void wb_enter_app();
 
 // Clears the local pairing and falls back to onboarding. Does NOT itself
@@ -217,8 +288,8 @@ static void wb_forget_pairing_and_unpair()
   wb_forget_pairing();
 }
 
-static bool wb_complete_task(const std::string &taskId);
-static bool wb_uncomplete_task(const std::string &taskId);
+static WbTaskCompleteResult wb_complete_task(const std::string &taskId);
+static WbTaskCompleteResult wb_uncomplete_task(const std::string &taskId);
 static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue);
 static bool wb_start_timer(int durationSec);
 static bool wb_end_timer();
@@ -486,51 +557,50 @@ static void wb_poll_timer_cb(lv_timer_t * /*timer*/)
 // update everywhere (home screen tiles, greeting badge) without waiting up
 // to 5s for the next timer tick — the tapped row itself already updated
 // optimistically in tasks_screen.cpp before this was even called.
-static bool wb_complete_task(const std::string &taskId)
+static WbTaskCompleteResult wb_complete_task(const std::string &taskId)
 {
   if (taskId.empty()) // mock/placeholder tasks have no real instance id
-    return false;
+    return WbTaskCompleteResult::Failed;
 
   if (wb_tick_ms() >= g_tokenExpiresAtMs)
   {
     if (!wb_refresh_access_token())
-      return false;
+      return WbTaskCompleteResult::Failed;
   }
 
   std::string url = g_serverUrl + "/api/waffled-bites/device/tasks/" + taskId + "/complete";
   WbHttpResponse resp = wb_http_post(url.c_str(), "{}", g_accessToken.c_str());
-  bool ok = resp.ok && resp.status == 200;
-  if (ok)
-  {
-    // A photo-proof/approval-required chore still answers HTTP 200, but with
-    // instance.status "awaiting", not "done" — treat that as NOT a completed
-    // tap (the row should revert to its un-tapped state via the caller's
-    // existing failure-revert path) instead of leaving it optimistically
-    // checked until the next poll silently un-checks it with no explanation.
-    JsonDocument doc;
-    if (!deserializeJson(doc, resp.body))
-    {
-      const char *status = doc["instance"]["status"].is<const char *>() ? doc["instance"]["status"].as<const char *>() : "";
-      if (strcmp(status, "done") != 0)
-        ok = false;
-    }
-  }
-  if (ok)
+  if (!resp.ok || resp.status != 200)
+    return WbTaskCompleteResult::Failed;
+
+  // A photo-proof/approval-required chore still answers HTTP 200, but with
+  // instance.status "awaiting", not "done" — that's a distinct result from a
+  // plain completion (see WbTaskCompleteResult), not a failure.
+  JsonDocument doc;
+  if (deserializeJson(doc, resp.body))
+    return WbTaskCompleteResult::Failed;
+  const char *status = doc["instance"]["status"].is<const char *>() ? doc["instance"]["status"].as<const char *>() : "";
+  WbTaskCompleteResult result = strcmp(status, "done") == 0     ? WbTaskCompleteResult::Success
+                                 : strcmp(status, "awaiting") == 0 ? WbTaskCompleteResult::AwaitingApproval
+                                                                    : WbTaskCompleteResult::Failed;
+  if (result != WbTaskCompleteResult::Failed)
     wb_do_poll();
-  return ok;
+  return result;
 }
 
 // tasks_screen.h's onUncomplete — un-tapping an already-done row. Mirrors
-// wb_complete_task exactly, just POSTing .../uncomplete instead.
-static bool wb_uncomplete_task(const std::string &taskId)
+// wb_complete_task exactly, just POSTing .../uncomplete instead. Never
+// returns AwaitingApproval — there's no photo/approval ambiguity on the way
+// back to "pending".
+static WbTaskCompleteResult wb_uncomplete_task(const std::string &taskId)
 {
   if (taskId.empty())
-    return false;
+    return WbTaskCompleteResult::Failed;
 
   if (wb_tick_ms() >= g_tokenExpiresAtMs)
   {
     if (!wb_refresh_access_token())
-      return false;
+      return WbTaskCompleteResult::Failed;
   }
 
   std::string url = g_serverUrl + "/api/waffled-bites/device/tasks/" + taskId + "/uncomplete";
@@ -538,7 +608,7 @@ static bool wb_uncomplete_task(const std::string &taskId)
   bool ok = resp.ok && resp.status == 200;
   if (ok)
     wb_do_poll();
-  return ok;
+  return ok ? WbTaskCompleteResult::Success : WbTaskCompleteResult::Failed;
 }
 
 // The settings detail screen's onChange callback (settings_screen.h).
@@ -633,13 +703,50 @@ static void wb_enter_app()
   lv_obj_clean(settings_scr);
   wb_build_home_screen(home_scr, wb_mock_state(), settings_scr, tasks_scr, wb_complete_task, wb_uncomplete_task);
   wb_build_settings_screen(settings_scr, wb_mock_state(), home_scr, detail_scr, timer_scr, bedtime_scr, forget_scr, wb_patch_settings, wb_forget_pairing_and_unpair);
+
+  // timer_scr/bedtime_scr are otherwise only ever built inside wb_do_poll()'s
+  // first-success path below — if the device is offline (or the very first
+  // poll after pairing simply fails for any reason), that build never runs,
+  // and tapping into either from Settings navigates to a genuinely empty
+  // lv_obj: no content, no back button, no way out short of a power cycle.
+  // Confirmed live: this is what "I tapped Timer and it white-screened, now
+  // it's frozen" turned out to be. Give both a real placeholder build here,
+  // same mock-state pattern already used for home_scr/settings_scr above —
+  // wb_do_poll()'s first real success still fully rebuilds both with live
+  // data (g_liveScreensBuilt / g_bedtimeScrBuilt both start false), this
+  // only closes the empty-screen window before that first success lands.
+  lv_obj_clean(timer_scr);
+  wb_build_timer_screen(timer_scr, wb_mock_state().timer, settings_scr, wb_start_timer, wb_end_timer);
+  lv_obj_clean(bedtime_scr);
+  wb_build_bedtime_screen(bedtime_scr, wb_glow_spec_for_device_state(wb_mock_state()), settings_scr);
+
+  // offline_scr has no live state (see wb_mark_poll_failed/wb_mark_poll_ok
+  // for when it's force-shown/dismissed), so it only needs building once —
+  // same reasoning as timer_scr/bedtime_scr's placeholder builds above,
+  // just simpler since there's no per-poll data to fill in.
+  lv_obj_clean(offline_scr);
+  wb_build_offline_screen(
+      offline_scr, settings_scr, []()
+      { wb_do_poll(); }, // manual retry — don't wait for a possibly-30s-backed-off scheduled poll
+      wb_show_wifi_picker,
+      []()
+      {
+        // Same clean+build+load forget_scr does from Settings' 5-tap
+        // gesture (settings_screen.cpp's WbGrownupTapCtx) — forget_scr has
+        // no content of its own until something builds it, same
+        // never-built-until-tapped shape as detail_scr/tasks_scr.
+        lv_obj_clean(forget_scr);
+        wb_build_forget_confirm_screen(forget_scr, settings_scr, wb_forget_pairing_and_unpair);
+        lv_scr_load(forget_scr);
+      });
+
   lv_scr_load(home_scr);
 
   wb_do_poll(); // also does timer_scr/bedtime_scr's real first build — see wb_do_poll's g_liveScreensBuilt branch
 
   if (g_pollTimer)
     lv_timer_del(g_pollTimer);
-  g_pollTimer = lv_timer_create(wb_poll_timer_cb, 5000, nullptr);
+  g_pollTimer = lv_timer_create(wb_poll_timer_cb, WB_POLL_INTERVAL_MS, nullptr);
 }
 
 static void wb_on_paired(const std::string &serverUrl, const std::string &deviceSecret)
@@ -656,10 +763,40 @@ static void wb_show_onboarding()
 {
   if (!onboarding_built)
   {
-    wb_build_onboarding_screen(onboarding_scr, g_serverUrl.empty() ? WB_API_BASE_URL : g_serverUrl.c_str(), wb_on_paired);
+    wb_build_onboarding_screen(onboarding_scr, g_serverUrl.empty() ? WB_API_BASE_URL : g_serverUrl.c_str(), wb_on_paired, wb_show_wifi_picker);
     onboarding_built = true;
   }
   lv_scr_load(onboarding_scr);
+}
+
+// wifi_screen.h's onConnected — WiFi just came up (or the desktop simulator
+// pretended it did). Persists the credentials so setup() doesn't need to
+// show wifi_scr again next boot, then falls through to whichever of
+// onboarding/the live app comes next (same decision wb_boot_next made once
+// already at boot, re-evaluated here since only the WiFi half of it was
+// unknown then).
+static void wb_on_wifi_connected(const std::string &ssid, const std::string &pass)
+{
+  wb_store_set("wifiSsid", ssid);
+  wb_store_set("wifiPass", pass);
+  if (g_deviceSecret.empty())
+    wb_show_onboarding();
+  else
+    wb_enter_app();
+}
+
+// Re-opens the WiFi picker from the onboarding screen's "Change Wi-Fi
+// network" chip — the only way back to it once a network's already saved,
+// otherwise a wrong/moved network left onboarding permanently unreachable.
+// Rebuilt fresh on every tap (same pattern as tasks_scr/detail_scr/
+// forget_scr — see their declarations above) rather than built once at boot,
+// so it doesn't kick off an extra WiFi scan on every boot that already has
+// working WiFi.
+static void wb_show_wifi_picker()
+{
+  lv_obj_clean(wifi_scr);
+  wb_build_wifi_screen(wifi_scr, wb_on_wifi_connected);
+  lv_scr_load(wifi_scr);
 }
 
 void setup()
@@ -699,8 +836,8 @@ void setup()
   lv_indev_set_read_cb(indev, touchpad_read);
 
 #if defined(ARDUINO)
-  // Show something before the (up to 15s) WiFi wait below — previously the
-  // very first screen wasn't built until after this block, so a slow/absent
+  // Show something before the WiFi-connect attempt below — previously the
+  // very first screen wasn't built until after that attempt, so a slow/absent
   // network left the panel showing an undefined framebuffer for the whole
   // wait with zero feedback. This screen is a one-time throwaway (never
   // referenced again after lv_scr_load below switches away from it).
@@ -709,38 +846,36 @@ void setup()
   lv_obj_set_style_bg_opa(boot_scr, LV_OPA_COVER, 0);
   lv_obj_set_flex_flow(boot_scr, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(boot_scr, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  // Logo + text sized up (96px/font_24 -> 160px/font_32, "Connecting..."
+  // given an explicit font_20-equivalent bump too) per direct request — this
+  // screen only has three elements on it, so it read sparse/small next to
+  // every other screen's now-chunkier scale.
+  lv_obj_t *boot_logo = lv_image_create(boot_scr);
+  lv_image_set_src(boot_logo, &wb_logo_160);
+  lv_obj_set_style_pad_bottom(boot_logo, 12, 0);
   lv_obj_t *boot_title = lv_label_create(boot_scr);
   lv_label_set_text(boot_title, "Waffled");
-  lv_obj_set_style_text_font(boot_title, &lv_font_montserrat_24, 0);
+  lv_obj_set_style_text_font(boot_title, &lv_font_montserrat_32, 0);
   lv_obj_t *boot_sub = lv_label_create(boot_scr);
   lv_label_set_text(boot_sub, "Connecting...");
+  lv_obj_set_style_text_font(boot_sub, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(boot_sub, lv_color_hex(0x8A8478), 0);
+  lv_obj_set_style_pad_top(boot_sub, 4, 0);
   lv_scr_load(boot_scr);
   lv_timer_handler(); // flush this frame before the blocking wait below
-
-  // Hardcoded credentials until real WiFi provisioning exists (deferred —
-  // see the firmware README); blocking wait at boot only, a connection lost
-  // later just makes every wb_http call fail until it comes back, which
-  // wb_do_poll already tolerates by skipping that tick.
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WB_WIFI_SSID, WB_WIFI_PASS);
-  uint32_t wifiStart = wb_tick_ms();
-  while (WiFi.status() != WL_CONNECTED && wb_tick_ms() - wifiStart < 15000)
-  {
-    lv_timer_handler(); // keep the display/touch pipeline alive during the wait, not frozen
-    delay(5);
-  }
 #endif
 
   home_scr = lv_obj_create(NULL);
   settings_scr = lv_obj_create(NULL);
   onboarding_scr = lv_obj_create(NULL);
+  wifi_scr = lv_obj_create(NULL);
   tasks_scr = lv_obj_create(NULL);
   detail_scr = lv_obj_create(NULL);
   quiet_scr = lv_obj_create(NULL);
   timer_scr = lv_obj_create(NULL);
   bedtime_scr = lv_obj_create(NULL);
   forget_scr = lv_obj_create(NULL);
+  offline_scr = lv_obj_create(NULL);
 
   // A small "Offline" pill on the always-on-top layer — see g_offlineBadge's
   // header comment. Built once here, toggled hidden/visible by
@@ -780,10 +915,39 @@ void setup()
   if (g_serverUrl.empty())
     g_serverUrl = WB_API_BASE_URL;
 
-  if (g_deviceSecret.empty())
+  // Try the saved WiFi credentials (if any) before deciding what to show.
+  // Uses wb_wifi.h (real WiFi.h on esp32-p4, a simulated connect on native)
+  // rather than a raw blocking WiFi.begin loop, so this same path is
+  // exercisable in the desktop simulator too — see wb_wifi_native.cpp.
+  std::string savedWifiSsid = wb_store_get("wifiSsid");
+  std::string savedWifiPass = wb_store_get("wifiPass");
+  bool wifiConnected = false;
+  if (!savedWifiSsid.empty())
+  {
+    wb_wifi_connect(savedWifiSsid, savedWifiPass);
+    uint32_t wifiStart = wb_tick_ms();
+    while (wb_wifi_connect_status() == WbWifiConnStatus::Connecting && wb_tick_ms() - wifiStart < 15000)
+    {
+      lv_timer_handler(); // keep the display/touch pipeline alive during the wait, not frozen
+#if defined(ARDUINO)
+      delay(5);
+#endif
+    }
+    wifiConnected = (wb_wifi_connect_status() == WbWifiConnStatus::Connected);
+  }
+
+  switch (wb_boot_next(!savedWifiSsid.empty(), wifiConnected, !g_deviceSecret.empty()))
+  {
+  case WbBootNext::ShowWifiPicker:
+    wb_show_wifi_picker();
+    break;
+  case WbBootNext::ShowOnboarding:
     wb_show_onboarding();
-  else
+    break;
+  case WbBootNext::EnterApp:
     wb_enter_app();
+    break;
+  }
 }
 
 void loop()

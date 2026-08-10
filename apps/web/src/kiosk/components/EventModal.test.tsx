@@ -48,10 +48,17 @@ describe('EventModal', () => {
     participants: [],
   }
 
-  function mockEventApi(patched: unknown[], deleted: string[]) {
+  function mockEventApi(
+    patched: unknown[],
+    deleted: string[],
+    master?: typeof sampleEvent & { rrule: string; recurrenceEndAt?: string | null }
+  ) {
     globalThis.fetch = vi.fn(async (url: string, opts?: { method?: string; body?: string }) => {
       const u = String(url)
       if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      if (/\/api\/events\/[^/?]+$/.test(u) && !opts?.method && master) {
+        return { ok: true, json: async () => ({ event: master }) }
+      }
       if (/\/api\/events\/[^/]+$/.test(u) && opts?.method === 'PATCH') {
         patched.push(JSON.parse(opts.body!))
         return { ok: true, json: async () => ({ event: { id: 'e1' } }) }
@@ -129,5 +136,84 @@ describe('EventModal', () => {
     fireEvent.click(thisOne)
     await waitFor(() => expect(patched).toHaveLength(1))
     expect(patched[0]).toMatchObject({ title: 'New title', scope: 'this', occurrenceStart: '2026-06-22T22:00:00Z' })
+    expect(patched[0]).not.toHaveProperty('allDay')
+    expect(patched[0]).not.toHaveProperty('isCountdown')
+    expect(patched[0]).not.toHaveProperty('participantIds')
+    expect(patched[0]).not.toHaveProperty('goalId')
+    expect(patched[0]).not.toHaveProperty('rrule')
+  })
+
+  it('recognizes a recurring master without an occurrence timestamp', async () => {
+    const patched: Array<Record<string, unknown>> = []
+    mockEventApi(patched, [])
+    const recurringMaster = { ...sampleEvent, rrule: 'FREQ=WEEKLY;BYDAY=MO' }
+    renderModal(<EventModal event={recurringMaster} onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    fireEvent.change(screen.getByDisplayValue('Old title'), { target: { value: 'New title' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(patched).toHaveLength(0)
+    fireEvent.click(await screen.findByRole('button', { name: 'All events' }))
+    await waitFor(() => expect(patched).toHaveLength(1))
+    expect(patched[0]).toMatchObject({ title: 'New title', scope: 'all' })
+  })
+
+  it('hydrates recurrence before editing a locally streamed occurrence', async () => {
+    const patched: Array<Record<string, unknown>> = []
+    const master = {
+      ...sampleEvent,
+      id: 'series-1',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+      recurrenceEndAt: null,
+    }
+    mockEventApi(patched, [], master)
+    const localOccurrence = {
+      ...sampleEvent,
+      id: 'occurrence-1',
+      startsAt: '2026-06-22T22:00:00Z',
+      seriesId: 'series-1',
+      occurrenceStart: '2026-06-22T22:00:00Z',
+    }
+    renderModal(<EventModal event={localOccurrence} onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    await waitFor(() => expect(screen.getByDisplayValue('Weekly')).toBeTruthy())
+    fireEvent.change(screen.getByDisplayValue('Old title'), { target: { value: 'New title' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'This event' }))
+
+    await waitFor(() => expect(patched).toHaveLength(1))
+    expect(patched[0]).toMatchObject({
+      title: 'New title',
+      scope: 'this',
+      occurrenceStart: '2026-06-22T22:00:00Z',
+    })
+  })
+
+  it('requires a series scope when series-only fields changed', async () => {
+    const patched: Array<Record<string, unknown>> = []
+    mockEventApi(patched, [])
+    const recurring = {
+      ...sampleEvent,
+      isCountdown: false,
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+      seriesId: 'e1',
+      occurrenceStart: '2026-06-22T22:00:00Z',
+    }
+    renderModal(<EventModal event={recurring} onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    fireEvent.click(screen.getByLabelText(/Show a countdown/))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    const thisOne = await screen.findByRole('button', { name: 'This event' })
+    expect(thisOne).toBeDisabled()
+    expect(screen.getByText(/Choose “This and following events” or “All events”/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'This and following events' }))
+    await waitFor(() => expect(patched).toHaveLength(1))
+    expect(patched[0]).toMatchObject({
+      scope: 'following',
+      isCountdown: true,
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+    })
   })
 })

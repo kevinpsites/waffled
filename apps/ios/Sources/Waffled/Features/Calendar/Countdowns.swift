@@ -36,6 +36,11 @@ enum CountdownFormat {
 @MainActor
 @Observable
 final class CountdownsModel {
+    typealias FetchCountdowns = () async throws -> (items: [WaffledAPI.Countdown], sleeps: Bool)
+    typealias CreateCountdown = (_ title: String, _ date: String, _ emoji: String?) async throws -> Void
+    typealias UpdateCountdown = (_ id: String, _ title: String, _ date: String, _ emoji: String?) async throws -> Void
+    typealias DeleteCountdown = (_ id: String) async throws -> Void
+
     private(set) var items: [WaffledAPI.Countdown] = [] {
         didSet { byDate = Dictionary(grouping: items, by: \.date) }
     }
@@ -44,26 +49,59 @@ final class CountdownsModel {
     private(set) var byDate: [String: [WaffledAPI.Countdown]] = [:]
     private(set) var sleeps = false
     private(set) var loaded = false
-    private let api = WaffledAPI()
+
+    private let fetchCountdowns: FetchCountdowns
+    private let createCountdown: CreateCountdown
+    private let updateCountdown: UpdateCountdown
+    private let deleteCountdown: DeleteCountdown
+    private var deletingIDs: Set<String> = []
+
+    init(
+        fetchCountdowns: @escaping FetchCountdowns = {
+            let response = try await WaffledAPI().countdowns()
+            return (response.items, response.sleeps)
+        },
+        createCountdown: @escaping CreateCountdown = { title, date, emoji in
+            _ = try await WaffledAPI().createCountdown(title: title, date: date, emoji: emoji)
+        },
+        updateCountdown: @escaping UpdateCountdown = { id, title, date, emoji in
+            try await WaffledAPI().updateCountdown(id: id, title: title, date: date, emoji: emoji)
+        },
+        deleteCountdown: @escaping DeleteCountdown = { id in
+            try await WaffledAPI().deleteCountdown(id: id)
+        }
+    ) {
+        self.fetchCountdowns = fetchCountdowns
+        self.createCountdown = createCountdown
+        self.updateCountdown = updateCountdown
+        self.deleteCountdown = deleteCountdown
+    }
 
     func load() async {
-        if let r = try? await api.countdowns() { items = r.items; sleeps = r.sleeps }
+        if let response = try? await fetchCountdowns() {
+            items = response.items
+            sleeps = response.sleeps
+        }
         loaded = true
     }
-    func add(title: String, date: String, emoji: String?) async {
-        _ = try? await api.createCountdown(title: title, date: date, emoji: emoji)
+
+    func add(title: String, date: String, emoji: String?) async throws {
+        try await createCountdown(title, date, emoji)
         await load()
     }
+
     /// Only standalone items can be removed (events/birthdays are managed at their source).
-    func remove(_ c: WaffledAPI.Countdown) async {
-        guard c.isStandalone else { return }
+    func remove(_ c: WaffledAPI.Countdown) async throws {
+        guard c.isStandalone, deletingIDs.insert(c.id).inserted else { return }
+        defer { deletingIDs.remove(c.id) }
+        try await deleteCountdown(c.id)
         items.removeAll { $0.id == c.id }
-        try? await api.deleteCountdown(id: c.id)
     }
+
     /// Rename / move a standalone countdown (events/birthdays are edited at their source).
-    func update(_ c: WaffledAPI.Countdown, title: String, date: String, emoji: String?) async {
+    func update(_ c: WaffledAPI.Countdown, title: String, date: String, emoji: String?) async throws {
         guard c.isStandalone else { return }
-        try? await api.updateCountdown(id: c.id, title: title, date: date, emoji: emoji)
+        try await updateCountdown(c.id, title, date, emoji)
         await load()
     }
 }
@@ -79,6 +117,7 @@ struct CountdownsCard: View {
     @State private var model = CountdownsModel()
     @State private var adding = false
     @State private var editing: WaffledAPI.Countdown?
+    @State private var errorMessage: String?
     private var cap: Int { kiosk ? 4 : 6 }
 
     var body: some View {
@@ -87,13 +126,28 @@ struct CountdownsCard: View {
         }
         .task { await model.load() }
         .sheet(isPresented: $adding) {
-            AddCountdownSheet { title, date, emoji in await model.add(title: title, date: date, emoji: emoji) }
+            AddCountdownSheet { title, date, emoji in
+                try await model.add(title: title, date: date, emoji: emoji)
+            }
         }
         .sheet(item: $editing) { c in
             EditCountdownSheet(countdown: c,
-                onSave: { title, date, emoji in await model.update(c, title: title, date: date, emoji: emoji) },
-                onRemove: { await model.remove(c) })
+                onSave: { title, date, emoji in
+                    try await model.update(c, title: title, date: date, emoji: emoji)
+                },
+                onRemove: { try await model.remove(c) })
         }
+        .alert("Countdown unchanged", isPresented: errorPresented) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "The countdown could not be changed.")
+        }
+    }
+
+    private var errorPresented: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } })
     }
 
     @ViewBuilder private var inner: some View {
@@ -145,7 +199,7 @@ struct CountdownsCard: View {
                 .font(.system(size: kiosk ? 15 : 12.5, weight: .bold))
                 .foregroundStyle(soon ? WF.primaryD : WF.ink2)
             if c.isStandalone {
-                Button { Task { await model.remove(c) } } label: {
+                Button { remove(c) } label: {
                     Image(systemName: "xmark.circle.fill").font(.system(size: kiosk ? 18 : 15)).foregroundStyle(WF.ink3)
                 }.buttonStyle(.plain)
             }
@@ -155,18 +209,29 @@ struct CountdownsCard: View {
         .contentShape(Rectangle())
         .onTapGesture { if c.isStandalone { editing = c } }
     }
+
+    private func remove(_ countdown: WaffledAPI.Countdown) {
+        Task {
+            do {
+                try await model.remove(countdown)
+            } catch {
+                errorMessage = "Couldn’t remove this countdown. Check your connection and try again."
+            }
+        }
+    }
 }
 
 // MARK: - Add sheet
 
 struct AddCountdownSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let onAdd: (_ title: String, _ date: String, _ emoji: String?) async -> Void
+    let onAdd: (_ title: String, _ date: String, _ emoji: String?) async throws -> Void
 
     @State private var title = ""
     @State private var date = Date()
     @State private var emoji = ""
     @State private var saving = false
+    @State private var errorMessage: String?
 
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
@@ -199,6 +264,17 @@ struct AddCountdownSheet: View {
             }
         }
         .presentationDetents([.height(320), .medium])
+        .alert("Countdown not added", isPresented: errorPresented) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "The countdown could not be added.")
+        }
+    }
+
+    private var errorPresented: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } })
     }
 
     private func field<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
@@ -215,7 +291,15 @@ struct AddCountdownSheet: View {
         saving = true
         let t = title.trimmingCharacters(in: .whitespaces)
         let e = emoji.trimmingCharacters(in: .whitespaces)
-        Task { await onAdd(t, CountdownFormat.ymd(date), e.isEmpty ? nil : e); dismiss() }
+        Task {
+            do {
+                try await onAdd(t, CountdownFormat.ymd(date), e.isEmpty ? nil : e)
+                dismiss()
+            } catch {
+                errorMessage = "Couldn’t add this countdown. Check your connection and try again."
+                saving = false
+            }
+        }
     }
 }
 
@@ -227,17 +311,18 @@ struct AddCountdownSheet: View {
 struct EditCountdownSheet: View {
     @Environment(\.dismiss) private var dismiss
     let countdown: WaffledAPI.Countdown
-    let onSave: (_ title: String, _ date: String, _ emoji: String?) async -> Void
-    let onRemove: () async -> Void
+    let onSave: (_ title: String, _ date: String, _ emoji: String?) async throws -> Void
+    let onRemove: () async throws -> Void
 
     @State private var title: String
     @State private var date: Date
     @State private var emoji: String
     @State private var busy = false
+    @State private var errorMessage: String?
 
     init(countdown: WaffledAPI.Countdown,
-         onSave: @escaping (_ title: String, _ date: String, _ emoji: String?) async -> Void,
-         onRemove: @escaping () async -> Void) {
+         onSave: @escaping (_ title: String, _ date: String, _ emoji: String?) async throws -> Void,
+         onRemove: @escaping () async throws -> Void) {
         self.countdown = countdown
         self.onSave = onSave
         self.onRemove = onRemove
@@ -265,8 +350,7 @@ struct EditCountdownSheet: View {
                         }
                     }
                     Button(role: .destructive) {
-                        busy = true
-                        Task { await onRemove(); dismiss() }
+                        remove()
                     } label: {
                         HStack { Image(systemName: "trash"); Text("Remove countdown") }
                             .font(.system(size: 15, weight: .semibold))
@@ -286,6 +370,17 @@ struct EditCountdownSheet: View {
             }
         }
         .presentationDetents([.height(360), .medium])
+        .alert("Countdown unchanged", isPresented: errorPresented) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "The countdown could not be changed.")
+        }
+    }
+
+    private var errorPresented: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } })
     }
 
     private func field<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
@@ -302,6 +397,27 @@ struct EditCountdownSheet: View {
         busy = true
         let t = title.trimmingCharacters(in: .whitespaces)
         let e = emoji.trimmingCharacters(in: .whitespaces)
-        Task { await onSave(t, CountdownFormat.ymd(date), e.isEmpty ? nil : e); dismiss() }
+        Task {
+            do {
+                try await onSave(t, CountdownFormat.ymd(date), e.isEmpty ? nil : e)
+                dismiss()
+            } catch {
+                errorMessage = "Couldn’t save this countdown. Check your connection and try again."
+                busy = false
+            }
+        }
+    }
+
+    private func remove() {
+        busy = true
+        Task {
+            do {
+                try await onRemove()
+                dismiss()
+            } catch {
+                errorMessage = "Couldn’t remove this countdown. Check your connection and try again."
+                busy = false
+            }
+        }
     }
 }

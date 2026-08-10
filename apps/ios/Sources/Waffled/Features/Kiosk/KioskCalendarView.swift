@@ -72,8 +72,10 @@ struct KioskCalendarView: View {
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
         .sheet(item: $editingCountdown) { c in
             EditCountdownSheet(countdown: c,
-                onSave: { title, date, emoji in await countdowns.update(c, title: title, date: date, emoji: emoji) },
-                onRemove: { await countdowns.remove(c) })
+                onSave: { title, date, emoji in
+                    try await countdowns.update(c, title: title, date: date, emoji: emoji)
+                },
+                onRemove: { try await countdowns.remove(c) })
         }
         .task { await countdowns.load() }
         .task {

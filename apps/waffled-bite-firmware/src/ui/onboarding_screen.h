@@ -13,7 +13,11 @@
 #include <functional>
 
 using WbPairedCallback = std::function<void(const std::string &serverUrl, const std::string &deviceSecret)>;
+using WbChangeWifiCallback = std::function<void()>;
 
 // `defaultServerUrl` pre-fills the server-address field (WB_API_BASE_URL on
 // native; a fixed default on esp32-s3 until real provisioning exists).
-void wb_build_onboarding_screen(lv_obj_t *parent, const char *defaultServerUrl, WbPairedCallback onPaired);
+// `onChangeWifi` is called when the kid/parent taps "Change Wi-Fi network" —
+// this screen has no saved-network state of its own; the caller (main.cpp)
+// owns switching back to the WiFi picker.
+void wb_build_onboarding_screen(lv_obj_t *parent, const char *defaultServerUrl, WbPairedCallback onPaired, WbChangeWifiCallback onChangeWifi);

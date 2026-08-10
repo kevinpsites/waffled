@@ -190,7 +190,7 @@ void wb_build_bedtime_screen(lv_obj_t *parent, const WbGlowSpec &spec, lv_obj_t 
   {
     lv_obj_t *close_btn = lv_obj_create(parent);
     lv_obj_remove_style_all(close_btn);
-    lv_obj_set_size(close_btn, 44, 44);
+    lv_obj_set_size(close_btn, 64, 64);
     lv_obj_set_style_bg_color(close_btn, lv_color_hex(0x2A2A32), 0);
     lv_obj_set_style_bg_opa(close_btn, LV_OPA_70, 0);
     lv_obj_set_style_radius(close_btn, LV_RADIUS_CIRCLE, 0);
@@ -200,6 +200,7 @@ void wb_build_bedtime_screen(lv_obj_t *parent, const WbGlowSpec &spec, lv_obj_t 
     lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, -20, 20);
     lv_obj_t *close_lbl = lv_label_create(close_btn);
     lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
+    lv_obj_set_style_text_font(close_lbl, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(close_lbl, lv_color_white(), 0);
     lv_obj_add_event_cb(close_btn, wb_bedtime_close_cb, LV_EVENT_CLICKED, back_scr);
     lv_obj_add_event_cb(close_btn, wb_bedtime_ctx_delete_cb, LV_EVENT_DELETE, ctx);

@@ -30,6 +30,7 @@ export interface AgendaEvent {
   // streams from the local DB). rrule/calendar are REST-only for now.
   description?: string | null
   rrule?: string | null
+  recurrenceEndAt?: string | null
   calendarName?: string | null
   syncState?: string | null
   // origin='meal_plan' events link to a meal_plan_entry via originRefId — the

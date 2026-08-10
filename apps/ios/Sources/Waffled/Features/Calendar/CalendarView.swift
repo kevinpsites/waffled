@@ -93,8 +93,10 @@ struct CalendarView: View {
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
         .sheet(item: $editingCountdown) { c in
             EditCountdownSheet(countdown: c,
-                onSave: { title, date, emoji in await countdowns.update(c, title: title, date: date, emoji: emoji) },
-                onRemove: { await countdowns.remove(c) })
+                onSave: { title, date, emoji in
+                    try await countdowns.update(c, title: title, date: date, emoji: emoji)
+                },
+                onRemove: { try await countdowns.remove(c) })
         }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
@@ -605,6 +607,31 @@ struct TabPlaceholder: View {
     }
 }
 
+struct RecurringEventSeriesFields: Equatable {
+    let allDay: Bool
+    let isCountdown: Bool
+    let participantIds: [String]
+    let goalId: String?
+    let goalStepId: String?
+    let rrule: String?
+    let recurrenceEndAt: Date?
+}
+
+enum RecurringEventEditPolicy {
+    static func canApplyToSingleOccurrence(
+        original: RecurringEventSeriesFields,
+        edited: RecurringEventSeriesFields
+    ) -> Bool {
+        original.allDay == edited.allDay
+            && original.isCountdown == edited.isCountdown
+            && Set(original.participantIds) == Set(edited.participantIds)
+            && original.goalId == edited.goalId
+            && original.goalStepId == edited.goalStepId
+            && original.rrule == edited.rrule
+            && original.recurrenceEndAt == edited.recurrenceEndAt
+    }
+}
+
 /// Create or edit a calendar event — title, date, time + duration (or all-day),
 /// participants, calendar (Google destination, create only), and location. Each
 /// field is its own labeled card, mirroring the web EventModal. Writes to the
@@ -647,6 +674,8 @@ struct EventEditSheet: View {
     /// When editing/deleting an already-recurring event, ask which occurrences to touch.
     @State private var scopePrompt: ScopePrompt?
     enum ScopePrompt { case save, delete }
+    @State private var originalSeriesFields: RecurringEventSeriesFields?
+    @State private var saveError: String?
     // Google calendar picker (create only).
     @State private var calendars: [WaffledAPI.CalendarLink] = []
     @State private var calendarId: String?
@@ -693,14 +722,20 @@ struct EventEditSheet: View {
         _durationMin = State(initialValue: mins)
         _allDay = State(initialValue: event?.allDay ?? false)
         _isCountdown = State(initialValue: event?.isCountdown ?? false)
-        _participants = State(initialValue: prefillParticipantIds ?? (event?.personId.map { [$0] } ?? []))
+        let eventParticipants = event.map {
+            !$0.participantIds.isEmpty ? $0.participantIds : ($0.personId.map { [$0] } ?? [])
+        } ?? []
+        _participants = State(initialValue: prefillParticipantIds ?? eventParticipants)
         _location = State(initialValue: event?.location ?? "")
         _goalId = State(initialValue: prefillGoalId)
         _goalStepId = State(initialValue: prefillGoalStepId)
     }
 
     private var editing: Bool { event != nil }
-    private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var canSave: Bool {
+        !title.trimmingCharacters(in: .whitespaces).isEmpty
+        && (!wasRecurring || originalSeriesFields != nil)
+    }
     /// True when editing a materialized occurrence of a recurring series (the local
     /// mirror sets `occurrenceStart` only for those). Drives the scope chooser.
     private var wasRecurring: Bool { event?.occurrenceStart != nil }
@@ -724,6 +759,14 @@ struct EventEditSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    if let saveError {
+                        Text(saveError)
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.primaryD)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(WF.primary.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    }
                     group("Title") {
                         TextField("Soccer practice", text: $title)
                             .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.sentences)
@@ -852,7 +895,9 @@ struct EventEditSheet: View {
                 titleVisibility: .visible
             ) {
                 let del = scopePrompt == .delete
-                Button(del ? "This event" : "Save this event") { applyScope("this") }
+                if del || canApplyToSingleOccurrence {
+                    Button(del ? "This event" : "Save this event") { applyScope("this") }
+                }
                 Button(del ? "This and all future events" : "Save this and all future events",
                        role: del ? .destructive : nil) { applyScope("following") }
                 // "All events" (incl. past) is offered only for edits — needed to change
@@ -860,9 +905,13 @@ struct EventEditSheet: View {
                 if !del { Button("Save all events") { applyScope("all") } }
                 Button("Cancel", role: .cancel) { scopePrompt = nil }
             } message: {
-                Text(scopePrompt == .delete
-                     ? "This is part of a repeating series."
-                     : "Apply your changes to which occurrences?")
+                if scopePrompt == .delete {
+                    Text("This is part of a repeating series.")
+                } else if canApplyToSingleOccurrence {
+                    Text("Apply your changes to which occurrences?")
+                } else {
+                    Text("Changes to all-day, countdown, people, goal, or repeat settings must apply to this and future events, or all events.")
+                }
             }
         }
         .modifier(KioskSheetPresentation(kiosk: DeviceExperience.current == .kiosk))
@@ -1079,18 +1128,38 @@ struct EventEditSheet: View {
         if eligibleGoals.isEmpty {
             eligibleGoals = (try? await WaffledAPI().goalsIn(listId: nil)) ?? []
         }
-        if let gid = goalId, goalSteps.isEmpty { await loadSteps(for: gid) }
         // The local mirror doesn't carry the rule; load it from the master so the
         // "Repeats" picker reflects the current cadence when editing a recurring event.
         if wasRecurring, !loadedRepeat, let ev = event {
             loadedRepeat = true
-            if let detail = try? await WaffledAPI().eventDetail(id: ev.seriesId ?? ev.id), let rule = detail.rrule {
+            if let detail = try? await WaffledAPI().eventDetail(id: ev.seriesId ?? ev.id) {
+                if prefillGoalId == nil { goalId = detail.goalId }
+                if prefillGoalStepId == nil { goalStepId = detail.goalStepId }
                 // COUNT rides in the rule; strip it before parsing the cadence, then
                 // restore it as the "after N times" end condition (mirrors the web).
-                if let n = Self.extractCount(rule) { endMode = .after; occurrenceCount = n }
-                repeatState = Recurrence.parseRepeat(Self.stripCount(rule))
+                if let rule = detail.rrule {
+                    if let n = Self.extractCount(rule) {
+                        endMode = .after
+                        occurrenceCount = n
+                    } else if let end = EventTime.parse(detail.recurrenceEndAt) {
+                        endMode = .on
+                        untilDate = end
+                    }
+                    repeatState = Recurrence.parseRepeat(Self.stripCount(rule))
+                }
+                originalSeriesFields = RecurringEventSeriesFields(
+                    allDay: ev.allDay,
+                    isCountdown: ev.isCountdown,
+                    participantIds: participants,
+                    goalId: detail.goalId,
+                    goalStepId: detail.goalStepId,
+                    rrule: detail.rrule,
+                    recurrenceEndAt: EventTime.parse(detail.recurrenceEndAt))
+            } else {
+                saveError = "Couldn’t load this repeating series. Check your connection and try again."
             }
         }
+        if let gid = goalId, goalSteps.isEmpty { await loadSteps(for: gid) }
     }
 
     /// Pull the `COUNT=N` out of a stored rule (the end-condition picker owns it).
@@ -1343,7 +1412,27 @@ struct EventEditSheet: View {
             rrule: rrule, recurrenceEndAt: recurrenceEndAt)
     }
 
+    private var currentSeriesFields: RecurringEventSeriesFields {
+        let d = buildDraft()
+        return RecurringEventSeriesFields(
+            allDay: allDay,
+            isCountdown: isCountdown,
+            participantIds: d.ids,
+            goalId: goalId,
+            goalStepId: goalStepId,
+            rrule: d.rrule,
+            recurrenceEndAt: EventTime.parse(d.recurrenceEndAt))
+    }
+
+    private var canApplyToSingleOccurrence: Bool {
+        guard let originalSeriesFields else { return false }
+        return RecurringEventEditPolicy.canApplyToSingleOccurrence(
+            original: originalSeriesFields,
+            edited: currentSeriesFields)
+    }
+
     private func save() {
+        saveError = nil
         // Editing an already-recurring event first asks which occurrences to change.
         if wasRecurring { scopePrompt = .save; return }
         performSave(scope: nil)
@@ -1355,6 +1444,7 @@ struct EventEditSheet: View {
     private func applyScope(_ scope: String) {
         let mode = scopePrompt
         scopePrompt = nil
+        if mode == .save, scope == "this", !canApplyToSingleOccurrence { return }
         if mode == .delete { performDelete(scope: scope) } else { performSave(scope: scope) }
     }
 
@@ -1362,56 +1452,62 @@ struct EventEditSheet: View {
         let d = buildDraft()
         let tz = sync.householdTz.identifier
         Task {
-            if let editId {
-                if wasRecurring {
-                    // Recurring edit through REST (server-materialized). 'this'/'following'
-                    // change only the occurrence's own fields; 'all' also rewrites the rule
-                    // (or clears it, turning the series back into a single event).
-                    let isAll = scope == "all"
-                    try? await WaffledAPI().updateEvent(
-                        id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
-                        allDay: allDay, location: d.loc, personIds: d.ids,
-                        goalId: goalId, goalStepId: goalStepId,
-                        rrule: isAll ? d.rrule : nil, clearRrule: isAll && d.rrule == nil,
-                        recurrenceEndAt: isAll ? d.recurrenceEndAt : nil,
-                        scope: scope, occurrenceStart: event?.occurrenceStart, isCountdown: isCountdown)
-                    sync.touchGoals()
-                } else if let rrule = d.rrule {
-                    // A single event being made recurring — promote in place (no scope),
-                    // routed through REST so the server materializes the occurrences.
-                    try? await WaffledAPI().updateEvent(
-                        id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
-                        allDay: allDay, location: d.loc, personIds: d.ids,
-                        goalId: goalId, goalStepId: goalStepId, rrule: rrule,
-                        recurrenceEndAt: d.recurrenceEndAt, isCountdown: isCountdown)
-                    sync.touchGoals()
-                } else if goalId != nil || prefillGoalId != nil {
-                    // A goal link was set, changed, or removed → PATCH the rich REST
-                    // route (the local mirror has no goal columns); PowerSync re-syncs.
-                    try? await WaffledAPI().updateEvent(
-                        id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
-                        allDay: allDay, location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId,
-                        isCountdown: isCountdown)
-                    sync.touchGoals()
-                } else {
-                    _ = await sync.updateEvent(id: editId, title: d.name, startsAtISO: d.startISO,
-                                               endsAtISO: d.endISO, allDay: allDay, location: d.loc, personIds: d.ids,
-                                               isCountdown: isCountdown)
-                }
-            } else if d.rrule != nil || goalId != nil {
-                // Recurring and/or goal-linked create goes through the rich REST route
-                // (the local events table has no goal columns and can't expand a rule);
-                // PowerSync down-syncs the master + materialized occurrences.
-                _ = try? await WaffledAPI().createEvent(
-                    title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO, allDay: allDay,
-                    location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId,
-                    calendarId: d.chosenCal, timezone: tz, rrule: d.rrule, recurrenceEndAt: d.recurrenceEndAt,
-                    isCountdown: isCountdown)
-                if goalId != nil { sync.touchGoals() }
-            } else {
-                _ = await sync.createCalendarEvent(title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
-                                                   allDay: allDay, location: d.loc, personIds: d.ids, calendarId: d.chosenCal,
+            do {
+                if let editId {
+                    if wasRecurring {
+                        // A single occurrence sends only override-backed fields. A
+                        // following/all edit sends the complete replacement master.
+                        let appliesToSeries = scope != "this"
+                        try await WaffledAPI().updateEvent(
+                            id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
+                            allDay: allDay, location: d.loc, personIds: d.ids,
+                            goalId: goalId, goalStepId: goalStepId,
+                            rrule: appliesToSeries ? d.rrule : nil,
+                            clearRrule: appliesToSeries && d.rrule == nil,
+                            recurrenceEndAt: appliesToSeries ? d.recurrenceEndAt : nil,
+                            clearRecurrenceEndAt: appliesToSeries && d.recurrenceEndAt == nil,
+                            scope: scope, occurrenceStart: event?.occurrenceStart, isCountdown: isCountdown)
+                        sync.touchGoals()
+                    } else if let rrule = d.rrule {
+                        // A single event being made recurring — promote in place (no scope),
+                        // routed through REST so the server materializes the occurrences.
+                        try await WaffledAPI().updateEvent(
+                            id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
+                            allDay: allDay, location: d.loc, personIds: d.ids,
+                            goalId: goalId, goalStepId: goalStepId, rrule: rrule,
+                            recurrenceEndAt: d.recurrenceEndAt, isCountdown: isCountdown)
+                        sync.touchGoals()
+                    } else if goalId != nil || prefillGoalId != nil {
+                        // A goal link was set, changed, or removed → PATCH the rich REST
+                        // route (the local mirror has no goal columns); PowerSync re-syncs.
+                        try await WaffledAPI().updateEvent(
+                            id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
+                            allDay: allDay, location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId,
+                            isCountdown: isCountdown)
+                        sync.touchGoals()
+                    } else {
+                        _ = await sync.updateEvent(id: editId, title: d.name, startsAtISO: d.startISO,
+                                                   endsAtISO: d.endISO, allDay: allDay, location: d.loc, personIds: d.ids,
                                                    isCountdown: isCountdown)
+                    }
+                } else if d.rrule != nil || goalId != nil {
+                    // Recurring and/or goal-linked create goes through the rich REST route
+                    // (the local events table has no goal columns and can't expand a rule);
+                    // PowerSync down-syncs the master + materialized occurrences.
+                    _ = try await WaffledAPI().createEvent(
+                        title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO, allDay: allDay,
+                        location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId,
+                        calendarId: d.chosenCal, timezone: tz, rrule: d.rrule, recurrenceEndAt: d.recurrenceEndAt,
+                        isCountdown: isCountdown)
+                    if goalId != nil { sync.touchGoals() }
+                } else {
+                    _ = await sync.createCalendarEvent(title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
+                                                       allDay: allDay, location: d.loc, personIds: d.ids, calendarId: d.chosenCal,
+                                                       isCountdown: isCountdown)
+                }
+            } catch {
+                saveError = "Couldn’t save this event. Check your connection and try again."
+                return
             }
             dismiss()   // after the write, so the caller's reload picks up fresh data
         }

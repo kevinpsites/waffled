@@ -54,6 +54,19 @@ function renderShop() {
   return render(<MemoryRouter><RewardsPanel /></MemoryRouter>)
 }
 
+// A tile being on screen does NOT mean it knows the wallet balance yet.
+// useRewardsHub commits rewards + balances together (one Promise.all → one
+// setState) and the panel renders "Loading…" until that lands, so the data is
+// there — but affordability is read through `activeKid`, and activeKidId is
+// assigned in a useEffect that runs *after* that first commit. So the first
+// render with tiles has activeKidId === null, which makes walletBalance 0: every
+// tile locked, every progress bar at 0%. /api/persons/:id/overview only fires
+// once activeKidId is set, so the saving-toward panel is a precise signal that
+// the effect has run and the tiles now reflect the real wallet.
+// (Measured: gating test 1 on findByText('Ice cream') instead fails 12 runs in 20.)
+const shopGrid = () => document.querySelector('.shop-grid') as HTMLElement
+const settled = () => screen.findByText(/to go — keep earning/i)
+
 beforeEach(() => {
   vi.restoreAllMocks()
 })
@@ -62,14 +75,16 @@ describe('Reward Shop', () => {
   it('locks a reward the active kid can’t afford (progress, no Get) and offers Get on affordable ones', async () => {
     mockApi(me([]))
     renderShop()
+    await settled()
 
     // Affordable treat → a "Get it" button.
-    const ice = await screen.findByText('Ice cream')
+    const ice = within(shopGrid()).getByText('Ice cream')
     const iceTile = ice.closest('.shop-tile') as HTMLElement
     expect(within(iceTile).getByRole('button', { name: /get it/i })).toBeInTheDocument()
 
     // Unaffordable adventure → locked: shows "N more to unlock", no Get.
-    const park = screen.getByText('Theme park')
+    // Scope to the grid — "Theme park" is also the saving-toward reward.
+    const park = within(shopGrid()).getByText('Theme park')
     const parkTile = park.closest('.shop-tile') as HTMLElement
     expect(parkTile.className).toMatch(/locked/)
     expect(within(parkTile).getByText(/12 more to unlock/i)).toBeInTheDocument()
@@ -79,9 +94,9 @@ describe('Reward Shop', () => {
   it('filters the grid by category chip', async () => {
     mockApi(me([]))
     renderShop()
-    await screen.findByText('Ice cream')
+    await settled()
     // scope to the grid — "Theme park" also appears in the saving-toward panel
-    const grid = () => document.querySelector('.shop-grid') as HTMLElement
+    const grid = shopGrid
     expect(within(grid()).getByText('Theme park')).toBeInTheDocument()
 
     // Pick the Treats chip → only the treat remains in the grid.
@@ -99,7 +114,8 @@ describe('Reward Shop', () => {
   it('redeeming an affordable reward opens the celebration for the active kid', async () => {
     mockApi(me([]))
     renderShop()
-    const ice = await screen.findByText('Ice cream')
+    await settled()
+    const ice = within(shopGrid()).getByText('Ice cream')
     const iceTile = ice.closest('.shop-tile') as HTMLElement
 
     fireEvent.click(within(iceTile).getByRole('button', { name: /get it/i }))
@@ -124,9 +140,18 @@ describe('Reward Shop', () => {
   })
 
   it('hides "Award stars" from someone without reward.grant', async () => {
-    mockApi(me([]))
+    // "Award stars" is gated on reward.grant, which comes from /api/household —
+    // a different effect from the balances/overview chain settled() waits on. So
+    // settled() would NOT make this absence meaningful: with /api/household still
+    // in flight, `person` is null, every capability reads false and the assertion
+    // passes without testing the gate at all.
+    // Instead give the caller a *different* reward capability. "Add reward" is
+    // gated on reward.manage from the same response, so its presence proves
+    // /api/household landed AND was applied — which is what makes the absence of
+    // "Award stars" evidence about the grant gate rather than about load order.
+    mockApi(me(['reward.manage']))
     renderShop()
-    await screen.findByText('Ice cream')
+    expect(await screen.findByRole('button', { name: /add reward/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /award stars/i })).not.toBeInTheDocument()
   })
 })

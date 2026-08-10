@@ -26,7 +26,18 @@ static WbHttpResponse perform(const char *url, const char *jsonBody /* nullptr f
   HTTPClient http;
   if (!http.begin(String(url)))
     return resp;
-  http.setTimeout(10000); // don't let a dead/unreachable server hang the LVGL loop — matches wb_http_native.cpp's CURLOPT_TIMEOUT
+  http.setTimeout(10000); // read-phase timeout — don't let a dead/unreachable server hang the LVGL loop — matches wb_http_native.cpp's CURLOPT_TIMEOUT
+  // setTimeout() above only bounds the READ phase (HTTPClient's _tcpTimeout);
+  // it does NOT touch the separate connect-phase timeout, which defaults to
+  // HTTPCLIENT_DEFAULT_TCP_TIMEOUT (5000ms) if left unset. Every poll call
+  // runs synchronously on the same thread that drives lv_timer_handler() —
+  // there's no task offload — so an unreachable server (e.g. the device
+  // moved to a different network than the LAN address it was paired
+  // against) stalls the whole UI for that long on every single poll.
+  // Confirmed live: this is what "device feels frozen" turned out to be when
+  // it looked like it might be a memory leak. Set explicitly and shorter so
+  // a genuinely-unreachable server doesn't eat most of a 5s poll interval.
+  http.setConnectTimeout(3000);
 
   if (jsonBody)
     http.addHeader("Content-Type", "application/json");

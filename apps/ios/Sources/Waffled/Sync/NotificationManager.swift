@@ -54,9 +54,9 @@ final class NotificationManager {
     /// Identifier namespace for auto-scheduled reminders — lets us reconcile *only*
     /// those (a user's snooze, below, lives under a different prefix so reconcile
     /// never cancels it).
-    static let idPrefix = "waffled.evt."
+    nonisolated static let idPrefix = "waffled.evt."
     /// A snoozed reminder — separate namespace so the reconcile loop leaves it alone.
-    static let snoozePrefix = "waffled.snz."
+    nonisolated static let snoozePrefix = "waffled.snz."
     /// Category carrying the Snooze / View actions on each reminder.
     static let categoryId = "EVENT_REMINDER"
     static let snoozeMinutes = 10
@@ -73,7 +73,7 @@ final class NotificationManager {
         center.setNotificationCategories([Self.reminderCategory()])
         // A dead refresh token signs us out — drop any reminders for the old session.
         NotificationCenter.default.addObserver(forName: .waffledAuthExpired, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.clearOurs() }
+            Task { @MainActor in await self?.clearEventReminders() }
         }
     }
 
@@ -120,7 +120,7 @@ final class NotificationManager {
     private func apply() async {
         // Off or not allowed → tear our reminders down and stop.
         guard enabled, authorization == .authorized || authorization == .provisional else {
-            await clearOurs()
+            await clearEventReminders()
             droppedToCap = 0
             return
         }
@@ -156,11 +156,17 @@ final class NotificationManager {
         }
     }
 
-    /// Drop every reminder we own — auto-scheduled *and* snoozed (e.g. on sign-out or
-    /// when reminders are disabled).
-    func clearOurs() async {
+    /// Whether an identifier belongs to Calendar's auto-scheduled or snoozed reminders.
+    /// Other features use their own `waffled.*` namespaces and must survive this cleanup.
+    nonisolated static func isEventReminderIdentifier(_ identifier: String) -> Bool {
+        identifier.hasPrefix(idPrefix) || identifier.hasPrefix(snoozePrefix)
+    }
+
+    /// Drop Calendar's auto-scheduled and snoozed reminders (e.g. on sign-out or when
+    /// event reminders are disabled) without cancelling Cook Mode or future features.
+    func clearEventReminders() async {
         let reqs = await center.pendingNotificationRequests()
-        let ids = reqs.map(\.identifier).filter { $0.hasPrefix("waffled.") }
+        let ids = reqs.map(\.identifier).filter(Self.isEventReminderIdentifier)
         if !ids.isEmpty { center.removePendingNotificationRequests(withIdentifiers: ids) }
     }
 

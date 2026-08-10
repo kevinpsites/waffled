@@ -1,34 +1,104 @@
+import Observation
 import SwiftUI
+
+@MainActor
+@Observable
+final class StoredProofsModel {
+    typealias DeleteProof = (String) async throws -> Void
+    typealias ClearProofs = () async throws -> Int
+    typealias OnChanged = () async -> Void
+
+    private(set) var proofs: [WaffledAPI.StoredProof]
+    private(set) var busy = false
+    private(set) var errorMessage: String?
+
+    private let deleteProof: DeleteProof
+    private let clearProofs: ClearProofs
+    private let onChanged: OnChanged
+
+    init(
+        proofs: [WaffledAPI.StoredProof],
+        deleteProof: @escaping DeleteProof,
+        clearProofs: @escaping ClearProofs,
+        onChanged: @escaping OnChanged
+    ) {
+        self.proofs = proofs
+        self.deleteProof = deleteProof
+        self.clearProofs = clearProofs
+        self.onChanged = onChanged
+    }
+
+    @discardableResult
+    func delete(_ proof: WaffledAPI.StoredProof) async -> Bool {
+        guard !busy else { return false }
+        busy = true
+        errorMessage = nil
+        defer { busy = false }
+
+        do {
+            try await deleteProof(proof.instanceId)
+            proofs.removeAll { $0.id == proof.id }
+            await onChanged()
+            return true
+        } catch {
+            errorMessage = "Couldn’t delete this photo. Check your connection and try again."
+            return false
+        }
+    }
+
+    @discardableResult
+    func clearAll() async -> Bool {
+        guard !busy else { return false }
+        busy = true
+        errorMessage = nil
+        defer { busy = false }
+
+        do {
+            _ = try await clearProofs()
+            proofs = []
+            await onChanged()
+            return true
+        } catch {
+            errorMessage = "Couldn’t clear stored photos. Check your connection and try again."
+            return false
+        }
+    }
+
+    func dismissError() {
+        errorMessage = nil
+    }
+}
 
 /// The admin's "stored chore photos" manager, opened from Chores & Rewards settings.
 /// A grid of currently-retained proof photos — tap one to view it big, delete one, or
-/// clear them all. Mirrors the web `ChoreProofsDrawer`. Deletes hit the API directly and
-/// update the local list, then tell the caller to refresh its count.
+/// clear them all. Mirrors the web `ChoreProofsDrawer`. Confirmed deletes update the local
+/// list, then tell the caller to refresh its count; failures leave the visible rows intact.
 struct StoredProofsSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var proofs: [WaffledAPI.StoredProof]
+    @State private var model: StoredProofsModel
     @State private var enlarged: WaffledAPI.StoredProof?
     @State private var confirmClear = false
-    @State private var busy = false
-    let onChanged: () async -> Void
 
-    private let api = WaffledAPI()
     private let cols = [GridItem(.adaptive(minimum: 150, maximum: 240), spacing: 12)]
 
     init(proofs: [WaffledAPI.StoredProof], onChanged: @escaping () async -> Void) {
-        _proofs = State(initialValue: proofs)
-        self.onChanged = onChanged
+        let api = WaffledAPI()
+        _model = State(initialValue: StoredProofsModel(
+            proofs: proofs,
+            deleteProof: { try await api.deleteProof(instanceId: $0) },
+            clearProofs: { try await api.clearProofs() },
+            onChanged: onChanged))
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                if proofs.isEmpty {
+                if model.proofs.isEmpty {
                     WaffledEmptyState(emoji: "🗂️", title: "No stored photos",
                                    message: "Chore proof photos appear here while they’re kept.", top: 48)
                 } else {
                     LazyVGrid(columns: cols, spacing: 12) {
-                        ForEach(proofs) { cell($0) }
+                        ForEach(model.proofs) { cell($0) }
                     }
                     .padding(16).padding(.bottom, 110)
                 }
@@ -38,19 +108,30 @@ struct StoredProofsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
                 ToolbarItem(placement: .primaryAction) {
-                    if !proofs.isEmpty {
+                    if !model.proofs.isEmpty {
                         Button("Clear all") { confirmClear = true }
-                            .foregroundStyle(WF.primary).disabled(busy)
+                            .foregroundStyle(WF.primary).disabled(model.busy)
                     }
                 }
             }
-            .confirmationDialog("Delete all \(proofs.count) stored photos?",
+            .confirmationDialog("Delete all \(model.proofs.count) stored photos?",
                                 isPresented: $confirmClear, titleVisibility: .visible) {
                 Button("Delete all", role: .destructive) { clearAll() }
                 Button("Cancel", role: .cancel) {}
             }
             .sheet(item: $enlarged) { enlargedView($0) }
+            .alert("Photos unchanged", isPresented: errorPresented) {
+                Button("OK") { model.dismissError() }
+            } message: {
+                Text(model.errorMessage ?? "The photos could not be changed.")
+            }
         }
+    }
+
+    private var errorPresented: Binding<Bool> {
+        Binding(
+            get: { model.errorMessage != nil },
+            set: { if !$0 { model.dismissError() } })
     }
 
     private func cell(_ p: WaffledAPI.StoredProof) -> some View {
@@ -81,7 +162,7 @@ struct StoredProofsSheet: View {
                     Image(systemName: "trash").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.primary)
                         .frame(width: 30, height: 30)
                 }
-                .buttonStyle(.plain).disabled(busy)
+                .buttonStyle(.plain).disabled(model.busy)
             }
             .padding(10)
         }
@@ -105,10 +186,10 @@ struct StoredProofsSheet: View {
                         .multilineTextAlignment(.center)
                     Text([p.personName, Self.shortDate(p.completedAt)].compactMap { $0 }.joined(separator: " · "))
                         .font(.system(size: 13)).foregroundStyle(WF.ink3)
-                    Button { deleteOne(p); enlarged = nil } label: {
+                    Button { deleteOne(p, closeAfterDelete: true) } label: {
                         Text("Delete this photo").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.primary)
                     }
-                    .buttonStyle(.plain).padding(.top, 4)
+                    .buttonStyle(.plain).padding(.top, 4).disabled(model.busy)
                 }
                 .padding(20)
             }
@@ -121,21 +202,17 @@ struct StoredProofsSheet: View {
 
     // MARK: actions
 
-    private func deleteOne(_ p: WaffledAPI.StoredProof) {
+    private func deleteOne(_ p: WaffledAPI.StoredProof, closeAfterDelete: Bool = false) {
         Task {
-            try? await api.deleteProof(instanceId: p.instanceId)
-            proofs.removeAll { $0.id == p.id }
-            await onChanged()
+            if await model.delete(p), closeAfterDelete {
+                enlarged = nil
+            }
         }
     }
 
     private func clearAll() {
-        busy = true
         Task {
-            _ = try? await api.clearProofs()
-            proofs = []
-            await onChanged()
-            busy = false
+            await model.clearAll()
         }
     }
 

@@ -8,6 +8,11 @@ stack) dumps Postgres on a nightly schedule; you can optionally push each dump o
 to S3-compatible storage and include uploaded media. Every run is recorded so
 **Settings → System Health** and `./waffled doctor` show you the last backup at a glance.
 
+After `./waffled up` and during `./waffled doctor`, the CLI also warns when uploaded
+media is excluded or every backup copy still lives on the Waffled host. These are
+planning warnings, not failed health checks; they disappear when the corresponding
+media and host-folder/offsite settings below are configured.
+
 > **On by default, zero-config.** A fresh `./waffled up` starts nightly local backups with
 > no setup. To be safe against a lost machine, point them at a folder you control
 > (`BACKUP_HOST_PATH`) and/or an offsite bucket (`BACKUP_S3_*`) — see below.

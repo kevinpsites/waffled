@@ -69,6 +69,7 @@ export interface EventRow extends QueryResultRow {
   goal_step_id?: string | null
   ical_uid?: string | null
   rrule?: string | null
+  recurrence_end_at?: Date | null
   sync_state?: string | null
   calendar_name?: string | null
   origin?: string | null
@@ -250,7 +251,7 @@ function participantsSub(idExpr: string): string {
 const SINGLE_SELECT = `
   select e.id as id, e.id as series_id, null::timestamptz as occurrence_start,
          e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.person_id, e.goal_id, e.goal_step_id,
-         e.rrule, e.sync_state, e.origin, e.origin_ref_id, c.summary as calendar_name,
+         e.rrule, e.recurrence_end_at, e.sync_state, e.origin, e.origin_ref_id, c.summary as calendar_name,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsSub('e.id')}
     from events e
@@ -261,13 +262,16 @@ const SINGLE_SELECT = `
 
 const OCC_SELECT = `
   select o.id as id, m.id as series_id, o.original_start as occurrence_start,
-         coalesce(o.title, m.title) as title, m.description, coalesce(o.location, m.location) as location,
+         coalesce(o.title, m.title) as title,
+         nullif(coalesce(ov.description, m.description), '') as description,
+         nullif(coalesce(o.location, m.location), '') as location,
          o.starts_at, o.ends_at, o.all_day, m.is_countdown, o.person_id, m.goal_id, m.goal_step_id,
-         m.rrule, m.sync_state, m.origin, m.origin_ref_id, c.summary as calendar_name,
+         m.rrule, m.recurrence_end_at, m.sync_state, m.origin, m.origin_ref_id, c.summary as calendar_name,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsSub('m.id')}
     from event_occurrences o
     join events m on m.id = o.event_id and m.deleted_at is null
+    left join event_overrides ov on ov.id = o.override_id and ov.deleted_at is null
     join households h on h.id = o.household_id
     left join persons p on p.id = o.person_id and p.deleted_at is null
     left join calendars c on c.id = m.calendar_id and c.deleted_at is null
@@ -413,8 +417,8 @@ export async function softDeleteEvent(householdId: string, id: string): Promise<
 
 // ── Recurrence edit scopes (this / this-and-following) ──────────────────────────
 // "all" reuses updateEvent/softDeleteEvent on the master. These two handle a single
-// occurrence (an override row) or a series split. Participant changes are master-only
-// for now; these scopes touch the occurrence's own fields.
+// occurrence (an override row) or a series split. A split creates a complete new
+// master; a single occurrence accepts only fields backed by event_overrides.
 
 // camelCase patch field → event_overrides column (the per-occurrence overridable set).
 const OVERRIDE_FIELDS: Record<string, string> = {
@@ -426,9 +430,51 @@ const OVERRIDE_FIELDS: Record<string, string> = {
   status: 'status',
 }
 
+const SERIES_ONLY_FIELDS = [...Object.keys(UPDATABLE), 'participantIds']
+  .filter((field) => !(field in OVERRIDE_FIELDS))
+  .sort()
+
 // Returns null instant duration helper.
 function durationMs(m: { starts_at: Date; ends_at: Date | null }): number | null {
   return m.ends_at ? m.ends_at.getTime() - m.starts_at.getTime() : null
+}
+
+/** An "all events" edit starts from the occurrence the person opened, but updating
+ * the master to that later occurrence date would silently discard everything before
+ * it. Apply the selected occurrence's time delta to the original master instead. */
+async function rebaseAllSeriesTiming(
+  householdId: string,
+  seriesId: string,
+  occurrenceStart: string,
+  patch: Record<string, unknown>
+): Promise<Record<string, unknown> | null> {
+  if (typeof patch.startsAt !== 'string') return patch
+  const { rows } = await query<{ starts_at: Date; ends_at: Date | null }>(
+    `select m.starts_at, m.ends_at
+       from events m
+      where m.id = $1 and m.household_id = $2 and m.deleted_at is null and m.rrule is not null
+        and exists (
+          select 1 from event_occurrences o
+           where o.event_id = m.id and o.household_id = m.household_id and o.original_start = $3
+        )`,
+    [seriesId, householdId, occurrenceStart]
+  )
+  const master = rows[0]
+  if (!master) return null
+
+  const editedStartMs = new Date(patch.startsAt).getTime()
+  const occurrenceStartMs = new Date(occurrenceStart).getTime()
+  const rebasedStartMs = master.starts_at.getTime() + (editedStartMs - occurrenceStartMs)
+  const rebased: Record<string, unknown> = { ...patch, startsAt: new Date(rebasedStartMs).toISOString() }
+
+  if (typeof patch.endsAt === 'string') {
+    const editedDurationMs = new Date(patch.endsAt).getTime() - editedStartMs
+    rebased.endsAt = new Date(rebasedStartMs + editedDurationMs).toISOString()
+  } else if (!('endsAt' in patch) && master.ends_at) {
+    const masterDurationMs = master.ends_at.getTime() - master.starts_at.getTime()
+    rebased.endsAt = new Date(rebasedStartMs + masterDurationMs).toISOString()
+  }
+  return rebased
 }
 
 /** scope=this: upsert an override for one occurrence (edit fields, or cancel), then
@@ -453,7 +499,14 @@ export async function overrideOccurrence(
     sets.push(`${col} = $${vals.length}`)
   }
   for (const [field, col] of Object.entries(OVERRIDE_FIELDS)) {
-    if (field in patch && patch[field] !== undefined) add(col, patch[field])
+    if (field in patch && patch[field] !== undefined) {
+      // NULL means "inherit" in the override schema. Empty text is the explicit
+      // clear sentinel for nullable text fields and is normalized on reads.
+      const value = (field === 'description' || field === 'location') && patch[field] === null
+        ? ''
+        : patch[field]
+      add(col, value)
+    }
   }
   if (opts.cancel) add('is_cancelled', true)
 
@@ -473,7 +526,7 @@ export async function overrideOccurrence(
     for (const [field, col] of Object.entries(OVERRIDE_FIELDS)) {
       if (field in patch && patch[field] !== undefined) {
         cols.push(col)
-        ins.push(patch[field])
+        ins.push((field === 'description' || field === 'location') && patch[field] === null ? '' : patch[field])
       }
     }
     if (opts.cancel) {
@@ -513,17 +566,25 @@ export async function splitSeries(
     const capAt = new Date(new Date(occurrenceStart).getTime() - 1000)
     await client.query(`update events set recurrence_end_at = $1 where id = $2`, [capAt, seriesId])
 
+    const participantIds = Array.isArray(patch.participantIds)
+      ? [...new Set(patch.participantIds as string[])]
+      : null
     const newStart = (typeof patch.startsAt === 'string' ? patch.startsAt : null) ?? occurrenceStart
     const dur = durationMs(m)
     const newEnd =
       'endsAt' in patch ? (patch.endsAt as string | null) : dur != null ? new Date(new Date(newStart).getTime() + dur) : null
+    const newPersonId = participantIds
+      ? participantIds[0] ?? null
+      : 'personId' in patch
+        ? (patch.personId as string | null)
+        : m.person_id
     const ins = await client.query<EventRow>(
       `insert into events
          (household_id, calendar_id, title, description, location, starts_at, ends_at, all_day, timezone,
           person_id, goal_id, goal_step_id, rrule, rdate, exdate, recurrence_end_at, origin, sync_state,
-          visibility, owner_person_id)
+          is_countdown, visibility, owner_person_id)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::timestamptz[],$15::timestamptz[],$16,'manual','local_only',
-               $17,$18)
+               $17,$18,$19)
        returning *`,
       [
         m.household_id,
@@ -533,27 +594,32 @@ export async function splitSeries(
         'location' in patch ? (patch.location as string | null) : m.location,
         newStart,
         newEnd,
-        m.all_day,
+        'allDay' in patch ? Boolean(patch.allDay) : m.all_day,
         m.timezone,
-        m.person_id,
-        m.goal_id ?? null,
-        m.goal_step_id ?? null,
-        m.rrule,
+        newPersonId,
+        'goalId' in patch ? (patch.goalId as string | null) : m.goal_id ?? null,
+        'goalStepId' in patch ? (patch.goalStepId as string | null) : m.goal_step_id ?? null,
+        'rrule' in patch ? (patch.rrule as string | null) : m.rrule,
         m.rdate,
         m.exdate,
-        m.recurrence_end_at,
+        'recurrenceEndAt' in patch ? (patch.recurrenceEndAt as string | null) : m.recurrence_end_at,
+        'isCountdown' in patch ? Boolean(patch.isCountdown) : m.is_countdown ?? false,
         m.visibility,
         m.owner_person_id,
       ]
     )
     const created = ins.rows[0]
-    // carry the whole participant set onto the new series
-    await client.query(
-      `insert into event_participants (household_id, event_id, person_id, external_email, external_name, role, rsvp, is_organizer)
-       select household_id, $1, person_id, external_email, external_name, role, rsvp, is_organizer
-         from event_participants where event_id = $2 and deleted_at is null`,
-      [created.id, seriesId]
-    )
+    if (participantIds) {
+      await replaceParticipants(client, householdId, created.id, participantIds)
+    } else {
+      // Carry the whole participant set when the edit didn't replace it.
+      await client.query(
+        `insert into event_participants (household_id, event_id, person_id, external_email, external_name, role, rsvp, is_organizer)
+         select household_id, $1, person_id, external_email, external_name, role, rsvp, is_organizer
+           from event_participants where event_id = $2 and deleted_at is null`,
+        [created.id, seriesId]
+      )
+    }
     await client.query('commit')
     await materializeMaster(seriesId)
     await materializeMaster(created.id)
@@ -595,6 +661,7 @@ export function presentEvent(e: EventRow) {
     goalId: e.goal_id ?? null,
     goalStepId: e.goal_step_id ?? null,
     rrule: e.rrule ?? null,
+    recurrenceEndAt: e.recurrence_end_at ?? null,
     // The Google calendar this event lives on (its name) + whether it's pushed —
     // drives the detail screen's "Calendar · synced from Google" row.
     calendarName: e.calendar_name ?? null,
@@ -684,6 +751,22 @@ export function registerEventRoutes(api: Api): void {
     if (!hasField) {
       return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
     }
+    if (!['this', 'following', 'all'].includes(scope)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'scope must be this, following, or all' })
+    }
+    if (occurrenceStart && Number.isNaN(Date.parse(occurrenceStart))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'occurrenceStart must be a valid timestamp' })
+    }
+    if (scope === 'this') {
+      const unsupported = SERIES_ONLY_FIELDS.filter((field) => field in patch)
+      if (unsupported.length) {
+        return res.status(400).json({
+          error: 'UnsupportedOccurrenceFields',
+          message: 'scope=this cannot update fields that belong to the recurring series',
+          fields: unsupported,
+        })
+      }
+    }
     let existingGoalId: string | null | undefined
     if (patch.goalStepId != null && patch.goalId === undefined) {
       const current = await query<{ goal_id: string | null }>(
@@ -706,7 +789,11 @@ export function registerEventRoutes(api: Api): void {
       if (!created) return res.status(404).json({ error: 'NotFound', message: 'recurring event not found' })
       return { event: presentEvent(created) }
     }
-    const event = await updateEvent(tenant.householdId, id, patch)
+    const updatePatch = scope === 'all' && occurrenceStart
+      ? await rebaseAllSeriesTiming(tenant.householdId, id, occurrenceStart, patch)
+      : patch
+    if (!updatePatch) return res.status(404).json({ error: 'NotFound', message: 'recurring event occurrence not found' })
+    const event = await updateEvent(tenant.householdId, id, updatePatch)
     if (!event) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     return { event: presentEvent(event) }
   }))
@@ -717,6 +804,9 @@ export function registerEventRoutes(api: Api): void {
     // Recurrence delete scope via query params (DELETE carries no body).
     const scope = typeof req.query?.scope === 'string' ? req.query.scope : 'all'
     const occurrenceStart = typeof req.query?.occurrenceStart === 'string' ? req.query.occurrenceStart : null
+    if (!['this', 'following', 'all'].includes(scope)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'scope must be this, following, or all' })
+    }
     if (scope === 'this' || scope === 'following') {
       if (!occurrenceStart || Number.isNaN(Date.parse(occurrenceStart))) {
         return res.status(400).json({ error: 'BadRequest', message: 'occurrenceStart is required for this/following scope' })

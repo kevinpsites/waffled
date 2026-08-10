@@ -116,6 +116,7 @@ describe('Lists screen', () => {
     // header: name + "2 items · 1 done" (the count is active/unchecked only) + filter
     await waitFor(() => expect(screen.getByText('2 items · 1 done')).toBeInTheDocument())
     expect(screen.getByText('Everyone')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Share list' })).not.toBeInTheDocument()
 
     // suggestions
     expect(screen.getByText('Waffled suggests:')).toBeInTheDocument()

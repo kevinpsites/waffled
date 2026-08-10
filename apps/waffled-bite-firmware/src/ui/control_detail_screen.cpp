@@ -159,7 +159,7 @@ void wb_build_control_detail_screen(
   // ── top bar: back button + title, same shape as the other screens' ──────
   lv_obj_t *top = lv_obj_create(parent);
   lv_obj_remove_style_all(top);
-  lv_obj_set_size(top, lv_pct(100), 56);
+  lv_obj_set_size(top, lv_pct(100), 76);
   lv_obj_set_flex_flow(top, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(top, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(top, 16, 0);
@@ -171,12 +171,12 @@ void wb_build_control_detail_screen(
   lv_obj_set_style_bg_color(back_btn, WB_COLOR_CARD, 0);
   lv_obj_set_style_bg_opa(back_btn, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(back_btn, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_pad_hor(back_btn, 16, 0);
-  lv_obj_set_style_pad_ver(back_btn, 10, 0);
+  lv_obj_set_style_pad_hor(back_btn, 28, 0);
+  lv_obj_set_style_pad_ver(back_btn, 16, 0);
   lv_obj_clear_flag(back_btn, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_t *back_lbl = lv_label_create(back_btn);
   lv_label_set_text(back_lbl, LV_SYMBOL_LEFT " Back");
-  lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_24, 0);
   lv_obj_set_style_text_color(back_lbl, WB_COLOR_INK, 0);
   lv_obj_add_event_cb(back_btn, wb_go_back_cb, LV_EVENT_CLICKED, back_scr);
 
@@ -230,10 +230,11 @@ void wb_build_control_detail_screen(
 
   lv_obj_t *toggle_lbl = lv_label_create(toggle_row);
   lv_label_set_text(toggle_lbl, "On");
-  lv_obj_set_style_text_font(toggle_lbl, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(toggle_lbl, &lv_font_montserrat_24, 0);
   lv_obj_set_style_text_color(toggle_lbl, WB_COLOR_INK, 0);
 
   lv_obj_t *sw = lv_switch_create(toggle_row);
+  lv_obj_set_size(sw, 90, 46); // LVGL's default switch size reads tiny on this panel
   if (on)
     lv_obj_add_state(sw, LV_STATE_CHECKED);
   lv_obj_set_style_bg_color(sw, WB_COLOR_TILE_ACTIVE, LV_PART_INDICATOR | LV_STATE_CHECKED);
@@ -266,7 +267,7 @@ void wb_build_control_detail_screen(
         // color ("Amber", "Peach"...) actually looked like before a swatch
         // was added; now that the color shows, the name is redundant, so
         // this is just a big tappable circle with a selection ring, no text.
-        lv_obj_set_size(chip, 44, 44);
+        lv_obj_set_size(chip, 60, 60);
         lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_color(chip, lv_color_hex(options[i].swatchHex), 0);
         lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
@@ -276,14 +277,14 @@ void wb_build_control_detail_screen(
         lv_obj_set_size(chip, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
         lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_pad_hor(chip, 16, 0);
-        lv_obj_set_style_pad_ver(chip, 10, 0);
+        lv_obj_set_style_pad_hor(chip, 24, 0);
+        lv_obj_set_style_pad_ver(chip, 16, 0);
         lv_obj_set_flex_flow(chip, LV_FLEX_FLOW_ROW);
         lv_obj_set_flex_align(chip, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
         lv_obj_t *chip_lbl = lv_label_create(chip);
         lv_label_set_text(chip_lbl, options[i].label);
-        lv_obj_set_style_text_font(chip_lbl, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(chip_lbl, &lv_font_montserrat_16, 0);
       }
       wb_style_option_chip(chip, options[i].hasSwatch, selected);
 
@@ -306,23 +307,24 @@ void wb_build_control_detail_screen(
 
   lv_obj_t *slider_lbl = lv_label_create(slider_hdr);
   lv_label_set_text(slider_lbl, sliderLabel);
-  lv_obj_set_style_text_font(slider_lbl, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(slider_lbl, &lv_font_montserrat_24, 0);
   lv_obj_set_style_text_color(slider_lbl, WB_COLOR_INK, 0);
 
   char value_buf[8];
   snprintf(value_buf, sizeof(value_buf), "%d%%", sliderValue);
   lv_obj_t *value_lbl = lv_label_create(slider_hdr);
   lv_label_set_text(value_lbl, value_buf);
-  lv_obj_set_style_text_font(value_lbl, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(value_lbl, &lv_font_montserrat_24, 0);
   lv_obj_set_style_text_color(value_lbl, WB_COLOR_GOLD, 0);
   ctx->value_lbl = value_lbl;
 
   lv_obj_t *slider = lv_slider_create(parent);
-  lv_obj_set_size(slider, lv_pct(100), 20);
+  lv_obj_set_size(slider, lv_pct(100), 32);
   lv_slider_set_range(slider, 0, 100);
   lv_slider_set_value(slider, sliderValue, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(slider, WB_COLOR_TILE_ACTIVE, LV_PART_INDICATOR);
   lv_obj_set_style_bg_color(slider, WB_COLOR_TILE_ACTIVE, LV_PART_KNOB);
+  lv_obj_set_style_pad_all(slider, 8, LV_PART_KNOB); // bigger knob — easier for a kid to grab and drag
   lv_obj_add_event_cb(slider, wb_slider_value_changed_cb, LV_EVENT_VALUE_CHANGED, ctx);
   lv_obj_add_event_cb(slider, wb_slider_released_cb, LV_EVENT_RELEASED, ctx);
   ctx->slider = slider;

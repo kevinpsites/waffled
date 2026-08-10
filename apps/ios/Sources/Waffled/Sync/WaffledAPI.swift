@@ -2761,6 +2761,19 @@ struct WaffledAPI: Sendable {
         try await getJSON("/api/goals/\(id)/activity", as: GoalActivity.self)
     }
 
+    /// Smart note-field suggestions for the log sheet — the notes already logged against
+    /// this goal, most-used first. `personId` scopes to the notes where that person was the
+    /// credited participant, so each member's box learns their own history. Failures are the
+    /// caller's to swallow (the sheet just falls back to its defaults).
+    func goalNoteSuggestions(goalId: String, personId: String?) async throws -> [String] {
+        struct Resp: Decodable { let suggestions: [String] }
+        var path = "/api/goals/\(goalId)/note-suggestions"
+        if let personId, !personId.isEmpty {
+            path += "?personId=\(personId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? personId)"
+        }
+        return try await getJSON(path, as: Resp.self).suggestions
+    }
+
     /// Delete a goal (soft-delete server-side).
     func deleteGoal(id: String) async throws {
         try await delete("/api/goals/\(id)")
@@ -2987,32 +3000,73 @@ struct WaffledAPI: Sendable {
     /// recurrence is involved, since the local mirror's events table has no goal_id
     /// columns and can't expand a rule. For a recurring occurrence, `scope`
     /// ('this' | 'following' | 'all') + `occurrenceStart` pick which occurrences change;
-    /// the master `rrule` should only be sent with scope 'all' (or when promoting a
-    /// single event to recurring).
-    func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
-                     allDay: Bool, location: String?, personIds: [String],
-                     goalId: String?, goalStepId: String?,
-                     rrule: String? = nil, clearRrule: Bool = false, recurrenceEndAt: String? = nil,
-                     scope: String? = nil, occurrenceStart: String? = nil, isCountdown: Bool = false) async throws {
+    /// the master `rrule` is sent with scope 'following'/'all' (or when promoting a
+    /// single event to recurring), never for a one-occurrence override.
+    static func eventUpdateBody(
+        title: String,
+        startsAtISO: String,
+        endsAtISO: String?,
+        allDay: Bool,
+        location: String?,
+        personIds: [String],
+        goalId: String?,
+        goalStepId: String?,
+        rrule: String?,
+        clearRrule: Bool,
+        recurrenceEndAt: String?,
+        clearRecurrenceEndAt: Bool,
+        scope: String?,
+        occurrenceStart: String?,
+        isCountdown: Bool
+    ) -> [String: JSONValue] {
         var body: [String: JSONValue] = [
             "title": .string(title),
             "startsAt": .string(startsAtISO),
             "endsAt": endsAtISO.map(JSONValue.string) ?? .null,
-            "allDay": .bool(allDay),
             "location": location.map(JSONValue.string) ?? .null,
-            "personId": personIds.first.map(JSONValue.string) ?? .null,
-            "participantIds": .array(personIds.map(JSONValue.string)),
-            "goalId": goalId.map(JSONValue.string) ?? .null,
-            "goalStepId": goalStepId.map(JSONValue.string) ?? .null,
-            "isCountdown": .bool(isCountdown),
         ]
         if let scope { body["scope"] = .string(scope) }
         if let occ = occurrenceStart { body["occurrenceStart"] = .string(occ) }
-        // Send the rule only when set (or explicitly cleared → `null` tombstones the
-        // occurrences); omitting it leaves an existing rule untouched.
-        if let rr = rrule { body["rrule"] = .string(rr) }
-        else if clearRrule { body["rrule"] = .null }
-        if let end = recurrenceEndAt { body["recurrenceEndAt"] = .string(end) }
+
+        // A per-occurrence override can represent only the fields above. Following
+        // and all create/update complete masters, so they carry the full series state.
+        if scope != "this" {
+            body["allDay"] = .bool(allDay)
+            body["personId"] = personIds.first.map(JSONValue.string) ?? .null
+            body["participantIds"] = .array(personIds.map(JSONValue.string))
+            body["goalId"] = goalId.map(JSONValue.string) ?? .null
+            body["goalStepId"] = goalStepId.map(JSONValue.string) ?? .null
+            body["isCountdown"] = .bool(isCountdown)
+            if let rr = rrule { body["rrule"] = .string(rr) }
+            else if clearRrule { body["rrule"] = .null }
+            if let end = recurrenceEndAt { body["recurrenceEndAt"] = .string(end) }
+            else if clearRecurrenceEndAt { body["recurrenceEndAt"] = .null }
+        }
+        return body
+    }
+
+    func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
+                     allDay: Bool, location: String?, personIds: [String],
+                     goalId: String?, goalStepId: String?,
+                     rrule: String? = nil, clearRrule: Bool = false, recurrenceEndAt: String? = nil,
+                     clearRecurrenceEndAt: Bool = false,
+                     scope: String? = nil, occurrenceStart: String? = nil, isCountdown: Bool = false) async throws {
+        let body = Self.eventUpdateBody(
+            title: title,
+            startsAtISO: startsAtISO,
+            endsAtISO: endsAtISO,
+            allDay: allDay,
+            location: location,
+            personIds: personIds,
+            goalId: goalId,
+            goalStepId: goalStepId,
+            rrule: rrule,
+            clearRrule: clearRrule,
+            recurrenceEndAt: recurrenceEndAt,
+            clearRecurrenceEndAt: clearRecurrenceEndAt,
+            scope: scope,
+            occurrenceStart: occurrenceStart,
+            isCountdown: isCountdown)
         try await send("PATCH", "/api/events/\(id)", body: body)
     }
 
@@ -3046,6 +3100,7 @@ struct WaffledAPI: Sendable {
         let goalId: String?
         let goalStepId: String?
         let rrule: String?
+        let recurrenceEndAt: String?
         let calendarName: String?
         let syncState: String?
         let origin: String?

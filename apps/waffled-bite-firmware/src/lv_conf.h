@@ -509,7 +509,7 @@
 #define LV_FONT_MONTSERRAT_42 0
 #define LV_FONT_MONTSERRAT_44 0
 #define LV_FONT_MONTSERRAT_46 0
-#define LV_FONT_MONTSERRAT_48 0
+#define LV_FONT_MONTSERRAT_48 1  // countdown numbers on the quiet-time/timer rings — the biggest thing on either screen
 
 /*Demonstrate special features*/
 #define LV_FONT_MONTSERRAT_28_COMPRESSED 0  /*bpp = 3*/
@@ -524,7 +524,14 @@
 /*Optionally declare custom fonts here.
  *You can use these fonts as default font too and they will be available globally.
  *E.g. #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)*/
-#define LV_FONT_CUSTOM_DECLARE
+// Newsreader SemiBold — the brand serif (same family the marketing site loads
+// from Google Fonts; see website/home/src/layouts/Base.astro), baked via
+// lv_font_conv into src/fonts/wb_font_newsreader_semibold_{32,48}.c. 32px is
+// the home screen's "Hi, {name}!" headline; 48px is quiet_screen.cpp's
+// "Quiet time" title (bumped from 32 on request, to match the countdown
+// ring's own font_48 bump). Everywhere else stays Montserrat, which reads
+// better at the smaller UI-chrome sizes this app also uses.
+#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(wb_font_newsreader_semibold_32) LV_FONT_DECLARE(wb_font_newsreader_semibold_48)
 
 /*Always set a default font*/
 #define LV_FONT_DEFAULT &lv_font_montserrat_14

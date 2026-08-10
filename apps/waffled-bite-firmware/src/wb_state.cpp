@@ -65,8 +65,10 @@ static void parseRoutine(JsonArrayConst arr, WbRoutine &out)
     copyField(t.id, WB_ID_LEN, item["id"]);
     copyField(t.title, WB_TITLE_LEN, item["choreTitle"], "Task");
     const char *status = item["status"].is<const char *>() ? item["status"].as<const char *>() : "pending";
-    t.done = strcmp(status, "done") == 0; // "awaiting" (photo-proof pending) counts as not-done for now
+    t.done = strcmp(status, "done") == 0;
+    t.awaiting = strcmp(status, "awaiting") == 0;
     t.rewardAmount = item["rewardAmount"] | 0;
+    t.requiresPhoto = item["requiresPhoto"] | false;
     out.count++;
   }
 }

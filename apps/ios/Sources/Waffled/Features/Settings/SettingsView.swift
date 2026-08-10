@@ -121,7 +121,7 @@ struct SettingsView: View {
         busy = true
         await session.signOut()    // clear session, → login (Button's Task survives)
         await sync.signOut()       // disconnect sync
-        await notifications.clearOurs()   // drop this household's local reminders
+        await notifications.clearEventReminders() // drop this household's event reminders
     }
 
     /// A settings row. `tap == nil` ⇒ not built yet (dimmed + a "Soon" pill).

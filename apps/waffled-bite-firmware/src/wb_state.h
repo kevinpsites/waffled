@@ -39,10 +39,15 @@ struct WbTask
   char id[WB_ID_LEN];      // the chore instance id — POST .../tasks/:instanceId/complete
                             // target; unused until tap-to-complete lands, plumbed through now
   char title[WB_TITLE_LEN]; // choreTitle in the real payload
-  bool done;                 // true when status=="done"; "awaiting" (photo-proof pending
-                              // approval) counts as not-done for progress purposes this pass —
-                              // no distinct UI for it yet
+  bool done;                 // true when status=="done"
   int rewardAmount;
+  bool awaiting;      // status=="awaiting" — tapped, sitting in the parent's approval
+                       // queue. Distinct from `done`: still not counted as complete for
+                       // progress purposes, but the row shows a "sent to a grown-up"
+                       // state rather than reverting to plain unchecked (tasks_screen.cpp).
+  bool requiresPhoto; // the chore needs a photo the device can't capture yet — the row
+                       // is shown but not tappable (tasks_screen.cpp); completed from a
+                       // parent's phone/web instead.
 };
 
 struct WbRoutine

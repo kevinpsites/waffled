@@ -457,10 +457,6 @@ export function Lists() {
   useTopbarRight(
     () => (
       <>
-        {/* Share list is cosmetic in the handoff (no sharing backend yet). */}
-        <button type="button" className="pill" aria-label="Share list" style={{ cursor: 'pointer' }}>
-          📤 Share list
-        </button>
         <button type="button" className="pill btn-primary topbar-new" onClick={() => setItemModal({ item: null })}>
           <Icon name="plus" />
           <span>Add item</span>

@@ -37,12 +37,12 @@ static lv_obj_t *make_pill_button(lv_obj_t *parent, const char *text, lv_color_t
   lv_obj_set_style_bg_color(btn, bg, 0);
   lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_pad_hor(btn, 22, 0);
-  lv_obj_set_style_pad_ver(btn, 12, 0);
+  lv_obj_set_style_pad_hor(btn, 32, 0);
+  lv_obj_set_style_pad_ver(btn, 20, 0);
   lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_t *lbl = lv_label_create(btn);
   lv_label_set_text(lbl, text);
-  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_24, 0);
   lv_obj_set_style_text_color(lbl, fg, 0);
   return btn;
 }
@@ -52,13 +52,13 @@ void wb_build_forget_confirm_screen(lv_obj_t *parent, lv_obj_t *settings_scr, Wb
   lv_obj_set_style_bg_color(parent, WB_COLOR_BG, 0);
   lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(parent, 18, 0);
+  lv_obj_set_style_pad_row(parent, 24, 0);
   lv_obj_set_style_pad_all(parent, 30, 0);
   lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *title = lv_label_create(parent);
   lv_label_set_text(title, "Forget this device?");
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_24, 0);
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_32, 0);
   lv_obj_set_style_text_color(title, WB_COLOR_INK, 0);
 
   lv_obj_t *sub = lv_label_create(parent);
@@ -72,7 +72,7 @@ void wb_build_forget_confirm_screen(lv_obj_t *parent, lv_obj_t *settings_scr, Wb
   lv_obj_remove_style_all(row);
   lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-  lv_obj_set_style_pad_column(row, 14, 0);
+  lv_obj_set_style_pad_column(row, 20, 0);
   lv_obj_set_style_pad_top(row, 10, 0);
   lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 

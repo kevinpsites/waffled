@@ -83,6 +83,7 @@ struct WaffledBitesView: View {
 
     @ViewBuilder private func paired(_ device: WaffledAPI.WaffledBiteDevice) -> some View {
         let settings = device.settings.withDefaults
+        deviceStatusBanner(device)
         quietCard(device)
         wakeLightCard(device, settings: settings)
         nightlightCard(settings)
@@ -225,6 +226,30 @@ struct WaffledBitesView: View {
         guard let idx = scheduleRows.firstIndex(where: { $0.id == id }) else { return }
         mutate(&scheduleRows[idx].schedule)
         commitSchedules()
+    }
+
+    // RelativeDateTimeFormatter is expensive; reuse one, same as
+    // DisplayKioskSettingsView's identical "Last seen" label.
+    private static let lastSeenFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter(); f.unitsStyle = .short; return f
+    }()
+
+    /// Same pill treatment as the wake-light banner below (sleep/warn/wake) — a device
+    /// that's stopped checking in is just as worth a glance as quiet time or wake-light
+    /// state. TimelineView (not a one-shot Date()) so "online" flips to "offline" on a
+    /// screen left open, without needing its own Timer/@State plumbing.
+    private func deviceStatusBanner(_ device: WaffledAPI.WaffledBiteDevice) -> some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            if WaffledBiteStatus.isOnline(lastSeenAt: device.lastSeenAt, now: context.date) {
+                bannerRow("🟢 Online", fg: WF.success, bg: WF.successT)
+            } else {
+                bannerRow("🔴 Offline · \(lastSeenText(device.lastSeenAt))", fg: WF.danger, bg: WF.dangerT)
+            }
+        }
+    }
+    private func lastSeenText(_ iso: String?) -> String {
+        guard let iso, let d = EventTime.parse(iso) else { return "never connected" }
+        return "last seen \(Self.lastSeenFormatter.localizedString(for: d, relativeTo: Date()))"
     }
 
     @ViewBuilder private func wakeLightBanner(_ wl: WaffledAPI.WaffledBiteDevice.WakeLight) -> some View {

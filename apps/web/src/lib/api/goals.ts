@@ -171,6 +171,11 @@ export const goalsApi = {
     apiGet<{ goals: Goal[] }>(listId ? `/api/goals?listId=${listId}` : '/api/goals'),
   goal: (id: string) => apiGet<{ goal: GoalDetail }>(`/api/goals/${id}`),
   activity: (id: string) => apiGet<GoalActivity>(`/api/goals/${id}/activity`),
+  // Smart note-field suggestions for the log sheet — the notes already logged against
+  // this goal, most-used first. Optional personId scopes to notes where that person was
+  // the credited participant, so each member's box learns their own history.
+  noteSuggestions: (id: string, personId?: string | null) =>
+    apiGet<{ suggestions: string[] }>(`/api/goals/${id}/note-suggestions${personId ? `?personId=${encodeURIComponent(personId)}` : ''}`),
   createGoal: (input: Record<string, unknown>) => apiSend<{ goal: { id: string } }>('POST', '/api/goals', input).then(tap('goals')),
   updateGoal: (id: string, patch: Record<string, unknown>) => apiSend<{ goal: GoalDetail }>('PATCH', `/api/goals/${id}`, patch).then(tap('goals')),
   logGoal: (id: string, body: { amount?: number; hours?: number; minutes?: number; personIds?: string[]; personId?: string | null; note?: string | null; loggedOn?: string | null }) =>
