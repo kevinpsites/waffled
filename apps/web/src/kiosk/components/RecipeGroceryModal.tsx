@@ -11,8 +11,10 @@ function fmtAmt(n: number): string {
 }
 
 // "Add all, or pick specific ingredients" — the shopper may already have some on hand.
-// Defaults to every NON-staple ingredient checked (staples are assumed in the pantry,
-// matching the server's add-all behavior), and adds only the checked subset.
+// Defaults to EVERY ingredient checked, staples included: what's actually in someone's
+// pantry is a guess, and an item missing at the shop costs more than an extra one to
+// uncheck. Staples still carry a "likely on hand" hint to steer the unchecking. Adds
+// only the checked subset.
 export function RecipeGroceryModal({
   recipeId,
   title,
@@ -26,7 +28,7 @@ export function RecipeGroceryModal({
   onClose: () => void
   onAdded: (added: number) => void
 }) {
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(ingredients.filter((i) => !i.isStaple).map((i) => i.id)))
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(ingredients.map((i) => i.id)))
   const [saving, setSaving] = useState(false)
 
   function toggle(id: string) {

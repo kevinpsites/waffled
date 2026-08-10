@@ -766,8 +766,10 @@ struct RecipeScheduleSheet: View {
 }
 
 /// "Add all, or pick specific ingredients" — the shopper may already have some on hand.
-/// Defaults to every NON-staple ingredient selected (staples are assumed in the pantry,
-/// matching the server's add-all behavior) and adds only the checked subset.
+/// Defaults to EVERY ingredient selected, staples included: guessing what someone has in
+/// the pantry is a guess, and a missed item is worse at the shop than an extra one to
+/// uncheck. Staples still carry a "likely on hand" hint to steer the unchecking. Adds
+/// only the checked subset.
 struct RecipeGrocerySheet: View {
     @Environment(\.dismiss) private var dismiss
     let title: String
@@ -780,7 +782,7 @@ struct RecipeGrocerySheet: View {
         self.title = title
         self.ingredients = ingredients
         self.onAdd = onAdd
-        _selected = State(initialValue: Set(ingredients.filter { !$0.isStaple }.map(\.id)))
+        _selected = State(initialValue: Set(ingredients.map(\.id)))
     }
 
     private var allOn: Bool { selected.count == ingredients.count }

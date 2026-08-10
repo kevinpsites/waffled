@@ -101,7 +101,7 @@ describe('RecipeView — add ingredients to grocery', () => {
     renderView()
 
     // first-class action — present even when the on-hand banner has nothing "missing"
-    // the picker opens with every non-staple ingredient pre-checked
+    // the picker opens with every ingredient pre-checked
     const modal = await openPicker()
     fireEvent.click(modal.getByRole('button', { name: 'Add 3 items' }))
 
@@ -129,17 +129,47 @@ describe('RecipeView — add ingredients to grocery', () => {
     expect(post!.body).toEqual({ ingredientIds: ['i1', 'i3'] })
   })
 
-  it('leaves pantry staples unchecked so they are not added by default', async () => {
+  it('pre-checks every ingredient, pantry staples included, so adding the lot is one tap', async () => {
     ingredientsRef.current = [
       makeIngredient({ id: 'i1', name: 'avocado' }),
       makeIngredient({ id: 'i2', name: 'salt', isStaple: true }),
     ]
-    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ added: 1 }) })) as unknown as typeof fetch
+    const calls: { url: string; body: unknown }[] = []
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      return { ok: true, json: async () => ({ added: 2 }) }
+    }) as unknown as typeof fetch
     renderView()
 
-    // only the non-staple is pre-selected
+    // the staple is pre-selected too — it only carries a hint, so the shopper unchecks
+    // what they already have rather than hunting for what the app left out
     const modal = await openPicker()
-    expect(modal.getByRole('button', { name: 'Add 1 item' })).toBeInTheDocument()
+    fireEvent.click(modal.getByRole('button', { name: 'Add 2 items' }))
+
+    expect(await screen.findByText(/Added 2 items/)).toBeInTheDocument()
+    const post = calls.find((c) => c.url.includes('/api/lists/grocery/from-recipe/r1'))
+    expect(post!.body).toEqual({ ingredientIds: ['i1', 'i2'] })
+  })
+
+  it('still lets a pre-checked pantry staple be unchecked', async () => {
+    ingredientsRef.current = [
+      makeIngredient({ id: 'i1', name: 'avocado' }),
+      makeIngredient({ id: 'i2', name: 'salt', isStaple: true }),
+    ]
+    const calls: { url: string; body: unknown }[] = []
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      return { ok: true, json: async () => ({ added: 1 }) }
+    }) as unknown as typeof fetch
+    renderView()
+
+    const modal = await openPicker()
+    fireEvent.click(modal.getByRole('button', { name: /salt/ }))
+    fireEvent.click(modal.getByRole('button', { name: 'Add 1 item' }))
+
+    expect(await screen.findByText(/Added 1 item/)).toBeInTheDocument()
+    const post = calls.find((c) => c.url.includes('/api/lists/grocery/from-recipe/r1'))
+    expect(post!.body).toEqual({ ingredientIds: ['i1'] })
   })
 
   // The picker reuses `.ring-row` from the cooking checklist, where "on" means "already

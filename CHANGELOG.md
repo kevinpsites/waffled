@@ -16,9 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Choose which recipe ingredients go on the grocery list.** "Add to grocery" now opens
-  a picker so you can add everything or just the items you actually need — pantry staples
-  start unchecked since you probably have them — instead of always dumping the whole recipe
-  onto the list. Works on web and iOS.
+  a picker so you can add everything or just the items you actually need, instead of always
+  dumping the whole recipe onto the list. Everything starts checked — pantry staples are
+  flagged as "likely on hand" so you can uncheck them, rather than being left out on your
+  behalf. Works on web and iOS.
 - **Assign a store to grocery items and shop by store.** Tag an item with where you'll buy
   it (Costco, Walmart, the corner market) and flip the grocery board to a **By store** view
   that groups the list by shop. The store box is a quick-select over the stores you've used
