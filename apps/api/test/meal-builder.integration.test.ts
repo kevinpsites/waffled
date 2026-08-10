@@ -679,3 +679,53 @@ describe('the planner treats a meal-backed slot as filled', () => {
     expect(dates).not.toContain('2026-07-06') // "Scheduled plate" lives here
   })
 })
+
+// A count alone is not actionable: "7 to buy" tells you the size of the problem
+// and nothing about its content. The names ride along on the same payload so the
+// builder can expand a dish's count into the actual shopping.
+describe('what exactly is left to buy', () => {
+  let plate = ''
+
+  beforeAll(async () => {
+    plate = json(await call('POST', '/api/meals', kevin, {
+      name: 'Name-the-gap plate',
+      recipes: [
+        { recipeId: bbqChicken, role: 'main' },
+        { recipeId: peachCobbler, role: 'dessert' },
+      ],
+    })).meal.id
+  })
+
+  it('names the ingredients still to buy, per dish and for the plate', async () => {
+    await setModule('pantry', true)
+    const meal = json(await call('GET', `/api/meals/${plate}`, kevin)).meal
+    const chicken = meal.recipes.find((r: { recipeId: string }) => r.recipeId === bbqChicken)
+
+    // Chicken is in the pantry from the block above, so it is NOT still to buy —
+    // the names must agree with the count rather than listing every ingredient.
+    expect(chicken.toBuyNames).toHaveLength(chicken.toBuy)
+    expect(chicken.toBuyNames.join(' ').toLowerCase()).not.toContain('chicken')
+    expect(meal.toBuyNames).toHaveLength(meal.toBuy)
+  })
+
+  it('still names them with the pantry off, where everything non-staple is to buy', async () => {
+    await setModule('pantry', false)
+    const meal = json(await call('GET', `/api/meals/${plate}`, kevin)).meal
+    const chicken = meal.recipes.find((r: { recipeId: string }) => r.recipeId === bbqChicken)
+    expect(chicken.onHand).toBe(null)
+    expect(chicken.toBuyNames).toHaveLength(chicken.toBuy)
+    // With no pantry to match against, the chicken IS still to buy.
+    expect(chicken.toBuyNames.join(' ').toLowerCase()).toContain('chicken')
+  })
+
+  it('dedupes a shared ingredient across the plate, matching the count', async () => {
+    await setModule('pantry', false)
+    const shared = json(await call('POST', '/api/meals', kevin, {
+      name: 'Shared mayo',
+      recipes: [{ recipeId: potatoSalad }, { recipeId: coleslaw }],
+    })).meal
+    const names = shared.toBuyNames.map((n: string) => n.toLowerCase())
+    expect(new Set(names).size).toBe(names.length)
+    expect(names).toHaveLength(shared.toBuy)
+  })
+})

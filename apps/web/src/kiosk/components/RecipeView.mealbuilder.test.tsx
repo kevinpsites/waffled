@@ -25,6 +25,7 @@ const createMock = vi.fn(async (input: { name: string; servings?: number }): Pro
   totalMinutes: null,
   onHand: null,
   toBuy: 0,
+  toBuyNames: [],
   recipes: [],
 }))
 const addDishMock = vi.fn(async (_mealId: string, _input: { recipeId: string; role?: string }) => ({}) as Meal)

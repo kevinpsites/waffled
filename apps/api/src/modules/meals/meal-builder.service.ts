@@ -231,7 +231,7 @@ function minutesFor(r: MealRecipeRow): number | null {
   return (p ?? 0) + (c ?? 0)
 }
 
-export function presentMealRecipe(r: MealRecipeRow, onHand?: { onHand: OnHandCount | null; toBuy: number }) {
+export function presentMealRecipe(r: MealRecipeRow, onHand?: { onHand: OnHandCount | null; toBuy: number; toBuyNames?: string[] }) {
   return {
     recipeId: r.recipe_id,
     title: r.title,
@@ -250,6 +250,8 @@ export function presentMealRecipe(r: MealRecipeRow, onHand?: { onHand: OnHandCou
     // pantry/on-hand.ts) — clients render nothing rather than a fake "0 of N".
     onHand: onHand?.onHand ?? null,
     toBuy: onHand?.toBuy ?? 0,
+    // The actual ingredients behind that count, so a client can expand it.
+    toBuyNames: onHand?.toBuyNames ?? [],
   }
 }
 
@@ -276,6 +278,7 @@ export async function presentMeal(householdId: string, meal: MealRow, dishes?: M
     // wanting mayonnaise is ONE thing to buy) — the same rule the grocery build uses.
     onHand: counts.total.onHand,
     toBuy: counts.total.toBuy,
+    toBuyNames: counts.total.toBuyNames,
     recipes: rows.map((r) => presentMealRecipe(r, counts.byRecipe.get(r.recipe_id))),
   }
 }

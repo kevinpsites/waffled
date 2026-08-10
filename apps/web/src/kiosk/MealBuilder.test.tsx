@@ -17,6 +17,7 @@ function dish(over: Partial<MealDish> & { recipeId: string; title: string }): Me
     cook: null,
     onHand: { have: 3, total: 5 },
     toBuy: 2,
+    toBuyNames: ['Something', 'Something else'],
     ...over,
   }
 }
@@ -35,6 +36,7 @@ function plate(over: Partial<Meal> = {}): Meal {
     totalMinutes: 65,
     onHand: { have: 4, total: 9 },
     toBuy: 5,
+    toBuyNames: [],
     ...over,
     recipes,
   }
@@ -308,9 +310,13 @@ describe('MealBuilder — on-hand rendering rule', () => {
     const row = (await screen.findByText('Coleslaw')).closest('.mb-dish') as HTMLElement
     // the time still shows…
     expect(within(row).getByText('🕐 20 min')).toBeInTheDocument()
-    // …but nothing that claims anything about the pantry
+    // …and so does the shopping, which is NOT a pantry claim: `toBuy` counts the
+    // non-staple ingredients headed for the grocery list and is well-defined with
+    // the pantry off (see pantry/on-hand.ts). Suppressing it here left a plate
+    // showing nothing at all on the very configuration that is the default.
+    expect(within(row).getByRole('button', { name: /4 to buy/i })).toBeInTheDocument()
+    // What must NOT appear is any claim about what's on hand.
     expect(within(row).queryByText(/on hand/)).not.toBeInTheDocument()
-    expect(within(row).queryByText(/to buy/)).not.toBeInTheDocument()
     expect(within(row).queryByText(/0 of/)).not.toBeInTheDocument()
   })
 })
@@ -465,10 +471,10 @@ describe('MealBuilder — footer stat bar', () => {
     expect(screen.getByText('7 to buy')).toBeInTheDocument()
   })
 
-  it('toggles "Save to reuse"', async () => {
+  it('toggles keeping the plate in the library', async () => {
     server.plate = plate({ name: 'BBQ Sunday', isSaved: false, recipes: [] })
     renderBuilder()
-    const toggle = await screen.findByRole('switch', { name: /Save .*BBQ Sunday.* to reuse/ })
+    const toggle = await screen.findByRole('switch', { name: /Keep .*BBQ Sunday.* in your library/ })
     expect(toggle).toHaveAttribute('aria-checked', 'false')
     fireEvent.click(toggle)
     await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'))
@@ -855,5 +861,69 @@ describe('MealBuilder — the drop target speaks both drag dialects', () => {
     fireEvent.drop(group('Main'), { dataTransfer: dt })
 
     await waitFor(() => expect(groupOf('Roast Chicken')).toBe('main'))
+  })
+})
+
+// "7 to buy" tells you the size of the problem and nothing about its content. The
+// count expands into the actual ingredients so you can decide whether that's a
+// shop or a rummage.
+describe('MealBuilder — seeing what is left to buy', () => {
+  beforeEach(() => {
+    reset({
+      plate: plate({
+        recipes: [
+          dish({
+            recipeId: 'r1',
+            title: 'BBQ Chicken',
+            role: 'main',
+            onHand: { have: 1, total: 3 },
+            toBuy: 2,
+            toBuyNames: ['BBQ sauce', 'Brown sugar'],
+          }),
+        ],
+      }),
+    })
+    mockServer()
+  })
+
+  it('expands the count into the ingredients behind it', async () => {
+    renderBuilder()
+    const count = await screen.findByRole('button', { name: /2 to buy/i })
+    expect(screen.queryByText('BBQ sauce')).not.toBeInTheDocument()
+
+    fireEvent.click(count)
+    expect(await screen.findByText('BBQ sauce')).toBeInTheDocument()
+    expect(screen.getByText('Brown sugar')).toBeInTheDocument()
+
+    fireEvent.click(count)
+    await waitFor(() => expect(screen.queryByText('BBQ sauce')).not.toBeInTheDocument())
+  })
+
+  it('offers nothing to expand when everything is on hand', async () => {
+    reset({
+      plate: plate({
+        recipes: [
+          dish({ recipeId: 'r1', title: 'BBQ Chicken', onHand: { have: 3, total: 3 }, toBuy: 0, toBuyNames: [] }),
+        ],
+      }),
+    })
+    mockServer()
+    renderBuilder()
+    expect(await screen.findByText(/all on hand/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /to buy/i })).not.toBeInTheDocument()
+  })
+
+  it('expands with the pantry off too, where on-hand is unknowable but the shopping is not', async () => {
+    reset({
+      plate: plate({
+        recipes: [
+          dish({ recipeId: 'r1', title: 'BBQ Chicken', onHand: null, toBuy: 2, toBuyNames: ['BBQ sauce', 'Brown sugar'] }),
+        ],
+      }),
+    })
+    mockServer()
+    renderBuilder()
+    fireEvent.click(await screen.findByRole('button', { name: /2 to buy/i }))
+    expect(await screen.findByText('BBQ sauce')).toBeInTheDocument()
   })
 })

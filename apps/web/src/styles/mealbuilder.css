@@ -125,6 +125,8 @@
 .mb-dish {
   display: flex;
   align-items: center;
+  /* wraps so the expanded to-buy list gets its own full-width line in the card */
+  flex-wrap: wrap;
   gap: 10px;
   background: var(--card);
   border: 1px solid var(--hair);
@@ -185,6 +187,42 @@
 }
 .mb-onhand-buy {
   color: var(--warn);
+}
+.mb-onhand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+.mb-onhand-caret {
+  font-size: 9px;
+  opacity: 0.75;
+}
+.mb-tobuy {
+  width: 100%;
+  margin: 2px 0 0;
+  padding: 9px 12px;
+  list-style: none;
+  background: var(--panel);
+  border-radius: var(--r-sm, 12px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.mb-tobuy li {
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  padding: 3px 10px;
 }
 .mb-cook-badge {
   display: inline-flex;
@@ -505,9 +543,19 @@
   border: 0;
   padding: 0;
 }
+.mb-bar-save-b {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
 .mb-bar-save-t {
   font-size: 13.5px;
   font-weight: 600;
+}
+.mb-bar-save-h {
+  font-size: 11.5px;
+  font-weight: 600;
+  opacity: 0.62;
 }
 .mb-bar-actions {
   display: flex;

@@ -35,10 +35,28 @@ export function dishMinutes(d: { prepTimeMinutes: number | null; cookTimeMinutes
 // The one rule that is easy to get wrong: `onHand` is null when the pantry module
 // is off, and that means "we can't say" — render no on-hand claim at all. It is
 // NOT `have: 0`, and we never render "0 of N" (see decisions 5 + 14).
-function OnHand({ dish }: { dish: MealDish }) {
-  if (!dish.onHand) return null
-  if (dish.toBuy === 0) return <span className="mb-onhand-ok">✓ all on hand</span>
-  return <span className="mb-onhand-buy">{dish.toBuy} to buy</span>
+function OnHand({ dish, open, onToggle }: { dish: MealDish; open: boolean; onToggle: () => void }) {
+  if (dish.toBuy === 0) {
+    // Only a pantry that actually reported can claim everything is on hand; with
+    // the pantry off there is simply nothing to say.
+    return dish.onHand ? <span className="mb-onhand-ok">✓ all on hand</span> : null
+  }
+  // A count on its own isn't actionable — make it open into the ingredients.
+  return (
+    <button
+      type="button"
+      className="mb-onhand-buy mb-onhand-btn"
+      aria-expanded={open}
+      onClick={(e) => {
+        // The row around this opens the recipe; expanding the count must not.
+        e.stopPropagation()
+        onToggle()
+      }}
+    >
+      {dish.toBuy} to buy
+      <span className="mb-onhand-caret">{open ? '▾' : '▸'}</span>
+    </button>
+  )
 }
 
 function DishRow({
@@ -58,15 +76,37 @@ function DishRow({
 }) {
   const mins = dishMinutes(dish)
   const title = dish.title ?? 'Untitled recipe'
+  const [open, setOpen] = useState(false)
   return (
     <div className="mb-dish" draggable onDragStart={onDragDish}>
-      <button type="button" className="mb-dish-open" onClick={onOpen}>
+      {/* A div, not a <button>: the to-buy count inside it is itself a button, and
+          interactive content may not nest inside a button. The class already
+          resets border/background/padding, so this renders identically. */}
+      <div
+        role="button"
+        tabIndex={0}
+        // Named explicitly, else the accessible name is the row's whole text —
+        // which swallows the nested to-buy control and makes both unaddressable.
+        aria-label={`Open ${title}`}
+        className="mb-dish-open"
+        onClick={onOpen}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onOpen()
+          }
+        }}
+      >
         <span className="mb-thumb">{dish.emoji ?? '🍽️'}</span>
         <span className="mb-dish-b">
           <span className="mb-dish-t">{title}</span>
           <span className="mb-dish-m">
             {mins > 0 ? <span>{`🕐 ${mins} min`}</span> : null}
-            <OnHand dish={dish} />
+            <OnHand
+              dish={dish}
+              open={open}
+              onToggle={() => setOpen((v) => !v)}
+            />
             {/* A four-dish plate has up to four cooks — the badge says whose job
                 this dish is (decision 10). */}
             {dish.cook ? (
@@ -79,7 +119,7 @@ function DishRow({
             ) : null}
           </span>
         </span>
-      </button>
+      </div>
 
       {/* Per-dish cook assignment. Empty = "whoever" (the default). */}
       <select
@@ -100,6 +140,15 @@ function DishRow({
       <button type="button" className="mb-x" aria-label={`Remove ${title}`} onClick={onRemove}>
         ×
       </button>
+
+      {/* Wraps onto its own full-width line inside the dish card. */}
+      {open && dish.toBuyNames.length > 0 ? (
+        <ul className="mb-tobuy">
+          {dish.toBuyNames.map((n) => (
+            <li key={n}>{n}</li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   )
 }

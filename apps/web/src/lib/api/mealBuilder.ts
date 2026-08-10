@@ -37,6 +37,9 @@ export interface MealDish {
   cook: MealCook | null
   onHand: OnHandCount | null
   toBuy: number
+  // The ingredients behind `toBuy`, so the count can be expanded into the actual
+  // shopping. Always exactly `toBuy` long, pantry on or off.
+  toBuyNames: string[]
 }
 
 // The full plate. The builder screen, the meal detail and the library card all read
@@ -47,7 +50,8 @@ export interface Meal {
   // Stored and displayed only — v1 deliberately does not rescale ingredient
   // quantities (see decision 4 in the plan).
   servings: number
-  // The "Save to reuse" toggle. An unsaved plate is a one-off and never appears in
+  // The "Keep in library" toggle — applied the moment it is flipped, not deferred
+  // until the plate is scheduled. An unsaved plate is a one-off and never appears in
   // the library; a saved one is a reusable template.
   isSaved: boolean
   createdBy: string | null
@@ -59,6 +63,7 @@ export interface Meal {
   // wanting mayonnaise is one thing to buy.
   onHand: OnHandCount | null
   toBuy: number
+  toBuyNames: string[]
   recipes: MealDish[]
 }
 

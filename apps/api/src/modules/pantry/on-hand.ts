@@ -29,6 +29,10 @@ export interface RecipeOnHand {
   // null ⇒ the pantry module is off; the client shows no on-hand claim at all.
   onHand: OnHandCount | null
   toBuy: number
+  // The ingredients behind `toBuy`, in recipe order — a count on its own tells you
+  // the size of the problem and nothing about its content. Always exactly `toBuy`
+  // long, with pantry off or on.
+  toBuyNames: string[]
 }
 
 export interface OnHandResult {
@@ -54,7 +58,7 @@ export interface OnHandContext {
 const EMPTY = (pantryEnabled: boolean): OnHandResult => ({
   pantryEnabled,
   byRecipe: new Map(),
-  total: { onHand: pantryEnabled ? { have: 0, total: 0 } : null, toBuy: 0 },
+  total: { onHand: pantryEnabled ? { have: 0, total: 0 } : null, toBuy: 0, toBuyNames: [] },
 })
 
 export async function pantryModuleEnabled(householdId: string): Promise<boolean> {
@@ -119,18 +123,27 @@ export function countOnHand(ctx: OnHandContext, recipeIds: readonly string[]): O
   // Deduped across the whole set: two dishes both wanting mayonnaise is ONE thing to
   // have/buy, matching how the grocery build aggregates.
   const seenNames = new Map<string, boolean>()
+  // Deduped by lowercased name but displayed in its original casing — first spelling
+  // encountered wins, so "Mayonnaise" doesn't become "mayonnaise" for the plate.
+  const firstSpelling = new Map<string, string>()
   for (const id of ids) {
     let have = 0
     const names = ctx.required.get(id) ?? []
+    const toBuyNames: string[] = []
     for (const name of names) {
       const matched = hasIt(name)
       if (matched) have += 1
+      else toBuyNames.push(name)
       const key = name.trim().toLowerCase()
-      if (!seenNames.has(key)) seenNames.set(key, matched)
+      if (!seenNames.has(key)) {
+        seenNames.set(key, matched)
+        firstSpelling.set(key, name)
+      }
     }
     byRecipe.set(id, {
       onHand: ctx.pantryEnabled ? { have, total: names.length } : null,
       toBuy: names.length - (ctx.pantryEnabled ? have : 0),
+      toBuyNames,
     })
   }
 
@@ -142,6 +155,7 @@ export function countOnHand(ctx: OnHandContext, recipeIds: readonly string[]): O
     total: {
       onHand: ctx.pantryEnabled ? { have: totalHave, total: totalCount } : null,
       toBuy: totalCount - (ctx.pantryEnabled ? totalHave : 0),
+      toBuyNames: [...seenNames.entries()].filter(([, m]) => !m).map(([k]) => firstSpelling.get(k) ?? k),
     },
   }
 }
@@ -155,5 +169,5 @@ export async function onHandForRecipes(householdId: string, recipeIds: readonly 
 // Convenience for the single-recipe case (the recipe-detail banner).
 export async function onHandForRecipe(householdId: string, recipeId: string): Promise<RecipeOnHand> {
   const res = await onHandForRecipes(householdId, [recipeId])
-  return res.byRecipe.get(recipeId) ?? { onHand: res.pantryEnabled ? { have: 0, total: 0 } : null, toBuy: 0 }
+  return res.byRecipe.get(recipeId) ?? { onHand: res.pantryEnabled ? { have: 0, total: 0 } : null, toBuy: 0, toBuyNames: [] }
 }

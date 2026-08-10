@@ -58,6 +58,7 @@ function makeMeal(over: Partial<Meal> & { id: string; name: string }): Meal {
     totalMinutes: 90,
     onHand: null,
     toBuy: 0,
+    toBuyNames: [],
     recipes: [],
     ...over,
   }
