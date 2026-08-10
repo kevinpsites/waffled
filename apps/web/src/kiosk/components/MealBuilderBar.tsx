@@ -1,5 +1,5 @@
 // The dark stat bar pinned under the Meal Builder: serves stepper · hands-on
-// time · groceries · "save to reuse" · the two actions.
+// time · groceries · "keep in library" · the two actions.
 //
 // `servings` is stored and displayed only — v1 deliberately does not rescale
 // ingredient quantities (decision 4).
@@ -70,11 +70,17 @@ export function MealBuilderBar({
           type="button"
           role="switch"
           aria-checked={isSaved}
-          aria-label={`Save “${name}” to reuse`}
+          aria-label={`Keep “${name}” in your library`}
           className={`toggle ${isSaved ? 'on' : ''}`}
           onClick={onToggleSaved}
         />
-        <span className="mb-bar-save-t">Save “{name}” to reuse</span>
+        <span className="mb-bar-save-b">
+          <span className="mb-bar-save-t">Keep in library</span>
+          {/* The toggle applies immediately — it is a state, not a pending action
+              waiting on Schedule or Add-to-list. Say so, because "Save…" read as
+              something you still had to commit. */}
+          <span className="mb-bar-save-h">{isSaved ? 'Saved — it’s in your library' : 'One-off — not saved'}</span>
+        </span>
       </div>
 
       <div className="mb-bar-actions">
