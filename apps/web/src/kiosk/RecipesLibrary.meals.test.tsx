@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route, useParams } from 'react-router'
 import { RecipesLibrary } from './RecipesLibrary'
-import { TopbarSlotProvider } from './topbar-slot'
+import { TopbarSlotProvider, useTopbarSlots } from './topbar-slot'
 import type { Recipe, Meal } from '../lib/api'
 
 // A saved meal is a first-class citizen of the library (decision 11), so the list
@@ -74,12 +74,22 @@ function Probe({ label }: { label: string }) {
   return <div>{`${label}:${id}`}</div>
 }
 
+// The screen publishes its header through the topbar slot rather than rendering it
+// inline, so the provider alone puts nothing in the DOM — the real Topbar is what
+// consumes the slot. Standing in for it here is what makes header affordances
+// (‹ Meals, ＋ New meal, ＋ New recipe) assertable at all.
+function TopbarOutlet() {
+  return <>{useTopbarSlots().full}</>
+}
+
 function renderLib() {
   return render(
     <MemoryRouter initialEntries={['/meals/recipes']}>
       <TopbarSlotProvider>
+        <TopbarOutlet />
         <Routes>
           <Route path="/meals/recipes" element={<RecipesLibrary />} />
+          <Route path="/meals/build" element={<div>BUILDER:blank</div>} />
           <Route path="/meals/build/:id" element={<Probe label="BUILDER" />} />
           <Route path="/meals/recipe/:id" element={<Probe label="RECIPE" />} />
         </Routes>
@@ -148,5 +158,40 @@ describe('RecipesLibrary — saved meals are first-class library citizens', () =
     renderLib()
     fireEvent.click(screen.getByRole('button', { name: /Favorites/i }))
     expect(screen.queryByText('BBQ Sunday')).not.toBeInTheDocument()
+  })
+})
+
+// The builder had no entry point anywhere in the app: /meals/build was reachable
+// only by typing the URL, or sideways via a recipe's "Build a meal around this",
+// which pre-seeds a dish and so can't start an empty plate. The library header is
+// where you already go to make a new recipe, so it's where you make a new meal.
+describe('RecipesLibrary — starting a brand-new meal', () => {
+  beforeEach(() => {
+    savedQueries.length = 0
+    recipesRef.current = [makeRecipe({ id: 'r1', title: 'Chicken Parmesan' })]
+    mealsRef.current = []
+  })
+
+  it('offers a New meal action alongside New recipe', () => {
+    renderLib()
+    expect(screen.getByRole('button', { name: /New meal/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /New recipe/i })).toBeInTheDocument()
+  })
+
+  it('opens an empty builder — no id, so nothing is pre-seeded', () => {
+    renderLib()
+    fireEvent.click(screen.getByRole('button', { name: /New meal/i }))
+    // The blank route, NOT /meals/build/:id — a plate is created lazily on the
+    // first dish add, so landing here must not have created one yet.
+    expect(screen.getByText('BUILDER:blank')).toBeInTheDocument()
+  })
+
+  it('still offers New meal when the library is completely empty', () => {
+    // The empty state is exactly when a user most needs the affordance, and it
+    // renders its own markup — so it gets its own assertion.
+    recipesRef.current = []
+    mealsRef.current = []
+    renderLib()
+    expect(screen.getByRole('button', { name: /New meal/i })).toBeInTheDocument()
   })
 })

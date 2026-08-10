@@ -77,7 +77,11 @@ export function RecipesLibrary() {
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/meals')}>‹ Meals</button>
         <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600 }}>Recipes</div>
-        <button className="pill btn-primary" style={{ marginLeft: 'auto', color: 'var(--on-accent)', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button>
+        {/* The only in-app way to start an empty plate. Deliberately the bare route
+            with no id: the builder creates the meal lazily on the first dish, so
+            abandoning this screen leaves no orphan behind. */}
+        <button className="pill" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={() => navigate('/meals/build')}>＋ New meal</button>
+        <button className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button>
       </div>
     ),
     [navigate]
