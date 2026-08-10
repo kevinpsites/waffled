@@ -258,7 +258,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   indirectly — let a crafted pattern expand without bound until the process ran
   out of memory. Waffled never feeds user input to the affected code path, so this
   was not exploitable in practice, but the patched version is now pinned across
-  the server's dependency tree.
+  the server's dependency tree. A later advisory found the first patch could be
+  bypassed the same way, so the pin has been moved forward again to the release
+  that closes it for good.
 
 ## [0.12.0] - 2026-07-23
 
