@@ -527,8 +527,11 @@ export async function addRecipeToGrocery(
     const name = (sub && sub.trim() ? sub.trim() : ing.name).trim()
     const row = ing as { aisle?: string | null; is_staple?: boolean }
     // pantry staples are assumed in-house — leave them off the list (matches the
-    // weekly auto-build and the mock's "Pantry check").
-    if (row.is_staple || isStaple(name)) continue
+    // weekly auto-build and the mock's "Pantry check"). But that is only a guess, and
+    // an explicit pick beats it: when the picker sends ingredientIds the shopper has
+    // ticked each row by hand, so honor the selection exactly rather than silently
+    // delivering fewer items than the sheet promised.
+    if (!pick && (row.is_staple || isStaple(name))) continue
     const key = name.toLowerCase()
     const quantity = ing.amount != null && ing.unit ? `${Number(ing.amount)} ${ing.unit}` : ing.amount != null ? `${Number(ing.amount)}` : null
     const aisle = row.aisle && row.aisle !== 'Other' ? row.aisle : aisleFor(name, ing.unit)

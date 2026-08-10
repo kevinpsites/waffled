@@ -588,6 +588,41 @@ describe('grocery auto-build from a recipe', () => {
     expect(names).not.toContain('Garlic')
   })
 
+  it('adds a pantry staple when the picker explicitly selects it', async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Focaccia', emoji: '🫓' })
+    const rid = JSON.parse(r.body).recipe.id
+    // Insert directly so the staple is flagged on the row (`is_staple`) under a name
+    // no other test asserts on — the shared household list is read whole elsewhere.
+    const householdId = (await withClient((c) => c.query<{ id: string }>(`select id from households limit 1`))).rows[0].id
+    await withClient((c) =>
+      c.query(
+        `insert into recipe_ingredients (household_id, recipe_id, name, amount, unit, aisle, is_staple) values
+           ($1,$2,'Zaatar blend',1,'Tbsp','Pantry',true),
+           ($1,$2,'Semolina',2,'cup','Pantry',false)`,
+        [householdId, rid]
+      )
+    )
+    const ings = (
+      await withClient((c) =>
+        c.query<{ id: string; name: string }>(`select id, name from recipe_ingredients where recipe_id=$1`, [rid])
+      )
+    ).rows
+
+    // The picker now opens with everything ticked, staples included, so a staple can
+    // arrive in ingredientIds. That is a deliberate "yes, I need this" from the shopper
+    // and has to beat the server's "you've probably got it" guess — otherwise the sheet
+    // promises "Add 2 items" and quietly delivers one.
+    const res = await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin, {
+      ingredientIds: ings.map((i) => i.id),
+    })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).added).toBe(2)
+
+    const names = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.map((i: { name: string }) => i.name)
+    expect(names).toContain('Zaatar blend')
+    expect(names).toContain('Semolina')
+  })
+
   it('surfaces recipes added off-plan as "unscheduled" on the board', async () => {
     // Chorizo Tacos was added via from-recipe but never planned this week — the
     // board should return it under `unscheduled` so the by-meal view can give its
