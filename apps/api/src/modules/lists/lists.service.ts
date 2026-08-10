@@ -8,6 +8,7 @@ import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { getRecipe, listIngredients, getOverrides } from '../meals/meals.service'
 import { aisleFor, isStaple } from './aisles'
+import { formatAmount, normalizeQuantity, parseQuantity } from './quantity'
 import type { ListRow, ListItemRow, CreateListInput, PatchItemInput } from './lists.types'
 
 export async function getOrCreateGroceryList(tenant: Tenant): Promise<ListRow> {
@@ -533,7 +534,8 @@ export async function addRecipeToGrocery(
     // delivering fewer items than the sheet promised.
     if (!pick && (row.is_staple || isStaple(name))) continue
     const key = name.toLowerCase()
-    const quantity = ing.amount != null && ing.unit ? `${Number(ing.amount)} ${ing.unit}` : ing.amount != null ? `${Number(ing.amount)}` : null
+    const quantity =
+      ing.amount != null ? `${formatAmount(Number(ing.amount))}${ing.unit ? ` ${ing.unit}` : ''}` : null
     const aisle = row.aisle && row.aisle !== 'Other' ? row.aisle : aisleFor(name, ing.unit)
 
     const dupe = have.get(key)
@@ -617,18 +619,12 @@ export async function removeRecipeFromGrocery(
 // Combine two freeform grocery quantities. Same unit (or both unit-less) → sum
 // the numbers ("1 lb" + "0.5 lb" → "1.5 lb", "1" + "1" → "2"). Otherwise keep
 // both ("1 cup" + "2 tbsp" → "1 cup + 2 tbsp").
-function parseQuantity(q: string | null): { n: number | null; unit: string } {
-  if (!q) return { n: null, unit: '' }
-  const m = q.trim().match(/^([\d.]+)\s*(.*)$/)
-  if (!m) return { n: null, unit: q.trim() }
-  return { n: parseFloat(m[1]), unit: m[2].trim() }
-}
 export function mergeQuantity(a: string | null, b: string | null): string | null {
   const pa = parseQuantity(a)
   const pb = parseQuantity(b)
   if (pa.n != null && pb.n != null && pa.unit.toLowerCase() === pb.unit.toLowerCase()) {
-    const sum = +(pa.n + pb.n).toFixed(2)
-    return pb.unit ? `${sum} ${pb.unit}` : `${sum}`
+    const sum = pa.n + pb.n
+    return pb.unit ? `${formatAmount(sum)} ${pb.unit}` : formatAmount(sum)
   }
   if (a && b) return `${a} + ${b}`
   return a ?? b
@@ -800,7 +796,7 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
       }
       continue
     }
-    const qty = g.amount != null ? `${Number(g.amount.toFixed(2))}${g.unit ? ` ${g.unit}` : ''}` : g.unit
+    const qty = g.amount != null ? `${formatAmount(g.amount)}${g.unit ? ` ${g.unit}` : ''}` : g.unit
     const checked = prevChecked.has(g.name.trim().toLowerCase())
     await query(
       `insert into list_items (household_id, list_id, name, quantity, category, source, source_recipe_ids, checked, checked_at, sort_order, created_by, week_start)
@@ -972,7 +968,10 @@ export function presentListItem(i: ListItemRow) {
   return {
     id: i.id,
     name: i.name,
-    quantity: i.quantity,
+    // Tidied on the way out, not just on the way in, so rows written before the
+    // formatter existed stop showing "0.6666666666666666 cup" without a data migration.
+    // Anything that doesn't parse cleanly is returned untouched.
+    quantity: normalizeQuantity(i.quantity),
     checked: i.checked,
     checkedAt: i.checked_at,
     weekStart: isoDateOnly(i.week_start),

@@ -588,6 +588,41 @@ describe('grocery auto-build from a recipe', () => {
     expect(names).not.toContain('Garlic')
   })
 
+  it('writes a recipe fraction as a fraction, not the float it is stored as', async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Fudge', emoji: '🍫' })
+    const rid = JSON.parse(r.body).recipe.id
+    const householdId = (await withClient((c) => c.query<{ id: string }>(`select id from households limit 1`))).rows[0].id
+    // "⅔ cup" in the source markdown parses to 0.6666666666666666 in the DB
+    await withClient((c) =>
+      c.query(
+        `insert into recipe_ingredients (household_id, recipe_id, name, amount, unit, aisle, is_staple)
+           values ($1,$2,'evaporated milk',$3,'cup','Dairy & Chilled',false)`,
+        [householdId, rid, 2 / 3]
+      )
+    )
+    await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin)
+
+    const items = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items
+    const milk = items.find((i: { name: string }) => i.name === 'evaporated milk')
+    expect(milk.quantity).toBe('⅔ cup')
+  })
+
+  it('tidies a raw float already stored on a row when serving the board', async () => {
+    // Rows written before the formatter existed still read back as fractions — the
+    // normalization happens on the way out too, so nobody needs a data migration.
+    const householdId = (await withClient((c) => c.query<{ id: string }>(`select id from households limit 1`))).rows[0].id
+    const listId = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).list.id
+    await withClient((c) =>
+      c.query(
+        `insert into list_items (household_id, list_id, name, quantity, category, source)
+           values ($1,$2,'legacy condensed milk','0.6666666666666666 cup','Dairy & Chilled','manual')`,
+        [householdId, listId]
+      )
+    )
+    const items = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items
+    expect(items.find((i: { name: string }) => i.name === 'legacy condensed milk').quantity).toBe('⅔ cup')
+  })
+
   it('adds a pantry staple when the picker explicitly selects it', async () => {
     const r = await call('POST', '/api/recipes', kevin, { title: 'Focaccia', emoji: '🫓' })
     const rid = JSON.parse(r.body).recipe.id
@@ -746,7 +781,7 @@ describe('grocery auto-build + pantry staples', () => {
     expect(names).toContain('Salmon fillets')
     expect(names).not.toContain('Olive oil')
     const salmon = board.items.find((i: { name: string }) => i.name === 'Salmon fillets')
-    expect(salmon).toMatchObject({ aisle: 'Meat & Seafood', quantity: '1.5 lb', source: 'auto' })
+    expect(salmon).toMatchObject({ aisle: 'Meat & Seafood', quantity: '1½ lb', source: 'auto' })
     expect(salmon.sourceRecipeIds).toContain(recipeId)
     expect(board.meals.some((d: { recipeId: string; mealType: string }) => d.recipeId === recipeId && d.mealType === 'dinner')).toBe(true)
 
@@ -827,14 +862,14 @@ describe('off-plan grocery items vs the weekly rebuild', () => {
     // merged into the existing auto row, promoted so the rebuild can't wipe the off-plan stake
     let salmon = (await groceryItems()).filter((i: { name: string }) => i.name === 'Salmon fillets')
     expect(salmon).toHaveLength(1)
-    expect(salmon[0].quantity).toBe('2.5 lb')
+    expect(salmon[0].quantity).toBe('2½ lb')
     expect(salmon[0].source).toBe('recipe')
 
     // rebuild again: still one row, same quantity (no duplicate, no double-count)
     await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
     salmon = (await groceryItems()).filter((i: { name: string }) => i.name === 'Salmon fillets')
     expect(salmon).toHaveLength(1)
-    expect(salmon[0].quantity).toBe('2.5 lb')
+    expect(salmon[0].quantity).toBe('2½ lb')
     expect(salmon[0].sourceRecipeIds).toContain(bowls)
     // both its recipes surface correctly: planned meal on the board, off-plan under unscheduled
     const b = await board()
@@ -849,7 +884,7 @@ describe('off-plan grocery items vs the weekly rebuild', () => {
     await call('POST', `/api/lists/grocery/from-recipe/${bowls.recipeId}`, kevin)
     const salmon = (await groceryItems()).filter((i: { name: string }) => i.name === 'Salmon fillets')
     expect(salmon).toHaveLength(1)
-    expect(salmon[0].quantity).toBe('2.5 lb')
+    expect(salmon[0].quantity).toBe('2½ lb')
   })
 
   it('adds the planned portion onto an off-plan row when the plan comes second', async () => {
@@ -868,13 +903,13 @@ describe('off-plan grocery items vs the weekly rebuild', () => {
     await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
     let thighs = (await groceryItems()).filter((i: { name: string }) => i.name === 'Chicken thighs')
     expect(thighs).toHaveLength(1)
-    expect(thighs[0].quantity).toBe('2.5 lb') // 1 (off-plan) + 1.5 (planned)
+    expect(thighs[0].quantity).toBe('2½ lb') // 1 (off-plan) + 1.5 (planned)
     expect(thighs[0].sourceRecipeIds).toEqual(expect.arrayContaining([herb, roast]))
 
     // rebuilding again must not re-add the planned portion
     await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
     thighs = (await groceryItems()).filter((i: { name: string }) => i.name === 'Chicken thighs')
-    expect(thighs[0].quantity).toBe('2.5 lb')
+    expect(thighs[0].quantity).toBe('2½ lb')
   })
 
   it('merges duplicate ingredient names within one recipe instead of erroring', async () => {
