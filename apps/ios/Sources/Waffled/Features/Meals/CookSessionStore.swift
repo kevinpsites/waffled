@@ -139,6 +139,18 @@ final class CookSessionStore {
         session?.jump(toDish: timer.dishId, step: timer.stepIndex)
     }
 
+    // MARK: getting back
+
+    /// Where the last timer jump pulled you off, if you aren't already back there — the
+    /// screen offers one tap to return. See `CookSession.pendingReturn`.
+    var pendingReturn: CookSession.Mark? { session?.pendingReturn }
+    /// The dish that offer points at, for the label.
+    var pendingReturnTitle: String? { session?.pendingReturnTitle }
+    /// Take the offer — restores the dish AND its step.
+    func goBack() { session?.goBack() }
+    /// The pill's × — forget the offer without moving.
+    func dismissReturn() { session?.dismissReturn() }
+
     // MARK: timers
 
     /// Start a timer on the dish that's on screen. Timers are keyed by **(dish, step)** —

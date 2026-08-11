@@ -33,8 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recipe: it tabs across every dish on the plate, and timers you start keep running when
   you move between them, so the rice doesn't quietly overcook while you're reading the
   chicken steps. Each dish also remembers its own place, so switching back doesn't lose
-  where you were, and a timer that goes off tells you which dish it belongs to. Open it
-  from the meal itself, or straight from tonight's card. Web, iPhone and iPad.
+  where you were, and a timer that goes off tells you which dish it belongs to. Jumping
+  to a timer's step offers a **"Back to step 6"** pill (iPhone/iPad) that puts you back
+  exactly where it pulled you from — it stays until you use it or dismiss it, because a
+  timer going off is precisely when you get distracted. Open it from the meal itself, or
+  straight from tonight's card. Web, iPhone and iPad.
 - **See *which* ingredients you still need, not just how many.** "7 to buy" was a number
   you couldn't act on — the recipe screen said it and couldn't tell you what the 7 were.
   Now it opens into the actual ingredient names, on the recipe screen and on every dish

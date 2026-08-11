@@ -40,6 +40,18 @@ struct CookSession: Equatable {
     let title: String
     private(set) var dishes: [CookDish]
     private(set) var activeDishId: String
+    /// Where a timer jump pulled you off, so one tap can put you back.
+    ///
+    /// A fired timer moves you to ITS dish and ITS step, which is right — the beeping
+    /// pan is the live one — but it costs you the place you were reading. On a plate
+    /// that's a dish you can at least tab back to; when the timer belongs to the dish
+    /// you're already on, nothing else remembers.
+    private(set) var returnMark: Mark?
+
+    struct Mark: Equatable, Sendable {
+        let dishId: String
+        let step: Int
+    }
 
     /// nil when there's nothing to cook — a session always has at least one dish.
     init?(plateId: String?, title: String, dishes: [CookDish]) {
@@ -81,9 +93,45 @@ struct CookSession: Equatable {
     @discardableResult
     mutating func jump(toDish dishId: String, step: Int) -> Bool {
         guard let i = dishes.firstIndex(where: { $0.id == dishId }) else { return false }
-        dishes[i].index = dishes[i].clamp(step)
+        let wasDish = activeDishId
+        let wasStep = index
+        let clamped = dishes[i].clamp(step)
+        // A jump that lands where you already stand is not a journey — offering a way
+        // "back" to the step you're reading would be noise.
+        let moved = wasDish != dishId || wasStep != clamped
+        dishes[i].index = clamped
         activeDishId = dishId
+        if moved { returnMark = Mark(dishId: wasDish, step: wasStep) }
         return true
+    }
+
+    /// Take the offer: return to the dish and step the last jump pulled you off.
+    @discardableResult
+    mutating func goBack() -> Bool {
+        guard let mark = returnMark, let i = dishes.firstIndex(where: { $0.id == mark.dishId })
+        else { return false }
+        dishes[i].index = dishes[i].clamp(mark.step)
+        activeDishId = mark.dishId
+        returnMark = nil
+        return true
+    }
+
+    /// The × on the pill — forget the offer, stay put.
+    mutating func dismissReturn() { returnMark = nil }
+
+    /// The offer to show, or nil. Deliberately hidden once you're standing on it: you
+    /// may well have walked back yourself, and a button pointing at your own feet is
+    /// worse than no button. Otherwise it stays until used or dismissed.
+    var pendingReturn: Mark? {
+        guard let mark = returnMark else { return nil }
+        if mark.dishId == activeDishId && mark.step == index { return nil }
+        return mark
+    }
+
+    /// The dish a pending offer points at, for the pill's label.
+    var pendingReturnTitle: String? {
+        guard let mark = pendingReturn else { return nil }
+        return dishes.first { $0.id == mark.dishId }?.title
     }
 
     /// The timers belonging to one dish. Timers live in ONE flat list across the whole

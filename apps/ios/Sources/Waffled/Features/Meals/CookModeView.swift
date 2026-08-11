@@ -107,6 +107,7 @@ struct CookModeView: View {
             VStack(spacing: 0) {
                 topBar
                 dishTabs
+                returnPill
                 ProgressView(value: progress).tint(WF.primary).padding(.horizontal, 20)
 
                 // The current step, centered in the available space — but scrollable so a
@@ -182,6 +183,57 @@ struct CookModeView: View {
     /// between. Each tab badges how many of its own timers are running, so a side
     /// simmering away on another tab still says so, and tapping one restores that dish's
     /// own step rather than restarting it.
+    /// "Back to the chicken · step 6" — where a fired timer pulled you off.
+    ///
+    /// A timer moves you to its own dish and step, which costs you the place you were
+    /// reading; on a plate you could tab back, but a timer on the dish you're *already*
+    /// on leaves nothing remembering. Stays until it's used or dismissed (it retires
+    /// itself if you walk back by hand — see `CookSession.pendingReturn`).
+    @ViewBuilder private var returnPill: some View {
+        if let mark = store.pendingReturn, let title = store.pendingReturnTitle {
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) { store.goBack() }
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: 12, weight: .bold))
+                        // Step FIRST, dish second: recipe titles run long ('"Open Sesame"
+                        // Chicken with Sweet Soy Glaze'), and when the title led it ate the
+                        // pill and pushed the step number — the part you actually need —
+                        // clean off the end.
+                        Text("Back to step \(mark.step + 1)")
+                            .font(.system(size: 14, weight: .bold))
+                            .fixedSize(horizontal: true, vertical: false)
+                        Text("· \(title)")
+                            .font(.system(size: 14))
+                            .foregroundStyle(WF.ink2)
+                            .lineLimit(1).truncationMode(.tail)
+                    }
+                    .foregroundStyle(WF.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) { store.dismissReturn() }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(WF.ink3)
+                        .padding(6)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss")
+            }
+            .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 9)
+            .background(WF.panel)
+            .clipShape(Capsule())
+            .padding(.horizontal, 20).padding(.top, 4)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
     @ViewBuilder private var dishTabs: some View {
         if store.dishes.count > 1 {
             ScrollView(.horizontal, showsIndicators: false) {
