@@ -2,8 +2,16 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ShareListModal } from './ShareListModal'
 import QRCode from 'qrcode'
 
-// The QR renderer needs a real canvas — stub it; we assert on WHAT gets encoded.
-vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn(async () => 'data:image/png;base64,QR') } }))
+// The QR renderer needs a real canvas — stub it; we assert on WHAT gets encoded
+// and on the sizing decision. `create` reports the module count the modal uses to
+// decide whether a readable code is even possible; 25 modules is comfortably
+// scannable at the 320px display size.
+vi.mock('qrcode', () => ({
+  default: {
+    toDataURL: vi.fn(async () => 'data:image/png;base64,QR'),
+    create: vi.fn(() => ({ modules: { size: 25 } })),
+  },
+}))
 
 // The share view's fixture list: two aisles, an aisle-less item, and a checked
 // item that must NOT appear in the shared text.
@@ -86,5 +94,39 @@ describe('ShareListModal', () => {
     expect(screen.getByText(/Nothing to share/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy list' })).not.toBeInTheDocument()
     expect(QRCode.toDataURL).not.toHaveBeenCalled()
+  })
+
+  // A QR that renders but can't be read is worse than no QR: it looks like the
+  // feature works. The modal measures the code first and only draws one it can
+  // stand behind.
+  it('draws the QR big, at device resolution, with a real quiet zone and low EC', async () => {
+    Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true })
+    render(<ShareListModal items={items} onClose={() => {}} />)
+
+    expect(QRCode.toDataURL).toHaveBeenCalledWith(
+      EXPECTED_TEXT,
+      expect.objectContaining({ width: 640, margin: 4, errorCorrectionLevel: 'L' })
+    )
+    const img = await screen.findByAltText('Scan to grab the list')
+    expect(img).toHaveAttribute('width', '320')
+  })
+
+  it('says the list is too long to scan instead of drawing an unreadable code', async () => {
+    // 129 modules at 320px is 2.48 px/module — the real 45-item case.
+    vi.mocked(QRCode.create).mockReturnValueOnce({ modules: { size: 129 } } as unknown as ReturnType<typeof QRCode.create>)
+    render(<ShareListModal items={items} onClose={() => {}} />)
+
+    expect(await screen.findByText(/too long to scan/i)).toBeInTheDocument()
+    expect(screen.queryByAltText('Scan to grab the list')).toBeNull()
+    expect(QRCode.toDataURL).not.toHaveBeenCalled()
+    // The paths that always work are still offered.
+    expect(screen.getByRole('button', { name: 'Copy list' })).toBeInTheDocument()
+  })
+
+  it('still shows the list text when the QR is skipped', () => {
+    vi.mocked(QRCode.create).mockReturnValueOnce({ modules: { size: 129 } } as unknown as ReturnType<typeof QRCode.create>)
+    render(<ShareListModal items={items} onClose={() => {}} />)
+    const block = document.querySelector('.share-list-text') as HTMLElement
+    expect(block.textContent).toBe(EXPECTED_TEXT)
   })
 })

@@ -34,7 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whatever's still unchecked into a clean aisle-grouped text list — in the order you actually
   walk the store, quantities included — and hands it over by share sheet, clipboard, or a QR
   code. The QR encodes the list text itself rather than a link, so whoever is going shopping
-  gets it by pointing their camera at the kiosk: no app, no account, no sign-in.
+  gets it by pointing their camera at the kiosk: no app, no account, no sign-in. A very long
+  list can't fit in a code a camera can read — Waffled says so and points you at Copy or Share
+  rather than showing a QR that won't scan.
 - **Build one meal out of several recipes.** Dinner is rarely a single dish, but the
   planner only ever let you plan one recipe a night. The new **Meal Builder** lets you
   put a whole meal together: name it, drag recipes in from your library under Main,

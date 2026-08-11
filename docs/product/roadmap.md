@@ -201,6 +201,24 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **List sharing.** Let a household invite specific people to a list, choose whether
   they can view or edit it, and revoke access later.
 
+- **Share list: a link-backed QR for long lists.** *Enhancement to the shipped
+  [Share list](/features/lists/) handoff.* Today the QR encodes the list **text
+  itself**, which is the feature's best property — the phone needs no app, no account,
+  and no round-trip to the server. But a QR's capacity is fixed, so a long list pushes
+  the code to a high version until its modules are too small for a camera to read. A
+  measured 45-item list is 1,137 bytes → version 28, 129×129 modules; drawn at 320px
+  that is 2.5 CSS px per module, under the ~3 a phone needs. The shipped behaviour is
+  therefore honest rather than clever: draw the code as large and as low-density as it
+  can be, and when the list still won't fit, say so and point at Copy / Share (which
+  have no length limit) instead of rendering a code that cannot work.
+  The enhancement: for lists past that threshold, have the QR encode a **short link**
+  to a read-only shared view of the list instead of its text, so the code stays small
+  and scannable at any length. That is a real feature, not a tweak — it needs a share
+  endpoint, an unguessable token, an expiry/revocation policy, and a decision about
+  whether the phone must be on the same LAN as the server (a self-hosted box usually
+  isn't reachable from cellular). Worth pairing with **List sharing** above, since both
+  want the same "a link that shows one list, to someone who isn't signed in" primitive.
+
 - **Waffled-Bite DIY hardware setup guide.** A real, consumer-facing walkthrough for
   buying the board yourself ([ELECROW CrowPanel Advanced 7", ESP32-P4](https://www.amazon.com/dp/B0G34WGWJR))
   and flashing it with the open firmware (`apps/waffled-bite-firmware`) via PlatformIO —

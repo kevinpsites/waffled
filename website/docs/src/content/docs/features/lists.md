@@ -40,6 +40,11 @@ the **QR code** — the QR encodes the text itself, so the list lands on any pho
 no account, and nothing to configure. Checked-off items are left out, and items with no aisle
 are filed under **OTHER**.
 
+**Very long lists show no QR.** A QR code holds a fixed amount of data, so the more items on the
+list, the smaller each square in the code becomes — past roughly 30–35 items they get too small
+for a phone camera to read. Rather than show a code that can't be scanned, Waffled says the list
+is too long and points you at **Copy** or **Share**, which work at any length.
+
 ## Where it works
 
 | Surface | Support |
