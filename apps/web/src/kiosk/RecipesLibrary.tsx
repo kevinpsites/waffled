@@ -62,6 +62,10 @@ export function RecipesLibrary() {
   const [proteins, setProteins] = useState<string[]>(() => initArr('protein'))
   const [diets, setDiets] = useState<string[]>(() => initArr('diet'))
   const [sort, setSort] = useState('name')
+  // A TYPE filter, not a structured one: it selects saved plates rather than
+  // narrowing recipe metadata. Lumping it in with fav/cuisine/protein (which all
+  // drop meals, since a plate has none of that) would make it filter itself out.
+  const [mealsOnly, setMealsOnly] = useState(() => params.get('type') === 'meal')
 
   // Debounced so a search doesn't fire a request per keystroke — the recipe list is
   // already in memory, but the saved-meal search is a round trip.
@@ -123,12 +127,15 @@ export function RecipesLibrary() {
   const structuredFilter = fav || newOnly || collections.length > 0 || cuisines.length > 0 || proteins.length > 0 || diets.length > 0
   const mealList = savedMeals ?? []
   const shownMeals = structuredFilter ? [] : [...mealList].sort((a, b) => a.name.localeCompare(b.name))
-  const shownCount = sorted.length + shownMeals.length
+  // "Meals" hides the recipes instead of narrowing them — the counts still read
+  // against the whole library, so "1 of 2" tells you what you're not seeing.
+  const shownRecipes = mealsOnly ? [] : sorted
+  const shownCount = shownRecipes.length + shownMeals.length
   const totalCount = recipes.length + mealList.length
 
-  const anyFilter = structuredFilter || ql
+  const anyFilter = structuredFilter || mealsOnly || ql
   function clearAll() {
-    setFav(false); setNewOnly(false); setCollections([]); setCuisines([]); setProteins([]); setDiets([]); setQ('')
+    setFav(false); setNewOnly(false); setCollections([]); setCuisines([]); setProteins([]); setDiets([]); setQ(''); setMealsOnly(false)
   }
 
   return (
@@ -145,6 +152,11 @@ export function RecipesLibrary() {
         </button>
         <button type="button" className={`pill ${newOnly ? 'btn-primary' : ''}`} style={{ cursor: 'pointer', color: newOnly ? 'var(--on-accent)' : undefined, border: newOnly ? 0 : undefined }} onClick={() => setNewOnly((v) => !v)}>
           🆕 New
+        </button>
+        {/* Sits with Favorites/New because it is the same kind of control — a
+            one-tap view of the library, not a metadata narrowing. */}
+        <button type="button" className={`pill ${mealsOnly ? 'btn-primary' : ''}`} style={{ cursor: 'pointer', color: mealsOnly ? 'var(--on-accent)' : undefined, border: mealsOnly ? 0 : undefined }} aria-pressed={mealsOnly} aria-label="Show only meals" onClick={() => setMealsOnly((v) => !v)}>
+          🍽️ Meals
         </button>
       </div>
 
@@ -172,7 +184,7 @@ export function RecipesLibrary() {
         {shownMeals.map((m) => (
           <MealCard key={m.id} meal={m} className="recipes-card" onOpen={() => navigate(`/meals/build/${m.id}`)} />
         ))}
-        {sorted.map((r) => (
+        {shownRecipes.map((r) => (
           <div
             key={r.id}
             role="button"

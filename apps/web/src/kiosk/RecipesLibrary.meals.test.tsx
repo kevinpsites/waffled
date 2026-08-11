@@ -196,3 +196,39 @@ describe('RecipesLibrary — starting a brand-new meal', () => {
     expect(screen.getByRole('button', { name: /New meal/i })).toBeInTheDocument()
   })
 })
+
+// The library mixes recipes and saved plates, and the only way to see just the
+// plates was to scroll for the "Meal · N" badge. Plates carry no cuisine/protein,
+// so they can't be reached through the structured filters — they need their own.
+describe('RecipesLibrary — showing only meals', () => {
+  beforeEach(() => {
+    savedQueries.length = 0
+    recipesRef.current = [makeRecipe({ id: 'r1', title: 'Chicken Parmesan' })]
+    mealsRef.current = [makeMeal({ id: 'm1', name: 'BBQ Sunday' })]
+  })
+
+  it('filters the library down to saved meals', () => {
+    renderLib()
+    fireEvent.click(screen.getByRole('button', { name: /Show only meals/i }))
+    expect(screen.getByText('BBQ Sunday')).toBeInTheDocument()
+    expect(screen.queryByText('Chicken Parmesan')).not.toBeInTheDocument()
+    expect(screen.getByText('1 of 2')).toBeInTheDocument()
+  })
+
+  it('turns back off', () => {
+    renderLib()
+    const chip = screen.getByRole('button', { name: /Show only meals/i })
+    fireEvent.click(chip)
+    fireEvent.click(chip)
+    expect(screen.getByText('Chicken Parmesan')).toBeInTheDocument()
+  })
+
+  it('is not a structured filter — it must not hide the very things it selects', () => {
+    // Favorites/New/cuisine/protein all legitimately drop meals (a plate has no
+    // such metadata). If Meals were lumped in with them it would filter itself out.
+    renderLib()
+    fireEvent.click(screen.getByRole('button', { name: /Show only meals/i }))
+    expect(screen.getByText('BBQ Sunday')).toBeInTheDocument()
+  })
+})
+
