@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
-import { MealsColumn, isTryNew } from './MealsColumn'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { MemoryRouter, Routes, Route } from 'react-router'
+import { MealsColumn, WeekDinnersCard, TonightCardSlot, isTryNew } from './MealsColumn'
 import { localToday } from '../../lib/api'
 
 // TonightCard uses useNavigate (View recipe / Cook Mode), so a router is needed.
@@ -83,3 +83,66 @@ describe('isTryNew', () => {
     expect(isTryNew({ recipeId: null, title: 'Eating out' })).toBe(false)
   })
 })
+
+// The Today card had the same blind spot as the planner grid: `clickable` was
+// `!!e.recipeId`, so a night holding a whole plate rendered as dead text — no
+// chevron, no tap target, no way through to the meal.
+describe('MealsColumn — a night that holds a plate', () => {
+  it('opens the plate rather than doing nothing', async () => {
+    const today = localToday()
+    mockWeek([
+      {
+        id: `${today}-d`,
+        date: today,
+        mealType: 'dinner',
+        title: 'BBQ Sunday',
+        recipeId: null,
+        mealId: 'm1',
+        recipe: null,
+        meal: { id: 'm1', name: 'BBQ Sunday', servings: 6, recipes: [] },
+      },
+    ])
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<WeekDinnersCard />} />
+          <Route path="/meals/build/:id" element={<div>BUILDER:m1</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: /BBQ Sunday/i }))
+    expect(await screen.findByText('BUILDER:m1')).toBeInTheDocument()
+  })
+})
+
+describe('MealsColumn — Tonight is a whole plate', () => {
+  it('offers the meal and its cook mode instead of "No recipe attached yet"', async () => {
+    const today = localToday()
+    mockWeek([
+      {
+        id: `${today}-d`,
+        date: today,
+        mealType: 'dinner',
+        title: 'BBQ Sunday',
+        recipeId: null,
+        mealId: 'm1',
+        recipe: null,
+        meal: { id: 'm1', name: 'BBQ Sunday', servings: 6, recipes: [{ recipeId: 'r1', title: 'BBQ Chicken', emoji: '🍗', role: 'main', sortOrder: 0 }] },
+      },
+    ])
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<TonightCardSlot />} />
+          <Route path="/meals/build/:id" element={<div>BUILDER</div>} />
+          <Route path="/meals/meal/:id/cook" element={<div>COOK PLATE</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('BBQ Sunday')).toBeInTheDocument()
+    expect(screen.queryByText(/No recipe attached yet/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Cook Mode/i }))
+    expect(await screen.findByText('COOK PLATE')).toBeInTheDocument()
+  })
+})
+

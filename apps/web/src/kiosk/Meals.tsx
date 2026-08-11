@@ -475,7 +475,13 @@ export function Meals() {
                 inMonth={inMonth}
                 isToday={isToday}
                 entry={entry}
-                onOpen={() => (entry?.recipeId ? navigate(`/meals/recipe/${entry.recipeId}`) : openPicker(d, 'dinner'))}
+                onOpen={() =>
+                  entry?.mealId
+                    ? navigate(`/meals/build/${entry.mealId}`)
+                    : entry?.recipeId
+                      ? navigate(`/meals/recipe/${entry.recipeId}`)
+                      : openPicker(d, 'dinner')
+                }
                 onAdd={() => openPicker(d, 'dinner')}
                 onRemove={() => clearMeal(dateStr, 'dinner')}
               />
@@ -499,6 +505,7 @@ export function Meals() {
               days={days}
               bySlot={bySlot}
               onOpen={(id) => navigate(`/meals/recipe/${id}`)}
+              onOpenMeal={(id) => navigate(`/meals/build/${id}`)}
               onAdd={(d) => openPicker(d, mealType)}
               onRemove={clearMeal}
             />
@@ -574,6 +581,7 @@ function Row({
   days,
   bySlot,
   onOpen,
+  onOpenMeal,
   onAdd,
   onRemove,
 }: {
@@ -581,6 +589,7 @@ function Row({
   days: Date[]
   bySlot: Map<string, WeekEntry>
   onOpen: (recipeId: string) => void
+  onOpenMeal: (mealId: string) => void
   onAdd: (d: Date) => void
   onRemove: (date: string, mealType: MealType) => void
 }) {
@@ -599,9 +608,9 @@ function Row({
               entry={entry}
               mealType={mealType}
               slotKey={`${dateStr}|${mealType}`}
-              // Recipe → open it; recipe-less ("Fish"/eating-out) → open the slot
-              // picker so you can attach a recipe or change the plan.
-              onOpen={() => (entry.recipeId ? onOpen(entry.recipeId) : onAdd(d))}
+              // A plate → open the plate; a recipe → open it; neither ("Fish" /
+              // eating-out) → the slot picker, so you can attach something.
+              onOpen={() => (entry.mealId ? onOpenMeal(entry.mealId) : entry.recipeId ? onOpen(entry.recipeId) : onAdd(d))}
               onRemove={() => onRemove(dateStr, mealType)}
             />
           )

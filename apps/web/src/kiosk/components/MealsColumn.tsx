@@ -44,7 +44,25 @@ function TonightCard({ entry }: { entry: WeekEntry }) {
           {eatingOut ? 'Eating out' : tryNew ? 'Try something new' : title}
         </div>
 
-        {recipeId ? (
+        {/* A plate gets the same two actions a recipe does — open it, or cook it —
+            pointed at the plate routes. Without this branch a planned meal fell
+            through to "No recipe attached yet", which was simply untrue. */}
+        {!recipeId && entry.mealId ? (
+          <>
+            <div className="tiny muted" style={{ display: 'flex', gap: 14 }}>
+              <span>🍽️ Meal · {entry.meal?.recipes.length ?? 0}</span>
+              {entry.meal?.servings != null && <span>Serves {entry.meal.servings}</span>}
+            </div>
+            <div style={{ display: 'flex', gap: 9, paddingTop: 13 }}>
+              <button className="btn btn-ghost" onClick={() => navigate(`/meals/build/${entry.mealId}`)} style={{ flex: 1, justifyContent: 'center', fontSize: 14, padding: 10, cursor: 'pointer' }}>
+                View meal
+              </button>
+              <button className="btn btn-primary" onClick={() => navigate(`/meals/meal/${entry.mealId}/cook`)} title="Cook the whole meal, dish by dish" style={{ flex: 1, justifyContent: 'center', fontSize: 14, padding: 10, cursor: 'pointer' }}>
+                👨‍🍳 Cook Mode
+              </button>
+            </div>
+          </>
+        ) : recipeId ? (
           <>
             <div className="tiny muted" style={{ display: 'flex', gap: 14 }}>
               {recipe?.cookTimeMinutes != null && <span>🕐 {recipe.cookTimeMinutes} min</span>}
@@ -106,16 +124,17 @@ export function WeekDinnersCard() {
         <div className="tiny muted" style={{ padding: '6px 0' }}>No dinners planned yet.</div>
       )}
       {dinners.map((e: WeekEntry) => {
-        const clickable = !!e.recipeId
+        // A slot holds EITHER a recipe or a whole plate — both are somewhere to go.
+        const clickable = !!e.recipeId || !!e.mealId
         const out = isEatingOut(e)
         const tryNew = isTryNew(e)
         return (
           <div
             key={e.id}
-            onClick={() => clickable && navigate(`/meals/recipe/${e.recipeId}`)}
+            onClick={() => clickable && navigate(e.mealId ? `/meals/build/${e.mealId}` : `/meals/recipe/${e.recipeId}`)}
             role={clickable ? 'button' : undefined}
             tabIndex={clickable ? 0 : undefined}
-            title={clickable ? 'Open recipe' : undefined}
+            title={clickable ? (e.mealId ? 'Open meal' : 'Open recipe') : undefined}
             style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '6px 0', borderBottom: '1px solid var(--hair-2)', cursor: clickable ? 'pointer' : 'default' }}
           >
             <div className="tiny" style={{ width: 34, fontWeight: 700, color: 'var(--ink-2)' }}>
