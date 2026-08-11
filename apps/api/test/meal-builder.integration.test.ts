@@ -724,6 +724,37 @@ describe('taking a plate back off the list', () => {
     expect(res.statusCode).toBe(200)
     expect(json(res).removed).toBe(0)
   })
+
+  // Adding a plate CREDITS it onto every off-plan row whose recipes overlap its
+  // dishes — including a row you put on the list yourself, days earlier, from the
+  // recipe page. "Only this plate credits it" then reads as "this plate is why it
+  // exists", so taking the plate back off took your row with it.
+  it('keeps a row you added yourself from the recipe page', async () => {
+    const OWN = '2026-08-02'
+    // Monday — you add the cobbler's shopping from its own page.
+    const mine = await call('POST', `/api/lists/grocery/from-recipe/${peachCobbler}?weekStart=${OWN}`, kevin)
+    expect(mine.statusCode).toBe(201)
+
+    // Tuesday — you build a plate that happens to include that same dessert and put
+    // its shopping on the list without scheduling it. Nothing new is added: the
+    // cobbler's rows are already there, so the plate is merely credited onto them.
+    const shares = json(await call('POST', '/api/meals', kevin, {
+      name: 'Shares your dessert',
+      recipes: [{ recipeId: peachCobbler, role: 'dessert' }],
+    })).meal.id
+    await call('POST', `/api/meals/${shares}/add-to-list?weekStart=${OWN}`, kevin)
+
+    // Wednesday — you change your mind about the PLATE. Not about the cobbler.
+    const res = await call('DELETE', `/api/meals/${shares}/add-to-list?weekStart=${OWN}`, kevin)
+    expect(res.statusCode).toBe(200)
+
+    const after = json(await call('GET', `/api/lists/grocery/board?weekStart=${OWN}`, kevin))
+    const names = after.items.map((i: { name: string }) => i.name)
+    expect(names).toContain('Peaches')
+    expect(names).toContain('Cinnamon')
+    // …but the plate itself stops claiming a shelf, since it no longer has a stake.
+    expect((after.unscheduledMeals ?? []).some((m: { mealId: string }) => m.mealId === shares)).toBe(false)
+  })
 })
 
 describe('the planner treats a meal-backed slot as filled', () => {

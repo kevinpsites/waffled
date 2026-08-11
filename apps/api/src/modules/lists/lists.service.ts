@@ -497,7 +497,13 @@ export async function addRecipeToGrocery(
   // When provided, only these recipe-ingredient ids are added (the "choose specific
   // ingredients" picker) — the shopper already has the rest on hand. `undefined`/`null`
   // keeps the original all-non-staple behavior.
-  ingredientIds?: string[] | null
+  ingredientIds?: string[] | null,
+  // Set when this add is part of putting a whole plate on the list: rows CREATED here
+  // are stamped with the plate, so taking that plate back off can delete what it put
+  // there without touching rows that were already on the list. Rows we merely merge
+  // into keep whatever created them — a plate wanting a row doesn't make it the
+  // plate's to delete.
+  createdByMealId?: string | null
 ): Promise<ListItemRow[] | null> {
   const recipe = await getRecipe(tenant.householdId, recipeId)
   if (!recipe) return null
@@ -565,9 +571,9 @@ export async function addRecipeToGrocery(
     }
     const { rows } = await query<ListItemRow>(
       `insert into list_items
-         (household_id, list_id, name, quantity, category, source, source_recipe_ids, created_by, week_start)
-       values ($1,$2,$3,$4,$5,'recipe',$6,$7,$8) returning *`,
-      [tenant.householdId, list.id, name, quantity, aisle, [recipeId], tenant.personId, weekStart]
+         (household_id, list_id, name, quantity, category, source, source_recipe_ids, created_by, week_start, created_by_meal_id)
+       values ($1,$2,$3,$4,$5,'recipe',$6,$7,$8,$9) returning *`,
+      [tenant.householdId, list.id, name, quantity, aisle, [recipeId], tenant.personId, weekStart, createdByMealId ?? null]
     )
     // cache the REAL inserted row (with its id) so a later duplicate name in this
     // same recipe merges into it instead of 500ing on an empty-id update.
@@ -605,7 +611,7 @@ export async function addMealToGrocery(
 
   const added: ListItemRow[] = []
   for (const d of dishes) {
-    const rows = await addRecipeToGrocery(tenant, d.recipe_id, weekStart)
+    const rows = await addRecipeToGrocery(tenant, d.recipe_id, weekStart, null, mealId)
     if (rows) added.push(...rows)
   }
   if (dishes.length) {
@@ -704,12 +710,18 @@ export async function removeMealFromGrocery(
       [tenant.householdId, weekStart, weekEnd]
     )
     const plannedIds = planned.map((p) => p.recipe_id)
-    // Sole reason = an off-plan row, credited to this plate and no other, whose
-    // recipes are all dishes of this plate and none of them planned this week.
+    // Sole reason = a row THIS PLATE created (not merely one it wants — adding a
+    // plate credits it onto rows that were already on the list, and those are the
+    // shopper's, not ours), still credited to no other plate, whose recipes are all
+    // dishes of this plate and none of them planned this week.
+    //
+    // `created_by_meal_id` is null for rows written before 0092, so those are never
+    // auto-deleted — see that migration for why they are deliberately not backfilled.
     const del = await query(
       `update list_items set deleted_at = now()
          where household_id = $1 and list_id = $2 and deleted_at is null
            and source = 'recipe'
+           and created_by_meal_id = $3
            and source_meal_ids <@ ARRAY[$3]::uuid[] and $3 = ANY(source_meal_ids)
            and source_recipe_ids <@ $4::uuid[]
            and not (source_recipe_ids && $5::uuid[])
