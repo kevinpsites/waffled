@@ -39,6 +39,8 @@ struct RecipeDetailView: View {
     /// offers Messages / Mail / Save to Files with a real attachment). Fetched lazily.
     @State private var shareItem: RecipeSharePayload?
     @State private var sharePreparing = false
+    /// Non-nil ⇒ the Meal Builder is up, seeded with this recipe as the plate's main.
+    @State private var buildingMeal: MealBuilderStart?
 
     private let api = WaffledAPI()
 
@@ -80,6 +82,12 @@ struct RecipeDetailView: View {
                     Button { pickingGrocery = true } label: {
                         Label("Add to grocery list", systemImage: "cart.badge.plus")
                     }
+                    // Opens the Meal Builder with this recipe already the main. It is
+                    // presented, not pushed: this screen is hosted by four different
+                    // navigation stacks and only one of them knows MealsRoute.
+                    Button { buildingMeal = .around(recipe) } label: {
+                        Label("Build a meal around this", systemImage: "square.stack.3d.up")
+                    }
                     Button { prepareShare() } label: {
                         Label(sharePreparing ? "Preparing…" : "Share recipe", systemImage: "square.and.arrow.up")
                     }
@@ -94,6 +102,9 @@ struct RecipeDetailView: View {
         .task {
             await loadDetail()
             if autoCook, !steps.isEmpty { startCookMode() }
+        }
+        .fullScreenCover(item: $buildingMeal) { start in
+            NavigationStack { MealBuilderView(start: start, recipes: model) }
         }
         .fullScreenCover(isPresented: $editing) {
             RecipeEditorView(mode: .edit(WaffledAPI.RecipeDetailDTO(recipe: recipe, ingredients: ingredients, steps: steps))) { updated in
@@ -664,6 +675,14 @@ struct RecipeDetailView: View {
 struct RecipeScheduleSheet: View {
     let title: String
     let recipeId: String
+    /// The small caps line above the title. The Meal Builder says "Schedule this meal".
+    var eyebrow: String = "Schedule"
+    /// Override what scheduling *means*. A Meal Builder plate goes to
+    /// `POST /api/meals/:id/schedule` (which schedules every dish at once) rather than
+    /// planning a single recipe; everything else about this sheet — the slot picker,
+    /// the week paging, the day grid — is identical, so it is reused rather than
+    /// duplicated. Throw to keep the sheet open on failure.
+    var perform: ((_ date: String, _ mealType: String) async throws -> Void)? = nil
     var onScheduled: (String) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
@@ -695,7 +714,7 @@ struct RecipeScheduleSheet: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Schedule").font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink3).tracking(0.4)
+                    Text(eyebrow).font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink3).tracking(0.4)
                     Text(title).font(WF.serif(22, .bold)).foregroundStyle(WF.ink).lineLimit(2)
                 }
 
@@ -756,7 +775,11 @@ struct RecipeScheduleSheet: View {
         savingDay = key
         Task {
             do {
-                try await api.planMeal(date: key, mealType: meal, recipeId: recipeId, title: nil)
+                if let perform {
+                    try await perform(key, meal)
+                } else {
+                    try await api.planMeal(date: key, mealType: meal, recipeId: recipeId, title: nil)
+                }
                 onScheduled("\(day.formatted(.dateTime.weekday(.wide))) \(meal)")
                 dismiss()
             } catch {
