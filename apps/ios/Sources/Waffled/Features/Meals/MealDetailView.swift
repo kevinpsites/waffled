@@ -68,6 +68,10 @@ struct MealDetailView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(WF.canvas)
+        // The tab bar floats over this screen rather than contributing safe area, so
+        // without this the last dish sits under it and can't be scrolled into view.
+        // Same inset the other tab-hosted lists use.
+        .contentMargins(.bottom, 100, for: .scrollContent)
         .navigationTitle(meal.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -118,6 +122,29 @@ struct MealDetailView: View {
                     }
                 }
                 plateShopping
+                // Cooking the WHOLE plate — tabs across every dish, each keeping its own
+                // step, with one timer dock. The per-dish Cook buttons below start a
+                // single dish; this is the one that starts the meal, and without it the
+                // only way in was tonight's card (so a plate you weren't cooking
+                // tonight had no way to be cooked at all).
+                if !meal.recipes.isEmpty {
+                    Button {
+                        Task { await cook.startPlate(meal) }
+                    } label: {
+                        HStack(spacing: 7) {
+                            Text("👨‍🍳")
+                            Text("Cook the meal")
+                                .font(.system(size: 15, weight: .bold))
+                        }
+                        .foregroundStyle(WF.onInk)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(WF.ink)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
+                }
             }
             .listRowBackground(WF.card)
         }
