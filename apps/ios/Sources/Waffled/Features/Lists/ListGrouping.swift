@@ -26,6 +26,32 @@ struct ListSectionGroup: Identifiable {
     }
 }
 
+enum StoreGrouping {
+    /// "By store" grouping: each active item under its assigned store (alphabetical),
+    /// with unassigned items in a trailing "No store" group.
+    ///
+    /// Folds on case, because `canonicalStore` only snaps stores as they're written — a
+    /// row saved before that can still hold "costco" next to a newer "Costco", and the
+    /// header is uppercased for display, so both would render as a section headed
+    /// "COSTCO". The first spelling seen wins the label. Mirrors `storeSections` in the
+    /// web `GroceryBoard`.
+    static func sections(items: [WaffledAPI.ListItemDTO]) -> [ListSectionGroup] {
+        var buckets: [String: (label: String, items: [WaffledAPI.ListItemDTO])] = [:]
+        var none: [WaffledAPI.ListItemDTO] = []
+        for item in items {
+            let store = item.store?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !store.isEmpty else { none.append(item); continue }
+            let key = store.lowercased()
+            buckets[key, default: (label: store, items: [])].items.append(item)
+        }
+        var groups = buckets.values
+            .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
+            .map { ListSectionGroup(title: $0.label, items: $0.items, sectionValue: $0.label) }
+        if !none.isEmpty { groups.append(ListSectionGroup(title: "No store", items: none, sectionValue: nil)) }
+        return groups
+    }
+}
+
 enum MealGrouping {
     /// Group items under the first meal (by date) whose recipe needs them, then give
     /// each unscheduled recipe (on the list but not on this week's plan) its own
