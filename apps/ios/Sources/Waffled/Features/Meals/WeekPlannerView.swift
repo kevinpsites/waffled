@@ -452,10 +452,16 @@ struct WeekPlannerView: View {
     /// Execute one planned write against the server (upsert, or clear when empty).
     private func perform(_ op: MealPlanSwap.Op) async -> Bool {
         if let e = op.entry {
+            // A slot is backed by a recipe, a plate, or neither (a free-text night like
+            // "eating out"). Only that last case needs a title — sending one alongside a
+            // plate would leave the plate's name frozen in the row, so a later rename of
+            // the plate would stop showing here.
+            let freeText = e.recipeId == nil && !e.isMealBacked
             return await sync.setMealPlan(date: op.date, mealType: op.mealType,
                                           recipeId: e.recipeId,
-                                          title: e.recipeId == nil ? (e.title ?? e.displayTitle) : nil,
-                                          cookPersonId: e.cook?.personId)
+                                          title: freeText ? (e.title ?? e.displayTitle) : nil,
+                                          cookPersonId: e.cook?.personId,
+                                          mealId: e.mealId)
         }
         return await sync.clearMealPlan(date: op.date, mealType: op.mealType)
     }

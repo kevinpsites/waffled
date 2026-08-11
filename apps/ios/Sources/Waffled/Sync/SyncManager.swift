@@ -552,9 +552,13 @@ final class SyncManager {
 
     /// Plan (upsert) a meal slot from the weekly planner; bumps `mealsRev` so the
     /// Today card and any open week reload.
-    func setMealPlan(date: String, mealType: String, recipeId: String?, title: String?, cookPersonId: String? = nil) async -> Bool {
+    /// `mealId` puts a Meal Builder plate in the slot rather than a single recipe —
+    /// what a planner drag writes when the thing being dragged is a plate.
+    func setMealPlan(date: String, mealType: String, recipeId: String?, title: String?,
+                     cookPersonId: String? = nil, mealId: String? = nil) async -> Bool {
         let ok = await restCommit {
-            try await api.planMeal(date: date, mealType: mealType, recipeId: recipeId, title: title, cookPersonId: cookPersonId)
+            try await api.planMeal(date: date, mealType: mealType, recipeId: recipeId, title: title,
+                                   cookPersonId: cookPersonId, mealId: mealId)
         }
         if ok { mealsRev += 1 }
         return ok

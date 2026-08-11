@@ -392,9 +392,17 @@ struct WaffledAPI: Sendable {
     /// Plan a meal slot. recipeId links a known recipe; otherwise title is a one-off.
     /// `cookPersonId` optionally assigns who's cooking. Upserts (re-planning the same
     /// date+mealType replaces, not duplicates).
-    func planMeal(date: String, mealType: String, recipeId: String?, title: String?, cookPersonId: String? = nil) async throws {
+    ///
+    /// `mealId` puts a Meal Builder plate in the slot instead of a recipe — that is how
+    /// a planner **drag** moves a plate: the same plate relocates. (Scheduling a saved
+    /// plate from the builder goes through `scheduleMeal`, which deliberately *copies*
+    /// it so editing next week's can't rewrite the one that already went out.) A slot
+    /// holds one or the other, never both.
+    func planMeal(date: String, mealType: String, recipeId: String?, title: String?,
+                  cookPersonId: String? = nil, mealId: String? = nil) async throws {
         var body: [String: JSONValue] = ["date": .string(date), "mealType": .string(mealType)]
         if let recipeId { body["recipeId"] = .string(recipeId) }
+        if let mealId { body["mealId"] = .string(mealId) }
         if let title { body["title"] = .string(title) }
         if let cookPersonId { body["cookPersonId"] = .string(cookPersonId) }
         try await send("POST", "/api/meals/plan", body: body)

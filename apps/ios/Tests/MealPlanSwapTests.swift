@@ -24,6 +24,26 @@ private func entry(_ date: String, _ slot: String, title: String,
         cook: cookName.map { .init(personId: "p-\($0)", name: $0, avatarEmoji: nil, colorHex: nil) })
 }
 
+/// A slot holding a Meal Builder plate rather than a single recipe — `recipeId` is
+/// nil and the dishes hang off `meal`.
+private func plateEntry(_ date: String, _ slot: String, name: String, mealId: String,
+                        dishes: [String] = ["r1", "r2"]) -> WaffledAPI.WeekEntryDTO {
+    WaffledAPI.WeekEntryDTO(
+        id: "id-\(date)-\(slot)",
+        date: date,
+        mealType: slot,
+        title: name,
+        recipeId: nil,
+        mealId: mealId,
+        meal: .init(id: mealId, name: name, servings: 6,
+                    recipes: dishes.enumerated().map { i, r in
+                        .init(recipeId: r, title: "Dish \(r)", emoji: nil,
+                              role: i == 0 ? "main" : "side", sortOrder: i)
+                    }),
+        recipe: nil,
+        cook: nil)
+}
+
 private func at(_ entries: [WaffledAPI.WeekEntryDTO], _ date: String, _ slot: String)
     -> WaffledAPI.WeekEntryDTO? {
     entries.first { $0.date == date && $0.mealType == slot }
@@ -236,5 +256,58 @@ struct MealPlanSwapGateTests {
         #expect(!g.mayApplyResult)    // half-committed state exists → fetch truth
         let replay = g.finish()
         #expect(replay)
+    }
+}
+
+// Dragging a Meal Builder plate around the week. A plate-backed slot has NO
+// `recipeId` — the dishes hang off `meal` — so anything that rebuilds an entry while
+// carrying only `recipeId` quietly turns a four-dish plate into a bare title. That is
+// a data loss the user cannot undo from the planner, and it looks like the plate was
+// "emptied" rather than mis-moved.
+@Suite("MealPlanSwap — moving a plate")
+struct MealPlanSwapPlateTests {
+
+    @Test("a moved plate keeps its dishes")
+    func movedPlateKeepsItsDishes() throws {
+        let week = [plateEntry("2026-07-13", "dinner", name: "BBQ Sunday", mealId: "m1")]
+        let out = try #require(MealPlanSwap.apply(week, srcDate: "2026-07-13", srcSlot: "dinner",
+                                                  dstDate: "2026-07-15", dstSlot: "dinner"))
+        let moved = try #require(at(out, "2026-07-15", "dinner"))
+        #expect(moved.mealId == "m1")
+        #expect(moved.isMealBacked)
+        #expect(moved.dishCount == 2)
+        #expect(moved.displayTitle == "BBQ Sunday")
+        // and the night it left is genuinely empty, not holding a husk
+        #expect(at(out, "2026-07-13", "dinner") == nil)
+    }
+
+    @Test("swapping a plate with a recipe carries both links the right way")
+    func swappingAPlateWithARecipe() throws {
+        let week = [plateEntry("2026-07-13", "dinner", name: "BBQ Sunday", mealId: "m1"),
+                    entry("2026-07-14", "dinner", title: "Tacos", recipeId: "r9")]
+        let out = try #require(MealPlanSwap.apply(week, srcDate: "2026-07-13", srcSlot: "dinner",
+                                                  dstDate: "2026-07-14", dstSlot: "dinner"))
+        let plate = try #require(at(out, "2026-07-14", "dinner"))
+        #expect(plate.mealId == "m1")
+        #expect(plate.recipeId == nil)
+        #expect(plate.dishCount == 2)
+
+        let recipe = try #require(at(out, "2026-07-13", "dinner"))
+        #expect(recipe.recipeId == "r9")
+        // The displaced recipe must not inherit the plate it swapped with.
+        #expect(recipe.mealId == nil)
+        #expect(recipe.isMealBacked == false)
+    }
+
+    @Test("the write for a moved plate carries the plate, not a bare title")
+    func writeCarriesThePlate() throws {
+        let week = [plateEntry("2026-07-13", "dinner", name: "BBQ Sunday", mealId: "m1")]
+        let w = try #require(MealPlanSwap.writes(week, srcDate: "2026-07-13", srcSlot: "dinner",
+                                                 dstDate: "2026-07-15", dstSlot: "dinner"))
+        // ordered[0] upserts the dragged meal into the target slot — that write is what
+        // reaches `POST /api/meals/plan`, so the plate id has to survive this far.
+        let target = try #require(w.ordered.first?.entry)
+        #expect(target.mealId == "m1")
+        #expect(target.dishCount == 2)
     }
 }

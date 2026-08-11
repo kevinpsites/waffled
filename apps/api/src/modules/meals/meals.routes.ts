@@ -349,6 +349,7 @@ export function registerMealRoutes(api: Api): void {
       date?: string
       mealType?: string
       recipeId?: string
+      mealId?: string
       title?: string
       cookPersonId?: string
     }
@@ -366,6 +367,20 @@ export function registerMealRoutes(api: Api): void {
       recipeId = body.recipeId
       await assertRecipeInHousehold(tenant.householdId, recipeId)
     }
+    // A slot points at EITHER a recipe or a Meal Builder plate. Re-planning with a
+    // plate is how a planner **drag** moves a dinner — the same plate relocates, it is
+    // not copied (that's `POST /api/meals/:id/schedule`, which deliberately copies a
+    // saved plate so editing next week's can't rewrite last week's). Without this, a
+    // dragged plate lands as a bare title and its dishes, cooks and grocery
+    // contribution are all silently dropped.
+    let mealId: string | null = null
+    if (body.mealId != null && body.mealId !== '') {
+      if (!UUID_RE.test(body.mealId)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'mealId must be a uuid' })
+      }
+      mealId = body.mealId
+      await assertMealInHousehold(tenant.householdId, mealId)
+    }
     let cookPersonId: string | null = null
     if (body.cookPersonId != null && body.cookPersonId !== '') {
       if (!UUID_RE.test(body.cookPersonId)) {
@@ -379,6 +394,7 @@ export function registerMealRoutes(api: Api): void {
       date: body.date,
       mealType: body.mealType,
       recipeId,
+      mealId,
       title: body.title ?? null,
       cookPersonId,
     })
