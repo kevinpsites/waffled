@@ -28,7 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   something off on their phone, the list you're looking at updates without a manual reload —
   it refreshes when you return to the app and quietly re-checks every ~20 seconds while a
   list is open. (It's a poll, not instant push, so give it a few seconds.)
-
 - **The goal Log sheet now suggests what you actually do.** The "What did you do?"
   chips are no longer a fixed list of six — each goal offers up the notes you've logged
   against it before, most-used first, so a goal you keep marking "family walk" or "lunch
@@ -159,7 +158,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The iPad screensaver no longer drops over the keyboard.** If you were typing when the
   idle timer fired, the screensaver could cover a lit keyboard. It now waits while a text
   field is focused, and dismisses the keyboard if it does start.
-
 - **Recurring event edits now keep the whole series intact.** "This and following" carries
   all-day, countdown, people, goal, and repeat settings into the new series, while changing
   the time for "All events" no longer removes earlier occurrences. Locally synced web events

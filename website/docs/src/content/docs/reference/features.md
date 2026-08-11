@@ -171,7 +171,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
 | Custom **multi-lists** (sectioned items, quantities, assignees) | ✅ | ✅ | ✅ | ✅ Done (iPad = master/detail) |
-| Create / rename / delete lists (cascade) | ✅ | ✅ | ✅ | ✅ Done — mobile: **swipe** a list → **Edit** (rename/emoji, `PATCH /api/lists/:id`) + **Delete**; the list-detail ⋯ menu's **Edit name & icon** opens that same name+emoji editor (so the icon is editable from inside the list), and **Delete list** is there too |
+| Create / rename / delete lists (cascade) | ✅ | ✅ | ✅ | ✅ Done — mobile: **swipe** a list → **Edit** (rename/emoji, `PATCH /api/lists/:id`) + **Delete**; the list-detail ⋯ menu's **Edit list** opens that same name+emoji editor (so the icon is editable from inside the list), and **Delete list** is there too |
 | **List templates** — save a list as a reusable template, apply → a fresh unchecked copy, manage (delete) | ✅ | ✅ | ✅ | ✅ Done — mobile: one New-list modal (name + emoji + Create) with an "Or start from a template" picker (**select-then-Create**, name pre-fills from the template); long-press a template to delete |
 | **Auto-built grocery board** from the week's dinners | ✅ | ✅ | ✅ | ✅ Done |
 | **Add a recipe's ingredients to the grocery list from its page** — no meal-plan entry needed (one-off dinners, sides, snacks); quantities merged, items linked back to the recipe | ✅ | ✅ | ✅ | ✅ Done — web: cart icon in the recipe actions (plus the on-hand banner button); mobile: "Add to grocery list" in the recipe ⋯ menu + the banner button |
