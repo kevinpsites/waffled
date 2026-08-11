@@ -18,6 +18,8 @@ export interface ListItemRow extends QueryResultRow {
   checked: boolean
   checked_at: Date | null
   category: string | null
+  // Free-text store/vendor (Costco, Walmart, …); null = unassigned.
+  store: string | null
   priority: number
   sort_order: number | null
   assigned_to: string | null
@@ -48,6 +50,7 @@ export interface PatchItemInput {
   assignedTo?: string | null
   quantity?: string | null
   category?: string | null
+  store?: string | null
   priority?: number
   name?: string
 }

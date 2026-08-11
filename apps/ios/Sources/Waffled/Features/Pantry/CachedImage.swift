@@ -21,6 +21,24 @@ final class ImageMemoryCache: @unchecked Sendable {
     }
 }
 
+/// What `CachedImage` should render when its URL first appears or changes. Split out
+/// of the view because `@State` outlives a URL change: a recipe card in the library
+/// grid keeps its identity while you edit the recipe behind it, so a photo that was
+/// removed (or swapped) stayed on the card until the whole grid was rebuilt.
+enum CachedImageDecision: Equatable {
+    /// No URL — drop whatever is held and show the placeholder.
+    case clear
+    /// Already decoded — adopt it in the same turn, so scrolling never flashes.
+    case useCached
+    /// Not in the cache — clear first (the held image is the *old* URL's), then load.
+    case fetch
+
+    static func forURL(_ url: URL?, cached: Bool) -> CachedImageDecision {
+        guard url != nil else { return .clear }
+        return cached ? .useCached : .fetch
+    }
+}
+
 /// Cached drop-in for `AsyncImage` — resolves OFF (absolute) or uploaded (relative)
 /// URLs via `MediaURL`, serves a cached decode synchronously on init (no flash, no
 /// reload), and only hits the network on a true miss.
@@ -46,9 +64,20 @@ struct CachedImage<Placeholder: View>: View {
                 placeholder
             }
         }
+        // Keyed on `url` so this re-runs when the URL changes — and it must not skip
+        // on `image != nil`, or a stale decode from the previous URL survives forever.
         .task(id: url) {
-            guard image == nil, let url else { return }
-            image = await ImageMemoryCache.shared.load(url)
+            let hit = url.flatMap { ImageMemoryCache.shared.image(for: $0) }
+            switch CachedImageDecision.forURL(url, cached: hit != nil) {
+            case .clear:
+                image = nil
+            case .useCached:
+                image = hit
+            case .fetch:
+                guard let url else { return }
+                image = nil
+                image = await ImageMemoryCache.shared.load(url)
+            }
         }
     }
 }

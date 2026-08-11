@@ -32,3 +32,34 @@ export function useRefetchOn(topics: Topic[], refetch: () => void): void {
     return () => names.forEach((n) => window.removeEventListener(n, handler))
   }, [key])
 }
+
+// Cross-device liveness for a mounted view: poll every `intervalMs` while the tab is
+// visible, and refetch immediately when the tab regains focus/visibility. The event
+// bus (`useRefetchOn`) only syncs surfaces in the SAME tab, so without this a family
+// member's check on another device wouldn't show until a manual reload. Polling pauses
+// while hidden (no point fetching a backgrounded tab) and fires once on re-show.
+export function useLiveRefresh(refetch: () => void, intervalMs = 20000): void {
+  const ref = useRef(refetch)
+  ref.current = refetch
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | undefined
+    const start = () => {
+      if (timer != null) return
+      timer = setInterval(() => { if (document.visibilityState === 'visible') ref.current() }, intervalMs)
+    }
+    const stop = () => { if (timer != null) { clearInterval(timer); timer = undefined } }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') { ref.current(); start() }
+      else stop()
+    }
+    const onFocus = () => ref.current()
+    if (document.visibilityState === 'visible') start()
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      stop()
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [intervalMs])
+}

@@ -1,9 +1,9 @@
 // Lists domain — client slice, types, and hooks. Backs the Lists screen
 // (multiple named lists, sectioned items, assignees) AND the Today dashboard's
 // Grocery card (the original grocery exports are kept intact).
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
-import { tap, useRefetchOn } from './bus'
+import { tap, useRefetchOn, useLiveRefresh } from './bus'
 
 // ---- grocery (Today dashboard) ---------------------------------------------
 
@@ -20,6 +20,8 @@ export interface GroceryItem {
   id: string
   name: string
   quantity: string | null
+  // see ListItem.quantityInput — the typable form, for edit fields
+  quantityInput?: string | null
   checked: boolean
   // ambient attribution (see ListItem) — who hand-added it + where it came from
   addedBy?: ListItemPersonRef | null
@@ -50,9 +52,14 @@ export interface ListItem {
   id: string
   name: string
   quantity: string | null
+  // `quantity` with fraction glyphs spelled out ("1 1/2 lb" for a displayed "1½ lb").
+  // Use it to seed edit fields — a ½ can be read but not typed. Saving it round-trips.
+  quantityInput?: string | null
   checked: boolean
   checkedAt: string | null
   section: string | null
+  // Free-text store/vendor (Costco, Walmart, …); null = unassigned.
+  store?: string | null
   // 1–5 urgency scale: 1 = not urgent, 3 = normal, 5 = urgent. Higher sorts first.
   priority?: number
   sortOrder: number | null
@@ -76,6 +83,7 @@ export interface PatchItemBody {
   assignedTo?: string | null
   quantity?: string | null
   section?: string | null
+  store?: string | null
   priority?: number
   name?: string
 }
@@ -87,6 +95,7 @@ function patchBody(b: PatchItemBody): Record<string, unknown> {
   if ('assignedTo' in b) out.assignedTo = b.assignedTo
   if ('quantity' in b) out.quantity = b.quantity
   if ('section' in b) out.category = b.section
+  if ('store' in b) out.store = b.store
   if ('priority' in b) out.priority = b.priority
   if ('name' in b) out.name = b.name
   return out
@@ -102,8 +111,10 @@ export const groceryApi = {
   deleteItem: (id: string) => apiDelete(`/api/list-items/${id}`).then(tap('grocery')),
   // weekStart scopes an off-plan add/remove to the week being shopped (defaults to the
   // current week server-side when omitted, e.g. from a recipe page with no week context).
-  groceryFromRecipe: (recipeId: string, weekStart?: string) =>
-    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
+  // `ingredientIds` (optional) adds only the picked subset — the shopper already has the
+  // rest on hand. Omit it to add every non-staple ingredient (the original behavior).
+  groceryFromRecipe: (recipeId: string, weekStart?: string, ingredientIds?: string[]) =>
+    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`, ingredientIds ? { ingredientIds } : undefined).then(tap('grocery')),
   removeRecipeFromGrocery: (recipeId: string, weekStart?: string) =>
     apiDelete(`/api/lists/grocery/from-recipe/${recipeId}${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
 
@@ -125,18 +136,22 @@ export const groceryApi = {
   applyTemplate: (templateId: string, name?: string) =>
     apiSend<{ list: ListSummary }>('POST', `/api/lists/templates/${templateId}/apply`, name ? { name } : {}).then((r) => r.list).then(tap('grocery')),
 
-  addListItem: (listId: string, input: { name: string; quantity?: string | null; section?: string | null; assignedTo?: string | null; priority?: number }) =>
+  addListItem: (listId: string, input: { name: string; quantity?: string | null; section?: string | null; store?: string | null; assignedTo?: string | null; priority?: number }) =>
     apiSend<{ item: ListItem }>('POST', `/api/lists/${listId}/items`, {
       name: input.name,
       quantity: input.quantity ?? null,
       category: input.section ?? null,
+      ...(input.store !== undefined ? { store: input.store } : {}),
       assignedTo: input.assignedTo ?? null,
       ...(input.priority ? { priority: input.priority } : {}),
     }).then((r) => r.item).then(tap('grocery')),
   patchListItem: (id: string, patch: PatchItemBody) =>
     apiSend<{ item: ListItem }>('PATCH', `/api/list-items/${id}`, patchBody(patch)).then((r) => r.item).then(tap('grocery')),
-  // Bulk-edit section/assignee/priority across a multi-selection (one round-trip).
-  bulkPatchItems: (ids: string[], patch: { section?: string | null; assignedTo?: string | null; priority?: number }) =>
+  // The household's previously-used store names (most-used first) — quick-select for
+  // a grocery item's store field.
+  stores: () => apiGet<{ stores: string[] }>('/api/lists/stores').then((r) => r.stores),
+  // Bulk-edit section/store/assignee/priority across a multi-selection (one round-trip).
+  bulkPatchItems: (ids: string[], patch: { section?: string | null; store?: string | null; assignedTo?: string | null; priority?: number }) =>
     apiSend<{ updated: number }>('PATCH', '/api/list-items/bulk', { ids, patch }).then((r) => r.updated).then(tap('grocery')),
   // Clear a custom list's Completed section now (soft-deletes its checked items).
   clearCompleted: (listId: string) =>
@@ -216,6 +231,8 @@ export function useGroceryBoard(weekStart?: string): GroceryBoardState {
   }, [weekStart, nonce])
   // a dinner being planned changes the board's "this week's dinners" + auto items
   useRefetchOn(['grocery', 'meals'], () => setNonce((n) => n + 1))
+  // Cross-device liveness: poll + refetch on focus so another family member's edits appear.
+  useLiveRefresh(() => setNonce((n) => n + 1))
   return { board, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
 
@@ -235,14 +252,17 @@ export function useGrocery(): GroceryState {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [nonce, setNonce] = useState(0)
+  // See useListDetail: a poll answer composed before a local edit must not overwrite it.
+  const edits = useRef(0)
 
   useEffect(() => {
     let alive = true
+    const startedAt = edits.current
     groceryApi
       .grocery()
       .then((d) => {
         if (alive) {
-          setItems(d.items)
+          if (edits.current === startedAt) setItems(d.items)
           setLoading(false)
         }
       })
@@ -259,18 +279,23 @@ export function useGrocery(): GroceryState {
   // keep the Today grocery card in sync with edits made on the Lists board, a
   // recipe's "add to grocery", etc.
   useRefetchOn(['grocery'], () => setNonce((n) => n + 1))
+  // Cross-device liveness: another family member checking an item shows up here too.
+  useLiveRefresh(() => setNonce((n) => n + 1))
 
   async function add(name: string): Promise<void> {
     const item = await groceryApi.addGroceryItem(name)
+    edits.current += 1
     setItems((prev) => [...prev, item])
   }
 
   // Optimistic toggle; revert on failure.
   async function toggle(id: string, checked: boolean): Promise<void> {
+    edits.current += 1
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, checked } : i)))
     try {
       await groceryApi.setItemChecked(id, checked)
     } catch {
+      edits.current += 1
       setItems((prev) => prev.map((i) => (i.id === id ? { ...i, checked: !checked } : i)))
     }
   }
@@ -278,6 +303,7 @@ export function useGrocery(): GroceryState {
   // Optimistic removal; restore on failure.
   async function remove(id: string): Promise<void> {
     let snapshot: GroceryItem[] = []
+    edits.current += 1
     setItems((prev) => {
       snapshot = prev
       return prev.filter((i) => i.id !== id)
@@ -285,6 +311,7 @@ export function useGrocery(): GroceryState {
     try {
       await groceryApi.deleteItem(id)
     } catch {
+      edits.current += 1
       setItems(snapshot)
     }
   }
@@ -319,6 +346,8 @@ export function useLists(): ListsState {
   // Converting a list to/from a template (and item add/remove) taps 'grocery';
   // refetch so the Lists rail and the Templates group stay in lockstep.
   useRefetchOn(['grocery'], () => setNonce((n) => n + 1))
+  // Cross-device liveness: keep the rail counts fresh when another device edits a list.
+  useLiveRefresh(() => setNonce((n) => n + 1))
   return { lists, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
 
@@ -362,6 +391,16 @@ export function useListDetail(id: string | null): ListDetailState {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [nonce, setNonce] = useState(0)
+  // Counts local edits. A fetch records the count it started at and throws its answer
+  // away if anything changed while it was in the air: the screen's optimistic state is
+  // newer than a response the server composed before that edit reached it. Without this,
+  // deleting an item just as a poll goes out puts the item back until the next tick —
+  // the deletes have no success-path refetch to correct it.
+  const edits = useRef(0)
+  const localSetItems = useCallback<Dispatch<SetStateAction<ListItem[]>>>((v) => {
+    edits.current += 1
+    setItems(v)
+  }, [])
   useEffect(() => {
     if (!id) {
       setItems([])
@@ -369,14 +408,22 @@ export function useListDetail(id: string | null): ListDetailState {
       return
     }
     let alive = true
+    const startedAt = edits.current
     setLoading(true)
     groceryApi
       .list(id)
-      .then((d) => alive && (setItems(d.items), setLoading(false), setError(false)))
+      .then((d) => {
+        if (!alive) return
+        setLoading(false)
+        setError(false)
+        if (edits.current === startedAt) setItems(d.items)
+      })
       .catch(() => alive && (setError(true), setLoading(false)))
     return () => {
       alive = false
     }
   }, [id, nonce])
-  return { items, loading, error, setItems, refetch: () => setNonce((n) => n + 1) }
+  // Cross-device liveness: poll + refetch on focus so another family member's edits appear.
+  useLiveRefresh(() => { if (id) setNonce((n) => n + 1) })
+  return { items, loading, error, setItems: localSetItems, refetch: () => setNonce((n) => n + 1) }
 }
