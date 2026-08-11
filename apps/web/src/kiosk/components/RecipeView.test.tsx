@@ -185,6 +185,24 @@ describe('RecipeView — add ingredients to grocery', () => {
     expect(picked.className).not.toContain('checklist')
   })
 
+  // The picker opens on top of the scaled ingredient list. Showing the unscaled amount
+  // put two different numbers for the same ingredient on screen at once.
+  it('shows amounts scaled by the servings stepper, matching the page behind it', async () => {
+    ingredientsRef.current = [makeIngredient({ id: 'i1', name: 'flour', amount: 1, unit: 'cup' })]
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ added: 1 }) })) as unknown as typeof fetch
+    renderView()
+
+    // Recipe serves 4; step up to 8 → everything doubles.
+    const more = await screen.findByRole('button', { name: 'More' })
+    fireEvent.click(more)
+    fireEvent.click(more)
+    fireEvent.click(more)
+    fireEvent.click(more)
+
+    const modal = await openPicker()
+    expect(modal.getByRole('button', { name: /flour/ }).textContent).toContain('2 cup')
+  })
+
   it('shows an error note when the request fails instead of failing silently', async () => {
     globalThis.fetch = vi.fn(async () => {
       throw new Error('network down')

@@ -5,6 +5,7 @@ import { ScheduleModal } from './ScheduleModal'
 import { RecipeGroceryModal } from './RecipeGroceryModal'
 import { CookConfirm } from './CookConfirm'
 import { useTopbarFull } from '../topbar-slot'
+import { fmtAmt } from '../../lib/amount'
 import '../../styles/recipe.css'
 
 // Favorite / edit / schedule as icon buttons. Rendered in the topbar (full-screen
@@ -49,15 +50,6 @@ function downloadMarkdown(markdown: string, filename: string) {
 // substitutions, the method (per-step ingredients + notes), on-hand banner, and
 // "your notes". Self-contained by id so it renders identically whether it's the
 // full-screen route (RecipeDetail) or a modal preview (RecipeModal).
-
-const FRAC: Record<string, string> = { '0.5': '½', '0.25': '¼', '0.75': '¾', '0.33': '⅓', '0.67': '⅔' }
-function fmtAmt(n: number): string {
-  const whole = Math.floor(n)
-  const frac = +(n - whole).toFixed(2)
-  const fg = FRAC[String(frac)]
-  if (fg) return whole > 0 ? `${whole}${fg}` : fg
-  return `${+n.toFixed(2)}`
-}
 
 function IngredientRow({ ing, ratio, onSub }: { ing: RecipeIngredient; ratio: number; onSub: (val: string) => void }) {
   const [checked, setChecked] = useState(false)
@@ -453,7 +445,7 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
         <ScheduleModal recipe={recipe} onClose={() => setScheduling(false)} onScheduled={(label) => setAddedNote(`Scheduled for ${label}.`)} />
       )}
       {pickingGrocery && (
-        <RecipeGroceryModal recipeId={recipe.id} title={recipe.title} ingredients={ingredients} onClose={() => setPickingGrocery(false)} onAdded={onGroceryAdded} />
+        <RecipeGroceryModal recipeId={recipe.id} title={recipe.title} ingredients={ingredients} ratio={ratio} onClose={() => setPickingGrocery(false)} onAdded={onGroceryAdded} />
       )}
       {usedMatches && (
         <CookConfirm

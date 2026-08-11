@@ -1,14 +1,6 @@
 import { useState } from 'react'
 import { groceryApi, type RecipeIngredient } from '../../lib/api'
-
-const FRAC: Record<string, string> = { '0.5': '½', '0.25': '¼', '0.75': '¾', '0.33': '⅓', '0.67': '⅔' }
-function fmtAmt(n: number): string {
-  const whole = Math.floor(n)
-  const frac = +(n - whole).toFixed(2)
-  const fg = FRAC[String(frac)]
-  if (fg) return whole > 0 ? `${whole}${fg}` : fg
-  return `${+n.toFixed(2)}`
-}
+import { fmtAmt } from '../../lib/amount'
 
 // "Add all, or pick specific ingredients" — the shopper may already have some on hand.
 // Defaults to EVERY ingredient checked, staples included: what's actually in someone's
@@ -19,12 +11,17 @@ export function RecipeGroceryModal({
   recipeId,
   title,
   ingredients,
+  ratio = 1,
   onClose,
   onAdded,
 }: {
   recipeId: string
   title: string
   ingredients: RecipeIngredient[]
+  /// The servings scaler from the page that opened this. The sheet sits directly on top
+  /// of the scaled ingredient list, so showing unscaled amounts made the two disagree in
+  /// plain sight ("2 cups flour" behind, "1 cup flour" in front).
+  ratio?: number
   onClose: () => void
   onAdded: (added: number) => void
 }) {
@@ -73,7 +70,7 @@ export function RecipeGroceryModal({
         <div style={{ maxHeight: '48vh', overflowY: 'auto', margin: '0 -4px' }}>
           {ingredients.map((ing) => {
             const on = selected.has(ing.id)
-            const left = ing.amount != null ? `${fmtAmt(ing.amount)}${ing.unit ? ` ${ing.unit}` : ''}` : '—'
+            const left = ing.amount != null ? `${fmtAmt(ing.amount * ratio)}${ing.unit ? ` ${ing.unit}` : ''}` : '—'
             const name = ing.prepNote ? `${ing.name}, ${ing.prepNote}` : ing.name
             return (
               <div

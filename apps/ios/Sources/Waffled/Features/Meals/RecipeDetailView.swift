@@ -23,7 +23,6 @@ struct RecipeDetailView: View {
     /// Redesign: tags collapse to 3 + "+N more"; the on-hand banner adds the missing
     /// ingredients to the grocery list.
     @State private var tagsExpanded = false
-    @State private var groceryAdded = false
     @State private var groceryBusy = false
     /// Presents the "add all / pick specific ingredients" sheet.
     @State private var pickingGrocery = false
@@ -79,7 +78,7 @@ struct RecipeDetailView: View {
                 Menu {
                     Button { scheduling = true } label: { Label("Schedule…", systemImage: "calendar") }
                     Button { pickingGrocery = true } label: {
-                        Label(groceryAdded ? "Added to grocery ✓" : "Add to grocery list", systemImage: "cart.badge.plus")
+                        Label("Add to grocery list", systemImage: "cart.badge.plus")
                     }
                     Button { prepareShare() } label: {
                         Label(sharePreparing ? "Preparing…" : "Share recipe", systemImage: "square.and.arrow.up")
@@ -134,7 +133,7 @@ struct RecipeDetailView: View {
             .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $pickingGrocery) {
-            RecipeGrocerySheet(title: r.title, ingredients: ingredients) { ids in
+            RecipeGrocerySheet(title: r.title, ingredients: ingredients, ratio: ratio) { ids in
                 addRecipeToGrocery(ingredientIds: ids)
             }
             // Full height only: it's a scrolling ingredient list with a pinned Add
@@ -388,7 +387,7 @@ struct RecipeDetailView: View {
             Spacer(minLength: 8)
             if !missing.isEmpty {
                 Button { pickingGrocery = true } label: {
-                    Text(groceryAdded ? "Added ✓" : "Add to grocery")
+                    Text("Add to grocery")
                         .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(WF.primaryD)
                 }
                 .buttonStyle(.plain)
@@ -401,9 +400,10 @@ struct RecipeDetailView: View {
 
     /// Adds the picked subset of ingredients — the server merges quantities into rows
     /// already on the list and links items back to this recipe, so they group under it
-    /// in the grocery board's by-meal view (no meal-plan entry needed). `groceryAdded`
-    /// only flips on success, so a failed request stays retryable and never reads
-    /// as "Added ✓".
+    /// in the grocery board's by-meal view (no meal-plan entry needed). The controls keep
+    /// reading "Add to grocery" afterwards: the picker is repeatable by design (add a few
+    /// things now, the rest later), so a permanent "Added ✓" would describe the button as
+    /// finished when it isn't. The banner below reports each add instead.
     private func addRecipeToGrocery(ingredientIds: [String]) {
         guard !groceryBusy, !ingredientIds.isEmpty else { return }
         groceryBusy = true
@@ -411,7 +411,6 @@ struct RecipeDetailView: View {
             defer { groceryBusy = false }
             do {
                 let added = try await api.groceryFromRecipe(recipeId: r.id, ingredientIds: ingredientIds)
-                groceryAdded = true
                 withAnimation {
                     cookedMessage = added > 0
                         ? "Added \(added) to your grocery list."
@@ -776,13 +775,19 @@ struct RecipeGrocerySheet: View {
     @Environment(\.dismiss) private var dismiss
     let title: String
     let ingredients: [WaffledAPI.RecipeIngredientDTO]
+    /// The servings scaler from the recipe behind this sheet. It covers the scaled
+    /// ingredient list, so formatting the raw amount showed two different numbers for
+    /// the same ingredient — "2 cups flour" on the page, "1 cup flour" in the sheet.
+    let ratio: Double
     let onAdd: ([String]) -> Void
 
     @State private var selected: Set<String>
 
-    init(title: String, ingredients: [WaffledAPI.RecipeIngredientDTO], onAdd: @escaping ([String]) -> Void) {
+    init(title: String, ingredients: [WaffledAPI.RecipeIngredientDTO], ratio: Double = 1,
+         onAdd: @escaping ([String]) -> Void) {
         self.title = title
         self.ingredients = ingredients
+        self.ratio = ratio
         self.onAdd = onAdd
         _selected = State(initialValue: Set(ingredients.map(\.id)))
     }
@@ -845,7 +850,7 @@ struct RecipeGrocerySheet: View {
         let on = selected.contains(ing.id)
         let amount: String = {
             guard let amt = ing.amount else { return "" }
-            let n = RecipeAmount.format(amt)
+            let n = RecipeAmount.format(amt * ratio)
             return n.isEmpty ? "" : n + (ing.unit.map { " \($0)" } ?? "")
         }()
         return HStack(alignment: .top, spacing: 11) {
