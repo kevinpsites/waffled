@@ -532,13 +532,14 @@ struct ListDetailView: View {
         // Dropping focus also commits an in-flight inline edit (see onChange(of: focus)).
         .wfKeyboardDoneToolbar { focus = nil }
         .toolbar {
-            // Grocery is auto-built, so it has no template/delete menu. A template gets
+            // Grocery is auto-built, so it has no template/delete menu — but it still
+            // shares, so it gets the bare share icon instead. A template gets
             // Use / Move to Lists / Delete; a normal list gets Save as template / Delete.
             // iPad (kiosk) has no navigation bar — its ⋯ menu lives in the list header
             // (see `kioskListHeader`); iPhone keeps it here in the nav bar.
-            if !model.isGrocery && !isKiosk {
+            if !isKiosk {
                 ToolbarItem(placement: .primaryAction) {
-                    listActionsMenu
+                    if model.isGrocery { shareListIcon } else { listActionsMenu }
                 }
             }
         }
@@ -837,9 +838,38 @@ struct ListDetailView: View {
         }
     }
 
-    /// Menu contents — same options on iPhone and iPad: Select, Edit list, template
-    /// actions, Delete.
+    /// The list as plain text for the share sheet — unchecked items only, grouped by
+    /// aisle/section. Empty once everything is ticked off, which is when there's
+    /// nothing worth handing over.
+    private var shareText: String { ShareList.format(rows: model.items) }
+
+    /// Hand the list to whoever's doing the run. The system share sheet IS the
+    /// handoff here (Messages, Mail, Notes, AirDrop): the web offers a QR code
+    /// because it needs to get the list *onto* a phone, and on iOS we already are one.
+    @ViewBuilder private var shareListButton: some View {
+        let text = shareText
+        if !text.isEmpty {
+            ShareLink(item: text, subject: Text(model.list.name)) {
+                Label("Share list", systemImage: "square.and.arrow.up")
+            }
+        }
+    }
+
+    /// The same action as a bare icon, for grocery — which has no ⋯ menu (it's
+    /// auto-built, so it has no rename/template/delete actions to put in one).
+    @ViewBuilder private var shareListIcon: some View {
+        let text = shareText
+        if !text.isEmpty {
+            ShareLink(item: text, subject: Text(model.list.name)) {
+                Image(systemName: "square.and.arrow.up").font(.system(size: 18, weight: .regular))
+            }
+        }
+    }
+
+    /// Menu contents — same options on iPhone and iPad: Share, Select, Edit list,
+    /// template actions, Delete.
     @ViewBuilder private var listActionButtons: some View {
+        shareListButton
         // Enter multi-select to bulk-edit section / assignee / priority.
         Button { withAnimation { selecting = true; selectedIDs = []; resetBulkStaging() } } label: {
             Label("Select items to edit", systemImage: "checklist")
@@ -884,9 +914,17 @@ struct ListDetailView: View {
     }
 
     /// iPad-only header: the list name + the ⋯ menu (the kiosk layout has no nav bar,
-    /// so the actions would otherwise be unreachable). Grocery has no menu.
+    /// so the actions would otherwise be unreachable). Grocery has no menu, but still
+    /// shares — it gets the share icon alone, right-aligned, so the board below keeps
+    /// its full width and its own title treatment.
     @ViewBuilder private var kioskListHeader: some View {
-        if !model.isGrocery {
+        if model.isGrocery {
+            HStack(spacing: 10) {
+                Spacer(minLength: 0)
+                shareListIcon.foregroundStyle(WF.ink2)
+            }
+            .padding(.horizontal, 16).padding(.top, 8)
+        } else {
             HStack(spacing: 10) {
                 Text(model.list.name)
                     .font(WF.serif(20, .semibold)).foregroundStyle(WF.ink)
