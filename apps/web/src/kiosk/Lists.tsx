@@ -459,31 +459,21 @@ export function Lists() {
   const closeGrocery = useCallback(() => setGroceryOpen(false), [])
 
   // A list is worth sharing only while something on it is still outstanding.
-  // The modal reads `items` at render time, so the button needs no item deps —
-  // just whether to offer it at all (keeps this effect off the toggle path).
+  // Lives in the header's ⋯ menu beside Rename/Delete rather than the topbar —
+  // it's an occasional action, and the topbar is for "Add item". (The grocery
+  // board keeps its own topbar button: that board has no ⋯ menu.)
   const hasUnchecked = items.some((i) => !i.checked)
 
   useTopbarRight(
     () => (
       <>
-        {hasUnchecked && (
-          <button
-            type="button"
-            className="pill"
-            style={{ cursor: 'pointer' }}
-            title="Copy, share, or QR this list to any phone"
-            onClick={() => setSharing(true)}
-          >
-            📤 Share list
-          </button>
-        )}
         <button type="button" className="pill btn-primary topbar-new" onClick={() => setItemModal({ item: null })}>
           <Icon name="plus" />
           <span>Add item</span>
         </button>
       </>
     ),
-    [hasUnchecked]
+    []
   )
 
   // Optimistic check toggle. A freshly-checked item lingers in place for a short
@@ -827,6 +817,12 @@ export function Lists() {
                     <button type="button" onClick={() => { setEditingList({ id: selected.id, name: selected.name, emoji: selected.emoji }); setActionsMenu(false) }}>
                       <span aria-hidden>✎</span> {isTemplate ? 'Rename template' : 'Rename'}
                     </button>
+                    {/* Only worth offering while something is still outstanding. */}
+                    {hasUnchecked && (
+                      <button type="button" onClick={() => { setSharing(true); setActionsMenu(false) }}>
+                        <span aria-hidden>📤</span> Share list
+                      </button>
+                    )}
                     {isTemplate ? (
                       <button type="button" onClick={() => { moveTemplateToLists(); setActionsMenu(false) }}>
                         <span aria-hidden>↩</span> Move to Lists

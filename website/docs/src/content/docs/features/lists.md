@@ -23,8 +23,9 @@ Lists is where "things to buy or do" live — shared custom lists you build by h
 
 ## Taking a list with you
 
-Every list — the grocery board and your own custom lists — has a **📤 Share list** button in the
-top bar, for getting it onto the phone of whoever is actually going. It turns the unchecked
+Every list can be handed to the phone of whoever is actually going: the grocery board has a
+**📤 Share list** button in its top bar, and a custom list offers **Share list** in its **⋯**
+menu, beside Rename and Delete. It turns the unchecked
 items into a clean plain-text list with quantities, grouped by aisle on the grocery board and by
 section on a custom list:
 
