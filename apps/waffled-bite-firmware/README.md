@@ -123,17 +123,32 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 > individual screens below have not each been re-verified on real silicon. Treat everything
 > above the hardware-bring-up entries as **simulator-proven, not hardware-proven**.
 
-- **No audio at all.** The Sounds tile, the seven sound options, the volume slider and the
-  sleep timer are fully wired end to end (device screen → `PATCH /api/waffled-bites/device/settings`
-  → parent web panel → poll), and nothing in this firmware touches I2S — the speaker is
-  silent. The morning alarm's six `ALARM_TONES` are likewise decorative — and note the
-  device doesn't even parse `settings.alarm` today (`GET /device/state` returns it, but
-  `WbDeviceState` has no field for it). Planned in
-  [`docs/product/waffled-bites-audio-plan.md`](../../docs/product/waffled-bites-audio-plan.md):
-  phase 1 synthesises white/ocean/rain/fan/heartbeat on-device (no assets, no streaming, works
-  through a network outage), phase 2 adds sampled forest/lullaby/birdsong cached in the unused
-  `spiffs` partition. Signed off: audio is independent of the quiet-time/bedtime locks (they
-  must not touch `wb_audio`), no reboot persistence, and the alarm gets its own `alarm.volume`.
+- **The speaker is still silent — but the sounds now exist.** `src/wb_synth.{h,cpp}`
+  synthesises all five phase-1 sounds (white/ocean/rain/fan/heartbeat) from scratch, with 11
+  unit tests in `test/test_synth/` (`pio test -e native_test`). What's missing is the
+  plumbing between it and the amp: **nothing in this firmware touches I2S yet**, so the
+  Sounds tile, the volume slider and the sleep timer still sync end to end and make no
+  sound.
+
+  You can hear the recipes today without a board — `tools/audio/render_wav.cpp` renders
+  them to WAV from the real synth:
+
+  ```
+  clang++ -std=c++14 -O2 -Isrc tools/audio/render_wav.cpp src/wb_synth.cpp -o /tmp/wb_render
+  /tmp/wb_render ~/Desktop/waffled-bite-sounds 20
+  ```
+
+  (It writes outside the repo on purpose — phase 1 ships zero audio assets.)
+
+  The morning alarm's six `ALARM_TONES` are still decorative, and the device doesn't parse
+  `settings.alarm` at all (`GET /device/state` returns it, but `WbDeviceState` has no field
+  for it). Full plan in
+  [`docs/product/waffled-bites-audio-plan.md`](../../docs/product/waffled-bites-audio-plan.md);
+  phase 2 adds sampled forest/lullaby/birdsong cached in the unused `spiffs` partition.
+  Signed off: 22.05 kHz/16-bit/mono; audio is independent of the quiet-time/bedtime locks
+  (they must not touch `wb_audio`); no reboot persistence; the alarm gets its own
+  `alarm.volume` and **pauses** the sound machine for 20 s rather than playing over it; and
+  the speaker is the one that shipped with the board (2-pin JST PH 2.0 header marked `SPK`).
 
 - **Sounds and Nightlight are done.** Tapping either tile on the Grown-up controls
   screen opens a shared toggle+picker+slider detail screen (`src/ui/control_detail_screen.cpp` —
