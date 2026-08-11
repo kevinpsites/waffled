@@ -15,10 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **The calendar grid now says which month you're looking at.** The header shows today's
-  date, so paging the month grid forward left nothing on the grid itself saying where you'd
-  landed. Month, Week and Day views now carry their own heading, with a "Not this month ·
-  Back to today" flag when you've navigated away from the present.
+- **The calendar grid now says which month you're looking at.** The app header shows
+  today's date, so paging the grid forward left nothing on the grid itself saying where
+  you'd landed — an empty November under a heading reading "August 11". Month, Week and Day
+  views now carry their own heading above the cells, with a **Back to today** button that
+  appears only once you've navigated away.
 
 ### Added
 
@@ -32,21 +33,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Subscribe to any published calendar link (ICS feeds).** Paste a school schedule, a
   sports-team calendar, or a work calendar published from Outlook into Settings → Calendars
   and its events show up on the family calendar — no sign-in, no OAuth setup, nothing to
-  approve. Feeds are read-only, refresh every 15 minutes (with a per-feed Sync button), and
-  can be mapped to a person for color or marked private. Feed events are read-only — they
-  mirror someone else's calendar, so Waffled won't pretend an edit will stick; change it at
-  the source, or remove the feed. This is the plan B when a workplace won't approve calendar
-  access.
-- **Share any list to a phone.** A **Share list** button on the grocery board and on every
-  custom list turns whatever's still unchecked into a clean grouped text list — in the order you actually
-  walk the store, quantities included — and hands it over by share sheet, clipboard, or a QR
-  code. The QR encodes the list text itself rather than a link, so whoever is going shopping
-  gets it by pointing their camera at the kiosk: no app, no account, no sign-in. The grocery
-  board groups by aisle and a custom list by section; a list with no sections comes out flat.
-  Items note their **store** and **who they're for** when those are set, so a split run across
-  two shops still makes sense to whoever is holding the list. A
-  very long list can't fit in a code a camera can read — Waffled says so and points you at Copy or Share
-  rather than showing a QR that won't scan.
+  approve. This is the plan B when a workplace won't approve calendar access. Feeds refresh
+  every 15 minutes (with a per-feed Sync button), can be mapped to a person for colour, and
+  can be marked private. Their events are **read-only everywhere, including on iPhone and
+  iPad**: a feed mirrors someone else's calendar, so rather than accept an edit and silently
+  undo it at the next refresh, Waffled hides Edit and Delete and tells you to change it at
+  the source.
+- **Share any list to a phone.** **Share list** turns whatever's still unchecked into a
+  clean text list and hands it over by share sheet, clipboard, or QR code — from the grocery
+  board's top bar, or a custom list's **⋯** menu. The QR encodes the list *itself* rather
+  than a link, so whoever is going shopping just points a camera at the kiosk: no app, no
+  account, no sign-in. Items are grouped the way you read them — by aisle in walking order
+  on the grocery board, by section on a custom list, and as a plain list when there are no
+  sections — with quantities, plus the **store** and **who it's for** when you've set them,
+  so a run split across two shops still makes sense. A list too long to fit in a code a
+  camera can actually read says so and points you at Copy or Share, rather than showing a QR
+  that can't be scanned.
 - **Build one meal out of several recipes.** Dinner is rarely a single dish, but the
   planner only ever let you plan one recipe a night. The new **Meal Builder** lets you
   put a whole meal together: name it, drag recipes in from your library under Main,

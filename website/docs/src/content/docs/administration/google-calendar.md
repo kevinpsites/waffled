@@ -71,7 +71,7 @@ Once the credentials are set, each person connects in **Settings → Calendars**
   must match exactly (including `http` vs `https` and the no-`/api` path).
 
 More symptom→fix detail in
-[Troubleshooting → Google Calendar sync](/operations/troubleshooting/#google-calendar-sync-failing).
+[Troubleshooting → Calendar sync](/operations/troubleshooting/#calendar-sync-failing-google-or-outlook).
 
 ## What's not backed up
 

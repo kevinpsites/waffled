@@ -87,8 +87,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   or recipe), **add any recipe's ingredients from its page** — now with a **pick-specific
   picker** (add all or just what you need) — (no meal-plan entry needed; these survive the
   weekly rebuild), **assign a store to an item + a By-store board view** (free-text
-  quick-select over your previously-used stores), and **"Unscheduled" sections + week-rail
-  rows** for off-plan recipes in the grocery board's by-meal view.
+  quick-select over your previously-used stores), **"Unscheduled" sections + week-rail
+  rows** for off-plan recipes in the grocery board's by-meal view, and **Share list** — hand
+  any list to a phone as grouped plain text via copy / share sheet / QR, with the store and
+  assignee noted per item.
 - **Meal Builder (web)** — build one meal out of several recipes and treat it as one
   thing: name a plate, drag recipes in under Main / Sides / Dessert, meal-level servings,
   **a cook per dish**, and an optional "keep in library" that makes it reusable (saved
@@ -198,8 +200,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   match ("family walk" vs "Family walk after dinner"), and consider surfacing a member's
   cross-goal favourites when a specific goal has little history of its own.
 
-- **List sharing.** Let a household invite specific people to a list, choose whether
-  they can view or edit it, and revoke access later.
+- **List sharing (access, not a handoff).** Let a household invite specific people to a
+  list, choose whether they can view or edit it, and revoke access later. Distinct from the
+  shipped **Share list**, which is a one-way copy of the text to a phone and grants nobody
+  any access.
 
 - **Share list: a link-backed QR for long lists.** *Enhancement to the shipped
   [Share list](/features/lists/) handoff.* Today the QR encodes the list **text

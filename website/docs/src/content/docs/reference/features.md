@@ -92,8 +92,8 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Full-screen **event detail** (location/Directions, repeats, notes, timeline) | ✅ | ✅ | ✅ | ✅ Done (iPad detail is two-column) |
 | Per-person filter | ✅ | ✅ | ✅ | ✅ Done |
 | **Two-way Google Calendar sync** (inbound poll + outbound push) | ✅ | ✅ | ✅ | ✅ Done (sync runs server-side; connect in Settings → Calendars) |
-| **Two-way Outlook / Microsoft 365 sync** (same engine, via Graph) | ✅ | ✅ | ✅ | ✅ Done (server-side; connect in Settings → Calendars) |
-| **Calendar feeds (ICS)** — subscribe to any published .ics/webcal URL | ✅ | ✅ | ✅ | ✅ Done (read-only, no OAuth; polled every 15 min) |
+| **Two-way Outlook / Microsoft 365 sync** (same engine, via Graph) | ✅ | ✅ | ✅ | ✅ Done — sync runs server-side, so synced events appear on every surface. Connecting an account is **web-only** (Settings → Calendars); needs a free Azure app registration |
+| **Calendar feeds (ICS)** — subscribe to any published .ics/webcal URL | ✅ | ✅ | ✅ | ✅ Done — read-only, no OAuth, polled every 15 min. Feed events show on every surface and can't be edited anywhere; adding/managing a feed is **web-only** (Settings → Calendars) |
 | Connect calendars + per-person write-target (Settings → Calendars) | ✅ | ✅ | ✅ | ✅ Done |
 | **Offline** calendar (PowerSync: local reads + queued writes) | ✅ | ✅ | ✅ | ✅ Done |
 | AI **"Heads up this week"** digest + **per-event insight** | ✅ | ✅ | ✅ | ✅ Done |
