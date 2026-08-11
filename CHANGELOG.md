@@ -254,9 +254,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Server dependencies pick up a denial-of-service patch.** A flaw in
   `brace-expansion` — a small pattern-matching library the server pulls in
   indirectly — let a crafted pattern expand without bound until the process ran
-  out of memory. Waffled never feeds user input to the affected code path, so this
-  was not exploitable in practice, but the patched version is now pinned across
-  the server's dependency tree.
+  out of memory. A follow-up advisory found the first fix could still be bypassed,
+  so the pin now tracks the fully patched release. Waffled never feeds user input
+  to the affected code path, so neither flaw was exploitable in practice, but the
+  patched version is pinned across the server's dependency tree.
 
 ## [0.12.0] - 2026-07-23
 
