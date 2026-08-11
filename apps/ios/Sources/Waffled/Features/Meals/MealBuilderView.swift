@@ -36,8 +36,24 @@ struct MealBuilderView: View {
     var body: some View {
         List {
             nameSection
-            ForEach(model.groups) { group in
-                roleSection(group)
+            // ONE flat run — a header row per role, then that role's dishes, then its ＋ —
+            // rather than a Section per role. That's what lets a drag cross a header and
+            // re-file a dish: SwiftUI's `.onMove` only reorders *within* a Section, and a
+            // `List` silently refuses `.dropDestination` outright (the row lifts and
+            // nothing lands). Built once per render and reused by the drop handler.
+            Section {
+                let rows = flatRows
+                ForEach(rows) { row in
+                    switch row {
+                    case .header(let group):
+                        roleHeaderRow(group).moveDisabled(true)
+                    case .dish(let dish, _):
+                        dishRow(dish)
+                    case .add(let role):
+                        addRow(role).moveDisabled(true)
+                    }
+                }
+                .onMove { from, to in handleMove(rows: rows, from: from, to: to) }
             }
         }
         .listStyle(.insetGrouped)
@@ -102,43 +118,81 @@ struct MealBuilderView: View {
 
     // MARK: one role group
 
-    private func roleSection(_ group: PlateGroup) -> some View {
-        Section {
-            ForEach(group.dishes) { dish in
-                PlateDishRow(dish: dish, members: sync.members,
-                             onAssignCook: { id in Task { await model.assignCook(dish.recipeId, personId: id) } },
-                             onMove: { role in Task { await model.moveDish(dish.recipeId, to: role) } })
-                    .listRowBackground(WF.card)
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            Task { await model.removeDish(dish.recipeId) }
-                        } label: { Label("Remove", systemImage: "trash") }
-                    }
-            }
-            // The trailing ＋ carries THIS group's role. Sending no role files
-            // everything under the server default — the "I can't add a main" bug.
-            Button { adding = group.role } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus.circle.fill").font(.system(size: 17))
-                        .foregroundStyle(WF.primary)
-                    Text(group.role.addLabel)
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink2)
-                    Spacer()
-                }
-            }
-            .buttonStyle(.plain)
-            .listRowBackground(WF.card2)
-        } header: {
-            HStack(spacing: 6) {
-                SectionLabel(text: group.role.label)
-                if !group.dishes.isEmpty {
-                    Text("\(group.dishes.count)")
-                        .font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3)
-                        .padding(.horizontal, 6).padding(.vertical, 1)
-                        .background(WF.panel).clipShape(Capsule())
-                }
+    /// One row of the flat run. The indices line up 1:1 with the `ListReorder.Row`
+    /// array `handleMove` reasons over, so the two must stay built from the same source.
+    private enum PlateDisplayRow: Identifiable {
+        case header(PlateGroup)
+        case dish(WaffledAPI.MealDishDTO, role: String)
+        case add(PlateRole)
+        var id: String {
+            switch self {
+            case .header(let g): return "h:\(g.role.key)"
+            case .dish(let d, _): return "d:\(d.recipeId)"
+            case .add(let r): return "a:\(r.key)"
             }
         }
+    }
+
+    /// Every role's header, dishes and ＋ in render order. An EMPTY role still gets its
+    /// header and ＋ — that's what makes it a drop target you can drag the first dish into.
+    private var flatRows: [PlateDisplayRow] {
+        var out: [PlateDisplayRow] = []
+        for group in model.groups {
+            out.append(.header(group))
+            for dish in group.dishes { out.append(.dish(dish, role: group.role.key)) }
+            out.append(.add(group.role))
+        }
+        return out
+    }
+
+    /// Re-file the dragged dish under whichever role header it landed beneath. The rule
+    /// (and the flat run's exact ordering) lives in `PlateReorder`, where it is tested.
+    private func handleMove(rows _: [PlateDisplayRow], from: IndexSet, to: Int) {
+        guard let result = PlateReorder.target(model.groups, from: from, to: to) else { return }
+        Task { await model.moveDish(result.id, to: result.role) }
+    }
+
+    @ViewBuilder private func roleHeaderRow(_ group: PlateGroup) -> some View {
+        HStack(spacing: 6) {
+            SectionLabel(text: group.role.label)
+            if !group.dishes.isEmpty {
+                Text("\(group.dishes.count)")
+                    .font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3)
+                    .padding(.horizontal, 6).padding(.vertical, 1)
+                    .background(WF.panel).clipShape(Capsule())
+            }
+            Spacer()
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private func dishRow(_ dish: WaffledAPI.MealDishDTO) -> some View {
+        PlateDishRow(dish: dish, members: sync.members,
+                     onAssignCook: { id in Task { await model.assignCook(dish.recipeId, personId: id) } },
+                     onMove: { role in Task { await model.moveDish(dish.recipeId, to: role) } })
+            .listRowBackground(WF.card)
+            .swipeActions(edge: .trailing) {
+                Button(role: .destructive) {
+                    Task { await model.removeDish(dish.recipeId) }
+                } label: { Label("Remove", systemImage: "trash") }
+            }
+    }
+
+    /// The trailing ＋ carries THIS group's role. Sending no role files everything under
+    /// the server default — the "I can't add a main" bug.
+    private func addRow(_ role: PlateRole) -> some View {
+        Button { adding = role } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill").font(.system(size: 17))
+                    .foregroundStyle(WF.primary)
+                Text(role.addLabel)
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink2)
+                Spacer()
+            }
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(WF.card2)
     }
 
     // MARK: the pinned plate bar

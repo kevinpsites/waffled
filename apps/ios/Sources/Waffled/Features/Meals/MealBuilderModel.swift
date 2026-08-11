@@ -14,8 +14,9 @@ import Observation
 struct PlateRole: Hashable, Identifiable, Sendable {
     let key: String
     let label: String
-    /// The label on the group's trailing "＋" — iPhone and iPad both tap to add
-    /// (decision 8); drag-and-drop is deliberately web-only.
+    /// The label on the group's trailing "＋" — iPhone and iPad both tap to *add* a dish
+    /// (decision 8). A dish already on the plate can also be **dragged** between roles;
+    /// see `PlateReorder`.
     let addLabel: String
     var id: String { key }
 }
@@ -56,6 +57,40 @@ enum PlateRoles {
     static func label(for role: String) -> String {
         ordered.first { $0.key == role }?.label ?? side.label
     }
+}
+
+/// Dragging a dish from one role to another in the builder.
+///
+/// The builder renders its roles as ONE flat run — header, that role's dishes, then its
+/// ＋ — because SwiftUI's `.onMove` only reorders within a Section, and a `List` silently
+/// refuses `.dropDestination` (the row lifts and nothing lands). Dropping a dish under a
+/// different header is therefore how it gets re-filed, and the rule that reads the
+/// landing role lives here so it can be tested without a running app.
+enum PlateReorder {
+    /// The flat run as `ListReorder` sees it. **Must stay in the same order the view
+    /// renders** — every row occupies an index, including the non-draggable ＋ rows,
+    /// or every index below one is off by one.
+    static func rows(_ groups: [PlateGroup]) -> [ListReorder.Row] {
+        var out: [ListReorder.Row] = []
+        for g in groups {
+            out.append(.header(g.role.key))
+            for d in g.dishes { out.append(.item(id: d.recipeId, section: g.role.key)) }
+            out.append(.item(id: "add:" + g.role.key, section: g.role.key))
+        }
+        return out
+    }
+
+    /// The dish that moved and the role it should adopt — nil when nothing should be
+    /// written (it stayed in its own role, or a ＋ row somehow moved).
+    static func target(_ groups: [PlateGroup], from: IndexSet, to: Int) -> (id: String, role: PlateRole)? {
+        guard let result = ListReorder.targetSection(rows: rows(groups), from: from, to: to),
+              !result.id.hasPrefix("add:"),
+              let role = ordered.first(where: { $0.key == result.section })
+        else { return nil }
+        return (result.id, role)
+    }
+
+    private static var ordered: [PlateRole] { PlateRoles.ordered }
 }
 
 /// What a dish (or a whole plate) may honestly say about the pantry.
