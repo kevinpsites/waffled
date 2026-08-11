@@ -803,6 +803,24 @@ describe('grocery auto-build + pantry staples', () => {
     expect(board.unscheduled.some((u: { title: string }) => u.title === 'Chorizo Tacos')).toBe(true)
   })
 
+  // Refresh deletes the derived rows and re-inserts them, which is why it goes to the
+  // trouble of carrying `checked` across the wipe. The store a shopper assigned is the
+  // same kind of hand-entered value and has to survive too — otherwise every Refresh
+  // silently empties the By-store view of everything the week built.
+  it('keeps a store assigned to an auto item through a rebuild', async () => {
+    const ws = thisSunday()
+    const board = JSON.parse((await call('GET', `/api/lists/grocery/board?weekStart=${ws}`, kevin)).body)
+    const salmon = board.items.find((i: { name: string }) => i.name === 'Salmon fillets')
+    expect(salmon.source).toBe('auto')
+
+    expect((await call('PATCH', `/api/list-items/${salmon.id}`, kevin, { store: 'Costco' })).statusCode).toBe(200)
+
+    const after = JSON.parse((await call('POST', `/api/lists/grocery/rebuild?weekStart=${ws}`, kevin)).body).board
+    const salmonAgain = after.items.find((i: { name: string }) => i.name === 'Salmon fillets')
+    expect(salmonAgain).toBeDefined()
+    expect(salmonAgain.store).toBe('Costco')
+  })
+
   it('manages pantry staples (defaults, add, delete)', async () => {
     const staples = JSON.parse((await call('GET', '/api/pantry-staples', kevin)).body).staples
     expect(staples.map((s: { name: string }) => s.name)).toContain('Olive oil')

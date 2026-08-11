@@ -764,6 +764,18 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
       )
     ).rows.map((r) => r.name.trim().toLowerCase())
   )
+  // Same reasoning for the store: it's hand-assigned, the rebuild can't derive it from
+  // the meal plan, and losing it on every refresh would empty the By-store view.
+  const prevStore = new Map(
+    (
+      await query<{ name: string; store: string }>(
+        `select name, store from list_items
+           where household_id=$1 and list_id=$2 and source='auto' and deleted_at is null
+             and store is not null and btrim(store) <> '' and ${weekClause}`,
+        [tenant.householdId, list.id, weekStart]
+      )
+    ).rows.map((r) => [r.name.trim().toLowerCase(), r.store] as const)
+  )
   await query(`delete from list_items where household_id=$1 and list_id=$2 and source='auto' and ${weekClause}`, [tenant.householdId, list.id, weekStart])
 
   // Explicit off-plan adds (source='recipe') survive the wipe above. When the
@@ -797,11 +809,12 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
       continue
     }
     const qty = g.amount != null ? `${formatAmount(g.amount)}${g.unit ? ` ${g.unit}` : ''}` : g.unit
-    const checked = prevChecked.has(g.name.trim().toLowerCase())
+    const key = g.name.trim().toLowerCase()
+    const checked = prevChecked.has(key)
     await query(
-      `insert into list_items (household_id, list_id, name, quantity, category, source, source_recipe_ids, checked, checked_at, sort_order, created_by, week_start)
-       values ($1,$2,$3,$4,$5,'auto',$6,$7,$8,$9,$10,$11)`,
-      [tenant.householdId, list.id, g.name, qty, g.aisle, [...g.recipeIds], checked, checked ? new Date() : null, order++, tenant.personId, weekStart]
+      `insert into list_items (household_id, list_id, name, quantity, category, store, source, source_recipe_ids, checked, checked_at, sort_order, created_by, week_start)
+       values ($1,$2,$3,$4,$5,$6,'auto',$7,$8,$9,$10,$11,$12)`,
+      [tenant.householdId, list.id, g.name, qty, g.aisle, prevStore.get(key) ?? null, [...g.recipeIds], checked, checked ? new Date() : null, order++, tenant.personId, weekStart]
     )
   }
   return byName.size
