@@ -13,14 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **The calendar grid now says which month you're looking at.** The app header shows
-  today's date, so paging the grid forward left nothing on the grid itself saying where
-  you'd landed — an empty November under a heading reading "August 11". Month, Week and Day
-  views now carry their own heading above the cells, with a **Back to today** button that
-  appears only once you've navigated away.
-
 ### Added
 
 - **Two-way Outlook / Microsoft 365 calendar sync, right beside Google.** Connect an
@@ -58,21 +50,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Keep it in your library and it becomes reusable: saved meals sit alongside recipes in
   the recipe library with their own 🍽️ Meals filter, search finds them by the meal's
   name *or* any dish in it, and dropping one onto a new plate brings its dishes in.
+  Works on web, iPhone and iPad — on the phone and tablet you tap **＋ Add a side** to
+  pick from the same library, a new meal opens with the keyboard already on its name,
+  and once a dish is on the plate you can press and hold it to drag it under another
+  heading (an empty role shows a slot to aim at). Wherever a planned dinner is shown — the week
+  grid, the month grid, tonight's card, the grocery list — tapping a meal opens the
+  meal, and dragging one to another night takes its dishes with it.
 - **Cook a whole meal, dish by dish.** Cook mode now takes a meal as well as a single
   recipe: it tabs across every dish on the plate, and timers you start keep running when
   you move between them, so the rice doesn't quietly overcook while you're reading the
-  chicken steps. Open it from the meal itself, or straight from tonight's card.
+  chicken steps. Each dish also remembers its own place, so switching back doesn't lose
+  where you were, and a timer that goes off tells you which dish it belongs to. Jumping
+  to a timer's step offers a **"Back to step 6"** pill (iPhone/iPad) that puts you back
+  exactly where it pulled you from — it stays until you use it or dismiss it, because a
+  timer going off is precisely when you get distracted. Open it from the meal itself, or
+  straight from tonight's card. Web, iPhone and iPad.
 - **See *which* ingredients you still need, not just how many.** "7 to buy" was a number
   you couldn't act on — the recipe screen said it and couldn't tell you what the 7 were.
   Now it opens into the actual ingredient names, on the recipe screen and on every dish
   in a meal. With the Pantry module on, these are specifically the ones your pantry
-  *doesn't* already cover.
+  *doesn't* already cover. Web, iPhone and iPad.
 - **A meal shops as one thing.** A meal's ingredients group under the meal's name in the
   grocery list's By-meal view — an unscheduled one is badged as such — with a dot on each
   row in the meal's colour so you can see at a glance which night an item is for. An item
   wanted by two meals is still one row with one checkbox. A meal added to the list without
   being scheduled can be taken back off it again, and anything the week's actual plan
-  still needs stays put.
+  still needs stays put. Web, iPhone and iPad.
 
 - **Choose which recipe ingredients go on the grocery list.** "Add to grocery" now opens
   a picker so you can add everything or just the items you actually need, instead of always
@@ -186,6 +189,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the center, with a consistent gap between them.
 
 ### Fixed
+
+- **The calendar grid now says which month you're looking at.** The app header shows
+  today's date, so paging the grid forward left nothing on the grid itself saying where
+  you'd landed — an empty November under a heading reading "August 11". Month, Week and Day
+  views now carry their own heading above the cells, with a **Back to today** button that
+  appears only once you've navigated away.
+- **"On hand" on a recipe now means your pantry, on iPhone and iPad.** The "4 of 9 on
+  hand" line counted ingredients marked as pantry staples — things you're assumed to
+  keep around — rather than anything actually in your pantry, so a household with a
+  completely empty pantry was still told it had most of the ingredients. It now uses the
+  same real pantry matching the rest of the app does. With the Pantry module switched
+  off it simply doesn't make the claim, instead of guessing.
 
 - **Grocery quantities read like a recipe again.** An ingredient measured in thirds landed on
   the list as "0.6666666666666666 cup" — the number the computer kept rather than the ⅔ cup

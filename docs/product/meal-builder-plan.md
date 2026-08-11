@@ -1,6 +1,6 @@
 # Meal Builder — plan
 
-Status: **PR1 (server + web) done** — PR2 (iOS parity) outstanding
+Status: **done** — PR1 (server + web) and PR2 (iOS parity) both landed
 Design source: Claude Design project “Waffled” → `Meal Builder - Prototype.html`, plus an
 iPhone mock (builder + meal detail) supplied 2026-07-23.
 
@@ -27,7 +27,7 @@ Locked with the product owner on 2026-07-23. Numbers match the question thread.
 | 5 | On-hand counts use **real pantry matching** (generalised from `pantry/cook.ts`), not the existing staple-count proxy — which also fixes a latent bug in the recipe-detail banner. Presence only, no quantity comparison. See *Pantry on-hand*. |
 | 6 | **AI pairing suggestions are deferred** to a later release (roadmap item). The empty-role slot ships without the “Peach Cobbler pairs well here” nudge. |
 | 7 | Scheduling picks **any meal slot** (breakfast / lunch / dinner) on **any date**, with prev/next week navigation so meals can be planned in advance. |
-| 8 | **iPhone builds meals too** — but tap-to-add via the existing recipe/meal selector, *not* drag-and-drop. Drag-and-drop is web/iPad only. |
+| 8 | **iPhone builds meals too** — tap-to-add via the existing recipe/meal selector. Originally "*not* drag-and-drop; drag is web/iPad only", but **revised during review (2026-08-11)**: a dish already on the plate can be **dragged between roles** on iPhone and iPad too. Adding is still a tap (the ＋ opens the picker); dragging only re-files what's already there. It rides on `.onMove` over one flat run of rows — a SwiftUI `List` reorders only *within* a Section and silently refuses `.dropDestination` — see `PlateReorder`. |
 | 9 | Meals stay **REST-only**; they are not added to the PowerSync offline schema (only the calendar domain syncs). |
 | 10 | **Per-dish cook assignment is in scope** — a four-dish plate has up to four cooks. This addresses the orphaned roadmap item where `meal_plan_entries.cook_person_id` exists in DB + API but no UI ever assigns it. Scope note: what was agreed is the cook picker **on a plate’s dishes**. The roadmap item also wants a picker on ordinary single-recipe planner slots; that half stays open and the roadmap entry is trimmed rather than closed. |
 | 11 | **A saved meal is a first-class citizen of the recipe library.** Searching all recipes returns saved meals too, and a meal can be selected anywhere a recipe can. |
@@ -305,13 +305,74 @@ Worth remembering: each one had passing tests around it.
       siblings in the same feature were already batched.
 - [x] Stale status line in this file; dead `mealBuilderApi.remove` with no caller.
 
-### PR2 — iOS
-- [ ] Builder (tap-to-add) on iPhone + iPad
-- [ ] Meal detail with per-recipe Cook
-- [ ] Unified recipe/meal library + search
-- [ ] Multi-recipe Cook Mode + timer re-keying
-- [ ] Grocery + calendar parity
-- [ ] Both view trees checked: `TodayView` (iPhone) and `KioskDashboard` (iPad)
+### PR2 — iOS — **done**
+- [x] Builder (tap-to-add) on iPhone + iPad
+- [x] Meal detail with per-recipe Cook
+- [x] Unified recipe/meal library + search
+- [x] Multi-recipe Cook Mode + timer re-keying
+- [x] Grocery + calendar parity
+- [x] Both view trees checked: `TodayView` (iPhone) and `KioskDashboard` (iPad)
+
+**Calendar needed no iOS change**, which is worth recording so nobody goes looking for
+it: the server already writes the plate's name into the event title and every dish into
+its description, and iOS renders synced events as-is. The iOS `events` mirror carries no
+recipe or meal linkage at all (see `SyncSchema.swift`), so "tap a meal event → open the
+plate" would be new plumbing from the sync schema up, not a parity gap. It isn't in
+scope for v1.
+
+### Found while building the iOS parity — fixed
+Each of these was a *client-side* re-derivation of "what is in this slot" that predated
+plates, so none of them could have been caught by the server tests.
+
+- [x] **A dragged plate lost its dishes.** `POST /api/meals/plan` — what every planner
+      drag writes through — could only express "a recipe or free text", and the client's
+      `moved(to:slot:)` rebuilt the relocated entry from the recipe fields alone. Between
+      them, dragging a four-dish plate to another night left a bare title in a slot that
+      pointed at nothing. The web planner has no drag, so PR1 never met this.
+- [x] **The grocery "By meal" view dropped plates entirely.** Grouping matched on
+      `recipeId` and skipped rows without one; a plate's items are tagged with its
+      *dishes'* ids. Off-plan plates now get their own section (and can be taken back
+      off from it), a fully-covered plate keeps its heading, and the provenance dots
+      draw one dot per *source* rather than per recipe id.
+- [x] **Tonight's card had nothing to offer on a plate night** — no View, no Cook —
+      because it decided everything from `recipeId`. Both Today trees read one
+      `TonightMeal`, so the iPhone and iPad cards were fixed together.
+- [x] **The eating-out heuristics swallowed plates.** They fire on a recipe-less night
+      whose title reads like takeout, and a plate is recipe-less too — so a plate named
+      "Takeout Night" was drawn as an eating-out night on the Today card and in the
+      month grid, with four dishes to cook.
+- [x] **Four surfaces' taps were dead on a plate** (week grid, month grid, Tonight card,
+      grocery recap). They push a placeholder plate and the detail reloads it by id —
+      the same trick `RecipeSummary.placeholder` already played for recipes.
+- [x] **The recipe on-hand banner counted staples, not the pantry** — the latent bug
+      decision 5 called out, still live on iOS after PR1 fixed the web one. An empty
+      pantry reported "4 of 9 on hand". With the pantry module off it now makes no
+      on-hand claim at all, rather than a misleading "0 of 9".
+
+### Found by the product owner driving it on a device — fixed
+Every one of these was found by *using* the app, and none of them could have been: the
+suites were green throughout, and `simctl` has no tap API, so the whole builder and cook
+screen were unreachable to any automated check we had. Read this list before trusting a
+green run on a UI change.
+
+- [x] **The meal detail couldn't scroll to its last dish.** The tab bar floats over that
+      page rather than contributing safe area, so the bottom of a long plate was simply
+      unreachable.
+- [x] **No way to cook a plate from the plate.** Every dish had its own Cook button, but
+      the whole-meal session could only be started from tonight's card — so a plate you
+      weren't cooking *tonight* couldn't be cooked at all.
+- [x] **A new meal didn't focus its name.** Naming it is the first thing you do.
+- [x] **"Cook the meal" wrapped mid-phrase** in the kiosk column and read as a
+      mis-drawn button; shortened to "Cook meal" across all three surfaces.
+- [x] **Drag couldn't target an empty role** — the one case where you most want it. A
+      role with no dishes is a run of `moveDisabled` rows (header + ＋), and SwiftUI
+      offers no drop position inside one. It now renders a movable "Drag a dish here"
+      slot. **A unit test asserted this exact move and passed** — it covers the index
+      arithmetic, not the drop-target behaviour, which was the broken half.
+- [x] **Those slots then showed on a brand-new plate**, inviting a drag in all three
+      roles with nothing anywhere to drag. Gated on the plate holding a dish.
+- [x] **A fired timer stole your place with no way back** — see the "back to step N"
+      pill. Worst on the dish you were *already* reading, where no tab could rescue you.
 
 ## Execution strategy — fan-out and integration
 

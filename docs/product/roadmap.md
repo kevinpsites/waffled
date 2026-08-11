@@ -91,15 +91,18 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   rows** for off-plan recipes in the grocery board's by-meal view, and **Share list** — hand
   any list to a phone as grouped plain text via copy / share sheet / QR, with the store and
   assignee noted per item.
-- **Meal Builder (web)** — build one meal out of several recipes and treat it as one
-  thing: name a plate, drag recipes in under Main / Sides / Dessert, meal-level servings,
+- **Meal Builder** — build one meal out of several recipes and treat it as one
+  thing: name a plate, add recipes under Main / Sides / Dessert, meal-level servings,
   **a cook per dish**, and an optional "keep in library" that makes it reusable (saved
   meals are first-class in the recipe library, with a `Meal · N` badge, a 🍽️ Meals filter
   and search across the plate name *and* its dish titles). Schedule it to a night (one
   slot, one calendar event, feeds the weekly grocery rebuild) **or** put just its shopping
   on the list without scheduling — and take that back off again. The grocery board groups
   a plate's items under the plate; cook mode takes the whole plate, tabbed across its
-  dishes with one shared timer dock. **iPhone/iPad parity is the next piece of work.**
+  dishes with one shared timer dock, each dish keeping its own step and every timer
+  naming the pan that's beeping (on mobile, a jump leaves a "back to step N" pill).
+  Shipped on web, iPhone and iPad — add a dish by tapping the role's ＋, and drag a dish
+  between roles once it's on the plate.
 - **Meals & recipes** — week/month planners, recipe library, in-app editor (with
   **ingredient sections** + dividers and cross-section drag-drop), paste-markdown
   import **and share-as-markdown export** (a Share action compiles a recipe to the

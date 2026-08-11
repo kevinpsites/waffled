@@ -31,7 +31,7 @@ Meals is your recipe library and your planner in one — pick what's for dinner 
 | iPhone | ✅ |
 | iPad | ✅ |
 
-Recipe delete and paste-markdown import are web-forward; mobile edits most fields and cooks fine. On **iPad**, tapping a meal from the Today view opens the recipe full-screen.
+Recipe delete and paste-markdown import are web-forward; mobile edits most fields and cooks fine. On **iPad**, tapping tonight's dinner from the Today view opens it full-screen — the recipe, or the whole meal when a plate is planned.
 
 ## Building a meal
 
@@ -42,8 +42,11 @@ cook.
 Start one from **Recipes → ＋ New meal**, or from any recipe's **Build a meal around
 this** (which seeds the plate with that recipe). Then:
 
-- **Add dishes** — drag a recipe from the library panel onto Main, Sides or Dessert, or
-  tap ＋ on a slot and pick one. Drag a dish between roles to move it. The library's
+- **Add dishes** — on web, drag a recipe from the library panel onto Main, Sides or
+  Dessert; everywhere, tap **＋ Add a main / side / dessert** on a slot and pick one.
+  Once a dish is on the plate you can **drag it between roles** — on iPhone and iPad,
+  press and hold it and drop it under another heading (an empty role shows a
+  "Drag a dish here" slot to aim at, once there's something to drag). The library's
   Sides / Mains / Desserts tabs sort recipes by their `mealType` and `category`
   (salads, sides, appetizers, breads and soups read as sides; anything untagged reads as
   a main), and tapping a slot's ＋ names a *destination*, not a filter — a main makes a
@@ -75,10 +78,19 @@ whichever meal claimed it first, and the other says where it went.
 
 ### Cooking it
 
-**👨‍🍳 Cook this meal** opens cook mode for the whole plate: tabs across every dish, with
-one shared timer dock. A timer you start on the rice keeps running while you read the
-chicken steps, and tapping it takes you back to that dish and that step. Tonight's card on
-the Today screen opens it directly.
+**👨‍🍳 Cook meal** opens cook mode for the whole plate: tabs across every dish, with one
+shared timer dock. A timer you start on the rice keeps running while you read the chicken
+steps, and each dish remembers its own place, so moving between them never loses where
+you were. Timers are named for their dish, so the dock — and the alarm on your lock
+screen — tells you which pan is beeping.
+
+Tapping a timer takes you to that dish and that step. On iPhone and iPad it also leaves a
+**"Back to step 6 · Roast Chicken"** pill under the tabs, which puts you back exactly
+where the timer pulled you from. It stays until you use it or dismiss it with its ×,
+because a timer going off is precisely when you get distracted — and it covers the case
+no tab can, where the timer belongs to the dish you were already reading.
+
+Start it from the meal itself, or from tonight's card on the Today screen.
 
 ### What's left to buy
 
@@ -86,8 +98,6 @@ Every dish shows how many of its ingredients you still need, and tapping that co
 the actual names — same on the recipe screen. With the [Pantry](/features/pantry/) module
 on, those are specifically the ingredients your pantry doesn't already cover; with it off,
 it's everything non-staple.
-
-Meal Builder is web-only today; iPhone and iPad parity is next.
 
 ## Recipe markdown & timers
 

@@ -1,8 +1,9 @@
 import Foundation
 import Observation
 
-/// Tonight's dinner, derived from the planned week. Handles a recipe, a recipe-less
-/// ("Fish") plan, or an eating-out night — mirroring the web `TonightCard`.
+/// Tonight's dinner, derived from the planned week. Handles a recipe, a Meal Builder
+/// **plate** (several dishes under one name), a recipe-less ("Fish") plan, or an
+/// eating-out night — mirroring the web `TonightCard`.
 struct TonightMeal: Sendable {
     let title: String
     let emoji: String
@@ -12,20 +13,40 @@ struct TonightMeal: Sendable {
     let hasRecipe: Bool
     let recipeId: String?
     let category: String?
+    /// Set when tonight is a plate rather than a single recipe.
+    let mealId: String?
+    /// How many dishes the plate has (0 for a single-recipe or free-text night).
+    let dishCount: Int
 
     init(_ e: WaffledAPI.WeekEntryDTO) {
-        let out = e.recipeId == nil && TonightMeal.isEatingOut(e.title)
+        // A plate is a real meal with real dishes, so the eating-out heuristic must not
+        // reach it: someone who names a plate "Takeout Night" still cooked four things.
+        let out = e.recipeId == nil && !e.isMealBacked && TonightMeal.isEatingOut(e.title)
         eatingOut = out
         hasRecipe = e.recipeId != nil
         recipeId = e.recipeId
+        mealId = e.mealId
+        dishCount = e.dishCount
         category = e.recipe?.category
-        title = out ? "Eating out" : (e.recipe?.title ?? e.title ?? "Dinner")
+        title = out ? "Eating out" : (e.recipe?.title ?? e.meal?.name ?? e.title ?? "Dinner")
         emoji = e.recipe?.emoji ?? (out ? "🍴" : "🍽️")
         cookTimeMinutes = e.recipe?.cookTimeMinutes
-        servings = e.recipe?.servings
+        servings = e.recipe?.servings ?? e.meal?.servings
     }
 
+    /// Tonight is a plate rather than a single recipe.
+    var isMealBacked: Bool { mealId != nil }
+
+    /// There is something here to open and cook — a recipe OR a plate.
+    ///
+    /// The card's buttons gate on this. Gating on `recipeSummary` alone told people
+    /// "No recipe attached yet" about a meal with three dishes.
+    var isCookable: Bool { hasRecipe || isMealBacked }
+
     /// A placeholder RecipeSummary so the Today card can open this meal's recipe.
+    ///
+    /// Deliberately nil for a plate: a plate has no single recipe to stand in for it,
+    /// and inventing one would open the wrong screen. Route on `mealId` instead.
     var recipeSummary: WaffledAPI.RecipeSummary? {
         guard let recipeId else { return nil }
         return .placeholder(id: recipeId, title: title, emoji: emoji, category: category,
