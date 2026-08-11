@@ -148,7 +148,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stored photo instead of leaving it in place.
 - **Change a list's emoji from inside the list.** The in-list ⋯ menu only let you rename a
   list; changing its icon meant backing out to the Lists screen. The menu now opens the full
-  name-and-icon editor in place.
+  name-and-icon editor in place, listed simply as **Edit list** to match the editor it opens.
 - **The iPad screensaver no longer drops over the keyboard.** If you were typing when the
   idle timer fired, the screensaver could cover a lit keyboard. It now waits while a text
   field is focused, and dismisses the keyboard if it does start.

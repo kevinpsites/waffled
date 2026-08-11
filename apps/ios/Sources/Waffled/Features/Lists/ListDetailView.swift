@@ -798,7 +798,8 @@ struct ListDetailView: View {
             Label("Select items to edit", systemImage: "checklist")
         }
         Button { editingList = true } label: {
-            Label("Edit name & icon", systemImage: "pencil")
+            // Matches the sheet it opens, which is titled "Edit list".
+            Label("Edit list", systemImage: "pencil")
         }
         if model.isTemplate {
             Button {
