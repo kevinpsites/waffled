@@ -1,6 +1,6 @@
 # Meal Builder — plan
 
-Status: **in progress** (PR1 = server + web, PR2 = iOS)
+Status: **PR1 (server + web) done** — PR2 (iOS parity) outstanding
 Design source: Claude Design project “Waffled” → `Meal Builder - Prototype.html`, plus an
 iPhone mock (builder + meal detail) supplied 2026-07-23.
 
@@ -281,6 +281,29 @@ Worth remembering: each one had passing tests around it.
 - [x] **No 🍽️ Meals filter in the library.** Plates carry no cuisine/protein/dietary
       metadata, so every structured filter legitimately drops them — the filter that
       *selects* them has to be a type filter, or it would filter itself out.
+
+### Found by the code review on PR #147 — fixed
+- [x] **Taking a plate off the grocery list deleted rows you had added yourself.**
+      Adding a plate credits it onto every off-plan row its dishes overlap, including
+      rows already on the list, and removal read that credit as ownership. Credit
+      (a display question) and creation (a deletion question) are now separate facts —
+      `0092_list_item_created_by_meal.sql`.
+- [x] **A bare re-add wiped a dish's role, cook and position.** The upsert's conflict
+      branch guarded `role` against `excluded`, which is post-`VALUES`, so the guard
+      could never fall through. Unreachable from the web UI; iOS is well placed to hit it.
+- [x] **Deleting a scheduled plate left a ghost slot.** Nothing cleared
+      `meal_plan_entries.meal_id` (the `on delete set null` never fires — the app only
+      soft-deletes), so the week grid drew a nameless row and the weekly rebuild kept
+      shopping for a plate that no longer existed.
+- [x] **Every plate mutation failed silently.** `run()`'s catch was empty, and three
+      callers paint locally before the request — a failed rename, library toggle or
+      servings change stayed on screen until a reload.
+- [x] **A stale snapshot could undo a newer change.** Two writes in flight, each
+      answering with the whole plate; whichever landed last won. Writes are now
+      sequence-stamped and an out-of-date repaint is dropped.
+- [x] **The saved-meal library was N+1**, one dishes query per plate, while its two
+      siblings in the same feature were already batched.
+- [x] Stale status line in this file; dead `mealBuilderApi.remove` with no caller.
 
 ### PR2 — iOS
 - [ ] Builder (tap-to-add) on iPhone + iPad
