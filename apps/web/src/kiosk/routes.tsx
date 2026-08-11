@@ -17,6 +17,7 @@ import { RecipeDetail } from './RecipeDetail'
 import { RecipeEditor } from './RecipeEditor'
 import { CookMode } from './CookMode'
 import { RecipesLibrary } from './RecipesLibrary'
+import { MealBuilder } from './MealBuilder'
 import { Lists } from './Lists'
 import { Pantry } from './Pantry'
 import { Photos } from './Photos'
@@ -62,10 +63,19 @@ export function KioskRoutes() {
         <Route element={<ModuleGate module="meals" />}>
           <Route path="meals" element={<Meals />} />
           <Route path="meals/recipes" element={<RecipesLibrary />} />
+          {/* Meal Builder. /meals/build starts an empty plate; /meals/build/:id edits
+              an existing one. Gated with the rest of meals — a plate is meaningless
+              without recipes. */}
+          <Route path="meals/build" element={<MealBuilder />} />
+          <Route path="meals/build/:id" element={<MealBuilder />} />
           <Route path="meals/recipe/new" element={<RecipeEditor />} />
           <Route path="meals/recipe/:id" element={<RecipeDetail />} />
           <Route path="meals/recipe/:id/edit" element={<RecipeEditor />} />
           <Route path="meals/recipe/:id/cook" element={<CookMode />} />
+          {/* Cooking a whole plate: the same screen, but tabbed across the meal's
+              dishes with independent step progress per dish. Registered here so the
+              Cook Mode work never has to edit this router. */}
+          <Route path="meals/meal/:id/cook" element={<CookMode />} />
         </Route>
         <Route element={<ModuleGate module="lists" />}>
           <Route path="lists" element={<Lists />} />

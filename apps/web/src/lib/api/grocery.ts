@@ -27,6 +27,7 @@ export interface GroceryItem {
   addedBy?: ListItemPersonRef | null
   source?: string
   sourceRecipeIds?: string[]
+  sourceMealIds?: string[]
 }
 
 // ---- lists (the Lists screen) ----------------------------------------------
@@ -65,12 +66,16 @@ export interface ListItem {
   sortOrder: number | null
   assignee: ListItemAssignee | null
   // ambient attribution: who hand-added the item, and where it came from.
-  // `addedBy` is null for auto/meal-builder items; `source` is one of
-  // 'manual' | 'auto' | 'suggested' | 'voice'; `sourceRecipeIds` is non-empty
-  // for meal-builder ('auto') items.
+  // `addedBy` is null for items auto-generated from the meal plan; `source` is
+  // one of 'manual' | 'auto' | 'suggested' | 'voice'; `sourceRecipeIds` is
+  // non-empty for meal-plan ('auto') items.
   addedBy?: ListItemPersonRef | null
   source?: string
   sourceRecipeIds?: string[]
+  // Which Meal Builder plate(s) the row was added for — empty for a plain recipe
+  // add or a hand-typed row. Lets the grocery board colour every row of a plate
+  // with the plate's own dot instead of one dot per dish.
+  sourceMealIds?: string[]
 }
 
 export interface ListDetail {
@@ -170,13 +175,28 @@ export const groceryApi = {
   removeStaple: (id: string) => apiDelete(`/api/pantry-staples/${id}`).then(tap('grocery')),
 }
 
+// One dish on a plate, as the grocery board needs it (the full dish shape lives in
+// `mealBuilder.ts` — the board only ever renders a child row).
+export interface GroceryMealDish {
+  recipeId: string
+  title: string | null
+  emoji: string | null
+  // 'main' | 'side' | 'dessert' today, but free text by design.
+  role: string
+}
+
+// A planned slot. It holds EITHER a single recipe (`recipeId` set, `mealId` null,
+// `recipes` empty) or a whole Meal Builder plate (`mealId` set, `recipes` = its
+// dishes) — the board renders the latter as one expandable parent row.
 export interface GroceryMeal {
   date: string
   mealType: string
   recipeId: string | null
+  mealId?: string | null
   title: string | null
   emoji: string | null
   color: string
+  recipes?: GroceryMealDish[]
 }
 export interface PantryStaple {
   id: string
@@ -190,6 +210,15 @@ export interface GroceryUnscheduled {
   emoji: string | null
   color: string
 }
+// A plate whose shopping is on the list but that was never scheduled ("Add plate to
+// list"). Its dishes are NOT also listed in `unscheduled` — they render as the
+// plate's child rows.
+export interface GroceryUnscheduledMeal {
+  mealId: string
+  name: string
+  color: string
+  recipes: GroceryMealDish[]
+}
 export interface GroceryBoardItem extends ListItem {
   aisle: string
   source: string
@@ -202,6 +231,7 @@ export interface GroceryBoard {
   weekStart: string
   meals: GroceryMeal[]
   unscheduled?: GroceryUnscheduled[]
+  unscheduledMeals?: GroceryUnscheduledMeal[]
   items: GroceryBoardItem[]
   staples: PantryStaple[]
 }

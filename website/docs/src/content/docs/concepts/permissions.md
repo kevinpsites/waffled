@@ -65,7 +65,7 @@ Gating never blocks acting on *yourself*. These are always allowed regardless of
 Collaborative surfaces record the actor and surface it ambiently — no approval step.
 
 - **Lists & groceries** — every item stores `created_by`; the UI shows **"added by {name}"**
-  on manually-added items. Items generated from the meal builder are marked `source = 'auto'`
+  on manually-added items. Items the weekly meal plan generated are marked `source = 'auto'`
   (with the originating recipes) and render as **"🍽 from meal plan"** instead — so a kid's
   hand-added item is clearly attributed while auto-built ingredients aren't mistaken for it.
   Checking an item off records `checked_by` too.

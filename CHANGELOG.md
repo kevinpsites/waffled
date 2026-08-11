@@ -33,6 +33,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   walk the store, quantities included — and hands it over by share sheet, clipboard, or a QR
   code. The QR encodes the list text itself rather than a link, so whoever is going shopping
   gets it by pointing their camera at the kiosk: no app, no account, no sign-in.
+- **Build one meal out of several recipes.** Dinner is rarely a single dish, but the
+  planner only ever let you plan one recipe a night. The new **Meal Builder** lets you
+  put a whole meal together: name it, drag recipes in from your library under Main,
+  Sides and Dessert, set how many it serves, and pick who's cooking each dish. From
+  there you can schedule it to a night — it fills that slot and goes on the calendar as
+  one meal — or just add its shopping to the grocery list without committing to a night.
+  Keep it in your library and it becomes reusable: saved meals sit alongside recipes in
+  the recipe library with their own 🍽️ Meals filter, search finds them by the meal's
+  name *or* any dish in it, and dropping one onto a new plate brings its dishes in.
+- **Cook a whole meal, dish by dish.** Cook mode now takes a meal as well as a single
+  recipe: it tabs across every dish on the plate, and timers you start keep running when
+  you move between them, so the rice doesn't quietly overcook while you're reading the
+  chicken steps. Open it from the meal itself, or straight from tonight's card.
+- **See *which* ingredients you still need, not just how many.** "7 to buy" was a number
+  you couldn't act on — the recipe screen said it and couldn't tell you what the 7 were.
+  Now it opens into the actual ingredient names, on the recipe screen and on every dish
+  in a meal. With the Pantry module on, these are specifically the ones your pantry
+  *doesn't* already cover.
+- **A meal shops as one thing.** A meal's ingredients group under the meal's name in the
+  grocery list's By-meal view — an unscheduled one is badged as such — with a dot on each
+  row in the meal's colour so you can see at a glance which night an item is for. An item
+  wanted by two meals is still one row with one checkbox. A meal added to the list without
+  being scheduled can be taken back off it again, and anything the week's actual plan
+  still needs stays put.
+
 - **Choose which recipe ingredients go on the grocery list.** "Add to grocery" now opens
   a picker so you can add everything or just the items you actually need, instead of always
   dumping the whole recipe onto the list. Everything starts checked — pantry staples are

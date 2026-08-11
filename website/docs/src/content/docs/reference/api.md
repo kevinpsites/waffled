@@ -148,6 +148,8 @@ capability X · **module(X)** = requires module X enabled · **device** = kiosk 
 | POST | `/api/recipes/parse-markdown` · `/suggest-metadata` · `/:id/cooked` · `/:id/ingredients` | Import / AI / cooked / ingredients | tenant |
 | GET · POST · DELETE | `/api/meals/plan` · `/week` · `/plan-week` · `/plan-month` · `/entry/:id` | Meal planning | tenant |
 | GET · PUT | `/api/meals/calendar-settings` | Meal→calendar settings | tenant / admin |
+| GET · POST · PATCH · DELETE | `/api/meals[/:id]` · `/:id/recipes[/:recipeId]` · `/recipes/order` | Meal Builder plates + their dishes (role, cook, order) | tenant · `meals` |
+| POST · DELETE | `/api/meals/:id/schedule` · `/:id/add-to-list` | Schedule a plate to a slot · put its shopping on (or take it off) the grocery list | tenant · `meals` (+ `lists`) |
 
 ### Lists & pantry
 
