@@ -6,7 +6,7 @@
 // This slice is the shared contract every Meal Builder surface codes against — the
 // builder screen, the meal detail, the unified library and the grocery board.
 import { useCallback, useEffect, useState } from 'react'
-import { apiGet, apiSend, apiDelete } from './client'
+import { apiGet, apiSend } from './client'
 import { tap, useRefetchOn } from './bus'
 import type { MealCook } from './meals'
 
@@ -110,8 +110,6 @@ export const mealBuilderApi = {
 
   update: (id: string, patch: MealWriteInput) =>
     apiSend<{ meal: Meal }>('PATCH', `/api/meals/${id}`, patch).then(tap('meals')).then((r) => r.meal),
-
-  remove: (id: string) => apiDelete(`/api/meals/${id}`).then(tap('meals')),
 
   addDish: (id: string, input: AddDishInput) =>
     apiSend<{ meal: Meal }>('POST', `/api/meals/${id}/recipes`, input).then((r) => r.meal),
