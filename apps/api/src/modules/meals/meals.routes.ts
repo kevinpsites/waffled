@@ -612,16 +612,23 @@ export function registerMealRoutes(api: Api): void {
     const d = (raw ?? {}) as { recipeId?: string; role?: unknown; sortOrder?: unknown; cookPersonId?: unknown }
     const recipeId = typeof d.recipeId === 'string' ? d.recipeId : ''
     await assertRecipeInHousehold(householdId, recipeId)
-    let cookPersonId: string | null = null
-    if (typeof d.cookPersonId === 'string' && d.cookPersonId) {
-      await assertPersonInHousehold(householdId, d.cookPersonId)
-      cookPersonId = d.cookPersonId
+    // `undefined` means "the caller didn't mention this", `null` means "clear it".
+    // Collapsing the two made a bare re-add of an existing dish reset everything it
+    // didn't name — see setMealRecipe.
+    let cookPersonId: string | null | undefined
+    if ('cookPersonId' in d) {
+      if (typeof d.cookPersonId === 'string' && d.cookPersonId) {
+        await assertPersonInHousehold(householdId, d.cookPersonId)
+        cookPersonId = d.cookPersonId
+      } else {
+        cookPersonId = null
+      }
     }
-    const role = typeof d.role === 'string' && d.role.trim() ? d.role.trim().slice(0, 40) : null
+    const role = typeof d.role === 'string' && d.role.trim() ? d.role.trim().slice(0, 40) : undefined
     return {
       recipeId,
       role,
-      sortOrder: typeof d.sortOrder === 'number' ? Math.trunc(d.sortOrder) : null,
+      sortOrder: typeof d.sortOrder === 'number' ? Math.trunc(d.sortOrder) : undefined,
       cookPersonId,
     }
   }

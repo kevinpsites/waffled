@@ -138,16 +138,34 @@ async function nextSortOrder(mealId: string): Promise<number> {
 
 // Add a dish (or update it in place — (meal_id, recipe_id) is the primary key, so a
 // plate holds a recipe at most once; re-adding just re-roles/re-orders it).
+// On conflict, only the fields the caller actually named are overwritten. The update
+// branch reads the PARAMETERS, not `excluded`: an excluded row has already been
+// through the insert's own `coalesce($3,$6)`, so `coalesce(excluded.role, …)` could
+// never fall through — it saw 'side', not null, and a bare re-add silently re-roled
+// the dish, dropped its cook and moved it to the end of the plate.
 export async function setMealRecipe(mealId: string, input: MealRecipeInput): Promise<void> {
   const sortOrder = input.sortOrder ?? (await nextSortOrder(mealId))
+  // `undefined` = not mentioned (keep what's there); `null` for a cook = clear it.
+  const cookGiven = input.cookPersonId !== undefined
   await query(
     `insert into meal_recipes (meal_id, recipe_id, role, sort_order, cook_person_id)
-     values ($1,$2,coalesce($3,$6),$4,$5)
+     values ($1,$2,coalesce($3::text,$6),$4,$5)
      on conflict (meal_id, recipe_id)
-     do update set role = coalesce(excluded.role, meal_recipes.role),
-                   sort_order = excluded.sort_order,
-                   cook_person_id = excluded.cook_person_id`,
-    [mealId, input.recipeId, input.role ?? null, sortOrder, input.cookPersonId ?? null, DEFAULT_ROLE]
+     do update set role = coalesce($3::text, meal_recipes.role),
+                   sort_order = coalesce($7::int, meal_recipes.sort_order),
+                   cook_person_id = case when $8::boolean then $5::uuid else meal_recipes.cook_person_id end`,
+    [
+      mealId,
+      input.recipeId,
+      input.role ?? null,
+      sortOrder,
+      input.cookPersonId ?? null,
+      DEFAULT_ROLE,
+      // the sort order the caller ASKED for — not the computed next slot, which
+      // would shunt an existing dish to the end of a plate it is already on.
+      input.sortOrder ?? null,
+      cookGiven,
+    ]
   )
 }
 

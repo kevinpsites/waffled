@@ -259,6 +259,39 @@ describe('meal CRUD', () => {
     expect(json(again).meal.recipes[0].role).toBe('main')
   })
 
+  // A bare re-add names a recipe and nothing else, so it must not silently reset the
+  // parts it didn't mention. The web UI can't reach this (the library row is not
+  // draggable and its ＋ is disabled once a dish is on the plate) — iOS will.
+  it('a bare re-add keeps the role, cook and position it already had', async () => {
+    const meal = json(await call('POST', '/api/meals', kevin, {
+      name: 'Bare re-add',
+      recipes: [
+        { recipeId: bbqChicken, role: 'main', cookPersonId: kevinId },
+        { recipeId: coleslaw, role: 'side' },
+      ],
+    })).meal
+    const before = meal.recipes.find((r: { recipeId: string }) => r.recipeId === bbqChicken)
+    expect(before.role).toBe('main')
+
+    const again = await call('POST', `/api/meals/${meal.id}/recipes`, kevin, { recipeId: bbqChicken })
+    expect(again.statusCode).toBe(200)
+    const after = json(again).meal.recipes.find((r: { recipeId: string }) => r.recipeId === bbqChicken)
+    expect(json(again).meal.recipes).toHaveLength(2)
+    expect(after.role).toBe('main')
+    expect(after.cook).toMatchObject({ personId: kevinId })
+    expect(after.sortOrder).toBe(before.sortOrder)
+  })
+
+  it('an explicit null cook still clears it', async () => {
+    const meal = json(await call('POST', '/api/meals', kevin, {
+      name: 'Clearable cook',
+      recipes: [{ recipeId: bbqChicken, role: 'main', cookPersonId: kevinId }],
+    })).meal
+    const res = await call('POST', `/api/meals/${meal.id}/recipes`, kevin, { recipeId: bbqChicken, cookPersonId: null })
+    expect(res.statusCode).toBe(200)
+    expect(json(res).meal.recipes[0].cook).toBeNull()
+  })
+
   it('rejects a cook from another household', async () => {
     const meal = json(await call('POST', '/api/meals', kevin, { name: 'Foreign cook', recipes: [{ recipeId: coleslaw }] })).meal
     const foreignPerson = await withClient(async (c) => {
