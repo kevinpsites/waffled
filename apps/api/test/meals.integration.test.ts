@@ -836,6 +836,30 @@ describe('recipe images (blob storage)', () => {
     const recipe = JSON.parse(res.body).recipe
     expect(recipe.imageUrl).toBe('https://example.com/soup.jpg')
   })
+
+  // Removing a photo in the editor sends all three image fields as null. The PATCH
+  // response is what the client writes straight back into its recipe list, so if it
+  // came back still carrying the old URL the photo would linger on the library card
+  // no matter what the client did with it.
+  it('PATCH clearing the image returns a null imageUrl, not the old one', async () => {
+    const key = await upload()
+    const created = JSON.parse(
+      (await call('POST', '/api/recipes', kevin, { title: 'Pho', storageKey: key, contentType: 'image/png' })).body
+    ).recipe
+    expect(created.imageUrl).toBe(`/media/${key}`)
+
+    const cleared = JSON.parse(
+      (await call('PATCH', `/api/recipes/${created.id}`, kevin, {
+        imageUrl: null, storageKey: null, contentType: null,
+      })).body
+    ).recipe
+    expect(cleared.imageUrl).toBeNull()
+    expect(cleared.storageKey).toBeNull()
+
+    // …and a fresh read agrees, so the two paths can't disagree.
+    const got = JSON.parse((await call('GET', `/api/recipes/${created.id}`, kevin)).body).recipe
+    expect(got.imageUrl).toBeNull()
+  })
 })
 
 // Thaw / "get it out of the freezer" reminder — a same-day derived event
