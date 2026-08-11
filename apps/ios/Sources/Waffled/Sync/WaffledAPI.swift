@@ -597,6 +597,33 @@ struct WaffledAPI: Sendable {
         let recipe: RecipeSummary
         let ingredients: [RecipeIngredientDTO]
         let steps: [RecipeStepDTO]
+        /// **Real pantry-matched** on-hand — nil when the pantry module is off, in which
+        /// case the client must make no on-hand claim at all.
+        ///
+        /// Do NOT compute this client-side from `ingredients.isStaple`: a staple is a
+        /// thing you're assumed to keep around, not a thing you currently have, so that
+        /// count says "4 of 9 on hand" to a household with a completely empty pantry.
+        /// Optional so a server predating this field still decodes.
+        let onHand: OnHandCount?
+        /// How many ingredients will land on the grocery list. Not pantry-derived, so it
+        /// answers either way — with the pantry ON it's the *unmatched* non-staples.
+        let toBuy: Int?
+        /// The names behind `toBuy`. With the pantry ON these are the unmatched subset,
+        /// which the client cannot derive from `ingredients` on its own.
+        let toBuyNames: [String]?
+
+        /// Spelled out so the pantry fields default to nil — the places that build a
+        /// detail locally (an editor round-trip, a preview) have no pantry answer to
+        /// give, and "no claim" is exactly the right one for them to make.
+        init(recipe: RecipeSummary, ingredients: [RecipeIngredientDTO], steps: [RecipeStepDTO],
+             onHand: OnHandCount? = nil, toBuy: Int? = nil, toBuyNames: [String]? = nil) {
+            self.recipe = recipe
+            self.ingredients = ingredients
+            self.steps = steps
+            self.onHand = onHand
+            self.toBuy = toBuy
+            self.toBuyNames = toBuyNames
+        }
     }
 
     /// The whole recipe library (no server-side search/filter — the client filters).

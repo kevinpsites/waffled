@@ -191,6 +191,51 @@ struct WeekEntryMealDecodingTests {
     }
 }
 
+// The recipe-detail "N of M on hand" banner. The count must come from the server's
+// real pantry matching, never from `isStaple` — a staple is something you're assumed
+// to keep around, not something you currently have, so counting staples tells a
+// household with a completely empty pantry that it has 4 of 9 ingredients.
+struct RecipeDetailOnHandDecodingTests {
+    @Test func carriesRealOnHandWhenThePantryIsOn() throws {
+        let body = Data("""
+        {"recipe":{"id":"r1","title":"BBQ Chicken","emoji":null,"category":null,"servings":4,
+          "cookedCount":0,"isFavorite":false,"tags":[],"cuisines":[],"proteins":[],"dietary":[]},
+         "ingredients":[],"steps":[],
+         "onHand":{"have":4,"total":9},"toBuy":5,
+         "toBuyNames":["paprika","cider vinegar","brown sugar","mayonnaise","chilli"]}
+        """.utf8)
+        let d = try WaffledAPI.decoder.decode(WaffledAPI.RecipeDetailDTO.self, from: body)
+        #expect(d.onHand?.have == 4)
+        #expect(d.onHand?.total == 9)
+        #expect(d.toBuy == 5)
+        #expect(d.toBuyNames?.count == 5)
+    }
+
+    @Test func makesNoOnHandClaimWhenThePantryIsOff() throws {
+        let body = Data("""
+        {"recipe":{"id":"r1","title":"BBQ Chicken","emoji":null,"category":null,"servings":4,
+          "cookedCount":0,"isFavorite":false,"tags":[],"cuisines":[],"proteins":[],"dietary":[]},
+         "ingredients":[],"steps":[],"onHand":null,"toBuy":9,"toBuyNames":[]}
+        """.utf8)
+        let d = try WaffledAPI.decoder.decode(WaffledAPI.RecipeDetailDTO.self, from: body)
+        #expect(d.onHand == nil)
+        // "N to buy" isn't pantry-derived and keeps working.
+        #expect(d.toBuy == 9)
+    }
+
+    /// A server predating the field omits it entirely — the screen must still load.
+    @Test func stillDecodesARecipeFromAnOlderServer() throws {
+        let body = Data("""
+        {"recipe":{"id":"r1","title":"BBQ Chicken","emoji":null,"category":null,"servings":4,
+          "cookedCount":0,"isFavorite":false,"tags":[],"cuisines":[],"proteins":[],"dietary":[]},
+         "ingredients":[],"steps":[]}
+        """.utf8)
+        let d = try WaffledAPI.decoder.decode(WaffledAPI.RecipeDetailDTO.self, from: body)
+        #expect(d.onHand == nil)
+        #expect(d.toBuy == nil)
+    }
+}
+
 // The grocery board groups a plate's shopping under the plate. Its rows are shaped
 // differently from the week endpoint's — notably the dishes carry NO `sortOrder` (the
 // board sends them already in plate order), so the two cannot share a dish type.
