@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, Routes, Route } from 'react-router'
+import { MemoryRouter, Routes, Route, useParams } from 'react-router'
 import { MealBuilder } from './MealBuilder'
 import type { Meal, MealDish } from '../lib/api'
 
@@ -196,6 +196,11 @@ function mockServer() {
   }) as unknown as typeof fetch
 }
 
+function CookPlateProbe() {
+  const { id } = useParams()
+  return <div>{`COOK PLATE:${id}`}</div>
+}
+
 function renderBuilder(path = '/meals/build/m1') {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -205,6 +210,7 @@ function renderBuilder(path = '/meals/build/m1') {
         <Route path="/meals/build/:id" element={<MealBuilder />} />
         <Route path="/meals/recipe/:id" element={<div>RECIPE DETAIL PAGE</div>} />
         <Route path="/lists" element={<div>LISTS PAGE</div>} />
+        <Route path="/meals/meal/:id/cook" element={<CookPlateProbe />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -925,5 +931,24 @@ describe('MealBuilder — seeing what is left to buy', () => {
     renderBuilder()
     fireEvent.click(await screen.findByRole('button', { name: /2 to buy/i }))
     expect(await screen.findByText('BBQ sauce')).toBeInTheDocument()
+  })
+})
+
+// Cook mode for a whole plate exists (/meals/meal/:id/cook, tabbed across the
+// dishes with one shared timer dock) but NOTHING linked to it — it was reachable
+// only by typing the URL. The plate screen is where you'd look for it.
+describe('MealBuilder — cooking the whole plate', () => {
+  it('offers Cook mode and opens the plate route, not a single recipe', async () => {
+    server.plate = plate({ recipes: [dish({ recipeId: 'r1', title: 'BBQ Chicken', role: 'main', emoji: '🍗' })] })
+    renderBuilder()
+    await screen.findByText('BBQ Chicken')
+    fireEvent.click(screen.getByRole('button', { name: /Cook this meal/i }))
+    expect(await screen.findByText('COOK PLATE:m1')).toBeInTheDocument()
+  })
+
+  it('offers no Cook button on an empty plate — there is nothing to cook', async () => {
+    renderBuilder('/meals/build')
+    await screen.findByLabelText('Add a main')
+    expect(screen.queryByRole('button', { name: /Cook this meal/i })).not.toBeInTheDocument()
   })
 })

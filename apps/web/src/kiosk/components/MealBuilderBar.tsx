@@ -25,6 +25,7 @@ export function MealBuilderBar({
   onToggleSaved,
   onAddToList,
   onSchedule,
+  onCook,
 }: {
   name: string
   servings: number
@@ -37,6 +38,8 @@ export function MealBuilderBar({
   onToggleSaved: () => void
   onAddToList: () => void
   onSchedule: () => void
+  // Cook the whole plate — tabbed across its dishes with one shared timer dock.
+  onCook: () => void
 }) {
   return (
     <footer className="mb-bar">
@@ -84,6 +87,13 @@ export function MealBuilderBar({
       </div>
 
       <div className="mb-bar-actions">
+        {/* Cooking is what you do with a plate TONIGHT; scheduling and shopping are
+            what you do with it later. Hidden on an empty plate — nothing to cook. */}
+        {!empty && (
+          <button type="button" className="btn btn-ghost" disabled={busy} onClick={onCook}>
+            <span aria-hidden>👨‍🍳</span> Cook this meal
+          </button>
+        )}
         <button type="button" className="btn btn-ghost" disabled={empty || busy} onClick={onAddToList}>
           Add plate to list
         </button>

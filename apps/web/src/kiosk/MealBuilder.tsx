@@ -259,6 +259,9 @@ export function MealBuilder() {
         onToggleSaved={toggleSaved}
         onAddToList={addToList}
         onSchedule={() => setScheduling(true)}
+        // A plate only has a cook route once it exists server-side; the bar hides
+        // the button on an empty plate, which is the same condition.
+        onCook={() => meal && navigate(`/meals/meal/${meal.id}/cook`)}
       />
 
       {scheduling && meal ? (
