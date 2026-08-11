@@ -373,6 +373,15 @@ export function registerMealRoutes(api: Api): void {
     // saved plate so editing next week's can't rewrite last week's). Without this, a
     // dragged plate lands as a bare title and its dishes, cooks and grocery
     // contribution are all silently dropped.
+    // A slot points at ONE thing. With both written, `isMealBacked` and `hasRecipe` are
+    // simultaneously true and two surfaces disagree about the same night — the planner
+    // opens the plate while the Today card opens the recipe. There's no CHECK constraint
+    // behind this, so the route is where it has to be refused.
+    if (recipeId && body.mealId != null && body.mealId !== '') {
+      return res
+        .status(400)
+        .json({ error: 'BadRequest', message: 'a slot takes recipeId or mealId, not both' })
+    }
     let mealId: string | null = null
     if (body.mealId != null && body.mealId !== '') {
       if (!UUID_RE.test(body.mealId)) {

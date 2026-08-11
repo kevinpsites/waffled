@@ -895,6 +895,23 @@ describe('re-planning a slot with a plate', () => {
     expect(entry.meal).toBeNull()
   })
 
+  it('refuses a slot that names both a recipe and a plate', async () => {
+    // A slot holds one or the other. Written together, `isMealBacked` and `hasRecipe`
+    // are both true, and two surfaces disagree about the same night — the planner opens
+    // the plate while the Today card opens the recipe.
+    const res = await call('POST', '/api/meals/plan', kevin, {
+      date: '2026-07-25',
+      mealType: 'dinner',
+      recipeId: bbqChicken,
+      mealId: plate,
+    })
+    expect(res.statusCode).toBe(400)
+
+    const week = await call('GET', '/api/meals/week?start=2026-07-25', kevin)
+    const entry = json(week).entries.find((e: { date: string }) => e.date === '2026-07-25')
+    expect(entry).toBeUndefined()   // and nothing was written
+  })
+
   it('refuses a plate from another household', async () => {
     const res = await call('POST', '/api/meals/plan', kevin, {
       date: '2026-07-22',
