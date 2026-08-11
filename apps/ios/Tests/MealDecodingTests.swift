@@ -166,6 +166,25 @@ struct WeekEntryMealDecodingTests {
         #expect(e.dishCount == 2)
     }
 
+    /// A plan entry pointing at a soft-deleted plate. The server's `left join … and
+    /// deleted_at is null` serialises `name: null`, and if that field were required the
+    /// single bad row would throw and take the WHOLE week fetch with it — blanking the
+    /// week grid, the month grid and the Tonight card at once.
+    @Test func survivesASlotWhosePlateWasDeleted() throws {
+        let body = Data("""
+        {"id":"77777777-7777-4777-8777-777777777777","date":"2026-08-16","mealType":"dinner",
+        "title":"BBQ Sunday","recipeId":null,"mealId":"11111111-1111-4111-8111-111111111111",
+        "meal":{"id":"11111111-1111-4111-8111-111111111111","name":null,"servings":null,
+          "recipes":[]},
+        "recipe":null,"cook":null}
+        """.utf8)
+        let e = try WaffledAPI.decoder.decode(WaffledAPI.WeekEntryDTO.self, from: body)
+        #expect(e.isMealBacked)
+        // falls back to the slot's own title rather than rendering blank
+        #expect(e.displayTitle == "BBQ Sunday")
+        #expect(e.platePlaceholder?.name == "BBQ Sunday")
+    }
+
     @Test func stillDecodesASlotFromAServerWithoutMeals() throws {
         let e = try WaffledAPI.decoder.decode(WaffledAPI.WeekEntryDTO.self, from: Self.legacyRecipeBacked)
         #expect(e.mealId == nil)

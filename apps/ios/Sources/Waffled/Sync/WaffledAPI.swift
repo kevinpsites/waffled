@@ -1052,8 +1052,15 @@ struct WaffledAPI: Sendable {
         /// the kiosk card can render "BBQ Sunday · 4 dishes" instead of an empty slot.
         struct MealSlot: Decodable, Hashable, Sendable {
             let id: String
-            let name: String
-            let servings: Int
+            /// Optional because the server builds this off a `left join meals … and
+            /// deleted_at is null`: an entry pointing at a soft-deleted plate serialises
+            /// `name: null`. Non-optional, that one row throws and takes the WHOLE
+            /// `mealsWeek` fetch with it — blanking the week grid, the month grid and
+            /// the Tonight card at once. Today the app cascades the plan entries on
+            /// delete so it can't happen, but that's one guard in another module with
+            /// nothing asserting the coupling.
+            let name: String?
+            let servings: Int?
             let recipes: [Dish]
             struct Dish: Decodable, Hashable, Sendable {
                 let recipeId: String
@@ -1115,7 +1122,7 @@ struct WaffledAPI: Sendable {
         /// `MealDTO.placeholder`. Nil for an ordinary recipe or free-text night.
         var platePlaceholder: MealDTO? {
             guard let m = meal else { return nil }
-            return .placeholder(id: m.id, name: m.name, servings: m.servings,
+            return .placeholder(id: m.id, name: m.name ?? title ?? "Meal", servings: m.servings ?? 4,
                                 dishes: m.recipes.map { ($0.recipeId, $0.title, $0.emoji, $0.role) })
         }
     }
