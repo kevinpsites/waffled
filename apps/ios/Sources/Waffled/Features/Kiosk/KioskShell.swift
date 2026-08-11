@@ -337,6 +337,9 @@ struct KioskShell: View {
             KioskListsView(openRecipe: { recipe in
                 mealsPath = [.recipe(recipe)]
                 selection = .meals
+            }, openMeal: { meal in
+                mealsPath = [.meal(meal)]
+                selection = .meals
             })
             .id(navReset)
         case .pantry:

@@ -61,16 +61,29 @@ enum MealGrouping {
     static func sections(
         items: [WaffledAPI.ListItemDTO],
         meals: [WaffledAPI.GroceryBoardDTO.Meal],
-        unscheduled: [WaffledAPI.GroceryBoardDTO.UnscheduledRecipe] = []
+        unscheduled: [WaffledAPI.GroceryBoardDTO.UnscheduledRecipe] = [],
+        unscheduledMeals: [WaffledAPI.GroceryBoardDTO.UnscheduledMeal] = []
     ) -> [MealGroup] {
         var groups: [MealGroup] = []
         var used = Set<String>()
         for m in meals.sorted(by: { $0.date < $1.date }) {
-            guard let rid = m.recipeId else { continue }
-            let its = items.filter { !used.contains($0.id) && ($0.sourceRecipeIds ?? []).contains(rid) }
-            guard !its.isEmpty else { continue }
+            // A slot backed by a Meal Builder plate has NO `recipeId` — its items are
+            // tagged with its DISHES' ids instead. Matching on `recipeId` alone dropped
+            // the whole plate from this view, so an added plate looked un-added.
+            let ids = Set(m.contributingRecipeIds)
+            guard !ids.isEmpty else { continue }
+            let its = items.filter { !used.contains($0.id) && !ids.isDisjoint(with: $0.sourceRecipeIds ?? []) }
+            // A plate keeps its heading even when every item it wants was already
+            // claimed above; a plain recipe with nothing left still drops out.
+            guard !its.isEmpty || m.mealId != nil else { continue }
             its.forEach { used.insert($0.id) }
             groups.append(MealGroup(meal: m, items: its))
+        }
+        for um in unscheduledMeals {
+            let ids = Set(um.contributingRecipeIds)
+            let its = items.filter { !used.contains($0.id) && !ids.isDisjoint(with: $0.sourceRecipeIds ?? []) }
+            its.forEach { used.insert($0.id) }
+            groups.append(MealGroup(meal: nil, items: its, unscheduledMeal: um))
         }
         for u in unscheduled {
             let its = items.filter { !used.contains($0.id) && ($0.sourceRecipeIds ?? []).contains(u.recipeId) }
@@ -81,6 +94,35 @@ enum MealGrouping {
         let extras = items.filter { !used.contains($0.id) }
         if !extras.isEmpty { groups.append(MealGroup(meal: nil, items: extras)) }
         return groups
+    }
+}
+
+enum MealDots {
+    /// The meal-color dots on one grocery row — one per **source** that wants it.
+    ///
+    /// A source is a plate, a planned recipe, or an off-plan recipe. Deduping by recipe
+    /// id would be wrong now that plates exist: two dishes of the same plate both
+    /// wanting mayonnaise is ONE plate asking for it, and would otherwise draw the same
+    /// color twice. (A recipe planned into two slots is likewise one dot, as before.)
+    static func colors(for item: WaffledAPI.ListItemDTO,
+                       meals: [WaffledAPI.GroceryBoardDTO.Meal],
+                       unscheduledMeals: [WaffledAPI.GroceryBoardDTO.UnscheduledMeal],
+                       unscheduled: [WaffledAPI.GroceryBoardDTO.UnscheduledRecipe]) -> [String] {
+        let ids = Set(item.sourceRecipeIds ?? [])
+        guard !ids.isEmpty else { return [] }
+        var seen = Set<String>()
+        var colors: [String] = []
+        for m in meals where !Set(m.contributingRecipeIds).isDisjoint(with: ids) {
+            let key = m.mealId ?? m.recipeId ?? m.id
+            if seen.insert(key).inserted { colors.append(m.color) }
+        }
+        for p in unscheduledMeals where !Set(p.contributingRecipeIds).isDisjoint(with: ids) {
+            if seen.insert(p.mealId).inserted { colors.append(p.color) }
+        }
+        for u in unscheduled where ids.contains(u.recipeId) {
+            if seen.insert(u.recipeId).inserted { colors.append(u.color) }
+        }
+        return colors
     }
 }
 

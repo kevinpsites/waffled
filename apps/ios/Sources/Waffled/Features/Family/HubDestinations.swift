@@ -11,6 +11,10 @@ enum HubRoute: Hashable {
     case waffledBites(personId: String, personName: String) // a kid's Waffled-Bite control panel
     case recipe(WaffledAPI.RecipeSummary) // a recipe opened from the grocery meal recap
     case recipeCook(WaffledAPI.RecipeSummary) // a recipe opened straight into Cook Mode (Today's tonight card)
+    /// A Meal Builder **plate** — a named, multi-recipe meal — opened from tonight's
+    /// card or the grocery meal recap. Those surfaces know only a summary of it, so
+    /// they push `MealDTO.placeholder` and the detail reloads it by id.
+    case meal(WaffledAPI.MealDTO)
     case rewardShop(String)          // one person's reward shop (from the Rewards overview)
     case settingsAccount             // Settings → Accounts (sign-in & sign out)
     case settingsFamily              // Settings → Family & people
@@ -44,9 +48,12 @@ struct HubDestination: View {
     var body: some View {
         switch route {
         case .lists:            ListsIndexView(path: $path)
-        case let .list(list):   ListDetailView(list: list, openRecipe: { path.append(.recipe($0)) })
+        case let .list(list):   ListDetailView(list: list,
+                                              openRecipe: { path.append(.recipe($0)) },
+                                              openMeal: { path.append(.meal($0)) })
         case let .recipe(r):    RecipeDetailView(summary: r, model: recipes)
         case let .recipeCook(r): RecipeDetailView(summary: r, model: recipes, autoCook: true)
+        case let .meal(m):      MealDetailView(summary: m, recipes: recipes)
         case .chores:           ChoresView()
         case .pantry:           PantryView()
         case .goals:            GoalsView(path: $path)

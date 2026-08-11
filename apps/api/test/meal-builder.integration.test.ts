@@ -823,6 +823,114 @@ describe('the planner treats a meal-backed slot as filled', () => {
   })
 })
 
+// Dragging a planned dinner to another night is a plain slot re-plan, not a
+// re-schedule — the SAME plate moves, it is not copied. `POST /api/meals/plan` is
+// what every planner drag writes through, so if it can only express "recipe or free
+// text", dragging a four-dish plate silently rewrites the slot as a bare title: the
+// dishes, the cooks and the grocery contribution all vanish, and the slot keeps only
+// the plate's name as dead text. (The web planner has no drag, so nothing caught this
+// there; iOS does.)
+describe('re-planning a slot with a plate', () => {
+  let plate = ''
+
+  beforeAll(async () => {
+    const res = await call('POST', '/api/meals', kevin, { name: 'Moving day', servings: 4 })
+    expect(res.statusCode).toBe(201)
+    plate = json(res).meal.id
+    await call('POST', `/api/meals/${plate}/recipes`, kevin, { recipeId: bbqChicken, role: 'main' })
+    await call('POST', `/api/meals/${plate}/recipes`, kevin, { recipeId: potatoSalad, role: 'side' })
+  })
+
+  it('keeps the plate and its dishes when the slot is re-planned', async () => {
+    const res = await call('POST', '/api/meals/plan', kevin, {
+      date: '2026-07-20',
+      mealType: 'dinner',
+      mealId: plate,
+    })
+    expect(res.statusCode).toBeLessThan(300)
+
+    const week = await call('GET', '/api/meals/week?start=2026-07-20', kevin)
+    const entry = json(week).entries.find((e: { date: string }) => e.date === '2026-07-20')
+    expect(entry.mealId).toBe(plate)
+    expect(entry.recipeId).toBeNull()
+    // The dishes are what make this a plate rather than a name — if they don't
+    // survive the move, the slot is a husk.
+    expect(entry.meal.recipes.map((r: { recipeId: string }) => r.recipeId).sort()).toEqual(
+      [bbqChicken, potatoSalad].sort()
+    )
+  })
+
+  it('names the calendar event after the plate, with its dishes', async () => {
+    await call('POST', '/api/meals/plan', kevin, { date: '2026-07-24', mealType: 'dinner', mealId: plate })
+    const ev = await withClient((c) =>
+      c.query<{ title: string; description: string | null }>(
+        `select e.title, e.description
+           from events e
+           join meal_plan_entries mpe on mpe.event_id = e.id
+          where mpe.household_id = $1 and mpe.date = '2026-07-24' and mpe.meal_type = 'dinner'`,
+        [householdId]
+      )
+    )
+    // The slot has no recipe, so an event built from `recipe_id` alone would be a bare
+    // "Dinner" with nothing in it.
+    expect(ev.rows[0]?.title).toContain('Moving day')
+    expect(ev.rows[0]?.description ?? '').toContain('BBQ Chicken')
+  })
+
+  it('swaps a plate slot back to an ordinary recipe', async () => {
+    await call('POST', '/api/meals/plan', kevin, { date: '2026-07-21', mealType: 'dinner', mealId: plate })
+    const res = await call('POST', '/api/meals/plan', kevin, {
+      date: '2026-07-21',
+      mealType: 'dinner',
+      recipeId: bbqChicken,
+    })
+    expect(res.statusCode).toBeLessThan(300)
+
+    const week = await call('GET', '/api/meals/week?start=2026-07-21', kevin)
+    const entry = json(week).entries.find((e: { date: string }) => e.date === '2026-07-21')
+    // A slot points at EITHER a recipe or a plate, never both — the leftover plate
+    // link would otherwise win in every "is this meal-backed?" test downstream.
+    expect(entry.recipeId).toBe(bbqChicken)
+    expect(entry.mealId).toBeNull()
+    expect(entry.meal).toBeNull()
+  })
+
+  it('refuses a slot that names both a recipe and a plate', async () => {
+    // A slot holds one or the other. Written together, `isMealBacked` and `hasRecipe`
+    // are both true, and two surfaces disagree about the same night — the planner opens
+    // the plate while the Today card opens the recipe.
+    const res = await call('POST', '/api/meals/plan', kevin, {
+      date: '2026-07-25',
+      mealType: 'dinner',
+      recipeId: bbqChicken,
+      mealId: plate,
+    })
+    expect(res.statusCode).toBe(400)
+
+    const week = await call('GET', '/api/meals/week?start=2026-07-25', kevin)
+    const entry = json(week).entries.find((e: { date: string }) => e.date === '2026-07-25')
+    expect(entry).toBeUndefined()   // and nothing was written
+  })
+
+  it('refuses a plate from another household', async () => {
+    const res = await call('POST', '/api/meals/plan', kevin, {
+      date: '2026-07-22',
+      mealType: 'dinner',
+      mealId: foreignMealId,
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('refuses a malformed plate id', async () => {
+    const res = await call('POST', '/api/meals/plan', kevin, {
+      date: '2026-07-23',
+      mealType: 'dinner',
+      mealId: 'not-a-uuid',
+    })
+    expect(res.statusCode).toBe(400)
+  })
+})
+
 // A count alone is not actionable: "7 to buy" tells you the size of the problem
 // and nothing about its content. The names ride along on the same payload so the
 // builder can expand a dish's count into the actual shopping.

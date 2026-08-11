@@ -14,6 +14,15 @@ struct RecipeDetailView: View {
 
     @State private var recipe: WaffledAPI.RecipeSummary
     @State private var ingredients: [WaffledAPI.RecipeIngredientDTO] = []
+    /// Real pantry-matched on-hand from the server — nil when the pantry module is off
+    /// (make no claim at all) or before the detail has loaded.
+    @State private var onHand: WaffledAPI.OnHandCount?
+    /// The ingredients that will actually land on the grocery list. With the pantry ON
+    /// this is the *unmatched* subset, which cannot be derived from `ingredients`.
+    @State private var toBuyNames: [String] = []
+    /// nil means the server never sent counts at all (it predates them) — distinct from
+    /// "sent zero", so the banner can fall back instead of claiming nothing is needed.
+    @State private var toBuy: Int?
     @State private var steps: [WaffledAPI.RecipeStepDTO] = []
     @State private var loading = true
     @State private var error = false
@@ -39,6 +48,8 @@ struct RecipeDetailView: View {
     /// offers Messages / Mail / Save to Files with a real attachment). Fetched lazily.
     @State private var shareItem: RecipeSharePayload?
     @State private var sharePreparing = false
+    /// Non-nil ⇒ the Meal Builder is up, seeded with this recipe as the plate's main.
+    @State private var buildingMeal: MealBuilderStart?
 
     private let api = WaffledAPI()
 
@@ -80,6 +91,12 @@ struct RecipeDetailView: View {
                     Button { pickingGrocery = true } label: {
                         Label("Add to grocery list", systemImage: "cart.badge.plus")
                     }
+                    // Opens the Meal Builder with this recipe already the main. It is
+                    // presented, not pushed: this screen is hosted by four different
+                    // navigation stacks and only one of them knows MealsRoute.
+                    Button { buildingMeal = .around(recipe) } label: {
+                        Label("Build a meal around this", systemImage: "square.stack.3d.up")
+                    }
                     Button { prepareShare() } label: {
                         Label(sharePreparing ? "Preparing…" : "Share recipe", systemImage: "square.and.arrow.up")
                     }
@@ -94,6 +111,9 @@ struct RecipeDetailView: View {
         .task {
             await loadDetail()
             if autoCook, !steps.isEmpty { startCookMode() }
+        }
+        .fullScreenCover(item: $buildingMeal) { start in
+            NavigationStack { MealBuilderView(start: start, recipes: model) }
         }
         .fullScreenCover(isPresented: $editing) {
             RecipeEditorView(mode: .edit(WaffledAPI.RecipeDetailDTO(recipe: recipe, ingredients: ingredients, steps: steps))) { updated in
@@ -127,9 +147,9 @@ struct RecipeDetailView: View {
             RecipeShareSheet(items: [payload.url])
         }
         .sheet(isPresented: $scheduling) {
-            RecipeScheduleSheet(title: r.title, recipeId: recipe.id) { label in
+            RecipeScheduleSheet(title: r.title, recipeId: recipe.id, onScheduled: { label in
                 withAnimation { cookedMessage = "Scheduled for \(label)." }
-            }
+            })
             .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $pickingGrocery) {
@@ -366,26 +386,21 @@ struct RecipeDetailView: View {
     /// One quiet line in card tone: how many are on hand + what's missing, with a single
     /// "Add to grocery" action for the rest — instead of a loud two-line block.
     private var onHandBanner: some View {
-        let onHand = ingredients.filter { $0.isStaple }.count
-        let total = ingredients.count
-        let missing = ingredients.filter { !$0.isStaple }.map(\.name)
-        let tail: String = {
-            if missing.isEmpty { return " on hand — you’ve got everything" }
-            let shown = missing.prefix(3).joined(separator: ", ")
-            let extra = missing.count > 3 ? " +\(missing.count - 3) more" : ""
-            return " on hand — need \(shown)\(extra)"
-        }()
+        // See `OnHandBanner` for why the count must come from the server rather than
+        // from `isStaple` (the rule is tested there).
+        let copy = OnHandBanner.copy(onHand: onHand, toBuy: toBuy, toBuyNames: toBuyNames,
+                                     nonStapleNames: ingredients.filter { !$0.isStaple }.map(\.name))
         return HStack(spacing: 11) {
             ZStack {
                 Circle().fill(WF.ai)
                 Image(systemName: "sparkles").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
             }
             .frame(width: 28, height: 28)
-            (Text("\(onHand) of \(total)").font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ai)
-                + Text(tail).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2))
+            (Text(copy.lead ?? "").font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ai)
+                + Text(copy.tail).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
-            if !missing.isEmpty {
+            if copy.showsAddButton {
                 Button { pickingGrocery = true } label: {
                     Text("Add to grocery")
                         .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(WF.primaryD)
@@ -568,6 +583,9 @@ struct RecipeDetailView: View {
             recipe = d.recipe
             ingredients = d.ingredients
             steps = d.steps
+            onHand = d.onHand
+            toBuy = d.toBuy
+            toBuyNames = d.toBuyNames ?? []
             if userNotesDraft.isEmpty { userNotesDraft = d.recipe.userNotes ?? "" }
             self.error = false
         } catch { self.error = true }
@@ -664,6 +682,14 @@ struct RecipeDetailView: View {
 struct RecipeScheduleSheet: View {
     let title: String
     let recipeId: String
+    /// The small caps line above the title. The Meal Builder says "Schedule this meal".
+    var eyebrow: String = "Schedule"
+    /// Override what scheduling *means*. A Meal Builder plate goes to
+    /// `POST /api/meals/:id/schedule` (which schedules every dish at once) rather than
+    /// planning a single recipe; everything else about this sheet — the slot picker,
+    /// the week paging, the day grid — is identical, so it is reused rather than
+    /// duplicated. Throw to keep the sheet open on failure.
+    var perform: ((_ date: String, _ mealType: String) async throws -> Void)? = nil
     var onScheduled: (String) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
@@ -695,7 +721,7 @@ struct RecipeScheduleSheet: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Schedule").font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink3).tracking(0.4)
+                    Text(eyebrow).font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink3).tracking(0.4)
                     Text(title).font(WF.serif(22, .bold)).foregroundStyle(WF.ink).lineLimit(2)
                 }
 
@@ -756,7 +782,11 @@ struct RecipeScheduleSheet: View {
         savingDay = key
         Task {
             do {
-                try await api.planMeal(date: key, mealType: meal, recipeId: recipeId, title: nil)
+                if let perform {
+                    try await perform(key, meal)
+                } else {
+                    try await api.planMeal(date: key, mealType: meal, recipeId: recipeId, title: nil)
+                }
                 onScheduled("\(day.formatted(.dateTime.weekday(.wide))) \(meal)")
                 dismiss()
             } catch {

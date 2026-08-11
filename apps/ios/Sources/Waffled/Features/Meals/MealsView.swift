@@ -5,6 +5,9 @@ enum MealsRoute: Hashable {
     case recipes                      // the full Recipes library (pushed)
     case recipesNew                   // the library pre-filtered to never-cooked ("🆕 New")
     case recipe(WaffledAPI.RecipeSummary) // one recipe's detail
+    /// One saved **plate**'s detail — a named, multi-recipe meal. Saved plates sit in
+    /// the same library as the recipes (decision 11), so a card there pushes this.
+    case meal(WaffledAPI.MealDTO)
 }
 
 /// Meals tab. A single NavigationStack hosts a **This week** planner and the
@@ -63,6 +66,7 @@ struct MealsView: View {
                 case .recipes: RecipesLibraryView(model: model)
                 case .recipesNew: RecipesLibraryView(model: model, initialNewOnly: true)
                 case .recipe(let r): RecipeDetailView(summary: r, model: model)
+                case .meal(let m): MealDetailView(summary: m, recipes: model)
                 }
             }
         }

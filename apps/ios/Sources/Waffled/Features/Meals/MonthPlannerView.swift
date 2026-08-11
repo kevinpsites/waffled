@@ -76,7 +76,11 @@ struct MonthPlannerView: View {
         .confirmationDialog(actionTarget?.displayTitle ?? "Dinner",
                             isPresented: Binding(get: { actionTarget != nil }, set: { if !$0 { actionTarget = nil } }),
                             titleVisibility: .visible, presenting: actionTarget) { e in
-            if e.recipeId != nil { Button("Open recipe") { openRecipe(e) } }
+            if e.isMealBacked {
+                Button("Open meal") { openRecipe(e) }
+            } else if e.recipeId != nil {
+                Button("Open recipe") { openRecipe(e) }
+            }
             Button("Change") { picking = .init(date: e.date, mealType: "dinner") }
             Button("Remove", role: .destructive) {
                 Task { _ = await sync.clearMealPlan(date: e.date, mealType: "dinner"); await load() }
@@ -84,8 +88,14 @@ struct MonthPlannerView: View {
         }
     }
 
-    /// Open a planned night's recipe (or the picker for a free-text night).
+    /// Open a planned night's recipe or plate (or the picker for a free-text night).
     private func openRecipe(_ e: WaffledAPI.WeekEntryDTO) {
+        // A plate-backed night has no `recipeId`; without this it fell through to the
+        // "nothing planned here" branch and reopened the slot picker over a real meal.
+        if let plate = e.platePlaceholder {
+            path.append(.meal(plate))
+            return
+        }
         guard let rid = e.recipeId else { picking = .init(date: e.date, mealType: "dinner"); return }
         let seed = recipes.recipes.first { $0.id == rid }
             ?? .placeholder(id: rid, title: e.recipe?.title ?? e.displayTitle, emoji: e.recipe?.emoji,
@@ -287,9 +297,15 @@ struct MonthPlannerView: View {
 
     private func place(_ entry: WaffledAPI.WeekEntryDTO?, on date: String) async {
         if let e = entry {
+            // Same rule as the week planner: a slot is backed by a recipe, a plate, or
+            // neither. Only a genuinely free-text night carries a title — dropping the
+            // plate id here would land a dragged plate as a bare name with no dishes.
+            let freeText = e.recipeId == nil && !e.isMealBacked
             _ = await sync.setMealPlan(date: date, mealType: "dinner",
-                                       recipeId: e.recipeId, title: e.recipeId == nil ? (e.title ?? e.displayTitle) : nil,
-                                       cookPersonId: e.cook?.personId)
+                                       recipeId: e.recipeId,
+                                       title: freeText ? (e.title ?? e.displayTitle) : nil,
+                                       cookPersonId: e.cook?.personId,
+                                       mealId: e.mealId)
         } else {
             _ = await sync.clearMealPlan(date: date, mealType: "dinner")
         }
@@ -304,8 +320,12 @@ struct MonthPlannerView: View {
     }
 
     /// A free-text "eating out" night (no recipe) — show a fork instead of a plate.
+    ///
+    /// A Meal Builder plate also has no `recipeId`, but it is a real meal with real
+    /// dishes: without the `isMealBacked` guard a plate someone named "Takeout Night"
+    /// would be drawn as an eating-out night in the month grid.
     private func isEatingOut(_ e: WaffledAPI.WeekEntryDTO) -> Bool {
-        guard e.recipeId == nil, let t = e.title?.lowercased() else { return false }
+        guard e.recipeId == nil, !e.isMealBacked, let t = e.title?.lowercased() else { return false }
         return ["eat", "dining", "takeout", "take-out", "take out", "delivery", "order", "out"].contains { t.contains($0) }
     }
 

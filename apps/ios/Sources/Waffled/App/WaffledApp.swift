@@ -118,6 +118,23 @@ struct RootView: View {
         .sheet(item: pantryReconcile) { rec in
             CookConfirmSheet(title: rec.title, matches: rec.matches)
         }
+        // Headless verification only: open Cook Mode on a plate (and optionally replay a
+        // timer jump inside it). Cook Mode is otherwise reachable only by tapping, which
+        // the simulator can't do, so this is the only way to look at the screen at all.
+        .task {
+            guard let plate = DemoHooks.cookPlate else { return }
+            await cook.startPlate(mealId: plate)
+            guard let spec = DemoHooks.cookJump else { return }
+            let parts = spec.split(separator: ":").compactMap { Int($0) }
+            guard parts.count == 3, let dishes = cook.session?.dishes,
+                  parts[1] < dishes.count else { return }
+            cook.index = parts[0]
+            cook.jump(to: CookTimer(notifId: "demo", dishId: dishes[parts[1]].id,
+                                    dishTitle: dishes[parts[1]].title, stepIndex: parts[2],
+                                    stepNumber: parts[2] + 1, total: 60,
+                                    fireAt: .distantFuture, running: false,
+                                    firing: false, pausedRemaining: 60))
+        }
         // A tapped cook-timer notification re-opens Cook Mode at the fired step.
         .onChange(of: notifications.pendingCookTimer) { _, link in
             guard let link else { return }
