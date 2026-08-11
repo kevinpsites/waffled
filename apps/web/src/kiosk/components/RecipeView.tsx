@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { groceryApi, mealBuilderApi, mealsApi, pantryApi, useRecipe, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
+import { mealBuilderApi, mealsApi, pantryApi, useRecipe, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
 import { ScheduleModal } from './ScheduleModal'
+import { RecipeGroceryModal } from './RecipeGroceryModal'
 import { CookConfirm } from './CookConfirm'
 import { useTopbarFull } from '../topbar-slot'
+import { fmtAmt } from '../../lib/amount'
 import '../../styles/recipe.css'
 
 // Favorite / edit / schedule as icon buttons. Rendered in the topbar (full-screen
@@ -49,15 +51,6 @@ function downloadMarkdown(markdown: string, filename: string) {
 // "your notes". Self-contained by id so it renders identically whether it's the
 // full-screen route (RecipeDetail) or a modal preview (RecipeModal).
 
-const FRAC: Record<string, string> = { '0.5': '½', '0.25': '¼', '0.75': '¾', '0.33': '⅓', '0.67': '⅔' }
-function fmtAmt(n: number): string {
-  const whole = Math.floor(n)
-  const frac = +(n - whole).toFixed(2)
-  const fg = FRAC[String(frac)]
-  if (fg) return whole > 0 ? `${whole}${fg}` : fg
-  return `${+n.toFixed(2)}`
-}
-
 function IngredientRow({ ing, ratio, onSub }: { ing: RecipeIngredient; ratio: number; onSub: (val: string) => void }) {
   const [checked, setChecked] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -86,7 +79,7 @@ function IngredientRow({ ing, ratio, onSub }: { ing: RecipeIngredient; ratio: nu
     )
   }
   return (
-    <div className={`ring-row ${checked ? 'on' : ''} ${ing.sub ? 'subbed' : ''}`}>
+    <div className={`ring-row checklist ${checked ? 'on' : ''} ${ing.sub ? 'subbed' : ''}`}>
       <span className="ring-ck" aria-hidden role="button" tabIndex={0} onClick={() => setChecked((v) => !v)}>{checked ? '✓' : ''}</span>
       <span className="ring-amt" onClick={() => setChecked((v) => !v)}>{left}</span>
       <span className="ring-name" onClick={() => setChecked((v) => !v)}>
@@ -154,7 +147,7 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const [fav, setFav] = useState(false)
   const [scheduling, setScheduling] = useState(false)
   const [addedNote, setAddedNote] = useState<string | null>(null)
-  const addingGrocery = useRef(false) // in-flight guard for addToGrocery
+  const [pickingGrocery, setPickingGrocery] = useState(false)
   const [cooked, setCooked] = useState(0)
   const [notes, setNotes] = useState('')
   const [usedMatches, setUsedMatches] = useState<RecipeMatch[] | null>(null)
@@ -275,17 +268,14 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   // stays plain text rather than becoming a control that expands to nothing.
   const canExpand = toBuyNames.length > 0
 
-  async function addToGrocery() {
-    if (addingGrocery.current) return // three controls share this handler — no double-fire
-    addingGrocery.current = true
-    try {
-      const { added } = await groceryApi.groceryFromRecipe(recipe!.id)
-      setAddedNote(added > 0 ? `Added ${added} item${added === 1 ? '' : 's'} to this week’s grocery list.` : 'Everything’s already on the list or on hand — nothing to add.')
-    } catch {
-      setAddedNote('Couldn’t reach the grocery list — try again.')
-    } finally {
-      addingGrocery.current = false
-    }
+  // Opens the picker so the shopper can add all or choose specific ingredients
+  // (they may already have some on hand). The actual add happens in the modal.
+  function addToGrocery() {
+    setPickingGrocery(true)
+  }
+  function onGroceryAdded(added: number) {
+    if (added < 0) setAddedNote('Couldn’t reach the grocery list — try again.')
+    else setAddedNote(added > 0 ? `Added ${added} item${added === 1 ? '' : 's'} to this week’s grocery list.` : 'Everything’s already on the list — nothing to add.')
   }
 
   // "Build a meal around this" — start a plate seeded from this recipe: named after
@@ -533,6 +523,9 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
 
       {scheduling && (
         <ScheduleModal recipe={recipe} onClose={() => setScheduling(false)} onScheduled={(label) => setAddedNote(`Scheduled for ${label}.`)} />
+      )}
+      {pickingGrocery && (
+        <RecipeGroceryModal recipeId={recipe.id} title={recipe.title} ingredients={ingredients} ratio={ratio} onClose={() => setPickingGrocery(false)} onAdded={onGroceryAdded} />
       )}
       {usedMatches && (
         <CookConfirm

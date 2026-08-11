@@ -366,6 +366,76 @@ describe('list items — sections, quantity, assignee', () => {
   })
 })
 
+describe('list items — store assignment + quick-select', () => {
+  let listId = ''
+  let itemId = ''
+
+  beforeAll(async () => {
+    listId = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Store test', emoji: '🏪' })).body).list.id
+  })
+
+  it('creates an item with a store and returns it', async () => {
+    const res = await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Rotisserie chicken', store: 'Costco' })
+    expect(res.statusCode).toBe(201)
+    const item = JSON.parse(res.body).item
+    expect(item).toMatchObject({ name: 'Rotisserie chicken', store: 'Costco' })
+    itemId = item.id
+  })
+
+  it('patches an item to set, change, then clear its store', async () => {
+    let item = JSON.parse((await call('PATCH', `/api/list-items/${itemId}`, kevin, { store: 'Walmart' })).body).item
+    expect(item.store).toBe('Walmart')
+    item = JSON.parse((await call('PATCH', `/api/list-items/${itemId}`, kevin, { store: null })).body).item
+    expect(item.store).toBeNull()
+  })
+
+  it('GET /api/lists/stores returns previously-used stores, most-used first', async () => {
+    // Costco used on 3 items, Trader Joe's on 1 → Costco leads.
+    await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Muffins', store: 'Costco' })
+    await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Batteries', store: 'Costco' })
+    await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Wine', store: "Trader Joe's" })
+    const stores = JSON.parse((await call('GET', '/api/lists/stores', kevin)).body).stores as string[]
+    expect(stores).toContain('Costco')
+    expect(stores).toContain("Trader Joe's")
+    expect(stores.indexOf('Costco')).toBeLessThan(stores.indexOf("Trader Joe's"))
+  })
+
+  it('bulk-assigns a store across a multi-selection', async () => {
+    const a = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Paper towels' })).body).item.id
+    const b = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Napkins' })).body).item.id
+    const res = await call('PATCH', '/api/list-items/bulk', kevin, { ids: [a, b], patch: { store: 'Target' } })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).updated).toBe(2)
+    const items = JSON.parse((await call('GET', `/api/lists/${listId}`, kevin)).body).items as Array<{ id: string; store: string | null }>
+    expect(items.find((i) => i.id === a)!.store).toBe('Target')
+    expect(items.find((i) => i.id === b)!.store).toBe('Target')
+  })
+
+  // The store box is free text and every client writes it (web + iOS), so the same
+  // shop typed with different capitalisation must land on one store — otherwise the
+  // By-store view shows two identically-labelled sections.
+  it('snaps a differently-cased store onto the casing already in use', async () => {
+    const created = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Hot dogs', store: 'costco' })).body).item
+    expect(created.store).toBe('Costco')
+
+    const patched = JSON.parse((await call('PATCH', `/api/list-items/${itemId}`, kevin, { store: 'COSTCO' })).body).item
+    expect(patched.store).toBe('Costco')
+
+    const bulkId = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Buns' })).body).item.id
+    await call('PATCH', '/api/list-items/bulk', kevin, { ids: [bulkId], patch: { store: 'cOsTcO' } })
+    const items = JSON.parse((await call('GET', `/api/lists/${listId}`, kevin)).body).items as Array<{ id: string; store: string | null }>
+    expect(items.find((i) => i.id === bulkId)!.store).toBe('Costco')
+
+    const stores = JSON.parse((await call('GET', '/api/lists/stores', kevin)).body).stores as string[]
+    expect(stores.filter((s) => s.toLowerCase() === 'costco')).toHaveLength(1)
+  })
+
+  it('keeps a genuinely new store as typed, and trims surrounding space', async () => {
+    const item = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Sourdough', store: '  Whole Foods  ' })).body).item
+    expect(item.store).toBe('Whole Foods')
+  })
+})
+
 describe('list item priority', () => {
   let listId = ''
 
@@ -447,6 +517,43 @@ describe('grocery auto-build from a recipe', () => {
     ).toBe(404)
   })
 
+  it('adds only the selected subset when ingredientIds is provided', async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Subset Stew', emoji: '🍲' })
+    const rid = JSON.parse(r.body).recipe.id
+    await call('POST', `/api/recipes/${rid}/ingredients`, kevin, {
+      ingredients: [
+        { name: 'Beef chuck', amount: 2, unit: 'lb' },
+        { name: 'Rutabaga', amount: 1 },
+        { name: 'Parsnip', amount: 3 },
+      ],
+    })
+    const ings = (
+      await withClient((c) =>
+        c.query<{ id: string; name: string }>(
+          `select id, name from recipe_ingredients where recipe_id=$1`,
+          [rid]
+        )
+      )
+    ).rows
+    const keep = ings.filter((i) => i.name !== 'Parsnip').map((i) => i.id)
+
+    const res = await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin, { ingredientIds: keep })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).added).toBe(2)
+
+    const names = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.map((i: { name: string }) => i.name)
+    expect(names).toContain('Beef chuck')
+    expect(names).toContain('Rutabaga')
+    expect(names).not.toContain('Parsnip') // left off — the shopper had it on hand
+  })
+
+  it('rejects a non-array / bad ingredientIds (400)', async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Bad Subset', emoji: '🥔' })
+    const rid = JSON.parse(r.body).recipe.id
+    expect((await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin, { ingredientIds: 'nope' })).statusCode).toBe(400)
+    expect((await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin, { ingredientIds: ['not-a-uuid'] })).statusCode).toBe(400)
+  })
+
   it('bumps the quantity when two recipes need the same item (no silent skip)', async () => {
     const mk = async (title: string) => {
       const r = await call('POST', '/api/recipes', kevin, { title, emoji: '🍋' })
@@ -479,6 +586,88 @@ describe('grocery auto-build from a recipe', () => {
     const names = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.map((i: { name: string }) => i.name)
     expect(names).toContain('Baguette')
     expect(names).not.toContain('Garlic')
+  })
+
+  it('writes a recipe fraction as a fraction, not the float it is stored as', async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Fudge', emoji: '🍫' })
+    const rid = JSON.parse(r.body).recipe.id
+    const householdId = (await withClient((c) => c.query<{ id: string }>(`select id from households limit 1`))).rows[0].id
+    // "⅔ cup" in the source markdown parses to 0.6666666666666666 in the DB
+    await withClient((c) =>
+      c.query(
+        `insert into recipe_ingredients (household_id, recipe_id, name, amount, unit, aisle, is_staple)
+           values ($1,$2,'evaporated milk',$3,'cup','Dairy & Chilled',false)`,
+        [householdId, rid, 2 / 3]
+      )
+    )
+    await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin)
+
+    const items = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items
+    const milk = items.find((i: { name: string }) => i.name === 'evaporated milk')
+    expect(milk.quantity).toBe('⅔ cup')
+    // …and the edit box gets a version someone can actually retype
+    expect(milk.quantityInput).toBe('2/3 cup')
+  })
+
+  it('accepts a typed fraction back and stores it as the display form', async () => {
+    const listId = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).list.id
+    const created = await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'buttermilk', quantity: '1 1/2 cup' })
+    expect(created.statusCode).toBe(201)
+    const items = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items
+    const bm = items.find((i: { name: string }) => i.name === 'buttermilk')
+    expect(bm.quantity).toBe('1½ cup')
+    expect(bm.quantityInput).toBe('1 1/2 cup')
+  })
+
+  it('tidies a raw float already stored on a row when serving the board', async () => {
+    // Rows written before the formatter existed still read back as fractions — the
+    // normalization happens on the way out too, so nobody needs a data migration.
+    const householdId = (await withClient((c) => c.query<{ id: string }>(`select id from households limit 1`))).rows[0].id
+    const listId = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).list.id
+    await withClient((c) =>
+      c.query(
+        `insert into list_items (household_id, list_id, name, quantity, category, source)
+           values ($1,$2,'legacy condensed milk','0.6666666666666666 cup','Dairy & Chilled','manual')`,
+        [householdId, listId]
+      )
+    )
+    const items = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items
+    expect(items.find((i: { name: string }) => i.name === 'legacy condensed milk').quantity).toBe('⅔ cup')
+  })
+
+  it('adds a pantry staple when the picker explicitly selects it', async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Focaccia', emoji: '🫓' })
+    const rid = JSON.parse(r.body).recipe.id
+    // Insert directly so the staple is flagged on the row (`is_staple`) under a name
+    // no other test asserts on — the shared household list is read whole elsewhere.
+    const householdId = (await withClient((c) => c.query<{ id: string }>(`select id from households limit 1`))).rows[0].id
+    await withClient((c) =>
+      c.query(
+        `insert into recipe_ingredients (household_id, recipe_id, name, amount, unit, aisle, is_staple) values
+           ($1,$2,'Zaatar blend',1,'Tbsp','Pantry',true),
+           ($1,$2,'Semolina',2,'cup','Pantry',false)`,
+        [householdId, rid]
+      )
+    )
+    const ings = (
+      await withClient((c) =>
+        c.query<{ id: string; name: string }>(`select id, name from recipe_ingredients where recipe_id=$1`, [rid])
+      )
+    ).rows
+
+    // The picker now opens with everything ticked, staples included, so a staple can
+    // arrive in ingredientIds. That is a deliberate "yes, I need this" from the shopper
+    // and has to beat the server's "you've probably got it" guess — otherwise the sheet
+    // promises "Add 2 items" and quietly delivers one.
+    const res = await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin, {
+      ingredientIds: ings.map((i) => i.id),
+    })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).added).toBe(2)
+
+    const names = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.map((i: { name: string }) => i.name)
+    expect(names).toContain('Zaatar blend')
+    expect(names).toContain('Semolina')
   })
 
   it('surfaces recipes added off-plan as "unscheduled" on the board', async () => {
@@ -604,7 +793,7 @@ describe('grocery auto-build + pantry staples', () => {
     expect(names).toContain('Salmon fillets')
     expect(names).not.toContain('Olive oil')
     const salmon = board.items.find((i: { name: string }) => i.name === 'Salmon fillets')
-    expect(salmon).toMatchObject({ aisle: 'Meat & Seafood', quantity: '1.5 lb', source: 'auto' })
+    expect(salmon).toMatchObject({ aisle: 'Meat & Seafood', quantity: '1½ lb', source: 'auto' })
     expect(salmon.sourceRecipeIds).toContain(recipeId)
     expect(board.meals.some((d: { recipeId: string; mealType: string }) => d.recipeId === recipeId && d.mealType === 'dinner')).toBe(true)
 
@@ -612,6 +801,24 @@ describe('grocery auto-build + pantry staples', () => {
     expect(board.unscheduled.some((u: { recipeId: string }) => u.recipeId === recipeId)).toBe(false)
     // ...while the off-plan Chorizo Tacos from the earlier describe stays unscheduled
     expect(board.unscheduled.some((u: { title: string }) => u.title === 'Chorizo Tacos')).toBe(true)
+  })
+
+  // Refresh deletes the derived rows and re-inserts them, which is why it goes to the
+  // trouble of carrying `checked` across the wipe. The store a shopper assigned is the
+  // same kind of hand-entered value and has to survive too — otherwise every Refresh
+  // silently empties the By-store view of everything the week built.
+  it('keeps a store assigned to an auto item through a rebuild', async () => {
+    const ws = thisSunday()
+    const board = JSON.parse((await call('GET', `/api/lists/grocery/board?weekStart=${ws}`, kevin)).body)
+    const salmon = board.items.find((i: { name: string }) => i.name === 'Salmon fillets')
+    expect(salmon.source).toBe('auto')
+
+    expect((await call('PATCH', `/api/list-items/${salmon.id}`, kevin, { store: 'Costco' })).statusCode).toBe(200)
+
+    const after = JSON.parse((await call('POST', `/api/lists/grocery/rebuild?weekStart=${ws}`, kevin)).body).board
+    const salmonAgain = after.items.find((i: { name: string }) => i.name === 'Salmon fillets')
+    expect(salmonAgain).toBeDefined()
+    expect(salmonAgain.store).toBe('Costco')
   })
 
   it('manages pantry staples (defaults, add, delete)', async () => {
@@ -685,14 +892,14 @@ describe('off-plan grocery items vs the weekly rebuild', () => {
     // merged into the existing auto row, promoted so the rebuild can't wipe the off-plan stake
     let salmon = (await groceryItems()).filter((i: { name: string }) => i.name === 'Salmon fillets')
     expect(salmon).toHaveLength(1)
-    expect(salmon[0].quantity).toBe('2.5 lb')
+    expect(salmon[0].quantity).toBe('2½ lb')
     expect(salmon[0].source).toBe('recipe')
 
     // rebuild again: still one row, same quantity (no duplicate, no double-count)
     await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
     salmon = (await groceryItems()).filter((i: { name: string }) => i.name === 'Salmon fillets')
     expect(salmon).toHaveLength(1)
-    expect(salmon[0].quantity).toBe('2.5 lb')
+    expect(salmon[0].quantity).toBe('2½ lb')
     expect(salmon[0].sourceRecipeIds).toContain(bowls)
     // both its recipes surface correctly: planned meal on the board, off-plan under unscheduled
     const b = await board()
@@ -707,7 +914,7 @@ describe('off-plan grocery items vs the weekly rebuild', () => {
     await call('POST', `/api/lists/grocery/from-recipe/${bowls.recipeId}`, kevin)
     const salmon = (await groceryItems()).filter((i: { name: string }) => i.name === 'Salmon fillets')
     expect(salmon).toHaveLength(1)
-    expect(salmon[0].quantity).toBe('2.5 lb')
+    expect(salmon[0].quantity).toBe('2½ lb')
   })
 
   it('adds the planned portion onto an off-plan row when the plan comes second', async () => {
@@ -726,13 +933,13 @@ describe('off-plan grocery items vs the weekly rebuild', () => {
     await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
     let thighs = (await groceryItems()).filter((i: { name: string }) => i.name === 'Chicken thighs')
     expect(thighs).toHaveLength(1)
-    expect(thighs[0].quantity).toBe('2.5 lb') // 1 (off-plan) + 1.5 (planned)
+    expect(thighs[0].quantity).toBe('2½ lb') // 1 (off-plan) + 1.5 (planned)
     expect(thighs[0].sourceRecipeIds).toEqual(expect.arrayContaining([herb, roast]))
 
     // rebuilding again must not re-add the planned portion
     await call('POST', `/api/lists/grocery/rebuild?weekStart=${week}`, kevin)
     thighs = (await groceryItems()).filter((i: { name: string }) => i.name === 'Chicken thighs')
-    expect(thighs[0].quantity).toBe('2.5 lb')
+    expect(thighs[0].quantity).toBe('2½ lb')
   })
 
   it('merges duplicate ingredient names within one recipe instead of erroring', async () => {

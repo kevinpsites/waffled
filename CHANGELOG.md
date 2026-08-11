@@ -40,6 +40,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   being scheduled can be taken back off it again, and anything the week's actual plan
   still needs stays put.
 
+- **Choose which recipe ingredients go on the grocery list.** "Add to grocery" now opens
+  a picker so you can add everything or just the items you actually need, instead of always
+  dumping the whole recipe onto the list. Everything starts checked — pantry staples are
+  flagged as "likely on hand" so you can uncheck them, rather than being left out on your
+  behalf. Works on web and iOS.
+- **Assign a store to grocery items and shop by store.** Tag an item with where you'll buy
+  it (Costco, Walmart, the corner market) and flip the grocery board to a **By store** view
+  that groups the list by shop. The store box is a quick-select over the stores you've used
+  before, so "Costco" typed once comes back as a tap and never splits into "costco".
+- **Lists now refresh across devices on their own.** When another family member checks
+  something off on their phone, the list you're looking at updates without a manual reload —
+  it refreshes when you return to the app and quietly re-checks every ~20 seconds while a
+  list is open. (It's a poll, not instant push, so give it a few seconds.)
 - **The goal Log sheet now suggests what you actually do.** The "What did you do?"
   chips are no longer a fixed list of six — each goal offers up the notes you've logged
   against it before, most-used first, so a goal you keep marking "family walk" or "lunch
@@ -140,6 +153,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Grocery quantities read like a recipe again.** An ingredient measured in thirds landed on
+  the list as "0.6666666666666666 cup" — the number the computer kept rather than the ⅔ cup
+  you'd actually write down. Quantities now show as fractions (⅔ cup, 1½ lb), including on
+  lists you built before this fix, and adding two half-cups still totals one cup. Editing an
+  item hands you a version you can type — the box reads "1 1/2 lb" — and typing a fraction
+  that way (or as a decimal) saves it back in the tidy form.
+- **The grocery item editor lines up.** Editing an item put its two rows at different widths,
+  and once an item had a store the lower row could spill outside the card at some window
+  sizes. Both rows now fill the card, and the store box wraps instead of squashing the aisle
+  picker and the save button.
+- **Recipe photos now show on iPhone and iPad.** Uploaded recipe images were falling back to
+  the emoji placeholder in the detail hero and the library cards, even though the web showed
+  the picture — the app wasn't resolving the stored image's address. They now render (and are
+  cached for smooth scrolling).
+- **You can remove a recipe's photo when editing.** The recipe editor had no way to clear an
+  image — now there's a trash button next to the photo, and removing it actually deletes the
+  stored photo instead of leaving it in place.
+- **Change a list's emoji from inside the list.** The in-list ⋯ menu only let you rename a
+  list; changing its icon meant backing out to the Lists screen. The menu now opens the full
+  name-and-icon editor in place, listed simply as **Edit list** to match the editor it opens.
+- **A removed recipe photo disappears from the recipe list too (iPhone/iPad).** Deleting or
+  swapping a recipe's photo updated the recipe itself but left the old picture sitting on its
+  card in the library grid until the library reloaded — so the list and the recipe disagreed
+  about what the photo was.
+- **"Add to grocery list" opens full height on iPhone.** The ingredient picker came up as a
+  half sheet showing about three ingredients, so every use started by dragging it up. It now
+  opens full height.
+- **The iPad screensaver no longer drops over the keyboard.** If you were typing when the
+  idle timer fired, the screensaver could cover a lit keyboard. It now waits while a text
+  field is focused, and dismisses the keyboard if it does start.
 - **Recurring event edits now keep the whole series intact.** "This and following" carries
   all-day, countdown, people, goal, and repeat settings into the new series, while changing
   the time for "All events" no longer removes earlier occurrences. Locally synced web events
@@ -239,6 +282,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the Waffled host, with a direct link to the verification guide.
 - **Setup now links to the published troubleshooting guide.** The public-HTTPS
   PowerSync note no longer points at a repository file that does not exist.
+- **The server survives its database connection being dropped.** If Postgres closed a
+  connection the server was holding open but not actively using — a database restart, an
+  operator ending an idle session, a proxy reaping the socket — the API process could exit
+  instead of quietly reconnecting, taking the whole site down until Docker restarted it.
+  A dropped idle connection is now logged and the next request opens a fresh one.
 
 ### Security
 
@@ -254,10 +302,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Server dependencies pick up a denial-of-service patch.** A flaw in
   `brace-expansion` — a small pattern-matching library the server pulls in
   indirectly — let a crafted pattern expand without bound until the process ran
-  out of memory. A follow-up advisory found the first fix could still be bypassed,
-  so the pin now tracks the fully patched release. Waffled never feeds user input
-  to the affected code path, so neither flaw was exploitable in practice, but the
-  patched version is pinned across the server's dependency tree.
+  out of memory. Waffled never feeds user input to the affected code path, so this
+  was not exploitable in practice, but the patched version is now pinned across
+  the server's dependency tree. A later advisory found the first patch could be
+  bypassed the same way, so the pin has been moved forward again to the release
+  that closes it for good.
 
 ## [0.12.0] - 2026-07-23
 

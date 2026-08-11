@@ -151,10 +151,21 @@
   font-size: 15px;
   min-width: 0;
 }
-.ring-row.on .ring-name,
-.ring-row.on .ring-amt {
+/* Two screens share .ring-row and "on" means the opposite thing in each, so the checked
+   treatment is per-screen. Cooking checklist: "on" = already got it, so strike it out.
+   Grocery picker: "on" = will be added, so keep it fully legible and dim the ones being
+   left behind instead (mirrors the iOS sheet). */
+.ring-row.checklist.on .ring-name,
+.ring-row.checklist.on .ring-amt {
   color: var(--ink-3);
   text-decoration: line-through;
+}
+.ring-row.picking {
+  opacity: 0.55;
+  transition: opacity 0.12s ease;
+}
+.ring-row.picking.on {
+  opacity: 1;
 }
 
 /* on-hand banner */

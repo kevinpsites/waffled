@@ -8,6 +8,7 @@ import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { getRecipe, listIngredients, getOverrides } from '../meals/meals.service'
 import { aisleFor, isStaple } from './aisles'
+import { formatAmount, normalizeQuantity, parseQuantity, plainQuantity } from './quantity'
 import type { ListRow, ListItemRow, CreateListInput, PatchItemInput } from './lists.types'
 
 export async function getOrCreateGroceryList(tenant: Tenant): Promise<ListRow> {
@@ -219,8 +220,8 @@ export async function applyTemplate(
     const list = created.rows[0]
     await client.query(
       `insert into list_items
-         (household_id, list_id, name, quantity, category, source, sort_order, created_by, checked)
-       select household_id, $2, name, quantity, category, source, sort_order, $3, false
+         (household_id, list_id, name, quantity, category, store, source, sort_order, created_by, checked)
+       select household_id, $2, name, quantity, category, store, source, sort_order, $3, false
          from list_items
         where household_id = $1 and list_id = $4 and deleted_at is null`,
       [tenant.householdId, list.id, tenant.personId, templateId]
@@ -249,15 +250,35 @@ export async function listItems(householdId: string, listId: string): Promise<Li
   return rows
 }
 
+// The store box is free text and every client writes it (web + iOS), so the same shop
+// typed with different capitalisation has to land on one store — otherwise the By-store
+// view splits into two identically-labelled sections and the quick-select offers both.
+// Trims, then snaps onto the casing the household already uses (most-used wins); a
+// genuinely new store keeps whatever the user typed.
+export async function canonicalStore(householdId: string, store: string | null | undefined): Promise<string | null> {
+  const trimmed = store?.trim()
+  if (!trimmed) return null
+  const { rows } = await query<{ store: string }>(
+    `select store from list_items
+       where household_id = $1 and deleted_at is null
+         and store is not null and lower(btrim(store)) = lower($2)
+       group by store
+       order by count(*) desc, store
+       limit 1`,
+    [householdId, trimmed]
+  )
+  return rows[0]?.store ?? trimmed
+}
+
 export async function addItem(
   tenant: Tenant,
   listId: string,
-  input: { name: string; quantity?: string | null; category?: string | null; assignedTo?: string | null; priority?: number }
+  input: { name: string; quantity?: string | null; category?: string | null; store?: string | null; assignedTo?: string | null; priority?: number }
 ): Promise<ListItemRow> {
   const { rows } = await query<ListItemRow>(
     `with ins as (
-       insert into list_items (household_id, list_id, name, quantity, category, assigned_to, priority, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       insert into list_items (household_id, list_id, name, quantity, category, store, assigned_to, priority, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        returning *
      )
      select ins.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
@@ -271,6 +292,7 @@ export async function addItem(
       input.name,
       input.quantity ?? null,
       input.category ?? null,
+      await canonicalStore(tenant.householdId, input.store),
       input.assignedTo ?? null,
       input.priority ?? 3,
       tenant.personId,
@@ -332,6 +354,10 @@ export async function patchItem(
     sets.push(`category = $${i++}`)
     vals.push(patch.category ?? null)
   }
+  if ('store' in patch) {
+    sets.push(`store = $${i++}`)
+    vals.push(await canonicalStore(tenant.householdId, patch.store))
+  }
   if (typeof patch.priority === 'number') {
     sets.push(`priority = $${i++}`)
     vals.push(patch.priority)
@@ -391,7 +417,7 @@ export async function softDeleteItem(householdId: string, id: string): Promise<b
 export async function bulkPatchItems(
   householdId: string,
   ids: string[],
-  patch: { category?: string | null; assignedTo?: string | null; priority?: number }
+  patch: { category?: string | null; store?: string | null; assignedTo?: string | null; priority?: number }
 ): Promise<number> {
   const sets: string[] = []
   const vals: unknown[] = []
@@ -399,6 +425,10 @@ export async function bulkPatchItems(
   if ('category' in patch) {
     sets.push(`category = $${i++}`)
     vals.push(patch.category ?? null)
+  }
+  if ('store' in patch) {
+    sets.push(`store = $${i++}`)
+    vals.push(await canonicalStore(householdId, patch.store))
   }
   if ('assignedTo' in patch) {
     sets.push(`assigned_to = $${i++}`)
@@ -463,13 +493,19 @@ export async function clearCompletedItems(householdId: string, listId: string): 
 export async function addRecipeToGrocery(
   tenant: Tenant,
   recipeId: string,
-  weekStart: string
+  weekStart: string,
+  // When provided, only these recipe-ingredient ids are added (the "choose specific
+  // ingredients" picker) — the shopper already has the rest on hand. `undefined`/`null`
+  // keeps the original all-non-staple behavior.
+  ingredientIds?: string[] | null
 ): Promise<ListItemRow[] | null> {
   const recipe = await getRecipe(tenant.householdId, recipeId)
   if (!recipe) return null
 
   const list = await getOrCreateGroceryList(tenant)
-  const ingredients = await listIngredients(tenant.householdId, recipeId)
+  const allIngredients = await listIngredients(tenant.householdId, recipeId)
+  const pick = ingredientIds == null ? null : new Set(ingredientIds)
+  const ingredients = pick ? allIngredients.filter((ing) => pick.has(ing.id)) : allIngredients
   const subs = getOverrides(recipe).subs ?? {}
   // Merge/credit only against THIS week's rows + the global manual list — an off-plan
   // add belongs to the week you're shopping, so it can't collide with another week.
@@ -492,10 +528,14 @@ export async function addRecipeToGrocery(
     const name = (sub && sub.trim() ? sub.trim() : ing.name).trim()
     const row = ing as { aisle?: string | null; is_staple?: boolean }
     // pantry staples are assumed in-house — leave them off the list (matches the
-    // weekly auto-build and the mock's "Pantry check").
-    if (row.is_staple || isStaple(name)) continue
+    // weekly auto-build and the mock's "Pantry check"). But that is only a guess, and
+    // an explicit pick beats it: when the picker sends ingredientIds the shopper has
+    // ticked each row by hand, so honor the selection exactly rather than silently
+    // delivering fewer items than the sheet promised.
+    if (!pick && (row.is_staple || isStaple(name))) continue
     const key = name.toLowerCase()
-    const quantity = ing.amount != null && ing.unit ? `${Number(ing.amount)} ${ing.unit}` : ing.amount != null ? `${Number(ing.amount)}` : null
+    const quantity =
+      ing.amount != null ? `${formatAmount(Number(ing.amount))}${ing.unit ? ` ${ing.unit}` : ''}` : null
     const aisle = row.aisle && row.aisle !== 'Other' ? row.aisle : aisleFor(name, ing.unit)
 
     const dupe = have.get(key)
@@ -694,18 +734,12 @@ export async function removeMealFromGrocery(
 // Combine two freeform grocery quantities. Same unit (or both unit-less) → sum
 // the numbers ("1 lb" + "0.5 lb" → "1.5 lb", "1" + "1" → "2"). Otherwise keep
 // both ("1 cup" + "2 tbsp" → "1 cup + 2 tbsp").
-function parseQuantity(q: string | null): { n: number | null; unit: string } {
-  if (!q) return { n: null, unit: '' }
-  const m = q.trim().match(/^([\d.]+)\s*(.*)$/)
-  if (!m) return { n: null, unit: q.trim() }
-  return { n: parseFloat(m[1]), unit: m[2].trim() }
-}
 export function mergeQuantity(a: string | null, b: string | null): string | null {
   const pa = parseQuantity(a)
   const pb = parseQuantity(b)
   if (pa.n != null && pb.n != null && pa.unit.toLowerCase() === pb.unit.toLowerCase()) {
-    const sum = +(pa.n + pb.n).toFixed(2)
-    return pb.unit ? `${sum} ${pb.unit}` : `${sum}`
+    const sum = pa.n + pb.n
+    return pb.unit ? `${formatAmount(sum)} ${pb.unit}` : formatAmount(sum)
   }
   if (a && b) return `${a} + ${b}`
   return a ?? b
@@ -856,6 +890,18 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
       )
     ).rows.map((r) => r.name.trim().toLowerCase())
   )
+  // Same reasoning for the store: it's hand-assigned, the rebuild can't derive it from
+  // the meal plan, and losing it on every refresh would empty the By-store view.
+  const prevStore = new Map(
+    (
+      await query<{ name: string; store: string }>(
+        `select name, store from list_items
+           where household_id=$1 and list_id=$2 and source='auto' and deleted_at is null
+             and store is not null and btrim(store) <> '' and ${weekClause}`,
+        [tenant.householdId, list.id, weekStart]
+      )
+    ).rows.map((r) => [r.name.trim().toLowerCase(), r.store] as const)
+  )
   await query(`delete from list_items where household_id=$1 and list_id=$2 and source='auto' and ${weekClause}`, [tenant.householdId, list.id, weekStart])
 
   // Explicit off-plan adds (source='recipe') survive the wipe above. When the
@@ -888,12 +934,13 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
       }
       continue
     }
-    const qty = g.amount != null ? `${Number(g.amount.toFixed(2))}${g.unit ? ` ${g.unit}` : ''}` : g.unit
-    const checked = prevChecked.has(g.name.trim().toLowerCase())
+    const qty = g.amount != null ? `${formatAmount(g.amount)}${g.unit ? ` ${g.unit}` : ''}` : g.unit
+    const key = g.name.trim().toLowerCase()
+    const checked = prevChecked.has(key)
     await query(
-      `insert into list_items (household_id, list_id, name, quantity, category, source, source_recipe_ids, checked, checked_at, sort_order, created_by, week_start)
-       values ($1,$2,$3,$4,$5,'auto',$6,$7,$8,$9,$10,$11)`,
-      [tenant.householdId, list.id, g.name, qty, g.aisle, [...g.recipeIds], checked, checked ? new Date() : null, order++, tenant.personId, weekStart]
+      `insert into list_items (household_id, list_id, name, quantity, category, store, source, source_recipe_ids, checked, checked_at, sort_order, created_by, week_start)
+       values ($1,$2,$3,$4,$5,$6,'auto',$7,$8,$9,$10,$11,$12)`,
+      [tenant.householdId, list.id, g.name, qty, g.aisle, prevStore.get(key) ?? null, [...g.recipeIds], checked, checked ? new Date() : null, order++, tenant.personId, weekStart]
     )
   }
   return byName.size
@@ -1091,6 +1138,31 @@ async function mealDishes(
   return out
 }
 
+// The household's previously-used store names, most-used first — the durable
+// quick-select for the store field (so a store you typed once stays offered even
+// after that week's items are cleared). Distinct over all non-deleted items, so
+// "Costco" typed before comes back as a chip rather than being retyped.
+// Folded case-insensitively (offering both "Costco" and "costco" defeats the point of a
+// quick-select), each variant group reported under its most-used casing. New writes are
+// snapped by canonicalStore; this also tidies rows written before that existed.
+export async function listStores(householdId: string): Promise<string[]> {
+  const { rows } = await query<{ store: string }>(
+    `select (array_agg(store order by cnt desc, store))[1] as store
+       from (
+         select store, count(*)::int as cnt
+           from list_items
+          where household_id = $1 and deleted_at is null
+            and store is not null and btrim(store) <> ''
+          group by store
+       ) variants
+      group by lower(btrim(store))
+      order by sum(cnt) desc, min(store)
+      limit 50`,
+    [householdId]
+  )
+  return rows.map((r) => r.store)
+}
+
 export function presentList(l: ListRow) {
   return {
     id: l.id,
@@ -1116,11 +1188,18 @@ export function presentListItem(i: ListItemRow) {
   return {
     id: i.id,
     name: i.name,
-    quantity: i.quantity,
+    // Tidied on the way out, not just on the way in, so rows written before the
+    // formatter existed stop showing "0.6666666666666666 cup" without a data migration.
+    // Anything that doesn't parse cleanly is returned untouched.
+    quantity: normalizeQuantity(i.quantity),
+    // The same value with the fraction spelled out ("1 1/2 lb"), for edit fields —
+    // nobody can type ½ on a keyboard. Saving it normalizes straight back.
+    quantityInput: plainQuantity(normalizeQuantity(i.quantity)),
     checked: i.checked,
     checkedAt: i.checked_at,
     weekStart: isoDateOnly(i.week_start),
     section: i.category,
+    store: i.store,
     priority: i.priority ?? 3,
     sortOrder: i.sort_order,
     source: i.source,

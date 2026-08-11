@@ -12,7 +12,8 @@ Meals is your recipe library and your planner in one — pick what's for dinner 
 - 🗓️ **Weekly and Month planners** — a grid with a recipe picker; drag-to-swap meals on either grid.
 - 📖 **Full-screen recipe detail** — hero image, metadata chips, a servings scaler, and total time (prep + cook) computed for you.
 - 🔎 **Recipes library** — search across everything, multi-select filters, and sort; a **🆕 New** tag + filter surfaces recipes you've never cooked (cooked count is zero).
-- ✏️ **In-app recipe editor** — metadata, ingredients, and steps, with per-step ingredient amounts and ingredient **sections** you can drag items between (delete is web-only).
+- ✏️ **In-app recipe editor** — metadata, ingredients, and steps, with per-step ingredient amounts and ingredient **sections** you can drag items between. Set a photo by URL or upload, and **remove it** with the trash button next to the photo (delete-recipe is web-only).
+- 🛒 **Add to grocery, your way** — "Add to grocery" opens a picker so you can add all of a recipe's ingredients or just the ones you're missing. Everything starts checked; pantry staples are marked "likely on hand" so you can uncheck what's already in the cupboard. See [Lists & groceries](/features/lists/).
 - 📋 **Paste-markdown import** — drop in a markdown recipe, and Waffled parses it to fill the editor before you save.
 - 🔀 **Per-recipe overrides** — ingredient substitutions that feed the grocery build, plus per-step and whole-recipe notes.
 - 👨‍🍳 **Cook mode** — step-by-step with the screen kept awake, a recipe overview to jump between steps and ingredients, and **finish → mark cooked**.

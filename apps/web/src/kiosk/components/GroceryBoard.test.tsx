@@ -628,3 +628,51 @@ describe('GroceryBoard By-meal grouping with plates', () => {
     expect(within(section).getByRole('button', { name: /Remove from list/i })).toBeInTheDocument()
   })
 })
+
+describe('GroceryBoard By-store view', () => {
+  // Two spellings of one shop. The section header is uppercased in CSS, so leaving
+  // these unfolded renders two identical-looking "COSTCO" sections.
+  function mockStoreBoard() {
+    globalThis.fetch = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/api/lists/stores')) return ok({ stores: ['Costco'] })
+      if (u.includes('/api/lists/grocery/board')) {
+        return ok({
+          list: { id: 'g', name: 'Grocery', emoji: '🛒', listType: 'grocery', isAutoBuilt: true, sortMode: 'manual', itemCount: 3 },
+          weekStart: '2026-06-07',
+          meals: [],
+          items: [
+            { ...manualItem, id: 's1', name: 'Rotisserie chicken', store: 'Costco' },
+            { ...manualItem, id: 's2', name: 'Paper towels', store: 'costco' },
+            { ...manualItem, id: 's3', name: 'Whole milk', store: 'Walmart' },
+          ],
+          staples: [],
+        })
+      }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+  }
+
+  const storeHeaders = () =>
+    [...document.querySelectorAll('.grocery-section-h')].map((el) => (el.textContent ?? '').replace(/[›\s]+/g, ' ').trim())
+
+  it('folds differently-cased spellings of one store into a single section', async () => {
+    mockStoreBoard()
+    renderBoard()
+    await screen.findByText('Rotisserie chicken')
+    fireEvent.click(screen.getByRole('button', { name: 'By store' }))
+
+    const costco = storeHeaders().filter((h) => /costco/i.test(h))
+    expect(costco).toHaveLength(1)
+    expect(costco[0]).toMatch(/2$/) // and it owns both items
+  })
+
+  it('still separates genuinely different stores', async () => {
+    mockStoreBoard()
+    renderBoard()
+    await screen.findByText('Rotisserie chicken')
+    fireEvent.click(screen.getByRole('button', { name: 'By store' }))
+
+    expect(storeHeaders().filter((h) => /walmart/i.test(h))).toHaveLength(1)
+  })
+})
