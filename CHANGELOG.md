@@ -26,8 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sports-team calendar, or a work calendar published from Outlook into Settings → Calendars
   and its events show up on the family calendar — no sign-in, no OAuth setup, nothing to
   approve. Feeds are read-only, refresh every 15 minutes (with a per-feed Sync button), and
-  can be mapped to a person for color or marked private. This is the plan B when a workplace
-  won't approve calendar access.
+  can be mapped to a person for color or marked private. Feed events are read-only — they
+  mirror someone else's calendar, so Waffled won't pretend an edit will stick; change it at
+  the source, or remove the feed. This is the plan B when a workplace won't approve calendar
+  access.
 - **Share the grocery list to a phone.** A **Share list** button on the grocery board turns
   whatever's still unchecked into a clean aisle-grouped text list — in the order you actually
   walk the store, quantities included — and hands it over by share sheet, clipboard, or a QR

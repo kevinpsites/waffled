@@ -65,6 +65,12 @@ plan B when a workplace won't approve calendar OAuth access.
 - **Person mapping & privacy** — map a feed to a person to color its events, and
   tick the row's **Private** checkbox to keep its events visible only to that
   person (the same family/personal visibility model as synced calendars).
+- **Feed events are read-only.** A feed is a mirror of someone else's calendar and
+  there's no way to write back to it, so Waffled won't let you edit or delete an
+  imported event — the Edit and Delete actions are hidden and the API refuses the
+  change. (Allowing it would be a lie: the next refresh restamps the event from the
+  feed.) Change it at the source, or remove the feed. You *can* still set a local
+  **reminder** on a feed event.
 - **Recurring events** expand like any native series. One known limitation: a
   single moved/edited occurrence in the feed (an ICS `RECURRENCE-ID` exception)
   isn't applied — the base series renders as published.

@@ -412,6 +412,34 @@ describe('ICS calendar feeds', () => {
     expect((await call('PATCH', `/api/calendar/feeds/${feedId}`, wally, { name: 'x' })).statusCode).toBe(403)
   })
 
+  // Feed events are a read-only mirror of someone else's calendar: Waffled has no
+  // way to write back, and the next 15-minute poll would restamp any local edit
+  // (and resurrect any local delete) from the feed. Rejecting the mutation is
+  // honest; silently reverting it 15 minutes later is not. Enforced in the API so
+  // iOS — which gets these rows over PowerSync and has no feed UI — is covered too.
+  it('refuses to edit or delete an event imported from a feed', async () => {
+    const ev = await dbQuery<{ id: string }>(
+      `select id from events where origin = 'ics' and origin_ref_id = $1 and deleted_at is null limit 1`,
+      [feedId]
+    )
+    const eventId = ev[0].id
+
+    const patch = await call('PATCH', `/api/events/${eventId}`, kevin, { title: 'Renamed by hand' })
+    expect(patch.statusCode).toBe(409)
+    expect(JSON.parse(patch.body).error).toBe('ReadOnlyEvent')
+
+    const del = await call('DELETE', `/api/events/${eventId}`, kevin)
+    expect(del.statusCode).toBe(409)
+    expect(JSON.parse(del.body).error).toBe('ReadOnlyEvent')
+
+    // The row is untouched: original title, still live.
+    const after = await dbQuery<{ title: string; deleted_at: Date | null }>(
+      `select title, deleted_at from events where id = $1`, [eventId]
+    )
+    expect(after[0].title).not.toBe('Renamed by hand')
+    expect(after[0].deleted_at).toBeNull()
+  })
+
   it('DELETE soft-deletes the feed and its events', async () => {
     const res = await call('DELETE', `/api/calendar/feeds/${feedId}`, kevin)
     expect(res.statusCode).toBe(204)
