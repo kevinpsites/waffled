@@ -11,7 +11,19 @@ struct MealGroup: Identifiable {
     let meal: WaffledAPI.GroceryBoardDTO.Meal?
     let items: [WaffledAPI.ListItemDTO]
     var unscheduled: WaffledAPI.GroceryBoardDTO.UnscheduledRecipe? = nil
-    var id: String { meal?.id ?? unscheduled.map { "unscheduled|\($0.recipeId)" } ?? "__extras__" }
+    /// A Meal Builder plate whose shopping is on the list but which isn't planned
+    /// this week ("Add plate to list").
+    var unscheduledMeal: WaffledAPI.GroceryBoardDTO.UnscheduledMeal? = nil
+    var id: String {
+        meal?.id
+            ?? unscheduled.map { "unscheduled|\($0.recipeId)" }
+            ?? unscheduledMeal.map { "unscheduledMeal|\($0.mealId)" }
+            ?? "__extras__"
+    }
+    /// A plate that earned a heading but has no rows of its own — everything it wants
+    /// was already claimed by an earlier meal. It says so rather than duplicating the
+    /// rows (one item, one checkbox).
+    var isFullyCovered: Bool { items.isEmpty && (meal?.mealId != nil || unscheduledMeal != nil) }
 }
 
 /// One list's items — works for any list (Grocery included). Tapping the circle
@@ -36,6 +48,9 @@ final class ListDetailModel {
     /// Recipes on the list but not on this week's plan (added straight from a
     /// recipe page) — get their own by-meal sections + dot colors.
     private(set) var unscheduled: [WaffledAPI.GroceryBoardDTO.UnscheduledRecipe] = []
+    /// Meal Builder plates whose shopping is on the list but which aren't planned this
+    /// week ("Add plate to list") — their own by-meal sections + dot colors.
+    private(set) var unscheduledMeals: [WaffledAPI.GroceryBoardDTO.UnscheduledMeal] = []
     /// Pantry staples (assumed in-house, left off the list) — tap to add anyway.
     private(set) var staples: [WaffledAPI.GroceryBoardDTO.Staple] = []
     /// Previously-used store names (durable quick-select), loaded for grocery lists.
@@ -87,26 +102,17 @@ final class ListDetailModel {
     /// "By meal" grouping: each active item under its first matching dinner (by
     /// date), with a trailing "Staples & extras" group for anything meal-less.
     func mealSections() -> [MealGroup] {
-        MealGrouping.sections(items: activeItems, meals: meals, unscheduled: unscheduled)
+        MealGrouping.sections(items: activeItems, meals: meals, unscheduled: unscheduled,
+                              unscheduledMeals: unscheduledMeals)
     }
 
     /// "By store" grouping: each active item under its assigned store (alphabetical),
     /// with unassigned items in a trailing "No store" group. Read-only (no drag).
     func storeSections() -> [ListSectionGroup] { StoreGrouping.sections(items: activeItems) }
 
-    /// One meal-color dot per *distinct recipe* the item belongs to (a recipe planned
-    /// in two slots is the same dot, not two). Unscheduled recipes get dots too.
+    /// One meal-color dot per source that wants this item — see `MealDots.colors`.
     func dotColors(for item: WaffledAPI.ListItemDTO) -> [String] {
-        var seen = Set<String>()
-        var colors: [String] = []
-        for rid in (item.sourceRecipeIds ?? []) where seen.insert(rid).inserted {
-            if let m = meals.first(where: { $0.recipeId == rid }) {
-                colors.append(m.color)
-            } else if let u = unscheduled.first(where: { $0.recipeId == rid }) {
-                colors.append(u.color)
-            }
-        }
-        return colors
+        MealDots.colors(for: item, meals: meals, unscheduledMeals: unscheduledMeals, unscheduled: unscheduled)
     }
 
     /// Settled, checked items — shown in the collapsed Completed section.
@@ -134,6 +140,7 @@ final class ListDetailModel {
                 if !silent || edits == startedAt {
                     meals = board.meals
                     unscheduled = board.unscheduled ?? []
+                    unscheduledMeals = board.unscheduledMeals ?? []
                     staples = board.staples
                     weekStart = board.weekStart
                     items = rows
@@ -296,6 +303,7 @@ final class ListDetailModel {
             let board = try await api.rebuildGrocery(weekStart: weekStart)
             meals = board.meals
             unscheduled = board.unscheduled ?? []
+            unscheduledMeals = board.unscheduledMeals ?? []
             staples = board.staples
             weekStart = board.weekStart
             settling = []
@@ -360,6 +368,17 @@ final class ListDetailModel {
     func removeRecipe(_ recipeId: String) async {
         do {
             try await api.removeRecipeFromGrocery(recipeId: recipeId, weekStart: weekStart.isEmpty ? nil : weekStart)
+            await load()
+        } catch { self.error = true }
+    }
+
+    /// Take a whole Meal Builder plate back off the grocery list (undo "Add plate to
+    /// list"). A row only goes when the plate is its *sole* reason for existing —
+    /// anything the week's own plan still needs survives with the plate's credit
+    /// stripped, so this can't delete shopping someone else put there.
+    func removeMeal(_ mealId: String) async {
+        do {
+            try await api.removeMealFromGrocery(id: mealId, weekStart: weekStart.isEmpty ? nil : weekStart)
             await load()
         } catch { self.error = true }
     }
@@ -706,6 +725,16 @@ struct ListDetailView: View {
                 Section {
                     if !collapsed.contains(group.id) {
                         ForEach(group.items) { item in itemRow(item) }
+                        // A plate whose shopping is entirely covered by an earlier meal
+                        // keeps its heading — otherwise adding it looks like nothing
+                        // happened — but says where its items went rather than
+                        // duplicating them (one item, one checkbox).
+                        if group.isFullyCovered {
+                            Text("Everything this plate needs is already on the list above.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(WF.ink3)
+                                .padding(.vertical, 4)
+                        }
                     }
                 } header: { mealHeader(group) }
             }
@@ -1208,6 +1237,25 @@ struct ListDetailView: View {
                         .font(.system(size: 11, weight: .heavy)).tracking(0.5)
                         .foregroundStyle(WF.ink3)
                         .lineLimit(1)
+                    // A plate is several dishes under one heading — say how many, so
+                    // the row reads as a meal rather than a mysteriously large recipe.
+                    if let n = meal.recipes?.count, n > 0 {
+                        Text("· \(n) dishes")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(WF.ink3.opacity(0.7))
+                    }
+                } else if let plate = group.unscheduledMeal {
+                    let color = Color(hexString: plate.color) ?? WF.ink3
+                    Text("PLATE")
+                        .font(.system(size: 9.5, weight: .heavy)).tracking(0.4)
+                        .foregroundStyle(color)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(color.opacity(0.15))
+                        .clipShape(Capsule())
+                    Text(plate.name.uppercased())
+                        .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                        .foregroundStyle(WF.ink3)
+                        .lineLimit(1)
                 } else if let recipe = group.unscheduled {
                     let color = Color(hexString: recipe.color) ?? WF.ink3
                     Text("UNSCHEDULED")
@@ -1230,12 +1278,19 @@ struct ListDetailView: View {
                     .font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             }
         }
-        // Long-press an Unscheduled recipe's header to take it back off the list.
+        // Long-press an Unscheduled recipe's or plate's header to take it back off the
+        // list. Those rows are source='recipe', which the weekly rebuild deliberately
+        // never wipes — so this is the ONLY way they come off.
         .contextMenu {
             if let recipe = group.unscheduled {
                 Button(role: .destructive) {
                     Task { await model.removeRecipe(recipe.recipeId) }
                 } label: { Label("Remove from list", systemImage: "trash") }
+            }
+            if let plate = group.unscheduledMeal {
+                Button(role: .destructive) {
+                    Task { await model.removeMeal(plate.mealId) }
+                } label: { Label("Remove plate from list", systemImage: "trash") }
             }
         }
     }
