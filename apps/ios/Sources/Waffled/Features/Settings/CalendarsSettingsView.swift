@@ -44,7 +44,8 @@ struct CalendarsSettingsView: View {
     @State private var status: WaffledAPI.CalendarStatus?
     @State private var loading = true
     @State private var syncing = false
-    @State private var connecting = false
+    /// Which provider's consent flow is in flight (nil = none).
+    @State private var connecting: CalendarProvider?
     @State private var message: String?
     @State private var launcher = OAuthLauncher()
     // filters (web parity)
@@ -62,8 +63,8 @@ struct CalendarsSettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 countdownsSection
                 if let status {
-                    if !status.configured {
-                        notice("Google Calendar isn’t set up on this server yet.")
+                    if providers.isEmpty {
+                        notice("No calendar accounts can be connected — this server has no Google or Outlook credentials set up.")
                     } else if !status.connected {
                         connectCard
                     } else {
@@ -204,30 +205,50 @@ struct CalendarsSettingsView: View {
 
     // MARK: connect
 
+    /// Whichever providers this server actually holds credentials for.
+    private var providers: [CalendarProvider] {
+        CalendarProvider.offered(googleConfigured: status?.configured ?? false,
+                                 microsoftConfigured: status?.microsoftConfigured ?? false)
+    }
+
     private var connectCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Connect a Google account").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
-            Text("Bring your family’s Google calendars into Waffled — you’ll pick which ones sync and who each belongs to.")
+            Text("Connect a calendar account").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
+            Text("Bring your family’s calendars into Waffled — you’ll pick which ones sync and who each belongs to.")
                 .font(.system(size: 13)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
-            connectButton
+            connectButtons
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
-    private var connectMore: some View { connectButton }
+    private var connectMore: some View { connectButtons }
 
-    private var connectButton: some View {
-        Button { Task { await connect() } } label: {
+    /// One button per configured provider. The first is the filled primary; any
+    /// others are outlined, so a two-provider server doesn't read as two equal calls
+    /// to action stacked on each other.
+    private var connectButtons: some View {
+        VStack(spacing: 8) {
+            ForEach(Array(providers.enumerated()), id: \.element) { idx, p in
+                connectButton(p, prominent: idx == 0)
+            }
+        }
+    }
+
+    private func connectButton(_ provider: CalendarProvider, prominent: Bool) -> some View {
+        Button { Task { await connect(provider) } } label: {
             HStack(spacing: 7) {
                 Image(systemName: "link").font(.system(size: 13, weight: .bold))
-                Text(connecting ? "Connecting…" : "Connect Google Calendar").font(.system(size: 14, weight: .bold))
+                Text(connecting == provider ? "Connecting…" : provider.connectTitle)
+                    .font(.system(size: 14, weight: .bold))
             }
-            .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 12)
-            .background(WF.primary).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .foregroundStyle(prominent ? Color.white : WF.ink)
+            .frame(maxWidth: .infinity).padding(.vertical, 12)
+            .background(prominent ? AnyShapeStyle(WF.primary) : AnyShapeStyle(WF.panel))
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
-        .buttonStyle(.plain).disabled(connecting)
+        .buttonStyle(.plain).disabled(connecting != nil)
     }
 
     // MARK: an account
@@ -242,8 +263,11 @@ struct CalendarsSettingsView: View {
                 Image(systemName: "link").font(.system(size: 15)).foregroundStyle(WF.ai)
                     .frame(width: 30, height: 30).background(WF.panel).clipShape(Circle())
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(acct.email ?? "Google account").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
-                    Text("\(synced) of \(all.count) syncing · connected \(shortDay(acct.connectedAt))")
+                    Text(acct.email ?? CalendarProvider.accountLabel(for: acct.provider))
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
+                    // Name the provider on every row — with both Google and Outlook
+                    // connectable, an email alone doesn't say which service it is.
+                    Text("\(CalendarProvider.accountLabel(for: acct.provider)) · \(synced) of \(all.count) syncing · connected \(shortDay(acct.connectedAt))")
                         .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
@@ -411,16 +435,17 @@ struct CalendarsSettingsView: View {
         await load()
     }
 
-    private func connect() async {
-        connecting = true; message = nil
-        defer { connecting = false }
+    private func connect(_ provider: CalendarProvider) async {
+        connecting = provider; message = nil
+        defer { connecting = nil }
         do {
-            let urlStr = try await api.connectCalendarURL(redirectTo: "waffled://calendar-connected")
+            let urlStr = try await api.connectCalendarURL(provider: provider,
+                                                          redirectTo: "waffled://calendar-connected")
             guard let url = URL(string: urlStr) else { return }
             let ok = await launcher.start(url: url, scheme: "waffled")
             if ok { await load() }
         } catch {
-            message = "Couldn’t start the Google connection."
+            message = "Couldn’t start the \(provider.label) connection."
         }
     }
 

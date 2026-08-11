@@ -1197,10 +1197,49 @@ struct WaffledAPI: Sendable {
         let accounts: [Account]
         let calendars: [Cal]
 
+        // `microsoftConfigured` and `feeds` arrived with multi-provider calendars and
+        // ICS subscriptions. A server older than the app omits them entirely, so they
+        // decode through optional storage and read as "off"/"none" rather than
+        // throwing keyNotFound — a decode failure here reads to the user as
+        // "couldn't reach server", which is a very misleading way to say
+        // "your server is a version behind".
+        private let microsoftConfiguredRaw: Bool?
+        private let feedsRaw: [Feed]?
+        /// Does the server hold Outlook / Microsoft 365 credentials? Gates the
+        /// "Connect Outlook" button — Google and Microsoft are configured separately.
+        var microsoftConfigured: Bool { microsoftConfiguredRaw ?? false }
+        /// ICS subscriptions. Not OAuth accounts: they need no provider config, so
+        /// they show even when neither Google nor Microsoft is set up.
+        var feeds: [Feed] { feedsRaw ?? [] }
+
+        enum CodingKeys: String, CodingKey {
+            case configured, connected, accounts, calendars
+            case microsoftConfiguredRaw = "microsoftConfigured"
+            case feedsRaw = "feeds"
+        }
+
         struct Account: Decodable, Identifiable, Hashable, Sendable {
             let id: String
             let email: String?
             let connectedAt: String
+            /// 'google' | 'microsoft'. Absent on pre-multi-provider servers, where
+            /// every account was necessarily Google.
+            let provider: String?
+        }
+
+        /// One subscribed ICS feed (a URL Waffled polls). Read-only by nature — the
+        /// events it imports are somebody else's calendar.
+        struct Feed: Decodable, Identifiable, Hashable, Sendable {
+            let id: String
+            let url: String
+            /// The household's label for it; nil means fall back to the URL's host.
+            let name: String?
+            let personId, personName, personColor: String?
+            let visibility: String   // 'family' (shared kiosk) | 'personal' (owner-only)
+            let lastSyncedAt: String?
+            /// Why the last poll failed (e.g. "404 Not Found"); nil when healthy.
+            let lastError: String?
+            let createdAt: String
         }
         struct Cal: Decodable, Identifiable, Hashable, Sendable {
             let id, accountId: String
@@ -1242,11 +1281,12 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/calendar/sync", body: body, as: CalendarSyncResult.self)
     }
     /// Begin connecting a Google account — returns the consent URL to open.
-    func connectCalendarURL(redirectTo: String) async throws -> String {
+    func connectCalendarURL(provider: CalendarProvider = .google, redirectTo: String) async throws -> String {
         struct Resp: Decodable { let url: String }
-        return try await sendReturning("POST", "/api/calendar/google/connect",
+        return try await sendReturning("POST", provider.connectPath,
                                        body: ["redirectTo": .string(redirectTo)], as: Resp.self).url
     }
+
 
     // MARK: - Settings: AI & capture
 
