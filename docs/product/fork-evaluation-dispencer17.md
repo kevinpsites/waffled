@@ -222,13 +222,15 @@ and it fixes a failure mode we have no defence against today.
 
 ## 8. Note for whoever merges upstream into the fork later
 
-The ported migrations are **renumbered** into upstream's sequence — `0091_calendar_provider.sql`
-and `0092_ics_feeds.sql` — rather than keeping the fork's `0100`/`0102`. `apps/api/CLAUDE.md`
+The ported migrations are **renumbered** into upstream's sequence — `0093_calendar_provider.sql`
+and `0094_ics_feeds.sql` — rather than keeping the fork's `0100`/`0102`. `apps/api/CLAUDE.md`
 says to take the next free number, and a 0091–0099 gap in upstream would be a wart for every
-self-hoster to serve one downstream fork.
+self-hoster to serve one downstream fork. (They started at 0091/0092 and were renumbered again
+after merging `main`, which landed the meal-builder's 0091/0092 in the meantime — exactly the
+"renumber yours" case `apps/api/CLAUDE.md` calls out.)
 
 That does mean the fork will end up carrying **two** migrations for each feature (its `0100`
-and upstream's `0091`). To keep that harmless, both ported migrations are written
+and upstream's `0093`). To keep that harmless, both ported migrations are written
 **idempotently** — `add column if not exists`, `create table if not exists`,
 `create index if not exists`, and a `pg_constraint` guard around the uniqueness constraint —
 so applying the second one after the first is a no-op instead of an error. Resolve the merge
