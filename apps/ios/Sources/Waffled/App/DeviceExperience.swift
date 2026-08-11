@@ -8,6 +8,8 @@ import UIKit
 /// family *display / kiosk* (a wall- or counter-mounted hub viewed from across the
 /// room). So we branch on `userInterfaceIdiom`, not size class — see
 /// `apps/ios/IPAD_ROADMAP.md`.
+// TEMPORARY: comment-only touch to verify the Xcode Cloud pull-request start
+// condition fires on apps/ios changes. This PR is a throwaway — do not merge.
 enum DeviceExperience {
     /// iPhone — the existing planner with the bottom tab bar + capture FAB.
     case planner
