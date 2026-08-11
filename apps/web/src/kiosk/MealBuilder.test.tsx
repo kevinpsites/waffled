@@ -1020,3 +1020,50 @@ describe('MealBuilder — what the library segments actually filter on', () => {
   })
 })
 
+
+// A write that fails must say so. Three of these callers paint the change locally
+// BEFORE the request, so silence isn't merely unhelpful — the screen goes on showing
+// a value the server rejected until you reload.
+describe('MealBuilder — when a write fails', () => {
+  function failWrites(methods: string[]) {
+    const real = globalThis.fetch
+    globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+      const method = init?.method ?? 'GET'
+      if (methods.includes(method)) return { ok: false, status: 500, json: async () => ({ error: 'Boom' }) }
+      return (real as unknown as (u: string, i?: unknown) => Promise<unknown>)(url, init)
+    }) as unknown as typeof fetch
+  }
+
+  it('tells you, and puts the servings back', async () => {
+    server.plate = plate({ servings: 2, recipes: [] })
+    renderBuilder()
+    await waitFor(() => expect(screen.getByTestId('mb-serves')).toHaveTextContent('2'))
+    failWrites(['PATCH'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'More servings' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/couldn’t save/i)
+    await waitFor(() => expect(screen.getByTestId('mb-serves')).toHaveTextContent('2'))
+  })
+
+  it('puts the library toggle back', async () => {
+    server.plate = plate({ name: 'BBQ Sunday', isSaved: false, recipes: [] })
+    renderBuilder()
+    const toggle = await screen.findByRole('switch', { name: /Keep .*BBQ Sunday.* in your library/ })
+    failWrites(['PATCH'])
+
+    fireEvent.click(toggle)
+    expect(await screen.findByRole('status')).toHaveTextContent(/couldn’t save/i)
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'false'))
+  })
+
+  it('tells you when a dish could not be added', async () => {
+    server.plate = plate({ recipes: [] })
+    server.recipes = [recipe({ id: 'r1', title: 'Roast Chicken' })]
+    renderBuilder()
+    const row = await screen.findByText('Roast Chicken')
+    failWrites(['POST'])
+
+    fireEvent.click(within(row.closest('.mb-lib-row') as HTMLElement).getByRole('button', { name: /Add Roast Chicken/ }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/couldn’t save/i)
+  })
+})

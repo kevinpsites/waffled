@@ -101,8 +101,13 @@ export function MealBuilder() {
   // Run a write against the plate (creating it first if this is a fresh one),
   // repaint from the response, and only then adopt the new URL — so the refetch
   // the id change triggers can't hand back a pre-write plate.
+  // `rollback` restores whatever the caller painted BEFORE the request. For the
+  // read-only callers (add/remove/re-role a dish) there's nothing to undo — the plate
+  // is still whatever the server last said — but servings, the library toggle and the
+  // name all update locally first, so without this the screen kept showing a value
+  // the server had rejected, silently, until a reload.
   const run = useCallback(
-    async (fn: (mealId: string) => Promise<Meal>) => {
+    async (fn: (mealId: string) => Promise<Meal>, rollback?: () => void) => {
       setBusy(true)
       try {
         const mealId = await ensureId()
@@ -114,7 +119,8 @@ export function MealBuilder() {
           navigate(`/meals/build/${mealId}`, { replace: true })
         }
       } catch {
-        /* leave the UI as it was — the plate is still whatever the server last said */
+        rollback?.()
+        setToast({ text: 'Couldn’t save that — check your connection and try again.' })
       } finally {
         setBusy(false)
       }
@@ -129,7 +135,13 @@ export function MealBuilder() {
     const t = setTimeout(() => {
       const next = name.trim()
       if (!next || (meal && meal.name === next)) return
-      void run((mealId) => mealBuilderApi.update(mealId, { name: next }))
+      // Restoring the name re-runs this effect, but by then `name` matches the
+      // plate's own again, so the guard above returns before firing a second PATCH.
+      const prev = meal?.name ?? ''
+      void run(
+        (mealId) => mealBuilderApi.update(mealId, { name: next }),
+        () => setName(prev),
+      )
     }, 600)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -158,16 +170,24 @@ export function MealBuilder() {
   function changeServings(next: number) {
     const n = Math.max(1, next)
     if (n === servings) return
+    const prev = servings
     setServings(n)
     // On a plate that doesn't exist yet this just rides along on the lazy create
     // — no point creating a meal because someone tapped the stepper.
     if (!idRef.current) return
-    void run((mealId) => mealBuilderApi.update(mealId, { servings: n }))
+    void run(
+      (mealId) => mealBuilderApi.update(mealId, { servings: n }),
+      () => setServings(prev),
+    )
   }
   function toggleSaved() {
     const next = !isSaved
+    const prev = isSaved
     setIsSaved(next)
-    void run((mealId) => mealBuilderApi.update(mealId, { isSaved: next }))
+    void run(
+      (mealId) => mealBuilderApi.update(mealId, { isSaved: next }),
+      () => setIsSaved(prev),
+    )
   }
 
   async function addToList() {
