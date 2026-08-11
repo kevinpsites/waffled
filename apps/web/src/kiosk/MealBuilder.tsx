@@ -46,15 +46,20 @@ export function MealBuilder() {
   const [name, setName] = useState('')
   const [servings, setServings] = useState(4)
   const [isSaved, setIsSaved] = useState(false)
+  // Adopt a newly-loaded plate's own values DURING render rather than in an effect.
+  // As an effect this landed a paint late: the bar rendered the placeholder 4 first
+  // and only then snapped to the plate's real number. That window is not just
+  // cosmetic — a stepper tap inside it was applied to 4 (giving 5) and then thrown
+  // away when the sync overwrote it, so the tap silently did nothing. Guarded on the
+  // id so it re-syncs only when a *different* plate loads; this is React's documented
+  // way to adjust state when the data it derives from changes.
   const syncedRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (meal && syncedRef.current !== meal.id) {
-      syncedRef.current = meal.id
-      setName(meal.name)
-      setServings(meal.servings)
-      setIsSaved(meal.isSaved)
-    }
-  }, [meal])
+  if (meal && syncedRef.current !== meal.id) {
+    syncedRef.current = meal.id
+    setName(meal.name)
+    setServings(meal.servings)
+    setIsSaved(meal.isSaved)
+  }
 
   const [addingRole, setAddingRole] = useState<PlateRole | null>(null)
   const [scheduling, setScheduling] = useState(false)

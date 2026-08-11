@@ -859,9 +859,11 @@ describe('MealBuilder — the drop target speaks both drag dialects', () => {
     await screen.findByText('Coleslaw')
 
     const dt = { ...dataTransfer(), effectAllowed: 'copy' }
-    const row = within(document.querySelector('.mb-lib') as HTMLElement)
-      .getByText('Roast Chicken')
-      .closest('.mb-lib-row') as HTMLElement
+    // The library is a SEPARATE fetch from the plate, so waiting for a dish above
+    // says nothing about whether the recipe list has arrived — await it on its own.
+    const row = (
+      await within(document.querySelector('.mb-lib') as HTMLElement).findByText('Roast Chicken')
+    ).closest('.mb-lib-row') as HTMLElement
     fireEvent.dragStart(row, { dataTransfer: dt })
     fireEvent.dragOver(group('Main'), { dataTransfer: dt })
     fireEvent.drop(group('Main'), { dataTransfer: dt })
