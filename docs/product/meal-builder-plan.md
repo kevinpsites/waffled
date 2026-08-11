@@ -1,6 +1,6 @@
 # Meal Builder — plan
 
-Status: **PR1 (server + web) done** — PR2 (iOS parity) outstanding
+Status: **done** — PR1 (server + web) and PR2 (iOS parity) both landed
 Design source: Claude Design project “Waffled” → `Meal Builder - Prototype.html`, plus an
 iPhone mock (builder + meal detail) supplied 2026-07-23.
 
@@ -305,13 +305,49 @@ Worth remembering: each one had passing tests around it.
       siblings in the same feature were already batched.
 - [x] Stale status line in this file; dead `mealBuilderApi.remove` with no caller.
 
-### PR2 — iOS
-- [ ] Builder (tap-to-add) on iPhone + iPad
-- [ ] Meal detail with per-recipe Cook
-- [ ] Unified recipe/meal library + search
-- [ ] Multi-recipe Cook Mode + timer re-keying
-- [ ] Grocery + calendar parity
-- [ ] Both view trees checked: `TodayView` (iPhone) and `KioskDashboard` (iPad)
+### PR2 — iOS — **done**
+- [x] Builder (tap-to-add) on iPhone + iPad
+- [x] Meal detail with per-recipe Cook
+- [x] Unified recipe/meal library + search
+- [x] Multi-recipe Cook Mode + timer re-keying
+- [x] Grocery + calendar parity
+- [x] Both view trees checked: `TodayView` (iPhone) and `KioskDashboard` (iPad)
+
+**Calendar needed no iOS change**, which is worth recording so nobody goes looking for
+it: the server already writes the plate's name into the event title and every dish into
+its description, and iOS renders synced events as-is. The iOS `events` mirror carries no
+recipe or meal linkage at all (see `SyncSchema.swift`), so "tap a meal event → open the
+plate" would be new plumbing from the sync schema up, not a parity gap. It isn't in
+scope for v1.
+
+### Found while building the iOS parity — fixed
+Each of these was a *client-side* re-derivation of "what is in this slot" that predated
+plates, so none of them could have been caught by the server tests.
+
+- [x] **A dragged plate lost its dishes.** `POST /api/meals/plan` — what every planner
+      drag writes through — could only express "a recipe or free text", and the client's
+      `moved(to:slot:)` rebuilt the relocated entry from the recipe fields alone. Between
+      them, dragging a four-dish plate to another night left a bare title in a slot that
+      pointed at nothing. The web planner has no drag, so PR1 never met this.
+- [x] **The grocery "By meal" view dropped plates entirely.** Grouping matched on
+      `recipeId` and skipped rows without one; a plate's items are tagged with its
+      *dishes'* ids. Off-plan plates now get their own section (and can be taken back
+      off from it), a fully-covered plate keeps its heading, and the provenance dots
+      draw one dot per *source* rather than per recipe id.
+- [x] **Tonight's card had nothing to offer on a plate night** — no View, no Cook —
+      because it decided everything from `recipeId`. Both Today trees read one
+      `TonightMeal`, so the iPhone and iPad cards were fixed together.
+- [x] **The eating-out heuristics swallowed plates.** They fire on a recipe-less night
+      whose title reads like takeout, and a plate is recipe-less too — so a plate named
+      "Takeout Night" was drawn as an eating-out night on the Today card and in the
+      month grid, with four dishes to cook.
+- [x] **Four surfaces' taps were dead on a plate** (week grid, month grid, Tonight card,
+      grocery recap). They push a placeholder plate and the detail reloads it by id —
+      the same trick `RecipeSummary.placeholder` already played for recipes.
+- [x] **The recipe on-hand banner counted staples, not the pantry** — the latent bug
+      decision 5 called out, still live on iOS after PR1 fixed the web one. An empty
+      pantry reported "4 of 9 on hand". With the pantry module off it now makes no
+      on-hand claim at all, rather than a misleading "0 of 9".
 
 ## Execution strategy — fan-out and integration
 

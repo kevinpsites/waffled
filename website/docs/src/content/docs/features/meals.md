@@ -87,7 +87,9 @@ the actual names — same on the recipe screen. With the [Pantry](/features/pant
 on, those are specifically the ingredients your pantry doesn't already cover; with it off,
 it's everything non-staple.
 
-Meal Builder is web-only today; iPhone and iPad parity is next.
+Meal Builder works on web, iPhone and iPad. One deliberate difference: web and iPad
+compose a plate by **dragging** recipes between roles, while iPhone (and iPad, if you'd
+rather tap) uses a **＋ Add a side** button that opens the recipe and meal picker.
 
 ## Recipe markdown & timers
 

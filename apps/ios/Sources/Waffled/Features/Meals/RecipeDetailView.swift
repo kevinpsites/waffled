@@ -147,9 +147,9 @@ struct RecipeDetailView: View {
             RecipeShareSheet(items: [payload.url])
         }
         .sheet(isPresented: $scheduling) {
-            RecipeScheduleSheet(title: r.title, recipeId: recipe.id) { label in
+            RecipeScheduleSheet(title: r.title, recipeId: recipe.id, onScheduled: { label in
                 withAnimation { cookedMessage = "Scheduled for \(label)." }
-            }
+            })
             .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $pickingGrocery) {

@@ -88,15 +88,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   weekly rebuild), **assign a store to an item + a By-store board view** (free-text
   quick-select over your previously-used stores), and **"Unscheduled" sections + week-rail
   rows** for off-plan recipes in the grocery board's by-meal view.
-- **Meal Builder (web)** — build one meal out of several recipes and treat it as one
-  thing: name a plate, drag recipes in under Main / Sides / Dessert, meal-level servings,
+- **Meal Builder** — build one meal out of several recipes and treat it as one
+  thing: name a plate, add recipes under Main / Sides / Dessert, meal-level servings,
   **a cook per dish**, and an optional "keep in library" that makes it reusable (saved
   meals are first-class in the recipe library, with a `Meal · N` badge, a 🍽️ Meals filter
   and search across the plate name *and* its dish titles). Schedule it to a night (one
   slot, one calendar event, feeds the weekly grocery rebuild) **or** put just its shopping
   on the list without scheduling — and take that back off again. The grocery board groups
   a plate's items under the plate; cook mode takes the whole plate, tabbed across its
-  dishes with one shared timer dock. **iPhone/iPad parity is the next piece of work.**
+  dishes with one shared timer dock. Shipped on web, iPhone and iPad — composing is
+  drag-and-drop on web/iPad and tap-to-add on iPhone (decision 8).
 - **Meals & recipes** — week/month planners, recipe library, in-app editor (with
   **ingredient sections** + dividers and cross-section drag-drop), paste-markdown
   import **and share-as-markdown export** (a Share action compiles a recipe to the
