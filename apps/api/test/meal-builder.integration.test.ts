@@ -860,6 +860,23 @@ describe('re-planning a slot with a plate', () => {
     )
   })
 
+  it('names the calendar event after the plate, with its dishes', async () => {
+    await call('POST', '/api/meals/plan', kevin, { date: '2026-07-24', mealType: 'dinner', mealId: plate })
+    const ev = await withClient((c) =>
+      c.query<{ title: string; description: string | null }>(
+        `select e.title, e.description
+           from events e
+           join meal_plan_entries mpe on mpe.event_id = e.id
+          where mpe.household_id = $1 and mpe.date = '2026-07-24' and mpe.meal_type = 'dinner'`,
+        [householdId]
+      )
+    )
+    // The slot has no recipe, so an event built from `recipe_id` alone would be a bare
+    // "Dinner" with nothing in it.
+    expect(ev.rows[0]?.title).toContain('Moving day')
+    expect(ev.rows[0]?.description ?? '').toContain('BBQ Chicken')
+  })
+
   it('swaps a plate slot back to an ordinary recipe', async () => {
     await call('POST', '/api/meals/plan', kevin, { date: '2026-07-21', mealType: 'dinner', mealId: plate })
     const res = await call('POST', '/api/meals/plan', kevin, {
