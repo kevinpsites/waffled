@@ -84,6 +84,14 @@ noise is near-Gaussian and peaks at ~5.5x its own RMS, so matching the others' l
 would drive its crests into the clamp. `white`, being barely-filtered uniform noise, has a
 crest factor of about 2 and can sit much hotter for the same peak.
 
+⚠️ **`heartbeat` is the recipe most at risk from the real speaker, and it will look like a
+bug.** Its thumps are 52 Hz and 44 Hz fundamentals, and D5's 30×20 mm cavity driver has
+almost no output down there — so the most likely outcome of the first hardware test is that
+heartbeat plays and *nothing audible comes out*. That is a speaker limit, not broken
+plumbing. The fix is a synthesis change (raise the fundamental, or add harmonics at 2x/3x
+so the pitch is inferred from overtones the driver can actually move), and it can only be
+judged on hardware.
+
 Drawing the phase boundary here is the whole point of the plan. Synthesis-only kills, in
 one stroke: the audio **licensing** question (no CC-BY assets in an AGPL repo), the
 **storage** question, the **download/cache-invalidation** question, and the
@@ -206,6 +214,18 @@ Two caveats when listening. Laptop speakers and headphones are far better than t
 driver, so the preview flatters every recipe — `white` and `rain` will lose most of their
 top end on the real speaker. And the final judgement has to happen on the device anyway
 (§7).
+
+**If something sounds wrong, these are the knobs** (all in `wb_synth.cpp`, all one-liners —
+re-run `--measure` afterwards, since changing a recipe changes its level):
+
+| Complaint | Knob |
+| --- | --- |
+| Rain sounds like a shaker or wind chime, not rain | Droplets are pure decaying sines firing ~30x/sec. Widen the `dropWait` range (`250u + rng % 900u`), drop the pitch range (`600 + 1800 Hz`), or lengthen the `0.028f` decay so each droplet is less tick-like |
+| The fan whines instead of rumbling | The hum is a single 118 Hz sine at `0.035f`. Lower the amplitude, or detune/soften it — one pure sine reads as electronic |
+| The fan is muddy / not fan-like | The three cascaded `lpCoeff(420.0f)` poles set the rumble; raise for more air, lower for more distant |
+| White noise is harsh | Lower the `lpCoeff(6000.0f)` shelf |
+| Ocean surges too fast or too evenly | Swell rate `0.14f` Hz and the `0.22f + 0.78f * u * u` shape — the square is what sharpens the crest |
+| Heartbeat is inaudible on hardware | Expected — see the ⚠️ note in §3.2 |
 
 ## 4. Phase 1 — the sound machine, synthesised
 
@@ -366,6 +386,12 @@ both parent surfaces and a parse on the device.
 1. Fade the sound machine down (~400 ms) — pause, not stop.
 2. Play the tone at `alarm.volume` for **20 seconds**.
 3. Fade the tone out, then fade the sound machine back in where it left off.
+
+**Only if it was actually playing at alarm time.** That's the minority case, not the
+default: the sleep timer caps at 120 minutes, so a kid who went to bed at 8pm with a
+60-minute timer has had silence since 9pm and there is nothing to resume. If nothing was
+playing, the tone plays alone and the device returns to silence — the alarm must never
+*start* the sound machine.
 
 Two things this deliberately is not. It is **not** ducking — the tone doesn't compete with
 white noise underneath it, which is the whole reason an alarm over a sound machine goes

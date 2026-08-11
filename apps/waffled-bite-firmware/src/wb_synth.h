@@ -32,8 +32,11 @@ enum class WbSound
   Heartbeat, // "heartbeat" — two enveloped low sine thumps at ~60 bpm
 };
 
-// Maps a sound key as it arrives from the server (`settings.sound.tone`) onto
-// a synthesisable sound. Returns false — leaving *out untouched — for the
+// Maps a sound key onto a synthesisable sound. Mind the naming: the key
+// arrives on the wire as `settings.sound.sound` (yes, nested under its own
+// name) and `wb_state_from_json` copies it into `WbSoundSettings.tone`, so
+// the JSON key and the C field disagree — feed this the struct's `.tone`.
+// Returns false — leaving *out untouched — for the
 // phase-2 sampled sounds and for anything unrecognised, so a server that
 // learns a new sound before the firmware does simply stays silent rather than
 // playing something wrong.
