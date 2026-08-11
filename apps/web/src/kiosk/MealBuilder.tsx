@@ -80,6 +80,8 @@ export function MealBuilder() {
   nameRef.current = name
   const servingsRef = useRef(servings)
   servingsRef.current = servings
+  // Which write is the newest — see run().
+  const seqRef = useRef(0)
 
   const ensureId = useCallback(async (): Promise<string> => {
     if (idRef.current) return idRef.current
@@ -108,10 +110,17 @@ export function MealBuilder() {
   // the server had rejected, silently, until a reload.
   const run = useCallback(
     async (fn: (mealId: string) => Promise<Meal>, rollback?: () => void) => {
+      const seq = ++seqRef.current
       setBusy(true)
       try {
         const mealId = await ensureId()
         const updated = await fn(mealId)
+        // Every write answers with the WHOLE plate, true as of its own commit. If a
+        // newer write has gone out since, this snapshot predates it — repainting
+        // would drop a dish that was added after it (or resurrect one removed), and
+        // it does not self-heal: useMeal only refetches on an id change, so the
+        // stale paint survives until the next mutation or a reload.
+        if (seq !== seqRef.current) return
         set(updated)
         if (idStateRef.current !== mealId) {
           idStateRef.current = mealId
@@ -119,10 +128,13 @@ export function MealBuilder() {
           navigate(`/meals/build/${mealId}`, { replace: true })
         }
       } catch {
+        // Deliberately NOT gated on `seq`: a write that failed still failed, and
+        // staying quiet about it because something else went out afterwards is how
+        // finding 3 happened in the first place.
         rollback?.()
         setToast({ text: 'Couldn’t save that — check your connection and try again.' })
       } finally {
-        setBusy(false)
+        if (seq === seqRef.current) setBusy(false)
       }
     },
     [ensureId, navigate, set],

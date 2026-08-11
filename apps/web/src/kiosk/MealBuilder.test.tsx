@@ -1067,3 +1067,42 @@ describe('MealBuilder — when a write fails', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(/couldn’t save/i)
   })
 })
+
+// Every mutation returns the WHOLE plate and run() repaints from it. Two writes in
+// flight at once means two snapshots, each true as of its own commit — and the one
+// that lands last wins, whether or not it is the newest.
+describe('MealBuilder — two writes in flight', () => {
+  it('ignores a stale snapshot that lands after a newer one', async () => {
+    server.plate = plate({ recipes: [] })
+    server.recipes = [recipe({ id: 'r1', title: 'Roast Chicken' }), recipe({ id: 'r2', title: 'Green Beans' })]
+
+    // The FIRST add commits first but its response is delayed, so it arrives after
+    // the second — ordinary network jitter, no server bug required.
+    const real = globalThis.fetch as unknown as (u: string, i?: unknown) => Promise<{ json: () => Promise<unknown> }>
+    let delayedFirst = false
+    globalThis.fetch = vi.fn(async (url: string, init?: { method?: string }) => {
+      const isAdd = /\/recipes$/.test(String(url)) && (init?.method ?? 'GET') === 'POST'
+      if (isAdd && !delayedFirst) {
+        delayedFirst = true
+        const res = await real(String(url), init)
+        const snapshot = await res.json()
+        await new Promise((r) => setTimeout(r, 120))
+        return { ok: true, json: async () => snapshot }
+      }
+      return real(String(url), init)
+    }) as unknown as typeof fetch
+
+    renderBuilder()
+    await screen.findByText('Roast Chicken')
+    const add = (title: string) =>
+      fireEvent.click(within(screen.getAllByText(title)[0].closest('.mb-lib-row') as HTMLElement).getByRole('button', { name: `Add ${title}` }))
+
+    add('Roast Chicken')
+    add('Green Beans')
+
+    await waitFor(() => expect(within(plateEl()).queryByText('Green Beans')).toBeInTheDocument())
+    // …and it is still there once the older response has landed.
+    await new Promise((r) => setTimeout(r, 200))
+    expect(within(plateEl()).queryByText('Green Beans')).toBeInTheDocument()
+  })
+})
