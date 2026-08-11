@@ -10,8 +10,14 @@ struct CookTimer: Identifiable, Equatable {
     let id = UUID()
     /// Notification identifier so we can cancel/replace the matching local alarm.
     let notifId: String
-    let label: String          // "Step N"
-    let stepIndex: Int         // where "Jump to step" lands
+    /// Which dish (recipe id) this timer belongs to. A plate cooks several dishes at
+    /// once, so "step 3" on its own names nothing — a timer is keyed by (dish, step).
+    let dishId: String
+    /// The dish's name, on a plate. nil ⇒ one recipe cooked alone, where repeating its
+    /// title in every timer label would just be noise.
+    let dishTitle: String?
+    let stepIndex: Int         // where "Jump to step" lands, *within that dish*
+    let stepNumber: Int        // the step's own number, as printed ("Step 3")
     let total: Int             // seconds, for +1:00 / restart math
     var fireAt: Date           // absolute instant it hits zero
     var running: Bool          // false = paused
@@ -31,8 +37,20 @@ struct CookTimer: Identifiable, Equatable {
         return String(format: "%d:%02d", s / 60, s % 60)
     }
 
-    /// A self-describing name combining the step and this timer's duration —
-    /// e.g. "Step 5 · 3-minute timer". Several timers can ring at once
+    /// What a timer is really identified by: (dish, step). Step 3 of the main and step 3
+    /// of the side are two different timers, on two different pans.
+    struct Key: Hashable { let dishId: String; let stepIndex: Int }
+    var key: Key { Key(dishId: dishId, stepIndex: stepIndex) }
+
+    /// The short form, for buttons — "Step 3".
+    var stepLabel: String { "Step \(stepNumber)" }
+
+    /// Dish-qualified on a plate — "Potato Salad · Step 2" — so the dock and the lock
+    /// screen say which dish is beeping; the bare step alone when cooking one recipe.
+    var label: String { dishTitle.map { "\($0) · \(stepLabel)" } ?? stepLabel }
+
+    /// A self-describing name combining the dish, the step and this timer's duration —
+    /// e.g. "Potato Salad · Step 5 · 3-minute timer". Several timers can ring at once
     /// (`firingTimer = timers.first { $0.firing }`), so both the in-app alarm and
     /// the background notification use this to say *which* timer is up.
     var displayName: String {
@@ -68,9 +86,11 @@ struct CookModeView: View {
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     // Session data + timer state, read from the store.
-    private var title: String { store.recipe?.title ?? "" }
-    private var steps: [WaffledAPI.RecipeStepDTO] { store.recipe?.steps ?? [] }
-    private var ingredients: [WaffledAPI.RecipeIngredientDTO] { store.recipe?.ingredients ?? [] }
+    private var title: String { store.title }
+    // The dish on screen. On a plate these follow the selected tab; each dish keeps its
+    // own step position, so switching back and forth loses nobody's place.
+    private var steps: [WaffledAPI.RecipeStepDTO] { store.steps }
+    private var ingredients: [WaffledAPI.RecipeIngredientDTO] { store.ingredients }
     private var alarm: TimerAlarm { store.alarm }
 
     private var step: WaffledAPI.RecipeStepDTO? { steps.indices.contains(store.index) ? steps[store.index] : nil }
@@ -295,7 +315,10 @@ struct CookModeView: View {
                             HStack(spacing: 12) {
                                 Image(systemName: "timer").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.primaryD)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(t.label).font(.system(size: 11, weight: .heavy)).tracking(0.6).foregroundStyle(WF.ink2)
+                                    // Dish-qualified on a plate ("Potato Salad · Step 2"),
+                                    // so the dock names what's beeping across every dish.
+                                    Text(t.label).font(.system(size: 11, weight: .heavy)).tracking(0.6)
+                                        .foregroundStyle(WF.ink2).lineLimit(1)
                                     Text(CookTimer.mmss(t.remaining))
                                         .font(.system(size: 22, weight: .heavy, design: .rounded))
                                         .monospacedDigit().foregroundStyle(WF.ink)
@@ -335,7 +358,7 @@ struct CookModeView: View {
 
                 VStack(spacing: 10) {
                     Button { jumpTo(t) } label: {
-                        Text("Jump to \(t.label)").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.onInk)
+                        Text("Jump to \(t.stepLabel)").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.onInk)
                             .frame(maxWidth: .infinity).padding(.vertical, 14)
                             .background(WF.ink).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }.buttonStyle(.plain)
@@ -365,18 +388,13 @@ struct CookModeView: View {
 
     // MARK: timer actions
 
-    /// The recipe carrying the timers — stamped into each notification so a tap can
-    /// deep-link back into Cook Mode at the right recipe.
-    private var recipeId: String { store.recipe?.id ?? "" }
-
+    /// Start a timer on the dish that's on screen. The store stamps it with that dish
+    /// (and the plate) so the dock, the alarm and the notification all know which pan
+    /// it belongs to.
     private func startTimer(secs: Int, stepIndex: Int, stepNumber: Int) {
-        let notifId = "waffled.cook.\(UUID().uuidString)"
-        let fireAt = Date().addingTimeInterval(TimeInterval(secs))
-        let t = CookTimer(notifId: notifId, label: "Step \(stepNumber)", stepIndex: stepIndex,
-                          total: secs, fireAt: fireAt, running: true, firing: false, pausedRemaining: secs)
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { store.timers.append(t) }
-        alarm.scheduleNotification(id: notifId, fireAt: fireAt, name: t.displayName,
-                                   recipeId: recipeId, stepIndex: stepIndex)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            _ = store.startTimer(secs: secs, stepIndex: stepIndex, stepNumber: stepNumber)
+        }
     }
 
     private func togglePause(_ t: CookTimer) {
@@ -391,27 +409,26 @@ struct CookModeView: View {
             let rem = max(1, store.timers[i].pausedRemaining)
             store.timers[i].fireAt = Date().addingTimeInterval(TimeInterval(rem))
             store.timers[i].running = true
-            alarm.scheduleNotification(id: store.timers[i].notifId, fireAt: store.timers[i].fireAt,
-                                       name: store.timers[i].displayName,
-                                       recipeId: recipeId, stepIndex: store.timers[i].stepIndex)
+            store.schedule(store.timers[i])
         }
     }
 
     private func dismissTimer(_ t: CookTimer) {
-        alarm.cancelNotification(t.notifId)
-        withAnimation { store.timers.removeAll { $0.id == t.id } }
+        withAnimation { store.removeTimer(t) }
         if store.timers.allSatisfy({ !$0.firing }) { alarm.stop() }
     }
 
+    /// The alarm's "Jump to step" — goes to the timer's OWN dish (on a plate that may not
+    /// be the one on screen) at its step, then clears the finished timer.
     private func jumpTo(_ t: CookTimer) {
-        if steps.indices.contains(t.stepIndex) { withAnimation { store.index = t.stepIndex } }
+        withAnimation { store.jump(to: t) }
         dismissTimer(t)
     }
 
-    /// Tap a running dock timer → jump to its step, keeping the timer counting (unlike
-    /// the alarm's "Jump to step", which clears the finished timer).
+    /// Tap a running dock timer → jump to its dish + step, keeping the timer counting
+    /// (unlike the alarm's "Jump to step", which clears the finished timer).
     private func goToStep(_ t: CookTimer) {
-        if steps.indices.contains(t.stepIndex) { withAnimation { store.index = t.stepIndex } }
+        withAnimation { store.jump(to: t) }
     }
 
     private func addMinute(_ t: CookTimer) {
@@ -420,9 +437,7 @@ struct CookModeView: View {
         store.timers[i].running = true
         store.timers[i].fireAt = Date().addingTimeInterval(60)
         store.timers[i].pausedRemaining = 60
-        alarm.scheduleNotification(id: store.timers[i].notifId, fireAt: store.timers[i].fireAt,
-                                   name: store.timers[i].displayName,
-                                   recipeId: recipeId, stepIndex: store.timers[i].stepIndex)
+        store.schedule(store.timers[i])
         if store.timers.allSatisfy({ !$0.firing }) { alarm.stop() }
     }
 
@@ -542,7 +557,9 @@ struct CookModeView: View {
                 .padding(20)
             }
             .background(WF.canvas)
-            .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+            // The overview is about the dish on screen, so it takes the dish's name on a
+            // plate (the plate's own name stays in the top bar).
+            .navigationTitle(store.activeDish?.title ?? title).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showOverview = false } } }
         }
         .presentationDetents([.large])
@@ -719,9 +736,10 @@ final class TimerAlarm {
     /// distinguishable on the lock screen. The interruption level is `.timeSensitive`
     /// so it behaves like a kitchen alarm — breaking through Focus and the scheduled
     /// notification summary — without needing the Critical Alerts entitlement.
-    /// `recipeId`/`stepIndex` ride along in `userInfo` so tapping the notification can
-    /// deep-link straight back into Cook Mode at the step whose timer fired.
-    func scheduleNotification(id: String, fireAt: Date, name: String, recipeId: String, stepIndex: Int) {
+    /// The `link` rides along in `userInfo` so tapping the notification deep-links
+    /// straight back into Cook Mode — at the DISH whose timer fired (re-opening its whole
+    /// plate if it had one), on the step it fired on.
+    func scheduleNotification(id: String, fireAt: Date, name: String, link: CookTimerLink) {
         let interval = fireAt.timeIntervalSinceNow
         guard interval > 0.5 else { return }
         let c = UNMutableNotificationContent()
@@ -730,7 +748,7 @@ final class TimerAlarm {
         c.sound = .default
         c.interruptionLevel = .timeSensitive
         c.threadIdentifier = "waffled-cook-timers"
-        c.userInfo = ["cookRecipeId": recipeId, "cookStepIndex": stepIndex, "cookTimerId": id]
+        c.userInfo = link.userInfo(timerId: id)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
         center.add(UNNotificationRequest(identifier: id, content: c, trigger: trigger))
     }
