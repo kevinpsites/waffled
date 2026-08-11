@@ -257,6 +257,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the Waffled host, with a direct link to the verification guide.
 - **Setup now links to the published troubleshooting guide.** The public-HTTPS
   PowerSync note no longer points at a repository file that does not exist.
+- **The server survives its database connection being dropped.** If Postgres closed a
+  connection the server was holding open but not actively using — a database restart, an
+  operator ending an idle session, a proxy reaping the socket — the API process could exit
+  instead of quietly reconnecting, taking the whole site down until Docker restarted it.
+  A dropped idle connection is now logged and the next request opens a fresh one.
 
 ### Security
 
