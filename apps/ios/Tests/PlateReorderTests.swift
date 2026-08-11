@@ -78,19 +78,19 @@ private let groups = PlateRoles.groups(of: [
     /// Dragging the placeholder itself must write nothing.
     @Test("an empty role's drop slot never re-files anything")
     func emptySlotNeverWrites() {
-        #expect(PlateReorder.target(groups, from: IndexSet(integer: 8), to: 1) == nil)
+        #expect(PlateReorder.move(groups, from: IndexSet(integer: 8), to: 1) == nil)
     }
 
     @Test("dragging the main down under Sides re-files it as a side")
     func mainBecomesASide() throws {
-        let r = try #require(PlateReorder.target(groups, from: IndexSet(integer: 1), to: 5))
+        let r = try #require(PlateReorder.move(groups, from: IndexSet(integer: 1), to: 5))
         #expect(r.id == "m1")
         #expect(r.role.key == "side")
     }
 
     @Test("dragging a side up under Main re-files it as the main")
     func sideBecomesTheMain() throws {
-        let r = try #require(PlateReorder.target(groups, from: IndexSet(integer: 4), to: 2))
+        let r = try #require(PlateReorder.move(groups, from: IndexSet(integer: 4), to: 2))
         #expect(r.id == "s1")
         #expect(r.role.key == "main")
     }
@@ -99,27 +99,56 @@ private let groups = PlateRoles.groups(of: [
     @Test("a dish can be dragged into a role that has no dishes yet")
     func dishMovesIntoAnEmptyRole() throws {
         // onto the empty role's placeholder slot
-        let r = try #require(PlateReorder.target(groups, from: IndexSet(integer: 5), to: 9))
+        let r = try #require(PlateReorder.move(groups, from: IndexSet(integer: 5), to: 9))
         #expect(r.id == "s2")
         #expect(r.role.key == "dessert")
     }
 
+    /// The position matters as much as the role: `sort_order` is plate-wide and each
+    /// role renders by sorting on it, so a dish that keeps its old number lands wherever
+    /// that number falls. Dropped at the TOP of Sides, it must come out first.
+    @Test("a dish dropped at the top of a role lands first in it")
+    func landsWhereItWasDropped() throws {
+        // 0 h(main) 1 m1 2 add(main) 3 h(side) 4 s1 5 s2 6 add(side) 7 h(dessert) 8 empty 9 add
+        let m = try #require(PlateReorder.move(groups, from: IndexSet(integer: 1), to: 4))
+        #expect(m.id == "m1")
+        #expect(m.role.key == "side")
+        // ahead of s1 — not merely "somewhere in Sides"
+        #expect(m.order == ["m1", "s1", "s2"])
+    }
+
+    @Test("a dish dropped at the bottom of a role lands last in it")
+    func landsAtTheBottom() throws {
+        let m = try #require(PlateReorder.move(groups, from: IndexSet(integer: 1), to: 6))
+        #expect(m.role.key == "side")
+        #expect(m.order == ["s1", "s2", "m1"])
+    }
+
+    /// Reordering *within* a role is now a real write rather than a no-op gesture.
+    @Test("swapping two dishes inside one role rewrites the order")
+    func withinRoleSwapWrites() throws {
+        let m = try #require(PlateReorder.move(groups, from: IndexSet(integer: 5), to: 4))
+        #expect(m.id == "s2")
+        #expect(m.role.key == "side")
+        #expect(m.order == ["m1", "s2", "s1"])
+    }
+
     /// Reordering inside a role isn't a re-file — writing the same role back would be a
     /// pointless round-trip on every within-group nudge.
-    @Test("reordering within a role writes nothing")
-    func withinRoleIsANoOp() {
-        #expect(PlateReorder.target(groups, from: IndexSet(integer: 5), to: 4) == nil)
+    @Test("dropping a dish back where it started writes nothing")
+    func droppingInPlaceIsANoOp() {
+        #expect(PlateReorder.move(groups, from: IndexSet(integer: 5), to: 6) == nil)
     }
 
     /// The ＋ rows are `moveDisabled`, but the rule must not depend on the view for that.
     @Test("a ＋ row never re-files anything")
     func addRowNeverWrites() {
-        #expect(PlateReorder.target(groups, from: IndexSet(integer: 2), to: 6) == nil)
+        #expect(PlateReorder.move(groups, from: IndexSet(integer: 2), to: 6) == nil)
     }
 
     /// A drop above the very first header has no role to adopt.
     @Test("dropping above the first header is ignored")
     func aboveEverythingIsIgnored() {
-        #expect(PlateReorder.target(groups, from: IndexSet(integer: 4), to: 0) == nil)
+        #expect(PlateReorder.move(groups, from: IndexSet(integer: 4), to: 0) == nil)
     }
 }

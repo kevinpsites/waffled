@@ -129,6 +129,8 @@ private final class FakePlateServer: @unchecked Sendable {
     var updates: [(name: String?, servings: Int?, isSaved: Bool?)] = []
     var addedToList = 0
     var scheduled: [(date: String, mealType: String)] = []
+    /// Every plate-wide reorder the model wrote.
+    var reordered: [[String]] = []
     /// Fail every write (the offline/rollback path).
     var failing = false
     /// Held open so a test can drive two writes that are genuinely in flight at once.
@@ -181,6 +183,21 @@ private final class FakePlateServer: @unchecked Sendable {
                 meal = plateFixture(meal.id, name: meal.name, servings: meal.servings,
                                     isSaved: meal.isSaved,
                                     dishes: meal.recipes.filter { $0.recipeId != recipeId })
+                return meal
+            },
+            reorder: { [self] _, ids in
+                if failing { throw FakeError.offline }
+                reordered.append(ids)
+                // sort_order becomes the position in the list, as the server does
+                let byId = Dictionary(uniqueKeysWithValues: meal.recipes.map { ($0.recipeId, $0) })
+                meal = plateFixture(meal.id, name: meal.name, servings: meal.servings,
+                                    isSaved: meal.isSaved,
+                                    dishes: ids.enumerated().compactMap { i, rid in
+                                        byId[rid].map {
+                                            plateDish($0.recipeId, $0.title ?? $0.recipeId,
+                                                      role: $0.role, sortOrder: i)
+                                        }
+                                    })
                 return meal
             },
             addToList: { [self] _ in

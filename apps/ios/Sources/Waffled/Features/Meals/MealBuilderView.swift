@@ -161,8 +161,8 @@ struct MealBuilderView: View {
     /// Re-file the dragged dish under whichever role header it landed beneath. The rule
     /// (and the flat run's exact ordering) lives in `PlateReorder`, where it is tested.
     private func handleMove(rows _: [PlateDisplayRow], from: IndexSet, to: Int) {
-        guard let result = PlateReorder.target(model.groups, from: from, to: to) else { return }
-        Task { await model.moveDish(result.id, to: result.role) }
+        guard let move = PlateReorder.move(model.groups, from: from, to: to) else { return }
+        Task { await model.apply(move) }
     }
 
     @ViewBuilder private func roleHeaderRow(_ group: PlateGroup) -> some View {

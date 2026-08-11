@@ -96,14 +96,59 @@ enum PlateReorder {
         groups.contains { !$0.dishes.isEmpty }
     }
 
-    /// The dish that moved and the role it should adopt — nil when nothing should be
-    /// written (it stayed in its own role, or a ＋ row somehow moved).
-    static func target(_ groups: [PlateGroup], from: IndexSet, to: Int) -> (id: String, role: PlateRole)? {
-        guard let result = ListReorder.targetSection(rows: rows(groups), from: from, to: to),
-              !result.id.hasPrefix("add:"), !result.id.hasPrefix("empty:"),
-              let role = ordered.first(where: { $0.key == result.section })
+    /// What a drop should write: the dish that moved, the role it lands in, and the
+    /// plate's whole new dish order.
+    ///
+    /// The order matters as much as the role. `sort_order` is plate-wide and the roles
+    /// are rendered by sorting on it, so a dish that changes role while keeping its old
+    /// number lands wherever that number happens to fall — drop it at the TOP of Sides
+    /// and it appears at the bottom. Writing the full order is also what makes a
+    /// reorder *within* a role mean anything.
+    struct Move: Equatable {
+        let id: String
+        let role: PlateRole
+        /// Every dish on the plate, in its new order — what `reorderDishes` writes.
+        let order: [String]
+    }
+
+    /// nil when the drop should write nothing: a ＋ / placeholder row moved, or the dish
+    /// ended up in the same role at the same position.
+    static func move(_ groups: [PlateGroup], from: IndexSet, to: Int) -> Move? {
+        let rows = rows(groups)
+        guard let src = from.min(), src < rows.count,
+              case let .item(movedId, oldSection) = rows[src],
+              !isSynthetic(movedId)
         else { return nil }
-        return (result.id, role)
+
+        // Replay SwiftUI's move on a copy — same semantics ListReorder uses.
+        var arr = rows
+        let moving = from.sorted().map { rows[$0] }
+        for i in from.sorted(by: >) { arr.remove(at: i) }
+        let removedBefore = from.filter { $0 < to }.count
+        arr.insert(contentsOf: moving, at: max(0, min(to - removedBefore, arr.count)))
+
+        // Walk the result: each dish belongs to the nearest header above it.
+        var section: String?
+        var landedIn: String?
+        var order: [String] = []
+        for row in arr {
+            switch row {
+            case .header(let title): section = title
+            case .item(let id, _):
+                guard !isSynthetic(id) else { continue }
+                order.append(id)
+                if id == movedId { landedIn = section }
+            }
+        }
+        guard let key = landedIn, let role = ordered.first(where: { $0.key == key }) else { return nil }
+        // Same role, same place — nothing to say.
+        if key == oldSection && order == groups.flatMap({ $0.dishes.map(\.recipeId) }) { return nil }
+        return Move(id: movedId, role: role, order: order)
+    }
+
+    /// The header/＋/placeholder rows carry ids that aren't dishes.
+    private static func isSynthetic(_ id: String) -> Bool {
+        id.hasPrefix("add:") || id.hasPrefix("empty:")
     }
 
     private static var ordered: [PlateRole] { PlateRoles.ordered }
@@ -137,6 +182,8 @@ struct MealBuilderAPI: Sendable {
     var flatten: @Sendable (_ id: String, _ savedMealId: String) async throws -> WaffledAPI.MealDTO
     var patchDish: @Sendable (_ id: String, _ recipeId: String, _ role: String?, _ cook: WaffledAPI.CookAssignment) async throws -> WaffledAPI.MealDTO
     var removeDish: @Sendable (_ id: String, _ recipeId: String) async throws -> WaffledAPI.MealDTO
+    /// The plate's dishes in their new order — one write for the whole plate.
+    var reorder: @Sendable (_ id: String, _ recipeIds: [String]) async throws -> WaffledAPI.MealDTO
     var addToList: @Sendable (_ id: String) async throws -> Int
     var schedule: @Sendable (_ id: String, _ date: String, _ mealType: String, _ cookPersonId: String?) async throws -> Void
 
@@ -150,6 +197,7 @@ struct MealBuilderAPI: Sendable {
             flatten: { try await api.flattenMeal(intoMealId: $0, savedMealId: $1) },
             patchDish: { try await api.patchDish(mealId: $0, recipeId: $1, role: $2, cook: $3) },
             removeDish: { try await api.removeDish(mealId: $0, recipeId: $1) },
+            reorder: { try await api.reorderDishes(mealId: $0, recipeIds: $1) },
             addToList: { try await api.addMealToGrocery(id: $0) },
             // The reply carries a plate, but for a SAVED plate that is the *copy* the
             // server scheduled — not this one — so it is deliberately dropped rather
@@ -256,8 +304,20 @@ final class MealBuilderModel {
         await run { api, id in try await api.removeDish(id, recipeId) }
     }
 
+    /// Re-file a dish, from the row menu — no position was chosen, so only the role
+    /// changes and it keeps its place in the plate's order.
     func moveDish(_ recipeId: String, to role: PlateRole) async {
         await run { api, id in try await api.patchDish(id, recipeId, role.key, .unchanged) }
+    }
+
+    /// Apply a drop: the role AND the plate's new order. Two writes because the role
+    /// lives on the dish and the order is plate-wide; the second answers with the plate,
+    /// so that's the one the screen repaints from.
+    func apply(_ move: PlateReorder.Move) async {
+        await run { api, id in
+            _ = try await api.patchDish(id, move.id, move.role.key, .unchanged)
+            return try await api.reorder(id, move.order)
+        }
     }
 
     /// `nil` = "Nobody". The server distinguishes an absent cook (leave it alone) from
