@@ -6,6 +6,7 @@ export interface CalendarAccount {
   id: string
   email: string | null
   googleSub: string
+  provider: 'google' | 'microsoft'
   scope: string | null
   connectedAt: string
   lastSyncError: string | null
@@ -32,6 +33,8 @@ export interface CalendarLink {
 
 export interface CalendarStatus {
   configured: boolean
+  /** Whether Microsoft OAuth is configured server-side (drives the Outlook button). */
+  microsoftConfigured?: boolean
   connected: boolean
   accounts: CalendarAccount[]
   calendars: CalendarLink[]
@@ -60,6 +63,9 @@ export const calendarsApi = {
   // to (the api callback redirects there after storing the connection).
   connectCalendar: (redirectTo?: string) =>
     apiSend<{ url: string }>('POST', '/api/calendar/google/connect', redirectTo ? { redirectTo } : {}),
+  // Same flow for an Outlook / Microsoft 365 account.
+  connectMicrosoftCalendar: (redirectTo?: string) =>
+    apiSend<{ url: string }>('POST', '/api/calendar/microsoft/connect', redirectTo ? { redirectTo } : {}),
   updateCalendar: (id: string, patch: { personId?: string | null; selected?: boolean; isWriteTarget?: boolean; visibility?: 'family' | 'personal' }) =>
     apiSend<{ calendar: CalendarLink }>('PATCH', `/api/calendar/google/calendars/${id}`, patch),
   disconnectAccount: (accountId: string) => apiDelete(`/api/calendar/google/accounts/${accountId}`),

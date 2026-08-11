@@ -80,6 +80,9 @@ const PUBLIC_PATHS = new Set([
   '/healthz',
   '/api/auth/keys',
   '/auth/google/calendar/callback',
+  // Microsoft's redirect likewise arrives with no Authorization header; the
+  // one-time OAuth state row authenticates it (see calendars.ts).
+  '/auth/microsoft/calendar/callback',
   // Built-in auth: setup/login/refresh/status run before a session exists.
   '/api/auth/status',
   '/api/auth/setup',

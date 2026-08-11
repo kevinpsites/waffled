@@ -19,8 +19,11 @@ export interface HouseholdSyncResult {
 
 export interface WriteTarget {
   calendarId: string
+  // The provider's calendar id (named for its Google origin; holds Graph ids too).
   googleCalendarId: string
   refreshTokenEncrypted: string
+  provider: string
+  accountId: string
 }
 
 export interface PushPendingResult {

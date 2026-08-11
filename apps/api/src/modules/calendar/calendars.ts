@@ -19,16 +19,9 @@ import { getPool, query } from '../../platform/db'
 import { adminRoute } from '../../platform/route-guards'
 import { assertPersonInHousehold } from '../../platform/household-refs'
 import { encryptSecret, encryptionAvailable } from '../../platform/crypto'
-import {
-  googleConfigured,
-  buildAuthUrl,
-  exchangeCode,
-  fetchUserinfo,
-  listCalendars,
-  type GoogleTokens,
-  type GoogleUserinfo,
-  type GoogleCalendarListEntry,
-} from '../../integrations/google'
+import { googleConfigured, type GoogleTokens, type GoogleUserinfo, type GoogleCalendarListEntry } from '../../integrations/google'
+import { microsoftConfigured } from '../../integrations/microsoft'
+import { providerFor, type CalendarProviderAdapter, type CalendarProviderName } from './providers/provider'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -39,6 +32,7 @@ interface AccountRow extends QueryResultRow {
   id: string
   email: string | null
   google_sub: string
+  provider: string
   scope: string | null
   created_at: Date
   updated_at: Date
@@ -68,26 +62,27 @@ interface CalendarRow extends QueryResultRow {
 
 // Upsert the account + its calendars in one transaction. Re-connecting refreshes
 // the token and calendar metadata but PRESERVES any person mapping / selected flag
-// the household has already chosen (those are waffled-owned, not Google-owned).
+// the household has already chosen (those are waffled-owned, not provider-owned).
 async function storeConnection(opts: {
   householdId: string
   personId: string
+  provider: CalendarProviderName
   tokens: GoogleTokens
   info: GoogleUserinfo
   calendars: GoogleCalendarListEntry[]
 }): Promise<void> {
-  const { householdId, personId, tokens, info, calendars } = opts
+  const { householdId, personId, provider, tokens, info, calendars } = opts
   if (!tokens.refreshToken) {
-    throw new Error('Google did not return a refresh token (revoke access and reconnect)')
+    throw new Error(`${provider} did not return a refresh token (revoke access and reconnect)`)
   }
   const client = await getPool().connect()
   try {
     await client.query('begin')
     const acc = await client.query<{ id: string }>(
       `insert into calendar_accounts
-         (household_id, person_id, google_sub, email, scope, refresh_token_encrypted)
-       values ($1,$2,$3,$4,$5,$6)
-       on conflict (household_id, google_sub) do update set
+         (household_id, person_id, provider, google_sub, email, scope, refresh_token_encrypted)
+       values ($1,$2,$3,$4,$5,$6,$7)
+       on conflict (household_id, provider, google_sub) do update set
          email = excluded.email,
          scope = excluded.scope,
          refresh_token_encrypted = excluded.refresh_token_encrypted,
@@ -96,16 +91,16 @@ async function storeConnection(opts: {
          last_sync_error_at = null,
          deleted_at = null
        returning id`,
-      [householdId, personId, info.sub, info.email, tokens.scope, encryptSecret(tokens.refreshToken)]
+      [householdId, personId, provider, info.sub, info.email, tokens.scope, encryptSecret(tokens.refreshToken)]
     )
     const accountId = acc.rows[0].id
 
     for (const c of calendars) {
       await client.query(
         `insert into calendars
-           (household_id, account_id, person_id, google_calendar_id, summary, description,
+           (household_id, account_id, person_id, provider, google_calendar_id, summary, description,
             timezone, access_role, color_hex, is_primary, visibility)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         values ($1,$2,$3,$12,$4,$5,$6,$7,$8,$9,$10,$11)
          on conflict (account_id, google_calendar_id) do update set
            summary = excluded.summary,
            description = excluded.description,
@@ -128,6 +123,7 @@ async function storeConnection(opts: {
           c.backgroundColor,
           c.primary,
           c.primary ? 'family' : 'personal',
+          provider,
         ]
       )
     }
@@ -142,7 +138,7 @@ async function storeConnection(opts: {
 
 async function listAccounts(householdId: string): Promise<AccountRow[]> {
   const { rows } = await query<AccountRow>(
-    `select id, email, google_sub, scope, created_at, updated_at, last_sync_error, last_sync_error_at
+    `select id, email, google_sub, provider, scope, created_at, updated_at, last_sync_error, last_sync_error_at
        from calendar_accounts
       where household_id = $1 and deleted_at is null
       order by created_at`,
@@ -173,6 +169,7 @@ function presentAccount(a: AccountRow) {
     id: a.id,
     email: a.email,
     googleSub: a.google_sub,
+    provider: a.provider,
     scope: a.scope,
     connectedAt: a.created_at,
     lastSyncError: a.last_sync_error ?? null,
@@ -212,14 +209,26 @@ h1{margin:0 0 .5rem;font-size:1.25rem}p{margin:0;color:#666}</style></head>
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
-export function registerCalendarRoutes(api: Api): void {
-  // Start the connect flow → returns the Google consent URL for the client to open.
-  api.post('/api/calendar/google/connect', adminRoute(async (tenant, req: Request, res: Response) => {
-    if (!googleConfigured()) {
+// Human-readable provider labels for the connect/callback pages + errors.
+const PROVIDER_LABEL: Record<CalendarProviderName, string> = { google: 'Google', microsoft: 'Microsoft' }
+const PROVIDER_ENV_HINT: Record<CalendarProviderName, string> = {
+  google: 'set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALENDAR_REDIRECT_URI',
+  microsoft: 'set MS_CLIENT_ID, MS_CLIENT_SECRET, MS_CALENDAR_REDIRECT_URI',
+}
+
+// Register the OAuth connect + callback pair for one provider. Paths follow the
+// upstream Google shape: POST /api/calendar/<name>/connect and
+// GET /auth/<name>/calendar/callback (the redirect URI registered on the app).
+function registerProviderConnect(api: Api, name: CalendarProviderName): void {
+  const adapter: CalendarProviderAdapter = providerFor(name)
+  const label = PROVIDER_LABEL[name]
+
+  // Start the connect flow → returns the consent URL for the client to open.
+  api.post(`/api/calendar/${name}/connect`, adminRoute(async (tenant, req: Request, res: Response) => {
+    if (!adapter.configured()) {
       return res.status(501).json({
         error: 'NotConfigured',
-        message:
-          'Google OAuth is not configured on the server (set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALENDAR_REDIRECT_URI)',
+        message: `${label} OAuth is not configured on the server (${PROVIDER_ENV_HINT[name]})`,
       })
     }
     if (!encryptionAvailable()) {
@@ -234,19 +243,19 @@ export function registerCalendarRoutes(api: Api): void {
         : null
     const state = randomBytes(24).toString('base64url')
     await query(
-      `insert into calendar_oauth_states (state, household_id, person_id, redirect_to)
-       values ($1,$2,$3,$4)`,
-      [state, tenant.householdId, tenant.personId, redirectTo]
+      `insert into calendar_oauth_states (state, household_id, person_id, redirect_to, provider)
+       values ($1,$2,$3,$4,$5)`,
+      [state, tenant.householdId, tenant.personId, redirectTo, name]
     )
-    return { url: buildAuthUrl(state) }
+    return { url: adapter.buildAuthUrl(state) }
   }))
 
-  // PUBLIC — Google redirects the browser here after consent. No auth header; the
-  // one-time state resolves the household. Renders an HTML result (or redirects).
-  api.get('/auth/google/calendar/callback', async (req: Request, res: Response) => {
+  // PUBLIC — the provider redirects the browser here after consent. No auth
+  // header; the one-time state resolves the household (and must match provider).
+  api.get(`/auth/${name}/calendar/callback`, async (req: Request, res: Response) => {
     const q = (req.query ?? {}) as Record<string, string | undefined>
     if (q.error) {
-      return res.status(400).html(resultPage('Connection cancelled', `Google returned: ${q.error}`))
+      return res.status(400).html(resultPage('Connection cancelled', `${label} returned: ${q.error}`))
     }
     const code = typeof q.code === 'string' ? q.code : ''
     const state = typeof q.state === 'string' ? q.state : ''
@@ -257,9 +266,9 @@ export function registerCalendarRoutes(api: Api): void {
     // Consume the state (one-time) and drop any other expired states while here.
     const { rows } = await query<{ household_id: string; person_id: string | null; redirect_to: string | null }>(
       `delete from calendar_oauth_states
-        where state = $1 and created_at > now() - interval '${STATE_TTL_MIN} minutes'
+        where state = $1 and provider = $2 and created_at > now() - interval '${STATE_TTL_MIN} minutes'
         returning household_id, person_id, redirect_to`,
-      [state]
+      [state, name]
     )
     await query(`delete from calendar_oauth_states where created_at <= now() - interval '${STATE_TTL_MIN} minutes'`)
     const st = rows[0]
@@ -270,12 +279,13 @@ export function registerCalendarRoutes(api: Api): void {
     }
 
     try {
-      const tokens = await exchangeCode(code)
-      const info = await fetchUserinfo(tokens.accessToken)
-      const calendars = await listCalendars(tokens.accessToken)
+      const tokens = await adapter.exchangeCode(code)
+      const info = await adapter.fetchUserinfo(tokens.accessToken)
+      const calendars = await adapter.listCalendars(tokens.accessToken)
       await storeConnection({
         householdId: st.household_id,
         personId: st.person_id ?? '',
+        provider: name,
         tokens,
         info,
         calendars,
@@ -284,14 +294,21 @@ export function registerCalendarRoutes(api: Api): void {
       console.error('calendar callback failed', err)
       return res
         .status(502)
-        .html(resultPage('Connection failed', 'Could not complete the Google connection. Please try again.'))
+        .html(resultPage('Connection failed', `Could not complete the ${label} connection. Please try again.`))
     }
 
     if (st.redirect_to) return res.redirect(st.redirect_to)
     return res.html(resultPage('Calendar connected', 'You can close this tab and return to Waffled.'))
   })
+}
 
-  // What's connected: accounts + their calendars (with person mapping).
+export function registerCalendarRoutes(api: Api): void {
+  registerProviderConnect(api, 'google')
+  registerProviderConnect(api, 'microsoft')
+
+  // What's connected: accounts + their calendars (with person mapping). Kept at
+  // the upstream /google/ path (it predates multi-provider) but covers ALL
+  // providers; `microsoftConfigured` lets the UI show a Connect Outlook button.
   api.get('/api/calendar/google/status', adminRoute(async (tenant) => {
     const [accounts, calendars] = await Promise.all([
       listAccounts(tenant.householdId),
@@ -299,6 +316,7 @@ export function registerCalendarRoutes(api: Api): void {
     ])
     return {
       configured: googleConfigured(),
+      microsoftConfigured: microsoftConfigured(),
       connected: accounts.length > 0,
       accounts: accounts.map(presentAccount),
       calendars: calendars.map(presentCalendar),

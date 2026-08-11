@@ -42,8 +42,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Today** — live cards + customizable per-user / family layouts.
 - **Calendar** — native events, Month/Week/Day/Agenda, create/edit/delete, participants,
   **recurring events** (RRULE picker, per-occurrence/this-and-following/all edits),
-  **two-way Google Calendar sync** (recurrences expanded on inbound), offline calendar
-  (PowerSync), AI heads-up + per-event insight.
+  **two-way Google Calendar sync** and **two-way Outlook / Microsoft 365 sync** (recurrences
+  expanded on inbound), offline calendar (PowerSync), AI heads-up + per-event insight.
 - **Chores & stars** — full loop: CRUD, weekly/custom schedules, **one-off + carry-over
   tasks** ("Just once" repeat + due date, unfinished one-offs roll forward with an
   **overdue · since …** badge, per-chore `rollover` toggle), up-for-grabs claim,

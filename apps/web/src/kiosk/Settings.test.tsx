@@ -312,4 +312,63 @@ describe('Settings screen', () => {
     // Debounced auto-save persists prepReminder: true.
     await waitFor(() => expect(putBodies.some((b) => b.prepReminder === true)).toBe(true), { timeout: 2000 })
   })
+
+  // Calendars panel is provider-aware: each configured provider gets its own
+  // connect button, and the "not configured" copy only shows when BOTH are off.
+  function mockCalendarStatus(status: Record<string, unknown>, onConnect?: (url: string) => void) {
+    globalThis.fetch = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/api/calendar/microsoft/connect')) {
+        onConnect?.(u)
+        return { ok: true, json: async () => ({ url: 'https://login.microsoftonline.com/consent' }) }
+      }
+      if (u.includes('/api/calendar/google/status')) return { ok: true, json: async () => status }
+      if (u.includes('/api/countdowns')) return { ok: true, json: async () => ({ countdowns: [], sleeps: false, birthdayHorizonDays: 183 }) }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+  }
+
+  it('offers an Outlook connect button when Microsoft OAuth is configured', async () => {
+    const connects: string[] = []
+    mockCalendarStatus(
+      { configured: true, microsoftConfigured: true, connected: false, accounts: [], calendars: [] },
+      (u) => connects.push(u)
+    )
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Calendars'))
+
+    // Both providers are offered side by side.
+    expect(await screen.findByText('Connect Google Calendar')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Connect Outlook Calendar'))
+    await waitFor(() => expect(connects.length).toBe(1))
+  })
+
+  it('hides the Outlook button when only Google is configured', async () => {
+    mockCalendarStatus({ configured: true, microsoftConfigured: false, connected: false, accounts: [], calendars: [] })
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Calendars'))
+
+    expect(await screen.findByText('Connect Google Calendar')).toBeInTheDocument()
+    expect(screen.queryByText('Connect Outlook Calendar')).toBeNull()
+  })
+
+  it('only shows the not-configured notice when NEITHER provider is configured', async () => {
+    mockCalendarStatus({ configured: false, microsoftConfigured: true, connected: false, accounts: [], calendars: [] })
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Calendars'))
+
+    // Microsoft alone is enough to render the connect card, not the env-var notice.
+    expect(await screen.findByText('Connect Outlook Calendar')).toBeInTheDocument()
+    expect(screen.queryByText('Connect Google Calendar')).toBeNull()
+    expect(screen.queryByText(/No calendar provider is configured/)).toBeNull()
+  })
 })

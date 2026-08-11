@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Two-way Outlook / Microsoft 365 calendar sync, right beside Google.** Connect an
+  Outlook or Microsoft 365 account in Settings → Calendars and it syncs both ways on the
+  same engine and the same schedule as Google — pick which calendars sync, who each one
+  belongs to, and which is the write-target for events Waffled creates. A household can mix
+  Google and Microsoft accounts freely, and each connected account shows which provider it
+  came from. Needs a free Azure app registration; see the new
+  [Outlook / Microsoft 365](https://waffled.app/docs/administration/outlook-calendar/) guide.
 - **Choose which recipe ingredients go on the grocery list.** "Add to grocery" now opens
   a picker so you can add everything or just the items you actually need, instead of always
   dumping the whole recipe onto the list. Everything starts checked — pantry staples are
