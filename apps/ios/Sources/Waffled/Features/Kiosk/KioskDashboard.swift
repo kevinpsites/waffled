@@ -706,7 +706,11 @@ struct KioskDashboard: View {
 
     private func primaryButton(_ label: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
+            // One line, shrinking to fit: these sit two-up in a narrow dashboard
+            // column, where a two-word label like "Cook the meal" wrapped mid-phrase
+            // and made the button look broken.
             Text(label).font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                .lineLimit(1).minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity).padding(.vertical, 13)
                 .background(WF.primary).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
@@ -716,6 +720,7 @@ struct KioskDashboard: View {
     private func secondaryButton(_ label: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
+                .lineLimit(1).minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity).padding(.vertical, 13)
                 .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
