@@ -622,6 +622,75 @@ export async function removeRecipeFromGrocery(
   return del.rowCount ?? 0
 }
 
+// Undo "Add plate to list": take the plate's shopping back off. Those rows are
+// source='recipe', which the weekly rebuild never wipes, so without this they stay
+// on the list forever — Refresh and Start over won't shift them either.
+//
+// The rule that matters: a row is only DELETED when this plate is its sole reason
+// for existing. A row shared with a meal actually planned that week survives with
+// the plate's credit stripped, because the week still needs that ingredient — the
+// naive "delete everything this plate credits" quietly steals the week's shopping
+// when an off-plan plate happens to repeat a planned dish.
+export async function removeMealFromGrocery(
+  tenant: Tenant,
+  mealId: string,
+  weekStart: string
+): Promise<number | null> {
+  const { rows: meal } = await query<{ id: string }>(
+    `select id from meals where household_id = $1 and id = $2 and deleted_at is null`,
+    [tenant.householdId, mealId]
+  )
+  if (!meal[0]) return null
+  const { rows: dishes } = await query<{ recipe_id: string }>(
+    `select recipe_id from meal_recipes where meal_id = $1`,
+    [mealId]
+  )
+  const list = await getOrCreateGroceryList(tenant)
+  const dishIds = dishes.map((d) => d.recipe_id)
+
+  if (dishIds.length) {
+    // Every recipe the week itself is planning — directly, or as a dish on a
+    // scheduled plate. Same union the rebuild uses.
+    const weekEnd = isoAddDays(weekStart, 6)
+    const { rows: planned } = await query<{ recipe_id: string }>(
+      `select e.recipe_id from meal_plan_entries e
+        where e.household_id=$1 and e.recipe_id is not null
+          and e.deleted_at is null and e.date >= $2 and e.date <= $3
+        union
+       select mr.recipe_id from meal_plan_entries e
+         join meal_recipes mr on mr.meal_id = e.meal_id
+        where e.household_id=$1 and e.meal_id is not null
+          and e.deleted_at is null and e.date >= $2 and e.date <= $3`,
+      [tenant.householdId, weekStart, weekEnd]
+    )
+    const plannedIds = planned.map((p) => p.recipe_id)
+    // Sole reason = an off-plan row, credited to this plate and no other, whose
+    // recipes are all dishes of this plate and none of them planned this week.
+    const del = await query(
+      `update list_items set deleted_at = now()
+         where household_id = $1 and list_id = $2 and deleted_at is null
+           and source = 'recipe'
+           and source_meal_ids <@ ARRAY[$3]::uuid[] and $3 = ANY(source_meal_ids)
+           and source_recipe_ids <@ $4::uuid[]
+           and not (source_recipe_ids && $5::uuid[])
+           and (week_start = $6 or week_start is null)`,
+      [tenant.householdId, list.id, mealId, dishIds, plannedIds, weekStart]
+    )
+    // Survivors keep the row (someone still wants it) but stop being this plate's:
+    // otherwise the board would go on drawing an Unscheduled shelf for a plate the
+    // user just took off.
+    await query(
+      `update list_items set source_meal_ids = array_remove(source_meal_ids, $3::uuid)
+         where household_id = $1 and list_id = $2 and deleted_at is null
+           and $3 = ANY(source_meal_ids)
+           and (week_start = $4 or week_start is null)`,
+      [tenant.householdId, list.id, mealId, weekStart]
+    )
+    return del.rowCount ?? 0
+  }
+  return 0
+}
+
 // Combine two freeform grocery quantities. Same unit (or both unit-less) → sum
 // the numbers ("1 lb" + "0.5 lb" → "1.5 lb", "1" + "1" → "2"). Otherwise keep
 // both ("1 cup" + "2 tbsp" → "1 cup + 2 tbsp").

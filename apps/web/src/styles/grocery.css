@@ -47,6 +47,12 @@
 .grocery-section {
   margin-bottom: 18px;
 }
+/* A group that claimed no rows of its own — every item it wants is listed under an
+   earlier meal. Says so instead of rendering an empty section. */
+.grocery-section-note {
+  padding: 2px 6px 10px;
+  font-style: italic;
+}
 .grocery-section-h {
   display: flex;
   align-items: center;

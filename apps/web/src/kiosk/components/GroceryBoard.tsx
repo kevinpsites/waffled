@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from '
 import { useNavigate } from 'react-router'
 import { Icon } from '../icons'
 import { useTopbarFull } from '../topbar-slot'
-import { groceryApi, useGroceryBoard, type GroceryBoardItem, type GroceryMealDish } from '../../lib/api'
+import { groceryApi, mealBuilderApi, useGroceryBoard, type GroceryBoardItem, type GroceryMealDish } from '../../lib/api'
 import { StaplesModal } from './StaplesModal'
 import '../../styles/grocery.css'
 
@@ -78,6 +78,7 @@ function PlateRow({
   open,
   onToggle,
   onOpenRecipe,
+  onRemove,
 }: {
   name: string
   color: string
@@ -86,6 +87,9 @@ function PlateRow({
   open: boolean
   onToggle: () => void
   onOpenRecipe: (recipeId: string) => void
+  // Only an UNSCHEDULED plate offers this. A scheduled one comes off the list by
+  // being unscheduled, so a × here would be a second, contradicting way to do it.
+  onRemove?: () => void
 }) {
   return (
     <Fragment>
@@ -100,6 +104,15 @@ function PlateRow({
         {day && <span className="gdinner-day">{day}</span>}
         <span className="gdinner-t">{name}</span>
         <span className="gplate-n">Meal · {dishes.length}</span>
+        {onRemove && (
+          <button
+            type="button"
+            className="gdinner-x"
+            aria-label={`Remove ${name} from list`}
+            title="Remove from list"
+            onClick={(e) => { e.stopPropagation(); onRemove() }}
+          >×</button>
+        )}
         <span className={`cal-chev ${open ? 'open' : ''}`}>›</span>
         <span className="gplate-strip" style={{ background: `${color}1f` }} aria-hidden>
           {dishes.slice(0, 4).map((d) => (
@@ -194,6 +207,11 @@ interface BoardSection {
   items: GroceryBoardItem[]
   mealType?: string
   unscheduled?: boolean
+  // Set on an unscheduled PLATE section, so its header can offer "Remove from list".
+  mealId?: string
+  // Set when the plate's every item was already claimed by an earlier section: the
+  // section renders as a header plus this line instead of silently disappearing.
+  note?: string
   recipeId?: string
 }
 
@@ -357,6 +375,13 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     await groceryApi.removeRecipeFromGrocery(recipeId, board!.weekStart)
     refetch()
   }
+  // The same undo for a whole plate added off-plan. Server-side it keeps any row the
+  // week's own plan still needs, so removing a plate that shares a dish with a
+  // scheduled meal doesn't strip that meal's shopping.
+  async function removePlate(mealId: string) {
+    await mealBuilderApi.removeFromList(mealId, board!.weekStart)
+    refetch()
+  }
   async function addItem(name: string) {
     const n = name.trim()
     if (!n) return
@@ -406,17 +431,20 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           // Claim by any of a set of recipe ids (a plate has several) and/or by the
           // plate id itself — an off-plan plate credits its rows with sourceMealIds,
           // while the weekly rebuild writes only recipe ids.
-          const claimBy = (recipeIds: string[], mealId?: string | null) => {
-            const items = activeItems.filter(
-              (i) =>
-                !used.has(i.id) &&
-                (recipeIds.some((r) => i.sourceRecipeIds.includes(r)) ||
-                  (!!mealId && (i.sourceMealIds ?? []).includes(mealId))),
-            )
-            items.forEach((i) => used.add(i.id))
+          // Who ended up listing each item, so a group that claimed nothing can say
+          // where its shopping went rather than vanishing.
+          const claimedBy = new Map<string, string>()
+          const wants = (i: (typeof activeItems)[number], recipeIds: string[], mealId?: string | null) =>
+            recipeIds.some((r) => i.sourceRecipeIds.includes(r)) || (!!mealId && (i.sourceMealIds ?? []).includes(mealId))
+          const claimBy = (label: string, recipeIds: string[], mealId?: string | null) => {
+            const items = activeItems.filter((i) => !used.has(i.id) && wants(i, recipeIds, mealId))
+            items.forEach((i) => {
+              used.add(i.id)
+              claimedBy.set(i.id, label)
+            })
             return items
           }
-          const claim = (recipeId: string) => claimBy([recipeId])
+          const claim = (label: string, recipeId: string) => claimBy(label, [recipeId])
           const perMeal: BoardSection[] = []
           for (const d of byMeal) {
             // A plate slot has recipeId null and its dishes in `recipes[]`; keying
@@ -424,27 +452,51 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
             if (d.mealId) {
               if (seen.has(d.mealId)) continue
               seen.add(d.mealId)
-              const items = claimBy((d.recipes ?? []).map((r) => r.recipeId), d.mealId)
-              if (items.length) perMeal.push({ key: `plate|${d.mealId}`, aisle: d.title ?? 'Meal', items, mealType: d.mealType })
+              const label = d.title ?? 'Meal'
+              const items = claimBy(label, (d.recipes ?? []).map((r) => r.recipeId), d.mealId)
+              if (items.length) perMeal.push({ key: `plate|${d.mealId}`, aisle: label, items, mealType: d.mealType })
               continue
             }
             if (!d.recipeId || seen.has(d.recipeId)) continue
             seen.add(d.recipeId)
-            const items = claim(d.recipeId)
-            if (items.length) perMeal.push({ key: `meal|${d.recipeId}`, aisle: d.title ?? 'Meal', items, mealType: d.mealType })
+            const label = d.title ?? 'Meal'
+            const items = claim(label, d.recipeId)
+            if (items.length) perMeal.push({ key: `meal|${d.recipeId}`, aisle: label, items, mealType: d.mealType })
           }
           // Plates added to the list without ever being scheduled get their own
           // sections alongside the off-plan recipes below.
           for (const p of board.unscheduledMeals ?? []) {
             if (seen.has(p.mealId)) continue
             seen.add(p.mealId)
-            const items = claimBy((p.recipes ?? []).map((r) => r.recipeId), p.mealId)
-            if (items.length) perMeal.push({ key: `unplate|${p.mealId}`, aisle: p.name ?? 'Meal', items, unscheduled: true })
+            const label = p.name ?? 'Meal'
+            const dishIds = (p.recipes ?? []).map((r) => r.recipeId)
+            const items = claimBy(label, dishIds, p.mealId)
+            if (items.length) {
+              perMeal.push({ key: `unplate|${p.mealId}`, aisle: label, items, unscheduled: true, mealId: p.mealId })
+              continue
+            }
+            // Everything this plate wants is already listed under an earlier meal.
+            // Say so — dropping the section made an added plate look un-added.
+            const elsewhere = activeItems.filter((i) => wants(i, dishIds, p.mealId))
+            const owners = [...new Set(elsewhere.map((i) => claimedBy.get(i.id)).filter(Boolean))] as string[]
+            if (elsewhere.length) {
+              perMeal.push({
+                key: `unplate|${p.mealId}`,
+                aisle: label,
+                items: [],
+                unscheduled: true,
+                mealId: p.mealId,
+                note:
+                  owners.length === 1
+                    ? `All ${elsewhere.length} item${elsewhere.length === 1 ? '' : 's'} listed under ${owners[0]}`
+                    : `All ${elsewhere.length} items listed under ${owners.slice(0, 2).join(' and ')}`,
+              })
+            }
           }
           // Recipes added straight from a recipe page (not planned this week) get
           // their own sections after the planned meals — the "unscheduled" shelf.
           for (const u of looseUnscheduled) {
-            const items = claim(u.recipeId)
+            const items = claim(u.title ?? 'Recipe', u.recipeId)
             if (items.length) perMeal.push({ key: `un|${u.recipeId}`, aisle: u.title ?? 'Recipe', items, unscheduled: true, recipeId: u.recipeId })
           }
           // Anything not claimed by a planned or unscheduled recipe — hand-added
@@ -488,8 +540,22 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
                 Remove
               </button>
             )}
+            {/* Same undo for a whole off-plan plate. */}
+            {sec.unscheduled && sec.mealId && (
+              <button
+                type="button"
+                className="linkbtn"
+                style={{ marginLeft: 'auto' }}
+                aria-label={`Remove from list`}
+                title="Take this plate's items back off the list"
+                onClick={(e) => { e.stopPropagation(); void removePlate(sec.mealId!) }}
+              >
+                Remove
+              </button>
+            )}
           </div>
         )}
+        {!isCollapsed && sec.note && <div className="grocery-section-note tiny muted">{sec.note}</div>}
         {!isCollapsed && sec.items.map((it) => (
           <ItemRow
             key={it.id}
@@ -670,6 +736,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
                   open={openMeals.has(m.mealId)}
                   onToggle={() => toggleMeal(m.mealId)}
                   onOpenRecipe={(id) => navigate(`/meals/recipe/${id}`)}
+                  onRemove={() => void removePlate(m.mealId)}
                 />
               ))}
               {looseUnscheduled.map((u) => (

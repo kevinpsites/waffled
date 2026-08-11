@@ -446,6 +446,52 @@ describe('GroceryBoard meal plates (week rail)', () => {
   })
 })
 
+// "Add plate to list" was a one-way door: those rows are source='recipe', which the
+// weekly rebuild never wipes, so a plate added off-plan stayed on the list forever
+// with nothing anywhere to take it off.
+describe('GroceryBoard — taking an unscheduled plate back off the list', () => {
+  it('removes the plate without navigating into it', async () => {
+    const sent: { method: string; url: string }[] = []
+    globalThis.fetch = vi.fn(async (url: string, init?: { method?: string }) => {
+      const u = String(url)
+      sent.push({ method: init?.method ?? 'GET', url: u })
+      if (u.includes('/api/lists/grocery/board')) {
+        return ok({
+          list: { id: 'g', name: 'Grocery', emoji: '🛒', listType: 'grocery', isAutoBuilt: true, sortMode: 'manual', itemCount: 1 },
+          weekStart: '2026-06-07',
+          meals: [],
+          unscheduled: [],
+          unscheduledMeals: [tacoNight],
+          items: [autoItem],
+          staples: [],
+        })
+      }
+      return ok({})
+    }) as unknown as typeof fetch
+
+    renderBoard()
+    await screen.findByText('Tomatoes')
+    const rail = railCard()
+    fireEvent.click(within(rail).getByRole('button', { name: /Remove Taco Night/i }))
+
+    await waitFor(() =>
+      expect(
+        sent.some((s) => s.method === 'DELETE' && /\/api\/meals\/M2\/add-to-list\?weekStart=2026-06-07$/.test(s.url)),
+      ).toBe(true),
+    )
+    // the plate row itself must not have opened while we were aiming at its ×
+    expect(rail.querySelectorAll('.gdish')).toHaveLength(0)
+  })
+
+  it('offers no such control for a SCHEDULED plate — that one comes off by unscheduling it', async () => {
+    mockBoardWithPlate()
+    renderBoard()
+    await screen.findByText('BBQ sauce')
+    const rail = railCard()
+    expect(within(rail).queryByRole('button', { name: /Remove BBQ Sunday/i })).not.toBeInTheDocument()
+  })
+})
+
 describe('GroceryBoard per-meal provenance dots', () => {
   it('gives a plate’s item ONE dot in the plate’s colour, however many dishes credited it', async () => {
     mockBoardWithPlate()
@@ -534,5 +580,51 @@ describe('GroceryBoard By-meal grouping with plates', () => {
     expect(section).toBeTruthy()
     expect(within(section).getByText('Peaches')).toBeInTheDocument()
     expect(screen.queryByText('Other items')).not.toBeInTheDocument()
+  })
+
+  // A plate whose dishes all overlap an earlier group claims no rows of its own —
+  // each item is listed once, under its first claimant. Dropping the section
+  // entirely made the plate look like it had never been added, even though the
+  // rail still listed it and the item dots still carried its colour.
+  it('still shows a plate whose items were all claimed by an earlier meal, and says where they went', async () => {
+    const shared = { ...plateItem, id: 'pi3', name: 'BBQ sauce', sourceRecipeIds: ['d1'], sourceMealIds: ['M2'] }
+    mockBoardWithPlate({
+      items: [shared],
+      // M2's only dish is d1 — which is also on the SCHEDULED plate M1 (BBQ Sunday).
+      unscheduledMeals: [
+        { mealId: 'M2', name: 'Overlap Night', color: '#7A5AF8', recipes: [{ recipeId: 'd1', title: 'BBQ Chicken', emoji: '🍗', role: 'main' }] },
+      ],
+    })
+    renderBoard()
+    await screen.findByText('BBQ sauce')
+    fireEvent.click(screen.getByRole('button', { name: 'By meal' }))
+
+    const section = screen
+      .getAllByText('Overlap Night')
+      .map((n) => n.closest('.grocery-section'))
+      .find(Boolean) as HTMLElement
+    expect(section).toBeTruthy()
+    expect(section.textContent).toMatch(/listed under BBQ Sunday/i)
+    // the row itself stays where it was — one item, one checkbox
+    expect(within(section).queryByText('BBQ sauce')).not.toBeInTheDocument()
+  })
+
+  it('lets you take an unscheduled plate off the list from its section header', async () => {
+    const offPlate = { ...plateItem, id: 'pi4', name: 'Peaches', sourceRecipeIds: ['d9'], sourceMealIds: ['M2'] }
+    mockBoardWithPlate({
+      items: [offPlate],
+      unscheduledMeals: [
+        { mealId: 'M2', name: 'Cobbler Night', color: '#7A5AF8', recipes: [{ recipeId: 'd9', title: 'Peach Cobbler', emoji: '🥧', role: 'dessert' }] },
+      ],
+    })
+    renderBoard()
+    await screen.findByText('Peaches')
+    fireEvent.click(screen.getByRole('button', { name: 'By meal' }))
+
+    const section = screen
+      .getAllByText('Cobbler Night')
+      .map((n) => n.closest('.grocery-section'))
+      .find(Boolean) as HTMLElement
+    expect(within(section).getByRole('button', { name: /Remove from list/i })).toBeInTheDocument()
   })
 })

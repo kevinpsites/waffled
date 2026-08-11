@@ -146,6 +146,14 @@ export const mealBuilderApi = {
       'POST',
       `/api/meals/${id}/add-to-list${weekStart ? `?weekStart=${weekStart}` : ''}`,
     ).then(tap('grocery')),
+
+  // Undo the add above. Off-plan rows are source='recipe', which the weekly rebuild
+  // never wipes, so this is the ONLY way a plate comes back off the list.
+  removeFromList: (id: string, weekStart?: string) =>
+    apiSend<{ removed: number; weekStart: string }>(
+      'DELETE',
+      `/api/meals/${id}/add-to-list${weekStart ? `?weekStart=${weekStart}` : ''}`,
+    ).then(tap('grocery')),
 }
 
 export interface SavedMealsState {

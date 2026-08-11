@@ -72,7 +72,7 @@ import {
   type MealRecipeInput,
 } from './meal-builder.service'
 import { onHandForRecipe } from '../pantry/on-hand'
-import { addMealToGrocery, householdWeekStart, presentListItem } from '../lists/lists.service'
+import { addMealToGrocery, removeMealFromGrocery, householdWeekStart, presentListItem } from '../lists/lists.service'
 import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
@@ -807,6 +807,22 @@ export function registerMealRoutes(api: Api): void {
     const added = await addMealToGrocery(tenant, meal.id, weekStart)
     if (added === null) return res.status(404).json({ error: 'NotFound', message: 'meal not found' })
     return res.status(201).json({ added: added.length, items: added.map(presentListItem), weekStart })
+  }))
+
+  // Undo the add above. Same double gate: it writes to the grocery list.
+  api.delete('/api/meals/:id/add-to-list', tenantRoute(async (tenant, req: Request, res: Response) => {
+    await requireModule(tenant, 'lists')
+    const meal = await loadMeal(tenant, req, res)
+    if (!meal) return
+    const ws = typeof req.query?.weekStart === 'string' ? req.query.weekStart : ''
+    let weekStart = await householdWeekStart(tenant.householdId)
+    if (DATE_RE.test(ws)) {
+      const d = new Date(`${ws}T00:00:00Z`)
+      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ws) weekStart = ws
+    }
+    const removed = await removeMealFromGrocery(tenant, meal.id, weekStart)
+    if (removed === null) return res.status(404).json({ error: 'NotFound', message: 'meal not found' })
+    return res.status(200).json({ removed, weekStart })
   }))
 
   api.delete('/api/meals/:id/recipes/:recipeId', tenantRoute(async (tenant, req: Request, res: Response) => {

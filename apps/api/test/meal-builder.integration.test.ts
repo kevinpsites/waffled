@@ -671,6 +671,61 @@ describe('grocery: a plate on the list', () => {
 // week/month planners find empty slots via weekEntries. A meal-backed entry has
 // recipe_id NULL, so if "empty" were keyed off the recipe rather than the entry the
 // planner would happily overwrite a scheduled plate.
+// "Add plate to list" had no undo. Those rows land as source='recipe', which the
+// weekly rebuild deliberately never wipes — so without a remove they are on the
+// list permanently, and Refresh/Start-over won't shift them either.
+describe('taking a plate back off the list', () => {
+  const WEEK = '2026-07-19'
+  let offPlan = ''
+
+  beforeAll(async () => {
+    // A plate SCHEDULED that week, sharing a dish with the off-plan plate below.
+    const scheduled = json(await call('POST', '/api/meals', kevin, {
+      name: 'Scheduled that week',
+      recipes: [{ recipeId: bbqChicken, role: 'main' }],
+    })).meal.id
+    await call('POST', `/api/meals/${scheduled}/schedule`, kevin, { date: '2026-07-20', mealType: 'dinner' })
+    await call('POST', `/api/lists/grocery/rebuild?weekStart=${WEEK}`, kevin)
+
+    offPlan = json(await call('POST', '/api/meals', kevin, {
+      name: 'Off-plan plate',
+      recipes: [{ recipeId: bbqChicken, role: 'main' }, { recipeId: potatoSalad, role: 'side' }],
+    })).meal.id
+    await call('POST', `/api/meals/${offPlan}/add-to-list?weekStart=${WEEK}`, kevin)
+  })
+
+  it('takes the plate’s own shopping back off', async () => {
+    const before = json(await call('GET', `/api/lists/grocery/board?weekStart=${WEEK}`, kevin))
+    expect(before.items.map((i: { name: string }) => i.name)).toContain('Potatoes')
+
+    const res = await call('DELETE', `/api/meals/${offPlan}/add-to-list?weekStart=${WEEK}`, kevin)
+    expect(res.statusCode).toBe(200)
+    expect(json(res).removed).toBeGreaterThan(0)
+
+    const after = json(await call('GET', `/api/lists/grocery/board?weekStart=${WEEK}`, kevin))
+    const names = after.items.map((i: { name: string }) => i.name)
+    expect(names).not.toContain('Potatoes')
+    // …and the plate stops claiming a shelf of its own.
+    expect((after.unscheduledMeals ?? []).some((m: { mealId: string }) => m.mealId === offPlan)).toBe(false)
+  })
+
+  it('leaves what a SCHEDULED meal still needs, even though the plate shared that dish', async () => {
+    // BBQ Chicken is on the plan for this week. Removing an off-plan plate that
+    // happens to contain the same dish must not strip the week's own shopping —
+    // the naive "delete every row this plate credits" gets this wrong.
+    const after = json(await call('GET', `/api/lists/grocery/board?weekStart=${WEEK}`, kevin))
+    const names = after.items.map((i: { name: string }) => i.name)
+    expect(names).toContain('Chicken thighs')
+    expect(names).toContain('Barbecue sauce')
+  })
+
+  it('is idempotent — removing twice is not an error', async () => {
+    const res = await call('DELETE', `/api/meals/${offPlan}/add-to-list?weekStart=${WEEK}`, kevin)
+    expect(res.statusCode).toBe(200)
+    expect(json(res).removed).toBe(0)
+  })
+})
+
 describe('the planner treats a meal-backed slot as filled', () => {
   it('does not offer to fill a night that already has a plate on it', async () => {
     const res = await call('POST', '/api/meals/plan-week', kevin, { start: '2026-07-05' })
