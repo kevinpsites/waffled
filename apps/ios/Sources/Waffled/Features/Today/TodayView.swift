@@ -318,7 +318,7 @@ struct TodayView: View {
                             path.append(.meal(.placeholder(id: mealId, name: meal.title,
                                                            servings: meal.servings ?? 4)))
                         }
-                        tonightButton("👨‍🍳 Cook the meal", primary: true) {
+                        tonightButton("👨‍🍳 Cook meal", primary: true) {
                             Task { await cook.startPlate(mealId: mealId) }
                         }
                     }

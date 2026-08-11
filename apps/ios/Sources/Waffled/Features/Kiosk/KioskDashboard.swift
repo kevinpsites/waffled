@@ -521,7 +521,7 @@ struct KioskDashboard: View {
                                 mealTarget = .placeholder(id: mealId, name: meal.title,
                                                           servings: meal.servings ?? 4)
                             }
-                            primaryButton("👨‍🍳 Cook the meal") {
+                            primaryButton("👨‍🍳 Cook meal") {
                                 Task { await cook.startPlate(mealId: mealId) }
                             }
                         }

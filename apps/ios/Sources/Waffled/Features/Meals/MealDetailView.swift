@@ -133,7 +133,7 @@ struct MealDetailView: View {
                     } label: {
                         HStack(spacing: 7) {
                             Text("👨‍🍳")
-                            Text("Cook the meal")
+                            Text("Cook meal")
                                 .font(.system(size: 15, weight: .bold))
                         }
                         .foregroundStyle(WF.onInk)
