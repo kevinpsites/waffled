@@ -34,6 +34,7 @@ import { registerFamilyNightRoutes } from './modules/familyNight/familyNight.rou
 import { registerCalendarAiRoutes } from './modules/calendar/calendar-ai'
 import { registerCalendarRoutes } from './modules/calendar/calendars'
 import { registerCalendarSyncRoutes } from './modules/calendar/calendar-sync.routes'
+import { registerIcsFeedRoutes } from './modules/calendar/ics-feeds'
 import { registerGoalRoutes } from './modules/goals/goals.routes'
 import { registerGoalCalendarRoutes } from './modules/goals/goal-calendar'
 import { registerOverviewRoutes } from './modules/overview/overview'
@@ -240,11 +241,15 @@ registerFamilyNightRoutes(api)
 // Calendar AI cards (/api/calendar/heads-up, /api/events/:id/insight)
 registerCalendarAiRoutes(api)
 
-// Google Calendar connect (/api/calendar/google…, /auth/google/calendar/callback)
+// Calendar connect — Google + Outlook (/api/calendar/{google,microsoft}…,
+// /auth/{google,microsoft}/calendar/callback)
 registerCalendarRoutes(api)
 
-// Google Calendar inbound sync (/api/calendar/sync)
+// Calendar inbound sync (/api/calendar/sync)
 registerCalendarSyncRoutes(api)
+
+// ICS feed subscriptions (/api/calendar/feeds…) — read-only URL calendars
+registerIcsFeedRoutes(api)
 
 // Goals (/api/goals…)
 registerGoalRoutes(api)

@@ -93,6 +93,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Per-person filter | ✅ | ✅ | ✅ | ✅ Done |
 | **Two-way Google Calendar sync** (inbound poll + outbound push) | ✅ | ✅ | ✅ | ✅ Done (sync runs server-side; connect in Settings → Calendars) |
 | **Two-way Outlook / Microsoft 365 sync** (same engine, via Graph) | ✅ | ✅ | ✅ | ✅ Done (server-side; connect in Settings → Calendars) |
+| **Calendar feeds (ICS)** — subscribe to any published .ics/webcal URL | ✅ | ✅ | ✅ | ✅ Done (read-only, no OAuth; polled every 15 min) |
 | Connect calendars + per-person write-target (Settings → Calendars) | ✅ | ✅ | ✅ | ✅ Done |
 | **Offline** calendar (PowerSync: local reads + queued writes) | ✅ | ✅ | ✅ | ✅ Done |
 | AI **"Heads up this week"** digest + **per-event insight** | ✅ | ✅ | ✅ | ✅ Done |

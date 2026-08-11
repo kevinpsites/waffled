@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { useThemePref } from '../lib/theme'
 import { PersonModal } from './components/PersonModal'
@@ -1370,6 +1370,156 @@ function isReadOnly(accessRole: string | null): boolean {
 // Calendars: connect Google accounts, map each calendar to a person (color/owner),
 // toggle which ones Waffled syncs, and pull events on demand. Connect navigates to
 // Google's consent screen; the api callback redirects back here when it's done.
+// ── Calendar feeds: read-only ICS URL subscriptions ─────────────────────────
+// The no-OAuth calendar source: paste any published .ics / webcal link (school
+// schedule, sports team, an Outlook "publish calendar" URL) and Waffled polls it.
+// Renders whether or not an OAuth provider is configured — that independence is
+// the whole point.
+function feedHost(url: string): string {
+  try { return new URL(url.replace(/^webcal:\/\//i, 'https://')).host } catch { return url }
+}
+
+function CalendarFeedsCard({ feeds, onChanged }: { feeds: IcsFeed[]; onChanged: () => void }) {
+  const { persons } = usePersons()
+  const [url, setUrl] = useState('')
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [syncingId, setSyncingId] = useState<string | null>(null)
+  const canAdd = /^(https?|webcal):\/\/.+\../i.test(url.trim())
+
+  async function add() {
+    setBusy(true)
+    setErr('')
+    try {
+      const { feed } = await calendarsApi.addFeed({ url: url.trim(), name: name.trim() || undefined })
+      setUrl('')
+      setName('')
+      onChanged()
+      // Kick the first poll right away so events appear without waiting for the
+      // 15-minute cycle; refresh again when it lands (success or error badge).
+      calendarsApi.syncFeed(feed.id).then(onChanged, onChanged)
+    } catch {
+      setErr('Could not add that feed — check the URL and try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function setPerson(f: IcsFeed, personId: string) {
+    await calendarsApi.updateFeed(f.id, { personId: personId || null })
+    onChanged()
+  }
+
+  async function toggleVisibility(f: IcsFeed) {
+    await calendarsApi.updateFeed(f.id, { visibility: f.visibility === 'personal' ? 'family' : 'personal' })
+    onChanged()
+  }
+
+  async function syncNow(f: IcsFeed) {
+    setSyncingId(f.id)
+    try {
+      await calendarsApi.syncFeed(f.id)
+    } finally {
+      setSyncingId(null)
+      onChanged()
+    }
+  }
+
+  async function remove(f: IcsFeed) {
+    if (!window.confirm('Remove this calendar feed? Its imported events are removed too.')) return
+    await calendarsApi.removeFeed(f.id)
+    onChanged()
+  }
+
+  return (
+    <SettingCard style={{ marginTop: 18 }}>
+      <div className="set-row2-t" style={{ marginBottom: 4 }}>🔗 Calendar feeds</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
+        Subscribe to any published calendar link (.ics or webcal) — school schedules, sports teams, a work
+        calendar published from Outlook. No sign-in needed; Waffled checks for changes every 15 minutes.
+      </div>
+
+      {feeds.map((f) => (
+        <div className="set-row2" key={f.id}>
+          <div className="set-ic2">📡</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="set-row2-t" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {f.name ?? feedHost(f.url)}
+            </div>
+            <div className="tiny muted" style={{ fontWeight: 600 }}>
+              {feedHost(f.url)} · {f.lastSyncedAt ? `Last synced ${fmtWhen(f.lastSyncedAt)}` : 'Not synced yet'}
+              {f.lastError && <span style={{ color: 'var(--primary)', fontWeight: 700 }}> · ⚠ {f.lastError}</span>}
+            </div>
+          </div>
+          <select
+            className="sel"
+            value={f.personId ?? ''}
+            onChange={(e) => setPerson(f, e.target.value)}
+            title="Who this feed belongs to (sets event color)"
+            aria-label={`Person for feed ${f.name ?? feedHost(f.url)}`}
+          >
+            <option value="">Unassigned</option>
+            {persons.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <label
+            className="cal-sync"
+            title={
+              f.visibility === 'personal'
+                ? 'Private — only the assigned person sees this feed. Uncheck to show it to the whole family.'
+                : 'Visible to the whole family, including the shared kiosk. Check to keep it private.'
+            }
+          >
+            <input
+              type="checkbox"
+              checked={f.visibility === 'personal'}
+              onChange={() => toggleVisibility(f)}
+              aria-label={`Private feed ${f.name ?? feedHost(f.url)}`}
+            />
+            Private
+          </label>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => syncNow(f)}
+            disabled={syncingId === f.id}
+            title="Refresh this feed now"
+            aria-label={`Sync feed ${f.name ?? feedHost(f.url)}`}
+          >
+            ↻
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => remove(f)}
+            title="Remove this feed"
+            aria-label={`Remove feed ${f.name ?? feedHost(f.url)}`}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: feeds.length ? 12 : 0 }}>
+        <label className="field" style={{ flex: '2 1 220px' }}>
+          <span>Feed URL</span>
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…/calendar.ics" />
+        </label>
+        <label className="field" style={{ flex: '1 1 140px' }}>
+          <span>Name (optional)</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="School calendar" />
+        </label>
+        <button type="button" className="btn btn-primary" onClick={add} disabled={busy || !canAdd}>
+          {busy ? 'Adding…' : 'Add feed'}
+        </button>
+      </div>
+      {err && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 8 }}>{err}</div>}
+    </SettingCard>
+  )
+}
+
 function CalendarsPanel() {
   const [status, setStatus] = useState<CalendarStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1544,6 +1694,8 @@ function CalendarsPanel() {
             <code>TOKEN_ENCRYPTION_KEY</code> — then reload.
           </div>
         </SettingCard>
+        {/* Feed subscriptions need no OAuth provider — they work regardless. */}
+        <CalendarFeedsCard feeds={status.feeds ?? []} onChanged={load} />
       </div>
     )
   }
@@ -1681,6 +1833,9 @@ function CalendarsPanel() {
           )}
         </>
       )}
+
+      {/* ICS subscriptions sit below the OAuth accounts — a third calendar source. */}
+      <CalendarFeedsCard feeds={status.feeds ?? []} onChanged={load} />
     </div>
   )
 }

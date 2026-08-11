@@ -1,6 +1,6 @@
 ---
 title: Calendar & events
-description: The family's shared schedule — native events plus optional two-way Google Calendar sync.
+description: The family's shared schedule — native events plus optional two-way Google or Outlook sync and ICS calendar feeds.
 ---
 
 ![The month calendar — colour-coded family events with a Today rail and countdown badges](/screenshots/calendar.png)
@@ -8,9 +8,11 @@ description: The family's shared schedule — native events plus optional two-wa
 The calendar is the family's shared schedule and the thing the whole hub is
 anchored to — every person's events (and their colors) on one grid, so "whose
 thing is when" stops being a group text. It's native events out of the box, with
-optional **two-way [Google Calendar](/administration/google-calendar/) sync**
-layered on top. Along with [Today](/features/today/), it is the one feature that
-is **never gated off**.
+optional **two-way [Google Calendar](/administration/google-calendar/) or
+[Outlook / Microsoft 365](/administration/outlook-calendar/) sync** and
+**[calendar feed (ICS) subscriptions](#calendar-feeds-ics)** layered on top.
+Along with [Today](/features/today/), it is the one feature that is **never
+gated off**.
 
 ## Highlights
 - 📅 **Native events** — create / edit / delete, with **multiple participants per
@@ -46,11 +48,37 @@ is **never gated off**.
 iPad uses distinct wide grids and lays the event detail out in **two columns**;
 everything else is shared and adapts by size.
 
+## Calendar feeds (ICS)
+
+The third calendar source next to [Google](/administration/google-calendar/) and
+[Outlook](/administration/outlook-calendar/): **subscribe to any published calendar
+link** — a school schedule, a sports team, a work calendar published from Outlook —
+and its events appear on the family calendar. Feeds are read-only and need **no
+sign-in or OAuth setup**; the URL is the whole credential, which makes them the
+plan B when a workplace won't approve calendar OAuth access.
+
+- **Add one in Settings → Calendars → Calendar feeds** (admins): paste an `.ics`
+  or `webcal://` URL (webcal links are fetched over HTTPS) and optionally name it.
+  The first refresh runs as soon as you add the feed; after that every feed is
+  polled **every 15 minutes** (`ICS_SYNC_INTERVAL_MS`, `0` disables), and each
+  feed row has an **↻ Sync** button when you don't want to wait for the cycle.
+- **Person mapping & privacy** — map a feed to a person to color its events, and
+  tick the row's **Private** checkbox to keep its events visible only to that
+  person (the same family/personal visibility model as synced calendars).
+- **Recurring events** expand like any native series. One known limitation: a
+  single moved/edited occurrence in the feed (an ICS `RECURRENCE-ID` exception)
+  isn't applied — the base series renders as published.
+- **Events that leave the feed leave the calendar** — they're soft-deleted on the
+  next refresh, and come back if the feed publishes them again. Removing a feed
+  removes its imported events too.
+- Each feed shows its **last-synced time** and any fetch/parse **error** in the
+  Calendars panel; one broken feed never blocks the others.
+
 ## Settings
-- **Settings → Calendars** — connect Google, set each person's **write-target**
-  calendar, and **"sync now"**.
+- **Settings → Calendars** — connect Google or Outlook, add calendar feeds, set
+  each person's **write-target** calendar, and **"sync now"**.
 - **Household settings** — week start, timezone, and location (which also feeds
-  weather). Google sync runs **server-side**, on a schedule.
+  weather). Provider sync and feed polling run **server-side**, on a schedule.
 
 ## Module
 None — Calendar is **core** and never gated. See [Modules](/administration/modules/)

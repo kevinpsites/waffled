@@ -101,6 +101,7 @@ Independent of login. See [Google Calendar](/administration/google-calendar/) an
 | `MS_CALENDAR_REDIRECT_URI` | Registered redirect (`…/auth/microsoft/calendar/callback`) | null |
 | `MS_CALENDAR_SCOPES` | Microsoft Graph scopes | `openid email offline_access User.Read Calendars.ReadWrite` |
 | `CALENDAR_SYNC_INTERVAL_MS` | Inbound sync poll interval (Google + Outlook) | `300000` (5m) |
+| `ICS_SYNC_INTERVAL_MS` | Calendar-feed (ICS) refresh interval; `0` disables | `900000` (15m) |
 
 ## Media / storage
 

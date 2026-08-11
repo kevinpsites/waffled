@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Google and Microsoft accounts freely, and each connected account shows which provider it
   came from. Needs a free Azure app registration; see the new
   [Outlook / Microsoft 365](https://waffled.app/docs/administration/outlook-calendar/) guide.
+- **Subscribe to any published calendar link (ICS feeds).** Paste a school schedule, a
+  sports-team calendar, or a work calendar published from Outlook into Settings → Calendars
+  and its events show up on the family calendar — no sign-in, no OAuth setup, nothing to
+  approve. Feeds are read-only, refresh every 15 minutes (with a per-feed Sync button), and
+  can be mapped to a person for color or marked private. This is the plan B when a workplace
+  won't approve calendar access.
 - **Choose which recipe ingredients go on the grocery list.** "Add to grocery" now opens
   a picker so you can add everything or just the items you actually need, instead of always
   dumping the whole recipe onto the list. Everything starts checked — pantry staples are

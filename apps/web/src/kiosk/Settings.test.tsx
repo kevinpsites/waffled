@@ -359,6 +359,48 @@ describe('Settings screen', () => {
     expect(screen.queryByText('Connect Outlook Calendar')).toBeNull()
   })
 
+  it('lists ICS feeds and adds one, even with no OAuth provider configured', async () => {
+    const posts: Array<Record<string, unknown>> = []
+    const feed = {
+      id: 'f1', url: 'https://school.example/cal.ics', name: 'School', personId: null,
+      personName: null, personColor: null, visibility: 'family',
+      lastSyncedAt: null, lastError: null, createdAt: '2026-08-01T00:00:00Z',
+    }
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/api/calendar/feeds') && init?.method === 'POST' && !u.endsWith('/sync')) {
+        posts.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        return { ok: true, json: async () => ({ feed }) }
+      }
+      if (u.includes('/api/calendar/feeds')) return { ok: true, json: async () => ({ feedId: 'f1', imported: 3, updated: 0, deleted: 0 }) }
+      if (u.includes('/api/calendar/google/status')) {
+        return { ok: true, json: async () => ({ configured: false, microsoftConfigured: false, connected: false, accounts: [], calendars: [], feeds: [feed] }) }
+      }
+      if (u.includes('/api/countdowns')) return { ok: true, json: async () => ({ countdowns: [], sleeps: false, birthdayHorizonDays: 183 }) }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Calendars'))
+
+    // Feeds render even though neither OAuth provider is configured — that
+    // independence is the point of the feature.
+    expect(await screen.findByText('School')).toBeInTheDocument()
+    expect(screen.getByText(/No calendar provider is configured/)).toBeInTheDocument()
+
+    // Add is disabled until the URL looks like a feed, then POSTs it.
+    const addBtn = screen.getByText('Add feed')
+    expect(addBtn).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Feed URL'), { target: { value: 'webcal://team.example/games.ics' } })
+    fireEvent.click(addBtn)
+    await waitFor(() => expect(posts.length).toBe(1))
+    expect(posts[0].url).toBe('webcal://team.example/games.ics')
+  })
+
   it('only shows the not-configured notice when NEITHER provider is configured', async () => {
     mockCalendarStatus({ configured: false, microsoftConfigured: true, connected: false, accounts: [], calendars: [] })
 
