@@ -218,6 +218,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   whether the phone must be on the same LAN as the server (a self-hosted box usually
   isn't reachable from cellular). Worth pairing with **List sharing** above, since both
   want the same "a link that shows one list, to someone who isn't signed in" primitive.
+  (Share list itself now covers **every** list, not just groceries — grouping by aisle on
+  the grocery board and by section elsewhere — so the enhancement applies household-wide.)
 
 - **Waffled-Bite DIY hardware setup guide.** A real, consumer-facing walkthrough for
   buying the board yourself ([ELECROW CrowPanel Advanced 7", ESP32-P4](https://www.amazon.com/dp/B0G34WGWJR))

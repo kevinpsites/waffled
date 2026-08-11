@@ -443,4 +443,36 @@ describe('Lists screen', () => {
     expect(idx('Urgent item')).toBeLessThan(idx('Normal item'))
     expect(idx('Normal item')).toBeLessThan(idx('Low item'))
   })
+
+  // Share list started as a grocery-only handoff, but "give this list to whoever
+  // is going" is the same job for a packing or hardware list.
+  describe('sharing a custom list', () => {
+    it('shares the unchecked items grouped by their sections', async () => {
+      mockApi({ lists: [grocery, packing], items: packItems })
+      renderScreen()
+      await exitBoard()
+      await screen.findByText('Swimsuits')
+
+      fireEvent.click(screen.getByRole('button', { name: /Share list/ }))
+
+      expect(screen.getByText('Share list', { selector: '.modal-card *' })).toBeInTheDocument()
+      const block = document.querySelector('.share-list-text') as HTMLElement
+      // 'PJs & socks' is checked, so it must not travel; sections become headers.
+      expect(block.textContent).toBe(
+        ['CLOTHES', '- Swimsuits (×4)', '', 'GEAR', '- Sunscreen'].join('\n')
+      )
+    })
+
+    it('offers nothing to share when the list has no unchecked items', async () => {
+      mockApi({ lists: [grocery, packing], items: [packItems[1]] })
+      renderScreen()
+      await exitBoard()
+      // The one item is checked, so it sits in the collapsed Completed section —
+      // wait on the list header instead, then assert there's nothing to share.
+      // (the name appears in both the sidebar and the list header)
+      expect((await screen.findAllByText('Lake trip packing')).length).toBeGreaterThan(0)
+
+      expect(screen.queryByRole('button', { name: /Share list/ })).toBeNull()
+    })
+  })
 })

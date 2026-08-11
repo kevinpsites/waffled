@@ -4,6 +4,8 @@ import { ListsModal } from './components/ListsModal'
 import { ListItemModal } from './components/ListItemModal'
 import { PriorityFlag } from './components/priority'
 import { GroceryBoard } from './components/GroceryBoard'
+import { ShareListModal } from './components/ShareListModal'
+import type { ShareListItem } from './components/share-list'
 import {
   groceryApi,
   useLists,
@@ -365,6 +367,8 @@ export function Lists() {
   // sections into one list ordered highest-priority first.
   const [sortByPriority, setSortByPriority] = useState(false)
   const [itemModal, setItemModal] = useState<{ item: ListItem | null } | null>(null)
+  // "Share list" — the same phone handoff the grocery board offers, for any list.
+  const [sharing, setSharing] = useState(false)
   const [groceryOpen, setGroceryOpen] = useState(false)
   // Just-checked items lingering in place during the undo grace window.
   const [recent, setRecent] = useState<Set<string>>(new Set())
@@ -454,16 +458,32 @@ export function Lists() {
   // render — an inline lambda here caused an infinite setState loop.
   const closeGrocery = useCallback(() => setGroceryOpen(false), [])
 
+  // A list is worth sharing only while something on it is still outstanding.
+  // The modal reads `items` at render time, so the button needs no item deps —
+  // just whether to offer it at all (keeps this effect off the toggle path).
+  const hasUnchecked = items.some((i) => !i.checked)
+
   useTopbarRight(
     () => (
       <>
+        {hasUnchecked && (
+          <button
+            type="button"
+            className="pill"
+            style={{ cursor: 'pointer' }}
+            title="Copy, share, or QR this list to any phone"
+            onClick={() => setSharing(true)}
+          >
+            📤 Share list
+          </button>
+        )}
         <button type="button" className="pill btn-primary topbar-new" onClick={() => setItemModal({ item: null })}>
           <Icon name="plus" />
           <span>Add item</span>
         </button>
       </>
     ),
-    []
+    [hasUnchecked]
   )
 
   // Optimistic check toggle. A freshly-checked item lingers in place for a short
@@ -1053,6 +1073,20 @@ export function Lists() {
             setSelectedId(id)
             setGroceryOpen(false)
           }}
+        />
+      )}
+      {sharing && (
+        <ShareListModal
+          // A custom list groups by section where the grocery board groups by
+          // aisle — same shape to the formatter, which orders unknown groups by
+          // first appearance and drops headers entirely for an ungrouped list.
+          items={items.map<ShareListItem>((i) => ({
+            name: i.name,
+            quantity: i.quantity,
+            checked: i.checked,
+            aisle: i.section ?? '',
+          }))}
+          onClose={() => setSharing(false)}
         />
       )}
       {itemModal && selected && (

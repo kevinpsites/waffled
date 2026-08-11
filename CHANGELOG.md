@@ -37,12 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mirror someone else's calendar, so Waffled won't pretend an edit will stick; change it at
   the source, or remove the feed. This is the plan B when a workplace won't approve calendar
   access.
-- **Share the grocery list to a phone.** A **Share list** button on the grocery board turns
-  whatever's still unchecked into a clean aisle-grouped text list — in the order you actually
+- **Share any list to a phone.** A **Share list** button on the grocery board and on every
+  custom list turns whatever's still unchecked into a clean grouped text list — in the order you actually
   walk the store, quantities included — and hands it over by share sheet, clipboard, or a QR
   code. The QR encodes the list text itself rather than a link, so whoever is going shopping
-  gets it by pointing their camera at the kiosk: no app, no account, no sign-in. A very long
-  list can't fit in a code a camera can read — Waffled says so and points you at Copy or Share
+  gets it by pointing their camera at the kiosk: no app, no account, no sign-in. The grocery
+  board groups by aisle and a custom list by section; a list with no sections comes out flat. A
+  very long list can't fit in a code a camera can read — Waffled says so and points you at Copy or Share
   rather than showing a QR that won't scan.
 - **Build one meal out of several recipes.** Dinner is rarely a single dish, but the
   planner only ever let you plan one recipe a night. The new **Meal Builder** lets you

@@ -51,4 +51,25 @@ describe('formatShareList', () => {
   it('returns an empty string when everything is checked', () => {
     expect(formatShareList([item('Butter', null, 'Dairy & Chilled', true)])).toBe('')
   })
+
+  // Custom lists (hardware run, packing list) often have no sections at all.
+  // Filing the whole thing under a lone OTHER header is noise, not structure.
+  it('omits headers entirely when nothing in the list is grouped', () => {
+    const text = formatShareList([
+      item('Wood screws', '1 box', ''),
+      item('Sandpaper', null, ''),
+      item('Wood glue', null, ''),
+    ])
+    expect(text).toBe(['- Wood screws (1 box)', '- Sandpaper', '- Wood glue'].join('\n'))
+  })
+
+  it('keeps the header when the single group is a real section', () => {
+    const text = formatShareList([item('Wood screws', null, 'Hardware')])
+    expect(text).toBe('HARDWARE\n- Wood screws')
+  })
+
+  it('still uses OTHER when some items are grouped and some are not', () => {
+    const text = formatShareList([item('Wood screws', null, 'Hardware'), item('Snacks', null, '')])
+    expect(text).toBe(['HARDWARE', '- Wood screws', '', 'OTHER', '- Snacks'].join('\n'))
+  })
 })
