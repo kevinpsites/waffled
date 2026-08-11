@@ -72,9 +72,12 @@ export function getCaptureTarget(kind: TargetKind): CaptureTarget | undefined {
 // A thrown domain error the /api/capture/commit dispatcher shapes into a 4xx
 // { error, message } (it reads .statusCode + .message). Using a real Error keeps
 // .name sensible and lint happy.
-export function httpError(statusCode: number, message: string): Error & { statusCode: number } {
+// `name` becomes the response's `error` code (the commit route relays `e.name`),
+// so pass one when the client needs to tell this failure apart from any other 4xx.
+export function httpError(statusCode: number, message: string, name?: string): Error & { statusCode: number } {
   const err = new Error(message) as Error & { statusCode: number }
   err.statusCode = statusCode
+  if (name) err.name = name
   return err
 }
 

@@ -20,7 +20,9 @@ import {
 import { rankCandidates, type Candidate, type RankRow } from '../capture/candidate-match'
 import { wallParts, wallToUtc, localYmd, whenLabel } from '../capture/tz'
 import { materializeMaster } from '../calendar/expansion.service'
-import { rangeEvents, updateEvent, overrideOccurrence, softDeleteEvent, visibleTo, type EventRow } from './events'
+import {
+  rangeEvents, updateEvent, overrideOccurrence, softDeleteEvent, visibleTo, isReadOnlyOrigin, type EventRow,
+} from './events'
 
 // How far ahead the resolver looks for "the soccer game" — 60 days covers "next
 // month's recital" while keeping the candidate list to what a person plausibly
@@ -48,12 +50,14 @@ interface TargetRow {
   all_day: boolean
   series_id: string | null // set = a recurring occurrence
   occurrence_start: Date | null
+  /// An occurrence inherits its series' origin — it's as read-only as its master.
+  origin: string | null
 }
 
 async function findTargetRow(ctx: ResolveCtx, id: string): Promise<TargetRow | null> {
   const occ = await query<TargetRow>(
     `select coalesce(o.title, m.title) as title, o.starts_at, o.ends_at, o.all_day,
-            m.id as series_id, o.original_start as occurrence_start
+            m.id as series_id, o.original_start as occurrence_start, m.origin
        from event_occurrences o
        join events m on m.id = o.event_id and m.deleted_at is null
       where o.household_id = $1 and o.id = $2 and o.deleted_at is null
@@ -62,7 +66,8 @@ async function findTargetRow(ctx: ResolveCtx, id: string): Promise<TargetRow | n
   )
   if (occ.rows[0]) return occ.rows[0]
   const single = await query<TargetRow>(
-    `select e.title, e.starts_at, e.ends_at, e.all_day, null as series_id, null as occurrence_start
+    `select e.title, e.starts_at, e.ends_at, e.all_day, null as series_id, null as occurrence_start,
+            e.origin
        from events e
       where e.household_id = $1 and e.id = $2 and e.deleted_at is null and e.rrule is null
         ${visibleTo('e', '$3')}`,
@@ -126,8 +131,11 @@ const eventCaptureTarget: CaptureTarget = {
     // which would otherwise auto-select as the sole match).
     const from = localYmd(new Date(ctx.now.getTime() - LOOKBACK_DAYS * DAY_MS), ctx.timezone)
     const to = localYmd(new Date(ctx.now.getTime() + LOOKAHEAD_DAYS * DAY_MS), ctx.timezone)
-    const events = (await rangeEvents(ctx.householdId, from, to, ctx.personId)).filter((e) =>
-      notYetOver(e, ctx.now, ctx.timezone)
+    // Feed-imported events are dropped before ranking: Waffled can't write back to
+    // an ICS subscription, so offering one as a candidate would only produce a
+    // confirm button that's guaranteed to fail (applyMutation refuses it too).
+    const events = (await rangeEvents(ctx.householdId, from, to, ctx.personId)).filter(
+      (e) => notYetOver(e, ctx.now, ctx.timezone) && !isReadOnlyOrigin(e.origin)
     )
 
     const byId = new Map<string, EventRow>(events.map((e) => [e.id, e]))
@@ -147,6 +155,14 @@ const eventCaptureTarget: CaptureTarget = {
   async applyMutation(ctx: ResolveCtx, cmd: MutateCommand): Promise<{ message: string }> {
     const row = await findTargetRow(ctx, cmd.targetId)
     if (!row) throw httpError(404, 'That event is gone.')
+    // resolveCandidates already hides these, so this only catches a client that
+    // sends an id anyway — but quick-add writes via updateEvent/softDeleteEvent
+    // rather than the /api/events routes, so without it the route guard is bypassed
+    // and the change would be quietly undone by the next poll.
+    if (isReadOnlyOrigin(row.origin)) {
+      throw httpError(409, `“${row.title}” comes from a subscribed calendar feed — change it where it's published.`,
+                      'ReadOnlyEvent')
+    }
     const isOccurrence = row.series_id != null && row.occurrence_start != null
 
     if (cmd.verb === 'reschedule') {
