@@ -107,7 +107,18 @@ export async function softDeleteMeal(householdId: string, id: string): Promise<b
     `update meals set deleted_at = now() where household_id = $1 and id = $2 and deleted_at is null`,
     [householdId, id]
   )
-  return !!rowCount
+  if (!rowCount) return false
+  // Take the plate's nights with it. The app only ever soft-deletes, so the
+  // `on delete set null` on meal_plan_entries.meal_id never fires — leaving a slot
+  // that points at a deleted plate. It renders as a nameless ghost on the week grid
+  // (the entry query nulls the name but still expands the dishes) and the weekly
+  // grocery rebuild goes on shopping for it, indefinitely.
+  await query(
+    `update meal_plan_entries set deleted_at = now()
+      where household_id = $1 and meal_id = $2 and deleted_at is null`,
+    [householdId, id]
+  )
+  return true
 }
 
 // The dishes on a plate, in plate order, joined to the recipe + the assigned cook.

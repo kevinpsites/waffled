@@ -848,6 +848,7 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
              and e.deleted_at is null and e.date >= $2 and e.date <= $3
           union
           select mr.recipe_id from meal_plan_entries e
+            join meals m on m.id = e.meal_id and m.deleted_at is null
             join meal_recipes mr on mr.meal_id = e.meal_id
            where e.household_id=$1 and e.meal_id is not null
              and e.deleted_at is null and e.date >= $2 and e.date <= $3

@@ -865,3 +865,33 @@ describe('what exactly is left to buy', () => {
     expect(names).toHaveLength(shared.toBuy)
   })
 })
+
+// A plate can be deleted while it still holds a night on the calendar. The slot has
+// to go with it: the `on delete set null` in 0091_meals.sql never fires, because the
+// app only ever soft-deletes, so nothing was clearing meal_plan_entries.meal_id.
+describe('deleting a plate that is on the calendar', () => {
+  const WEEK = '2026-09-06'
+  let doomed = ''
+
+  beforeAll(async () => {
+    doomed = json(await call('POST', '/api/meals', kevin, {
+      name: 'Doomed plate',
+      recipes: [{ recipeId: bbqChicken, role: 'main' }],
+    })).meal.id
+    await call('POST', `/api/meals/${doomed}/schedule`, kevin, { date: '2026-09-07', mealType: 'dinner' })
+    expect((await call('DELETE', `/api/meals/${doomed}`, kevin)).statusCode).toBe(204)
+  })
+
+  it('takes its slot off the week instead of leaving a nameless ghost', async () => {
+    const week = json(await call('GET', `/api/meals/week?start=${WEEK}&days=7`, kevin))
+    expect(week.entries.some((e: { mealId: string | null }) => e.mealId === doomed)).toBe(false)
+  })
+
+  it('stops the weekly rebuild shopping for a plate that no longer exists', async () => {
+    const board = json(await call('POST', `/api/lists/grocery/rebuild?weekStart=${WEEK}`, kevin)).board
+    const autoNames = board.items
+      .filter((i: { source: string }) => i.source === 'auto')
+      .map((i: { name: string }) => i.name)
+    expect(autoNames).not.toContain('Chicken thighs')
+  })
+})
