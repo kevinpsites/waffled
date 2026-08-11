@@ -80,6 +80,9 @@ struct RecipesLibraryView: View {
     /// a single recipe (the planner's slot picker), so plates are hidden rather than
     /// rendered as a control that does nothing.
     var onPickMeal: ((WaffledAPI.MealDTO) -> Void)? = nil
+    /// A plate to leave out — the one currently being built. Adding a plate to itself
+    /// flattens it into itself, which silently renumbers every dish it already has.
+    var excludeMealId: String? = nil
     @Environment(SyncManager.self) private var sync
     @State private var f = LibraryFilters()
     @State private var creating = false
@@ -94,10 +97,12 @@ struct RecipesLibraryView: View {
     /// the memberwise call sites.
     init(model: RecipesModel, initialProtein: String? = nil, initialNewOnly: Bool = false,
          onPick: ((WaffledAPI.RecipeSummary) -> Void)? = nil,
-         onPickMeal: ((WaffledAPI.MealDTO) -> Void)? = nil) {
+         onPickMeal: ((WaffledAPI.MealDTO) -> Void)? = nil,
+         excludeMealId: String? = nil) {
         self.model = model
         self.onPick = onPick
         self.onPickMeal = onPickMeal
+        self.excludeMealId = excludeMealId
         var seed = LibraryFilters()
         seed.protein = initialProtein.map { [$0] } ?? []
         seed.onlyNew = initialNewOnly
@@ -160,7 +165,9 @@ struct RecipesLibraryView: View {
     /// Plates the current caller can actually use. In pick mode without a meal handler
     /// a plate card would be a control that does nothing when tapped.
     private var pickableMeals: [WaffledAPI.MealDTO] {
-        (onPick != nil && onPickMeal == nil) ? [] : model.meals
+        guard onPick == nil || onPickMeal != nil else { return [] }
+        guard let excludeMealId else { return model.meals }
+        return model.meals.filter { $0.id != excludeMealId }
     }
 
     private var entries: [LibraryEntry] {

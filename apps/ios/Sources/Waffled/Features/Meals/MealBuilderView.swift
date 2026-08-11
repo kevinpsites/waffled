@@ -70,7 +70,7 @@ struct MealBuilderView: View {
         .overlay(alignment: .top) { toast }
         .task { await seedIfNeeded() }
         .sheet(item: $adding) { role in
-            AddDishSheet(role: role, recipes: recipes) { picked in
+            AddDishSheet(role: role, recipes: recipes, excludeMealId: model.mealId) { picked in
                 adding = nil
                 Task {
                     switch picked {
@@ -235,9 +235,14 @@ struct MealBuilderView: View {
                 stat("Groceries", "\(model.toBuy) to buy")
             }
             HStack(spacing: 10) {
+                // Disabled on a blank plate, like both bar buttons: flipping it there
+                // triggers the lazy create and leaves a dishless "New meal" card in the
+                // library forever, which is nobody's intent.
                 Toggle("", isOn: Binding(get: { model.isSaved },
                                          set: { _ in Task { await model.toggleSaved() } }))
                     .labelsHidden().tint(WF.primary)
+                    .disabled(model.isEmpty)
+                    .opacity(model.isEmpty ? 0.5 : 1)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Keep in library")
                         .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.onInk)
@@ -489,6 +494,8 @@ enum PickedDish {
 struct AddDishSheet: View {
     let role: PlateRole
     let recipes: RecipesModel
+    /// The plate being built — kept out of its own picker.
+    var excludeMealId: String?
     let onPick: (PickedDish) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -497,7 +504,8 @@ struct AddDishSheet: View {
         NavigationStack {
             RecipesLibraryView(model: recipes,
                                onPick: { onPick(.recipe($0)); dismiss() },
-                               onPickMeal: { onPick(.meal($0)); dismiss() })
+                               onPickMeal: { onPick(.meal($0)); dismiss() },
+                               excludeMealId: excludeMealId)
                 .navigationTitle(role.addLabel)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
