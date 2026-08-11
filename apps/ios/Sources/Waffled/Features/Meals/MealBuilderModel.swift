@@ -75,6 +75,10 @@ enum PlateReorder {
         for g in groups {
             out.append(.header(g.role.key))
             for d in g.dishes { out.append(.item(id: d.recipeId, section: g.role.key)) }
+            // An empty role's placeholder row. It exists so SwiftUI has somewhere to drop
+            // (a run of non-movable rows offers no destination), and it occupies an index
+            // like any other row.
+            if g.dishes.isEmpty { out.append(.item(id: "empty:" + g.role.key, section: g.role.key)) }
             out.append(.item(id: "add:" + g.role.key, section: g.role.key))
         }
         return out
@@ -84,7 +88,7 @@ enum PlateReorder {
     /// written (it stayed in its own role, or a ＋ row somehow moved).
     static func target(_ groups: [PlateGroup], from: IndexSet, to: Int) -> (id: String, role: PlateRole)? {
         guard let result = ListReorder.targetSection(rows: rows(groups), from: from, to: to),
-              !result.id.hasPrefix("add:"),
+              !result.id.hasPrefix("add:"), !result.id.hasPrefix("empty:"),
               let role = ordered.first(where: { $0.key == result.section })
         else { return nil }
         return (result.id, role)

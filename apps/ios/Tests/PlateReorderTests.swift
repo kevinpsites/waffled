@@ -22,7 +22,7 @@ private func dish(_ id: String, role: String, sort: Int = 0) -> WaffledAPI.MealD
 /// main: [m1] · side: [s1, s2] · dessert: [] — laid out flat, that's:
 ///  0 header(main) · 1 m1 · 2 add(main)
 ///  3 header(side) · 4 s1 · 5 s2 · 6 add(side)
-///  7 header(dessert) · 8 add(dessert)
+///  7 header(dessert) · 8 empty(dessert) · 9 add(dessert)
 private let groups = PlateRoles.groups(of: [
     dish("m1", role: "main"),
     dish("s1", role: "side", sort: 1),
@@ -30,18 +30,28 @@ private let groups = PlateRoles.groups(of: [
 ])
 
 @Suite struct PlateReorderTests {
-    @Test("the flat run keeps every role, including the empty one")
+    @Test("the flat run keeps every role, and an empty one gets a drop slot")
     func flatRunShape() {
         let rows = PlateReorder.rows(groups)
-        // An empty role still gets a header + ＋ — that header is what makes it a place
-        // you can drag the first dessert onto.
-        #expect(rows.count == 9)
+        #expect(rows.count == 10)
         #expect(rows[0] == .header("main"))
         #expect(rows[1] == .item(id: "m1", section: "main"))
         #expect(rows[2] == .item(id: "add:main", section: "main"))
         #expect(rows[3] == .header("side"))
         #expect(rows[7] == .header("dessert"))
-        #expect(rows[8] == .item(id: "add:dessert", section: "dessert"))
+        // The empty role's placeholder. Without it the role is a run of non-movable
+        // rows (header + ＋), which SwiftUI offers nowhere to drop into — an empty
+        // Dessert silently refused every drag.
+        #expect(rows[8] == .item(id: "empty:dessert", section: "dessert"))
+        #expect(rows[9] == .item(id: "add:dessert", section: "dessert"))
+        // A role that HAS dishes gets no placeholder — its own rows are the slots.
+        #expect(!rows.contains(.item(id: "empty:side", section: "side")))
+    }
+
+    /// Dragging the placeholder itself must write nothing.
+    @Test("an empty role's drop slot never re-files anything")
+    func emptySlotNeverWrites() {
+        #expect(PlateReorder.target(groups, from: IndexSet(integer: 8), to: 1) == nil)
     }
 
     @Test("dragging the main down under Sides re-files it as a side")
@@ -61,6 +71,7 @@ private let groups = PlateRoles.groups(of: [
     /// The empty role is the interesting one — its header is the only thing marking it.
     @Test("a dish can be dragged into a role that has no dishes yet")
     func dishMovesIntoAnEmptyRole() throws {
+        // onto the empty role's placeholder slot
         let r = try #require(PlateReorder.target(groups, from: IndexSet(integer: 5), to: 9))
         #expect(r.id == "s2")
         #expect(r.role.key == "dessert")

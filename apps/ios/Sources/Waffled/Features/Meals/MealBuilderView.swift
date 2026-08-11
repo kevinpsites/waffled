@@ -8,8 +8,8 @@ import SwiftUI
 /// the "Keep in library" toggle and the two actions.
 ///
 /// **Tap to add on BOTH iPhone and iPad** (decision 8) — each group ends in a
-/// "＋ Add a side" that opens the recipe/meal picker. Drag-and-drop is deliberately
-/// web-only, so nothing here declares a drag payload.
+/// "＋ Add a side" that opens the recipe/meal picker. A dish already on the plate can
+/// also be **dragged** between roles (press and hold); see `PlateReorder`.
 ///
 /// The plate is created **lazily** (`MealBuilderModel`): opening this screen posts
 /// nothing, and every mutation answers with the whole plate, so the screen repaints
@@ -49,6 +49,8 @@ struct MealBuilderView: View {
                         roleHeaderRow(group).moveDisabled(true)
                     case .dish(let dish, _):
                         dishRow(dish)
+                    case .empty(let role):
+                        emptyDropRow(role)
                     case .add(let role):
                         addRow(role).moveDisabled(true)
                     }
@@ -123,23 +125,32 @@ struct MealBuilderView: View {
     private enum PlateDisplayRow: Identifiable {
         case header(PlateGroup)
         case dish(WaffledAPI.MealDishDTO, role: String)
+        /// The drop slot an EMPTY role gets — see `flatRows`.
+        case empty(PlateRole)
         case add(PlateRole)
         var id: String {
             switch self {
             case .header(let g): return "h:\(g.role.key)"
             case .dish(let d, _): return "d:\(d.recipeId)"
+            case .empty(let r): return "e:\(r.key)"
             case .add(let r): return "a:\(r.key)"
             }
         }
     }
 
-    /// Every role's header, dishes and ＋ in render order. An EMPTY role still gets its
-    /// header and ＋ — that's what makes it a drop target you can drag the first dish into.
+    /// Every role's header, dishes and ＋ in render order.
+    ///
+    /// An EMPTY role also gets a placeholder row, and that row is what makes it a
+    /// possible destination: the header and the ＋ are both `moveDisabled`, and a run of
+    /// non-movable rows offers SwiftUI nowhere to drop — so an empty role silently
+    /// refused every drag until something was already in it. The placeholder is movable
+    /// (dragging it does nothing; `PlateReorder` ignores it as a source).
     private var flatRows: [PlateDisplayRow] {
         var out: [PlateDisplayRow] = []
         for group in model.groups {
             out.append(.header(group))
             for dish in group.dishes { out.append(.dish(dish, role: group.role.key)) }
+            if group.dishes.isEmpty { out.append(.empty(group.role)) }
             out.append(.add(group.role))
         }
         return out
@@ -177,6 +188,19 @@ struct MealBuilderView: View {
                     Task { await model.removeDish(dish.recipeId) }
                 } label: { Label("Remove", systemImage: "trash") }
             }
+    }
+
+    /// An empty role's drop slot — deliberately movable so SwiftUI treats this position
+    /// as a valid destination. Dragging it re-files nothing.
+    private func emptyDropRow(_ role: PlateRole) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "tray").font(.system(size: 14))
+                .foregroundStyle(WF.ink3)
+            Text("Drag a dish here")
+                .font(.system(size: 13)).foregroundStyle(WF.ink3)
+            Spacer()
+        }
+        .listRowBackground(WF.card)
     }
 
     /// The trailing ＋ carries THIS group's role. Sending no role files everything under
