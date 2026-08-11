@@ -112,22 +112,36 @@ final class ListDetailModel {
     /// Settled, checked items — shown in the collapsed Completed section.
     var completed: [WaffledAPI.ListItemDTO] { items.filter { $0.checked && !settling.contains($0.id) && matches($0) } }
 
+    /// Counts local edits. A silent poll records this before it goes out and drops its
+    /// answer if anything changed while it was in the air — the server composed that
+    /// answer before our edit reached it, so applying it would undo what's on screen
+    /// (a deleted row reappearing, a checked row going back to unchecked) until the
+    /// next poll. An explicit reload isn't guarded: the user asked for server truth.
+    private var edits = 0
+    func noteLocalEdit() { edits += 1 }
+
     /// `silent` keeps the current items on screen (no spinner) — used by the
     /// foreground refresh + background poll so another device's edits fold in without
     /// a visible reload flash.
     func load(silent: Bool = false) async {
         if !silent { loading = true; settling = [] }
+        let startedAt = edits
         do {
             if isGrocery {
                 let board = try await api.groceryBoard(weekStart: requestedWeekStart)
-                meals = board.meals
-                unscheduled = board.unscheduled ?? []
-                staples = board.staples
-                weekStart = board.weekStart
-                items = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
-                knownStores = (try? await api.listStores()) ?? knownStores
+                let rows = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
+                let stores = (try? await api.listStores()) ?? knownStores
+                if !silent || edits == startedAt {
+                    meals = board.meals
+                    unscheduled = board.unscheduled ?? []
+                    staples = board.staples
+                    weekStart = board.weekStart
+                    items = rows
+                    knownStores = stores
+                }
             } else {
-                items = try await api.listItems(listId: list.id)
+                let rows = try await api.listItems(listId: list.id)
+                if !silent || edits == startedAt { items = rows }
             }
             error = false
         } catch {
@@ -163,6 +177,7 @@ final class ListDetailModel {
     func toggle(_ id: String) async {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let target = !items[idx].checked
+        noteLocalEdit()
         withAnimation { items[idx].checked = target }
         if target {
             settling.insert(id)
@@ -199,6 +214,7 @@ final class ListDetailModel {
         let qty = rawQty.trimmingCharacters(in: .whitespacesAndNewlines)
         let prev = items[idx]
         guard name != prev.name || qty != prev.editableQuantity else { return }
+        noteLocalEdit()
         items[idx].name = name
         items[idx].quantity = qty.isEmpty ? nil : qty
         // The typed text is the typable form, so it seeds the next edit too — otherwise
@@ -222,6 +238,7 @@ final class ListDetailModel {
         let section = rawSection.trimmingCharacters(in: .whitespacesAndNewlines)
         let store = rawStore.trimmingCharacters(in: .whitespacesAndNewlines)
         let prev = items[idx]
+        noteLocalEdit()
         items[idx].name = name
         items[idx].quantity = qty.isEmpty ? nil : qty
         items[idx].quantityInput = qty.isEmpty ? nil : qty
@@ -244,6 +261,7 @@ final class ListDetailModel {
         let target = (section?.isEmpty == false) ? section : nil
         guard items[idx].section != target else { return }
         let prev = items[idx]
+        noteLocalEdit()
         withAnimation { items[idx].section = target }
         do {
             try await api.patchListItem(id: id, section: target ?? "")
@@ -302,6 +320,7 @@ final class ListDetailModel {
     /// Optimistic removal; restore on failure.
     func remove(_ id: String) async {
         let snapshot = items
+        noteLocalEdit()
         withAnimation { items.removeAll { $0.id == id } }
         do {
             try await api.deleteListItem(id: id)
@@ -314,6 +333,7 @@ final class ListDetailModel {
     /// Optimistic; restores on failure. (Old checked items also auto-clear on load.)
     func clearCompleted() async {
         let snapshot = items
+        noteLocalEdit()
         withAnimation { items.removeAll { $0.checked } }
         settling = []
         do {

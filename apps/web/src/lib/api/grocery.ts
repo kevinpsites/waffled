@@ -1,7 +1,7 @@
 // Lists domain — client slice, types, and hooks. Backs the Lists screen
 // (multiple named lists, sectioned items, assignees) AND the Today dashboard's
 // Grocery card (the original grocery exports are kept intact).
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
 import { tap, useRefetchOn, useLiveRefresh } from './bus'
 
@@ -252,14 +252,17 @@ export function useGrocery(): GroceryState {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [nonce, setNonce] = useState(0)
+  // See useListDetail: a poll answer composed before a local edit must not overwrite it.
+  const edits = useRef(0)
 
   useEffect(() => {
     let alive = true
+    const startedAt = edits.current
     groceryApi
       .grocery()
       .then((d) => {
         if (alive) {
-          setItems(d.items)
+          if (edits.current === startedAt) setItems(d.items)
           setLoading(false)
         }
       })
@@ -281,15 +284,18 @@ export function useGrocery(): GroceryState {
 
   async function add(name: string): Promise<void> {
     const item = await groceryApi.addGroceryItem(name)
+    edits.current += 1
     setItems((prev) => [...prev, item])
   }
 
   // Optimistic toggle; revert on failure.
   async function toggle(id: string, checked: boolean): Promise<void> {
+    edits.current += 1
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, checked } : i)))
     try {
       await groceryApi.setItemChecked(id, checked)
     } catch {
+      edits.current += 1
       setItems((prev) => prev.map((i) => (i.id === id ? { ...i, checked: !checked } : i)))
     }
   }
@@ -297,6 +303,7 @@ export function useGrocery(): GroceryState {
   // Optimistic removal; restore on failure.
   async function remove(id: string): Promise<void> {
     let snapshot: GroceryItem[] = []
+    edits.current += 1
     setItems((prev) => {
       snapshot = prev
       return prev.filter((i) => i.id !== id)
@@ -304,6 +311,7 @@ export function useGrocery(): GroceryState {
     try {
       await groceryApi.deleteItem(id)
     } catch {
+      edits.current += 1
       setItems(snapshot)
     }
   }
@@ -383,6 +391,16 @@ export function useListDetail(id: string | null): ListDetailState {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [nonce, setNonce] = useState(0)
+  // Counts local edits. A fetch records the count it started at and throws its answer
+  // away if anything changed while it was in the air: the screen's optimistic state is
+  // newer than a response the server composed before that edit reached it. Without this,
+  // deleting an item just as a poll goes out puts the item back until the next tick —
+  // the deletes have no success-path refetch to correct it.
+  const edits = useRef(0)
+  const localSetItems = useCallback<Dispatch<SetStateAction<ListItem[]>>>((v) => {
+    edits.current += 1
+    setItems(v)
+  }, [])
   useEffect(() => {
     if (!id) {
       setItems([])
@@ -390,10 +408,16 @@ export function useListDetail(id: string | null): ListDetailState {
       return
     }
     let alive = true
+    const startedAt = edits.current
     setLoading(true)
     groceryApi
       .list(id)
-      .then((d) => alive && (setItems(d.items), setLoading(false), setError(false)))
+      .then((d) => {
+        if (!alive) return
+        setLoading(false)
+        setError(false)
+        if (edits.current === startedAt) setItems(d.items)
+      })
       .catch(() => alive && (setError(true), setLoading(false)))
     return () => {
       alive = false
@@ -401,5 +425,5 @@ export function useListDetail(id: string | null): ListDetailState {
   }, [id, nonce])
   // Cross-device liveness: poll + refetch on focus so another family member's edits appear.
   useLiveRefresh(() => { if (id) setNonce((n) => n + 1) })
-  return { items, loading, error, setItems, refetch: () => setNonce((n) => n + 1) }
+  return { items, loading, error, setItems: localSetItems, refetch: () => setNonce((n) => n + 1) }
 }
