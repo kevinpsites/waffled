@@ -95,8 +95,11 @@ const GLYPH_ASCII: Record<string, string> = {
 }
 export function plainQuantity(q: string | null): string | null {
   if (q == null) return null
-  return q.replace(new RegExp(`(\\d*)\\s*([${GLYPH_CLASS}])`, 'g'), (_all, whole: string, glyph: string) =>
-    whole ? `${whole} ${GLYPH_ASCII[glyph]}` : GLYPH_ASCII[glyph]
+  // The whole-number part is optional, and the whitespace only belongs to it — matching
+  // `\s*` unconditionally swallowed the space in front of a BARE glyph, so the merged
+  // form "1 cup + ½ tbsp" came back as "1 cup +1/2 tbsp".
+  return q.replace(new RegExp(`(\\d+\\s*)?([${GLYPH_CLASS}])`, 'g'), (_all, whole: string | undefined, glyph: string) =>
+    whole ? `${whole.trim()} ${GLYPH_ASCII[glyph]}` : GLYPH_ASCII[glyph]
   )
 }
 

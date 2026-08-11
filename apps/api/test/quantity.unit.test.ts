@@ -82,6 +82,18 @@ describe('plainQuantity (what goes in the edit box)', () => {
     expect(plainQuantity('1 cup + 2 tbsp')).toBe('1 cup + 2 tbsp')
     expect(plainQuantity(null)).toBe(null)
   })
+
+  // A glyph with no whole number in front still has whatever came BEFORE it to worry
+  // about. Two recipes contributing different units merge to "1 cup + ½ tbsp", and the
+  // whitespace either side of the "+" is the only thing keeping that readable.
+  it('keeps the space in front of a bare fraction', () => {
+    expect(plainQuantity('1 cup + ½ tbsp')).toBe('1 cup + 1/2 tbsp')
+    expect(plainQuantity('2 tbsp + ⅓ cup')).toBe('2 tbsp + 1/3 cup')
+  })
+
+  it('tidies a stray space between a whole number and its fraction', () => {
+    expect(plainQuantity('1 ½ lb')).toBe('1 1/2 lb')
+  })
 })
 
 describe('typed fractions round-trip', () => {
