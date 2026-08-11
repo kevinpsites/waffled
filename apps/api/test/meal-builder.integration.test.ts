@@ -334,6 +334,30 @@ describe('saved-meal library (GET /api/meals)', () => {
     expect(Array.isArray(meal.recipes)).toBe(true)
     expect(meal.recipes[0]).toMatchObject({ recipeId: bbqChicken, title: 'BBQ Chicken' })
   })
+
+  // The library loads every plate's dishes in one round-trip rather than one per
+  // plate. Existing coverage is all single-dish plates, which would not notice
+  // dishes smeared across plates or losing their order.
+  it('gives each plate its own dishes, in plate order', async () => {
+    const a = json(await call('POST', '/api/meals', kevin, {
+      name: 'Batch Plate A', isSaved: true,
+      recipes: [{ recipeId: bbqChicken, role: 'main' }, { recipeId: coleslaw, role: 'side' }],
+    })).meal
+    const b = json(await call('POST', '/api/meals', kevin, {
+      name: 'Batch Plate B', isSaved: true,
+      recipes: [{ recipeId: peachCobbler, role: 'dessert' }, { recipeId: potatoSalad, role: 'side' }],
+    })).meal
+
+    const meals = json(await call('GET', '/api/meals?q=Batch Plate', kevin)).meals as Array<{
+      id: string
+      recipeCount: number
+      recipes: Array<{ recipeId: string }>
+    }>
+    const dishes = (id: string) => meals.find((m) => m.id === id)!.recipes.map((r) => r.recipeId)
+    expect(dishes(a.id)).toEqual([bbqChicken, coleslaw])
+    expect(dishes(b.id)).toEqual([peachCobbler, potatoSalad])
+    expect(meals.find((m) => m.id === a.id)!.recipeCount).toBe(2)
+  })
 })
 
 describe('flatten: adding a saved meal to a plate', () => {

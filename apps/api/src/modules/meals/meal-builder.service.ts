@@ -123,6 +123,19 @@ export async function softDeleteMeal(householdId: string, id: string): Promise<b
 
 // The dishes on a plate, in plate order, joined to the recipe + the assigned cook.
 export async function listMealRecipes(householdId: string, mealId: string): Promise<MealRecipeRow[]> {
+  return (await listMealRecipesFor(householdId, [mealId])).get(mealId) ?? []
+}
+
+// The same read for a whole page of plates: one round-trip keyed by meal id, so the
+// library doesn't pay a query per saved plate. Returns plate id → dishes in plate
+// order; a plate with no dishes is simply absent.
+export async function listMealRecipesFor(
+  householdId: string,
+  mealIds: readonly string[]
+): Promise<Map<string, MealRecipeRow[]>> {
+  const ids = [...new Set(mealIds)].filter(Boolean)
+  const out = new Map<string, MealRecipeRow[]>()
+  if (!ids.length) return out
   const { rows } = await query<MealRecipeRow>(
     `select mr.meal_id, mr.recipe_id, mr.role, mr.sort_order, mr.cook_person_id,
             r.title, r.emoji, r.category, r.prep_time_minutes, r.cook_time_minutes,
@@ -132,11 +145,15 @@ export async function listMealRecipes(householdId: string, mealId: string): Prom
        join meals m on m.id = mr.meal_id and m.household_id = $1 and m.deleted_at is null
        left join recipes r on r.id = mr.recipe_id and r.deleted_at is null
        left join persons p on p.id = mr.cook_person_id and p.deleted_at is null
-      where mr.meal_id = $2
-      order by mr.sort_order, r.title nulls last`,
-    [householdId, mealId]
+      where mr.meal_id = any($2::uuid[])
+      order by mr.meal_id, mr.sort_order, r.title nulls last`,
+    [householdId, ids]
   )
-  return rows
+  for (const r of rows) {
+    const list = out.get(r.meal_id) ?? out.set(r.meal_id, []).get(r.meal_id)!
+    list.push(r)
+  }
+  return out
 }
 
 async function nextSortOrder(mealId: string): Promise<number> {
@@ -329,8 +346,7 @@ export async function listMeals(householdId: string, opts: { q?: string; limit?:
     [householdId, q || null, limit]
   )
   if (!rows.length) return []
-  const dishesByMeal = new Map<string, MealRecipeRow[]>()
-  for (const m of rows) dishesByMeal.set(m.id, await listMealRecipes(householdId, m.id))
+  const dishesByMeal = await listMealRecipesFor(householdId, rows.map((m) => m.id))
   const ctx = await loadOnHandContext(householdId, [...dishesByMeal.values()].flat().map((d) => d.recipe_id))
   return Promise.all(rows.map((m) => presentMeal(householdId, m, dishesByMeal.get(m.id), ctx)))
 }
