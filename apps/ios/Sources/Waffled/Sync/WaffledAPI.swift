@@ -1240,6 +1240,19 @@ struct WaffledAPI: Sendable {
             /// Why the last poll failed (e.g. "404 Not Found"); nil when healthy.
             let lastError: String?
             let createdAt: String
+
+            /// What to call it on screen. Naming a feed is optional and ICS URLs are
+            /// long and near-identical, so an unnamed feed falls back to its host —
+            /// the only part of the URL a person can tell apart at a glance.
+            var displayName: String {
+                if let n = name?.trimmingCharacters(in: .whitespaces), !n.isEmpty { return n }
+                if let host = URL(string: url)?.host, !host.isEmpty { return host }
+                return "Calendar feed"
+            }
+
+            /// A feed whose last poll failed. Surfaced prominently — a silently stale
+            /// calendar is worse than a visibly broken one.
+            var hasError: Bool { !(lastError ?? "").isEmpty }
         }
         struct Cal: Decodable, Identifiable, Hashable, Sendable {
             let id, accountId: String
@@ -1266,6 +1279,39 @@ struct WaffledAPI: Sendable {
     /// Disconnect a Google account + its calendars (admins; imported events stay).
     func disconnectCalendarAccount(id: String) async throws {
         try await delete("/api/calendar/google/accounts/\(id)")
+    }
+
+    // MARK: - Calendar: ICS feed subscriptions
+
+    /// Subscribe to an ICS URL (admins). The poller imports its events read-only.
+    func createIcsFeed(url: String, name: String?, personId: String?, visibility: String) async throws {
+        try await send("POST", "/api/calendar/feeds", body: [
+            "url": .string(url),
+            "name": name.map { JSONValue.string($0) } ?? .null,
+            "personId": personId.map { JSONValue.string($0) } ?? .null,
+            "visibility": .string(visibility),
+        ])
+    }
+
+    /// Rename a feed / reassign its owner / flip family-vs-personal (admins).
+    func updateIcsFeed(id: String, _ body: [String: JSONValue]) async throws {
+        try await send("PATCH", "/api/calendar/feeds/\(id)", body: body)
+    }
+
+    /// Unsubscribe. Unlike disconnecting an OAuth account this also removes the
+    /// events it imported — the feed was their only source.
+    func deleteIcsFeed(id: String) async throws {
+        try await delete("/api/calendar/feeds/\(id)")
+    }
+
+    /// One feed poll's outcome. `error` is absent on a healthy sync.
+    struct IcsFeedSyncResult: Decodable, Sendable {
+        let imported, updated, deleted: Int
+        let error: String?
+    }
+    /// Poll one feed right now.
+    func syncIcsFeed(id: String) async throws -> IcsFeedSyncResult {
+        try await sendReturning("POST", "/api/calendar/feeds/\(id)/sync", body: [:], as: IcsFeedSyncResult.self)
     }
 
     struct CalendarSyncResult: Decodable, Sendable {

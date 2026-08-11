@@ -46,6 +46,15 @@ struct CalendarsSettingsView: View {
     @State private var syncing = false
     /// Which provider's consent flow is in flight (nil = none).
     @State private var connecting: CalendarProvider?
+    @State private var editingFeed: FeedEditTarget?
+
+    /// Add a feed, or edit an existing one.
+    enum FeedEditTarget: Identifiable {
+        case new
+        case edit(WaffledAPI.CalendarStatus.Feed)
+        var id: String { if case let .edit(f) = self { return f.id }; return "new" }
+        var feed: WaffledAPI.CalendarStatus.Feed? { if case let .edit(f) = self { return f }; return nil }
+    }
     @State private var message: String?
     @State private var launcher = OAuthLauncher()
     // filters (web parity)
@@ -63,17 +72,24 @@ struct CalendarsSettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 countdownsSection
                 if let status {
+                    // Above everything: a feed sync reports here too, and feeds show on
+                    // servers with no OAuth account at all — so the banner can't live
+                    // inside the "connected" branch.
+                    if let m = message {
+                        Text(m).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2)
+                            .padding(.horizontal, 12).padding(.vertical, 9)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                    }
+                    // Feeds need no OAuth credentials, so this shows even on a server
+                    // with neither Google nor Outlook set up — subscribing to a URL is
+                    // often the only calendar setup a household ever does.
+                    feedsSection(status.feeds)
                     if providers.isEmpty {
                         notice("No calendar accounts can be connected — this server has no Google or Outlook credentials set up.")
                     } else if !status.connected {
                         connectCard
                     } else {
-                        if let m = message {
-                            Text(m).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2)
-                                .padding(.horizontal, 12).padding(.vertical, 9)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
-                        }
                         filterControls
                         ForEach(status.accounts) { acct in accountCard(acct) }
                         connectMore
@@ -99,6 +115,9 @@ struct CalendarsSettingsView: View {
         }
         .task { await load() }
         .task { if let r = try? await api.countdowns() { sleeps = r.sleeps; birthdayHorizon = r.birthdayHorizonDays } }
+        .sheet(item: $editingFeed) { target in
+            IcsFeedEditorSheet(feed: target.feed, members: sync.members) { Task { await load() } }
+        }
     }
 
     /// Friendly presets for the birthday-horizon window.
@@ -204,6 +223,96 @@ struct CalendarsSettingsView: View {
     }
 
     // MARK: connect
+
+    // MARK: ICS feed subscriptions
+
+    private var isAdmin: Bool { sync.currentPerson?.isAdmin == true }
+
+    /// Subscribed ICS calendars. Unlike an OAuth account these are one-way: Waffled
+    /// polls the URL and the events arrive read-only.
+    private func feedsSection(_ feeds: [WaffledAPI.CalendarStatus.Feed]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text("🔗 Calendar feeds").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+                Spacer(minLength: 0)
+                if isAdmin {
+                    Button { editingFeed = .new } label: {
+                        Text("Add").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
+                            .padding(.horizontal, 11).padding(.vertical, 6)
+                            .background(WF.panel).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if feeds.isEmpty {
+                Text("Follow a calendar by link — school terms, a sports fixture list, holidays. Events come in read-only.")
+                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 8) { ForEach(feeds) { f in feedRow(f) } }
+            }
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+    }
+
+    private func feedRow(_ f: WaffledAPI.CalendarStatus.Feed) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 9) {
+                Image(systemName: "link").font(.system(size: 13)).foregroundStyle(WF.ink3)
+                Text(f.displayName).font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(WF.ink).lineLimit(1)
+                Spacer(minLength: 0)
+                if isAdmin {
+                    Menu {
+                        Button("Sync now") { Task { await syncFeed(f.id) } }
+                        Button("Edit") { editingFeed = .edit(f) }
+                        Button("Remove", role: .destructive) { Task { await removeFeed(f.id) } }
+                    } label: {
+                        Image(systemName: "ellipsis").font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(WF.ink3).frame(width: 28, height: 28)
+                    }
+                }
+            }
+            Text(feedStatusLine(f))
+                .font(.system(size: 11.5))
+                .foregroundStyle(f.hasError ? WF.danger : WF.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(11)
+        .background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+    }
+
+    /// A failing feed leads with why — a silently stale calendar is worse than a
+    /// visibly broken one.
+    private func feedStatusLine(_ f: WaffledAPI.CalendarStatus.Feed) -> String {
+        var parts: [String] = []
+        if f.hasError { parts.append("⚠️ \(f.lastError ?? "sync failed")") }
+        else { parts.append(f.lastSyncedAt.map { "Synced \(when($0))" } ?? "Will sync shortly") }
+        parts.append(f.personName.map { "👤 \($0)" } ?? "👪 Whole family")
+        if f.visibility == "personal" { parts.append("🔒 Private") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func syncFeed(_ id: String) async {
+        message = nil
+        do {
+            let r = try await api.syncIcsFeed(id: id)
+            message = r.error.map { "Feed sync failed: \($0)" }
+                ?? "Imported \(r.imported), updated \(r.updated), removed \(r.deleted)."
+        } catch {
+            message = "Couldn’t sync that feed."
+        }
+        await load()
+    }
+
+    private func removeFeed(_ id: String) async {
+        try? await api.deleteIcsFeed(id: id)
+        await load()
+    }
 
     /// Whichever providers this server actually holds credentials for.
     private var providers: [CalendarProvider] {
