@@ -332,9 +332,15 @@ final class MealBuilderModel {
         guard n != servings else { return }
         let previous = servings
         servings = n
-        // On a plate that doesn't exist yet the new number just rides along on the
-        // lazy create — no point creating a meal because someone tapped the stepper.
-        guard mealId != nil else { return }
+        // Nothing exists AND nothing is being created — the number rides along on the
+        // lazy create when one eventually happens, so there's nothing to write yet.
+        //
+        // A create already in flight is a different case and used to fall in here too:
+        // `ensureId` captured `servings` before the tap, so the new number was neither
+        // sent nor folded in, and nothing ever re-synced it — the bar said 5 while the
+        // server held 4, right through Schedule and Add-to-list. `run` waits on the
+        // in-flight create and then PATCHes, so it just has to be allowed through.
+        guard mealId != nil || createTask != nil else { return }
         await run(rollback: { [weak self] in self?.servings = previous }) { api, id in
             try await api.update(id, nil, n, nil)
         }

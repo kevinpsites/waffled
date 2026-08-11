@@ -243,6 +243,41 @@ private final class FakePlateServer: @unchecked Sendable {
         #expect(server.added.count == 1)
     }
 
+    /// A SERVES tap while the lazy create is still in flight must not vanish.
+    ///
+    /// `ensureId` captures the servings it creates with *before* the tap, so the new
+    /// number was neither sent nor folded in — and nothing re-syncs it, so the bar read
+    /// 6 while the server held 4 for the rest of the session, including through
+    /// Schedule and Add-to-list.
+    @Test func servingsTappedDuringTheCreateStillReachTheServer() async {
+        let server = FakePlateServer()
+        let opened = Gate()
+        server.gate = { await opened.wait() }
+        let m = MealBuilderModel(api: server.api())
+
+        async let add: Void = m.addRecipe("chicken", role: PlateRoles.main)   // starts the create
+        async let bump: Void = m.changeServings(6)                            // …mid-flight
+        await opened.open()
+        _ = await (add, bump)
+
+        #expect(server.creates == 1)
+        #expect(m.servings == 6)
+        // the PATCH that carries the new number
+        #expect(server.updates.contains { $0.servings == 6 })
+    }
+
+    /// With no plate and no create in flight there is nothing to write — the number
+    /// rides along on the create that a later add will trigger.
+    @Test func servingsOnAnUntouchedPlateStillCreateNothing() async {
+        let server = FakePlateServer()
+        let m = MealBuilderModel(api: server.api())
+        await m.changeServings(6)
+        #expect(server.creates == 0)
+        #expect(server.updates.isEmpty)
+        await m.addRecipe("chicken", role: PlateRoles.main)
+        #expect(server.creates == 1)   // and the create carries it
+    }
+
     /// Naming nothing still gives the plate a name — the placeholder invites a name
     /// rather than making you clear "New meal" first.
     @Test func anUnnamedPlateIsCreatedWithTheDefaultName() async {
