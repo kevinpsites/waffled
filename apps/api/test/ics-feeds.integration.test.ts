@@ -440,6 +440,36 @@ describe('ICS calendar feeds', () => {
     expect(after[0].deleted_at).toBeNull()
   })
 
+  // The offline path: iOS/web queue local writes and PowerSync POSTs them to
+  // /api/powersync/crud, which applies rows directly — it does NOT go through
+  // /api/events, so the route guard alone would leave feed events editable from a
+  // phone. The op is dropped (not rejected): PowerSync retries a failed
+  // transaction forever, so throwing would wedge the device's upload queue.
+  it('drops offline crud edits/deletes aimed at a feed event', async () => {
+    const ev = await dbQuery<{ id: string; title: string }>(
+      `select id, title from events where origin = 'ics' and origin_ref_id = $1 and deleted_at is null limit 1`,
+      [feedId]
+    )
+    const eventId = ev[0].id
+    const originalTitle = ev[0].title
+
+    const patched = await call('POST', '/api/powersync/crud', kevin, {
+      ops: [{ op: 'PATCH', table: 'events', id: eventId, data: { title: 'Renamed from a phone' } }],
+    })
+    expect(patched.statusCode).toBe(200)
+
+    const deleted = await call('POST', '/api/powersync/crud', kevin, {
+      ops: [{ op: 'DELETE', table: 'events', id: eventId }],
+    })
+    expect(deleted.statusCode).toBe(200)
+
+    const after = await dbQuery<{ title: string; deleted_at: Date | null }>(
+      `select title, deleted_at from events where id = $1`, [eventId]
+    )
+    expect(after[0].title).toBe(originalTitle)
+    expect(after[0].deleted_at).toBeNull()
+  })
+
   it('DELETE soft-deletes the feed and its events', async () => {
     const res = await call('DELETE', `/api/calendar/feeds/${feedId}`, kevin)
     expect(res.statusCode).toBe(204)

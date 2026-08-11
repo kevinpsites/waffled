@@ -38,7 +38,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // covers every surface at once.
 const READ_ONLY_ORIGINS = new Set(['ics'])
 
-async function readOnlyOrigin(householdId: string, eventId: string): Promise<string | null> {
+export async function readOnlyOrigin(householdId: string, eventId: string): Promise<string | null> {
   const { rows } = await query<{ origin: string | null }>(
     `select origin from events where household_id = $1 and id = $2 and deleted_at is null`,
     [householdId, eventId]

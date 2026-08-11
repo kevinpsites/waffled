@@ -118,6 +118,16 @@ the "bare TZID with no VTIMEZONE" that Google-published feeds emit.
 moved or edited occurrence — are skipped. The base rule renders correctly; per-occurrence
 edits from the feed are not applied.
 
+**Fixed on the way in (the fork does not do this):** the fork leaves feed events fully
+editable. Nothing is pushed anywhere, so an edit looks like it worked and is then restamped
+by the next 15-minute poll — and because the upsert sets `deleted_at = null`, a deleted feed
+event comes back. This port makes them read-only at the API (`409 ReadOnlyEvent` on
+`/api/events` PATCH/DELETE, and a silent drop on the `/api/powersync/crud` offline path,
+since PowerSync retries a failed transaction forever and an error would wedge the device's
+upload queue). Enforcing server-side rather than in the UI matters because sync rules
+replicate `events` to iOS with no origin filter — feed events reach iPhone/iPad, which has
+no feed UI of its own.
+
 **Security note:** the feed URL is admin-supplied and fetched server-side, which is an
 SSRF surface (an admin could point a feed at an internal address and read the error).
 It is admin-only and the response body is not returned to the caller, so the exposure is
