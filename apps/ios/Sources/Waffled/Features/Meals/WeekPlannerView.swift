@@ -478,6 +478,8 @@ struct WeekPlannerView: View {
     // MARK: actions
 
     private func open(_ e: WaffledAPI.WeekEntryDTO) {
+        // Free-text nights ("eating out") link nothing and stay inert.
+        guard e.isOpenable else { return }
         // A slot holding a Meal Builder plate has no `recipeId` — opening it by recipe
         // alone made the tap dead on a dinner that was fully planned.
         if let plate = e.platePlaceholder {

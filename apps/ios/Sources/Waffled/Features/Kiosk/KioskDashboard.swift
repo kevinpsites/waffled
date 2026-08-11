@@ -506,12 +506,14 @@ struct KioskDashboard: View {
                         }
                         Spacer(minLength: 0)
                     }
-                    if let summary = meal.recipeSummary {
+                    // Gated on `isCookable` — a recipe OR a plate — for the same reason
+                    // the phone card is; see TodayView.
+                    if meal.isCookable, let summary = meal.recipeSummary {
                         HStack(spacing: 12) {
                             secondaryButton("View recipe") { recipeTarget = .init(summary: summary, cook: false) }
                             primaryButton("👨‍🍳 Cook Mode") { recipeTarget = .init(summary: summary, cook: true) }
                         }
-                    } else if let mealId = meal.mealId {
+                    } else if meal.isCookable, let mealId = meal.mealId {
                         // A plate has no single recipe to open, so "View meal" opens the
                         // plate itself. Kept in step with the iPhone card deliberately —
                         // these are two separate view bodies, and the iPad shipped with

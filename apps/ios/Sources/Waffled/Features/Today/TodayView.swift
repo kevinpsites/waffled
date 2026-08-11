@@ -303,13 +303,16 @@ struct TodayView: View {
                 }
                 // Cook Mode + View recipe (parity with the iPad card) — a planned recipe
                 // opens its detail, or drops straight into Cook Mode.
-                if let summary = meal.recipeSummary {
+                // `isCookable` is the gate — "is there anything here to open", a recipe
+                // OR a plate. Testing `recipeSummary` alone is what told people "no
+                // recipe attached yet" about a meal with three dishes.
+                if meal.isCookable, let summary = meal.recipeSummary {
                     HStack(spacing: 10) {
                         tonightButton("View recipe", primary: false) { path.append(.recipe(summary)) }
                         tonightButton("👨‍🍳 Cook Mode", primary: true) { path.append(.recipeCook(summary)) }
                     }
                     .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 12)
-                } else if let mealId = meal.mealId {
+                } else if meal.isCookable, let mealId = meal.mealId {
                     // A Meal Builder plate. There's no single recipe to open, so "View
                     // meal" opens the plate's detail and Cook takes the whole plate —
                     // which tabs across its dishes and keeps each one's timers running.
