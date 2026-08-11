@@ -42,8 +42,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Today** — live cards + customizable per-user / family layouts.
 - **Calendar** — native events, Month/Week/Day/Agenda, create/edit/delete, participants,
   **recurring events** (RRULE picker, per-occurrence/this-and-following/all edits),
-  **two-way Google Calendar sync** (recurrences expanded on inbound), offline calendar
-  (PowerSync), AI heads-up + per-event insight.
+  **two-way Google Calendar sync** and **two-way Outlook / Microsoft 365 sync** (recurrences
+  expanded on inbound), **read-only ICS calendar feeds**, offline calendar (PowerSync), AI
+  heads-up + per-event insight.
 - **Chores & stars** — full loop: CRUD, weekly/custom schedules, **one-off + carry-over
   tasks** ("Just once" repeat + due date, unfinished one-offs roll forward with an
   **overdue · since …** badge, per-chore `rollover` toggle), up-for-grabs claim,
@@ -86,8 +87,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   or recipe), **add any recipe's ingredients from its page** — now with a **pick-specific
   picker** (add all or just what you need) — (no meal-plan entry needed; these survive the
   weekly rebuild), **assign a store to an item + a By-store board view** (free-text
-  quick-select over your previously-used stores), and **"Unscheduled" sections + week-rail
-  rows** for off-plan recipes in the grocery board's by-meal view.
+  quick-select over your previously-used stores), **"Unscheduled" sections + week-rail
+  rows** for off-plan recipes in the grocery board's by-meal view, and **Share list** — hand
+  any list to a phone as grouped plain text via copy / share sheet / QR, with the store and
+  assignee noted per item.
 - **Meal Builder** — build one meal out of several recipes and treat it as one
   thing: name a plate, add recipes under Main / Sides / Dessert, meal-level servings,
   **a cook per dish**, and an optional "keep in library" that makes it reusable (saved
@@ -200,8 +203,30 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   match ("family walk" vs "Family walk after dinner"), and consider surfacing a member's
   cross-goal favourites when a specific goal has little history of its own.
 
-- **List sharing.** Let a household invite specific people to a list, choose whether
-  they can view or edit it, and revoke access later.
+- **List sharing (access, not a handoff).** Let a household invite specific people to a
+  list, choose whether they can view or edit it, and revoke access later. Distinct from the
+  shipped **Share list**, which is a one-way copy of the text to a phone and grants nobody
+  any access.
+
+- **Share list: a link-backed QR for long lists.** *Enhancement to the shipped
+  [Share list](/features/lists/) handoff.* Today the QR encodes the list **text
+  itself**, which is the feature's best property — the phone needs no app, no account,
+  and no round-trip to the server. But a QR's capacity is fixed, so a long list pushes
+  the code to a high version until its modules are too small for a camera to read. A
+  measured 45-item list is 1,137 bytes → version 28, 129×129 modules; drawn at 320px
+  that is 2.5 CSS px per module, under the ~3 a phone needs. The shipped behaviour is
+  therefore honest rather than clever: draw the code as large and as low-density as it
+  can be, and when the list still won't fit, say so and point at Copy / Share (which
+  have no length limit) instead of rendering a code that cannot work.
+  The enhancement: for lists past that threshold, have the QR encode a **short link**
+  to a read-only shared view of the list instead of its text, so the code stays small
+  and scannable at any length. That is a real feature, not a tweak — it needs a share
+  endpoint, an unguessable token, an expiry/revocation policy, and a decision about
+  whether the phone must be on the same LAN as the server (a self-hosted box usually
+  isn't reachable from cellular). Worth pairing with **List sharing** above, since both
+  want the same "a link that shows one list, to someone who isn't signed in" primitive.
+  (Share list itself now covers **every** list, not just groceries — grouping by aisle on
+  the grocery board and by section elsewhere — so the enhancement applies household-wide.)
 
 - **Waffled-Bite DIY hardware setup guide.** A real, consumer-facing walkthrough for
   buying the board yourself ([ELECROW CrowPanel Advanced 7", ESP32-P4](https://www.amazon.com/dp/B0G34WGWJR))

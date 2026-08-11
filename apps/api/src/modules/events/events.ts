@@ -27,6 +27,26 @@ type Api = ReturnType<typeof createAPI>
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// Origins whose events Waffled mirrors but does not own. An ICS feed is somebody
+// else's published calendar: there is no write-back channel, and the next poll
+// restamps every feed-owned column from the feed (and clears deleted_at), so a
+// local edit would silently vanish within the refresh interval and a local delete
+// would come back. Refusing the write is the honest answer.
+//
+// Enforced here rather than in the UI on purpose: iOS receives these rows over
+// PowerSync and has no feed UI of its own, so the API is the only place that
+// covers every surface at once.
+const READ_ONLY_ORIGINS = new Set(['ics'])
+
+export async function readOnlyOrigin(householdId: string, eventId: string): Promise<string | null> {
+  const { rows } = await query<{ origin: string | null }>(
+    `select origin from events where household_id = $1 and id = $2 and deleted_at is null`,
+    [householdId, eventId]
+  )
+  const origin = rows[0]?.origin ?? null
+  return origin && READ_ONLY_ORIGINS.has(origin) ? origin : null
+}
+
 // camelCase API field → events column. Anything not here can't be patched.
 // (person_id is set from participantIds; personId is also accepted directly.)
 const UPDATABLE: Record<string, string> = {
@@ -735,6 +755,14 @@ export function registerEventRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     const patch = (req.body ?? {}) as Record<string, unknown>
+    const roPatch = await readOnlyOrigin(tenant.householdId, id)
+    if (roPatch) {
+      return res.status(409).json({
+        error: 'ReadOnlyEvent',
+        message: 'This event comes from a subscribed calendar feed and can only be changed at the source.',
+        origin: roPatch,
+      })
+    }
     if (typeof patch.startsAt === 'string' && Number.isNaN(Date.parse(patch.startsAt))) {
       return res.status(400).json({ error: 'BadRequest', message: 'startsAt must be a valid timestamp' })
     }
@@ -801,6 +829,14 @@ export function registerEventRoutes(api: Api): void {
   api.delete('/api/events/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
+    const roDelete = await readOnlyOrigin(tenant.householdId, id)
+    if (roDelete) {
+      return res.status(409).json({
+        error: 'ReadOnlyEvent',
+        message: 'This event comes from a subscribed calendar feed. Remove the feed to stop showing it.',
+        origin: roDelete,
+      })
+    }
     // Recurrence delete scope via query params (DELETE carries no body).
     const scope = typeof req.query?.scope === 'string' ? req.query.scope : 'all'
     const occurrenceStart = typeof req.query?.occurrenceStart === 'string' ? req.query.occurrenceStart : null

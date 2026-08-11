@@ -15,6 +15,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Two-way Outlook / Microsoft 365 calendar sync, right beside Google.** Connect an
+  Outlook or Microsoft 365 account in Settings → Calendars and it syncs both ways on the
+  same engine and the same schedule as Google — pick which calendars sync, who each one
+  belongs to, and which is the write-target for events Waffled creates. A household can mix
+  Google and Microsoft accounts freely, and each connected account shows which provider it
+  came from. Needs a free Azure app registration; see the new
+  [Outlook / Microsoft 365](https://waffled.app/docs/administration/outlook-calendar/) guide.
+- **Subscribe to any published calendar link (ICS feeds).** Paste a school schedule, a
+  sports-team calendar, or a work calendar published from Outlook into Settings → Calendars
+  and its events show up on the family calendar — no sign-in, no OAuth setup, nothing to
+  approve. This is the plan B when a workplace won't approve calendar access. Feeds refresh
+  every 15 minutes (with a per-feed Sync button), can be mapped to a person for colour, and
+  can be marked private. Their events are **read-only everywhere, including on iPhone and
+  iPad**: a feed mirrors someone else's calendar, so rather than accept an edit and silently
+  undo it at the next refresh, Waffled hides Edit and Delete and tells you to change it at
+  the source.
+- **Share any list to a phone.** **Share list** turns whatever's still unchecked into a
+  clean text list and hands it over by share sheet, clipboard, or QR code — from the grocery
+  board's top bar, or a custom list's **⋯** menu. The QR encodes the list *itself* rather
+  than a link, so whoever is going shopping just points a camera at the kiosk: no app, no
+  account, no sign-in. Items are grouped the way you read them — by aisle in walking order
+  on the grocery board, by section on a custom list, and as a plain list when there are no
+  sections — with quantities, plus the **store** and **who it's for** when you've set them,
+  so a run split across two shops still makes sense. A list too long to fit in a code a
+  camera can actually read says so and points you at Copy or Share, rather than showing a QR
+  that can't be scanned.
 - **Build one meal out of several recipes.** Dinner is rarely a single dish, but the
   planner only ever let you plan one recipe a night. The new **Meal Builder** lets you
   put a whole meal together: name it, drag recipes in from your library under Main,
@@ -164,6 +190,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The calendar grid now says which month you're looking at.** The app header shows
+  today's date, so paging the grid forward left nothing on the grid itself saying where
+  you'd landed — an empty November under a heading reading "August 11". Month, Week and Day
+  views now carry their own heading above the cells, with a **Back to today** button that
+  appears only once you've navigated away.
 - **"On hand" on a recipe now means your pantry, on iPhone and iPad.** The "4 of 9 on
   hand" line counted ingredients marked as pantry staples — things you're assumed to
   keep around — rather than anything actually in your pantry, so a household with a

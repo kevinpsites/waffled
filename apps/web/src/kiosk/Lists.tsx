@@ -4,6 +4,8 @@ import { ListsModal } from './components/ListsModal'
 import { ListItemModal } from './components/ListItemModal'
 import { PriorityFlag } from './components/priority'
 import { GroceryBoard } from './components/GroceryBoard'
+import { ShareListModal } from './components/ShareListModal'
+import type { ShareListItem } from './components/share-list'
 import {
   groceryApi,
   useLists,
@@ -365,6 +367,8 @@ export function Lists() {
   // sections into one list ordered highest-priority first.
   const [sortByPriority, setSortByPriority] = useState(false)
   const [itemModal, setItemModal] = useState<{ item: ListItem | null } | null>(null)
+  // "Share list" — the same phone handoff the grocery board offers, for any list.
+  const [sharing, setSharing] = useState(false)
   const [groceryOpen, setGroceryOpen] = useState(false)
   // Just-checked items lingering in place during the undo grace window.
   const [recent, setRecent] = useState<Set<string>>(new Set())
@@ -453,6 +457,12 @@ export function Lists() {
   // Stable so GroceryBoard's topbar effect (deps: [onBack]) doesn't re-fire every
   // render — an inline lambda here caused an infinite setState loop.
   const closeGrocery = useCallback(() => setGroceryOpen(false), [])
+
+  // A list is worth sharing only while something on it is still outstanding.
+  // Lives in the header's ⋯ menu beside Rename/Delete rather than the topbar —
+  // it's an occasional action, and the topbar is for "Add item". (The grocery
+  // board keeps its own topbar button: that board has no ⋯ menu.)
+  const hasUnchecked = items.some((i) => !i.checked)
 
   useTopbarRight(
     () => (
@@ -807,6 +817,12 @@ export function Lists() {
                     <button type="button" onClick={() => { setEditingList({ id: selected.id, name: selected.name, emoji: selected.emoji }); setActionsMenu(false) }}>
                       <span aria-hidden>✎</span> {isTemplate ? 'Rename template' : 'Rename'}
                     </button>
+                    {/* Only worth offering while something is still outstanding. */}
+                    {hasUnchecked && (
+                      <button type="button" onClick={() => { setSharing(true); setActionsMenu(false) }}>
+                        <span aria-hidden>📤</span> Share list
+                      </button>
+                    )}
                     {isTemplate ? (
                       <button type="button" onClick={() => { moveTemplateToLists(); setActionsMenu(false) }}>
                         <span aria-hidden>↩</span> Move to Lists
@@ -1053,6 +1069,22 @@ export function Lists() {
             setSelectedId(id)
             setGroceryOpen(false)
           }}
+        />
+      )}
+      {sharing && (
+        <ShareListModal
+          // A custom list groups by section where the grocery board groups by
+          // aisle — same shape to the formatter, which orders unknown groups by
+          // first appearance and drops headers entirely for an ungrouped list.
+          items={items.map<ShareListItem>((i) => ({
+            name: i.name,
+            quantity: i.quantity,
+            checked: i.checked,
+            aisle: i.section ?? '',
+            store: i.store ?? null,
+            assignee: i.assignee?.name ?? null,
+          }))}
+          onClose={() => setSharing(false)}
         />
       )}
       {itemModal && selected && (

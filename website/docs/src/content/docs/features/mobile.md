@@ -44,6 +44,7 @@ The app renders native screens for whatever modules are **enabled server-side** 
 ## Notes
 
 - 🌊 **Only the calendar is truly offline** — the events domain reads/writes through blips; everything else needs a connection.
+- 🖥️ **Calendar connections are set up in the web app** — events from Google, [Outlook](/administration/outlook-calendar/) and [ICS feeds](/features/calendar/#calendar-feeds-ics) all appear on iPhone and iPad, because sync runs on the server. Connecting an account or subscribing to a feed happens in the web app's Settings → Calendars; there's no iOS screen for it. (Feed events are read-only everywhere, including here.)
 - 🚧 **Chore reminders are blocked** until chores join the PowerSync schema — chores are REST-only on iOS today, so they can't yet schedule local reminders like [Calendar](/features/calendar/) events do.
 - 🛡️ **Server-side capabilities still apply** — the app shows what your account is allowed to see; see [Permissions](/concepts/permissions/).
 - 🍏 **Distribution** — shipped via the [App Store](https://apps.apple.com/app/waffled/id6787621452) (Xcode Cloud builds; pre-release builds via TestFlight). Bundle id `app.waffled`.

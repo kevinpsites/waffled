@@ -7,6 +7,9 @@ Waffled has its own calendar, and it **syncs two-way with Google Calendar** — 
 Google events in and pushes the events it authors back out. This is optional and set up per
 person, so each family member connects their own Google account.
 
+Prefer Outlook? The same sync works with
+[Outlook / Microsoft 365](/administration/outlook-calendar/), and a household can mix both.
+
 ## How it works
 
 - **Inbound:** the api polls each connected calendar on an interval (`CALENDAR_SYNC_INTERVAL_MS`,
@@ -68,7 +71,7 @@ Once the credentials are set, each person connects in **Settings → Calendars**
   must match exactly (including `http` vs `https` and the no-`/api` path).
 
 More symptom→fix detail in
-[Troubleshooting → Google Calendar sync](/operations/troubleshooting/#google-calendar-sync-failing).
+[Troubleshooting → Calendar sync](/operations/troubleshooting/#calendar-sync-failing-google-or-outlook).
 
 ## What's not backed up
 

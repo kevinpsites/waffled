@@ -81,12 +81,26 @@ export interface GoogleConfig {
   apiBase: string
 }
 
+/** Microsoft OAuth + Graph calendar. Mirrors GoogleConfig: one client serves the
+ *  Outlook calendar grant; endpoint URLs are overridable so integration tests can
+ *  target a local stub. */
+export interface MicrosoftConfig {
+  clientId: string | null
+  clientSecret: string | null
+  redirectUri: string | null
+  scopes: string
+  authUrl: string
+  tokenUrl: string
+  graphBase: string
+}
+
 export interface AppConfig {
   env: string
   port: number
   ai: AiConfig
   google: GoogleConfig
-  /** Secrets-at-rest. tokenEncryptionKey encrypts Google refresh tokens (src/crypto.ts). */
+  microsoft: MicrosoftConfig
+  /** Secrets-at-rest. tokenEncryptionKey encrypts calendar refresh tokens (src/crypto.ts). */
   security: { tokenEncryptionKey: string | null }
   auth: {
     mode: AuthMode
@@ -142,6 +156,25 @@ export const config: AppConfig = {
     tokenUrl: process.env.GOOGLE_TOKEN_URL ?? 'https://oauth2.googleapis.com/token',
     userinfoUrl: process.env.GOOGLE_USERINFO_URL ?? 'https://openidconnect.googleapis.com/v1/userinfo',
     apiBase: process.env.GOOGLE_CALENDAR_API_BASE ?? 'https://www.googleapis.com/calendar/v3',
+  },
+
+  // Microsoft / Outlook calendar OAuth. Register an app in Entra ID
+  // (portal.azure.com → App registrations, "personal + work accounts"), add the
+  // redirect URI, and set MS_CLIENT_ID/MS_CLIENT_SECRET. URLs overridable for tests.
+  // All read via env() (which treats "" as unset): compose passes these through as
+  // "" when absent from .env, and a literal scope="" makes Microsoft reject the
+  // consent URL with AADSTS900144.
+  microsoft: {
+    clientId: env('MS_CLIENT_ID') ?? null,
+    clientSecret: env('MS_CLIENT_SECRET') ?? null,
+    // Local dev: http://localhost:8080/auth/microsoft/calendar/callback
+    redirectUri: env('MS_CALENDAR_REDIRECT_URI') ?? null,
+    // offline_access → refresh token; User.Read → /me identity; Calendars.ReadWrite
+    // covers the calendar list + events + write-back.
+    scopes: env('MS_CALENDAR_SCOPES') ?? 'openid email offline_access User.Read Calendars.ReadWrite',
+    authUrl: env('MS_AUTH_URL') ?? 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+    tokenUrl: env('MS_TOKEN_URL') ?? 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    graphBase: env('MS_GRAPH_BASE') ?? 'https://graph.microsoft.com/v1.0',
   },
 
   security: { tokenEncryptionKey: process.env.TOKEN_ENCRYPTION_KEY ?? null },

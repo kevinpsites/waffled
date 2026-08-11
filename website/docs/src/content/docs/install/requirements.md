@@ -66,6 +66,6 @@ your photos and how long you keep backups:
 - **No external identity provider.** Email/password auth is built in; SSO is optional.
 - **No AI subscription.** The capture bar works with an on-device heuristic; AI providers are
   opt-in.
-- **No paid cloud anything.** Google Calendar sync and offsite S3 backups are optional.
+- **No paid cloud anything.** Google / Outlook calendar sync and offsite S3 backups are optional.
 
 Ready? → [Docker install](/install/docker/).
