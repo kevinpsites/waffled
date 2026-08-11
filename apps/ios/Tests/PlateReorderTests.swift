@@ -48,6 +48,33 @@ private let groups = PlateRoles.groups(of: [
         #expect(!rows.contains(.item(id: "empty:side", section: "side")))
     }
 
+    /// A brand-new plate has nothing to drag, so inviting a drag in all three roles
+    /// would be three rows asking for something impossible.
+    @Test("a plate with no dishes at all shows no drop slots")
+    func emptyPlateHasNoSlots() {
+        let empty = PlateRoles.groups(of: [])
+        #expect(PlateReorder.showsEmptySlots(empty) == false)
+        let rows = PlateReorder.rows(empty)
+        // header + ＋ per role, and nothing else
+        #expect(rows.count == 6)
+        #expect(!rows.contains { row in
+            if case .item(let id, _) = row { return id.hasPrefix("empty:") }
+            return false
+        })
+    }
+
+    /// One dish anywhere is enough — it's the thing you'd be dragging.
+    @Test("one dish on the plate brings the other roles' slots back")
+    func oneDishEnablesSlots() {
+        let one = PlateRoles.groups(of: [dish("m1", role: "main")])
+        #expect(PlateReorder.showsEmptySlots(one))
+        let rows = PlateReorder.rows(one)
+        #expect(rows.contains(.item(id: "empty:side", section: "side")))
+        #expect(rows.contains(.item(id: "empty:dessert", section: "dessert")))
+        // the role that HAS the dish still gets no slot
+        #expect(!rows.contains(.item(id: "empty:main", section: "main")))
+    }
+
     /// Dragging the placeholder itself must write nothing.
     @Test("an empty role's drop slot never re-files anything")
     func emptySlotNeverWrites() {

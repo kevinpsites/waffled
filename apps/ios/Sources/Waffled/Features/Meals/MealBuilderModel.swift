@@ -72,16 +72,28 @@ enum PlateReorder {
     /// or every index below one is off by one.
     static func rows(_ groups: [PlateGroup]) -> [ListReorder.Row] {
         var out: [ListReorder.Row] = []
+        let draggable = showsEmptySlots(groups)
         for g in groups {
             out.append(.header(g.role.key))
             for d in g.dishes { out.append(.item(id: d.recipeId, section: g.role.key)) }
             // An empty role's placeholder row. It exists so SwiftUI has somewhere to drop
             // (a run of non-movable rows offers no destination), and it occupies an index
             // like any other row.
-            if g.dishes.isEmpty { out.append(.item(id: "empty:" + g.role.key, section: g.role.key)) }
+            if g.dishes.isEmpty && draggable {
+                out.append(.item(id: "empty:" + g.role.key, section: g.role.key))
+            }
             out.append(.item(id: "add:" + g.role.key, section: g.role.key))
         }
         return out
+    }
+
+    /// Whether empty roles should show their "drag a dish here" slot at all.
+    ///
+    /// Only once the plate holds a dish somewhere. On a brand-new plate every role is
+    /// empty, so the slots would invite a drag with nothing anywhere to drag — three
+    /// rows telling you to do something impossible.
+    static func showsEmptySlots(_ groups: [PlateGroup]) -> Bool {
+        groups.contains { !$0.dishes.isEmpty }
     }
 
     /// The dish that moved and the role it should adopt — nil when nothing should be

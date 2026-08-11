@@ -147,10 +147,12 @@ struct MealBuilderView: View {
     /// (dragging it does nothing; `PlateReorder` ignores it as a source).
     private var flatRows: [PlateDisplayRow] {
         var out: [PlateDisplayRow] = []
+        // Suppressed entirely while the plate is empty — see `PlateReorder.showsEmptySlots`.
+        let slots = PlateReorder.showsEmptySlots(model.groups)
         for group in model.groups {
             out.append(.header(group))
             for dish in group.dishes { out.append(.dish(dish, role: group.role.key)) }
-            if group.dishes.isEmpty { out.append(.empty(group.role)) }
+            if group.dishes.isEmpty && slots { out.append(.empty(group.role)) }
             out.append(.add(group.role))
         }
         return out
