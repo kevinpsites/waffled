@@ -287,9 +287,15 @@ struct MonthPlannerView: View {
 
     private func place(_ entry: WaffledAPI.WeekEntryDTO?, on date: String) async {
         if let e = entry {
+            // Same rule as the week planner: a slot is backed by a recipe, a plate, or
+            // neither. Only a genuinely free-text night carries a title — dropping the
+            // plate id here would land a dragged plate as a bare name with no dishes.
+            let freeText = e.recipeId == nil && !e.isMealBacked
             _ = await sync.setMealPlan(date: date, mealType: "dinner",
-                                       recipeId: e.recipeId, title: e.recipeId == nil ? (e.title ?? e.displayTitle) : nil,
-                                       cookPersonId: e.cook?.personId)
+                                       recipeId: e.recipeId,
+                                       title: freeText ? (e.title ?? e.displayTitle) : nil,
+                                       cookPersonId: e.cook?.personId,
+                                       mealId: e.mealId)
         } else {
             _ = await sync.clearMealPlan(date: date, mealType: "dinner")
         }
