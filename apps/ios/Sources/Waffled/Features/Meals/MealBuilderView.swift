@@ -255,6 +255,10 @@ struct MealBuilderView: View {
         case .fresh, .editing: break
         case .around(let recipe): await model.addRecipe(recipe.id, role: PlateRoles.main)
         }
+        // A brand-new plate opens with the keyboard up on its name: naming it is the
+        // first thing you do, and the placeholder is only an invitation. An existing
+        // plate already has a name, so stealing focus there would just be in the way.
+        if start.existingPlate == nil { nameFocused = true }
     }
 }
 
