@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { RecipeModal } from './RecipeModal'
-import { type Recipe } from '../../lib/api'
+import { MealCard } from './MealCard'
+import { mealBuilderApi, type Meal, type Recipe } from '../../lib/api'
 
 // Shared meal-type vocabulary + the category→gradient mapping, used by the meal
 // planner grid and the recipe browser.
@@ -23,14 +24,49 @@ export function gradClass(r: { category: string | null }): string {
   return (r.category && GRAD_BY_CATEGORY[r.category.toLowerCase()]) || 'g-veg'
 }
 
+// Saved meals for the picker, searched server-side (`q` matches the plate name OR
+// any dish title). Only fetched when the caller can actually put a plate somewhere —
+// `enabled` is false for the plan-my-week/month draft overlays, which hold an
+// unsaved plan and have nowhere to schedule a meal to.
+function useBrowserMeals(enabled: boolean, q: string): Meal[] {
+  const [meals, setMeals] = useState<Meal[]>([])
+  useEffect(() => {
+    if (!enabled) {
+      setMeals([])
+      return
+    }
+    let alive = true
+    const run = () => {
+      mealBuilderApi
+        .list(q.trim() || undefined)
+        .then((m) => alive && setMeals(m ?? []))
+        .catch(() => alive && setMeals([]))
+    }
+    // Debounce only while typing; the first load shouldn't wait.
+    const t = setTimeout(run, q.trim() ? 200 : 0)
+    return () => {
+      alive = false
+      clearTimeout(t)
+    }
+  }, [enabled, q])
+  return meals
+}
+
 // The reusable recipe browser body: meal-type filters + a card grid + a View
 // preview (RecipeModal). Used full-screen inside MealPicker and inside the
 // plan-my-week manual-swap overlay. Without onView, View opens the modal preview.
+//
+// A saved meal can be picked anywhere a recipe can (decision 11), so the grid also
+// lists plates — but only when `onPickMeal` is supplied. The target date lives in
+// the caller's `onPick` closure and is never passed down here, so scheduling a plate
+// has to happen where the date is; a caller that can't do that simply doesn't
+// advertise meals.
 export function RecipeBrowser({
   recipes,
   loading,
   slot,
   onPick,
+  onPickMeal,
   onView,
   onEatingOut,
   onLeftovers,
@@ -41,6 +77,7 @@ export function RecipeBrowser({
   loading: boolean
   slot?: MealType
   onPick?: (recipe: Recipe) => void
+  onPickMeal?: (meal: Meal) => void
   onView?: (recipe: Recipe) => void
   onEatingOut?: () => void
   onLeftovers?: () => void
@@ -62,6 +99,9 @@ export function RecipeBrowser({
       .includes(query)
   const shown = recipes.filter((r) => (filter === 'all' || !r.category || r.category.toLowerCase() === filter) && matchesQuery(r))
   const FILTERS: Array<'all' | MealType> = ['all', ...MEALS]
+  // A plate has no breakfast/lunch/dinner category of its own, so the meal-type
+  // chips leave saved meals alone — they show whenever meals are on offer.
+  const meals = useBrowserMeals(!!onPickMeal, q)
 
   return (
     <div className="meals-picker">
@@ -117,8 +157,20 @@ export function RecipeBrowser({
             </div>
           </div>
         )}
+        {/* Saved plates — put a whole meal on the slot without a builder round-trip. */}
+        {onPickMeal &&
+          meals.map((m) => (
+            <MealCard
+              key={m.id}
+              meal={m}
+              className="mp-card"
+              onOpen={() => onPickMeal(m)}
+              onSelect={() => onPickMeal(m)}
+              selectLabel={selectLabel ?? 'Select'}
+            />
+          ))}
         {loading && <div className="muted picker-empty">Loading recipes…</div>}
-        {!loading && shown.length === 0 && (
+        {!loading && shown.length === 0 && meals.length === 0 && (
           <div className="muted picker-empty">
             {filter === 'all' ? 'No recipes yet.' : `No ${MEAL_LABEL[filter].toLowerCase()} recipes yet — tag a recipe with this meal to see it here.`}
           </div>

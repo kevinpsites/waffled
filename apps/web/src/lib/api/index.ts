@@ -29,6 +29,10 @@ export * from './familyNight'
 export * from './calendars'
 export * from './weather'
 export * from './meals'
+// Meal Builder is exported as a namespaced slice (`mealBuilderApi`) and deliberately
+// NOT spread into the flat `api` object below — its methods are generically named
+// (create/list/get/update/remove) and would collide with other domains.
+export * from './mealBuilder'
 export * from './photos'
 export * from './media'
 export * from './capture'
