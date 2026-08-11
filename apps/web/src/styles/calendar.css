@@ -11,8 +11,8 @@
 
 /* ---- grid period heading ----
    The app header shows TODAY's date, so a grid paged to another month had no
-   on-grid statement of what it was showing. This is that statement, plus a
-   "you've navigated away" flag that doubles as the jump-back-to-today control. */
+   on-grid statement of what it was showing. This is that statement; the heading
+   names the period, so the button beside it only has to offer the way back. */
 .cal-period-head {
   display: flex;
   align-items: baseline;
@@ -28,7 +28,6 @@
   padding: 4px 12px;
   color: var(--ink);
 }
-.cal-period-flag { color: var(--primary); }
 
 /* =====================  WEEK VIEW  ===================== */
 .wk-screen { flex: 1; display: flex; flex-direction: column; min-height: 0; gap: 14px; }

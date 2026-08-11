@@ -190,10 +190,6 @@ export function Calendar() {
           </h2>
           {!isCurrentPeriod && (
             <button type="button" className="pill cal-period-back" onClick={goToday}>
-              <span className="cal-period-flag">
-                {view === 'month' ? 'Not this month' : view === 'day' ? 'Not today' : 'Not this week'}
-              </span>
-              <span aria-hidden> · </span>
               Back to today
             </button>
           )}
