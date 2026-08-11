@@ -295,6 +295,23 @@ private final class FakePlateServer: @unchecked Sendable {
         #expect(m.message != nil)
     }
 
+    /// A rename that never reached the server must not come back as if it had. The
+    /// rollback restores the field, but the "last confirmed name" has to stay
+    /// unconfirmed too — otherwise the next blur repaints the rejected name from it.
+    @Test func aFailedRenameOnAFreshPlateDoesNotResurrectTheName() async {
+        let server = FakePlateServer()
+        server.failing = true
+        let m = MealBuilderModel(api: server.api())
+        m.name = "BBQ Sunday"
+        await m.commitRename()
+        #expect(server.creates == 0)
+        #expect(m.name.isEmpty)
+        // A second blur on the now-empty field restores the last CONFIRMED name —
+        // and nothing was ever confirmed.
+        await m.commitRename()
+        #expect(m.name.isEmpty)
+    }
+
     /// Two writes in flight, each answering with the whole plate: the older reply must
     /// not repaint over the newer one (it would resurrect a removed dish, and it does
     /// not self-heal).

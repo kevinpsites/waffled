@@ -35,6 +35,23 @@ struct MealDetailView: View {
     var body: some View {
         List {
             headerSection
+            // A saved plate can genuinely have no dishes yet (it is created the moment
+            // someone starts one). Every role section is then suppressed, leaving just
+            // the header — so say where dishes come from rather than showing a blank.
+            if meal.recipes.isEmpty {
+                Section {
+                    Button { editing = true } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("No dishes on this meal yet.")
+                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                            Text("Tap to open the builder and add a main.")
+                                .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(WF.card)
+                }
+            }
             ForEach(groups) { group in
                 if !group.dishes.isEmpty {
                     Section {

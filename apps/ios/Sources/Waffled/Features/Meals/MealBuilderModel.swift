@@ -250,12 +250,14 @@ final class MealBuilderModel {
         }
         guard next != committedName else { return }
         let previous = committedName ?? ""
-        await run(rollback: { [weak self] in self?.name = previous }) { [weak self] api, id in
+        let ok = await run(rollback: { [weak self] in self?.name = previous }) { [weak self] api, id in
             // The lazy create may have just used this very name — don't PATCH it back.
             if let m = self?.meal, m.name == next { return m }
             return try await api.update(id, next, nil, nil)
         }
-        committedName = meal?.name ?? next
+        // Only on success. A rejected name that still counted as "confirmed" would be
+        // painted straight back the next time the (now-empty) field lost focus.
+        if ok { committedName = meal?.name ?? next }
     }
 
     /// Put the whole plate's shopping on the grocery list without scheduling it.
@@ -300,11 +302,13 @@ final class MealBuilderModel {
     /// repaint from the response. `rollback` restores whatever the caller painted
     /// optimistically — without it a rejected rename / toggle / servings change stays
     /// on screen, silently, until a reload.
+    @discardableResult
     private func run(rollback: (() -> Void)? = nil,
-                     _ fn: (MealBuilderAPI, String) async throws -> WaffledAPI.MealDTO) async {
+                     _ fn: (MealBuilderAPI, String) async throws -> WaffledAPI.MealDTO) async -> Bool {
         seq += 1
         let mine = seq
         busy = true
+        var ok = true
         do {
             let id = try await ensureId()
             let updated = try await fn(api, id)
@@ -315,8 +319,10 @@ final class MealBuilderModel {
             // how the web's silent-failure bug happened.
             rollback?()
             message = Self.writeFailed
+            ok = false
         }
         if mine == seq { busy = false }
+        return ok
     }
 
     /// The plate's id, creating it on first use. One create, ever — a rename and an
