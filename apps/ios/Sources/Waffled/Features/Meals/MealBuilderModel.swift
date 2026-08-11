@@ -67,24 +67,57 @@ enum PlateRoles {
 /// different header is therefore how it gets re-filed, and the rule that reads the
 /// landing role lives here so it can be tested without a running app.
 enum PlateReorder {
-    /// The flat run as `ListReorder` sees it. **Must stay in the same order the view
-    /// renders** — every row occupies an index, including the non-draggable ＋ rows,
-    /// or every index below one is off by one.
-    static func rows(_ groups: [PlateGroup]) -> [ListReorder.Row] {
-        var out: [ListReorder.Row] = []
+    /// One row of the flat run, in render order. **This is the single definition of
+    /// that order** — the view renders from it and the drop is resolved against it, so
+    /// the two cannot drift. They used to be built independently, and every index below
+    /// a disagreement would have been off by one, landing the wrong dish in the wrong
+    /// role with nothing on screen to say so.
+    enum Slot: Equatable, Identifiable {
+        case header(PlateRole)
+        case dish(String, role: PlateRole)
+        /// An empty role's drop target — see `showsEmptySlots`.
+        case empty(PlateRole)
+        case add(PlateRole)
+
+        var id: String {
+            switch self {
+            case .header(let r): return "h:" + r.key
+            case .dish(let id, _): return "d:" + id
+            case .empty(let r): return "e:" + r.key
+            case .add(let r): return "a:" + r.key
+            }
+        }
+        /// Header and ＋ rows can't be dragged; dishes and the drop target can.
+        var isMovable: Bool {
+            if case .header = self { return false }
+            if case .add = self { return false }
+            return true
+        }
+    }
+
+    static func slots(_ groups: [PlateGroup]) -> [Slot] {
+        var out: [Slot] = []
         let draggable = showsEmptySlots(groups)
         for g in groups {
-            out.append(.header(g.role.key))
-            for d in g.dishes { out.append(.item(id: d.recipeId, section: g.role.key)) }
-            // An empty role's placeholder row. It exists so SwiftUI has somewhere to drop
-            // (a run of non-movable rows offers no destination), and it occupies an index
-            // like any other row.
-            if g.dishes.isEmpty && draggable {
-                out.append(.item(id: "empty:" + g.role.key, section: g.role.key))
-            }
-            out.append(.item(id: "add:" + g.role.key, section: g.role.key))
+            out.append(.header(g.role))
+            for d in g.dishes { out.append(.dish(d.recipeId, role: g.role)) }
+            if g.dishes.isEmpty && draggable { out.append(.empty(g.role)) }
+            out.append(.add(g.role))
         }
         return out
+    }
+
+    /// The same run as `ListReorder` sees it. Every row occupies an index, including the
+    /// ones that can't be dragged.
+    static func rows(_ groups: [PlateGroup]) -> [ListReorder.Row] {
+        slots(groups).map { slot in
+            switch slot {
+            case .header(let r): return .header(r.key)
+            case .dish(let id, let r): return .item(id: id, section: r.key)
+            case .empty(let r): return .item(id: "empty:" + r.key, section: r.key)
+            case .add(let r): return .item(id: "add:" + r.key, section: r.key)
+            }
+        }
     }
 
     /// Whether empty roles should show their "drag a dish here" slot at all.

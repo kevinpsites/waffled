@@ -349,7 +349,7 @@ struct TodayView: View {
         if meal.eatingOut { return "No cooking tonight 🎉" }
         var parts: [String] = []
         // A plate carries no single cook time, so without this it reads as a bare name.
-        if meal.dishCount > 0 { parts.append("\(meal.dishCount) dishes") }
+        if meal.dishCount > 0 { parts.append("\(meal.dishCount) \(meal.dishCount == 1 ? "dish" : "dishes")") }
         if let m = meal.cookTimeMinutes { parts.append("🕐 \(m) min") }
         if let s = meal.servings { parts.append("serves \(s)") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")

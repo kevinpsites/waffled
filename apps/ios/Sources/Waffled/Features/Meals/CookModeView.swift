@@ -234,6 +234,8 @@ struct CookModeView: View {
         }
     }
 
+    /// The plate's dishes as a tab strip — only when there's more than one, since a
+    /// lone tab is noise. Each tab badges that dish's running timers.
     @ViewBuilder private var dishTabs: some View {
         if store.dishes.count > 1 {
             ScrollView(.horizontal, showsIndicators: false) {

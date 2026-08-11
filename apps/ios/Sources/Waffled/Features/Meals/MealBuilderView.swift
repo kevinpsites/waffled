@@ -42,20 +42,20 @@ struct MealBuilderView: View {
             // `List` silently refuses `.dropDestination` outright (the row lifts and
             // nothing lands). Built once per render and reused by the drop handler.
             Section {
-                let rows = flatRows
-                ForEach(rows) { row in
-                    switch row {
-                    case .header(let group):
-                        roleHeaderRow(group).moveDisabled(true)
-                    case .dish(let dish, _):
-                        dishRow(dish)
-                    case .empty(let role):
-                        emptyDropRow(role)
+                let byId = Dictionary(uniqueKeysWithValues: model.groups.flatMap { $0.dishes }.map { ($0.recipeId, $0) })
+                ForEach(PlateReorder.slots(model.groups)) { slot in
+                    switch slot {
+                    case .header(let role):
+                        roleHeaderRow(role).moveDisabled(true)
+                    case .dish(let recipeId, _):
+                        if let dish = byId[recipeId] { dishRow(dish) }
+                    case .empty:
+                        emptyDropRow()
                     case .add(let role):
                         addRow(role).moveDisabled(true)
                     }
                 }
-                .onMove { from, to in handleMove(rows: rows, from: from, to: to) }
+                .onMove { from, to in handleMove(from: from, to: to) }
             }
         }
         .listStyle(.insetGrouped)
@@ -120,56 +120,19 @@ struct MealBuilderView: View {
 
     // MARK: one role group
 
-    /// One row of the flat run. The indices line up 1:1 with the `ListReorder.Row`
-    /// array `handleMove` reasons over, so the two must stay built from the same source.
-    private enum PlateDisplayRow: Identifiable {
-        case header(PlateGroup)
-        case dish(WaffledAPI.MealDishDTO, role: String)
-        /// The drop slot an EMPTY role gets — see `flatRows`.
-        case empty(PlateRole)
-        case add(PlateRole)
-        var id: String {
-            switch self {
-            case .header(let g): return "h:\(g.role.key)"
-            case .dish(let d, _): return "d:\(d.recipeId)"
-            case .empty(let r): return "e:\(r.key)"
-            case .add(let r): return "a:\(r.key)"
-            }
-        }
-    }
-
-    /// Every role's header, dishes and ＋ in render order.
-    ///
-    /// An EMPTY role also gets a placeholder row, and that row is what makes it a
-    /// possible destination: the header and the ＋ are both `moveDisabled`, and a run of
-    /// non-movable rows offers SwiftUI nowhere to drop — so an empty role silently
-    /// refused every drag until something was already in it. The placeholder is movable
-    /// (dragging it does nothing; `PlateReorder` ignores it as a source).
-    private var flatRows: [PlateDisplayRow] {
-        var out: [PlateDisplayRow] = []
-        // Suppressed entirely while the plate is empty — see `PlateReorder.showsEmptySlots`.
-        let slots = PlateReorder.showsEmptySlots(model.groups)
-        for group in model.groups {
-            out.append(.header(group))
-            for dish in group.dishes { out.append(.dish(dish, role: group.role.key)) }
-            if group.dishes.isEmpty && slots { out.append(.empty(group.role)) }
-            out.append(.add(group.role))
-        }
-        return out
-    }
-
     /// Re-file the dragged dish under whichever role header it landed beneath. The rule
     /// (and the flat run's exact ordering) lives in `PlateReorder`, where it is tested.
-    private func handleMove(rows _: [PlateDisplayRow], from: IndexSet, to: Int) {
+    private func handleMove(from: IndexSet, to: Int) {
         guard let move = PlateReorder.move(model.groups, from: from, to: to) else { return }
         Task { await model.apply(move) }
     }
 
-    @ViewBuilder private func roleHeaderRow(_ group: PlateGroup) -> some View {
+    @ViewBuilder private func roleHeaderRow(_ role: PlateRole) -> some View {
+        let count = model.groups.first { $0.role.key == role.key }?.dishes.count ?? 0
         HStack(spacing: 6) {
-            SectionLabel(text: group.role.label)
-            if !group.dishes.isEmpty {
-                Text("\(group.dishes.count)")
+            SectionLabel(text: role.label)
+            if count > 0 {
+                Text("\(count)")
                     .font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3)
                     .padding(.horizontal, 6).padding(.vertical, 1)
                     .background(WF.panel).clipShape(Capsule())
@@ -194,7 +157,7 @@ struct MealBuilderView: View {
 
     /// An empty role's drop slot — deliberately movable so SwiftUI treats this position
     /// as a valid destination. Dragging it re-files nothing.
-    private func emptyDropRow(_ role: PlateRole) -> some View {
+    private func emptyDropRow() -> some View {
         HStack(spacing: 8) {
             Image(systemName: "tray").font(.system(size: 14))
                 .foregroundStyle(WF.ink3)

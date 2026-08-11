@@ -1246,7 +1246,7 @@ struct ListDetailView: View {
                     // A plate is several dishes under one heading — say how many, so
                     // the row reads as a meal rather than a mysteriously large recipe.
                     if let n = meal.recipes?.count, n > 0 {
-                        Text("· \(n) dishes")
+                        Text("· \(n) \(n == 1 ? "dish" : "dishes")")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(WF.ink3.opacity(0.7))
                     }
@@ -1426,7 +1426,7 @@ struct ListDetailView: View {
                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
                 .lineLimit(1)
             if !plate.recipes.isEmpty {
-                Text("\(plate.recipes.count) dishes")
+                Text("\(plate.recipes.count) \(plate.recipes.count == 1 ? "dish" : "dishes")")
                     .font(.system(size: 12)).foregroundStyle(WF.ink3)
             }
             Spacer(minLength: 6)
