@@ -34,8 +34,13 @@ PRODUCE
 - Asparagus (2 bunch)
 
 DAIRY & CHILLED
-- Milk (1 gal)
+- Milk (1 gal) [Costco]
+- Yoghurt (4) [Costco · Kelly]
 ```
+
+Items carry the two things the plain name doesn't: the **store**, if you've assigned one, and
+**who it's for**, if it's assigned to someone. Both only appear when they're set, so an ordinary
+list stays clean.
 
 Send it through your phone's share sheet, copy it to the clipboard, or point a phone camera at
 the **QR code** — the QR encodes the text itself, so the list lands on any phone with no app,

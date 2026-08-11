@@ -462,9 +462,10 @@ describe('Lists screen', () => {
 
       expect(screen.getByText('Share list', { selector: '.modal-card *' })).toBeInTheDocument()
       const block = document.querySelector('.share-list-text') as HTMLElement
-      // 'PJs & socks' is checked, so it must not travel; sections become headers.
+      // 'PJs & socks' is checked, so it must not travel; sections become headers;
+      // and the swimsuits are Kelly's, so they say so.
       expect(block.textContent).toBe(
-        ['CLOTHES', '- Swimsuits (×4)', '', 'GEAR', '- Sunscreen'].join('\n')
+        ['CLOTHES', '- Swimsuits (×4) [Kelly]', '', 'GEAR', '- Sunscreen'].join('\n')
       )
     })
 

@@ -15,16 +15,32 @@
 // the aisle picker in GroceryBoard.
 export const AISLE_ORDER = ['Produce', 'Dairy & Chilled', 'Meat & Seafood', 'Pantry', 'Bakery', 'Frozen', 'Other']
 
-// The slice of a grocery-board item the formatter needs (GroceryBoardItem satisfies it).
+// The slice of a list item the formatter needs (GroceryBoardItem satisfies it).
 export interface ShareListItem {
   name: string
   quantity: string | null
   checked: boolean
   aisle: string
+  /** Where to buy it, when the household has assigned a store. */
+  store?: string | null
+  /** Who the item is for, when it's assigned to someone. */
+  assignee?: string | null
 }
 
 const OTHER = 'Other'
-const line = (i: ShareListItem) => `- ${i.name}${i.quantity ? ` (${i.quantity})` : ''}`
+
+// Store and assignee are the two things a shopper needs that the name doesn't
+// carry — which shop, and whose it is. Both are usually unset, so an item only
+// gains a trailing note when the household actually filled one in.
+//
+// Bracketed, NOT dash-separated: item names already use an em dash for allergen
+// warnings ("Shredded mozzarella — contains milk"), so a dash here would read as
+// more of the name. Brackets stay unambiguous next to one.
+const line = (i: ShareListItem): string => {
+  const notes = [i.store, i.assignee].map((v) => v?.trim()).filter(Boolean)
+  const qty = i.quantity ? ` (${i.quantity})` : ''
+  return `- ${i.name}${qty}${notes.length ? ` [${notes.join(' · ')}]` : ''}`
+}
 
 /**
  * Unchecked items → grouped plain text ('' when nothing is left to get).

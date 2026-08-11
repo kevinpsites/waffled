@@ -853,7 +853,21 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
       </div>
 
       {editStaples && <StaplesModal staples={board.staples} onClose={() => setEditStaples(false)} onChanged={refetch} />}
-      {sharing && <ShareListModal items={board.items} onClose={() => setSharing(false)} />}
+      {sharing && (
+        <ShareListModal
+          items={board.items.map((i) => ({
+            name: i.name,
+            quantity: i.quantity,
+            checked: i.checked,
+            aisle: i.aisle,
+            // A split run (Costco + the corner shop) is exactly what the person
+            // holding the list needs to know; assignee likewise when it's set.
+            store: i.store ?? null,
+            assignee: i.assignee?.name ?? null,
+          }))}
+          onClose={() => setSharing(false)}
+        />
+      )}
     </div>
   )
 }

@@ -42,7 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   walk the store, quantities included — and hands it over by share sheet, clipboard, or a QR
   code. The QR encodes the list text itself rather than a link, so whoever is going shopping
   gets it by pointing their camera at the kiosk: no app, no account, no sign-in. The grocery
-  board groups by aisle and a custom list by section; a list with no sections comes out flat. A
+  board groups by aisle and a custom list by section; a list with no sections comes out flat.
+  Items note their **store** and **who they're for** when those are set, so a split run across
+  two shops still makes sense to whoever is holding the list. A
   very long list can't fit in a code a camera can read — Waffled says so and points you at Copy or Share
   rather than showing a QR that won't scan.
 - **Build one meal out of several recipes.** Dinner is rarely a single dish, but the

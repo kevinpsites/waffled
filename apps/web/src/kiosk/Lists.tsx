@@ -1081,6 +1081,8 @@ export function Lists() {
             quantity: i.quantity,
             checked: i.checked,
             aisle: i.section ?? '',
+            store: i.store ?? null,
+            assignee: i.assignee?.name ?? null,
           }))}
           onClose={() => setSharing(false)}
         />
