@@ -153,6 +153,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   swapping a recipe's photo updated the recipe itself but left the old picture sitting on its
   card in the library grid until the library reloaded — so the list and the recipe disagreed
   about what the photo was.
+- **"Add to grocery list" opens full height on iPhone.** The ingredient picker came up as a
+  half sheet showing about three ingredients, so every use started by dragging it up. It now
+  opens full height.
 - **The iPad screensaver no longer drops over the keyboard.** If you were typing when the
   idle timer fired, the screensaver could cover a lit keyboard. It now waits while a text
   field is focused, and dismisses the keyboard if it does start.

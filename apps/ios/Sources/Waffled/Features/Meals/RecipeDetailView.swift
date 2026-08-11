@@ -137,7 +137,9 @@ struct RecipeDetailView: View {
             RecipeGrocerySheet(title: r.title, ingredients: ingredients) { ids in
                 addRecipeToGrocery(ingredientIds: ids)
             }
-            .presentationDetents([.medium, .large])
+            // Full height only: it's a scrolling ingredient list with a pinned Add
+            // button, and the half detent showed ~3 rows before you had to drag it up.
+            .presentationDetents([.large])
         }
     }
 
