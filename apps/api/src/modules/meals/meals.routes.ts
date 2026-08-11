@@ -138,8 +138,10 @@ export function registerMealRoutes(api: Api): void {
     // Real pantry-matched on-hand for the detail banner. `onHand` is null when the
     // pantry module is off (show no claim at all); `toBuy` is not pantry-derived and
     // always answers "how many of these will land on the grocery list".
-    const { onHand, toBuy } = await onHandForRecipe(tenant.householdId, id)
-    return { recipe: presentRecipe(recipe), ingredients, steps, onHand, toBuy }
+    // `toBuyNames` is what makes the count actionable: with the pantry ON the count
+    // is the *unmatched* subset, which the client cannot derive from `ingredients`.
+    const { onHand, toBuy, toBuyNames } = await onHandForRecipe(tenant.householdId, id)
+    return { recipe: presentRecipe(recipe), ingredients, steps, onHand, toBuy, toBuyNames }
   }))
 
   // Compile a recipe into the blessed Markdown format (docs/RECIPE_FORMAT.md) for

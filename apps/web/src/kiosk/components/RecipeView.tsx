@@ -148,7 +148,7 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const navigate = useNavigate()
   // onHand/toBuy default here so a caller (or a test) that stubs useRecipe without
   // them can't turn an absent count into a crash — absent means "no claim", same as null.
-  const { recipe, ingredients, steps, onHand = null, toBuy = 0, loading, error, refetch } = useRecipe(id)
+  const { recipe, ingredients, steps, onHand = null, toBuy = 0, toBuyNames = [], loading, error, refetch } = useRecipe(id)
   const [servings, setServings] = useState<number | null>(null)
   const [showAllTags, setShowAllTags] = useState(false)
   const [fav, setFav] = useState(false)
@@ -159,6 +159,9 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const [notes, setNotes] = useState('')
   const [usedMatches, setUsedMatches] = useState<RecipeMatch[] | null>(null)
   const [building, setBuilding] = useState(false)
+  // The to-buy list starts closed: the banner sits directly above Method, so opening
+  // it by default would push the steps down on every recipe you look at.
+  const [showToBuy, setShowToBuy] = useState(false)
   // Real, pantry-derived shopping numbers for the banner, carried by useRecipe off the
   // same GET /api/recipes/:id the screen already makes. `onHand` is null whenever we
   // can't make the claim — the pantry module is off — and the banner then says nothing
@@ -266,11 +269,11 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const base = recipe.servings || 4
   const current = servings ?? base
   const ratio = current / base
-  const nonStaple = ingredients.filter((i) => !i.isStaple).map((i) => i.name)
-  // Names are only trustworthy when nothing was matched against the pantry — with the
-  // pantry on, `toBuy` is the *unmatched* subset and we don't know which names those
-  // are, so we show the count alone rather than a list that contradicts it.
-  const missing = onHand === null && nonStaple.length === toBuy ? nonStaple : []
+  // `toBuyNames` is server-derived and always agrees with `toBuy` — including with the
+  // pantry ON, where the count is the *unmatched* subset and no client-side guess from
+  // `ingredients` could have been right. Empty ⇒ nothing to open into, so the count
+  // stays plain text rather than becoming a control that expands to nothing.
+  const canExpand = toBuyNames.length > 0
 
   async function addToGrocery() {
     if (addingGrocery.current) return // three controls share this handler — no double-fire
@@ -459,19 +462,39 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
         {/* right: on-hand banner + method */}
         <div className="rd-right">
           {(onHand !== null || toBuy > 0) && (
-            <div className="rd-ai">
+            <div className={`rd-ai${showToBuy && canExpand ? ' is-open' : ''}`}>
               <div className="rd-ai-sp"><svg viewBox="0 0 24 24"><path d="M12 2.5l1.7 5.2 5.3 1.6-5.3 1.6L12 16l-1.7-5.1-5.3-1.6 5.3-1.6z" /></svg></div>
               <div className="rd-ai-tx">
-                {onHand !== null ? (
+                {onHand !== null && (
                   <>
                     <b>{onHand.have} of {onHand.total}</b> {onHand.have === onHand.total ? 'ingredients on hand' : 'ingredients already on hand'}
-                    {toBuy > 0 && ` — ${toBuy} to buy`}
+                    {toBuy > 0 && ' — '}
                   </>
-                ) : (
-                  <>
-                    <b>{toBuy} to buy</b> for this recipe
-                    {missing.length > 0 && ` — ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? ` +${missing.length - 3} more` : ''}`}
-                  </>
+                )}
+                {toBuy > 0 &&
+                  (canExpand ? (
+                    // A count you can't act on is just anxiety — open it into the names.
+                    <button
+                      type="button"
+                      className="rd-ai-buy"
+                      aria-expanded={showToBuy}
+                      onClick={() => setShowToBuy((v) => !v)}
+                    >
+                      <b>{toBuy} to buy</b>
+                      <span className="rd-ai-caret">{showToBuy ? '\u25be' : '\u25b8'}</span>
+                    </button>
+                  ) : (
+                    <>
+                      <b>{toBuy} to buy</b>
+                      {onHand === null && ' for this recipe'}
+                    </>
+                  ))}
+                {showToBuy && canExpand && (
+                  <ul className="rd-ai-list">
+                    {toBuyNames.map((n) => (
+                      <li key={n}>{n}</li>
+                    ))}
+                  </ul>
                 )}
               </div>
               {toBuy > 0 && (

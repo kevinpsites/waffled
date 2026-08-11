@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route, useParams } from 'react-router'
 import { RecipeView } from './RecipeView'
 import type { RecipeDetail, RecipeIngredient, Meal, OnHandCount } from '../../lib/api'
@@ -12,6 +12,7 @@ const recipeRef: { current: RecipeDetail | null } = { current: null }
 const ingredientsRef: { current: RecipeIngredient[] } = { current: [] }
 const onHandRef: { current: OnHandCount | null } = { current: null }
 const toBuyRef: { current: number } = { current: 0 }
+const toBuyNamesRef: { current: string[] } = { current: [] }
 
 const createMock = vi.fn(async (input: { name: string; servings?: number }): Promise<Meal> => ({
   id: 'm-new',
@@ -49,6 +50,7 @@ vi.mock('../../lib/api', async (importOriginal) => {
       steps: [],
       onHand: onHandRef.current,
       toBuy: toBuyRef.current,
+      toBuyNames: toBuyNamesRef.current,
       loading: false,
       error: false,
       refetch: () => {},
@@ -133,6 +135,7 @@ beforeEach(() => {
   ]
   onHandRef.current = null
   toBuyRef.current = 0
+  toBuyNamesRef.current = []
 })
 
 describe('RecipeView — on-hand banner uses real pantry counts', () => {
@@ -173,6 +176,58 @@ describe('RecipeView — on-hand banner uses real pantry counts', () => {
     renderView()
     await waitFor(() => expect(screen.queryByText(/on hand/i)).not.toBeInTheDocument())
     expect(screen.queryByText(/to buy/i)).not.toBeInTheDocument()
+  })
+})
+
+// The banner said "7 to buy" and could not say WHICH 7 — and with the pantry ON it
+// showed no names at all, because the count is the *unmatched* subset and the client
+// can't derive that from the ingredient list. The server names them now.
+describe('RecipeView — which ingredients are still to buy', () => {
+  const banner = () => document.querySelector('.rd-ai') as HTMLElement
+
+  it('expands the count into the ingredient names, with the pantry on', async () => {
+    onHandRef.current = { have: 2, total: 5 }
+    toBuyRef.current = 3
+    toBuyNamesRef.current = ['chicken', 'mozzarella', 'basil']
+    renderView()
+
+    const btn = await screen.findByRole('button', { name: /3 to buy/i })
+    // Collapsed until asked — the banner sits above Method and must not shove it down
+    // on every recipe you open. Scoped to the banner throughout: every one of these
+    // names is ALSO a row in the Ingredients card, which is the whole point — the
+    // banner's job is to say which of them you still have to go and get.
+    expect(btn).toHaveAttribute('aria-expanded', 'false')
+    expect(within(banner()).queryByText('mozzarella')).not.toBeInTheDocument()
+
+    fireEvent.click(btn)
+    expect(btn).toHaveAttribute('aria-expanded', 'true')
+    expect(within(banner()).getByText('chicken')).toBeInTheDocument()
+    expect(within(banner()).getByText('mozzarella')).toBeInTheDocument()
+    expect(within(banner()).getByText('basil')).toBeInTheDocument()
+    // The on-hand claim survives the change.
+    expect(screen.getByText('2 of 5')).toBeInTheDocument()
+  })
+
+  it('does the same with the pantry off, where every non-staple is to buy', async () => {
+    onHandRef.current = null
+    toBuyRef.current = 2
+    toBuyNamesRef.current = ['passata', 'breadcrumbs']
+    renderView()
+    fireEvent.click(await screen.findByRole('button', { name: /2 to buy/i }))
+    expect(within(banner()).getByText('passata')).toBeInTheDocument()
+    expect(within(banner()).getByText('breadcrumbs')).toBeInTheDocument()
+    expect(screen.queryByText(/on hand/i)).not.toBeInTheDocument()
+  })
+
+  it('stays a plain count when the server named nothing to expand into', async () => {
+    // A stale payload (or a cached client) must degrade to what it did before,
+    // never to a control that opens into an empty list.
+    onHandRef.current = null
+    toBuyRef.current = 4
+    toBuyNamesRef.current = []
+    renderView()
+    expect(await screen.findByText(/4 to buy/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /4 to buy/i })).not.toBeInTheDocument()
   })
 })
 

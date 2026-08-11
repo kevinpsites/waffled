@@ -300,6 +300,7 @@ export const mealsApi = {
       steps: RecipeStep[]
       onHand?: OnHandCount | null
       toBuy?: number
+      toBuyNames?: string[]
     }>(`/api/recipes/${id}`),
   // Compile a recipe into the blessed Markdown format for sharing (native share sheet /
   // clipboard / .md download). Returns the markdown text + a suggested filename.
@@ -398,6 +399,10 @@ export interface RecipeState {
   // is off — render no on-hand claim at all rather than a misleading zero.
   onHand: OnHandCount | null
   toBuy: number
+  // The ingredients behind `toBuy`. With the pantry ON these are the *unmatched*
+  // subset, which is why they have to come from the server — the ingredient list
+  // alone can't tell you which ones the pantry already covered.
+  toBuyNames: string[]
   loading: boolean
   error: boolean
   refetch: () => void
@@ -410,6 +415,7 @@ export function useRecipe(id: string | null): RecipeState {
     steps: [],
     onHand: null,
     toBuy: 0,
+    toBuyNames: [],
     loading: true,
     error: false,
   })
@@ -430,11 +436,12 @@ export function useRecipe(id: string | null): RecipeState {
             steps: d.steps ?? [],
             onHand: d.onHand ?? null,
             toBuy: d.toBuy ?? 0,
+            toBuyNames: d.toBuyNames ?? [],
             loading: false,
             error: false,
           }),
       )
-      .catch(() => alive && setState({ recipe: null, ingredients: [], steps: [], onHand: null, toBuy: 0, loading: false, error: true }))
+      .catch(() => alive && setState({ recipe: null, ingredients: [], steps: [], onHand: null, toBuy: 0, toBuyNames: [], loading: false, error: true }))
     return () => {
       alive = false
     }

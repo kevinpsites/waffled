@@ -718,6 +718,23 @@ describe('what exactly is left to buy', () => {
     expect(chicken.toBuyNames.join(' ').toLowerCase()).toContain('chicken')
   })
 
+  // The recipe screen's banner had the same gap the plate did: it said "7 to buy"
+  // and could not say which 7. With the pantry ON it showed no names at all —
+  // the count is the *unmatched* subset, and the client cannot work out which
+  // ingredients those are from the ingredient list alone. The server can.
+  it('names them on the recipe detail too, in both pantry states', async () => {
+    await setModule('pantry', true)
+    const on = json(await call('GET', `/api/recipes/${bbqChicken}`, kevin))
+    expect(on.toBuyNames).toHaveLength(on.toBuy)
+    expect(on.toBuyNames.join(' ').toLowerCase()).not.toContain('chicken')
+
+    await setModule('pantry', false)
+    const off = json(await call('GET', `/api/recipes/${bbqChicken}`, kevin))
+    expect(off.onHand).toBe(null)
+    expect(off.toBuyNames).toHaveLength(off.toBuy)
+    expect(off.toBuyNames.join(' ').toLowerCase()).toContain('chicken')
+  })
+
   it('dedupes a shared ingredient across the plate, matching the count', async () => {
     await setModule('pantry', false)
     const shared = json(await call('POST', '/api/meals', kevin, {
