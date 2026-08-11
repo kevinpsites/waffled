@@ -13,8 +13,23 @@ const SEGMENTS = [
 ] as const
 type Segment = (typeof SEGMENTS)[number]['key']
 
+// What the segments filter on. Recipes carry no "role" of their own — a role
+// belongs to a dish ON a plate, not to the recipe — so these read the metadata
+// the recipe does have: `category` and `mealType`.
+//
+// Sides used to be "not a dessert", which is exactly what Mains was, so the two
+// tabs listed the same thing however the library was tagged. Now each recipe
+// falls in exactly one segment, and anything untagged is a main — most libraries
+// are half-tagged, and a recipe with nothing to go on still has to be findable.
+const SIDE_TYPES = new Set(['side', 'salad', 'appetizer', 'bread', 'soup'])
+
 function isDessert(r: Recipe): boolean {
   return (r.category ?? '').toLowerCase() === 'dessert' || (r.mealType ?? '').toLowerCase() === 'dessert'
+}
+
+function isSide(r: Recipe): boolean {
+  if (isDessert(r)) return false
+  return SIDE_TYPES.has((r.category ?? '').toLowerCase()) || SIDE_TYPES.has((r.mealType ?? '').toLowerCase())
 }
 
 // Title + the metadata people actually search by (same spirit as RecipesLibrary).
@@ -101,10 +116,10 @@ export function MealBuilderLibrary({
     return () => clearTimeout(t)
   }, [q])
 
-  // Clicking a role's "+" switches the filter to that role (and banners it).
-  useEffect(() => {
-    if (addingRole) setSegment(addingRole)
-  }, [addingRole])
+  // Tapping a slot's "+" deliberately does NOT move the segment. It names a
+  // DESTINATION, not a filter — roles are free text and a "main" recipe is a
+  // perfectly good side. Narrowing here would hide the very recipe you meant to
+  // put in that slot; the banner says where it's going instead.
 
   const { recipes } = useRecipes()
   const { meals: saved } = useSavedMeals(dq || undefined)
@@ -113,7 +128,15 @@ export function MealBuilderLibrary({
   const shownRecipes = useMemo(
     () =>
       recipes
-        .filter((r) => (segment === 'dessert' ? isDessert(r) : segment === 'all' ? true : !isDessert(r)))
+        .filter((r) =>
+          segment === 'all'
+            ? true
+            : segment === 'dessert'
+              ? isDessert(r)
+              : segment === 'side'
+                ? isSide(r)
+                : !isDessert(r) && !isSide(r),
+        )
         .filter((r) => !ql || haystack(r).includes(ql))
         .sort((a, b) => a.title.localeCompare(b.title)),
     [recipes, segment, ql],
@@ -135,6 +158,7 @@ export function MealBuilderLibrary({
     if (addingRole) return addingRole
     if (segment !== 'all') return segment
     if (isDessert(r)) return 'dessert'
+    if (isSide(r)) return 'side'
     return hasMain ? 'side' : 'main'
   }
   // Only used for the footer hint, which can only name a role when there IS one
@@ -190,7 +214,7 @@ export function MealBuilderLibrary({
         ))}
         {shownRecipes.map((r) => {
           const mins = minutesOf(r)
-          const kind = isDessert(r) ? 'Dessert' : r.category ? cap(r.category) : 'Recipe'
+          const kind = isDessert(r) ? 'Dessert' : isSide(r) ? 'Side' : r.category ? cap(r.category) : 'Recipe'
           return (
             <Row
               key={r.id}

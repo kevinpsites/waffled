@@ -952,3 +952,69 @@ describe('MealBuilder — cooking the whole plate', () => {
     expect(screen.queryByRole('button', { name: /Cook this meal/i })).not.toBeInTheDocument()
   })
 })
+
+// The Sides/Mains/Desserts segment asked exactly one question — "is this a
+// dessert?" — so Sides and Mains were the same predicate (`!isDessert`) and
+// listed identical recipes. No amount of tagging could separate them, even
+// though the recipes carry side-ish signals (mealType salad / side / soup…).
+describe('MealBuilder — what the library segments actually filter on', () => {
+  beforeEach(() => {
+    server.recipes = [
+      recipe({ id: 'r1', title: 'Roast Chicken', category: 'dinner', mealType: 'full-meal' }),
+      recipe({ id: 'r2', title: 'Cobb Salad', category: 'dinner', mealType: 'salad' }),
+      recipe({ id: 'r3', title: 'Baked Beans', category: 'side', mealType: 'side' }),
+      recipe({ id: 'r4', title: 'Peach Cobbler', category: 'dessert', mealType: 'dessert' }),
+    ]
+    server.plate = plate({ recipes: [] })
+  })
+
+  const libTitles = () => [...document.querySelectorAll('.mb-lib-rows .mb-lib-t')].map((n) => n.textContent ?? '')
+  const seg = (label: string) => {
+    const bar = document.querySelector('.mb-lib-seg') as HTMLElement
+    fireEvent.click(within(bar).getByRole('button', { name: label }))
+  }
+
+  it('files each recipe under exactly one segment', async () => {
+    renderBuilder()
+    await screen.findByText('Roast Chicken')
+
+    seg('Mains')
+    expect(libTitles()).toEqual(['Roast Chicken'])
+
+    seg('Sides')
+    expect(libTitles().sort()).toEqual(['Baked Beans', 'Cobb Salad'])
+
+    seg('Desserts')
+    expect(libTitles()).toEqual(['Peach Cobbler'])
+  })
+
+  it('shows everything under All', async () => {
+    renderBuilder()
+    await screen.findByText('Roast Chicken')
+    seg('All')
+    expect(libTitles()).toHaveLength(4)
+  })
+
+  it('does not narrow the library when you tap a slot — that names a destination', async () => {
+    // Roles are free text: a main is a perfectly good side. Filtering the library
+    // down to "sides" here would hide the recipe you tapped the slot to add.
+    renderBuilder()
+    await screen.findByText('Roast Chicken')
+    fireEvent.click(screen.getByLabelText('Add a side'))
+    expect(await screen.findByText(/Adding to Sides/i)).toBeInTheDocument()
+    expect(libTitles()).toHaveLength(4)
+  })
+
+  it('treats an untagged recipe as a main rather than dropping it', async () => {
+    // Most libraries are half-tagged. A recipe with nothing to go on has to land
+    // somewhere findable, and "main" is the safe default — the same assumption
+    // the ＋ button already makes.
+    server.recipes = [recipe({ id: 'r9', title: 'Mystery Casserole', category: null, mealType: null })]
+    server.plate = plate({ recipes: [] })
+    renderBuilder()
+    await screen.findByText('Mystery Casserole')
+    seg('Mains')
+    expect(libTitles()).toEqual(['Mystery Casserole'])
+  })
+})
+
