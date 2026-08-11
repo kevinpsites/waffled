@@ -24,6 +24,9 @@ struct KioskDashboard: View {
     @State private var recipes = RecipesModel()
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
+    /// A Meal Builder plate opened from tonight's card. Held as a placeholder — the
+    /// detail reloads the real plate by id on appear.
+    @State private var mealTarget: WaffledAPI.MealDTO?
     @State private var showCapture = false
     @State private var dictateOnOpen = false
     /// Pinned alert banners (web/phone parity): the parent approval queue and the
@@ -146,11 +149,25 @@ struct KioskDashboard: View {
                     }
             }
         }
+        // The plate's detail, opened full-screen with a Close button — same treatment as
+        // the recipe cover above (the phone pushes the same view instead).
+        .fullScreenCover(item: $mealTarget) { m in
+            NavigationStack {
+                MealDetailView(summary: m, recipes: recipes)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button { mealTarget = nil } label: {
+                                Image(systemName: "xmark").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink2)
+                            }
+                        }
+                    }
+            }
+        }
         // Starting a cook (Cook button / auto-cook) closes this recipe cover so the
         // app-root Cook Mode cover presents immediately instead of queueing behind it.
         // Cook Mode is durable (survives backgrounding); closing it lands back on Today.
         .onChange(of: cook.isActive) { _, active in
-            if active { recipeTarget = nil }
+            if active { recipeTarget = nil; mealTarget = nil }
         }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
@@ -495,8 +512,15 @@ struct KioskDashboard: View {
                             primaryButton("👨‍🍳 Cook Mode") { recipeTarget = .init(summary: summary, cook: true) }
                         }
                     } else if let mealId = meal.mealId {
-                        // A plate has no single recipe to open — cook the whole thing.
+                        // A plate has no single recipe to open, so "View meal" opens the
+                        // plate itself. Kept in step with the iPhone card deliberately —
+                        // these are two separate view bodies, and the iPad shipped with
+                        // only the Cook button when the phone had both.
                         HStack(spacing: 12) {
+                            secondaryButton("View meal") {
+                                mealTarget = .placeholder(id: mealId, name: meal.title,
+                                                          servings: meal.servings ?? 4)
+                            }
                             primaryButton("👨‍🍳 Cook the meal") {
                                 Task { await cook.startPlate(mealId: mealId) }
                             }
