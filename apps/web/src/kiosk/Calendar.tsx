@@ -169,8 +169,36 @@ export function Calendar() {
     [view, anchor.getTime()]
   )
 
+  // Is the anchor inside the period the user is actually living in? Drives the
+  // "you've paged away" flag on the grid heading below.
+  const isCurrentPeriod = useMemo(() => {
+    const now = new Date()
+    if (view === 'month') return anchor.getFullYear() === now.getFullYear() && anchor.getMonth() === now.getMonth()
+    if (view === 'day') return ymd(anchor) === ymd(now)
+    return ymd(startOfWeek(anchor)) === ymd(startOfWeek(now))
+  }, [view, anchor])
+
   return (
     <div className="cal-screen">
+      {/* The app header shows TODAY's date, so the grid states its own period —
+          otherwise paging to another month leaves nothing on the grid saying so.
+          Agenda is excluded: its rows carry their own dates. */}
+      {view !== 'agenda' && (
+        <div className="cal-period-head">
+          <h2 className="wf-serif cal-period-title" data-testid="cal-period-heading">
+            {periodLabel(view, anchor)}
+          </h2>
+          {!isCurrentPeriod && (
+            <button type="button" className="pill cal-period-back" onClick={goToday}>
+              <span className="cal-period-flag">
+                {view === 'month' ? 'Not this month' : view === 'day' ? 'Not today' : 'Not this week'}
+              </span>
+              <span aria-hidden> · </span>
+              Back to today
+            </button>
+          )}
+        </div>
+      )}
       {view === 'month' && (
         <MonthView
           year={anchor.getFullYear()}

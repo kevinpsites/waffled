@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The calendar grid now says which month you're looking at.** The header shows today's
+  date, so paging the month grid forward left nothing on the grid itself saying where you'd
+  landed. Month, Week and Day views now carry their own heading, with a "Not this month ·
+  Back to today" flag when you've navigated away from the present.
+
 ### Added
 
 - **Two-way Outlook / Microsoft 365 calendar sync, right beside Google.** Connect an
