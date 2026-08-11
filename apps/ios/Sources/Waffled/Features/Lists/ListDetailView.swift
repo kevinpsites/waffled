@@ -642,7 +642,7 @@ struct ListDetailView: View {
     /// iPhone: items with the meals recap + staples inline in the list.
     private var phoneBody: some View {
         List {
-            if model.isGrocery && (!model.meals.isEmpty || !model.unscheduled.isEmpty) && !searchActive {
+            if model.isGrocery && (!model.meals.isEmpty || !model.unscheduled.isEmpty || !model.unscheduledMeals.isEmpty) && !searchActive {
                 summaryPanel
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .listRowSeparator(.hidden).listRowBackground(Color.clear)
@@ -692,14 +692,14 @@ struct ListDetailView: View {
             }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { columnBottom = $0 }
             .frame(maxWidth: .infinity)
-            if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.unscheduled.isEmpty || !model.staples.isEmpty) {
+            if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.unscheduled.isEmpty || !model.unscheduledMeals.isEmpty || !model.staples.isEmpty) {
                 Rectangle().fill(WF.hair).frame(width: 1)
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
                         // Match the phone gate: the summary card also carries the Unscheduled
                         // recap, so show it whenever there are planned OR unscheduled recipes
                         // (a week with only off-plan adds still needs the side panel).
-                        if !model.meals.isEmpty || !model.unscheduled.isEmpty { summaryPanel }
+                        if !model.meals.isEmpty || !model.unscheduled.isEmpty || !model.unscheduledMeals.isEmpty { summaryPanel }
                         if !model.staples.isEmpty { staplesPanel }
                     }
                     .padding(16)
@@ -1398,17 +1398,54 @@ struct ListDetailView: View {
             // Off-plan recipes added from their pages — below a divider so the card
             // stays a complete legend for the item dot colors. Unaffected by the
             // meal-type segment (they belong to no slot).
-            if !model.unscheduled.isEmpty {
+            if !model.unscheduled.isEmpty || !model.unscheduledMeals.isEmpty {
                 Rectangle().fill(WF.hair).frame(height: 1)
                 Text("UNSCHEDULED")
                     .font(.system(size: 10, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
                 VStack(spacing: 8) {
+                    // Whole plates put on the list without a night, alongside the
+                    // off-plan recipes. This card is the legend for the item dot
+                    // colours, so a plate missing from it leaves its dots unexplained.
+                    ForEach(model.unscheduledMeals) { plate in unscheduledPlateRecapRow(plate) }
                     ForEach(model.unscheduled) { recipe in unscheduledRecapRow(recipe) }
                 }
             }
         }
         .padding(14)
         .wfField()
+    }
+
+    /// A rail row for a whole plate put on the list without being scheduled. Same shape
+    /// as the unscheduled-recipe row below, but it names the dish count (a plate is
+    /// several recipes) and removing it takes the whole plate off.
+    @ViewBuilder private func unscheduledPlateRecapRow(_ plate: WaffledAPI.GroceryBoardDTO.UnscheduledMeal) -> some View {
+        let color = Color(hexString: plate.color) ?? WF.ink3
+        HStack(spacing: 10) {
+            Circle().fill(color).frame(width: 9, height: 9)
+            Text(plate.name)
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                .lineLimit(1)
+            if !plate.recipes.isEmpty {
+                Text("\(plate.recipes.count) dishes")
+                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
+            }
+            Spacer(minLength: 6)
+            Button { Task { await model.removeMeal(plate.mealId) } } label: {
+                Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(WF.ink3)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(plate.name) from list")
+            Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
+            Text("🍽️")
+                .font(.system(size: 14))
+                .frame(width: 28, height: 28)
+                .background(color.opacity(0.12)).clipShape(Circle())
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            openMeal(.placeholder(id: plate.mealId, name: plate.name,
+                                  dishes: plate.recipes.map { ($0.recipeId, $0.title, $0.emoji, $0.role) }))
+        }
     }
 
     /// A rail row for an unscheduled recipe — same shape as the meal rows minus the
