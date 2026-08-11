@@ -349,6 +349,31 @@ plates, so none of them could have been caught by the server tests.
       pantry reported "4 of 9 on hand". With the pantry module off it now makes no
       on-hand claim at all, rather than a misleading "0 of 9".
 
+### Found by the product owner driving it on a device — fixed
+Every one of these was found by *using* the app, and none of them could have been: the
+suites were green throughout, and `simctl` has no tap API, so the whole builder and cook
+screen were unreachable to any automated check we had. Read this list before trusting a
+green run on a UI change.
+
+- [x] **The meal detail couldn't scroll to its last dish.** The tab bar floats over that
+      page rather than contributing safe area, so the bottom of a long plate was simply
+      unreachable.
+- [x] **No way to cook a plate from the plate.** Every dish had its own Cook button, but
+      the whole-meal session could only be started from tonight's card — so a plate you
+      weren't cooking *tonight* couldn't be cooked at all.
+- [x] **A new meal didn't focus its name.** Naming it is the first thing you do.
+- [x] **"Cook the meal" wrapped mid-phrase** in the kiosk column and read as a
+      mis-drawn button; shortened to "Cook meal" across all three surfaces.
+- [x] **Drag couldn't target an empty role** — the one case where you most want it. A
+      role with no dishes is a run of `moveDisabled` rows (header + ＋), and SwiftUI
+      offers no drop position inside one. It now renders a movable "Drag a dish here"
+      slot. **A unit test asserted this exact move and passed** — it covers the index
+      arithmetic, not the drop-target behaviour, which was the broken half.
+- [x] **Those slots then showed on a brand-new plate**, inviting a drag in all three
+      roles with nothing anywhere to drag. Gated on the plate holding a dish.
+- [x] **A fired timer stole your place with no way back** — see the "back to step N"
+      pill. Worst on the dish you were *already* reading, where no tab could rescue you.
+
 ## Execution strategy — fan-out and integration
 
 **Two PRs total.** PR1 = server + web, everything below. PR2 = iOS. The wave structure is

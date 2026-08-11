@@ -96,8 +96,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   slot, one calendar event, feeds the weekly grocery rebuild) **or** put just its shopping
   on the list without scheduling — and take that back off again. The grocery board groups
   a plate's items under the plate; cook mode takes the whole plate, tabbed across its
-  dishes with one shared timer dock. Shipped on web, iPhone and iPad — add a dish by
-  tapping the role's ＋, and drag a dish between roles once it's on the plate.
+  dishes with one shared timer dock, each dish keeping its own step and every timer
+  naming the pan that's beeping (on mobile, a jump leaves a "back to step N" pill).
+  Shipped on web, iPhone and iPad — add a dish by tapping the role's ＋, and drag a dish
+  between roles once it's on the plate.
 - **Meals & recipes** — week/month planners, recipe library, in-app editor (with
   **ingredient sections** + dividers and cross-section drag-drop), paste-markdown
   import **and share-as-markdown export** (a Share action compiles a recipe to the

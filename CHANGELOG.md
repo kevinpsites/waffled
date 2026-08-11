@@ -25,8 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the recipe library with their own 🍽️ Meals filter, search finds them by the meal's
   name *or* any dish in it, and dropping one onto a new plate brings its dishes in.
   Works on web, iPhone and iPad — on the phone and tablet you tap **＋ Add a side** to
-  pick from the same library, and once a dish is on the plate you can press and hold it
-  to drag it under another heading. Wherever a planned dinner is shown — the week
+  pick from the same library, a new meal opens with the keyboard already on its name,
+  and once a dish is on the plate you can press and hold it to drag it under another
+  heading (an empty role shows a slot to aim at). Wherever a planned dinner is shown — the week
   grid, the month grid, tonight's card, the grocery list — tapping a meal opens the
   meal, and dragging one to another night takes its dishes with it.
 - **Cook a whole meal, dish by dish.** Cook mode now takes a meal as well as a single
