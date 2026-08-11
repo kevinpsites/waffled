@@ -4,9 +4,12 @@ import { Icon } from '../icons'
 import { useTopbarFull } from '../topbar-slot'
 import { groceryApi, useGroceryBoard, type GroceryBoardItem } from '../../lib/api'
 import { StaplesModal } from './StaplesModal'
+import { ShareListModal } from './ShareListModal'
+// The canonical aisle walking order lives with the share formatter, which needs
+// the same order to group the shared text the way the board reads top-to-bottom.
+import { AISLE_ORDER } from './share-list'
 import '../../styles/grocery.css'
 
-const AISLE_ORDER = ['Produce', 'Dairy & Chilled', 'Meat & Seafood', 'Pantry', 'Bakery', 'Frozen', 'Other']
 // Aisles offered in the "move to section" picker. 'Other' is omitted — the board
 // treats an 'Other' category as auto-filed anyway, so "Auto (by name)" covers it.
 const AISLE_PICKER = AISLE_ORDER.filter((a) => a !== 'Other')
@@ -211,6 +214,8 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const { board, loading, error, refetch } = useGroceryBoard(weekStart ?? undefined)
   const navigate = useNavigate()
   const [view, setView] = useState<'aisle' | 'meal' | 'store'>('aisle')
+  // "Share list": hand the unchecked items to a phone as text / share sheet / QR.
+  const [sharing, setSharing] = useState(false)
   // Durable store quick-select (server distinct list), merged with stores in use on the
   // board so a just-typed one shows immediately too.
   const [storeSuggestions, setStoreSuggestions] = useState<string[]>([])
@@ -242,6 +247,16 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={onBack}>‹ Lists</button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
+          <button
+            className="pill"
+            style={{ cursor: 'pointer' }}
+            title="Copy, share, or QR the list to any phone"
+            onClick={() => setSharing(true)}
+          >
+            📤 Share list
+          </button>
+        </div>
       </div>
     ),
     [onBack]
@@ -620,6 +635,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
       </div>
 
       {editStaples && <StaplesModal staples={board.staples} onClose={() => setEditStaples(false)} onChanged={refetch} />}
+      {sharing && <ShareListModal items={board.items} onClose={() => setSharing(false)} />}
     </div>
   )
 }

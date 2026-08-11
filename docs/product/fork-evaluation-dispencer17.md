@@ -222,11 +222,17 @@ and it fixes a failure mode we have no defence against today.
 
 ## 8. Note for whoever merges upstream into the fork later
 
-The ported migrations keep the fork's own numbers — `0100_calendar_provider.sql` and
-`0102_ics_feeds.sql` — rather than being renumbered into upstream's 0091+ sequence. This
-is intentional: identical paths mean that when the fork merges upstream, git sees the same
-file and `pgmigrations` already has the row, so nothing double-applies. Renumbering would
-have guaranteed a failed re-run of `alter table … add column provider`. Upstream simply has
-a numbering gap at 0091–0099, which `node-pg-migrate` does not care about.
+The ported migrations are **renumbered** into upstream's sequence — `0091_calendar_provider.sql`
+and `0092_ics_feeds.sql` — rather than keeping the fork's `0100`/`0102`. `apps/api/CLAUDE.md`
+says to take the next free number, and a 0091–0099 gap in upstream would be a wart for every
+self-hoster to serve one downstream fork.
 
-`0101_walmart_matches.sql` is deliberately **not** ported, so that number stays free.
+That does mean the fork will end up carrying **two** migrations for each feature (its `0100`
+and upstream's `0091`). To keep that harmless, both ported migrations are written
+**idempotently** — `add column if not exists`, `create table if not exists`,
+`create index if not exists`, and a `pg_constraint` guard around the uniqueness constraint —
+so applying the second one after the first is a no-op instead of an error. Resolve the merge
+by keeping both files; neither will break a database that already ran the other.
+
+`0101_walmart_matches.sql` is deliberately **not** ported (Walmart matching is dropped
+entirely), so nothing depends on that number.

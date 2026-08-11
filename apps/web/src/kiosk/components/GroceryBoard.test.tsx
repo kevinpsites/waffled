@@ -323,3 +323,41 @@ describe('GroceryBoard By-store view', () => {
     expect(storeHeaders().filter((h) => /walmart/i.test(h))).toHaveLength(1)
   })
 })
+
+// The topbar "Share list" handoff: the board's unchecked items as aisle-grouped
+// text, offered as copy / share sheet / QR so a phone can take the list to the shop.
+describe('GroceryBoard share-list handoff', () => {
+  function mockShareBoard() {
+    globalThis.fetch = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/api/lists/grocery/board')) {
+        return ok({
+          list: { id: 'g', name: 'Grocery', emoji: '🛒', listType: 'grocery', isAutoBuilt: true, sortMode: 'manual', itemCount: 3 },
+          weekStart: '2026-06-07',
+          meals: [{ date: '2026-06-08', mealType: 'dinner', recipeId: 'r1', title: 'Pasta', emoji: '🍝', color: '#1f5fd0' }],
+          items: [
+            { ...autoItem, id: 'p1', name: 'Asparagus', quantity: '2 bunch', aisle: 'Produce' },
+            { ...autoItem, id: 'p2', name: 'Tomatoes', quantity: '2', aisle: 'Produce' },
+            { ...manualItem, id: 'o1', name: 'Cookies' },
+          ],
+          staples: [],
+        })
+      }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+  }
+
+  it('opens the share view with the unchecked items grouped by aisle', async () => {
+    mockShareBoard()
+    renderBoard()
+    await screen.findByText('Asparagus')
+
+    fireEvent.click(await screen.findByRole('button', { name: /Share list/ }))
+
+    expect(screen.getByText('Share list', { selector: '.modal-card *' })).toBeInTheDocument()
+    const block = document.querySelector('.share-list-text') as HTMLElement
+    expect(block.textContent).toBe(
+      ['PRODUCE', '- Asparagus (2 bunch)', '- Tomatoes (2)', '', 'OTHER', '- Cookies'].join('\n')
+    )
+  })
+})

@@ -18,7 +18,27 @@ Lists is where "things to buy or do" live — shared custom lists you build by h
 - 🎯 **Re-aisle an item** — section chips in its editor move it, and an **Auto** chip clears the override.
 - ✅ **Check off / add / delete** — everything persists, with attribution ("added by {name}" or "🍽 from meal plan"), and the grocery build honors recipe substitutions.
 - 🔄 **Stays fresh across devices** — a list you're looking at refreshes on its own (when you return to the app, and every ~20 s while it's open) so a family member's check on another phone shows up without a manual reload.
+- 📤 **Share list** — hand the grocery run to any phone: an aisle-grouped text list (quantities included) via share sheet, clipboard, or a QR code a phone camera grabs — no app, no account. See [Taking the list to the store](#taking-the-list-to-the-store).
 - 🔄 **Live cross-surface refresh** — Today, Lists, and Rewards stay in sync through the in-app refresh bus.
+
+## Taking the list to the store
+
+The grocery board's top bar has a **📤 Share list** button for getting the list onto the phone
+that's actually going shopping. It turns the unchecked items into a clean plain-text list,
+grouped in the board's aisle walking order with quantities:
+
+```
+PRODUCE
+- Asparagus (2 bunch)
+
+DAIRY & CHILLED
+- Milk (1 gal)
+```
+
+Send it through your phone's share sheet, copy it to the clipboard, or point a phone camera at
+the **QR code** — the QR encodes the text itself, so the list lands on any phone with no app,
+no account, and nothing to configure. Checked-off items are left out, and items with no aisle
+are filed under **OTHER**.
 
 ## Where it works
 

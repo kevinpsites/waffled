@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   approve. Feeds are read-only, refresh every 15 minutes (with a per-feed Sync button), and
   can be mapped to a person for color or marked private. This is the plan B when a workplace
   won't approve calendar access.
+- **Share the grocery list to a phone.** A **Share list** button on the grocery board turns
+  whatever's still unchecked into a clean aisle-grouped text list — in the order you actually
+  walk the store, quantities included — and hands it over by share sheet, clipboard, or a QR
+  code. The QR encodes the list text itself rather than a link, so whoever is going shopping
+  gets it by pointing their camera at the kiosk: no app, no account, no sign-in.
 - **Choose which recipe ingredients go on the grocery list.** "Add to grocery" now opens
   a picker so you can add everything or just the items you actually need, instead of always
   dumping the whole recipe onto the list. Everything starts checked — pantry staples are
