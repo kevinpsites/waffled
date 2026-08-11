@@ -304,8 +304,12 @@ struct MonthPlannerView: View {
     }
 
     /// A free-text "eating out" night (no recipe) — show a fork instead of a plate.
+    ///
+    /// A Meal Builder plate also has no `recipeId`, but it is a real meal with real
+    /// dishes: without the `isMealBacked` guard a plate someone named "Takeout Night"
+    /// would be drawn as an eating-out night in the month grid.
     private func isEatingOut(_ e: WaffledAPI.WeekEntryDTO) -> Bool {
-        guard e.recipeId == nil, let t = e.title?.lowercased() else { return false }
+        guard e.recipeId == nil, !e.isMealBacked, let t = e.title?.lowercased() else { return false }
         return ["eat", "dining", "takeout", "take-out", "take out", "delivery", "order", "out"].contains { t.contains($0) }
     }
 
