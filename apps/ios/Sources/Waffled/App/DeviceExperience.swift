@@ -10,6 +10,7 @@ import UIKit
 /// `apps/ios/IPAD_ROADMAP.md`.
 // TEMPORARY: comment-only touch to verify the Xcode Cloud pull-request start
 // condition fires on apps/ios changes. This PR is a throwaway — do not merge.
+// (second push, to generate a PR synchronize event carrying an apps/ios diff)
 enum DeviceExperience {
     /// iPhone — the existing planner with the bottom tab bar + capture FAB.
     case planner
