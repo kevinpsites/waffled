@@ -5,6 +5,7 @@ import SwiftUI
 /// Static sample data in Phase 0; PowerSync-backed in Phase 1+.
 struct TodayView: View {
     @Environment(SyncManager.self) private var sync
+    @Environment(CookSessionStore.self) private var cook
     @Environment(\.scenePhase) private var scenePhase
     @State private var dash = DashboardModel()
     @State private var recipes = RecipesModel()   // backs a recipe pushed from tonight's card
@@ -308,6 +309,16 @@ struct TodayView: View {
                         tonightButton("👨‍🍳 Cook Mode", primary: true) { path.append(.recipeCook(summary)) }
                     }
                     .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 12)
+                } else if let mealId = meal.mealId {
+                    // A Meal Builder plate. There's no single recipe to open, so the card
+                    // goes straight into cook mode for the whole plate — which tabs across
+                    // its dishes and keeps each one's timers running.
+                    HStack(spacing: 10) {
+                        tonightButton("👨‍🍳 Cook the meal", primary: true) {
+                            Task { await cook.startPlate(mealId: mealId) }
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 12)
                 }
             }
             .background(WF.card)
@@ -330,6 +341,8 @@ struct TodayView: View {
     private func mealSubtitle(_ meal: TonightMeal) -> String? {
         if meal.eatingOut { return "No cooking tonight 🎉" }
         var parts: [String] = []
+        // A plate carries no single cook time, so without this it reads as a bare name.
+        if meal.dishCount > 0 { parts.append("\(meal.dishCount) dishes") }
         if let m = meal.cookTimeMinutes { parts.append("🕐 \(m) min") }
         if let s = meal.servings { parts.append("serves \(s)") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")

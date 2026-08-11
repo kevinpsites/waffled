@@ -494,6 +494,13 @@ struct KioskDashboard: View {
                             secondaryButton("View recipe") { recipeTarget = .init(summary: summary, cook: false) }
                             primaryButton("👨‍🍳 Cook Mode") { recipeTarget = .init(summary: summary, cook: true) }
                         }
+                    } else if let mealId = meal.mealId {
+                        // A plate has no single recipe to open — cook the whole thing.
+                        HStack(spacing: 12) {
+                            primaryButton("👨‍🍳 Cook the meal") {
+                                Task { await cook.startPlate(mealId: mealId) }
+                            }
+                        }
                     }
                 } else {
                     Text(model.mealsLoaded ? "No dinner planned" : "Loading…")
@@ -506,6 +513,8 @@ struct KioskDashboard: View {
     private func mealSubtitle(_ meal: TonightMeal) -> String? {
         if meal.eatingOut { return "No cooking tonight 🎉" }
         var parts: [String] = []
+        // A plate carries no single cook time, so without this it reads as a bare name.
+        if meal.dishCount > 0 { parts.append("\(meal.dishCount) dishes") }
         if let m = meal.cookTimeMinutes { parts.append("🕐 \(m) min") }
         if let s = meal.servings { parts.append("serves \(s)") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
