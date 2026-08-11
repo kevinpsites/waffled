@@ -310,10 +310,14 @@ struct TodayView: View {
                     }
                     .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 12)
                 } else if let mealId = meal.mealId {
-                    // A Meal Builder plate. There's no single recipe to open, so the card
-                    // goes straight into cook mode for the whole plate — which tabs across
-                    // its dishes and keeps each one's timers running.
+                    // A Meal Builder plate. There's no single recipe to open, so "View
+                    // meal" opens the plate's detail and Cook takes the whole plate —
+                    // which tabs across its dishes and keeps each one's timers running.
                     HStack(spacing: 10) {
+                        tonightButton("View meal", primary: false) {
+                            path.append(.meal(.placeholder(id: mealId, name: meal.title,
+                                                           servings: meal.servings ?? 4)))
+                        }
                         tonightButton("👨‍🍳 Cook the meal", primary: true) {
                             Task { await cook.startPlate(mealId: mealId) }
                         }

@@ -861,6 +861,28 @@ struct WaffledAPI: Sendable {
 
         /// The plate's dishes filed under one role, in plate order.
         func dishes(role: String) -> [MealDishDTO] { recipes.filter { $0.role == role } }
+
+        /// A minimal plate built from what a *summary* surface already knows — a planned
+        /// slot, a grocery row — so tapping it can push the detail immediately instead of
+        /// waiting on a fetch. The detail reloads the real plate by id on appear.
+        ///
+        /// The fields a summary can't know are left empty rather than guessed: `onHand`
+        /// is nil (no claim, same as pantry-off) and `toBuy` is 0, so nothing renders a
+        /// number that would then change under the reader a moment later.
+        static func placeholder(id: String, name: String, servings: Int = 4,
+                                dishes: [(recipeId: String, title: String?, emoji: String?, role: String)] = []) -> MealDTO {
+            MealDTO(
+                id: id, name: name, servings: servings, isSaved: false, createdBy: nil,
+                createdAt: "", recipeCount: dishes.count,
+                emojis: dishes.compactMap(\.emoji), totalMinutes: nil,
+                onHand: nil, toBuy: 0, toBuyNames: [],
+                recipes: dishes.enumerated().map { i, d in
+                    MealDishDTO(recipeId: d.recipeId, title: d.title, emoji: d.emoji, category: nil,
+                                role: d.role, sortOrder: i, prepTimeMinutes: nil, cookTimeMinutes: nil,
+                                servings: nil, imageUrl: nil, cook: nil, onHand: nil,
+                                toBuy: 0, toBuyNames: [])
+                })
+        }
     }
 
     /// What `POST /api/meals/:id/schedule` answers with.
@@ -1088,6 +1110,14 @@ struct WaffledAPI: Sendable {
         /// Whether tapping this slot has anything to open — a recipe OR a plate. The
         /// free-text "eating out" entries have neither and stay inert.
         var isOpenable: Bool { recipeId != nil || isMealBacked }
+
+        /// The plate behind this slot, as a pushable placeholder — see
+        /// `MealDTO.placeholder`. Nil for an ordinary recipe or free-text night.
+        var platePlaceholder: MealDTO? {
+            guard let m = meal else { return nil }
+            return .placeholder(id: m.id, name: m.name, servings: m.servings,
+                                dishes: m.recipes.map { ($0.recipeId, $0.title, $0.emoji, $0.role) })
+        }
     }
 
     /// A person's chore tally for today (mirrors web `PersonChores`).

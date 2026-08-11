@@ -494,10 +494,16 @@ struct ListDetailView: View {
 
     /// Jump to the Meals tab and open a recipe — tapping a meal in the recap.
     var openRecipe: (WaffledAPI.RecipeSummary) -> Void = { _ in }
+    /// The same, for a recap row backed by a Meal Builder plate. Defaulted to a no-op
+    /// so a host that has nowhere to push a plate simply leaves those rows inert.
+    var openMeal: (WaffledAPI.MealDTO) -> Void = { _ in }
 
-    init(list: WaffledAPI.ListSummary, openRecipe: @escaping (WaffledAPI.RecipeSummary) -> Void = { _ in }) {
+    init(list: WaffledAPI.ListSummary,
+         openRecipe: @escaping (WaffledAPI.RecipeSummary) -> Void = { _ in },
+         openMeal: @escaping (WaffledAPI.MealDTO) -> Void = { _ in }) {
         _model = State(initialValue: ListDetailModel(list: list))
         self.openRecipe = openRecipe
+        self.openMeal = openMeal
     }
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
@@ -1448,8 +1454,8 @@ struct ListDetailView: View {
                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
                 .lineLimit(1)
             Spacer(minLength: 6)
-            // A chevron hints the row drills into the recipe (only when it links one).
-            if meal.recipeId != nil {
+            // A chevron hints the row drills in (a recipe, or a whole plate).
+            if meal.recipeId != nil || meal.mealId != nil {
                 Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             }
             Text(meal.emoji ?? Self.mealTypeEmoji[meal.mealType ?? ""] ?? "🍽️")
@@ -1457,7 +1463,14 @@ struct ListDetailView: View {
                 .frame(width: 28, height: 28)
                 .background(color.opacity(0.12)).clipShape(Circle())
         }
-        if let rid = meal.recipeId {
+        if let mealId = meal.mealId {
+            // A plate-backed row has no recipeId — it opens the whole plate.
+            Button {
+                openMeal(.placeholder(id: mealId, name: meal.title ?? "Meal",
+                                      dishes: (meal.recipes ?? []).map { ($0.recipeId, $0.title, $0.emoji, $0.role) }))
+            } label: { row }
+                .buttonStyle(.plain)
+        } else if let rid = meal.recipeId {
             Button { openRecipe(recipeSummary(for: meal, recipeId: rid)) } label: { row }
                 .buttonStyle(.plain)
         } else {

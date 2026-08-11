@@ -76,7 +76,11 @@ struct MonthPlannerView: View {
         .confirmationDialog(actionTarget?.displayTitle ?? "Dinner",
                             isPresented: Binding(get: { actionTarget != nil }, set: { if !$0 { actionTarget = nil } }),
                             titleVisibility: .visible, presenting: actionTarget) { e in
-            if e.recipeId != nil { Button("Open recipe") { openRecipe(e) } }
+            if e.isMealBacked {
+                Button("Open meal") { openRecipe(e) }
+            } else if e.recipeId != nil {
+                Button("Open recipe") { openRecipe(e) }
+            }
             Button("Change") { picking = .init(date: e.date, mealType: "dinner") }
             Button("Remove", role: .destructive) {
                 Task { _ = await sync.clearMealPlan(date: e.date, mealType: "dinner"); await load() }
@@ -84,8 +88,14 @@ struct MonthPlannerView: View {
         }
     }
 
-    /// Open a planned night's recipe (or the picker for a free-text night).
+    /// Open a planned night's recipe or plate (or the picker for a free-text night).
     private func openRecipe(_ e: WaffledAPI.WeekEntryDTO) {
+        // A plate-backed night has no `recipeId`; without this it fell through to the
+        // "nothing planned here" branch and reopened the slot picker over a real meal.
+        if let plate = e.platePlaceholder {
+            path.append(.meal(plate))
+            return
+        }
         guard let rid = e.recipeId else { picking = .init(date: e.date, mealType: "dinner"); return }
         let seed = recipes.recipes.first { $0.id == rid }
             ?? .placeholder(id: rid, title: e.recipe?.title ?? e.displayTitle, emoji: e.recipe?.emoji,
