@@ -2376,6 +2376,11 @@ struct WaffledAPI: Sendable {
             let avatarEmoji: String?
             let colorHex: String?
         }
+
+        /// What an edit field is seeded with. Anything asking "did the user change this?"
+        /// must compare against THIS and not `quantity`: the box holds "1 1/2 lb" while the
+        /// row holds "1½ lb", so comparing the two makes every tap-away look like an edit.
+        var editableQuantity: String { quantityInput ?? quantity ?? "" }
     }
 
     /// The grocery board: items tagged with aisle + the meals that need them, plus

@@ -92,19 +92,7 @@ final class ListDetailModel {
 
     /// "By store" grouping: each active item under its assigned store (alphabetical),
     /// with unassigned items in a trailing "No store" group. Read-only (no drag).
-    func storeSections() -> [ListSectionGroup] {
-        var buckets: [String: [WaffledAPI.ListItemDTO]] = [:]
-        var none: [WaffledAPI.ListItemDTO] = []
-        for item in activeItems {
-            if let s = item.store, !s.isEmpty { buckets[s, default: []].append(item) }
-            else { none.append(item) }
-        }
-        var groups = buckets.keys
-            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-            .map { ListSectionGroup(title: $0, items: buckets[$0] ?? [], sectionValue: $0) }
-        if !none.isEmpty { groups.append(ListSectionGroup(title: "No store", items: none, sectionValue: nil)) }
-        return groups
-    }
+    func storeSections() -> [ListSectionGroup] { StoreGrouping.sections(items: activeItems) }
 
     /// One meal-color dot per *distinct recipe* the item belongs to (a recipe planned
     /// in two slots is the same dot, not two). Unscheduled recipes get dots too.
@@ -210,9 +198,12 @@ final class ListDetailModel {
         guard !name.isEmpty else { return }
         let qty = rawQty.trimmingCharacters(in: .whitespacesAndNewlines)
         let prev = items[idx]
-        guard name != prev.name || qty != (prev.quantity ?? "") else { return }
+        guard name != prev.name || qty != prev.editableQuantity else { return }
         items[idx].name = name
         items[idx].quantity = qty.isEmpty ? nil : qty
+        // The typed text is the typable form, so it seeds the next edit too — otherwise
+        // reopening the row before the next load would show the pre-edit quantity.
+        items[idx].quantityInput = qty.isEmpty ? nil : qty
         do {
             try await api.patchListItem(id: id, name: name, quantity: qty)
         } catch {
@@ -233,6 +224,7 @@ final class ListDetailModel {
         let prev = items[idx]
         items[idx].name = name
         items[idx].quantity = qty.isEmpty ? nil : qty
+        items[idx].quantityInput = qty.isEmpty ? nil : qty
         items[idx].section = section.isEmpty ? nil : section
         items[idx].store = store.isEmpty ? nil : store
         items[idx].priority = priority
@@ -1693,7 +1685,7 @@ struct ListDetailView: View {
         if editingId != nil, editingId != item.id { commitEdit() }
         editName = item.name
         // the typable form — a ½ in a text field can only be deleted, not amended
-        editQty = item.quantityInput ?? item.quantity ?? ""
+        editQty = item.editableQuantity
         editingId = item.id
         focus = .editName
     }
@@ -1801,7 +1793,7 @@ struct ItemDetailEditor: View {
         self.showStore = showStore
         self.onSave = onSave
         _name = State(initialValue: item.name)
-        _quantity = State(initialValue: item.quantityInput ?? item.quantity ?? "")
+        _quantity = State(initialValue: item.editableQuantity)
         _section = State(initialValue: item.section ?? "")
         _store = State(initialValue: item.store ?? "")
         _priority = State(initialValue: item.priority ?? ListItemPriority.normal)
