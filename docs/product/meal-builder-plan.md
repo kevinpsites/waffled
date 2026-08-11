@@ -217,28 +217,70 @@ the route, and add a dock listing everything running across the plate.
 
 ## Todo
 
-### PR1 — server + web
-- [ ] Migration: `meals`, `meal_recipes`, `meal_plan_entries.meal_id`
-- [ ] Meals service + routes (CRUD, save/unsave, schedule, add-plate-to-list)
-- [ ] `GET /api/meals` list + search
-- [ ] Flatten-on-add semantics when a saved meal is added to a plate
-- [ ] Grocery: aggregate a meal’s recipes; meal-level provenance; unscheduled meals
-- [ ] Calendar: extend the meal event to all recipes on the plate
-- [ ] Per-dish `cook_person_id` assignment + display
-- [ ] Web: Builder screen (drag-and-drop), library panel + working search
-- [ ] Web: unified recipe/meal library, “Build a meal around this”
-- [ ] Web: grocery expandable meal rows
-- [ ] Web: multi-recipe Cook Mode + timer re-keying
-- [ ] Docs in this PR: CHANGELOG `[Unreleased]`, features reference, roadmap moves,
-      reword existing “meal builder” usages, add deferred items to roadmap
+### PR1 — server + web — **done**
+- [x] Migration: `meals`, `meal_recipes`, `meal_plan_entries.meal_id`
+- [x] Meals service + routes (CRUD, save/unsave, schedule, add-plate-to-list)
+- [x] `GET /api/meals` list + search
+- [x] Flatten-on-add semantics when a saved meal is added to a plate
+- [x] Grocery: aggregate a meal's recipes; meal-level provenance; unscheduled meals
+- [x] Calendar: extend the meal event to all recipes on the plate
+- [x] Per-dish `cook_person_id` assignment + display
+- [x] Web: Builder screen (drag-and-drop), library panel + working search
+- [x] Web: unified recipe/meal library, "Build a meal around this"
+- [x] Web: grocery expandable meal rows
+- [x] Web: multi-recipe Cook Mode + timer re-keying
+- [x] Docs in this PR: CHANGELOG `[Unreleased]`, features reference, roadmap moves,
+      reword existing "meal builder" usages, add deferred items to roadmap
 
-### Found during integration — must fix before the PR
-- [ ] **The list’s “By meal” toggle drops a scheduled plate into “Other items”.**
-      `claim()` matches `sourceRecipeIds` against `board.meals[].recipeId`, which is
-      `null` for a meal-backed slot — the dish ids live in `recipes[]` instead. So a
-      plate’s groceries group correctly in the week rail but fall through to “Other
-      items” in the by-meal grouping. Found by the grocery agent, deliberately left
-      alone to avoid colliding with the parallel worktrees.
+### Found during integration — fixed
+- [x] **The list's "By meal" toggle drops a scheduled plate into "Other items".**
+      `claim()` matched `sourceRecipeIds` against `board.meals[].recipeId`, which is
+      `null` for a meal-backed slot — the dish ids live in `recipes[]` instead.
+
+### Found while the user reviewed it on 8080 — fixed
+Everything here was found by actually driving the feature, not by reading the code.
+Worth remembering: each one had passing tests around it.
+
+- [x] **＋ always filed under Sides** when the segment was "All", so "I can't drag it
+      to Main" was really "＋ ignores where I am".
+- [x] **A library row wouldn't drop on a plate group.** The group hardcoded
+      `dropEffect = 'move'` while library rows drag as `'copy'`; a browser silently
+      refuses a drop whose effects contradict, and never fires `drop`. **jsdom
+      enforces none of this**, so the e2e test passed while the feature was broken —
+      the real guard asserts `dropEffect` directly.
+- [x] **The footer bar inverted in dark mode.** `background: var(--ink)` is the repo's
+      inverted-fill idiom and flips correctly in both themes — but it had only ever
+      been used on small chips and toasts, never a full-width persistent surface.
+- [x] **"N to buy" named nothing.** `toBuyNames` now rides along on the plate, each
+      dish and `GET /api/recipes/:id` — no extra query, the names were already loaded
+      to compute the count. With the pantry ON the count is the *unmatched* subset,
+      which no client could have derived from the ingredient list.
+- [x] **The save toggle read like a pending action.** Reworded to "Keep in library"
+      with a live state hint; it applies the moment it's flipped, and off removes the
+      plate from the library without deleting or unscheduling it.
+- [x] **"Add plate to list" was a one-way door.** Those rows are `source='recipe'`,
+      which the weekly rebuild deliberately never wipes, so nothing anywhere could
+      take them off. `DELETE /api/meals/:id/add-to-list` only deletes a row when the
+      plate is its *sole* reason for existing — anything the week's own plan still
+      needs survives with the plate's credit stripped.
+- [x] **A fully-overlapped plate vanished from the By-meal view.** Every item it
+      wanted was already claimed by an earlier meal, so its section had no rows and was
+      dropped — making an added plate look un-added. It keeps its heading and says where
+      its shopping went (rather than duplicating rows: one item, one checkbox).
+- [x] **Cook mode for a plate shipped dark.** `/meals/meal/:id/cook` existed and worked;
+      nothing in the app linked to it.
+- [x] **Tapping a planned meal opened the slot picker.** Four surfaces decided what a tap
+      meant from `entry.recipeId`, which is `null` for a meal-backed slot: the week grid,
+      the month cell, the Today week list and the Tonight card (which claimed "No recipe
+      attached yet" about a meal with three dishes).
+- [x] **Sides and Mains listed the same recipes.** Both ran `!isDessert` — the same
+      predicate — so no tagging could ever separate them. They now read `category` /
+      `mealType`, with untagged recipes defaulting to mains. Tapping a slot's ＋ no longer
+      moves the segment: it names a destination, and narrowing there hid the very recipe
+      you meant to add.
+- [x] **No 🍽️ Meals filter in the library.** Plates carry no cuisine/protein/dietary
+      metadata, so every structured filter legitimately drops them — the filter that
+      *selects* them has to be a type filter, or it would filter itself out.
 
 ### PR2 — iOS
 - [ ] Builder (tap-to-add) on iPhone + iPad
@@ -287,6 +329,14 @@ contention surface is landed serially first, and parallel agents only ever own l
   `npm test` + `npm run build` after *each* merge, then verify with Playwright against the
   running kiosk. Integration is serial and is where the real bugs surface.
 - Fresh worktrees have no `node_modules` — symlink, never commit.
+- **Worktree isolation is not file isolation.** A subagent given `isolation: 'worktree'`
+  gets its own checkout, but nothing stops two agents editing the same *path* in their
+  own copies — the file-ownership table above is the only thing preventing a merge
+  conflict, and it is enforced by nothing. Keep it strict and re-read it before spawning.
+- **A green unit test is not a working feature.** Of the eleven defects the user found by
+  driving this on a real stack, several sat behind passing tests — most sharply the
+  library drag, where jsdom happily fires a `drop` that a real browser refuses. Drive the
+  running kiosk with Playwright before calling any of this done.
 
 ### iOS (PR2)
 

@@ -19,6 +19,7 @@ Meals is your recipe library and your planner in one — pick what's for dinner 
 - ⏲️ **Per-step timers** — set them in the editor; in cook mode they ride along in a floating dock with a looping alarm (and a local-notification fallback). Need one on a timer-less step? Spin up an on-the-spot timer with wheel pickers — it's ephemeral.
 - 🧺 **Auto-built groceries** — the week's dinners become a shopping list that honors your substitutions (see [Lists & groceries](/features/lists/)).
 - ✨ **AI "Plan my week/month"** — draws only from your library, works to a theme, and fills the gaps; **"Try New Recipe"** (a "Try something new" toggle plus "Dishes to try" chips) nudges the plan toward novelty, and AI metadata auto-fill guesses cuisine, protein, vegetables, and tags.
+- 🍽️ **Meal Builder** — build one meal out of several recipes (a "plate"), then schedule it or shop for it. See [Building a meal](#building-a-meal).
 - 🍳 **Meal types & placeholders** — breakfast / lunch / dinner / snack (default dinner), plus placeholder entries; the month planner drafts a rotation pool spread across nights, filling only the empty slots.
 
 ## Where it works
@@ -30,6 +31,62 @@ Meals is your recipe library and your planner in one — pick what's for dinner 
 | iPad | ✅ |
 
 Recipe delete and paste-markdown import are web-forward; mobile edits most fields and cooks fine. On **iPad**, tapping a meal from the Today view opens the recipe full-screen.
+
+## Building a meal
+
+Most dinners aren't one dish. **Meal Builder** puts a whole meal together — a main, a
+couple of sides, maybe a dessert — and treats it as one thing you can plan, shop for and
+cook.
+
+Start one from **Recipes → ＋ New meal**, or from any recipe's **Build a meal around
+this** (which seeds the plate with that recipe). Then:
+
+- **Add dishes** — drag a recipe from the library panel onto Main, Sides or Dessert, or
+  tap ＋ on a slot and pick one. Drag a dish between roles to move it. The library's
+  Sides / Mains / Desserts tabs sort recipes by their `mealType` and `category`
+  (salads, sides, appetizers, breads and soups read as sides; anything untagged reads as
+  a main), and tapping a slot's ＋ names a *destination*, not a filter — a main makes a
+  perfectly good side.
+- **Serves** — meal-level, so scaling the meal scales every dish with it.
+- **Who cooks** — per dish, so a four-dish meal can have four cooks. Leave it as
+  "whoever" and nobody is named.
+- **Keep in library** — a toggle, applied the moment you flip it. On, the meal is
+  reusable: it shows up in the recipe library and the planner's picker. Off, it stays
+  exactly where it already is — nothing is deleted, and a scheduled meal stays scheduled.
+
+### Scheduling it, or just shopping for it
+
+Two different things, and you can do either or both:
+
+- **Schedule meal** puts it on a day and slot. It fills that slot in the planner, goes on
+  the calendar as one event, and its ingredients come into that week's grocery list with
+  the weekly rebuild.
+- **Add plate to list** only does the shopping. Nothing is scheduled and nothing appears
+  on the calendar — the ingredients simply land on the list, marked as an off-plan add so
+  the weekly rebuild never wipes them. Changed your mind? Take it back off with the ×
+  next to the meal in the grocery week rail, or **Remove** in its By-meal section.
+  Anything the week's actual plan still needs stays on the list.
+
+In the grocery list's **By meal** view a meal's items group under its name, badged
+**Unscheduled** when it isn't on a night, with a dot on each row in the meal's colour. An
+ingredient two meals both want is still one row with one checkbox — it lists under
+whichever meal claimed it first, and the other says where it went.
+
+### Cooking it
+
+**👨‍🍳 Cook this meal** opens cook mode for the whole plate: tabs across every dish, with
+one shared timer dock. A timer you start on the rice keeps running while you read the
+chicken steps, and tapping it takes you back to that dish and that step. Tonight's card on
+the Today screen opens it directly.
+
+### What's left to buy
+
+Every dish shows how many of its ingredients you still need, and tapping that count opens
+the actual names — same on the recipe screen. With the [Pantry](/features/pantry/) module
+on, those are specifically the ingredients your pantry doesn't already cover; with it off,
+it's everything non-staple.
+
+Meal Builder is web-only today; iPhone and iPad parity is next.
 
 ## Recipe markdown & timers
 
