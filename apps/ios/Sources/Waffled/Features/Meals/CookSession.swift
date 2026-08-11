@@ -20,6 +20,14 @@ struct CookDish: Identifiable, Equatable {
     func clamp(_ i: Int) -> Int { steps.isEmpty ? 0 : min(max(0, i), steps.count - 1) }
 }
 
+/// A dish's fetched method. Keeps the (pure) plate builder independent of the recipe
+/// detail DTO the store fetches, so composing a plate is testable without a network.
+struct CookMethod: Equatable, Sendable {
+    let title: String
+    let steps: [WaffledAPI.RecipeStepDTO]
+    let ingredients: [WaffledAPI.RecipeIngredientDTO]
+}
+
 /// What is being cooked, minus every side effect: the dishes, which one is on screen, and
 /// where each one is. `CookSessionStore` owns one of these and wraps it in the async /
 /// alarm / notification shell — the rules live here so they can be tested directly.
@@ -83,6 +91,23 @@ struct CookSession: Equatable {
     /// dish tabs and the dock slice it.
     static func timers(_ all: [CookTimer], for dishId: String) -> [CookTimer] {
         all.filter { $0.dishId == dishId }
+    }
+
+    /// Build a session for a whole plate. Dishes come out in `sortOrder` (never trust
+    /// arrival order), and a dish whose method failed to load is skipped rather than
+    /// sinking the plate — one unreachable side shouldn't stop you cooking dinner.
+    /// nil ⇒ nothing loaded, so there is nothing to cook.
+    static func plate(_ meal: WaffledAPI.MealDTO, methods: [String: CookMethod]) -> CookSession? {
+        // Sort is not stable, so tie-break on arrival order to keep equal sortOrders put.
+        let ordered = meal.recipes.enumerated()
+            .sorted { ($0.element.sortOrder, $0.offset) < ($1.element.sortOrder, $1.offset) }
+            .map(\.element)
+        let dishes = ordered.compactMap { d -> CookDish? in
+            guard let m = methods[d.recipeId] else { return nil }
+            return CookDish(id: d.recipeId, title: d.title ?? m.title, role: d.role,
+                            steps: m.steps, ingredients: m.ingredients)
+        }
+        return CookSession(plateId: meal.id, title: meal.name, dishes: dishes)
     }
 }
 

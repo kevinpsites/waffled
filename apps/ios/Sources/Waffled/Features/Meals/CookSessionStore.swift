@@ -89,6 +89,44 @@ final class CookSessionStore {
         self.session = session
     }
 
+    /// Cook a whole plate: every dish, each with its own steps and its own place in them.
+    /// The methods are fetched concurrently up front so the dish tabs are ready the moment
+    /// Cook Mode opens. Re-starting the plate already cooking is a no-op (timers + per-dish
+    /// progress kept); a dish whose recipe won't load is skipped by `CookSession.plate`.
+    func startPlate(_ meal: WaffledAPI.MealDTO) async {
+        if session?.plateId == meal.id { return }
+        guard let s = CookSession.plate(meal, methods: await methods(for: meal)) else { return }
+        start(s)
+    }
+
+    /// Same, given only the plate's id (a plate card, or a tapped timer notification).
+    func startPlate(mealId: String) async {
+        if session?.plateId == mealId { return }
+        guard let meal = try? await api.meal(id: mealId) else { return }
+        await startPlate(meal)
+    }
+
+    /// Fetch every dish's steps + ingredients at once. `MealDishDTO` carries the plate's
+    /// framing (role, order, cook) but not the method, so each dish needs its own detail
+    /// call; in parallel, because a four-dish plate serially would be four round-trips of
+    /// staring at a spinner.
+    private func methods(for meal: WaffledAPI.MealDTO) async -> [String: CookMethod] {
+        let api = self.api
+        let ids = meal.recipes.map(\.recipeId)
+        return await withTaskGroup(of: (String, CookMethod?).self) { group in
+            for id in ids {
+                group.addTask {
+                    guard let d = try? await api.recipeDetail(id: id) else { return (id, nil) }
+                    return (id, CookMethod(title: d.recipe.title, steps: d.steps,
+                                           ingredients: d.ingredients))
+                }
+            }
+            var out: [String: CookMethod] = [:]
+            for await (id, m) in group { if let m { out[id] = m } }
+            return out
+        }
+    }
+
     // MARK: moving around
 
     /// Bring another of the plate's dishes on screen. Its own step is restored, and every
@@ -146,14 +184,21 @@ final class CookSessionStore {
 
     /// A fired cook-timer notification was tapped: (re)present Cook Mode for the dish that
     /// beeped and jump to its step. If that dish is already in the live session we just
-    /// move to it (keeping every other timer); otherwise we re-fetch the recipe and
-    /// present it.
+    /// move to it (keeping every other timer); otherwise we re-fetch — the whole plate when
+    /// the timer named one, else the single recipe — and present that.
     func openFromNotification(_ link: CookTimerLink) {
         if session?.contains(link.dishId) == true {
             session?.jump(toDish: link.dishId, step: link.stepIndex)
             return
         }
         Task {
+            if let plateId = link.plateId {
+                await startPlate(mealId: plateId)
+                if session?.contains(link.dishId) == true {
+                    session?.jump(toDish: link.dishId, step: link.stepIndex)
+                    return
+                }
+            }
             guard let d = try? await api.recipeDetail(id: link.dishId) else { return }
             start(id: link.dishId, title: d.recipe.title, steps: d.steps, ingredients: d.ingredients)
             session?.jump(toDish: link.dishId, step: link.stepIndex)

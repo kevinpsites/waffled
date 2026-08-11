@@ -45,6 +45,27 @@ private func soloSession(_ d: CookDish) -> CookSession {
     CookSession(plateId: nil, title: d.title, dishes: [d])!
 }
 
+private func dishDTO(_ recipeId: String, _ title: String?, role: String = "side",
+                     sortOrder: Int) -> WaffledAPI.MealDishDTO {
+    WaffledAPI.MealDishDTO(recipeId: recipeId, title: title, emoji: nil, category: nil,
+                           role: role, sortOrder: sortOrder, prepTimeMinutes: nil,
+                           cookTimeMinutes: nil, servings: nil, imageUrl: nil, cook: nil,
+                           onHand: nil, toBuy: 0, toBuyNames: [])
+}
+
+private func mealDTO(_ dishes: [WaffledAPI.MealDishDTO], id: String = "plate-1",
+                     name: String = "BBQ Sunday") -> WaffledAPI.MealDTO {
+    WaffledAPI.MealDTO(id: id, name: name, servings: 4, isSaved: true, createdBy: nil,
+                       createdAt: "2026-08-01T00:00:00Z", recipeCount: dishes.count,
+                       emojis: [], totalMinutes: nil, onHand: nil, toBuy: 0,
+                       toBuyNames: [], recipes: dishes)
+}
+
+private func method(_ title: String, steps: Int = 3) -> CookMethod {
+    CookMethod(title: title, steps: (1...steps).map { step($0, "\(title) step \($0)") },
+               ingredients: [ingredient(title)])
+}
+
 private func timer(dish: String, dishTitle: String? = nil, step: Int, number: Int? = nil,
                    secs: Int = 300) -> CookTimer {
     CookTimer(notifId: "waffled.cook.\(dish)-\(step)", dishId: dish, dishTitle: dishTitle,
@@ -128,6 +149,43 @@ struct CookSessionTests {
         let toMain = s.activate("main")
         #expect(toMain)
         #expect(s.index == 0)
+    }
+
+    @Test("a plate builds in sortOrder, taking each dish's method")
+    func plateBuildsInSortOrder() {
+        let meal = mealDTO([dishDTO("side", "Potato Salad", sortOrder: 2),
+                            dishDTO("main", "BBQ Chicken", role: "main", sortOrder: 1)])
+        let s = try! #require(CookSession.plate(meal, methods: [
+            "main": method("BBQ Chicken", steps: 5), "side": method("Potato Salad")]))
+        #expect(s.dishes.map(\.id) == ["main", "side"])
+        #expect(s.activeDishId == "main")
+        #expect(s.title == "BBQ Sunday")
+        #expect(s.plateId == "plate-1")
+        #expect(s.dishes.first?.steps.count == 5)
+        #expect(s.dishes.first?.role == "main")
+        #expect(s.dishes.last?.ingredients.count == 1)
+    }
+
+    @Test("a dish whose method didn't load is skipped, not fatal")
+    func plateSkipsUnloadableDishes() {
+        let meal = mealDTO([dishDTO("main", "BBQ Chicken", role: "main", sortOrder: 1),
+                            dishDTO("side", "Potato Salad", sortOrder: 2)])
+        let s = try! #require(CookSession.plate(meal, methods: ["side": method("Potato Salad")]))
+        #expect(s.dishes.map(\.id) == ["side"])
+        #expect(s.activeDishId == "side")
+    }
+
+    @Test("a plate with nothing loadable is no session at all")
+    func plateWithNothingLoadedIsNil() {
+        let meal = mealDTO([dishDTO("main", "BBQ Chicken", role: "main", sortOrder: 1)])
+        #expect(CookSession.plate(meal, methods: [:]) == nil)
+    }
+
+    @Test("a dish with no title of its own falls back to the recipe's")
+    func dishTitleFallsBackToTheRecipe() {
+        let meal = mealDTO([dishDTO("main", nil, role: "main", sortOrder: 1)])
+        let s = try! #require(CookSession.plate(meal, methods: ["main": method("BBQ Chicken")]))
+        #expect(s.dishes.first?.title == "BBQ Chicken")
     }
 }
 

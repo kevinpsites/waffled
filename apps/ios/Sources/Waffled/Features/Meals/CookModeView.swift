@@ -106,6 +106,7 @@ struct CookModeView: View {
         ZStack {
             VStack(spacing: 0) {
                 topBar
+                dishTabs
                 ProgressView(value: progress).tint(WF.primary).padding(.horizontal, 20)
 
                 // The current step, centered in the available space — but scrollable so a
@@ -173,6 +174,48 @@ struct CookModeView: View {
             if phase == .active { refreshFiring() }
         }
         .sheet(isPresented: $showOverview) { allIngredientsSheet }
+    }
+
+    // MARK: the plate's dishes
+
+    /// The plate's dishes as tabs — shown only when there's more than one to move
+    /// between. Each tab badges how many of its own timers are running, so a side
+    /// simmering away on another tab still says so, and tapping one restores that dish's
+    /// own step rather than restarting it.
+    @ViewBuilder private var dishTabs: some View {
+        if store.dishes.count > 1 {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(store.dishes) { dish in
+                        Button { withAnimation { store.switchToDish(dish.id) } } label: { dishTab(dish) }
+                            .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 20).padding(.bottom, 10)
+            }
+        }
+    }
+
+    private func dishTab(_ dish: CookDish) -> some View {
+        let isOn = dish.id == store.activeDishId
+        let running = store.dishTimers(dish.id).count
+        return HStack(spacing: 6) {
+            Text(dish.title)
+                .font(.system(size: isKiosk ? 16 : 14, weight: .bold)).lineLimit(1)
+            if running > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "timer").font(.system(size: 10, weight: .bold))
+                    Text("\(running)").font(.system(size: 11, weight: .heavy)).monospacedDigit()
+                }
+                // WF.onInk, not .white: WF.ink flips to a warm off-white in dark mode.
+                .foregroundStyle(isOn ? WF.onInk : WF.primaryD)
+            }
+        }
+        .foregroundStyle(isOn ? WF.onInk : WF.ink2)
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        .background(isOn ? WF.ink : WF.panel)
+        .clipShape(Capsule())
+        .contentShape(Capsule())
     }
 
     // MARK: step content
