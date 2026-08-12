@@ -41,9 +41,10 @@ comfortable. Images are multi-arch, so x86 or ARM (a Raspberry Pi works). Full l
 Yes — anything that runs Docker and stays on. The images are built for both `amd64` and `arm64`.
 
 ### How do I access it from a tablet or phone?
-Run `./waffled setup` (it auto-detects your LAN IP) so the sync URL isn't `localhost`, then open
-`http://<your-machine-ip>:8080` on the device. Skipping this is the #1 cause of a tablet showing
-"Offline." Details: [Reverse proxy & TLS](/install/reverse-proxy/) and the quick start's
+Open `http://<your-machine-ip>:8080` on the device — sync works from there, because Waffled tells
+each device to sync at the address it used to reach the server. Run `./waffled setup` (it
+auto-detects your LAN IP) as well, so calendar and sign-in redirects point at the right address.
+Details: [Reverse proxy & TLS](/install/reverse-proxy/) and the quick start's
 ["Accessing it from other devices"](/getting-started/quick-start/#accessing-it-from-other-devices).
 
 ### How do I upgrade?
@@ -116,7 +117,9 @@ re-consented. If any guide tells you to wipe a volume, stop. Restore from a back
 
 ### Everything shows "Offline" — what's wrong?
 Almost always one of two things: a missing `POWERSYNC_JWT_PRIVATE_KEY` on an older/manual
-installation, or a `POWERSYNC_PUBLIC_URL` that clients can't actually reach (e.g. `localhost`).
+installation, or a `POWERSYNC_PUBLIC_URL` pinned to something clients can't actually reach
+(e.g. `localhost`, or a LAN IP the machine no longer has) — on a home network, clearing it lets
+Waffled derive the right address per device.
 See [Troubleshooting → PowerSync offline](/operations/troubleshooting/#powersync-offline-banner).
 
 ## Contributing & project

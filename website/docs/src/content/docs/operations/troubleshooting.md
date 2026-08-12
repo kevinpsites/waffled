@@ -87,9 +87,11 @@ Then restart PowerSync to re-validate:
 ./waffled restart powersync     # unstick waffled-powersync
 ```
 
-**Also check `POWERSYNC_PUBLIC_URL`** — it must be the address clients actually use
-to reach PowerSync (e.g. your LAN IP / hostname, not `localhost`). A mismatch also
-manifests as clients that can't sync.
+**Also check `POWERSYNC_PUBLIC_URL`** — if it's set, it must be the address clients
+actually use to reach PowerSync, and a stale value (an old LAN IP, or `localhost`)
+shows up as clients that can't sync. On a home LAN, **clearing it** is usually the
+fix: Waffled then derives the sync address from whatever address each device used to
+reach the server. Keep it set only when PowerSync has its own hostname/TLS.
 
 ### Calendar sync failing (Google or Outlook)
 

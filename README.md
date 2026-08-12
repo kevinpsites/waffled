@@ -74,11 +74,13 @@ and, once up, prints the exact URL to open. Open the kiosk at `http://localhost:
 first load you'll get a **setup wizard**: enter a household name + timezone and create
 your **admin account** (name, email, password). That's it — you're in.
 
-> **Using it from a tablet or the iOS app?** Run `./waffled setup` — one question
-> (localhost / your LAN IP / a hostname), auto-detects your IP, and writes the address
-> settings so off-device sync works (a `localhost` sync URL is the usual "shows Offline
-> on the tablet" trap). Run it before `./waffled up`, or any time later and re-run
-> `./waffled up` to apply it (a bare `./waffled restart` won't pick up the change).
+> **Using it from a tablet or the iOS app?** Point the device at `http://<your-ip>:8080`
+> and sync just works: each device is told to sync at the address it used to reach the
+> server, so it never gets handed a `localhost` it would resolve to itself (the old
+> "shows Offline on the tablet" trap). Run `./waffled setup` too — one question
+> (localhost / your LAN IP / a hostname) — so calendar and sign-in redirects point at the
+> right address. Run it before `./waffled up`, or any time later and re-run `./waffled up`
+> to apply it (a bare `./waffled restart` won't pick up the change).
 
 ### `.env`
 

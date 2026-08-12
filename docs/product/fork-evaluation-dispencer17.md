@@ -160,15 +160,21 @@ no status probe. The button is unconditionally "Share list". Only new dependency
 
 Ranked by value-to-effort:
 
-1. **Per-request PowerSync URL derivation** (`2d08c2c0`). Every client was handed
-   `POWERSYNC_PUBLIC_URL`, which compose defaults to `http://localhost:8090` — only
-   reachable on the server itself. Kiosk tablets and phones resolved `localhost` to
-   themselves, never opened a sync stream, and silently degraded to REST-only. Their fix
-   derives the URL from the host each device actually used (honouring
-   `x-forwarded-proto`/`host`) and applies `POWERSYNC_PORT`; an explicit
-   `POWERSYNC_PUBLIC_URL` still wins. This removes a documented footgun of ours and is
-   worth taking on its own.
-2. **`endsAt` validation on events** — a few lines, obviously correct.
+1. ✅ **Per-request PowerSync URL derivation** (`2d08c2c0`) — **ported, 2026-08-12.** Every
+   client was handed `POWERSYNC_PUBLIC_URL`, which compose defaulted to
+   `http://localhost:8090` — only reachable on the server itself. Kiosk tablets and phones
+   resolved `localhost` to themselves, never opened a sync stream, and silently degraded to
+   REST-only. The URL is now derived from the host each device actually used (honouring
+   `x-forwarded-proto`/`x-forwarded-host`) with `POWERSYNC_PORT` applied; an explicit
+   `POWERSYNC_PUBLIC_URL` still wins. Ours additionally drops compose's baked-in localhost
+   default (which would have beaten the derive) and stops `./waffled setup` pinning the
+   value outside hostname/TLS mode.
+2. ✅ **`endsAt` validation on events** — **ported, 2026-08-12**, with the fork's version
+   corrected in two places: it is enforced in the service functions so all **three** event
+   write paths are covered (REST, the PowerSync CRUD sink, quick-add — the fork guarded
+   only REST), and a PATCH carrying only `endsAt` is compared against the **stored**
+   `startsAt` (the fork's condition skipped validation entirely in that case). The
+   PowerSync path drops the op rather than erroring, since PowerSync retries forever.
 3. **Sync watchdog** — see §6.
 
 ## 6. The three features to understand (not ported)
