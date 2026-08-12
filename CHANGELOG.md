@@ -27,10 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   decimals like `0.13`, and re-opening the editor shows `⅓` rather than
   `0.3333333333333333`. So "1½ cups flour" stays "1½ cups flour". Amounts already lost to
   this will need re-typing once.
-- **A recipe that fails to save now says so.** If a save didn't go through, the button
-  simply came back and nothing else happened — indistinguishable from a successful save,
-  so it was easy to walk away and lose the recipe. The editor now shows what went wrong
-  and leaves the recipe on screen so you can try again.
+- **A recipe that fails to save or delete now says so.** If a save didn't go through, the
+  button simply came back and nothing else happened — indistinguishable from a successful
+  save, so it was easy to walk away and lose the recipe. A failed delete was the same: the
+  confirmation closed and the recipe looked gone. The editor now shows what went wrong and
+  leaves the recipe on screen so you can try again.
 - **Your personal notes stay yours.** Editing a recipe on the web copied your own notes
   into the recipe's source notes, so the recipe page ended up showing the same note twice.
   The editor now has separate **Recipe notes** and **Your notes** boxes, each saved to its

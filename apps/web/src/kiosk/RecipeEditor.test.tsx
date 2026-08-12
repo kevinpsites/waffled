@@ -163,6 +163,24 @@ describe('RecipeEditor — edit: recipe notes vs your notes', () => {
   })
 })
 
+// Same failure mode the save path just fixed: the confirm dialog closes either way, so
+// a delete that never happened reads exactly like one that did.
+describe('RecipeEditor — edit: delete', () => {
+  it('shows an error when the delete fails instead of looking deleted', async () => {
+    const sent: Sent[] = []
+    mockEditApi(sent, makeDetail({ title: 'Keeper' })) // DELETE isn't handled → 500-ish
+    renderEdit()
+
+    await screen.findByDisplayValue('Keeper')
+    fireEvent.click(screen.getByText('🗑 Delete recipe'))
+    fireEvent.click(screen.getByText('Delete'))
+
+    expect(await screen.findByText(/Couldn’t delete/)).toBeTruthy()
+    // still on the editor with the recipe on screen
+    expect(screen.getByDisplayValue('Keeper')).toBeTruthy()
+  })
+})
+
 describe('RecipeEditor — new', () => {
   it('builds the create payload from the form (title, ingredient, step)', async () => {
     const sent: Sent[] = []

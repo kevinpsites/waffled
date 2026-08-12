@@ -51,11 +51,11 @@ const META_FIELDS: { key: keyof RecipeWriteInput; label: string; placeholder: st
   { key: 'collection', label: 'Collection', placeholder: 'Weeknight favorites…' },
 ]
 
-// Save failures used to be swallowed. Surface the server's own reason when it sent one
-// (same shape the import modals read), otherwise a plain "try again".
-function saveErrMessage(e: unknown): string {
+// Save and delete failures used to be swallowed. Surface the server's own reason when it
+// sent one (same shape the import modals read), otherwise a plain "try again".
+function saveErrMessage(e: unknown, action: 'save' | 'delete' = 'save'): string {
   const detail = e instanceof ApiSendError ? e.body?.message : undefined
-  return `Couldn’t save the recipe — ${detail || 'please try again.'}`
+  return `Couldn’t ${action} the recipe — ${detail || 'please try again.'}`
 }
 
 const blankIng = (): EditIng => ({ uid: newUid(), name: '', amount: '', unit: '', prepNote: '', section: '' })
@@ -345,8 +345,16 @@ export function RecipeEditor() {
 
   async function remove() {
     if (!isEdit) return
-    await mealsApi.deleteRecipe(id!)
-    navigate('/meals/recipes')
+    setSaveErr(null)
+    try {
+      await mealsApi.deleteRecipe(id!)
+      navigate('/meals/recipes')
+    } catch (e) {
+      // The confirm dialog closes either way, so a delete that failed looked exactly
+      // like one that worked. Close it and say what happened, where it can be seen.
+      setConfirmDelete(false)
+      setSaveErr(saveErrMessage(e, 'delete'))
+    }
   }
 
   // ── ingredient/step row ops ──
