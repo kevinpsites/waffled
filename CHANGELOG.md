@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Fractions in a recipe's quantity column no longer disappear.** Typing an amount the
+  way recipes are actually written — `1/2`, `1 1/2`, `½` — saved the ingredient with **no
+  quantity at all**, silently, on the web recipe editor. Those amounts are now understood
+  and stored, so "1½ cups flour" stays "1½ cups flour". Amounts already lost to this will
+  need re-typing once.
+- **A recipe that fails to save now says so.** If a save didn't go through, the button
+  simply came back and nothing else happened — indistinguishable from a successful save,
+  so it was easy to walk away and lose the recipe. The editor now shows what went wrong
+  and leaves the recipe on screen so you can try again.
+- **Your personal notes stay yours.** Editing a recipe on the web copied your own notes
+  into the recipe's source notes, so the recipe page ended up showing the same note twice.
+  The editor now has separate **Recipe notes** and **Your notes** boxes, each saved to its
+  own place.
+
 ## [0.13.0] - 2026-08-12
 
 ### Added
