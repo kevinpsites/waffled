@@ -38,6 +38,50 @@ function renderNew() {
   )
 }
 
+// ── edit mode ──
+// A saved recipe as the detail GET returns it; `recipe`/`ingredients` are overridden
+// per test so a test can feed back exactly what the previous save sent.
+function makeDetail(recipe: Record<string, unknown> = {}, ingredients: Record<string, unknown>[] = []) {
+  return {
+    recipe: {
+      id: 'edit-id', title: 'Saved Recipe', emoji: null, description: null, category: null, tags: [],
+      prepTimeMinutes: null, cookTimeMinutes: null, servings: 4,
+      imageUrl: null, storageKey: null, sourceName: null,
+      isFavorite: false, cookedCount: 0, lastCookedAt: null, notes: null, userNotes: null,
+      addedTags: [], overrides: {}, mealType: null, protein: null, base: null, cuisine: null,
+      effort: null, cookMethod: null, flavorProfile: null, dietary: [], vegetables: [], collection: null,
+      ...recipe,
+    },
+    ingredients: ingredients.map((i, n) => ({ id: `i${n}`, name: 'ingredient', amount: null, unit: null, prepNote: null, section: null, ...i })),
+    steps: [] as unknown[],
+  }
+}
+
+function mockEditApi(sent: Sent[], detail: ReturnType<typeof makeDetail>) {
+  globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+    const u = String(url)
+    const method = init?.method ?? 'GET'
+    const body = init?.body ? JSON.parse(init.body) : undefined
+    sent.push({ method, url: u, body })
+    if (u.endsWith('/api/recipes/edit-id') && method === 'GET') return { ok: true, json: async () => detail }
+    if (u.endsWith('/api/recipes/edit-id') && method === 'PATCH') return { ok: true, json: async () => ({ recipe: detail.recipe }) }
+    return { ok: false, status: 404, json: async () => ({}) }
+  }) as unknown as typeof fetch
+}
+
+function renderEdit() {
+  return render(
+    <MemoryRouter initialEntries={['/meals/recipe/edit-id/edit']}>
+      <TopbarSlotProvider>
+        <Routes>
+          <Route path="/meals/recipe/:id/edit" element={<RecipeEditor />} />
+          <Route path="/meals/recipe/:id" element={<div>recipe page</div>} />
+        </Routes>
+      </TopbarSlotProvider>
+    </MemoryRouter>,
+  )
+}
+
 describe('RecipeEditor — new', () => {
   it('builds the create payload from the form (title, ingredient, step)', async () => {
     const sent: Sent[] = []
@@ -65,6 +109,59 @@ describe('RecipeEditor — new', () => {
     expect(b.steps).toHaveLength(1)
     expect(b.steps[0].instruction).toBe('Simmer everything.')
     expect(b.steps[0].ingredients).toEqual(['3 cups carrots'])
+  })
+
+  // Regression: `Number('1/2')` is NaN, which the editor saved as null — the quantity
+  // silently disappeared from the recipe.
+  it('keeps a fractional quantity instead of dropping it', async () => {
+    const sent: Sent[] = []
+    mockApi(sent)
+    renderNew()
+
+    fireEvent.change(screen.getByPlaceholderText('Recipe title'), { target: { value: 'Pancakes' } })
+    fireEvent.change(screen.getByPlaceholderText('ingredient'), { target: { value: 'flour' } })
+    fireEvent.change(screen.getByPlaceholderText('2'), { target: { value: '1 1/2' } })
+    fireEvent.change(screen.getByPlaceholderText('cups'), { target: { value: 'cups' } })
+
+    fireEvent.click(screen.getByText('Create recipe'))
+    await waitFor(() => expect(sent.some((s) => s.url.endsWith('/api/recipes') && s.method === 'POST')).toBe(true))
+    const b = sent.find((s) => s.url.endsWith('/api/recipes') && s.method === 'POST')!.body as {
+      ingredients: { name: string; amount: number | null; unit: string | null }[]
+    }
+    expect(b.ingredients[0]).toMatchObject({ name: 'flour', amount: 1.5, unit: 'cups' })
+  })
+
+  // The whole point: what a save sends must survive being loaded back and re-saved.
+  it('round-trips a fractional quantity through save → reload → save', async () => {
+    const sent: Sent[] = []
+    mockApi(sent)
+    const first = renderNew()
+
+    fireEvent.change(screen.getByPlaceholderText('Recipe title'), { target: { value: 'Pancakes' } })
+    fireEvent.change(screen.getByPlaceholderText('ingredient'), { target: { value: 'flour' } })
+    fireEvent.change(screen.getByPlaceholderText('2'), { target: { value: '1 1/2' } })
+    fireEvent.change(screen.getByPlaceholderText('cups'), { target: { value: 'cups' } })
+    fireEvent.click(screen.getByText('Create recipe'))
+
+    await waitFor(() => expect(sent.some((s) => s.url.endsWith('/api/recipes') && s.method === 'POST')).toBe(true))
+    const created = sent.find((s) => s.url.endsWith('/api/recipes') && s.method === 'POST')!.body as {
+      ingredients: { name: string; amount: number | null; unit: string | null }[]
+    }
+    first.unmount()
+
+    // Reload the editor on exactly what was saved — not a hand-written fixture.
+    const sent2: Sent[] = []
+    mockEditApi(sent2, makeDetail({ title: 'Pancakes' }, [created.ingredients[0] as Record<string, unknown>]))
+    renderEdit()
+
+    await screen.findByDisplayValue('Pancakes')
+    // Prefill shows the stored number; the fraction is not re-parsed away.
+    expect((screen.getByPlaceholderText('2') as HTMLInputElement).value).toBe('1.5')
+
+    fireEvent.click(screen.getByText('Save changes'))
+    await waitFor(() => expect(sent2.some((s) => s.method === 'PATCH')).toBe(true))
+    const patched = sent2.find((s) => s.method === 'PATCH')!.body as { ingredients: { amount: number | null }[] }
+    expect(patched.ingredients[0].amount).toBe(1.5)
   })
 
   it('per-step amount can be split (override the chip amount)', async () => {

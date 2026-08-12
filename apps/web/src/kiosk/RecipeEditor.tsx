@@ -6,6 +6,7 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { RECIPE_TEMPLATE, RECIPE_EXAMPLE } from './components/recipe-template'
 import { PhotoImportModal, DescribeImportModal } from './components/RecipeImportModals'
 import { mealsApi, uploadImage, useRecipe, type IngredientInput, type RecipeMetadataSuggestion, type RecipeWriteInput, type StepInput } from '../lib/api'
+import { parseAmt } from '../lib/amount'
 import '../styles/recipe.css'
 
 // The one unified recipe editor — authoring a brand-new recipe and fully editing an
@@ -53,10 +54,11 @@ const blankIng = (): EditIng => ({ uid: newUid(), name: '', amount: '', unit: ''
 const blankStep = (): EditStep => ({ uid: newUid(), instruction: '', picks: [], extra: [], timerSeconds: null })
 
 function toIngInput(r: EditIng, i: number): IngredientInput {
-  const amount = r.amount.trim() ? Number(r.amount) : null
   return {
     name: r.name.trim(),
-    amount: amount != null && Number.isFinite(amount) ? amount : null,
+    // Fractions are how recipes are written — parseAmt understands "1/2", "1 1/2" and
+    // "½"; a plain Number() made all of those NaN and dropped the quantity.
+    amount: parseAmt(r.amount),
     unit: r.unit.trim() || null,
     prepNote: r.prepNote.trim() || null,
     section: r.section.trim() || null,
