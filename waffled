@@ -448,6 +448,39 @@ report_release_failures() {
 # failures file alone then reads an empty file as "everything passed" and the release
 # goes on to bump, commit and tag checks that never ran: a confident false green, which
 # is worse than the silent exit the summary replaced.
+# Set while phase-2 lanes are running, so the interrupt handler knows what to tear down.
+release_lane_pids=""
+release_lane_logdir=""
+
+# Kill a process and everything under it, deepest first. Lanes spawn heavyweight
+# children (vitest workers, Postgres containers, a Docker build, a chromium), and a
+# background job in a script shares the shell's process group — so `kill -- -$pid` has
+# no group of its own to target and killing just the lane's shell would orphan the rest.
+kill_process_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+    kill_process_tree "$child"
+  done
+  kill -TERM "$pid" 2>/dev/null || true
+}
+
+# Kill every running lane, clean up, then re-raise so the exit status still reads as
+# interrupted rather than as a completed run.
+release_interrupt_lanes() {
+  local pid
+  trap - INT TERM
+  echo
+  echo "${c_ylw}Interrupted — stopping release check lanes…${c_reset}"
+  for pid in ${release_lane_pids:-}; do kill_process_tree "$pid"; done
+  for pid in ${release_lane_pids:-}; do wait "$pid" 2>/dev/null || true; done
+  [ -n "${release_lane_logdir:-}" ] && rm -rf "$release_lane_logdir"
+  rm -f "$(release_failed_path)"
+  release_lane_pids=""
+  release_lane_logdir=""
+  kill -INT "$$" 2>/dev/null
+  exit 130
+}
+
 wait_for_lane() { # wait_for_lane <name> <pid>
   local name="$1" pid="$2" rc=0
   wait "$pid" || rc=$?
@@ -590,6 +623,15 @@ release_project_checks() {
   lane_web    > "$logdir/web.log"    2>&1 & pid_web=$!
   lane_misc   > "$logdir/misc.log"   2>&1 & pid_misc=$!
 
+  # Ctrl-C must actually stop the checks. With job control off (a script), bash sets
+  # SIGINT/SIGQUIT to IGNORED in `&` children, so an interrupt kills only this shell and
+  # leaves testcontainers, a Docker build and a chromium behind — still burning the
+  # machine while the operator has their prompt back. Kill the whole lane group, clean
+  # up, and re-raise so the exit status still reads as interrupted.
+  release_lane_pids="$pid_docker $pid_web $pid_misc"
+  release_lane_logdir="$logdir"
+  trap 'release_interrupt_lanes' INT TERM
+
   # Each lane's output is buffered to its own file and printed whole, so concurrent test
   # runners can't shred each other's output into unreadable interleaved lines.
   # Fixed order rather than completion order: detecting "which finished first" needs
@@ -611,6 +653,9 @@ release_project_checks() {
       echo "${c_ylw}(no output captured — the ${lane} lane produced no log)${c_reset}"
     fi
   done
+  trap - INT TERM
+  release_lane_pids=""
+  release_lane_logdir=""
   rm -rf "$logdir"
 
   if ! report_release_failures; then

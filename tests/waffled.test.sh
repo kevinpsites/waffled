@@ -418,6 +418,37 @@ t "a lane that exits cleanly is not reported as dead" '
   echo "PASS"
 '
 
+# Ctrl-C must take the lanes down with it. A lane is a background job in a script, so
+# bash sets its SIGINT to ignored and it shares the shell process group — interrupting
+# the run used to leave testcontainers, a Docker build and a chromium still burning the
+# machine after the operator got their prompt back. The lane shell is not enough either:
+# the expensive things are its CHILDREN.
+t "kill_process_tree reaps a lane child, not just the lane shell" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+
+  # A stand-in lane: a subshell that spawns a long-running child and then waits, the
+  # same shape as a lane running vitest or a Docker build.
+  ( sh -c "echo \$\$ > $tmp/child.pid; sleep 60" & sleep 60 ) &
+  lane=$!
+
+  for _ in 1 2 3 4 5; do [ -s "$tmp/child.pid" ] && break; sleep 1; done
+  child="$(cat "$tmp/child.pid" 2>/dev/null || echo 0)"
+  [ "$child" -gt 0 ] || { echo "FAIL: the stand-in lane never spawned a child"; exit 0; }
+  kill -0 "$child" 2>/dev/null || { echo "FAIL: child was not alive to begin with"; exit 0; }
+
+  kill_process_tree "$lane"
+  wait "$lane" 2>/dev/null || true
+  sleep 1
+
+  if kill -0 "$child" 2>/dev/null; then
+    kill -9 "$child" 2>/dev/null || true
+    echo "FAIL: the child survived — lane children would be orphaned on Ctrl-C"
+  else
+    echo "PASS"
+  fi
+'
+
 # A clean run must stay quiet and succeed, so the summary cannot become noise.
 t "report_release_failures is silent and succeeds when every step passed" '
   source "$WAFFLED" help >/dev/null 2>&1
