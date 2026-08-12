@@ -420,10 +420,11 @@ struct WaffledBitesView: View {
                         Task { await model.setAlarmTime(hour: m / 60, min: m % 60) }
                     }), displayedComponents: .hourAndMinute)
                     .labelsHidden()
-                WBChipFlow(items: WaffledBiteOptions.alarmTones, label: { $0 },
+                WBChipFlow(items: WaffledBiteOptions.alarmTones.map(\.key),
+                           label: WaffledBiteOptions.toneLabel,
                            isSelected: { $0 == settings.alarm.tone },
-                           comingSoon: WaffledBiteOptions.alarmTonesComingSoon) { tone in
-                    Task { await model.setAlarmTone(tone) }
+                           comingSoon: WaffledBiteOptions.alarmTonesComingSoon) { key in
+                    Task { await model.setAlarmTone(key) }
                 }
                 // Its own volume, separate from the sound machine's (decision
                 // D3) — a wake tone has to be heard through sleep, where a

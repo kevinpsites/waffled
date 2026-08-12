@@ -47,8 +47,10 @@ export interface WaffledBiteSettings {
   sound?: { on: boolean; sound: string; volume: number; timerMin: number }
   // `volume` is deliberately separate from sound.volume (decision D3) — a wake
   // tone has to be heard through sleep, where a sound machine has to be
-  // ignorable. `tone` is a display string ('Sunrise chime'); the device also
-  // accepts stable keys, so migrating it later needs no firmware change.
+  // ignorable. `tone` is a stable key ('sunriseChime'), never the label shown
+  // in the picker — migration 0095 rewrote the display strings this used to
+  // hold. The firmware accepts both spellings, so that migration needed no
+  // firmware release alongside it.
   // `volume` is optional because it genuinely is on the wire: every device
   // paired before the alarm got its own volume has an alarm object without it.
   // Typing it as required would let a reader assume a number is always there.
