@@ -121,6 +121,14 @@ WbAudioSeqOut wb_audio_seq_step(WbAudioSeq *s, bool wantPlay, bool wantAlarm, bo
     // alarm is 20 seconds long as decided, not 20 seconds plus a tail.
     o.falling = (float)s->alarmLeft <= (1.0f / fadeStep);
     break;
+  case WbAudioPhase::Running:
+    // A pending sound change DRIVES the fade down; the transition above then
+    // re-seeds at the bottom and the fade comes back up. That's the crossfade.
+    // Without this the re-seed is gated on a fade nothing ever lowers, and
+    // picking a different sound does nothing until the sound machine is
+    // toggled off and on again.
+    o.falling = restart && s->fade > 0.0f;
+    break;
   default:
     break;
   }

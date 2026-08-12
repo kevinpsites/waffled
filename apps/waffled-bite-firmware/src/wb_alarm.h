@@ -19,8 +19,9 @@
 // should seed their stored latch with this at boot.
 #define WB_ALARM_NEVER_FIRED (-1)
 
-// How long the tone plays once it starts, per decision D4.
-#define WB_ALARM_DURATION_SEC 20
+// How long the tone plays for is NOT here: it belongs to whoever renders the
+// audio, and lives as WB_ALARM_DURATION_SEC in wb_audio_seq.h. Two copies of
+// that number is how one of them gets changed and the other doesn't.
 
 struct WbAlarmStep
 {

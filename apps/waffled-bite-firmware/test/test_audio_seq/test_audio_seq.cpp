@@ -234,6 +234,77 @@ void test_switching_sound_off_during_the_alarm_is_respected(void)
   TEST_ASSERT_TRUE(s.phase == WbAudioPhase::Idle);
 }
 
+// ── changing the sound machine's sound ─────────────────────────────────────
+
+// Switching sound is a fade down, a re-seed at the bottom, and a fade back up
+// — never a hard cut. The re-seed has to happen at the bottom of the fade
+// because that's the only moment the discontinuity is inaudible.
+//
+// Regression guard. When this sequencing was pulled out of the I2S task, the
+// `|| s_restart` half of its fade condition was dropped, which left the
+// re-seed gated on a fade that nothing ever drove down: picking a different
+// sound did nothing at all until you toggled the sound machine off and on.
+// Nothing else here catches it, because every other test leaves `restart`
+// false — and the SDL backend re-seeds in its caller, so the simulator can't
+// reproduce it either.
+void test_changing_the_sound_fades_down_reseeds_and_fades_back_up(void)
+{
+  WbAudioSeq s;
+  wb_audio_seq_init(&s);
+  run(&s, true, false, 200);
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 1.0f, s.fade); // settled at full volume
+
+  bool restart = true; // a parent picked a different sound
+  int initSounds = 0;
+  bool sawFalling = false;
+  for (int i = 0; i < 200; i++)
+  {
+    // The fade the block STARTS from — after the step it has already begun
+    // rising again, so reading s.fade afterwards would measure the wrong thing.
+    const float fadeAtEntry = s.fade;
+    const WbAudioSeqOut o = wb_audio_seq_step(&s, true, false, restart, FRAMES, FADE_STEP);
+    if (o.falling) sawFalling = true;
+    if (o.initSound)
+    {
+      initSounds++;
+      restart = false; // the backend clears its flag when it re-seeds
+      TEST_ASSERT_TRUE_MESSAGE(fadeAtEntry <= 0.0f,
+                               "re-seeded mid-fade — that's an audible click");
+    }
+  }
+
+  TEST_ASSERT_TRUE_MESSAGE(sawFalling, "a sound change must fade down, not hard-cut");
+  TEST_ASSERT_EQUAL_INT(1, initSounds);
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 1.0f, s.fade); // and back up to full
+  TEST_ASSERT_TRUE(s.phase == WbAudioPhase::Running);
+}
+
+// The alarm owns the output, so a sound change arriving mid-alarm must not be
+// swallowed — it lands when playback is handed back.
+void test_a_sound_change_during_the_alarm_lands_when_it_releases(void)
+{
+  WbAudioSeq s;
+  wb_audio_seq_init(&s);
+  run(&s, true, false, 200);
+
+  bool restart = true, alarm = true;
+  int initSoundsDuringAlarm = 0, initSoundsAfter = 0;
+  for (int i = 0; i < BLOCKS_PAST_THE_ALARM; i++)
+  {
+    const WbAudioSeqOut o = wb_audio_seq_step(&s, true, alarm, restart, FRAMES, FADE_STEP);
+    if (o.alarmDone) alarm = false;
+    if (o.initSound)
+    {
+      if (s.phase == WbAudioPhase::Running && !alarm) initSoundsAfter++;
+      else initSoundsDuringAlarm++;
+      restart = false;
+    }
+  }
+
+  TEST_ASSERT_EQUAL_INT(0, initSoundsDuringAlarm);
+  TEST_ASSERT_EQUAL_INT(1, initSoundsAfter);
+}
+
 // ── fades ──────────────────────────────────────────────────────────────────
 
 // The backend ramps its fade per sample and this machine tracks it per block.
@@ -263,6 +334,8 @@ int main(void)
   RUN_TEST(test_the_tone_voice_is_reset_for_each_alarm);
   RUN_TEST(test_dropping_the_alarm_request_silences_it);
   RUN_TEST(test_switching_sound_off_during_the_alarm_is_respected);
+  RUN_TEST(test_changing_the_sound_fades_down_reseeds_and_fades_back_up);
+  RUN_TEST(test_a_sound_change_during_the_alarm_lands_when_it_releases);
   RUN_TEST(test_the_fade_stays_within_range_and_reaches_both_ends);
   UNITY_END();
   return 0;

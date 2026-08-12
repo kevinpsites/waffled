@@ -21,6 +21,7 @@ WbToneVoice s_tone;
 WbAudioSeq s_seq;
 bool s_playing = false;
 bool s_alarm = false;
+bool s_restart = false;
 int s_current = -1; // which sound s_synth was initialised for
 int s_wantTone = (int)WbTone::SunriseChime;
 int s_volume = 50;
@@ -41,7 +42,7 @@ void fill(void *, Uint8 *stream, int len)
   const int frames = len / (int)sizeof(int16_t);
 
   const WbAudioSeqOut o =
-      wb_audio_seq_step(&s_seq, s_playing, s_alarm, false, (uint32_t)frames, kFadeStep);
+      wb_audio_seq_step(&s_seq, s_playing, s_alarm, s_restart, (uint32_t)frames, kFadeStep);
   if (o.alarmDone) s_alarm = false;
 
   if (o.idle)
@@ -50,6 +51,15 @@ void fill(void *, Uint8 *stream, int len)
     return;
   }
 
+  // Re-seeding here rather than in wb_audio_play, so the simulator runs the
+  // SAME crossfade the device does. It used to re-seed in the caller, which
+  // meant the simulator could not reproduce a sound-change bug on the board at
+  // all — and that is exactly how one got missed.
+  if (o.initSound)
+  {
+    wb_synth_init(&s_synth, (WbSound)s_current, 0x5EEDu);
+    s_restart = false;
+  }
   if (o.initTone) wb_tone_init(&s_tone, (WbTone)s_wantTone);
 
   if (o.tone)
@@ -98,11 +108,12 @@ void wb_audio_play(WbSound sound, int volume)
   // past its first beat. The simulator is exactly where the plan says these
   // recipes get judged by ear, so silently rebuilding state there is worse
   // than a cosmetic bug.
-  if (!s_playing || (int)sound != s_current)
-  {
-    wb_synth_init(&s_synth, sound, 0x5EEDu);
-    s_current = (int)sound;
-  }
+  //
+  // The re-seed itself happens in the audio callback at the bottom of the
+  // fade (see fill's initSound) — this only records that one is due.
+  const bool changing = s_playing && (int)sound != s_current;
+  s_current = (int)sound;
+  if (changing) s_restart = true;
   s_volume = volume;
   s_playing = true;
   SDL_UnlockAudioDevice(s_dev);
