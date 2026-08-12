@@ -63,15 +63,7 @@ struct IcsFeedEditorSheet: View {
                     }
                     .buttonStyle(.plain)
 
-                    HStack(spacing: 7) {
-                        Image(systemName: "lock").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
-                        Text("Events from a feed are read-only — Waffled can show them but can't change them.")
-                            .font(.system(size: 12)).foregroundStyle(WF.ink3)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                    LockNote("Events from a feed are read-only — Waffled can show them but can't change them.")
 
                     if let error {
                         Text(error).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.danger)
@@ -106,7 +98,7 @@ struct IcsFeedEditorSheet: View {
             content()
                 .font(.system(size: 15))
                 .padding(.horizontal, 12).padding(.vertical, 11)
-                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                .wfField(radius: WF.rSM, fill: WF.panel)
         }
     }
 
