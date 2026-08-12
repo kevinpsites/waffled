@@ -3,8 +3,8 @@
 // People → Family color, stored in settings.display.familyColorHex) instead of
 // whichever member happened to own it — so the calendar reads at a glance:
 // everyone / some of us / one person / unassigned.
-import { useMemo, type CSSProperties } from 'react'
-import { usePersons, useHousehold, type Household } from './api/persons'
+import { useMemo, useSyncExternalStore, type CSSProperties } from 'react'
+import { personsApi, HOUSEHOLD_CHANGED, type Household, type Person } from './api/persons'
 import type { AgendaEvent } from './api/events'
 
 /** The grey used across every view for events with no assignee. */
@@ -113,16 +113,73 @@ export function evVars(color: string): CSSProperties {
   return { '--ev': color, '--ev-on': ink.light, '--ev-on-dark': ink.dark } as CSSProperties
 }
 
+/* ── the shared source behind useEventColor ───────────────────────────────────
+   Resolving a chip's color needs the member list (does this event cover the whole
+   family?) and the household (what is the family color?). Seven components ask
+   for it — month, week, day, agenda, the month's day panel, the Today agenda card
+   and the event detail — and per-instance hooks meant a fetch pair per view plus a
+   HOUSEHOLD_CHANGED listener each, so one settings save cost seven household
+   refetches on an always-on kiosk. One module-level store serves them all, loads
+   once while anyone is mounted, and resets when the last consumer unmounts (so a
+   screen never opens on a previous session's household).                      */
+
+interface EventColorSource {
+  persons: Person[]
+  household: Household | null
+}
+
+const EMPTY: EventColorSource = { persons: [], household: null }
+let source: EventColorSource = EMPTY
+let generation = 0
+const listeners = new Set<() => void>()
+
+async function loadSource(): Promise<void> {
+  const mine = generation
+  const [persons, household] = await Promise.all([
+    personsApi.persons().then((d) => d.persons ?? []).catch(() => source.persons),
+    personsApi.household().then((d) => d.household ?? null).catch(() => source.household),
+  ])
+  if (mine !== generation) return // the last consumer unmounted mid-flight
+  source = { persons, household }
+  for (const notify of [...listeners]) notify()
+}
+
+const reload = () => void loadSource()
+
+function subscribe(onChange: () => void): () => void {
+  listeners.add(onChange)
+  if (listeners.size === 1) {
+    window.addEventListener(HOUSEHOLD_CHANGED, reload)
+    reload()
+  }
+  return () => {
+    listeners.delete(onChange)
+    if (listeners.size === 0) {
+      window.removeEventListener(HOUSEHOLD_CHANGED, reload)
+      generation++
+      source = EMPTY
+    }
+  }
+}
+
+/** The shared members + household behind every event chip on screen. */
+export function useEventColorSource(): EventColorSource {
+  return useSyncExternalStore(
+    subscribe,
+    () => source,
+    () => EMPTY
+  )
+}
+
 /**
  * Hook form for the calendar views: `const colorOf = useEventColor()`.
  * `fallback` is the unassigned grey (the agenda surfaces use a lighter one).
  * Falls back to the plain owner color while members/household are still loading.
  */
 export function useEventColor(fallback: string = UNASSIGNED_COLOR): (e: ColorableEvent) => string {
-  const { persons } = usePersons()
-  const { household } = useHousehold()
+  const { persons, household } = useEventColorSource()
   return useMemo(() => {
-    const ids = (persons ?? []).map((p) => p.id)
+    const ids = persons.map((p) => p.id)
     return (e: ColorableEvent) => eventColor(e, ids, household, fallback)
   }, [persons, household, fallback])
 }
