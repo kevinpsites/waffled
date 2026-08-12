@@ -83,7 +83,11 @@ inline float thump(float samplesSinceOnset, float hz)
 {
   if (samplesSinceOnset < 0.0f) return 0.0f;
   const float t = samplesSinceOnset / kFs;
-  if (t > 0.35f) return 0.0f; // fully decayed; skip the transcendentals
+  // Skip the transcendentals once the tail is inaudible — but not a moment
+  // before. At 0.35s (where this used to cut) the envelope is still at ~4%,
+  // so the output stepped straight to zero and clicked once a second, right
+  // in the quiet gap. By 0.85s it's under -60 dBFS, which truncates silently.
+  if (t > 0.85f) return 0.0f;
   // Attack is slow enough, and decay long enough, that the thump carries real
   // energy rather than being a spike. A pulse is PEAK-limited, so a fast spike
   // hits full scale while staying too quiet to hear — which is why this was

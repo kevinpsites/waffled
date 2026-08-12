@@ -43,9 +43,10 @@ enum class WbSound
 bool wb_synth_parse(const char *tone, WbSound *out);
 
 // Maps the 0-100 volume the parent sets onto a linear gain. Deliberately a
-// log curve over a 40 dB range: a linear ramp spends most of its travel in a
-// range that all sounds the same, and the bottom of the slider needs to be
-// genuinely quiet for a sleeping kid. Volume 0 is exactly silent.
+// log curve, over a 24 dB range tuned to this device's speaker: a linear ramp
+// spends most of its travel in a range that all sounds the same, while too
+// wide a log range leaves the middle of the slider inaudible. Volume 0 is
+// exactly silent. See wb_synth.cpp for why 24 and not 40.
 float wb_synth_gain(int volume);
 
 // Synthesis state. POD, no heap, no destructor — this lives in a static so

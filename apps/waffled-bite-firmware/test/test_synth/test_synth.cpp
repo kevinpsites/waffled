@@ -211,6 +211,52 @@ void test_heartbeat_is_audible_below_full_volume(void)
   TEST_ASSERT_TRUE(rms(hb, N * 4) > rms(wh, N * 4) * 0.5f); // within ~6 dB
 }
 
+// A thump's envelope is cut off once it's decayed "enough". If that cutoff
+// lands while the tail is still audible, the signal steps straight to zero and
+// you get a click every single second — in the quiet gap, where it's most
+// obvious. Cheap to introduce and easy to miss, since every level and spectrum
+// assertion still passes.
+//
+// Detected precisely rather than by eyeballing: the truncation drops the
+// output to EXACTLY zero from a non-trivial value, which nothing else here
+// does.
+void test_heartbeat_has_no_click_where_its_envelope_ends(void)
+{
+  static int16_t hb[N * 4];
+  render(WbSound::Heartbeat, hb, N * 4);
+
+  // Look for a SUSTAINED run of zeros (a sine's natural zero crossing lands on
+  // exactly 0 constantly; a truncated envelope stays there), then check how
+  // loud the signal was going INTO that run.
+  //
+  // Checking the single sample before the run isn't enough — it can happen to
+  // sit near a zero crossing whatever the envelope was doing, which made an
+  // earlier version of this test pass against the very bug it was written for.
+  // Take the max over a short window instead, so it doesn't depend on phase.
+  const size_t kRun = 64;   // zeros needed to count as "stopped", not a crossing
+  const size_t kLook = 40;  // ~2 cycles of the lowest partial
+  for (size_t i = kLook; i + kRun < N * 4; i++)
+  {
+    if (hb[i] != 0 || hb[i - 1] == 0) continue; // only the first zero of a run
+    bool stopped = true;
+    for (size_t k = 0; k < kRun; k++)
+      if (hb[i + k] != 0) { stopped = false; break; }
+    if (!stopped) continue;
+
+    float loudest = 0.0f;
+    for (size_t k = 1; k <= kLook; k++)
+    {
+      const float v = fabsf(hb[i - k] / FULL);
+      if (v > loudest) loudest = v;
+    }
+    // 0.005 is ~-46 dBFS. The bug this was written for went silent from
+    // -38 dBFS (measured, not estimated); a correctly-decayed tail leaves off
+    // below -70 dBFS, so there's a wide margin either side of this line.
+    if (loudest > 0.005f)
+      TEST_FAIL_MESSAGE("heartbeat steps to silence while still audible — a click");
+  }
+}
+
 void test_heartbeat_thumps_once_a_second_with_a_quiet_gap(void)
 {
   static int16_t buf[N * 4];
@@ -332,6 +378,7 @@ int main(int argc, char **argv)
   RUN_TEST(test_heartbeat_thumps_once_a_second_with_a_quiet_gap);
   RUN_TEST(test_heartbeat_survives_a_speaker_with_no_low_end);
   RUN_TEST(test_heartbeat_is_audible_below_full_volume);
+  RUN_TEST(test_heartbeat_has_no_click_where_its_envelope_ends);
   RUN_TEST(test_brightness_matches_what_each_recipe_promises);
   RUN_TEST(test_consecutive_blocks_join_without_a_seam);
   RUN_TEST(test_render_is_deterministic_for_a_given_seed);
