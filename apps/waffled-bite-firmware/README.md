@@ -128,9 +128,21 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   in `test/test_synth/` (`pio test -e native_test`), and `src/wb_audio_esp32.cpp` carries
   them to the NS4168 over I2S. **Verified on the board:** the sound machine plays from the
   device's Sounds tile and from a parent's panel, with a live volume slider and no pops.
-  Still open: the sampled sounds (`forest`/`lullaby`), the **sleep timer's auto-off**
-  (`timerMin` is parsed but not acted on, so playback runs until it's switched off), and
-  the alarm tone.
+  Still open: the sampled sounds (`forest`/`lullaby`) and the alarm tone.
+
+  **The sleep timer switches the sound off.** `settings.sound.timerMin` (0/15/30/60/120
+  from the parent panel) is enforced by `wb_sleep_timer.{h,cpp}` — pure, like `wb_alarm`,
+  so its bookkeeping is unit-tested in `test/test_sleep_timer/`. Two things about it are
+  worth reading the header for. The expiry is **sticky** for the playback session:
+  `sound.on` is still true after the timer fires (that IS still the parent's setting, and
+  the device never writes it back), so a stop recomputed from the settings alone would be
+  undone by the next reconcile, five seconds later, all night. Only an *edge* re-arms it —
+  the sound machine going off→on, a different sound, or a changed `timerMin`. And the
+  countdown runs off `wb_tick_ms()`, never the server's wall clock, so it survives a
+  timezone change, a missing `now` in a payload, and the tick counter's ~49-day wrap; a
+  sleep timer is a duration, not an appointment. `main.cpp` re-applies the last known sound
+  settings once a second (`WB_SOUND_RECONCILE_MS`) rather than leaning on the 5 s poll, so
+  the timer still fires on time — and fires at all — while the device is offline.
 
   **Two hardware facts worth not re-deriving.** The vendor's I2S pins are right (LRCLK 21,
   BCLK 22, DOUT 23) and the P4's clock divider hits 22.05 kHz exactly. And the NS4168
@@ -148,9 +160,33 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 
   (It writes outside the repo on purpose — phase 1 ships zero audio assets.)
 
-  The morning alarm's six `ALARM_TONES` remain decorative, and the device doesn't parse
-  `settings.alarm` at all (`GET /device/state` returns it, but `WbDeviceState` has no field
-  for it). Full plan in
+  **The morning alarm rings too.** The device parses `settings.alarm` and fires the tone
+  when the poll's household-local clock reaches it — see `wb_alarm.{h,cpp}` for the timing
+  decision (pure, so the latch that makes it ring once rather than on all dozen polls of
+  that minute is unit-tested) and `wb_tone.{h,cpp}` for the five synthesised tones.
+  Birdsong needs a recording and waits for phase 2 with the sampled sounds.
+
+  Decision D4's sequence — duck the sound machine, ring for 20 s, hand playback back —
+  lives in `wb_audio_seq.{h,cpp}`, a pure phase machine that BOTH backends drive. It's
+  pure for a specific reason: `main.cpp` reconciles playback with `settings.sound` on
+  every poll, so roughly four polls land inside a 20-second alarm, and each would
+  otherwise start the sound machine up underneath the tone. That's unreachable from a
+  test if the sequencing lives inside the I2S task.
+
+  While it rings, `src/ui/alarm_screen.cpp` takes the screen with a **Stop** button —
+  loaded the moment the alarm fires, not on the next poll. Stop calls
+  `wb_audio_alarm_dismiss()`, which cancels only the alarm (the sound machine still fades
+  back in); `wb_audio_stop()` is the one that silences everything, and unpairing uses it.
+
+  **The tones are written for the CPU budget, not just for the ear.** They're a voice pool
+  of coupled-form resonators with one-pole envelopes — multiply-and-add per sample. The
+  first version computed each note analytically (~18 sinf + 12 expf per sample), which
+  measured fine and rendered a clean WAV but was audibly SCRATCHY on the board: this core
+  also draws the screen, and libm is expensive on the P4. If a recipe ever sounds wrong on
+  hardware, render it with `tools/audio/render_wav.cpp` first — clean on a laptop and bad
+  on the device means starvation, not a bad recipe.
+
+  Full plan in
   [`docs/product/waffled-bites-audio-plan.md`](../../docs/product/waffled-bites-audio-plan.md);
   phase 2 adds sampled forest/lullaby/birdsong cached in the unused `spiffs` partition.
   Signed off: 22.05 kHz/16-bit/mono; audio is independent of the quiet-time/bedtime locks

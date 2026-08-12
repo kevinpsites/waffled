@@ -15,6 +15,8 @@
 #include <lvgl.h>
 #include "lgfx_device.h"
 #include "wb_state.h"
+#include "wb_alarm.h"
+#include "wb_sleep_timer.h"
 #include "wb_audio.h"
 #include "wb_http.h"
 #include "wb_store.h"
@@ -31,6 +33,7 @@
 #include "ui/bedtime_screen.h"
 #include "ui/offline_screen.h"
 #include "ui/forget_confirm_screen.h"
+#include "ui/alarm_screen.h"
 #include "icons/wb_icons.h"
 #include <ArduinoJson.h>
 #include <string>
@@ -141,6 +144,8 @@ static lv_obj_t *quiet_scr;   // force-shown whenever the poll reports quiet tim
 static lv_obj_t *timer_scr;   // picker <-> countdown, kept correctly built by every poll — see wb_do_poll
 static lv_obj_t *bedtime_scr; // plain preview OR wake-light sleep/warn/wake — see wb_bedtime_claim_of
 static lv_obj_t *forget_scr;  // rebuilt fresh each time (see settings_screen.cpp's 5-tap sequence), no live state to sync
+static lv_obj_t *alarm_scr;   // force-shown the moment the morning alarm fires; Stop hands back to home
+static bool g_alarmScreenUp = false;
 static lv_obj_t *offline_scr; // force-shown on the offline-badge threshold (see wb_mark_poll_failed) unless a lock (quiet/bedtime) is already active
 static bool onboarding_built = false;
 static bool g_quietWasActive = false;
@@ -183,28 +188,145 @@ static bool g_bedtimeScrBuilt = false;
 // `liveState` rather than syncing widgets that no longer exist post-rebuild.
 static bool g_liveScreensBuilt = false;
 
+// wb_sleep_timer.h keeps its own copy of the sound name and can't include
+// wb_state.h to size the buffer (ArduinoJson isn't in the native_test env),
+// so the agreement is checked here, where both headers are visible.
+static_assert(WB_TONE_LEN <= WB_SLEEP_TIMER_TONE_LEN,
+              "wb_sleep_timer's tone buffer must hold a WB_TONE_LEN sound name");
+
+// The last sound settings we know to be true — the server's, as of the most
+// recent successful poll, with a local tap's optimistic change folded in.
+//
+// This exists because the sleep timer has to keep counting while the device is
+// OFFLINE. wb_do_poll bails out before wb_audio_apply on a token-refresh
+// failure, a non-200, or unparseable JSON, so a reconcile driven only by the
+// poll would stop happening exactly when WiFi drops — and a 30-minute timer
+// set at bedtime would play until the network came back, which is the very
+// failure the timer exists to prevent. wb_sound_reconcile_cb below re-applies
+// this on its own cadence, no network involved.
+static WbSoundSettings g_lastSound = {};
+
+// The sleep timer's state (wb_sleep_timer.h). A plain static, like the alarm's
+// latch: decision D2 rules out persisting across a reboot, so a reboot
+// mid-countdown re-arms the timer rather than resuming it.
+static WbSleepTimer g_sleepTimer;
+
 // Keeps the speaker in step with settings.sound.
 //
 // Called from every successful poll (so a parent flipping the sound from the
-// web app is heard within ~5s) AND straight from a local tap, because routing
-// a tap through the poll would mean a kid taps "off" and waits five seconds in
-// the dark — indistinguishable from broken.
+// web app is heard within ~5s), from the local reconcile tick (so the sleep
+// timer fires on time, and fires at all while offline), AND straight from a
+// local tap, because routing a tap through the poll would mean a kid taps
+// "off" and waits five seconds in the dark — indistinguishable from broken.
 //
 // Idempotent: re-issuing the same sound while it's already playing only
-// refreshes the volume, so calling this every poll costs nothing.
+// refreshes the volume, so calling this on every tick costs nothing.
+//
+// The sleep-timer decision is pure and unit-tested (wb_sleep_timer.h); this is
+// only the wiring. Two things about it are worth saying out loud here:
+//
+//   - The expiry is STICKY for the playback session and only an EDGE re-arms
+//     it. `s.on` stays true after the timer fires (that IS still the parent's
+//     setting, and nothing here writes it back to the server), so anything
+//     less would be undone by this very function, ~5s later, all night.
+//
+//   - Once expired this calls wb_audio_stop() on every reconcile, including
+//     during a ringing alarm. That is NOT the alarm-truncation bug again:
+//     wb_audio_stop() is the sound machine only, and it is already what every
+//     default device does on every poll (the sound machine is off by default).
+//     wb_audio_seq only reads `wantPlay` outside its alarm phases.
 static void wb_audio_apply(const WbSoundSettings &s)
 {
+  const bool play =
+      wb_sleep_timer_step(&g_sleepTimer, s.on, s.tone, s.timerMin, wb_tick_ms());
+
   WbSound sound;
   // An unknown or not-yet-synthesisable sound (forest/lullaby are phase 2)
   // deliberately falls through to silence rather than substituting something
   // else — a kid who asked for a lullaby is better served by nothing than by
   // white noise.
-  if (!s.on || !wb_synth_parse(s.tone, &sound))
+  if (!play || !wb_synth_parse(s.tone, &sound))
   {
     wb_audio_stop();
     return;
   }
   wb_audio_play(sound, s.volume);
+}
+
+// Re-applies the last known sound settings without touching the network — the
+// tick that actually ends a sleep timer. One second rather than the poll's
+// five so "30m" means 30 minutes to the second rather than up to five seconds
+// over, and so it keeps running through an offline stretch (see g_lastSound).
+#define WB_SOUND_RECONCILE_MS 1000
+static lv_timer_t *g_soundTimer = nullptr;
+static void wb_sound_reconcile_cb(lv_timer_t * /*timer*/) { wb_audio_apply(g_lastSound); }
+
+// Fires the morning alarm when the poll's wall clock reaches it.
+//
+// The decision itself is pure and unit-tested (wb_alarm.h) — the latch that
+// makes it ring once rather than on all dozen polls of that minute, the
+// guard against a missing clock, re-arming for tomorrow. This is only the
+// wiring.
+//
+// The latch is a plain static: decision D2 rules out persisting anything
+// across a reboot, so an alarm missed while the device was off or offline is
+// simply missed. The device has no RTC to catch up from anyway.
+// Hands the screen back when the alarm is over — whether it was stopped or
+// simply ran out.
+//
+// Home is only the right destination when nothing else is claiming the screen.
+// Quiet time and the wake-light lock re-assert themselves on an EDGE rather
+// than on every poll, so navigating to home unconditionally would defeat an
+// active lock for the rest of its period — and tapping Stop is exactly the
+// path a kid would find. Clearing those trackers makes the lock blocks further
+// down this same poll (or the next one, for a tap) force their screen back in.
+static void wb_release_alarm_screen()
+{
+  g_alarmScreenUp = false;
+  g_quietWasActive = false;  // re-assert quiet time, if it's active
+  g_bedtimeScrBuilt = false; // re-assert the wake-light lock, if it's active
+  lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+}
+
+// Tapping "Stop". Cancels only the ALARM — the sound machine still fades back
+// in if it was playing, per D4 — and returns immediately rather than waiting
+// for the next poll to notice.
+static void wb_alarm_stop_cb(void)
+{
+  wb_audio_alarm_dismiss();
+  wb_release_alarm_screen();
+}
+
+static void wb_alarm_apply(const WbAlarmSettings &a, const WbDeviceState &s)
+{
+  static int lastFiredMin = WB_ALARM_NEVER_FIRED;
+
+  const WbAlarmStep step =
+      wb_alarm_step(a.on, a.hour, a.min, s.nowHour, s.nowMin, lastFiredMin);
+  lastFiredMin = step.lastFiredMin;
+
+  if (step.fire)
+  {
+    // An unrecognised tone falls back rather than staying silent — the
+    // opposite of the sound machine's rule, because an alarm that makes no
+    // noise has failed at its only job. Birdsong lands here until phase 2
+    // ships samples.
+    WbTone tone;
+    if (!wb_tone_parse(a.tone, &tone)) tone = wb_tone_default();
+    wb_audio_alarm(tone, a.volume);
+
+    // Shown NOW, not on the next poll: five seconds of a tone playing with the
+    // ordinary home screen up reads as the device malfunctioning, which is
+    // exactly how it came across the first time this ran on real hardware.
+    wb_build_alarm_screen(alarm_scr, s.personName, s.nowHour, s.nowMin, wb_alarm_stop_cb);
+    lv_scr_load_anim(alarm_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+    g_alarmScreenUp = true;
+    return;
+  }
+
+  // The alarm ran its course (nobody tapped Stop) — take the screen away
+  // again, so the device isn't left showing "Good morning" all day.
+  if (g_alarmScreenUp && !wb_audio_alarm_active()) wb_release_alarm_screen();
 }
 
 static std::string g_serverUrl;
@@ -293,11 +415,22 @@ static void wb_forget_pairing()
   // Sounds screen to switch it off from, and nothing else can reach the HAL.
   // Only a power cycle would stop it — in a kid's bedroom.
   wb_audio_stop();
+  wb_audio_alarm_dismiss(); // wb_audio_stop is the sound machine only — a ringing
+                            // alarm would otherwise survive the unpair too
   if (g_pollTimer)
   {
     lv_timer_del(g_pollTimer);
     g_pollTimer = nullptr;
   }
+  // The reconcile tick goes with it: g_lastSound belongs to the pairing that
+  // just ended, and re-applying it after an unpair would put the speaker back
+  // on with settings from a household this device no longer belongs to.
+  if (g_soundTimer)
+  {
+    lv_timer_del(g_soundTimer);
+    g_soundTimer = nullptr;
+  }
+  g_lastSound = WbSoundSettings{};
   wb_mark_poll_ok(); // hide any stale "Offline" badge before onboarding takes over
   wb_show_onboarding();
 }
@@ -322,6 +455,7 @@ static void wb_forget_pairing_and_unpair()
 static WbTaskCompleteResult wb_complete_task(const std::string &taskId);
 static WbTaskCompleteResult wb_uncomplete_task(const std::string &taskId);
 static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue);
+static bool wb_sync_sound_off();
 static bool wb_start_timer(int durationSec);
 static bool wb_end_timer();
 
@@ -403,7 +537,18 @@ static void wb_do_poll()
   if (wb_state_from_json(doc, liveState))
   {
     wb_mark_poll_ok();
-    wb_audio_apply(liveState.sound);
+    // Cached BEFORE applying, so the 1s reconcile keeps enforcing the sleep
+    // timer against these settings even if every later poll fails.
+    g_lastSound = liveState.sound;
+    wb_audio_apply(g_lastSound);
+    // The sleep timer has run out, but the server still believes the sound
+    // machine is on — say otherwise, so the parent panel and the room agree.
+    // Re-evaluated every poll rather than latched, which is also how it
+    // recovers when the timer expired during an offline stretch: the write is
+    // simply retried until it lands, and stops being attempted the moment a
+    // poll comes back reporting `on: false`.
+    if (g_sleepTimer.expired && liveState.sound.on) wb_sync_sound_off();
+    wb_alarm_apply(liveState.alarm, liveState);
     // Full clean+rebuild only ONCE per (re-)pairing session — the first real
     // poll after wb_enter_app()'s mock-data build. Every poll after that
     // used to lv_obj_clean+rebuild both screens unconditionally, even while
@@ -650,6 +795,43 @@ static WbTaskCompleteResult wb_uncomplete_task(const std::string &taskId)
 // timerMin out here doesn't clobber it), and on success runs an immediate
 // poll so the tile's own On/Off subtitle and any other open screen catch up
 // without waiting up to 5s.
+// Tells the SERVER the sound machine is off once the sleep timer has run out,
+// so the parent panel matches the room instead of still reading "On" over a
+// silent speaker.
+//
+// Deliberately does NOT touch local state. The obvious shortcut — reuse
+// wb_patch_settings, which optimistically sets g_lastSound.on = false — is a
+// trap: if the PATCH then FAILS, the next successful poll returns on=true, the
+// sleep timer sees `on` go false->true, calls that a fresh session, and plays
+// for another full timerMin. Leaving local state alone makes a failed write
+// harmless — `expired` stays sticky, the room stays quiet, and the caller
+// simply tries again on the next poll.
+//
+// Nor does it re-poll on success the way wb_patch_settings does: this is
+// called FROM wb_do_poll, and wb_do_poll() calling itself would recurse.
+static bool wb_sync_sound_off()
+{
+  if (wb_tick_ms() >= g_tokenExpiresAtMs)
+  {
+    if (!wb_refresh_access_token())
+      return false;
+  }
+
+  // sound/night are the only keys this device-authed route accepts, and the
+  // tone/volume are sent unchanged — the only edit is `on`.
+  JsonDocument reqDoc;
+  JsonObject sound = reqDoc["sound"].to<JsonObject>();
+  sound["on"] = false;
+  sound["sound"] = g_lastSound.tone;
+  sound["volume"] = g_lastSound.volume;
+  std::string body;
+  serializeJson(reqDoc, body);
+
+  std::string url = g_serverUrl + "/api/waffled-bites/device/settings";
+  WbHttpResponse resp = wb_http_patch(url.c_str(), body.c_str(), g_accessToken.c_str());
+  return resp.ok && resp.status == 200;
+}
+
 static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue)
 {
   if (wb_tick_ms() >= g_tokenExpiresAtMs)
@@ -666,11 +848,19 @@ static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &opt
     sound["sound"] = optionKey;
     sound["volume"] = sliderValue;
     // Optimistic: react to the tap now, don't wait for the PATCH + poll.
-    WbSoundSettings local;
+    //
+    // Built from the last known settings rather than from scratch, so
+    // timerMin carries over. It used to be hardcoded to 0 here, which was
+    // harmless when nothing read it — but now a 0 means "no sleep timer", and
+    // since a change to timerMin re-arms the countdown, every tap on the
+    // Sounds screen (a volume nudge included) would silently hand the room
+    // another full 30 minutes. The PATCH deliberately omits timerMin, so the
+    // server's value is unchanged and this is simply the truth.
+    WbSoundSettings local = g_lastSound;
     local.on = on;
     snprintf(local.tone, WB_TONE_LEN, "%s", optionKey.c_str());
     local.volume = sliderValue;
-    local.timerMin = 0;
+    g_lastSound = local;
     wb_audio_apply(local);
   }
   else
@@ -781,11 +971,23 @@ static void wb_enter_app()
 
   lv_scr_load(home_scr);
 
+  // Re-arm the sleep timer: this is the start of a paired session, and a
+  // stale `expired` from the LAST pairing would otherwise silence the sound
+  // machine on this session's first reconcile. Here rather than in
+  // wb_forget_pairing because a re-pair reaches this function by every route,
+  // including any that skips the forget path. Before the poll below, which is
+  // what starts the first countdown.
+  wb_sleep_timer_init(&g_sleepTimer);
+
   wb_do_poll(); // also does timer_scr/bedtime_scr's real first build — see wb_do_poll's g_liveScreensBuilt branch
 
   if (g_pollTimer)
     lv_timer_del(g_pollTimer);
   g_pollTimer = lv_timer_create(wb_poll_timer_cb, WB_POLL_INTERVAL_MS, nullptr);
+
+  if (g_soundTimer)
+    lv_timer_del(g_soundTimer);
+  g_soundTimer = lv_timer_create(wb_sound_reconcile_cb, WB_SOUND_RECONCILE_MS, nullptr);
 }
 
 static void wb_on_paired(const std::string &serverUrl, const std::string &deviceSecret)
@@ -916,6 +1118,7 @@ void setup()
   bedtime_scr = lv_obj_create(NULL);
   forget_scr = lv_obj_create(NULL);
   offline_scr = lv_obj_create(NULL);
+  alarm_scr = lv_obj_create(NULL);
 
   // A small "Offline" pill on the always-on-top layer — see g_offlineBadge's
   // header comment. Built once here, toggled hidden/visible by

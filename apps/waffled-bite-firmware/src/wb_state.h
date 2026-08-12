@@ -16,7 +16,7 @@
 #define WB_NAME_LEN 40
 #define WB_TITLE_LEN 64
 #define WB_ID_LEN 40 // holds a uuid (36 chars) + nul
-#define WB_TONE_LEN 16 // e.g. "ocean", "whiteNoise" — matches apps/web's SOUNDS keys
+#define WB_TONE_LEN 16 // e.g. "ocean", "heartbeat" — matches apps/web's SOUNDS keys
 #define WB_COLOR_LEN 16 // e.g. "amber" — matches apps/web's NIGHT_COLORS keys
 
 struct WbSoundSettings
@@ -32,6 +32,18 @@ struct WbNightSettings
   bool on;
   char color[WB_COLOR_LEN];
   int brightness; // 0-100
+};
+
+struct WbAlarmSettings
+{
+  bool on;
+  int hour; // 0-23, household-local (the server pre-localizes; see nowHour below)
+  int min;  // 0-59
+  // A stable key ("sunriseChime") since migration 0095. wb_tone_parse still
+  // accepts the display strings rows held before it, so an un-migrated or
+  // rolled-back row rings the same tone.
+  char tone[WB_TONE_LEN];
+  int volume; // 0-100 — decision D3: independent of the sound machine's volume
 };
 
 struct WbTask
@@ -104,6 +116,7 @@ struct WbDeviceState
   WbWakeLightInfo wakeLight;
   WbSoundSettings sound;
   WbNightSettings night;
+  WbAlarmSettings alarm;
   // Wall-clock parts from the poll's top-level "now" — the device has no
   // RTC/timezone database of its own, so the SERVER pre-localizes these to
   // the household's own timezone (waffledBites.ts's nowLocalView, reusing

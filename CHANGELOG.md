@@ -119,8 +119,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   device from scratch rather than streamed — so it keeps playing through a Wi-Fi drop or
   an overnight reboot of your home server, and a kid's room never goes suddenly silent.
   Plug the small speaker that came with your board into the socket marked `SPK`. Forest and
-  lullaby show as "(soon)" and can't be picked yet — they need real recordings — the sleep
-  timer's auto-off isn't wired up yet, and the morning alarm's tone still doesn't play.
+  lullaby show as "(soon)" and can't be picked yet — they need real recordings.
+
+- **Waffled-Bite device: the sleep timer actually stops the sound.** Picking 15m, 30m, 1h
+  or 2h under the sound machine has been savable for a while without the device ever acting
+  on it — the sound just played until somebody switched it off. Now it fades out when the
+  time is up, and the parent panel updates to match, so the app never reads "On" over a
+  silent speaker. The countdown restarts whenever the sound machine is switched on again,
+  a different sound is picked, or the timer length is changed — so nudging the volume
+  doesn't quietly buy another half hour. It keeps counting while the device is offline,
+  which is the whole point: a bedtime timer has to end even if the Wi-Fi drops.
+
+- **Waffled-Bite device: the morning alarm rings.** The alarm time and tone have been
+  saveable for a while without the device ever making a sound at the appointed hour; now it
+  does. Five of the six tones — sunrise chime, soft harp, gentle bells, ocean tide and
+  twinkle stars — are generated on the device itself, so the alarm still goes off if your
+  home server is down or the Wi-Fi has dropped. The alarm gets **its own volume**, separate
+  from the sound machine's: a wake tone has to be heard through sleep, where a sound machine
+  has to be ignorable. If the sound machine is playing when the alarm fires, it **fades down
+  for the alarm and comes back afterwards** rather than competing with it — an alarm playing
+  over white noise is one nobody wakes up to — and if the room was already quiet, it stays
+  quiet afterwards. When it rings, the device shows a full-screen "Good morning" with a big
+  **Stop** button, so a kid can silence it without hunting through menus; stopping it early
+  brings the sound machine back just the same. It also stops by itself after twenty seconds
+  if nobody taps anything. Birdsong shows as "(soon)": it's the one tone that needs a real
+  recording.
 
 - **Waffled-Bite device: set up WiFi right on the screen.** Connecting a new device to
   your home network no longer requires flashing it with hardcoded credentials — it now

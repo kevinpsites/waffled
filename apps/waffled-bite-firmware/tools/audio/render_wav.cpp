@@ -7,8 +7,12 @@
 // will push to I2S at the same volume, so if it sounds wrong here it will
 // sound wrong there.
 //
+// Covers the morning alarm's wake tones as well as the sound machine — those
+// get judged by ear too, and a laptop is the only way to tell "the recipe is
+// wrong" apart from "the device is struggling to play it".
+//
 //   Build:  clang++ -std=c++14 -O2 -Isrc tools/audio/render_wav.cpp \
-//                   src/wb_synth.cpp -o /tmp/wb_render
+//                   src/wb_synth.cpp src/wb_tone.cpp -o /tmp/wb_render
 //   Write:  /tmp/wb_render <output-dir> [seconds]
 //   Check:  /tmp/wb_render --measure     (levels only, writes nothing)
 //
@@ -23,6 +27,7 @@
 #include <vector>
 
 #include "wb_synth.h"
+#include "wb_tone.h"
 #include "wb_wav.h"
 
 namespace
@@ -42,6 +47,35 @@ const Entry kSounds[] = {
     {"heartbeat", WbSound::Heartbeat},
 };
 const int kSoundCount = 5;
+
+struct ToneEntry
+{
+  const char *key;
+  WbTone tone;
+};
+
+const ToneEntry kTones[] = {
+    {"tone-sunriseChime", WbTone::SunriseChime},
+    {"tone-softHarp", WbTone::SoftHarp},
+    {"tone-gentleBells", WbTone::GentleBells},
+    {"tone-oceanTide", WbTone::OceanTide},
+    {"tone-twinkleStars", WbTone::TwinkleStars},
+};
+const int kToneCount = 5;
+
+std::vector<int16_t> renderTone(WbTone tone, size_t total, int volume)
+{
+  std::vector<int16_t> pcm(total);
+  WbToneVoice v;
+  wb_tone_init(&v, tone);
+  const size_t block = 512;
+  for (size_t i = 0; i < total; i += block)
+  {
+    const size_t n = (i + block <= total) ? block : (total - i);
+    wb_tone_render(&v, pcm.data() + i, n, volume);
+  }
+  return pcm;
+}
 
 // Renders in blocks on purpose: it exercises the same continue-from-where-you-
 // stopped path the device's ring buffer will use, so a seam bug shows up in
@@ -101,6 +135,12 @@ int main(int argc, char **argv)
       measure(renderSound(kSounds[i].sound, total, 100), &r, &p);
       printf("%-10s %8.4f %8.4f\n", kSounds[i].key, r, p);
     }
+    for (int i = 0; i < kToneCount; i++)
+    {
+      double r, p;
+      measure(renderTone(kTones[i].tone, total, 100), &r, &p);
+      printf("%-18s %8.4f %8.4f\n", kTones[i].key, r, p);
+    }
     return 0;
   }
 
@@ -126,6 +166,37 @@ int main(int argc, char **argv)
     double r, p;
     measure(pcm, &r, &p);
     printf("%-10s %s  (%zus, rms %.3f, peak %.3f)\n", kSounds[i].key, path, seconds, r, p);
+  }
+
+  // The wake tones. Rendered at volume 50 as well as 100, because the question
+  // that matters for an alarm is whether it carries at a normal setting — the
+  // level the device is actually left on.
+  for (int i = 0; i < kToneCount; i++)
+  {
+    const int volumes[] = {100, 50};
+    for (int vi = 0; vi < 2; vi++)
+    {
+      const std::vector<int16_t> pcm = renderTone(kTones[i].tone, total, volumes[vi]);
+
+      char path[1024];
+      snprintf(path, sizeof(path), "%s/%s-v%d.wav", argv[1], kTones[i].key, volumes[vi]);
+      FILE *f = fopen(path, "wb");
+      if (!f)
+      {
+        fprintf(stderr, "cannot write %s\n", path);
+        return 1;
+      }
+
+      uint8_t header[44];
+      wb_wav_header(header, (uint32_t)WB_SAMPLE_RATE_HZ, (uint32_t)pcm.size());
+      fwrite(header, 1, sizeof(header), f);
+      fwrite(pcm.data(), sizeof(int16_t), pcm.size(), f);
+      fclose(f);
+
+      double r, p;
+      measure(pcm, &r, &p);
+      printf("%-18s %s  (%zus, rms %.3f, peak %.3f)\n", kTones[i].key, path, seconds, r, p);
+    }
   }
   return 0;
 }

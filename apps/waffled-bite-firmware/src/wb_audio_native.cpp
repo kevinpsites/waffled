@@ -10,14 +10,22 @@
 #include <SDL.h>
 #include <string.h>
 
+#include "wb_audio_seq.h"
+
 namespace
 {
 
 SDL_AudioDeviceID s_dev = 0;
 WbSynth s_synth;
+WbToneVoice s_tone;
+WbAudioSeq s_seq;
 bool s_playing = false;
+bool s_alarm = false;
+bool s_restart = false;
 int s_current = -1; // which sound s_synth was initialised for
+int s_wantTone = (int)WbTone::SunriseChime;
 int s_volume = 50;
+int s_toneVolume = 80;
 float s_fade = 0.0f;
 
 // Same 400 ms fade as the device, for the same anti-pop reason — desktop
@@ -25,21 +33,43 @@ float s_fade = 0.0f;
 // would be misleading.
 const float kFadeStep = 1.0f / (float)(WB_SAMPLE_RATE_HZ * 0.4f);
 
+// Drives the same phase machine the device does (wb_audio_seq), so the
+// simulator's behaviour — including the whole D4 alarm sequence — matches the
+// board rather than being a second, subtly different implementation.
 void fill(void *, Uint8 *stream, int len)
 {
   int16_t *out = (int16_t *)stream;
   const int frames = len / (int)sizeof(int16_t);
 
-  if (!s_playing && s_fade <= 0.0f)
+  const WbAudioSeqOut o =
+      wb_audio_seq_step(&s_seq, s_playing, s_alarm, s_restart, (uint32_t)frames, kFadeStep);
+  if (o.alarmDone) s_alarm = false;
+
+  if (o.idle)
   {
     memset(stream, 0, (size_t)len);
     return;
   }
 
-  wb_synth_render(&s_synth, out, (size_t)frames, s_volume);
+  // Re-seeding here rather than in wb_audio_play, so the simulator runs the
+  // SAME crossfade the device does. It used to re-seed in the caller, which
+  // meant the simulator could not reproduce a sound-change bug on the board at
+  // all — and that is exactly how one got missed.
+  if (o.initSound)
+  {
+    wb_synth_init(&s_synth, (WbSound)s_current, 0x5EEDu);
+    s_restart = false;
+  }
+  if (o.initTone) wb_tone_init(&s_tone, (WbTone)s_wantTone);
+
+  if (o.tone)
+    wb_tone_render(&s_tone, out, (size_t)frames, s_toneVolume);
+  else
+    wb_synth_render(&s_synth, out, (size_t)frames, s_volume);
+
   for (int i = 0; i < frames; i++)
   {
-    s_fade += s_playing ? kFadeStep : -kFadeStep;
+    s_fade += o.falling ? -kFadeStep : kFadeStep;
     if (s_fade > 1.0f) s_fade = 1.0f;
     if (s_fade < 0.0f) s_fade = 0.0f;
     out[i] = (int16_t)((float)out[i] * s_fade);
@@ -51,6 +81,7 @@ void fill(void *, Uint8 *stream, int len)
 void wb_audio_init()
 {
   if (s_dev) return;
+  wb_audio_seq_init(&s_seq);
   if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) return;
 
   SDL_AudioSpec want;
@@ -77,11 +108,12 @@ void wb_audio_play(WbSound sound, int volume)
   // past its first beat. The simulator is exactly where the plan says these
   // recipes get judged by ear, so silently rebuilding state there is worse
   // than a cosmetic bug.
-  if (!s_playing || (int)sound != s_current)
-  {
-    wb_synth_init(&s_synth, sound, 0x5EEDu);
-    s_current = (int)sound;
-  }
+  //
+  // The re-seed itself happens in the audio callback at the bottom of the
+  // fade (see fill's initSound) — this only records that one is due.
+  const bool changing = s_playing && (int)sound != s_current;
+  s_current = (int)sound;
+  if (changing) s_restart = true;
   s_volume = volume;
   s_playing = true;
   SDL_UnlockAudioDevice(s_dev);
@@ -95,14 +127,36 @@ void wb_audio_set_volume(int volume)
   SDL_UnlockAudioDevice(s_dev);
 }
 
+void wb_audio_alarm(WbTone tone, int volume)
+{
+  if (!s_dev) return;
+  SDL_LockAudioDevice(s_dev);
+  s_wantTone = (int)tone;
+  s_toneVolume = volume;
+  s_alarm = true;
+  SDL_UnlockAudioDevice(s_dev);
+}
+
+bool wb_audio_alarm_active() { return s_alarm; }
+
+void wb_audio_alarm_dismiss()
+{
+  if (!s_dev) return;
+  SDL_LockAudioDevice(s_dev);
+  s_alarm = false;
+  SDL_UnlockAudioDevice(s_dev);
+}
+
 void wb_audio_stop()
 {
   if (!s_dev) return;
   SDL_LockAudioDevice(s_dev);
+  // The SOUND MACHINE only — see the ESP32 backend for why this must not
+  // cancel the alarm.
   s_playing = false;
   SDL_UnlockAudioDevice(s_dev);
 }
 
-bool wb_audio_is_playing() { return s_playing || s_fade > 0.0f; }
+bool wb_audio_is_playing() { return s_seq.phase != WbAudioPhase::Idle; }
 
 #endif // !ARDUINO
