@@ -26,6 +26,19 @@ describe('Compose network defaults', () => {
     expect(caddyfile).toContain('reverse_proxy powersync:8080')
   })
 
+  // The api DERIVES the sync URL from x-forwarded-proto/-host, and oidc.ts builds
+  // redirect URLs from the same pair — so what a caller may put in them matters.
+  // caddy:2 already overwrites both for untrusted clients, but the Dockerfile tracks
+  // that tag floating; pinning it here makes the guarantee ours. {hostport}, not
+  // {host}: {host} drops the port and OIDC uses the value verbatim.
+  it('overwrites caller-supplied forwarding headers on the API route', async () => {
+    const caddyfile = await readFile(resolve(root, 'infra/compose/caddy/Caddyfile'), 'utf8')
+    const api = caddyfile.split('handle /api/*')[1].split('handle /auth/google/*')[0]
+    expect(api).toContain('header_up X-Forwarded-For {remote_host}')
+    expect(api).toContain('header_up X-Forwarded-Host {hostport}')
+    expect(api).toContain('header_up X-Forwarded-Proto {scheme}')
+  })
+
   it('leaves the sync URL unset by default so the api derives it per device', async () => {
     // A baked-in http://localhost:8090 would win over the derive and put every
     // non-local device back on "Offline". The api still needs POWERSYNC_PORT to
