@@ -72,11 +72,15 @@ approval needed.
 
 ## Connect a person
 
-Once the credentials are set, each person connects in **Settings → Calendars**:
+Once the credentials are set, each person connects in **Settings → Calendars** — on the web
+app, or on iPhone/iPad, whichever is to hand:
 
-1. Click **Connect Outlook Calendar** and complete the Microsoft sign-in and consent flow.
+1. Tap **Connect Outlook Calendar** and complete the Microsoft sign-in and consent flow.
 2. Choose which calendars to sync, and which is the **write-target** for events Waffled pushes.
 3. Use **Sync now** for an immediate pull (otherwise the poll picks it up within ~5 min).
+
+The button only appears once the server has Microsoft credentials — a household set up for
+Google alone sees just the Google button, and vice versa.
 
 ## Troubleshooting
 

@@ -53,9 +53,10 @@ project):
 
 ## Connect a person
 
-Once the credentials are set, each person connects in **Settings → Calendars**:
+Once the credentials are set, each person connects in **Settings → Calendars** — on the web
+app, or on iPhone/iPad, whichever is to hand:
 
-1. Click **Connect your calendar** and complete the Google consent flow.
+1. Tap **Connect Google Calendar** and complete the Google consent flow.
 2. Choose which of their Google calendars to sync, and which is the **write-target** for events
    Waffled pushes.
 3. Use **Sync now** for an immediate pull (otherwise the poll picks it up within ~5 min).

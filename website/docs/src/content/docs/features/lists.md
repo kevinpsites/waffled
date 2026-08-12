@@ -23,9 +23,9 @@ Lists is where "things to buy or do" live — shared custom lists you build by h
 
 ## Taking a list with you
 
-Every list can be handed to the phone of whoever is actually going: the grocery board has a
-**📤 Share list** button in its top bar, and a custom list offers **Share list** in its **⋯**
-menu, beside Rename and Delete. It turns the unchecked
+Every list can be handed to the phone of whoever is actually going, from **any** surface —
+web, iPhone or iPad. The grocery board has a **📤 Share list** button in its top bar, and a
+custom list offers **Share list** in its **⋯** menu, beside Rename and Delete. It turns the unchecked
 items into a clean plain-text list with quantities, grouped by aisle on the grocery board and by
 section on a custom list:
 
@@ -42,16 +42,22 @@ Items carry the two things the plain name doesn't: the **store**, if you've assi
 **who it's for**, if it's assigned to someone. Both only appear when they're set, so an ordinary
 list stays clean.
 
-Send it through your phone's share sheet, copy it to the clipboard, or point a phone camera at
-the **QR code** — the QR encodes the text itself, so the list lands on any phone with no app,
-no account, and nothing to configure. Checked-off items are left out, and items with no aisle
-are filed under **OTHER**. A list with no sections at all comes out as a plain list with no
-headers, and the button only appears while something on the list is still unchecked.
+Checked-off items are left out, and items with no aisle are filed under **OTHER**. A list with
+no sections at all comes out as a plain list with no headers, and the button only appears while
+something on the list is still unchecked. The text is identical on every surface.
+
+**On web and the kiosk**, send it through the share sheet, copy it to the clipboard, or point a
+phone camera at the **QR code** — the QR encodes the text itself, so the list lands on any phone
+with no app, no account, and nothing to configure.
 
 **Very long lists show no QR.** A QR code holds a fixed amount of data, so the more items on the
 list, the smaller each square in the code becomes — past roughly 30–35 items they get too small
 for a phone camera to read. Rather than show a code that can't be scanned, Waffled says the list
 is too long and points you at **Copy** or **Share**, which work at any length.
+
+**On iPhone and iPad** there's no QR code, because there's nothing to hand it to — the QR exists
+to get a list *onto* a phone, and you're already holding one. Share list opens the **system share
+sheet** instead, so the list goes straight to Messages, Mail, Notes or AirDrop.
 
 ## Where it works
 
