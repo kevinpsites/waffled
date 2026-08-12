@@ -21,9 +21,10 @@ const WbDeviceState &wb_mock_state(void)
       {false, false, 0, 0},
       // wakeLight
       {WbWakeLightState::None, -1, -1},
-      {false, "white", 50, 0},  // sound: off, defaults picked to match apps/web's own fallback UI state
-      {true, "amber", 40},      // night: on, matching the pre-settings-screen mock's nightlightOn=true
-      16, 13, 3, 10, 15,        // now: 4:13pm, Wed Oct 15 — matches this screen's original hardcoded placeholder text
+      {false, "white", 50, 0},        // sound: off, defaults picked to match apps/web's own fallback UI state
+      {true, "amber", 40},            // night: on, matching the pre-settings-screen mock's nightlightOn=true
+      {false, 6, 45, "Sunrise chime", 80}, // alarm: off — the simulator shouldn't ring on its own
+      16, 13, 3, 10, 15,              // now: 4:13pm, Wed Oct 15 — matches this screen's original hardcoded placeholder text
   };
   return state;
 }
@@ -127,6 +128,19 @@ bool wb_state_from_json(JsonDocument &doc, WbDeviceState &out)
   out.night.on = night["on"] | false;
   copyField(out.night.color, WB_COLOR_LEN, night["color"], "amber");
   out.night.brightness = night["brightness"] | 40;
+
+  // The alarm has always been on the wire (the route returns `settings`
+  // verbatim) — it just wasn't read, so six tones in the parent app did
+  // nothing. Defaults match the parent surfaces' own fallbacks so an
+  // unconfigured device and an unconfigured panel agree.
+  JsonObjectConst alarm = settings["alarm"];
+  out.alarm.on = alarm["on"] | false;
+  out.alarm.hour = alarm["hour"] | 6;
+  out.alarm.min = alarm["min"] | 45;
+  copyField(out.alarm.tone, WB_TONE_LEN, alarm["tone"], "Sunrise chime");
+  // D3: its own volume, defaulting louder than the sound machine — a wake
+  // tone that has to be heard through sleep, not one that has to be ignorable.
+  out.alarm.volume = alarm["volume"] | 80;
 
   parseNow(doc["now"], out.nowHour, out.nowMin, out.nowWeekday, out.nowMonth, out.nowDay);
 

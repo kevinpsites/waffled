@@ -34,6 +34,17 @@ struct WbNightSettings
   int brightness; // 0-100
 };
 
+struct WbAlarmSettings
+{
+  bool on;
+  int hour; // 0-23, household-local (the server pre-localizes; see nowHour below)
+  int min;  // 0-59
+  // Stored as a display string today ("Sunrise chime"); wb_tone_parse also
+  // accepts stable keys, so a later migration needs no firmware change.
+  char tone[WB_TONE_LEN];
+  int volume; // 0-100 — decision D3: independent of the sound machine's volume
+};
+
 struct WbTask
 {
   char id[WB_ID_LEN];      // the chore instance id — POST .../tasks/:instanceId/complete
@@ -104,6 +115,7 @@ struct WbDeviceState
   WbWakeLightInfo wakeLight;
   WbSoundSettings sound;
   WbNightSettings night;
+  WbAlarmSettings alarm;
   // Wall-clock parts from the poll's top-level "now" — the device has no
   // RTC/timezone database of its own, so the SERVER pre-localizes these to
   // the household's own timezone (waffledBites.ts's nowLocalView, reusing

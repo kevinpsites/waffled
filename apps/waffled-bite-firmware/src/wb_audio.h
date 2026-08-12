@@ -9,6 +9,7 @@
 #pragma once
 
 #include "wb_synth.h"
+#include "wb_tone.h"
 
 // Prepares the audio path. Safe to call once at boot; leaves the amp OFF and
 // the output silent.
@@ -21,7 +22,26 @@ void wb_audio_play(WbSound sound, int volume);
 // Changes volume during playback, without restarting the sound.
 void wb_audio_set_volume(int volume);
 
-// Fades out and stops, then powers the amp down.
+// Fires the morning alarm (decision D4): the sound machine fades down, `tone`
+// plays for WB_ALARM_DURATION_SEC at its OWN volume, and then playback is
+// handed back exactly where it left off.
+//
+// The alarm takes ownership of the output while it runs — wb_audio_play() and
+// wb_audio_stop() still record what the sound machine should be doing, but
+// nothing acts on them until the tone finishes. That's deliberate: main.cpp
+// reconciles playback with settings every poll, and without it the tone would
+// end up with white noise playing underneath it. See wb_audio_seq.h.
+//
+// Resumes only what was ACTUALLY playing when the alarm fired. If the device
+// was silent, the tone plays alone and it goes back to silence — an alarm must
+// never switch the sound machine on.
+void wb_audio_alarm(WbTone tone, int volume);
+
+bool wb_audio_alarm_active();
+
+// Fades out and stops, then powers the amp down. Also CANCELS a running alarm
+// — this is what silences a device that's been unpaired, which has no UI left
+// to reach.
 //
 // The order matters and is the whole reason this isn't just "write zeros":
 // the amp is only enabled once real samples are flowing, and disabled only

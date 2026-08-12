@@ -15,6 +15,7 @@
 #include <lvgl.h>
 #include "lgfx_device.h"
 #include "wb_state.h"
+#include "wb_alarm.h"
 #include "wb_audio.h"
 #include "wb_http.h"
 #include "wb_store.h"
@@ -205,6 +206,33 @@ static void wb_audio_apply(const WbSoundSettings &s)
     return;
   }
   wb_audio_play(sound, s.volume);
+}
+
+// Fires the morning alarm when the poll's wall clock reaches it.
+//
+// The decision itself is pure and unit-tested (wb_alarm.h) — the latch that
+// makes it ring once rather than on all dozen polls of that minute, the
+// guard against a missing clock, re-arming for tomorrow. This is only the
+// wiring.
+//
+// The latch is a plain static: decision D2 rules out persisting anything
+// across a reboot, so an alarm missed while the device was off or offline is
+// simply missed. The device has no RTC to catch up from anyway.
+static void wb_alarm_apply(const WbAlarmSettings &a, int nowHour, int nowMin)
+{
+  static int lastFiredMin = WB_ALARM_NEVER_FIRED;
+
+  const WbAlarmStep step =
+      wb_alarm_step(a.on, a.hour, a.min, nowHour, nowMin, lastFiredMin);
+  lastFiredMin = step.lastFiredMin;
+  if (!step.fire) return;
+
+  // An unrecognised tone falls back rather than staying silent — the opposite
+  // of the sound machine's rule, because an alarm that makes no noise has
+  // failed at its only job. Birdsong lands here until phase 2 ships samples.
+  WbTone tone;
+  if (!wb_tone_parse(a.tone, &tone)) tone = wb_tone_default();
+  wb_audio_alarm(tone, a.volume);
 }
 
 static std::string g_serverUrl;
@@ -404,6 +432,7 @@ static void wb_do_poll()
   {
     wb_mark_poll_ok();
     wb_audio_apply(liveState.sound);
+    wb_alarm_apply(liveState.alarm, liveState.nowHour, liveState.nowMin);
     // Full clean+rebuild only ONCE per (re-)pairing session — the first real
     // poll after wb_enter_app()'s mock-data build. Every poll after that
     // used to lv_obj_clean+rebuild both screens unconditionally, even while

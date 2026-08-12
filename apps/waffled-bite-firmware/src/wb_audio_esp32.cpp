@@ -21,6 +21,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "wb_audio_seq.h"
+
 #define WB_AUDIO_LRCLK GPIO_NUM_21
 #define WB_AUDIO_BCLK GPIO_NUM_22
 #define WB_AUDIO_DOUT GPIO_NUM_23
@@ -59,16 +61,15 @@ volatile int s_wantVolume = 50;
 volatile bool s_restart = false;
 volatile bool s_running = false;
 
+// The alarm's requests. `s_wantAlarm` is a level the caller raises and the
+// audio task lowers when the sequence reports it's finished — see
+// wb_audio_seq.h's alarmDone.
+volatile bool s_wantAlarm = false;
+volatile int s_wantTone = (int)WbTone::SunriseChime;
+volatile int s_wantToneVolume = 80;
+
 int16_t s_mono[WB_AUDIO_FRAMES];
 int16_t s_stereo[WB_AUDIO_FRAMES * 2];
-
-enum class Phase
-{
-  Idle,
-  Starting,
-  Running,
-  Stopping,
-};
 
 void writeSilence(int blocks)
 {
@@ -85,62 +86,58 @@ void ampEnable(bool on)
   gpio_set_level(WB_AUDIO_CTRL, on ? WB_AUDIO_AMP_ON_LEVEL : !WB_AUDIO_AMP_ON_LEVEL);
 }
 
+// All the phase/fade decisions live in wb_audio_seq (pure, unit-tested); this
+// task only carries them out. That split is what makes decision D4's alarm
+// sequence testable at all — it used to be impossible to check any of it
+// without standing next to the device at 6:45am.
 void audioTask(void *)
 {
-  Phase phase = Phase::Idle;
+  WbAudioSeq seq;
+  wb_audio_seq_init(&seq);
+
   WbSynth synth;
+  WbToneVoice tone;
   float fade = 0.0f;
   const float fadeStep = 1.0f / ((float)WB_SAMPLE_RATE_HZ * (WB_AUDIO_FADE_MS / 1000.0f));
 
   for (;;)
   {
-    switch (phase)
-    {
-    case Phase::Idle:
-      if (s_wantPlay)
-      {
-        // Bring the output up in the one order that doesn't click: enable the
-        // channel, push real (silent) frames so the DMA buffer holds zeros
-        // rather than whatever was left in it, and only THEN power the amp.
-        i2s_channel_enable(s_tx);
-        writeSilence(2);
-        ampEnable(true);
-        vTaskDelay(pdMS_TO_TICKS(30)); // amp settle
+    const WbAudioSeqOut o =
+        wb_audio_seq_step(&seq, s_wantPlay, s_wantAlarm, s_restart, WB_AUDIO_FRAMES, fadeStep);
 
+    // The sequence owns when the alarm is over; lowering the request here is
+    // what stops it re-arming immediately and ringing forever.
+    if (o.alarmDone) s_wantAlarm = false;
+
+    if (o.powerUp)
+    {
+      // Bring the output up in the one order that doesn't click: enable the
+      // channel, push real (silent) frames so the DMA buffer holds zeros
+      // rather than whatever was left in it, and only THEN power the amp.
+      i2s_channel_enable(s_tx);
+      writeSilence(2);
+      ampEnable(true);
+      vTaskDelay(pdMS_TO_TICKS(30)); // amp settle
+      fade = 0.0f;
+    }
+
+    if (!o.idle)
+    {
+      if (o.initSound)
+      {
         wb_synth_init(&synth, (WbSound)s_wantSound, 0x5EEDu);
-        fade = 0.0f;
         s_restart = false;
-        s_running = true;
-        phase = Phase::Running;
       }
+      if (o.initTone) wb_tone_init(&tone, (WbTone)s_wantTone);
+
+      if (o.tone)
+        wb_tone_render(&tone, s_mono, WB_AUDIO_FRAMES, s_wantToneVolume);
       else
-      {
-        vTaskDelay(pdMS_TO_TICKS(20));
-      }
-      break;
+        wb_synth_render(&synth, s_mono, WB_AUDIO_FRAMES, s_wantVolume);
 
-    case Phase::Starting:
-      break; // folded into Idle
-
-    case Phase::Running:
-    case Phase::Stopping:
-    {
-      if (phase == Phase::Running && !s_wantPlay) phase = Phase::Stopping;
-
-      // A sound change is a fade down and back up rather than a hard cut,
-      // for the same reason everything else here fades.
-      if (phase == Phase::Running && s_restart && fade <= 0.0f)
-      {
-        wb_synth_init(&synth, (WbSound)s_wantSound, 0x5EEDu);
-        s_restart = false;
-      }
-
-      wb_synth_render(&synth, s_mono, WB_AUDIO_FRAMES, s_wantVolume);
-
-      const bool falling = (phase == Phase::Stopping) || s_restart;
       for (int i = 0; i < WB_AUDIO_FRAMES; i++)
       {
-        fade += falling ? -fadeStep : fadeStep;
+        fade += o.falling ? -fadeStep : fadeStep;
         if (fade > 1.0f) fade = 1.0f;
         if (fade < 0.0f) fade = 0.0f;
         const int16_t v = (int16_t)((float)s_mono[i] * fade);
@@ -157,20 +154,21 @@ void audioTask(void *)
       size_t written = 0;
       if (i2s_channel_write(s_tx, s_stereo, sizeof(s_stereo), &written, 500) != ESP_OK)
         vTaskDelay(pdMS_TO_TICKS(5));
+    }
 
-      if (phase == Phase::Stopping && fade <= 0.0f)
-      {
-        // Mirror of the start sequence: silence first, then kill the amp,
-        // then the channel. Dropping the enable pin mid-waveform pops.
-        writeSilence(2);
-        ampEnable(false);
-        i2s_channel_disable(s_tx);
-        s_running = false;
-        phase = Phase::Idle;
-      }
-      break;
+    if (o.powerDown)
+    {
+      // Mirror of the start sequence: silence first, then kill the amp, then
+      // the channel. Dropping the enable pin mid-waveform pops.
+      writeSilence(2);
+      ampEnable(false);
+      i2s_channel_disable(s_tx);
     }
-    }
+
+    s_running = (seq.phase != WbAudioPhase::Idle);
+
+    // Nothing to write and nothing to wait on — don't spin.
+    if (o.idle && !o.powerDown) vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
 
@@ -245,7 +243,24 @@ void wb_audio_play(WbSound sound, int volume)
 
 void wb_audio_set_volume(int volume) { s_wantVolume = volume; }
 
-void wb_audio_stop() { s_wantPlay = false; }
+void wb_audio_alarm(WbTone tone, int volume)
+{
+  // Same publish-before-flag ordering as wb_audio_play, and for the same
+  // reason: callers run on core 0 and the audio task on core 1, so if the
+  // request flag became visible first the task could start ringing with the
+  // previous tone.
+  s_wantTone = (int)tone;
+  s_wantToneVolume = volume;
+  s_wantAlarm = true;
+}
+
+bool wb_audio_alarm_active() { return s_wantAlarm; }
+
+void wb_audio_stop()
+{
+  s_wantPlay = false;
+  s_wantAlarm = false; // cancels a ringing alarm — see the header
+}
 
 bool wb_audio_is_playing() { return s_running; }
 
