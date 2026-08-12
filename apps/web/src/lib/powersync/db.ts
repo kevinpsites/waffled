@@ -41,20 +41,36 @@ async function startClient(): Promise<void> {
     schema: AppSchema,
     database: { dbFilename: 'waffled.db' },
   })
-  await instance.init()
-  db = instance
-  unlistenStatus = instance.registerListener({
-    statusChanged: (s: SyncStatus) =>
-      monitor.noteStatus({
-        connected: s.connected,
-        connecting: s.connecting,
-        hasSynced: s.hasSynced,
-        lastSyncedAt: s.lastSyncedAt ? s.lastSyncedAt.getTime() : null,
-      }),
-  })
-  // connect() retries internally; fetchCredentials returning null just means
-  // "not signed in yet" — it'll connect once a token is available.
-  await instance.connect(new WaffledConnector())
+  // Anything that throws from here on leaves a half-built client that still owns
+  // the worker and the OPFS handle on waffled.db. Callers only null out `db`, so
+  // without this the orphan is unreachable — the next hard restart sees no old
+  // client, closes nothing, and opens a SECOND database on the same file.
+  try {
+    await instance.init()
+    db = instance
+    unlistenStatus = instance.registerListener({
+      statusChanged: (s: SyncStatus) =>
+        monitor.noteStatus({
+          connected: s.connected,
+          connecting: s.connecting,
+          hasSynced: s.hasSynced,
+          lastSyncedAt: s.lastSyncedAt ? s.lastSyncedAt.getTime() : null,
+        }),
+    })
+    // connect() retries internally; fetchCredentials returning null just means
+    // "not signed in yet" — it'll connect once a token is available.
+    await instance.connect(new WaffledConnector())
+  } catch (err) {
+    unlistenStatus?.()
+    unlistenStatus = null
+    db = null
+    try {
+      await instance.close()
+    } catch {
+      /* best effort: a client that couldn't boot may not close cleanly either */
+    }
+    throw err
+  }
   monitor.engineStarted()
   monitor.start()
   watchConnectivity()

@@ -98,6 +98,37 @@ describe('connectPowerSync', () => {
     expect(getSyncHealth().status).toBe('failed')
     expect(getSyncHealth().lastError).toBe('OPFS unavailable')
   })
+
+  // A half-built client still owns the worker and the OPFS handle on waffled.db.
+  // Leaving it open while nulling the module's reference orphans it forever: the
+  // next hard restart sees no old client, closes nothing, and opens a SECOND
+  // PowerSyncDatabase on the same file — once per restart-ladder rung.
+  it('closes the half-built client when connect() throws instead of orphaning it', async () => {
+    const db = await freshDbModule()
+    fakes.failNext = { step: 'connect', message: 'no socket' }
+    await db.connectPowerSync()
+    expect(db.getPowerSyncDb()).toBeNull()
+    expect(fakes.instances[0].close).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes the half-built client when init() throws', async () => {
+    const db = await freshDbModule()
+    fakes.failNext = { step: 'init', message: 'OPFS unavailable' }
+    await db.connectPowerSync()
+    expect(fakes.instances[0].close).toHaveBeenCalledTimes(1)
+  })
+
+  // The orphan's real cost: the retry must build exactly one replacement, on a
+  // file no dead instance is still holding.
+  it('a retry after a failed connect builds exactly one replacement client', async () => {
+    const db = await freshDbModule()
+    fakes.failNext = { step: 'connect', message: 'no socket' }
+    await db.connectPowerSync()
+    await db.restartPowerSyncHard()
+    expect(fakes.instances).toHaveLength(2)
+    expect(fakes.instances[0].close).toHaveBeenCalledTimes(1)
+    expect(db.getPowerSyncDb()).toBe(fakes.instances[1] as never)
+  })
 })
 
 // The watchdog only re-classifies on its 30s tick, but the kiosk's offline strip
