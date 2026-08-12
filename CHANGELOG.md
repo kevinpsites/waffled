@@ -32,8 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   day and agenda views fill with the person's color instead of the old pale tint, which
   reads far better from across the kitchen. **This changes how every existing household's
   calendar looks after upgrading** — if you preferred the softer look, switch
-  **Settings → Family & People → Event style** back to *Tinted*. Tinted is also
-  theme-aware now, so it stays legible in dark mode.
+  **Settings → Family & People → Event style** back to *Tinted*. Titles on a solid chip
+  are drawn in black or white — whichever stays readable on that person's color — so the
+  lighter colors (gold, teal) and any pale custom hex you pick are legible in both light
+  and dark mode. Tinted is also theme-aware now, so it stays legible in dark mode.
 
 ### Fixed
 

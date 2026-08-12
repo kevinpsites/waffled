@@ -1,6 +1,6 @@
-import { useMemo, type CSSProperties, type MouseEvent } from 'react'
+import { useMemo, type MouseEvent } from 'react'
 import type { AgendaEvent, Countdown } from '../../lib/api'
-import { useEventColor } from '../../lib/event-color'
+import { evVars, useEventColor } from '../../lib/event-color'
 import { DOW, ymd, localDate } from './cal-utils'
 import { MonthDayPanel } from './MonthDayPanel'
 
@@ -90,7 +90,7 @@ export function MonthView({
                   <div
                     key={e.id}
                     className={`ev ev-tint ${isMeal ? 'ev-meal' : ''}`}
-                    style={{ '--ev': color, cursor: 'pointer' } as CSSProperties}
+                    style={{ ...evVars(color), cursor: 'pointer' }}
                     title={isMeal ? 'Planned meal' : undefined}
                     onClick={(ev) => {
                       ev.stopPropagation()

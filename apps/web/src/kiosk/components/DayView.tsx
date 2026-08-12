@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { type AgendaEvent, type Countdown } from '../../lib/api'
-import { useEventColor } from '../../lib/event-color'
+import { evVars, useEventColor } from '../../lib/event-color'
 import { DOW_FULL, MONTHS, ymd, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, packLanes } from './cal-utils'
 import { CountdownChip } from './CountdownChip'
 
@@ -73,7 +73,7 @@ export function DayView({
             {allDay.map((e) => {
               const color = colorOf(e)
               return (
-                <div key={e.id} className="dv-allday-ev ev-tint" style={{ '--ev': color } as CSSProperties} onClick={() => onOpenEvent(e)}>
+                <div key={e.id} className="dv-allday-ev ev-tint" style={evVars(color)} onClick={() => onOpenEvent(e)}>
                   {e.title}
                 </div>
               )
@@ -113,7 +113,7 @@ export function DayView({
                 <div
                   key={e.id}
                   className={`dv-ev ev-tint ${isMeal ? 'ev-meal' : ''}`}
-                  style={{ top, height, left, width, '--ev': color, borderLeft: `3px solid ${color}` } as CSSProperties}
+                  style={{ top, height, left, width, ...evVars(color), borderLeft: `3px solid ${color}` }}
                   title={isMeal ? 'Planned meal' : undefined}
                   onClick={(ev) => { ev.stopPropagation(); onOpenEvent(e) }}
                 >

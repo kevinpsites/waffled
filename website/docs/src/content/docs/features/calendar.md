@@ -67,8 +67,9 @@ and always color an event by its owner.
 agenda views (and the Today dashboard's agenda card):
 
 - **Solid colors** *(default)* — the chip fills with the event's color and the title
-  flips to white. This is the most glanceable option and what a wall-mounted kiosk
-  wants.
+  flips to whichever of black or white reads better on it, so a pale yellow or a
+  bright teal stays legible. This is the most glanceable option and what a
+  wall-mounted kiosk wants.
 - **Tinted** — a soft wash of the color with matching colored text: quieter, closer
   to a paper planner. It's theme-aware, so it stays readable in dark mode.
 

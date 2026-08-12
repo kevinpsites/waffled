@@ -1,10 +1,10 @@
-import { useState, type CSSProperties } from 'react'
+import { useState } from 'react'
 import { Icon } from '../icons'
 import { EventModal } from './EventModal'
 import { eventPeople } from './cal-utils'
 import { isPastEvent } from './AgendaView'
 import { useEventsToday, usePersons, type AgendaEvent } from '../../lib/api'
-import { useEventColor } from '../../lib/event-color'
+import { evVars, useEventColor } from '../../lib/event-color'
 
 function formatTime(e: AgendaEvent): string {
   if (e.allDay) return 'all day'
@@ -45,7 +45,7 @@ function AgendaRow({ event, past = false, color: colorProp, onClick }: { event: 
 function AgendaBigCard({ event, past = false, color: colorProp, onClick }: { event: AgendaEvent; past?: boolean; color?: string; onClick: () => void }) {
   const color = colorProp ?? event.personColor ?? '#A6A29B'
   return (
-    <div className={`agenda-bigcard${past ? ' past' : ''}`} onClick={onClick} role="button" tabIndex={0} style={{ borderTop: `3px solid ${color}`, '--ev': color } as CSSProperties}>
+    <div className={`agenda-bigcard${past ? ' past' : ''}`} onClick={onClick} role="button" tabIndex={0} style={{ borderTop: `3px solid ${color}`, ...evVars(color) }}>
       <div className="ab-time ev-ink">{formatTime(event)}</div>
       <div className="ab-title">{event.title}</div>
       {event.location && <div className="tiny muted ab-loc">📍 {event.location}</div>}

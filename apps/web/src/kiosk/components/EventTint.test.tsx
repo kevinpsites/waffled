@@ -5,6 +5,7 @@ import { DayView } from './DayView'
 import { AgendaView } from './AgendaView'
 import { MonthDayPanel } from './MonthDayPanel'
 import { ymd, startOfWeek } from './cal-utils'
+import { solidChipInk } from '../../lib/event-color'
 import type { AgendaEvent } from '../../lib/api'
 
 // Event chips carry their color as the `--ev` custom property and take the
@@ -80,12 +81,15 @@ afterEach(() => {
 })
 
 // The chip carries the person color only as `--ev` for CSS to paint — no literal
-// alpha-wash background, no raw text color.
+// alpha-wash background, no raw text color — plus the ink that stays readable on
+// that color once the solid style fills the chip with it.
 function expectTinted(el: Element | null) {
   expect(el).toBeTruthy()
   const chip = el as HTMLElement
   expect(chip.classList.contains('ev-tint')).toBe(true)
   expect(chip.style.getPropertyValue('--ev')).toBe(COLOR)
+  expect(chip.style.getPropertyValue('--ev-on')).toBe(solidChipInk(COLOR).light)
+  expect(chip.style.getPropertyValue('--ev-on-dark')).toBe(solidChipInk(COLOR).dark)
   expect(chip.style.backgroundColor).toBe('')
   expect(chip.style.color).toBe('')
 }

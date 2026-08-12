@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePersons, type AgendaEvent, type Countdown } from '../../lib/api'
-import { useEventColor } from '../../lib/event-color'
+import { evVars, useEventColor } from '../../lib/event-color'
 import { DOW, ymd, addDays, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, eventPeople, packLanes } from './cal-utils'
 import { CountdownChip } from './CountdownChip'
 
@@ -137,7 +137,7 @@ export function WeekView({
                     <div
                       key={e.id}
                       className="wk-allday-ev ev-tint"
-                      style={{ '--ev': color } as CSSProperties}
+                      style={evVars(color)}
                       onClick={() => onOpenEvent(e)}
                     >
                       {e.title}
@@ -187,7 +187,7 @@ export function WeekView({
                       <div
                         key={e.id}
                         className={`wk-ev ev-tint ${isMeal ? 'ev-meal' : ''} ${tight ? 'tight' : ''}`}
-                        style={{ top, height, left, width, '--ev': color, borderLeft: `3px solid ${color}` } as CSSProperties}
+                        style={{ top, height, left, width, ...evVars(color), borderLeft: `3px solid ${color}` }}
                         title={isMeal ? `Planned meal · ${e.title}` : `${fmtTime(e)} · ${e.title}`}
                         onClick={(ev) => {
                           ev.stopPropagation()
