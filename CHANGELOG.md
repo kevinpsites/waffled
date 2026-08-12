@@ -126,12 +126,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **The Waffled-Bite control panel keeps itself up to date.** The web panel read the
-  device once when you opened it and then never again, so anything your child did on the
-  device — switching the sound machine on, starting a timer — didn't show up until you
-  reloaded the page, and a device that dropped offline could keep showing as online. It
-  now refreshes on its own every few seconds while the page is open, and pauses while the
-  tab is in the background.
+- **The Waffled-Bite control panel keeps itself up to date.** The panel read the device
+  once when you opened it and then never again, so anything your child did on the device
+  — switching the sound machine on, starting a timer — didn't show up until you reloaded,
+  and a device that dropped offline could keep showing as online. It now refreshes on its
+  own every few seconds while you're looking at it, on **web, iPhone and iPad**, and stops
+  while the tab or app is in the background so it costs nothing when you're not watching.
 
 - **Recurring event edits now keep the whole series intact.** "This and following" carries
   all-day, countdown, people, goal, and repeat settings into the new series, while changing
