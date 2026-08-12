@@ -237,12 +237,14 @@ and it fixes a failure mode we have no defence against today.
 
 ## 7. Recommended sequencing
 
-1. **Now (this PR):** Outlook/M365, ICS feeds, Share list.
-2. **Next, small and high value:** per-request PowerSync URL derive, `endsAt` validation.
+1. ✅ **Done:** Outlook/M365, ICS feeds, Share list (upstream PRs #149 + #151 for iOS parity).
+2. ✅ **Done, 2026-08-12:** per-request PowerSync URL derive, `endsAt` validation — see §5,
+   which records where our versions go beyond the fork's.
 3. **Then, worth a dedicated PR:** the sync watchdog + `isReplicaTrusted()` fallback.
 4. **Deliberate decision needed:** the Today board v2 zone layout. It's a real improvement
    but it's a contract change and a big merge; it also has no iOS counterpart, which would
-   widen the web/mobile gap.
+   widen the web/mobile gap. Now written up under *Planned* in the
+   [roadmap](roadmap.md), together with the **week calendar card** that depends on it.
 5. **Probably skip:** Walmart matching (dead), Android TWA (explicitly not wanted), the
    PowerShell server-move kit and `update.ps1` (fork-specific workflow), wake-word binaries.
 
