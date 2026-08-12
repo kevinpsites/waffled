@@ -128,9 +128,21 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   in `test/test_synth/` (`pio test -e native_test`), and `src/wb_audio_esp32.cpp` carries
   them to the NS4168 over I2S. **Verified on the board:** the sound machine plays from the
   device's Sounds tile and from a parent's panel, with a live volume slider and no pops.
-  Still open: the sampled sounds (`forest`/`lullaby`), the **sleep timer's auto-off**
-  (`timerMin` is parsed but not acted on, so playback runs until it's switched off), and
-  the alarm tone.
+  Still open: the sampled sounds (`forest`/`lullaby`) and the alarm tone.
+
+  **The sleep timer switches the sound off.** `settings.sound.timerMin` (0/15/30/60/120
+  from the parent panel) is enforced by `wb_sleep_timer.{h,cpp}` — pure, like `wb_alarm`,
+  so its bookkeeping is unit-tested in `test/test_sleep_timer/`. Two things about it are
+  worth reading the header for. The expiry is **sticky** for the playback session:
+  `sound.on` is still true after the timer fires (that IS still the parent's setting, and
+  the device never writes it back), so a stop recomputed from the settings alone would be
+  undone by the next reconcile, five seconds later, all night. Only an *edge* re-arms it —
+  the sound machine going off→on, a different sound, or a changed `timerMin`. And the
+  countdown runs off `wb_tick_ms()`, never the server's wall clock, so it survives a
+  timezone change, a missing `now` in a payload, and the tick counter's ~49-day wrap; a
+  sleep timer is a duration, not an appointment. `main.cpp` re-applies the last known sound
+  settings once a second (`WB_SOUND_RECONCILE_MS`) rather than leaning on the 5 s poll, so
+  the timer still fires on time — and fires at all — while the device is offline.
 
   **Two hardware facts worth not re-deriving.** The vendor's I2S pins are right (LRCLK 21,
   BCLK 22, DOUT 23) and the P4's clock divider hits 22.05 kHz exactly. And the NS4168
