@@ -1651,11 +1651,14 @@ requires user-facing notes under `[Unreleased]`; and runs the CLI, migration, AP
 (when configured), docs, Docker E2E, and locally available iOS checks. It does not bump versions,
 commit, or tag anything; build tools may refresh ignored local artifacts.
 
-Those checks run in **four parallel lanes** — `ios`, `docker`, `web`, and `misc` — grouped by the
-resource each contends for, because a release is cut on your own machine and there is no reason to
-leave its cores idle (~228s serial → ~102s). Each lane buffers its output and prints it whole, so
-the lanes appear one after another rather than interleaved, and every step reports its own wall
-time. **A run that fails ends with a `Release checks failed:` summary naming each failed step** —
+Those checks run in **lanes** rather than one serial column, because a release is cut on your own
+machine and there is no reason to leave its cores idle (~228s serial → ~120s). **Phase 1 runs the
+iOS lane alone**, then **phase 2 runs the `docker`, `web` and `misc` lanes in parallel**, grouped by
+the resource each contends for. iOS is deliberately not overlapped: the Simulator does not just run
+slowly on a saturated machine, it dies outright (`Failed to launch app … Mach error -308 (ipc/mig)
+server died`) and fails the release for a reason unrelated to your code. Each lane buffers its
+output and prints it whole, so lanes appear one after another rather than interleaved, and every
+step reports its own wall time. **A run that fails ends with a `Release checks failed:` summary naming each failed step** —
 checks deliberately continue after a failure so one pass surfaces everything, which means the
 culprit may be thousands of lines above. If you do not see either that summary or
 `All available release project checks passed.`, the run did not finish.

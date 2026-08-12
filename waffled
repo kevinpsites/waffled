@@ -494,11 +494,11 @@ release_project_checks() {
 
   reset_release_failures
 
-  # Checks run in four parallel lanes rather than one serial column. Releases are cut on
-  # a developer's own machine, so spending its cores is free; the lanes are grouped by
-  # the resource they contend for, and balanced so no one lane dominates:
+  # Checks run in lanes rather than one serial column. Releases are cut on a developer's
+  # own machine, so spending its cores is free; lanes are grouped by the resource they
+  # contend for, and balanced so no one lane dominates:
   #
-  #   ios     xcodegen + xcodebuild            (Xcode; touches neither Node nor Docker)
+  #   ios     xcodegen + xcodebuild            (phase 1, ALONE — see below)
   #   docker  API tests, Docker e2e            (serial — they share the Docker daemon)
   #   web     web typecheck, web tests         (the single longest Node step)
   #   misc    everything else, all quick
@@ -557,24 +557,32 @@ release_project_checks() {
     fi
   }
 
-  local logdir pid_ios pid_docker pid_web pid_misc
+  local logdir pid_docker pid_web pid_misc
   logdir="$(mktemp -d)"
-  echo "${c_dim}Running release checks in 4 parallel lanes (ios, docker, web, misc)…${c_reset}"
 
-  lane_ios    > "$logdir/ios.log"    2>&1 & pid_ios=$!
+  # iOS goes first and gets the machine to itself. The iOS Simulator is the one fragile
+  # participant here: run against a saturated box it does not merely run slowly, it dies
+  # ("Failed to launch app … Mach error -308 (ipc/mig) server died"), which fails the
+  # release for a reason that has nothing to do with the code. Observed twice in three
+  # fully-parallel runs. Isolating it costs ~18s against an all-lanes-at-once schedule
+  # and buys back a release that doesn't fail at random — which is the entire point.
+  echo "${c_dim}Release checks — phase 1/2: iOS (alone; the Simulator is unreliable on a busy machine)…${c_reset}"
+  lane_ios
+
+  echo
+  echo "${c_dim}Release checks — phase 2/2: docker, web and misc lanes in parallel…${c_reset}"
   lane_docker > "$logdir/docker.log" 2>&1 & pid_docker=$!
   lane_web    > "$logdir/web.log"    2>&1 & pid_web=$!
   lane_misc   > "$logdir/misc.log"   2>&1 & pid_misc=$!
 
-  # Each lane's output is buffered to its own file and printed whole, so four concurrent
-  # test runners can't shred each other's output into unreadable interleaved lines.
+  # Each lane's output is buffered to its own file and printed whole, so concurrent test
+  # runners can't shred each other's output into unreadable interleaved lines.
   local lane
-  for lane in misc web docker ios; do
+  for lane in misc web docker; do
     case "$lane" in
       misc)   wait "$pid_misc"   || true ;;
       web)    wait "$pid_web"    || true ;;
       docker) wait "$pid_docker" || true ;;
-      ios)    wait "$pid_ios"    || true ;;
     esac
     echo
     echo "${c_dim}—— ${lane} lane ——${c_reset}"
