@@ -33,10 +33,17 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // local edit would silently vanish within the refresh interval and a local delete
 // would come back. Refusing the write is the honest answer.
 //
-// Enforced here rather than in the UI on purpose: iOS receives these rows over
-// PowerSync and has no feed UI of its own, so the API is the only place that
-// covers every surface at once.
+// Enforced here rather than only in the UI on purpose: the clients each reach
+// events by a different route (REST, the PowerSync upload sink, quick-add's mutate
+// verbs), so the API is the one place that covers every surface at once. The apps
+// gate their own controls on top of this, to avoid offering an action that would
+// only fail — but the API is what makes the rule true.
 const READ_ONLY_ORIGINS = new Set(['ics'])
+
+/// Pure predicate for callers that already hold the row (avoids a second lookup).
+export function isReadOnlyOrigin(origin: string | null | undefined): boolean {
+  return !!origin && READ_ONLY_ORIGINS.has(origin)
+}
 
 export async function readOnlyOrigin(householdId: string, eventId: string): Promise<string | null> {
   const { rows } = await query<{ origin: string | null }>(
@@ -44,7 +51,7 @@ export async function readOnlyOrigin(householdId: string, eventId: string): Prom
     [householdId, eventId]
   )
   const origin = rows[0]?.origin ?? null
-  return origin && READ_ONLY_ORIGINS.has(origin) ? origin : null
+  return isReadOnlyOrigin(origin) ? origin : null
 }
 
 // camelCase API field → events column. Anything not here can't be patched.

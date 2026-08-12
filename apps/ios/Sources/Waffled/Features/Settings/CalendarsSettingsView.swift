@@ -44,7 +44,17 @@ struct CalendarsSettingsView: View {
     @State private var status: WaffledAPI.CalendarStatus?
     @State private var loading = true
     @State private var syncing = false
-    @State private var connecting = false
+    /// Which provider's consent flow is in flight (nil = none).
+    @State private var connecting: CalendarProvider?
+    @State private var editingFeed: FeedEditTarget?
+
+    /// Add a feed, or edit an existing one.
+    enum FeedEditTarget: Identifiable {
+        case new
+        case edit(WaffledAPI.CalendarStatus.Feed)
+        var id: String { if case let .edit(f) = self { return f.id }; return "new" }
+        var feed: WaffledAPI.CalendarStatus.Feed? { if case let .edit(f) = self { return f }; return nil }
+    }
     @State private var message: String?
     @State private var launcher = OAuthLauncher()
     // filters (web parity)
@@ -62,17 +72,24 @@ struct CalendarsSettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 countdownsSection
                 if let status {
-                    if !status.configured {
-                        notice("Google Calendar isn’t set up on this server yet.")
+                    // Above everything: a feed sync reports here too, and feeds show on
+                    // servers with no OAuth account at all — so the banner can't live
+                    // inside the "connected" branch.
+                    if let m = message {
+                        Text(m).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2)
+                            .padding(.horizontal, 12).padding(.vertical, 9)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                    }
+                    // Feeds need no OAuth credentials, so this shows even on a server
+                    // with neither Google nor Outlook set up — subscribing to a URL is
+                    // often the only calendar setup a household ever does.
+                    feedsSection(status.feeds)
+                    if providers.isEmpty {
+                        notice("No calendar accounts can be connected — this server has no Google or Outlook credentials set up.")
                     } else if !status.connected {
                         connectCard
                     } else {
-                        if let m = message {
-                            Text(m).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2)
-                                .padding(.horizontal, 12).padding(.vertical, 9)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
-                        }
                         filterControls
                         ForEach(status.accounts) { acct in accountCard(acct) }
                         connectMore
@@ -98,6 +115,9 @@ struct CalendarsSettingsView: View {
         }
         .task { await load() }
         .task { if let r = try? await api.countdowns() { sleeps = r.sleeps; birthdayHorizon = r.birthdayHorizonDays } }
+        .sheet(item: $editingFeed) { target in
+            IcsFeedEditorSheet(feed: target.feed, members: sync.members) { Task { await load() } }
+        }
     }
 
     /// Friendly presets for the birthday-horizon window.
@@ -204,30 +224,148 @@ struct CalendarsSettingsView: View {
 
     // MARK: connect
 
+    // MARK: ICS feed subscriptions
+
+    private var isAdmin: Bool { sync.currentPerson?.isAdmin == true }
+
+    /// Subscribed ICS calendars. Unlike an OAuth account these are one-way: Waffled
+    /// polls the URL and the events arrive read-only.
+    private func feedsSection(_ feeds: [WaffledAPI.CalendarStatus.Feed]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text("🔗 Calendar feeds").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+                Spacer(minLength: 0)
+                if isAdmin {
+                    Button { editingFeed = .new } label: {
+                        Text("Add").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
+                            .padding(.horizontal, 11).padding(.vertical, 6)
+                            .background(WF.panel).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if feeds.isEmpty {
+                Text("Follow a calendar by link — school terms, a sports fixture list, holidays. Events come in read-only.")
+                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 8) { ForEach(feeds) { f in feedRow(f) } }
+            }
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+    }
+
+    private func feedRow(_ f: WaffledAPI.CalendarStatus.Feed) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 9) {
+                Image(systemName: "link").font(.system(size: 13)).foregroundStyle(WF.ink3)
+                Text(f.displayName).font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(WF.ink).lineLimit(1)
+                Spacer(minLength: 0)
+                if isAdmin {
+                    Menu {
+                        Button("Sync now") { Task { await syncFeed(f.id) } }
+                        Button("Edit") { editingFeed = .edit(f) }
+                        Button("Remove", role: .destructive) { Task { await removeFeed(f.id) } }
+                    } label: {
+                        Image(systemName: "ellipsis").font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(WF.ink3).frame(width: 28, height: 28)
+                    }
+                }
+            }
+            Text(feedStatusLine(f))
+                .font(.system(size: 11.5))
+                .foregroundStyle(f.hasError ? WF.danger : WF.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(11)
+        .background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+    }
+
+    /// A failing feed leads with why — a silently stale calendar is worse than a
+    /// visibly broken one.
+    private func feedStatusLine(_ f: WaffledAPI.CalendarStatus.Feed) -> String {
+        var parts: [String] = []
+        if f.hasError { parts.append("⚠️ \(f.lastError ?? "sync failed")") }
+        else { parts.append(f.lastSyncedAt.map { "Synced \(when($0))" } ?? "Will sync shortly") }
+        parts.append(f.personName.map { "👤 \($0)" } ?? "👪 Whole family")
+        if f.visibility == "personal" { parts.append("🔒 Private") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func syncFeed(_ id: String) async {
+        message = nil
+        do {
+            let r = try await api.syncIcsFeed(id: id)
+            message = r.error.map { "Feed sync failed: \($0)" }
+                ?? "Imported \(r.imported), updated \(r.updated), removed \(r.deleted)."
+        } catch {
+            message = "Couldn’t sync that feed."
+        }
+        await load()
+    }
+
+    /// `try?` here would swallow the refusal and reload, redrawing the unchanged row
+    /// with no explanation — the same shape as the delete bug this branch fixed on
+    /// the event detail screen. If the server says no, say so.
+    private func removeFeed(_ id: String) async {
+        message = nil
+        do {
+            try await api.deleteIcsFeed(id: id)
+        } catch {
+            message = APIErrorText.message(for: error, fallback: "Couldn’t remove that feed.")
+        }
+        await load()
+    }
+
+    /// Whichever providers this server actually holds credentials for.
+    private var providers: [CalendarProvider] {
+        CalendarProvider.offered(googleConfigured: status?.configured ?? false,
+                                 microsoftConfigured: status?.microsoftConfigured ?? false)
+    }
+
     private var connectCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Connect a Google account").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
-            Text("Bring your family’s Google calendars into Waffled — you’ll pick which ones sync and who each belongs to.")
+            Text("Connect a calendar account").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
+            Text("Bring your family’s calendars into Waffled — you’ll pick which ones sync and who each belongs to.")
                 .font(.system(size: 13)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
-            connectButton
+            connectButtons
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
-    private var connectMore: some View { connectButton }
+    private var connectMore: some View { connectButtons }
 
-    private var connectButton: some View {
-        Button { Task { await connect() } } label: {
+    /// One button per configured provider. The first is the filled primary; any
+    /// others are outlined, so a two-provider server doesn't read as two equal calls
+    /// to action stacked on each other.
+    private var connectButtons: some View {
+        VStack(spacing: 8) {
+            ForEach(Array(providers.enumerated()), id: \.element) { idx, p in
+                connectButton(p, prominent: idx == 0)
+            }
+        }
+    }
+
+    private func connectButton(_ provider: CalendarProvider, prominent: Bool) -> some View {
+        Button { Task { await connect(provider) } } label: {
             HStack(spacing: 7) {
                 Image(systemName: "link").font(.system(size: 13, weight: .bold))
-                Text(connecting ? "Connecting…" : "Connect Google Calendar").font(.system(size: 14, weight: .bold))
+                Text(connecting == provider ? "Connecting…" : provider.connectTitle)
+                    .font(.system(size: 14, weight: .bold))
             }
-            .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 12)
-            .background(WF.primary).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .foregroundStyle(prominent ? Color.white : WF.ink)
+            .frame(maxWidth: .infinity).padding(.vertical, 12)
+            .background(prominent ? AnyShapeStyle(WF.primary) : AnyShapeStyle(WF.panel))
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
-        .buttonStyle(.plain).disabled(connecting)
+        .buttonStyle(.plain).disabled(connecting != nil)
     }
 
     // MARK: an account
@@ -242,8 +380,11 @@ struct CalendarsSettingsView: View {
                 Image(systemName: "link").font(.system(size: 15)).foregroundStyle(WF.ai)
                     .frame(width: 30, height: 30).background(WF.panel).clipShape(Circle())
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(acct.email ?? "Google account").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
-                    Text("\(synced) of \(all.count) syncing · connected \(shortDay(acct.connectedAt))")
+                    Text(acct.email ?? CalendarProvider.accountLabel(for: acct.provider))
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
+                    // Name the provider on every row — with both Google and Outlook
+                    // connectable, an email alone doesn't say which service it is.
+                    Text("\(CalendarProvider.accountLabel(for: acct.provider)) · \(synced) of \(all.count) syncing · connected \(shortDay(acct.connectedAt))")
                         .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
@@ -411,16 +552,17 @@ struct CalendarsSettingsView: View {
         await load()
     }
 
-    private func connect() async {
-        connecting = true; message = nil
-        defer { connecting = false }
+    private func connect(_ provider: CalendarProvider) async {
+        connecting = provider; message = nil
+        defer { connecting = nil }
         do {
-            let urlStr = try await api.connectCalendarURL(redirectTo: "waffled://calendar-connected")
+            let urlStr = try await api.connectCalendarURL(provider: provider,
+                                                          redirectTo: "waffled://calendar-connected")
             guard let url = URL(string: urlStr) else { return }
             let ok = await launcher.start(url: url, scheme: "waffled")
             if ok { await load() }
         } catch {
-            message = "Couldn’t start the Google connection."
+            message = "Couldn’t start the \(provider.label) connection."
         }
     }
 

@@ -60,20 +60,26 @@ and its events appear on the family calendar. Feeds are read-only and need **no
 sign-in or OAuth setup**; the URL is the whole credential, which makes them the
 plan B when a workplace won't approve calendar OAuth access.
 
-- **Add one in Settings → Calendars → Calendar feeds** (admins): paste an `.ics`
+- **Add one in Settings → Calendars → Calendar feeds** (admins), on **web, iPhone or
+  iPad**: paste an `.ics`
   or `webcal://` URL (webcal links are fetched over HTTPS) and optionally name it.
   The first refresh runs as soon as you add the feed; after that every feed is
   polled **every 15 minutes** (`ICS_SYNC_INTERVAL_MS`, `0` disables), and each
   feed row has an **↻ Sync** button when you don't want to wait for the cycle.
 - **Person mapping & privacy** — map a feed to a person to color its events, and
   tick the row's **Private** checkbox to keep its events visible only to that
-  person (the same family/personal visibility model as synced calendars).
-- **Feed events are read-only.** A feed is a mirror of someone else's calendar and
-  there's no way to write back to it, so Waffled won't let you edit or delete an
-  imported event — the Edit and Delete actions are hidden and the API refuses the
-  change. (Allowing it would be a lie: the next refresh restamps the event from the
-  feed.) Change it at the source, or remove the feed. You *can* still set a local
-  **reminder** on a feed event.
+  person (the same family/personal visibility model as synced calendars). Private
+  is offered only once the feed belongs to someone: "private to nobody" would hide
+  the feed from everyone, including you, so unassigning a private feed shares it
+  back with the family.
+- **Feed events are read-only, everywhere.** A feed is a mirror of someone else's
+  calendar and there's no way to write back to it, so Waffled won't let you edit or
+  delete an imported event. Web and the iPhone/iPad apps hide the Edit and Delete
+  actions and say where the event comes from; the API refuses the change whichever
+  route it arrives by — the REST endpoints, an offline edit queued on a phone, or
+  quick-add ("move the dentist appointment to Friday"). (Allowing it would be a lie:
+  the next refresh restamps the event from the feed.) Change it at the source, or
+  remove the feed. You *can* still set a local **reminder** on a feed event.
 - **Recurring events** expand like any native series. One known limitation: a
   single moved/edited occurrence in the feed (an ICS `RECURRENCE-ID` exception)
   isn't applied — the base series renders as published.

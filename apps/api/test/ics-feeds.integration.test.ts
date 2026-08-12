@@ -221,6 +221,31 @@ describe('ICS calendar feeds', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  // "Personal" means "only the person it belongs to sees it", so a personal feed
+  // that belongs to nobody is a feed nobody can see: its events land with
+  // owner_person_id = NULL, and the visibility filter is
+  // `visibility = 'family' or owner_person_id = $viewer`, which NULL never matches.
+  // Worse, it looks like it worked — the feed syncs green with real import counts
+  // and no error, so the admin goes and debugs a URL that was fine. Refuse the
+  // combination at the one door every client comes through.
+  it('refuses a personal feed that belongs to nobody', async () => {
+    const res = await call('POST', '/api/calendar/feeds', kevin, {
+      url: `http://127.0.0.1:${stubPort}/school.ics`,
+      visibility: 'personal',
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/person/i)
+
+    // Personal WITH an owner is exactly what the option is for.
+    const ok = await call('POST', '/api/calendar/feeds', kevin, {
+      url: `http://127.0.0.1:${stubPort}/school.ics`,
+      visibility: 'personal',
+      personId: wallyId,
+    })
+    expect(ok.statusCode).toBe(201)
+    await dbQuery(`delete from ics_feeds where id = $1`, [JSON.parse(ok.body).feed.id])
+  })
+
   it('adds a feed (admin) and any member can list it', async () => {
     const res = await call('POST', '/api/calendar/feeds', kevin, {
       url: `http://127.0.0.1:${stubPort}/school.ics`,
@@ -412,11 +437,33 @@ describe('ICS calendar feeds', () => {
     expect((await call('PATCH', `/api/calendar/feeds/${feedId}`, wally, { name: 'x' })).statusCode).toBe(403)
   })
 
+  // The same rule has to hold for edits, and on the RESULTING state rather than on
+  // whatever the body happens to mention: this feed is already personal, so clearing
+  // its person alone would strand it, without the word "visibility" appearing in the
+  // request at all.
+  it('refuses an edit that would leave a personal feed with nobody', async () => {
+    const orphaned = await call('PATCH', `/api/calendar/feeds/${feedId}`, kevin, { personId: null })
+    expect(orphaned.statusCode).toBe(400)
+    expect(JSON.parse(orphaned.body).message).toMatch(/person/i)
+
+    // Unchanged: the rejected edit must not have half-applied.
+    const after = await call('GET', '/api/calendar/feeds', kevin)
+    expect(JSON.parse(after.body).feeds[0]).toMatchObject({ personId: wallyId, visibility: 'personal' })
+
+    // Dropping the person AND going back to family together is fine.
+    const ok = await call('PATCH', `/api/calendar/feeds/${feedId}`, kevin, { personId: null, visibility: 'family' })
+    expect(ok.statusCode).toBe(200)
+    // Put it back for the tests that follow.
+    expect((await call('PATCH', `/api/calendar/feeds/${feedId}`, kevin,
+      { personId: wallyId, visibility: 'personal' })).statusCode).toBe(200)
+  })
+
   // Feed events are a read-only mirror of someone else's calendar: Waffled has no
   // way to write back, and the next 15-minute poll would restamp any local edit
   // (and resurrect any local delete) from the feed. Rejecting the mutation is
-  // honest; silently reverting it 15 minutes later is not. Enforced in the API so
-  // iOS — which gets these rows over PowerSync and has no feed UI — is covered too.
+  // honest; silently reverting it 15 minutes later is not. Enforced in the API
+  // because each client reaches events by a different route — the apps gate their
+  // own controls on top, but this is what makes the rule true.
   it('refuses to edit or delete an event imported from a feed', async () => {
     const ev = await dbQuery<{ id: string }>(
       `select id from events where origin = 'ics' and origin_ref_id = $1 and deleted_at is null limit 1`,
@@ -467,6 +514,69 @@ describe('ICS calendar feeds', () => {
       `select title, deleted_at from events where id = $1`, [eventId]
     )
     expect(after[0].title).toBe(originalTitle)
+    expect(after[0].deleted_at).toBeNull()
+  })
+
+  // The third write path: quick-add's mutate verbs. `reschedule` and `delete` on a
+  // calendar event call updateEvent/softDeleteEvent directly rather than going
+  // through /api/events, so the route guard doesn't cover them — "move the dentist
+  // appointment to Friday" would happily rewrite a row the feed owns, and the next
+  // poll would stamp it back.
+  //
+  // Two layers, matching how the capture registry handles anything it can't do: the
+  // resolver never offers a feed event as a candidate (so no confirm button appears
+  // that was always going to fail), and commit refuses outright for a client that
+  // sends an id anyway.
+  it('never offers a feed event to quick-add', async () => {
+    // An earlier test made this feed personal to Wally; put it back so Kevin can
+    // actually see the events (otherwise these two would pass for the wrong reason).
+    await call('PATCH', `/api/calendar/feeds/${feedId}`, kevin, { personId: null, visibility: 'family' })
+
+    // Ask by the exact title of a live feed event — earlier tests swap the feed's
+    // contents, so reading it back is what keeps this from passing vacuously.
+    const ev = await dbQuery<{ title: string }>(
+      `select title from events
+        where origin = 'ics' and origin_ref_id = $1 and deleted_at is null and starts_at > now()
+        limit 1`,
+      [feedId]
+    )
+    const feedTitle = ev[0].title
+    expect(feedTitle).toBeTruthy()
+
+    const res = await call('POST', '/api/capture/resolve', kevin, {
+      targetKind: 'event', verb: 'reschedule',
+      target: { description: feedTitle }, args: { date: '2026-07-20' },
+    })
+    expect(res.statusCode).toBe(200)
+    const titles = (JSON.parse(res.body).candidates as Array<{ title: string }>).map((c) => c.title)
+    expect(titles).not.toContain(feedTitle)
+  })
+
+  it('refuses a quick-add reschedule or cancel aimed at a feed event', async () => {
+    const ev = await dbQuery<{ id: string; title: string; starts_at: Date }>(
+      `select id, title, starts_at from events
+        where origin = 'ics' and origin_ref_id = $1 and deleted_at is null and rrule is null
+        limit 1`,
+      [feedId]
+    )
+    const eventId = ev[0].id
+    const originalStart = ev[0].starts_at
+
+    const moved = await call('POST', '/api/capture/commit', kevin, {
+      targetKind: 'event', verb: 'reschedule', targetId: eventId, args: { date: '2026-07-20' },
+    })
+    expect(moved.statusCode).toBe(409)
+    expect(JSON.parse(moved.body).error).toBe('ReadOnlyEvent')
+
+    const cancelled = await call('POST', '/api/capture/commit', kevin, {
+      targetKind: 'event', verb: 'delete', targetId: eventId, args: {},
+    })
+    expect(cancelled.statusCode).toBe(409)
+
+    const after = await dbQuery<{ starts_at: Date; deleted_at: Date | null }>(
+      `select starts_at, deleted_at from events where id = $1`, [eventId]
+    )
+    expect(after[0].starts_at.toISOString()).toBe(originalStart.toISOString())
     expect(after[0].deleted_at).toBeNull()
   })
 

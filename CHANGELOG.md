@@ -16,31 +16,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Two-way Outlook / Microsoft 365 calendar sync, right beside Google.** Connect an
-  Outlook or Microsoft 365 account in Settings → Calendars and it syncs both ways on the
+  Outlook or Microsoft 365 account in Settings → Calendars — on the web, iPhone or iPad —
+  and it syncs both ways on the
   same engine and the same schedule as Google — pick which calendars sync, who each one
   belongs to, and which is the write-target for events Waffled creates. A household can mix
   Google and Microsoft accounts freely, and each connected account shows which provider it
-  came from. Needs a free Azure app registration; see the new
+  came from. You're only offered the providers your server is actually set up for. Needs a
+  free Azure app registration; see the new
   [Outlook / Microsoft 365](https://waffled.app/docs/administration/outlook-calendar/) guide.
 - **Subscribe to any published calendar link (ICS feeds).** Paste a school schedule, a
   sports-team calendar, or a work calendar published from Outlook into Settings → Calendars
   and its events show up on the family calendar — no sign-in, no OAuth setup, nothing to
   approve. This is the plan B when a workplace won't approve calendar access. Feeds refresh
   every 15 minutes (with a per-feed Sync button), can be mapped to a person for colour, and
-  can be marked private. Their events are **read-only everywhere, including on iPhone and
-  iPad**: a feed mirrors someone else's calendar, so rather than accept an edit and silently
-  undo it at the next refresh, Waffled hides Edit and Delete and tells you to change it at
-  the source.
+  can be marked private — and you can manage all of that from the web, iPhone or iPad. A
+  feed that stops working says so, instead of just going quietly stale. Their events are
+  **read-only everywhere**: a feed mirrors someone else's calendar, so rather than accept an
+  edit and silently undo it at the next refresh, Waffled hides Edit and Delete, tells you
+  where the event came from, and refuses the change however it arrives — including from
+  quick-add or an edit made offline.
 - **Share any list to a phone.** **Share list** turns whatever's still unchecked into a
-  clean text list and hands it over by share sheet, clipboard, or QR code — from the grocery
-  board's top bar, or a custom list's **⋯** menu. The QR encodes the list *itself* rather
-  than a link, so whoever is going shopping just points a camera at the kiosk: no app, no
-  account, no sign-in. Items are grouped the way you read them — by aisle in walking order
-  on the grocery board, by section on a custom list, and as a plain list when there are no
-  sections — with quantities, plus the **store** and **who it's for** when you've set them,
-  so a run split across two shops still makes sense. A list too long to fit in a code a
-  camera can actually read says so and points you at Copy or Share, rather than showing a QR
-  that can't be scanned.
+  clean text list and hands it over — from the grocery board's top bar, or a custom list's
+  **⋯** menu, on every surface. Items are grouped the way you read them — by aisle in
+  walking order on the grocery board, by section on a custom list, and as a plain list when
+  there are no sections — with quantities, plus the **store** and **who it's for** when
+  you've set them, so a run split across two shops still makes sense.
+  On the web and the kiosk you can also point a phone camera at a **QR code** that encodes
+  the list *itself* rather than a link, so whoever is going shopping needs no app, no
+  account and no sign-in; a list too long to fit in a code a camera can actually read says
+  so and points you at Copy or Share, rather than showing a QR that can't be scanned.
+  On iPhone and iPad it opens the system share sheet instead — the QR is there to get a
+  list onto a phone, and you're already holding one.
 - **Build one meal out of several recipes.** Dinner is rarely a single dish, but the
   planner only ever let you plan one recipe a night. The new **Meal Builder** lets you
   put a whole meal together: name it, drag recipes in from your library under Main,

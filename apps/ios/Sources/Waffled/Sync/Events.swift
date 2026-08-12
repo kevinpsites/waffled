@@ -10,6 +10,10 @@ struct SyncedEvent: Identifiable, Sendable, Equatable {
     let personId: String?
     let colorHex: String?
     let emoji: String?
+    /// Where the event came from: nil/'waffled' (ours), 'google'/'microsoft' (a
+    /// synced provider calendar we can push back to), or 'ics' (a subscribed feed
+    /// we can only read). Replicated so the read-only gate works offline.
+    var origin: String? = nil
     var endsAt: Date? = nil
     /// Waffled-owned "show a countdown" flag; surfaces in `GET /api/countdowns`.
     var isCountdown: Bool = false
@@ -25,6 +29,48 @@ struct SyncedEvent: Identifiable, Sendable, Equatable {
     /// owner sees it). Denormalized from the event's calendar; filtered per-viewer.
     var visibility: String = "family"
     var ownerPersonId: String? = nil
+
+    /// Is this somebody else's event, that we can show but never change?
+    var isReadOnly: Bool { EventOrigin.isReadOnly(origin) }
+}
+
+/// Which event origins Waffled may edit.
+///
+/// An ICS subscription is a one-way read: Waffled polls the URL and has nowhere to
+/// send a change back to, so the server refuses edits and deletes on those events
+/// (`409 ReadOnlyEvent` on REST; the PowerSync upload sink drops non-PUT ops on
+/// them). The app must check BEFORE offering the action — otherwise the edit
+/// applies to the local mirror, the server rejects it unseen, and the next poll
+/// silently puts it back, which looks like the app losing the user's work.
+///
+/// Google and Outlook events stay editable: those have a write-target calendar and
+/// Waffled pushes changes back out to the provider.
+enum EventOrigin {
+    static let readOnlyOrigins: Set<String> = ["ics"]
+
+    static func isReadOnly(_ origin: String?) -> Bool {
+        guard let origin else { return false }
+        return readOnlyOrigins.contains(origin)
+    }
+
+    /// The detail screen has two sources for the origin: the REST detail DTO (rich,
+    /// but absent until it loads and never offline) and the local mirror row. Prefer
+    /// the server's answer, fall back to the mirror — never default to "editable"
+    /// just because the network is slow.
+    static func isReadOnly(detailOrigin: String?, mirrorOrigin: String?) -> Bool {
+        isReadOnly(detailOrigin ?? mirrorOrigin)
+    }
+
+    /// May `EventEditSheet` offer Save and Delete for this event?
+    ///
+    /// The gate lives on the SHEET rather than on the screens that present it: the
+    /// detail view is only one route in — `PersonView`'s day list opens the editor
+    /// directly — and gating each call site is only ever as complete as whoever
+    /// enumerated them. `nil` is a brand-new event, which is never gated.
+    static func blocksEditing(_ event: SyncedEvent?) -> Bool {
+        guard let event else { return false }
+        return event.isReadOnly
+    }
 }
 
 /// Timestamp handling that mirrors the web client (`events-local.ts`): server-

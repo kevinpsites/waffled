@@ -9,7 +9,9 @@ three of its features upstream (Outlook/M365 sync, ICS feeds, Share list).
 - **Fork last pushed:** 2026-08-08 · **reviewed:** 2026-08-11
 - **Shape:** 216 files, ~16.7k insertions
 - **Surfaces touched:** web + api + infra + docs. **Zero iOS changes** — every fork
-  feature is web/kiosk-only, so none of it has mobile parity.
+  feature is web/kiosk-only, so none of it had mobile parity. (The three features we
+  ported have since gained it on our side — see the iOS parity note under
+  [ICS feeds](#ics-feeds--the-most-self-contained-of-the-three).)
 
 ## 1. Verdict on quality
 
@@ -124,9 +126,17 @@ by the next 15-minute poll — and because the upsert sets `deleted_at = null`, 
 event comes back. This port makes them read-only at the API (`409 ReadOnlyEvent` on
 `/api/events` PATCH/DELETE, and a silent drop on the `/api/powersync/crud` offline path,
 since PowerSync retries a failed transaction forever and an error would wedge the device's
-upload queue). Enforcing server-side rather than in the UI matters because sync rules
-replicate `events` to iOS with no origin filter — feed events reach iPhone/iPad, which has
-no feed UI of its own.
+upload queue). Enforcing server-side rather than only in the UI matters because sync rules
+replicate `events` to iOS with no origin filter, and each client reaches events by a
+different route.
+
+**Update (iOS parity, 2026-08-11):** all three ported features now have iPhone/iPad
+counterparts — Outlook connect, full ICS feed management, and Share list — and the apps
+gate their own Edit/Delete on the event's origin rather than relying on the server's
+refusal. Auditing those write paths also turned up a third one the read-only rule never
+reached: quick-add's `reschedule`/`delete` verbs call `updateEvent`/`softDeleteEvent`
+directly, bypassing the `/api/events` guard, so "move the dentist appointment to Friday"
+rewrote a feed-owned row on **web too**. Fixed in the same PR.
 
 **Security note:** the feed URL is admin-supplied and fetched server-side, which is an
 SSRF surface (an admin could point a feed at an internal address and read the error).

@@ -866,7 +866,7 @@ final class SyncManager {
                     sql: """
                     SELECT e.id AS id, e.id AS series_id, NULL AS occurrence_start,
                            e.title, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.location, e.person_id,
-                           e.visibility, e.owner_person_id,
+                           e.visibility, e.owner_person_id, e.origin,
                            p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
                            (SELECT group_concat(ep.person_id) FROM event_participants ep
                              WHERE ep.event_id = e.id) AS participant_ids
@@ -878,6 +878,8 @@ final class SyncManager {
                            coalesce(o.title, m.title) AS title, o.starts_at, o.ends_at, o.all_day, m.is_countdown,
                            coalesce(o.location, m.location) AS location, o.person_id,
                            o.visibility, o.owner_person_id,
+                           -- an occurrence is as read-only as the series it belongs to
+                           m.origin AS origin,
                            p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
                            (SELECT group_concat(ep.person_id) FROM event_participants ep
                              WHERE ep.event_id = m.id) AS participant_ids
@@ -900,6 +902,7 @@ final class SyncManager {
                             personId: try cursor.getStringOptional(name: "person_id"),
                             colorHex: try cursor.getStringOptional(name: "person_color"),
                             emoji: try cursor.getStringOptional(name: "person_emoji"),
+                            origin: try cursor.getStringOptional(name: "origin"),
                             endsAt: EventTime.parse(try cursor.getStringOptional(name: "ends_at")),
                             isCountdown: (try cursor.getIntOptional(name: "is_countdown")) == 1,
                             location: try cursor.getStringOptional(name: "location"),
