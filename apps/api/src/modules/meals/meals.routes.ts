@@ -2,7 +2,7 @@
 // meals.service.ts; types in meals.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { moduleRoutes } from '../../platform/route-guards'
+import { moduleRoutes, requireModule } from '../../platform/route-guards'
 import {
   syncMealEventForEntry,
   removeMealEventForEntry,
@@ -54,7 +54,25 @@ import {
   assertPersonInHousehold,
   assertPersonsInHousehold,
   assertRecipeInHousehold,
+  assertMealInHousehold,
 } from '../../platform/household-refs'
+import {
+  createMeal,
+  getMeal,
+  updateMeal,
+  softDeleteMeal,
+  setMealRecipe,
+  patchMealRecipe,
+  removeMealRecipe,
+  reorderMealRecipes,
+  flattenMealInto,
+  copyMeal,
+  presentMeal,
+  listMeals,
+  type MealRecipeInput,
+} from './meal-builder.service'
+import { onHandForRecipe } from '../pantry/on-hand'
+import { addMealToGrocery, removeMealFromGrocery, householdWeekStart, presentListItem } from '../lists/lists.service'
 import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
@@ -117,7 +135,13 @@ export function registerMealRoutes(api: Api): void {
       ...s,
       note: stepNotes[String(s.stepNumber)] ?? null,
     }))
-    return { recipe: presentRecipe(recipe), ingredients, steps }
+    // Real pantry-matched on-hand for the detail banner. `onHand` is null when the
+    // pantry module is off (show no claim at all); `toBuy` is not pantry-derived and
+    // always answers "how many of these will land on the grocery list".
+    // `toBuyNames` is what makes the count actionable: with the pantry ON the count
+    // is the *unmatched* subset, which the client cannot derive from `ingredients`.
+    const { onHand, toBuy, toBuyNames } = await onHandForRecipe(tenant.householdId, id)
+    return { recipe: presentRecipe(recipe), ingredients, steps, onHand, toBuy, toBuyNames }
   }))
 
   // Compile a recipe into the blessed Markdown format (docs/RECIPE_FORMAT.md) for
@@ -325,6 +349,7 @@ export function registerMealRoutes(api: Api): void {
       date?: string
       mealType?: string
       recipeId?: string
+      mealId?: string
       title?: string
       cookPersonId?: string
     }
@@ -342,6 +367,29 @@ export function registerMealRoutes(api: Api): void {
       recipeId = body.recipeId
       await assertRecipeInHousehold(tenant.householdId, recipeId)
     }
+    // A slot points at EITHER a recipe or a Meal Builder plate. Re-planning with a
+    // plate is how a planner **drag** moves a dinner — the same plate relocates, it is
+    // not copied (that's `POST /api/meals/:id/schedule`, which deliberately copies a
+    // saved plate so editing next week's can't rewrite last week's). Without this, a
+    // dragged plate lands as a bare title and its dishes, cooks and grocery
+    // contribution are all silently dropped.
+    // A slot points at ONE thing. With both written, `isMealBacked` and `hasRecipe` are
+    // simultaneously true and two surfaces disagree about the same night — the planner
+    // opens the plate while the Today card opens the recipe. There's no CHECK constraint
+    // behind this, so the route is where it has to be refused.
+    if (recipeId && body.mealId != null && body.mealId !== '') {
+      return res
+        .status(400)
+        .json({ error: 'BadRequest', message: 'a slot takes recipeId or mealId, not both' })
+    }
+    let mealId: string | null = null
+    if (body.mealId != null && body.mealId !== '') {
+      if (!UUID_RE.test(body.mealId)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'mealId must be a uuid' })
+      }
+      mealId = body.mealId
+      await assertMealInHousehold(tenant.householdId, mealId)
+    }
     let cookPersonId: string | null = null
     if (body.cookPersonId != null && body.cookPersonId !== '') {
       if (!UUID_RE.test(body.cookPersonId)) {
@@ -355,6 +403,7 @@ export function registerMealRoutes(api: Api): void {
       date: body.date,
       mealType: body.mealType,
       recipeId,
+      mealId,
       title: body.title ?? null,
       cookPersonId,
     })
@@ -432,12 +481,23 @@ export function registerMealRoutes(api: Api): void {
   api.get('/api/meals/entry/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
-    const { rows } = await query<{ recipe_id: string | null; title: string | null }>(
-      `select recipe_id, title from meal_plan_entries where household_id=$1 and id=$2 and deleted_at is null`,
+    const { rows } = await query<{ recipe_id: string | null; meal_id: string | null; title: string | null }>(
+      `select recipe_id, meal_id, title from meal_plan_entries where household_id=$1 and id=$2 and deleted_at is null`,
       [tenant.householdId, id]
     )
     if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
-    return { recipeId: rows[0].recipe_id, title: rows[0].title }
+    // A Meal Builder plate in the slot resolves to every recipe on the plate, so the
+    // calendar can open the plate (or any one dish) instead of a single recipe.
+    const mealId = rows[0].meal_id
+    const dishes = mealId
+      ? (await query<{ recipe_id: string }>(
+          `select mr.recipe_id from meal_recipes mr where mr.meal_id = $1 order by mr.sort_order`,
+          [mealId]
+        )).rows.map((r) => r.recipe_id)
+      : rows[0].recipe_id
+        ? [rows[0].recipe_id]
+        : []
+    return { recipeId: rows[0].recipe_id, mealId, recipeIds: dishes, title: rows[0].title }
   }))
 
   // The planned week (entries joined to recipes) — powers the kiosk meal card.
@@ -564,5 +624,246 @@ export function registerMealRoutes(api: Api): void {
       }
       return { start, mealType: 'dinner', suggestions: [], via: 'none', error: message }
     }
+  }))
+
+  // ── Meal Builder (plates) ──────────────────────────────────────────────────
+  // A "plate" is a named, multi-recipe meal. Registered last so the static
+  // /api/meals/* routes above (week, plan, entry, calendar-settings, …) always win
+  // over /api/meals/:id — lambda-api prefers a literal segment over a path variable,
+  // but keeping these together is the readable guarantee.
+
+  // Validate + normalise one dish from a request body.
+  async function readDish(householdId: string, raw: unknown): Promise<MealRecipeInput> {
+    const d = (raw ?? {}) as { recipeId?: string; role?: unknown; sortOrder?: unknown; cookPersonId?: unknown }
+    const recipeId = typeof d.recipeId === 'string' ? d.recipeId : ''
+    await assertRecipeInHousehold(householdId, recipeId)
+    // `undefined` means "the caller didn't mention this", `null` means "clear it".
+    // Collapsing the two made a bare re-add of an existing dish reset everything it
+    // didn't name — see setMealRecipe.
+    let cookPersonId: string | null | undefined
+    if ('cookPersonId' in d) {
+      if (typeof d.cookPersonId === 'string' && d.cookPersonId) {
+        await assertPersonInHousehold(householdId, d.cookPersonId)
+        cookPersonId = d.cookPersonId
+      } else {
+        cookPersonId = null
+      }
+    }
+    const role = typeof d.role === 'string' && d.role.trim() ? d.role.trim().slice(0, 40) : undefined
+    return {
+      recipeId,
+      role,
+      sortOrder: typeof d.sortOrder === 'number' ? Math.trunc(d.sortOrder) : undefined,
+      cookPersonId,
+    }
+  }
+
+  // Load a plate or answer 404 — every :id route starts here, so another
+  // household's plate is indistinguishable from a missing one.
+  async function loadMeal(tenant: { householdId: string }, req: Request, res: Response) {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) {
+      res.status(404).json({ error: 'NotFound', message: 'meal not found' })
+      return null
+    }
+    const meal = await getMeal(tenant.householdId, id)
+    if (!meal) {
+      res.status(404).json({ error: 'NotFound', message: 'meal not found' })
+      return null
+    }
+    return meal
+  }
+
+  // Create a plate. `recipes` seeds the dishes in the given order.
+  api.post('/api/meals', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const b = (req.body ?? {}) as { name?: string; servings?: unknown; isSaved?: unknown; recipes?: unknown }
+    if (typeof b.name !== 'string' || !b.name.trim()) {
+      return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
+    }
+    const dishes: MealRecipeInput[] = []
+    if (Array.isArray(b.recipes)) {
+      for (const raw of b.recipes) dishes.push(await readDish(tenant.householdId, raw))
+    }
+    const meal = await createMeal(tenant, {
+      name: b.name,
+      servings: typeof b.servings === 'number' && b.servings > 0 ? Math.trunc(b.servings) : null,
+      isSaved: typeof b.isSaved === 'boolean' ? b.isSaved : false,
+    })
+    for (const [i, d] of dishes.entries()) await setMealRecipe(meal.id, { ...d, sortOrder: d.sortOrder ?? i })
+    return res.status(201).json({ meal: await presentMeal(tenant.householdId, meal) })
+  }))
+
+  // The saved-meal library: list + search (?q=). Saved meals are first-class members
+  // of the recipe library, so clients merge these with GET /api/recipes.
+  api.get('/api/meals', tenantRoute(async (tenant, req: Request) => {
+    const q = typeof req.query?.q === 'string' ? req.query.q : ''
+    const limitRaw = Number(req.query?.limit)
+    const meals = await listMeals(tenant.householdId, { q, limit: Number.isFinite(limitRaw) ? limitRaw : undefined })
+    return { meals }
+  }))
+
+  api.get('/api/meals/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const meal = await loadMeal(tenant, req, res)
+    if (!meal) return
+    return res.status(200).json({ meal: await presentMeal(tenant.householdId, meal) })
+  }))
+
+  api.patch('/api/meals/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const existing = await loadMeal(tenant, req, res)
+    if (!existing) return
+    const b = (req.body ?? {}) as { name?: unknown; servings?: unknown; isSaved?: unknown }
+    if (b.name != null && (typeof b.name !== 'string' || !b.name.trim())) {
+      return res.status(400).json({ error: 'BadRequest', message: 'name cannot be blank' })
+    }
+    const meal = await updateMeal(tenant.householdId, existing.id, {
+      name: typeof b.name === 'string' ? b.name : undefined,
+      servings: typeof b.servings === 'number' && b.servings > 0 ? Math.trunc(b.servings) : undefined,
+      isSaved: typeof b.isSaved === 'boolean' ? b.isSaved : undefined,
+    })
+    if (!meal) return res.status(404).json({ error: 'NotFound', message: 'meal not found' })
+    return res.status(200).json({ meal: await presentMeal(tenant.householdId, meal) })
+  }))
+
+  api.delete('/api/meals/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const meal = await loadMeal(tenant, req, res)
+    if (!meal) return
+    await softDeleteMeal(tenant.householdId, meal.id)
+    return res.status(204).send('')
+  }))
+
+  // Add a dish — either a recipe (`recipeId`) or a SAVED MEAL (`mealId`), which is
+  // FLATTENED into individual dishes. Meals never nest (decision 12).
+  api.post('/api/meals/:id/recipes', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const meal = await loadMeal(tenant, req, res)
+    if (!meal) return
+    const b = (req.body ?? {}) as { recipeId?: unknown; mealId?: unknown }
+    if (typeof b.mealId === 'string' && b.mealId) {
+      await assertMealInHousehold(tenant.householdId, b.mealId)
+      await flattenMealInto(tenant.householdId, meal.id, b.mealId)
+      return res.status(200).json({ meal: await presentMeal(tenant.householdId, meal) })
+    }
+    if (typeof b.recipeId !== 'string' || !b.recipeId) {
+      return res.status(400).json({ error: 'BadRequest', message: 'recipeId or mealId is required' })
+    }
+    await setMealRecipe(meal.id, await readDish(tenant.householdId, b))
+    return res.status(200).json({ meal: await presentMeal(tenant.householdId, meal) })
+  }))
+
+  // Reorder the plate. Registered before the :recipeId route below purely for
+  // readability — 'order' is a literal segment, so it can never be read as an id.
+  api.put('/api/meals/:id/recipes/order', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const meal = await loadMeal(tenant, req, res)
+    if (!meal) return
+    const b = (req.body ?? {}) as { recipeIds?: unknown }
+    if (!Array.isArray(b.recipeIds) || b.recipeIds.some((id) => typeof id !== 'string')) {
+      return res.status(400).json({ error: 'BadRequest', message: 'recipeIds must be an array of ids' })
+    }
+    await reorderMealRecipes(tenant.householdId, meal.id, b.recipeIds as string[])
+    return res.status(200).json({ meal: await presentMeal(tenant.householdId, meal) })
+  }))
+
+  // Per-dish edits: its role, its place on the plate, and who's cooking it (a
+  // four-dish plate has up to four cooks).
+  api.patch('/api/meals/:id/recipes/:recipeId', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const meal = await loadMeal(tenant, req, res)
+    if (!meal) return
+    const recipeId = req.params.recipeId ?? ''
+    if (!UUID_RE.test(recipeId)) return res.status(404).json({ error: 'NotFound', message: 'dish not found' })
+    const b = (req.body ?? {}) as { role?: unknown; sortOrder?: unknown; cookPersonId?: unknown }
+    const patch: { role?: string; sortOrder?: number; cookPersonId?: string | null } = {}
+    if (typeof b.role === 'string') patch.role = b.role.trim().slice(0, 40)
+    if (typeof b.sortOrder === 'number') patch.sortOrder = Math.trunc(b.sortOrder)
+    if ('cookPersonId' in b) {
+      if (b.cookPersonId == null || b.cookPersonId === '') patch.cookPersonId = null
+      else if (typeof b.cookPersonId === 'string') {
+        await assertPersonInHousehold(tenant.householdId, b.cookPersonId)
+        patch.cookPersonId = b.cookPersonId
+      }
+    }
+    const ok = await patchMealRecipe(meal.id, recipeId, patch)
+    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'dish not found' })
+    return res.status(200).json({ meal: await presentMeal(tenant.householdId, meal) })
+  }))
+
+  // Schedule a plate into a (date, meal_type) slot. Writes a meal_plan_entries row
+  // with meal_id set and recipe_id NULL, honouring the existing
+  // (meal_plan_id, date, meal_type) unique index — so it replaces whatever was there.
+  //
+  // Scheduling a SAVED plate COPIES it: editing next week's BBQ Sunday must not
+  // rewrite the plate that already went out last week. A one-off (unsaved) plate is
+  // scheduled as itself.
+  api.post('/api/meals/:id/schedule', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const meal = await loadMeal(tenant, req, res)
+    if (!meal) return
+    const b = (req.body ?? {}) as { date?: string; mealType?: string; cookPersonId?: unknown }
+    if (!b.date || !DATE_RE.test(b.date) || !b.mealType || !MEAL_TYPES.has(b.mealType)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'date (YYYY-MM-DD) and mealType are required' })
+    }
+    let cookPersonId: string | null = null
+    if (typeof b.cookPersonId === 'string' && b.cookPersonId) {
+      await assertPersonInHousehold(tenant.householdId, b.cookPersonId)
+      cookPersonId = b.cookPersonId
+    }
+    const scheduled = meal.is_saved ? await copyMeal(tenant, meal.id) : meal
+    const plan = await getOrCreateActivePlan(tenant)
+    const entry = await upsertEntry(plan.id, tenant, {
+      date: b.date,
+      mealType: b.mealType,
+      recipeId: null,
+      mealId: scheduled.id,
+      title: scheduled.name,
+      cookPersonId,
+    })
+    await syncMealEventForEntry(tenant, entry.id).catch((err) => console.error('meal event sync failed', err))
+    await syncPrepReminderForEntry(tenant, entry.id).catch((err) => console.error('prep reminder sync failed', err))
+    return res.status(200).json({ entry: presentEntry(entry), meal: await presentMeal(tenant.householdId, scheduled) })
+  }))
+
+  // "Add plate to list" — put the whole plate's shopping on the grocery list without
+  // scheduling it anywhere. Rows land as source='recipe' (an explicit off-plan add
+  // the weekly rebuild must never wipe) and are credited to the plate, so the board
+  // can group them under one parent row.
+  api.post('/api/meals/:id/add-to-list', tenantRoute(async (tenant, req: Request, res: Response) => {
+    // Double-gated: this writes grocery rows, which belong to the lists module, so a
+    // household that has turned lists off must not be able to grow a list from the
+    // meals side. Mirrors /api/lists/grocery/from-recipe, which is lists-gated.
+    await requireModule(tenant, 'lists')
+    const meal = await loadMeal(tenant, req, res)
+    if (!meal) return
+    const ws = typeof req.query?.weekStart === 'string' ? req.query.weekStart : ''
+    let weekStart = await householdWeekStart(tenant.householdId)
+    if (DATE_RE.test(ws)) {
+      const d = new Date(`${ws}T00:00:00Z`)
+      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ws) weekStart = ws
+    }
+    const added = await addMealToGrocery(tenant, meal.id, weekStart)
+    if (added === null) return res.status(404).json({ error: 'NotFound', message: 'meal not found' })
+    return res.status(201).json({ added: added.length, items: added.map(presentListItem), weekStart })
+  }))
+
+  // Undo the add above. Same double gate: it writes to the grocery list.
+  api.delete('/api/meals/:id/add-to-list', tenantRoute(async (tenant, req: Request, res: Response) => {
+    await requireModule(tenant, 'lists')
+    const meal = await loadMeal(tenant, req, res)
+    if (!meal) return
+    const ws = typeof req.query?.weekStart === 'string' ? req.query.weekStart : ''
+    let weekStart = await householdWeekStart(tenant.householdId)
+    if (DATE_RE.test(ws)) {
+      const d = new Date(`${ws}T00:00:00Z`)
+      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ws) weekStart = ws
+    }
+    const removed = await removeMealFromGrocery(tenant, meal.id, weekStart)
+    if (removed === null) return res.status(404).json({ error: 'NotFound', message: 'meal not found' })
+    return res.status(200).json({ removed, weekStart })
+  }))
+
+  api.delete('/api/meals/:id/recipes/:recipeId', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const meal = await loadMeal(tenant, req, res)
+    if (!meal) return
+    const recipeId = req.params.recipeId ?? ''
+    if (!UUID_RE.test(recipeId)) return res.status(404).json({ error: 'NotFound', message: 'dish not found' })
+    const removed = await removeMealRecipe(meal.id, recipeId)
+    if (!removed) return res.status(404).json({ error: 'NotFound', message: 'dish not found' })
+    return res.status(200).json({ meal: await presentMeal(tenant.householdId, meal) })
   }))
 }

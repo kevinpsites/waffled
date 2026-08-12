@@ -23,7 +23,8 @@ Then dig into logs for the flagged service: `./waffled logs <svc>` (`postgres`, 
 | DB check down / can't connect | [Postgres unreachable](#postgres-unreachable) |
 | "schema behind" / migrations pending | [Migrations pending](#migrations-pending) |
 | All clients show an **Offline** banner | [PowerSync offline](#powersync-offline-banner) |
-| Calendars stale / sync failing / `push_failed` | [Google Calendar sync](#google-calendar-sync-failing) |
+| Calendars stale / sync failing / `push_failed` | [Calendar sync](#calendar-sync-failing-google-or-outlook) |
+| A subscribed ICS feed shows an error or never updates | [Calendar feeds](#calendar-feed-ics-not-updating) |
 | Photo/recipe uploads fail / storage degraded | [Media uploads failing](#media-uploads-failing) |
 | Backup health degraded / stale | [Backups failing](#backups-failing-or-stale) |
 | Can't reach the app / TLS errors | [Can't reach the app](#cant-reach-the-app--tls) |
@@ -90,7 +91,7 @@ Then restart PowerSync to re-validate:
 to reach PowerSync (e.g. your LAN IP / hostname, not `localhost`). A mismatch also
 manifests as clients that can't sync.
 
-### Google Calendar sync failing
+### Calendar sync failing (Google or Outlook)
 
 **Symptom:** calendars stale / not updating; health `calendar` degraded; jobs log
 `push_failed` or `invalid_grant`.
@@ -105,6 +106,26 @@ consent flow and stores a fresh token).
 > **"Testing"** on the consent screen, Google **expires refresh tokens after 7
 > days**, so sync will keep breaking weekly. Publish the OAuth consent screen (move
 > it out of Testing) to stop this from recurring.
+
+**Outlook / Microsoft 365** fails the same way but for different reasons: the Azure
+**client secret has an expiry date** and sync stops dead when it lapses, and sign-in
+errors carry an `AADSTS` code. See
+[Outlook troubleshooting](/administration/outlook-calendar/#troubleshooting) for the
+specific codes. Note Waffled rotates Microsoft refresh tokens automatically — there is
+nothing to maintain there.
+
+### Calendar feed (ICS) not updating
+
+**Symptom:** a subscribed feed shows a ⚠ error, or its events never appear.
+
+**Diagnose:** each feed row in **Settings → Calendars → Calendar feeds** shows its
+last-synced time and the last error verbatim (an HTTP status from the publisher, or a
+parse failure). One bad feed never blocks the others.
+
+**Fix:** check the URL still resolves and is *published* (many calendar apps expire or
+rotate a published link). Press the row's **↻** to retry immediately rather than waiting
+for the 15-minute poll. Remember feed events are read-only: to change one, change it at
+the source.
 
 ### Media uploads failing
 

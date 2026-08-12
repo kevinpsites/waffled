@@ -15,6 +15,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Two-way Outlook / Microsoft 365 calendar sync, right beside Google.** Connect an
+  Outlook or Microsoft 365 account in Settings → Calendars and it syncs both ways on the
+  same engine and the same schedule as Google — pick which calendars sync, who each one
+  belongs to, and which is the write-target for events Waffled creates. A household can mix
+  Google and Microsoft accounts freely, and each connected account shows which provider it
+  came from. Needs a free Azure app registration; see the new
+  [Outlook / Microsoft 365](https://waffled.app/docs/administration/outlook-calendar/) guide.
+- **Subscribe to any published calendar link (ICS feeds).** Paste a school schedule, a
+  sports-team calendar, or a work calendar published from Outlook into Settings → Calendars
+  and its events show up on the family calendar — no sign-in, no OAuth setup, nothing to
+  approve. This is the plan B when a workplace won't approve calendar access. Feeds refresh
+  every 15 minutes (with a per-feed Sync button), can be mapped to a person for colour, and
+  can be marked private. Their events are **read-only everywhere, including on iPhone and
+  iPad**: a feed mirrors someone else's calendar, so rather than accept an edit and silently
+  undo it at the next refresh, Waffled hides Edit and Delete and tells you to change it at
+  the source.
+- **Share any list to a phone.** **Share list** turns whatever's still unchecked into a
+  clean text list and hands it over by share sheet, clipboard, or QR code — from the grocery
+  board's top bar, or a custom list's **⋯** menu. The QR encodes the list *itself* rather
+  than a link, so whoever is going shopping just points a camera at the kiosk: no app, no
+  account, no sign-in. Items are grouped the way you read them — by aisle in walking order
+  on the grocery board, by section on a custom list, and as a plain list when there are no
+  sections — with quantities, plus the **store** and **who it's for** when you've set them,
+  so a run split across two shops still makes sense. A list too long to fit in a code a
+  camera can actually read says so and points you at Copy or Share, rather than showing a QR
+  that can't be scanned.
+- **Build one meal out of several recipes.** Dinner is rarely a single dish, but the
+  planner only ever let you plan one recipe a night. The new **Meal Builder** lets you
+  put a whole meal together: name it, drag recipes in from your library under Main,
+  Sides and Dessert, set how many it serves, and pick who's cooking each dish. From
+  there you can schedule it to a night — it fills that slot and goes on the calendar as
+  one meal — or just add its shopping to the grocery list without committing to a night.
+  Keep it in your library and it becomes reusable: saved meals sit alongside recipes in
+  the recipe library with their own 🍽️ Meals filter, search finds them by the meal's
+  name *or* any dish in it, and dropping one onto a new plate brings its dishes in.
+  Works on web, iPhone and iPad — on the phone and tablet you tap **＋ Add a side** to
+  pick from the same library, a new meal opens with the keyboard already on its name,
+  and once a dish is on the plate you can press and hold it to drag it under another
+  heading (an empty role shows a slot to aim at). Wherever a planned dinner is shown — the week
+  grid, the month grid, tonight's card, the grocery list — tapping a meal opens the
+  meal, and dragging one to another night takes its dishes with it.
+- **Cook a whole meal, dish by dish.** Cook mode now takes a meal as well as a single
+  recipe: it tabs across every dish on the plate, and timers you start keep running when
+  you move between them, so the rice doesn't quietly overcook while you're reading the
+  chicken steps. Each dish also remembers its own place, so switching back doesn't lose
+  where you were, and a timer that goes off tells you which dish it belongs to. Jumping
+  to a timer's step offers a **"Back to step 6"** pill (iPhone/iPad) that puts you back
+  exactly where it pulled you from — it stays until you use it or dismiss it, because a
+  timer going off is precisely when you get distracted. Open it from the meal itself, or
+  straight from tonight's card. Web, iPhone and iPad.
+- **See *which* ingredients you still need, not just how many.** "7 to buy" was a number
+  you couldn't act on — the recipe screen said it and couldn't tell you what the 7 were.
+  Now it opens into the actual ingredient names, on the recipe screen and on every dish
+  in a meal. With the Pantry module on, these are specifically the ones your pantry
+  *doesn't* already cover. Web, iPhone and iPad.
+- **A meal shops as one thing.** A meal's ingredients group under the meal's name in the
+  grocery list's By-meal view — an unscheduled one is badged as such — with a dot on each
+  row in the meal's colour so you can see at a glance which night an item is for. An item
+  wanted by two meals is still one row with one checkbox. A meal added to the list without
+  being scheduled can be taken back off it again, and anything the week's actual plan
+  still needs stays put. Web, iPhone and iPad.
+
+- **Choose which recipe ingredients go on the grocery list.** "Add to grocery" now opens
+  a picker so you can add everything or just the items you actually need, instead of always
+  dumping the whole recipe onto the list. Everything starts checked — pantry staples are
+  flagged as "likely on hand" so you can uncheck them, rather than being left out on your
+  behalf. Works on web and iOS.
+- **Assign a store to grocery items and shop by store.** Tag an item with where you'll buy
+  it (Costco, Walmart, the corner market) and flip the grocery board to a **By store** view
+  that groups the list by shop. The store box is a quick-select over the stores you've used
+  before, so "Costco" typed once comes back as a tap and never splits into "costco".
+- **Lists now refresh across devices on their own.** When another family member checks
+  something off on their phone, the list you're looking at updates without a manual reload —
+  it refreshes when you return to the app and quietly re-checks every ~20 seconds while a
+  list is open. (It's a poll, not instant push, so give it a few seconds.)
 - **The goal Log sheet now suggests what you actually do.** The "What did you do?"
   chips are no longer a fixed list of six — each goal offers up the notes you've logged
   against it before, most-used first, so a goal you keep marking "family walk" or "lunch
@@ -133,6 +208,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own every few seconds while you're looking at it, on **web, iPhone and iPad**, and stops
   while the tab or app is in the background so it costs nothing when you're not watching.
 
+- **The calendar grid now says which month you're looking at.** The app header shows
+  today's date, so paging the grid forward left nothing on the grid itself saying where
+  you'd landed — an empty November under a heading reading "August 11". Month, Week and Day
+  views now carry their own heading above the cells, with a **Back to today** button that
+  appears only once you've navigated away.
+- **"On hand" on a recipe now means your pantry, on iPhone and iPad.** The "4 of 9 on
+  hand" line counted ingredients marked as pantry staples — things you're assumed to
+  keep around — rather than anything actually in your pantry, so a household with a
+  completely empty pantry was still told it had most of the ingredients. It now uses the
+  same real pantry matching the rest of the app does. With the Pantry module switched
+  off it simply doesn't make the claim, instead of guessing.
+
+- **Grocery quantities read like a recipe again.** An ingredient measured in thirds landed on
+  the list as "0.6666666666666666 cup" — the number the computer kept rather than the ⅔ cup
+  you'd actually write down. Quantities now show as fractions (⅔ cup, 1½ lb), including on
+  lists you built before this fix, and adding two half-cups still totals one cup. Editing an
+  item hands you a version you can type — the box reads "1 1/2 lb" — and typing a fraction
+  that way (or as a decimal) saves it back in the tidy form.
+- **The grocery item editor lines up.** Editing an item put its two rows at different widths,
+  and once an item had a store the lower row could spill outside the card at some window
+  sizes. Both rows now fill the card, and the store box wraps instead of squashing the aisle
+  picker and the save button.
+- **Recipe photos now show on iPhone and iPad.** Uploaded recipe images were falling back to
+  the emoji placeholder in the detail hero and the library cards, even though the web showed
+  the picture — the app wasn't resolving the stored image's address. They now render (and are
+  cached for smooth scrolling).
+- **You can remove a recipe's photo when editing.** The recipe editor had no way to clear an
+  image — now there's a trash button next to the photo, and removing it actually deletes the
+  stored photo instead of leaving it in place.
+- **Change a list's emoji from inside the list.** The in-list ⋯ menu only let you rename a
+  list; changing its icon meant backing out to the Lists screen. The menu now opens the full
+  name-and-icon editor in place, listed simply as **Edit list** to match the editor it opens.
+- **A removed recipe photo disappears from the recipe list too (iPhone/iPad).** Deleting or
+  swapping a recipe's photo updated the recipe itself but left the old picture sitting on its
+  card in the library grid until the library reloaded — so the list and the recipe disagreed
+  about what the photo was.
+- **"Add to grocery list" opens full height on iPhone.** The ingredient picker came up as a
+  half sheet showing about three ingredients, so every use started by dragging it up. It now
+  opens full height.
+- **The iPad screensaver no longer drops over the keyboard.** If you were typing when the
+  idle timer fired, the screensaver could cover a lit keyboard. It now waits while a text
+  field is focused, and dismisses the keyboard if it does start.
 - **Recurring event edits now keep the whole series intact.** "This and following" carries
   all-day, countdown, people, goal, and repeat settings into the new series, while changing
   the time for "All events" no longer removes earlier occurrences. Locally synced web events
@@ -232,6 +349,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the Waffled host, with a direct link to the verification guide.
 - **Setup now links to the published troubleshooting guide.** The public-HTTPS
   PowerSync note no longer points at a repository file that does not exist.
+- **The server survives its database connection being dropped.** If Postgres closed a
+  connection the server was holding open but not actively using — a database restart, an
+  operator ending an idle session, a proxy reaping the socket — the API process could exit
+  instead of quietly reconnecting, taking the whole site down until Docker restarted it.
+  A dropped idle connection is now logged and the next request opens a fresh one.
 
 ### Security
 
@@ -249,7 +371,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   indirectly — let a crafted pattern expand without bound until the process ran
   out of memory. Waffled never feeds user input to the affected code path, so this
   was not exploitable in practice, but the patched version is now pinned across
-  the server's dependency tree.
+  the server's dependency tree. A later advisory found the first patch could be
+  bypassed the same way, so the pin has been moved forward again to the release
+  that closes it for good.
 
 ## [0.12.0] - 2026-07-23
 
@@ -1544,6 +1668,22 @@ diverged, or stale checkout; checks that the current API, web, Compose, and iOS 
 requires user-facing notes under `[Unreleased]`; and runs the CLI, migration, API, web, browser
 (when configured), docs, Docker E2E, and locally available iOS checks. It does not bump versions,
 commit, or tag anything; build tools may refresh ignored local artifacts.
+
+Those checks run in **lanes** rather than one serial column, because a release is cut on your own
+machine and there is no reason to leave its cores idle. **Phase 1 runs the iOS and browser tests
+alone**, then **phase 2 runs the `docker`, `web` and `misc` lanes in parallel**, grouped by the
+resource each contends for. Those two are deliberately not overlapped: on a saturated machine the
+iOS Simulator does not just run slowly, it dies outright (`Failed to launch app … Mach error -308
+(ipc/mig) server died`), and Playwright runs a real browser with retries off — both fail the
+release for reasons unrelated to your code. Each lane buffers its output and prints it whole, so
+lanes appear one after another rather than interleaved; a heartbeat marks elapsed time while they
+run, and every step reports its own wall time. Ctrl-C stops the lanes and their children.
+
+**A run that fails ends with a `Release checks failed:` summary naming each failed step** — checks
+deliberately continue after a failure so one pass surfaces everything, which means the culprit may
+be thousands of lines above. A lane that *dies* (OOM, SIGKILL) is itself reported as a failure, so
+an interrupted run can never be mistaken for a passing one. If you see neither that summary nor
+`All available release project checks passed.`, the run did not finish.
 
 **To cut a release:** run **`./waffled release X.Y.Z`** locally on `main`. It repeats the checks
 before changing anything, then in one commit it:

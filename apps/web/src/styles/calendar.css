@@ -9,6 +9,26 @@
 .cal-period { cursor: pointer; min-width: 132px; justify-content: center; font-weight: 700; }
 .cal-nav .icon-btn { cursor: pointer; }
 
+/* ---- grid period heading ----
+   The app header shows TODAY's date, so a grid paged to another month had no
+   on-grid statement of what it was showing. This is that statement; the heading
+   names the period, so the button beside it only has to offer the way back. */
+.cal-period-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 2px 10px;
+}
+.cal-period-title { margin: 0; font-size: 26px; line-height: 1.1; color: var(--ink); }
+.cal-period-back {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 4px 12px;
+  color: var(--ink);
+}
+
 /* =====================  WEEK VIEW  ===================== */
 .wk-screen { flex: 1; display: flex; flex-direction: column; min-height: 0; gap: 14px; }
 

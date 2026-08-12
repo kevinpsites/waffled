@@ -83,4 +83,37 @@ describe('Calendar screen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Agenda' }))
     expect(await screen.findByText("What's coming up")).toBeInTheDocument()
   })
+
+  // The app's big header shows TODAY's date, which reads as the answer to "what
+  // am I looking at?" — so paging to another month left no obvious sign you had
+  // moved. The grid carries its own period heading, called out when it isn't now.
+  it('heads the grid with the period being viewed, offering a way back when away', async () => {
+    mockRange([])
+    const now = new Date()
+    renderCalendar()
+    // View AND anchor are remembered across mounts, and the previous tests left
+    // both moved — reset to Month/today (the period pill is "jump to today").
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
+    fireEvent.click(document.querySelector('.cal-period') as HTMLElement)
+
+    const heading = await screen.findByTestId('cal-period-heading')
+    expect(heading).toHaveTextContent(`${MONTHS[now.getMonth()]} ${now.getFullYear()}`)
+    // Viewing the current month is the unremarkable case — nothing to jump back to.
+    expect(screen.queryByRole('button', { name: 'Back to today' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }))
+
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    expect(await screen.findByTestId('cal-period-heading')).toHaveTextContent(
+      `${MONTHS[next.getMonth()]} ${next.getFullYear()}`
+    )
+    // The heading already names the month, so the control just offers the way back.
+    const back = screen.getByRole('button', { name: 'Back to today' })
+
+    fireEvent.click(back)
+    expect(await screen.findByTestId('cal-period-heading')).toHaveTextContent(
+      `${MONTHS[now.getMonth()]} ${now.getFullYear()}`
+    )
+    expect(screen.queryByRole('button', { name: 'Back to today' })).toBeNull()
+  })
 })

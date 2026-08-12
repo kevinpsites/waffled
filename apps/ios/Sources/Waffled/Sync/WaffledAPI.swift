@@ -392,9 +392,17 @@ struct WaffledAPI: Sendable {
     /// Plan a meal slot. recipeId links a known recipe; otherwise title is a one-off.
     /// `cookPersonId` optionally assigns who's cooking. Upserts (re-planning the same
     /// date+mealType replaces, not duplicates).
-    func planMeal(date: String, mealType: String, recipeId: String?, title: String?, cookPersonId: String? = nil) async throws {
+    ///
+    /// `mealId` puts a Meal Builder plate in the slot instead of a recipe — that is how
+    /// a planner **drag** moves a plate: the same plate relocates. (Scheduling a saved
+    /// plate from the builder goes through `scheduleMeal`, which deliberately *copies*
+    /// it so editing next week's can't rewrite the one that already went out.) A slot
+    /// holds one or the other, never both.
+    func planMeal(date: String, mealType: String, recipeId: String?, title: String?,
+                  cookPersonId: String? = nil, mealId: String? = nil) async throws {
         var body: [String: JSONValue] = ["date": .string(date), "mealType": .string(mealType)]
         if let recipeId { body["recipeId"] = .string(recipeId) }
+        if let mealId { body["mealId"] = .string(mealId) }
         if let title { body["title"] = .string(title) }
         if let cookPersonId { body["cookPersonId"] = .string(cookPersonId) }
         try await send("POST", "/api/meals/plan", body: body)
@@ -589,6 +597,33 @@ struct WaffledAPI: Sendable {
         let recipe: RecipeSummary
         let ingredients: [RecipeIngredientDTO]
         let steps: [RecipeStepDTO]
+        /// **Real pantry-matched** on-hand — nil when the pantry module is off, in which
+        /// case the client must make no on-hand claim at all.
+        ///
+        /// Do NOT compute this client-side from `ingredients.isStaple`: a staple is a
+        /// thing you're assumed to keep around, not a thing you currently have, so that
+        /// count says "4 of 9 on hand" to a household with a completely empty pantry.
+        /// Optional so a server predating this field still decodes.
+        let onHand: OnHandCount?
+        /// How many ingredients will land on the grocery list. Not pantry-derived, so it
+        /// answers either way — with the pantry ON it's the *unmatched* non-staples.
+        let toBuy: Int?
+        /// The names behind `toBuy`. With the pantry ON these are the unmatched subset,
+        /// which the client cannot derive from `ingredients` on its own.
+        let toBuyNames: [String]?
+
+        /// Spelled out so the pantry fields default to nil — the places that build a
+        /// detail locally (an editor round-trip, a preview) have no pantry answer to
+        /// give, and "no claim" is exactly the right one for them to make.
+        init(recipe: RecipeSummary, ingredients: [RecipeIngredientDTO], steps: [RecipeStepDTO],
+             onHand: OnHandCount? = nil, toBuy: Int? = nil, toBuyNames: [String]? = nil) {
+            self.recipe = recipe
+            self.ingredients = ingredients
+            self.steps = steps
+            self.onHand = onHand
+            self.toBuy = toBuy
+            self.toBuyNames = toBuyNames
+        }
     }
 
     /// The whole recipe library (no server-side search/filter — the client filters).
@@ -735,17 +770,306 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/recipes/ingest/photo", body: ["images": .array(imgs)], as: ParsedRecipe.self)
     }
 
+    // MARK: Meal Builder — plates (a named, multi-recipe meal)
+    //
+    // A "plate" is a named meal composed of several recipes with roles ("BBQ Sunday" =
+    // BBQ Chicken (main) + Potato Salad + Coleslaw (sides) + Peach Cobbler (dessert)).
+    // It can be saved to reuse, scheduled into a day + slot, or sent to the grocery list
+    // without ever being scheduled. See docs/product/meal-builder-plan.md.
+    //
+    // Meals are REST-only by design (decision 9) — they are deliberately NOT in the
+    // PowerSync schema, so every read here is a live fetch.
+
+    /// How many of a recipe's ingredients are already in the pantry.
+    ///
+    /// Only ever present when the **pantry module is on**. With it off the server omits
+    /// the whole object rather than sending `{have: 0, total: n}` — which would read as
+    /// "you have none of these", a different and equally untrue claim. `nil` means
+    /// "we can't say", and clients must render nothing at all.
+    struct OnHandCount: Decodable, Hashable, Sendable {
+        let have: Int
+        let total: Int
+    }
+
+    /// Who is cooking one dish. A four-dish plate has up to four cooks, which is why
+    /// this hangs off the dish and not off the plate.
+    struct MealCookDTO: Decodable, Hashable, Sendable {
+        let personId: String?
+        let name: String?
+        let avatarEmoji: String?
+        let colorHex: String?
+    }
+
+    /// One dish on a plate.
+    ///
+    /// `role` is free text ('main' | 'side' | 'dessert' today) — soft scaffolding to help
+    /// people compose, not a rigid taxonomy, so a new role is a data change rather than a
+    /// migration. Note it is NOT `mealType`, which already means breakfast/lunch/dinner
+    /// elsewhere in this file.
+    struct MealDishDTO: Decodable, Identifiable, Hashable, Sendable {
+        let recipeId: String
+        let title: String?
+        let emoji: String?
+        let category: String?
+        let role: String
+        let sortOrder: Int
+        let prepTimeMinutes: Int?
+        let cookTimeMinutes: Int?
+        let servings: Int?
+        let imageUrl: String?
+        let cook: MealCookDTO?
+        let onHand: OnHandCount?
+        let toBuy: Int
+        /// The ingredients behind `toBuy`, so the count can be expanded into the actual
+        /// shopping. Always exactly `toBuy` long, pantry on or off — a bare number names
+        /// nothing, and with the pantry ON the count is the *unmatched* subset, which no
+        /// client could derive from the ingredient list itself.
+        let toBuyNames: [String]
+
+        var id: String { recipeId }
+        var displayTitle: String { title ?? "Untitled recipe" }
+        /// Hands-on + cooking, when either is known.
+        var totalMinutes: Int? {
+            if prepTimeMinutes == nil && cookTimeMinutes == nil { return nil }
+            return (prepTimeMinutes ?? 0) + (cookTimeMinutes ?? 0)
+        }
+    }
+
+    /// A whole plate. The builder screen, the meal detail and the library card all read
+    /// this same shape (the library list just carries fewer dish fields).
+    struct MealDTO: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let name: String
+        /// Stored and displayed only — v1 deliberately does not rescale ingredient
+        /// quantities (decision 4).
+        let servings: Int
+        /// The "Keep in library" toggle. Applied the moment it is flipped, not deferred
+        /// until the plate is scheduled: an unsaved plate is a one-off that never appears
+        /// in the library, a saved one is a reusable template.
+        let isSaved: Bool
+        let createdBy: String?
+        let createdAt: String
+        let recipeCount: Int
+        let emojis: [String]
+        let totalMinutes: Int?
+        /// Plate-level counts dedupe shared ingredients across dishes — two dishes both
+        /// wanting mayonnaise is ONE thing to buy.
+        let onHand: OnHandCount?
+        let toBuy: Int
+        let toBuyNames: [String]
+        let recipes: [MealDishDTO]
+
+        /// The plate's dishes filed under one role, in plate order.
+        func dishes(role: String) -> [MealDishDTO] { recipes.filter { $0.role == role } }
+
+        /// A minimal plate built from what a *summary* surface already knows — a planned
+        /// slot, a grocery row — so tapping it can push the detail immediately instead of
+        /// waiting on a fetch. The detail reloads the real plate by id on appear.
+        ///
+        /// The fields a summary can't know are left empty rather than guessed: `onHand`
+        /// is nil (no claim, same as pantry-off) and `toBuy` is 0, so nothing renders a
+        /// number that would then change under the reader a moment later.
+        static func placeholder(id: String, name: String, servings: Int = 4,
+                                dishes: [(recipeId: String, title: String?, emoji: String?, role: String)] = []) -> MealDTO {
+            MealDTO(
+                id: id, name: name, servings: servings, isSaved: false, createdBy: nil,
+                createdAt: "", recipeCount: dishes.count,
+                emojis: dishes.compactMap(\.emoji), totalMinutes: nil,
+                onHand: nil, toBuy: 0, toBuyNames: [],
+                recipes: dishes.enumerated().map { i, d in
+                    MealDishDTO(recipeId: d.recipeId, title: d.title, emoji: d.emoji, category: nil,
+                                role: d.role, sortOrder: i, prepTimeMinutes: nil, cookTimeMinutes: nil,
+                                servings: nil, imageUrl: nil, cook: nil, onHand: nil,
+                                toBuy: 0, toBuyNames: [])
+                })
+        }
+    }
+
+    /// What `POST /api/meals/:id/schedule` answers with.
+    struct ScheduledMealDTO: Decodable, Sendable {
+        let entry: Entry
+        let meal: MealDTO
+        struct Entry: Decodable, Sendable {
+            let id: String
+            let date: String
+            let mealType: String
+            let mealId: String?
+        }
+    }
+
+    /// Whether a dish-patch should touch the cook at all.
+    ///
+    /// The server distinguishes an **absent** `cookPersonId` (leave it alone) from an
+    /// explicit **null** (clear it) — so "unchanged" and "clear" cannot both be modelled
+    /// by `nil` without silently making one of them impossible.
+    enum CookAssignment: Hashable, Sendable {
+        case unchanged
+        case clear
+        case person(String)
+    }
+
+    /// Create a plate. Returns it so the caller can adopt the server's id immediately.
+    func createMeal(name: String, servings: Int? = nil, isSaved: Bool? = nil) async throws -> MealDTO {
+        struct Resp: Decodable { let meal: MealDTO }
+        var body: [String: JSONValue] = ["name": .string(name)]
+        if let servings { body["servings"] = .int(servings) }
+        if let isSaved { body["isSaved"] = .bool(isSaved) }
+        return try await sendReturning("POST", "/api/meals", body: body, as: Resp.self).meal
+    }
+
+    /// The saved-meal library. `q` matches the plate name OR any dish title, so searching
+    /// "chicken" finds "BBQ Sunday".
+    func savedMeals(q: String? = nil, limit: Int? = nil) async throws -> [MealDTO] {
+        struct Resp: Decodable { let meals: [MealDTO] }
+        var parts: [String] = []
+        if let q, !q.isEmpty {
+            parts.append("q=\(q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q)")
+        }
+        if let limit { parts.append("limit=\(limit)") }
+        let path = "/api/meals" + (parts.isEmpty ? "" : "?" + parts.joined(separator: "&"))
+        return try await getJSON(path, as: Resp.self).meals
+    }
+
+    func meal(id: String) async throws -> MealDTO {
+        struct Resp: Decodable { let meal: MealDTO }
+        return try await getJSON("/api/meals/\(id)", as: Resp.self).meal
+    }
+
+    /// Rename / re-serve / save-to-library. Every field is optional; omitted ones are
+    /// left alone.
+    func updateMeal(id: String, name: String? = nil, servings: Int? = nil, isSaved: Bool? = nil) async throws -> MealDTO {
+        struct Resp: Decodable { let meal: MealDTO }
+        var body: [String: JSONValue] = [:]
+        if let name { body["name"] = .string(name) }
+        if let servings { body["servings"] = .int(servings) }
+        if let isSaved { body["isSaved"] = .bool(isSaved) }
+        return try await sendReturning("PATCH", "/api/meals/\(id)", body: body, as: Resp.self).meal
+    }
+
+    /// Add a recipe to the plate. Re-adding a recipe already on the plate is an upsert
+    /// that **keeps** whatever role, cook and position it already had unless this call
+    /// explicitly names new ones.
+    func addDish(mealId: String, recipeId: String, role: String? = nil,
+                 sortOrder: Int? = nil, cookPersonId: String? = nil) async throws -> MealDTO {
+        struct Resp: Decodable { let meal: MealDTO }
+        var body: [String: JSONValue] = ["recipeId": .string(recipeId)]
+        if let role { body["role"] = .string(role) }
+        if let sortOrder { body["sortOrder"] = .int(sortOrder) }
+        if let cookPersonId { body["cookPersonId"] = .string(cookPersonId) }
+        return try await sendReturning("POST", "/api/meals/\(mealId)/recipes", body: body, as: Resp.self).meal
+    }
+
+    /// Add a SAVED plate to the plate under construction — it **flattens**, so its dishes
+    /// arrive as individual, editable rows keeping their own roles. Meals never nest
+    /// (decision 12).
+    func flattenMeal(intoMealId: String, savedMealId: String) async throws -> MealDTO {
+        struct Resp: Decodable { let meal: MealDTO }
+        return try await sendReturning("POST", "/api/meals/\(intoMealId)/recipes",
+                                       body: ["mealId": .string(savedMealId)], as: Resp.self).meal
+    }
+
+    /// Change a dish's role, position, or cook. `cook` must say explicitly whether it is
+    /// clearing the cook or leaving it alone — see `CookAssignment`.
+    func patchDish(mealId: String, recipeId: String, role: String? = nil,
+                   sortOrder: Int? = nil, cook: CookAssignment = .unchanged) async throws -> MealDTO {
+        struct Resp: Decodable { let meal: MealDTO }
+        var body: [String: JSONValue] = [:]
+        if let role { body["role"] = .string(role) }
+        if let sortOrder { body["sortOrder"] = .int(sortOrder) }
+        switch cook {
+        case .unchanged: break
+        case .clear: body["cookPersonId"] = .null
+        case .person(let id): body["cookPersonId"] = .string(id)
+        }
+        return try await sendReturning("PATCH", "/api/meals/\(mealId)/recipes/\(recipeId)",
+                                       body: body, as: Resp.self).meal
+    }
+
+    /// Reorder the whole plate in one write (the ids in their new order).
+    func reorderDishes(mealId: String, recipeIds: [String]) async throws -> MealDTO {
+        struct Resp: Decodable { let meal: MealDTO }
+        return try await sendReturning("PUT", "/api/meals/\(mealId)/recipes/order",
+                                       body: ["recipeIds": .array(recipeIds.map(JSONValue.string))],
+                                       as: Resp.self).meal
+    }
+
+    func removeDish(mealId: String, recipeId: String) async throws -> MealDTO {
+        struct Resp: Decodable { let meal: MealDTO }
+        return try await sendJSON("DELETE", "/api/meals/\(mealId)/recipes/\(recipeId)", as: Resp.self).meal
+    }
+
+    /// Put the plate on a day + slot. Scheduling a SAVED plate **copies** it, so editing
+    /// next week's BBQ Sunday never rewrites the one that already went out last week;
+    /// unsaved one-offs are scheduled as themselves.
+    func scheduleMeal(id: String, date: String, mealType: String, cookPersonId: String? = nil) async throws -> ScheduledMealDTO {
+        var body: [String: JSONValue] = ["date": .string(date), "mealType": .string(mealType)]
+        if let cookPersonId { body["cookPersonId"] = .string(cookPersonId) }
+        return try await sendReturning("POST", "/api/meals/\(id)/schedule", body: body, as: ScheduledMealDTO.self)
+    }
+
+    /// Put the whole plate's shopping on the grocery list without scheduling it anywhere.
+    /// Returns how many new rows were added (merges into existing rows don't count).
+    @discardableResult
+    func addMealToGrocery(id: String, weekStart: String? = nil) async throws -> Int {
+        struct Resp: Decodable { let added: Int }
+        let q = weekStart.map { "?weekStart=\($0)" } ?? ""
+        return try await sendJSON("POST", "/api/meals/\(id)/add-to-list\(q)", as: Resp.self).added
+    }
+
+    /// Undo the add above. Those rows are `source='recipe'`, which the weekly rebuild
+    /// deliberately never wipes, so this is the ONLY way a plate comes back off the list.
+    /// A row survives (losing just this plate's credit) when something else still needs it.
+    @discardableResult
+    func removeMealFromGrocery(id: String, weekStart: String? = nil) async throws -> Int {
+        struct Resp: Decodable { let removed: Int }
+        let q = weekStart.map { "?weekStart=\($0)" } ?? ""
+        return try await sendJSON("DELETE", "/api/meals/\(id)/add-to-list\(q)", as: Resp.self).removed
+    }
+
     // MARK: Today dashboard reads (non-synced domains, fetched over REST)
 
     /// One dinner/lunch/etc. slot in the planned week (mirrors web `WeekEntry`).
+    ///
+    /// A slot points at EITHER a single recipe (`recipeId`) or a Meal Builder plate
+    /// (`mealId`). **Never decide what a slot means by testing `recipeId` alone** — it is
+    /// null for a meal-backed slot, which on the web silently broke four separate
+    /// surfaces at once (the week grid drew a nameless row; the Tonight card announced
+    /// "No recipe attached yet" about a meal with three dishes). Use `isMealBacked`.
     struct WeekEntryDTO: Decodable, Identifiable, Hashable, Sendable {
         let id: String
         let date: String
         let mealType: String
         let title: String?
         let recipeId: String?
+        /// Set when this slot holds a plate rather than a single recipe. Optional so a
+        /// server predating Meal Builder — which omits the key entirely — still decodes.
+        let mealId: String?
+        let meal: MealSlot?
         let recipe: RecipeInfo?
         let cook: Cook?
+
+        /// The plate behind a meal-backed slot, carrying its dishes so the week grid and
+        /// the kiosk card can render "BBQ Sunday · 4 dishes" instead of an empty slot.
+        struct MealSlot: Decodable, Hashable, Sendable {
+            let id: String
+            /// Optional because the server builds this off a `left join meals … and
+            /// deleted_at is null`: an entry pointing at a soft-deleted plate serialises
+            /// `name: null`. Non-optional, that one row throws and takes the WHOLE
+            /// `mealsWeek` fetch with it — blanking the week grid, the month grid and
+            /// the Tonight card at once. Today the app cascades the plan entries on
+            /// delete so it can't happen, but that's one guard in another module with
+            /// nothing asserting the coupling.
+            let name: String?
+            let servings: Int?
+            let recipes: [Dish]
+            struct Dish: Decodable, Hashable, Sendable {
+                let recipeId: String
+                let title: String?
+                let emoji: String?
+                let role: String
+                let sortOrder: Int
+            }
+        }
         struct RecipeInfo: Decodable, Hashable, Sendable {
             let title: String?
             let emoji: String?
@@ -761,9 +1085,46 @@ struct WaffledAPI: Sendable {
             let avatarEmoji: String?
             let colorHex: String?
         }
-        /// The label to show for this slot — the recipe title, the free-text title,
-        /// or a placeholder.
-        var displayTitle: String { recipe?.title ?? title ?? "Planned meal" }
+        /// Spelled out (rather than left to the memberwise default) so `mealId`/`meal`
+        /// can default to nil — the many places that build a plain recipe-backed entry
+        /// shouldn't have to say "no plate" twice.
+        init(id: String, date: String, mealType: String, title: String?, recipeId: String?,
+             mealId: String? = nil, meal: MealSlot? = nil, recipe: RecipeInfo?, cook: Cook?) {
+            self.id = id
+            self.date = date
+            self.mealType = mealType
+            self.title = title
+            self.recipeId = recipeId
+            self.mealId = mealId
+            self.meal = meal
+            self.recipe = recipe
+            self.cook = cook
+        }
+
+        /// The label to show for this slot — the recipe title, the plate's name, the
+        /// free-text title, or a placeholder.
+        var displayTitle: String { recipe?.title ?? meal?.name ?? title ?? "Planned meal" }
+
+        /// This slot holds a plate rather than a single recipe.
+        ///
+        /// Gate on THIS, not on `recipeId != nil`: a plate-backed slot has no `recipeId`,
+        /// so a `recipeId` test reads it as "nothing planned here" and the tap goes dead.
+        var isMealBacked: Bool { mealId != nil }
+
+        /// How many dishes the plate has (0 for an ordinary single-recipe slot).
+        var dishCount: Int { meal?.recipes.count ?? 0 }
+
+        /// Whether tapping this slot has anything to open — a recipe OR a plate. The
+        /// free-text "eating out" entries have neither and stay inert.
+        var isOpenable: Bool { recipeId != nil || isMealBacked }
+
+        /// The plate behind this slot, as a pushable placeholder — see
+        /// `MealDTO.placeholder`. Nil for an ordinary recipe or free-text night.
+        var platePlaceholder: MealDTO? {
+            guard let m = meal else { return nil }
+            return .placeholder(id: m.id, name: m.name ?? title ?? "Meal", servings: m.servings ?? 4,
+                                dishes: m.recipes.map { ($0.recipeId, $0.title, $0.emoji, $0.role) })
+        }
     }
 
     /// A person's chore tally for today (mirrors web `PersonChores`).
@@ -2356,8 +2717,14 @@ struct WaffledAPI: Sendable {
         let id: String
         var name: String
         var quantity: String?
+        /// `quantity` with fraction glyphs spelled out ("1 1/2 lb" for a displayed
+        /// "1½ lb") — seed edit fields from this, since ½ can be read but not typed.
+        /// Optional so older servers decode.
+        var quantityInput: String?
         var checked: Bool
         var section: String?
+        /// Free-text store/vendor (Costco, Walmart, …); nil = unassigned.
+        var store: String?
         /// 1–5 urgency (1 = not urgent, 3 = normal/default, 5 = urgent). Optional so older servers decode.
         var priority: Int?
         var assignee: Assignee?
@@ -2370,6 +2737,11 @@ struct WaffledAPI: Sendable {
             let avatarEmoji: String?
             let colorHex: String?
         }
+
+        /// What an edit field is seeded with. Anything asking "did the user change this?"
+        /// must compare against THIS and not `quantity`: the box holds "1 1/2 lb" while the
+        /// row holds "1½ lb", so comparing the two makes every tap-away look like an edit.
+        var editableQuantity: String { quantityInput ?? quantity ?? "" }
     }
 
     /// The grocery board: items tagged with aisle + the meals that need them, plus
@@ -2382,16 +2754,67 @@ struct WaffledAPI: Sendable {
         /// week (added straight from a recipe page). Optional so older servers
         /// without the field still decode.
         let unscheduled: [UnscheduledRecipe]?
+        /// Plates put on the list WITHOUT being scheduled ("Add plate to list"). Optional
+        /// so a server predating Meal Builder still decodes.
+        let unscheduledMeals: [UnscheduledMeal]?
         let items: [ListItemDTO]
         let staples: [Staple]
         struct Meal: Decodable, Sendable, Identifiable {
             let recipeId: String?
+            /// Set when this slot holds a Meal Builder plate. A plate-backed slot has NO
+            /// `recipeId` — grouping this board by meal must key off the plate, or the
+            /// whole plate silently vanishes from the by-meal view.
+            let mealId: String?
             let title: String?
             let emoji: String?
             let color: String
             let date: String
             let mealType: String?
-            var id: String { (recipeId ?? "") + "|" + date + "|" + (mealType ?? "") }
+            /// The plate's dishes, rendered as child rows under the parent. Empty for an
+            /// ordinary single-recipe slot.
+            ///
+            /// Note these carry no `sortOrder` — the grocery board sends them already in
+            /// plate order, unlike the week endpoint which sends the field explicitly.
+            let recipes: [Dish]?
+
+            /// Spelled out so `mealId`/`recipes` default to nil — see `WeekEntryDTO.init`.
+            init(recipeId: String?, mealId: String? = nil, title: String?, emoji: String?,
+                 color: String, date: String, mealType: String?, recipes: [Dish]? = nil) {
+                self.recipeId = recipeId
+                self.mealId = mealId
+                self.title = title
+                self.emoji = emoji
+                self.color = color
+                self.date = date
+                self.mealType = mealType
+                self.recipes = recipes
+            }
+
+            var id: String { (mealId ?? recipeId ?? "") + "|" + date + "|" + (mealType ?? "") }
+            /// Every recipe whose ingredients this row accounts for: the plate's dishes,
+            /// or the single recipe. This is what a list item's `sourceRecipeIds` must be
+            /// matched against — a plate's items are tagged with its DISHES' ids, never
+            /// with the plate's own.
+            var contributingRecipeIds: [String] {
+                if let recipes, !recipes.isEmpty { return recipes.map(\.recipeId) }
+                return recipeId.map { [$0] } ?? []
+            }
+            struct Dish: Decodable, Sendable, Hashable, Identifiable {
+                let recipeId: String
+                let title: String?
+                let emoji: String?
+                let role: String
+                var id: String { recipeId }
+            }
+        }
+        /// A plate whose shopping is on the list but which isn't planned this week.
+        struct UnscheduledMeal: Decodable, Sendable, Identifiable {
+            let mealId: String
+            let name: String
+            let color: String
+            let recipes: [Meal.Dish]
+            var id: String { mealId }
+            var contributingRecipeIds: [String] { recipes.map(\.recipeId) }
         }
         struct UnscheduledRecipe: Decodable, Sendable, Identifiable {
             let recipeId: String
@@ -2421,10 +2844,17 @@ struct WaffledAPI: Sendable {
     /// into existing rows don't count).
     /// `weekStart` scopes the off-plan add to the week being shopped (defaults to the
     /// current week server-side when omitted, e.g. from a recipe page with no week).
-    func groceryFromRecipe(recipeId: String, weekStart: String? = nil) async throws -> Int {
+    /// `ingredientIds` (optional) adds only the picked subset — the shopper already has
+    /// the rest on hand. Omit it to add every non-staple ingredient (the default).
+    func groceryFromRecipe(recipeId: String, weekStart: String? = nil, ingredientIds: [String]? = nil) async throws -> Int {
         struct Resp: Decodable { let added: Int }
         let q = weekStart.map { "?weekStart=\($0)" } ?? ""
-        return try await sendJSON("POST", "/api/lists/grocery/from-recipe/\(recipeId)\(q)", as: Resp.self).added
+        let path = "/api/lists/grocery/from-recipe/\(recipeId)\(q)"
+        if let ingredientIds {
+            let body: [String: JSONValue] = ["ingredientIds": .array(ingredientIds.map(JSONValue.string))]
+            return try await sendReturning("POST", path, body: body, as: Resp.self).added
+        }
+        return try await sendJSON("POST", path, as: Resp.self).added
     }
 
     /// Take a recipe's ingredients back off the grocery list (undo the off-plan add;
@@ -2503,10 +2933,11 @@ struct WaffledAPI: Sendable {
 
     /// Add an item to a non-grocery list.
     @discardableResult
-    func addListItem(listId: String, name: String, quantity: String?, section: String? = nil) async throws -> ListItemDTO {
+    func addListItem(listId: String, name: String, quantity: String?, section: String? = nil, store: String? = nil) async throws -> ListItemDTO {
         var body: [String: JSONValue] = ["name": .string(name)]
         if let q = quantity, !q.isEmpty { body["quantity"] = .string(q) }
         if let s = section, !s.isEmpty { body["category"] = .string(s) }
+        if let st = store, !st.isEmpty { body["store"] = .string(st) }
         return try await sendReturning("POST", "/api/lists/\(listId)/items", body: body, as: ListItemResponse.self).item
     }
 
@@ -2514,12 +2945,14 @@ struct WaffledAPI: Sendable {
     /// quantity clears it; `section`/`priority` are only sent when provided (a
     /// section-move or priority-mark PATCHes just that field).
     func patchListItem(id: String, name: String? = nil, quantity: String? = nil, checked: Bool? = nil,
-                       section: String? = nil, priority: Int? = nil) async throws {
+                       section: String? = nil, store: String?? = .none, priority: Int? = nil) async throws {
         var body: [String: JSONValue] = [:]
         if let name { body["name"] = .string(name) }
         if let quantity { body["quantity"] = quantity.isEmpty ? .null : .string(quantity) }
         if let checked { body["checked"] = .bool(checked) }
         if let section { body["category"] = section.isEmpty ? .null : .string(section) }
+        // Double-optional: .none = leave unchanged; .some(nil)/.some("") = clear.
+        if case let .some(s) = store { body["store"] = (s?.isEmpty == false) ? .string(s!) : .null }
         if let priority { body["priority"] = .int(priority) }
         guard !body.isEmpty else { return }
         try await send("PATCH", "/api/list-items/\(id)", body: body)
@@ -2527,12 +2960,13 @@ struct WaffledAPI: Sendable {
 
     /// Full-detail edit (the swipe → Details editor): always sets name, quantity,
     /// assignee, section, and priority. `assignedTo`/empty section send null to clear.
-    func updateItemDetails(id: String, name: String, quantity: String, assignedTo: String?, section: String, priority: Int) async throws {
+    func updateItemDetails(id: String, name: String, quantity: String, assignedTo: String?, section: String, store: String, priority: Int) async throws {
         let body: [String: JSONValue] = [
             "name": .string(name),
             "quantity": quantity.isEmpty ? .null : .string(quantity),
             "assignedTo": assignedTo.map(JSONValue.string) ?? .null,
             "category": section.isEmpty ? .null : .string(section),
+            "store": store.isEmpty ? .null : .string(store),
             "priority": .int(priority),
         ]
         try await send("PATCH", "/api/list-items/\(id)", body: body)
@@ -2546,13 +2980,21 @@ struct WaffledAPI: Sendable {
     /// Bulk-edit section / assignee / priority across many items in one call. A
     /// double-optional distinguishes "leave unchanged" (.none) from "set to null"
     /// (.some(nil)); e.g. `assignedTo: .some(nil)` unassigns the whole selection.
-    func bulkPatchListItems(ids: [String], section: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) async throws {
+    func bulkPatchListItems(ids: [String], section: String?? = .none, store: String?? = .none, assignedTo: String?? = .none, priority: Int? = nil) async throws {
         var patch: [String: JSONValue] = [:]
         if case let .some(s) = section { patch["section"] = s.map(JSONValue.string) ?? .null }
+        if case let .some(st) = store { patch["store"] = st.map(JSONValue.string) ?? .null }
         if case let .some(a) = assignedTo { patch["assignedTo"] = a.map(JSONValue.string) ?? .null }
         if let priority { patch["priority"] = .int(priority) }
         guard !patch.isEmpty, !ids.isEmpty else { return }
         try await send("PATCH", "/api/list-items/bulk", body: ["ids": .array(ids.map(JSONValue.string)), "patch": .object(patch)])
+    }
+
+    /// The household's previously-used store names (most-used first) — quick-select
+    /// for a grocery item's store field.
+    func listStores() async throws -> [String] {
+        struct Resp: Decodable { let stores: [String] }
+        return try await sendJSON("GET", "/api/lists/stores", as: Resp.self).stores
     }
 
     /// Clear a custom list's Completed section now (soft-deletes its checked items).

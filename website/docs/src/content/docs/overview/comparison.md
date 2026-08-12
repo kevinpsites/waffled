@@ -53,7 +53,7 @@ a hosted product is a reasonable choice. Waffled is for people who want the oppo
 | Cost | Free (your hardware/power) | Free with ads / ~annual for Gold | Device + yearly plan | Free | Free–paid |
 | Your data | On your machine | On their servers | On their servers | On their servers | On their servers |
 | Kitchen display | ✅ **Any tablet you own**, no hardware to buy | 📱 App only | ✅ Their screen (buy it) | 📱 App only | ❌ |
-| Calendar | ✅ Its own, **+ two-way Google sync** (adds on, doesn't replace) | ✅ | ✅ | ✅ (it *is* Google) | ⚠️ Manual |
+| Calendar | ✅ Its own, **+ two-way Google / Outlook sync** and ICS feeds (adds on, doesn't replace) | ✅ | ✅ | ✅ (it *is* Google) | ⚠️ Manual |
 | Chores + reward economy | ✅ Stars, approvals, shop, **photo proof**, streaks | ⚠️ Basic lists | ⚠️ Chore charts | ❌ | ⚠️ DIY |
 | Goals + habit tracking | ✅ Count / total / habit / checklist, **Apple Health** auto-fill | ❌ | ❌ | ❌ | ⚠️ DIY |
 | Meals → auto grocery list | ✅ | ⚠️ Recipe box + lists | ⚠️ Meal planner | ❌ | ⚠️ DIY |

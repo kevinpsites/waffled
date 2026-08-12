@@ -1,0 +1,330 @@
+// Meal Builder — compose a named, multi-recipe plate, then schedule it or send it
+// straight to the grocery list. See docs/product/meal-builder-plan.md.
+//
+// Two columns: the plate (role-grouped dishes) on the left, "Add from library" on
+// the right, with a dark stat bar pinned below. Every mutation returns the whole
+// updated plate, so the screen repaints from the response instead of refetching.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router'
+import { mealBuilderApi, useMeal, usePersons, type Meal } from '../lib/api'
+import { MealBuilderPlate, type DragPayload, type PlateRole } from './components/MealBuilderPlate'
+import { MealBuilderLibrary } from './components/MealBuilderLibrary'
+import { MealBuilderBar } from './components/MealBuilderBar'
+import { MealBuilderScheduleModal } from './components/MealBuilderScheduleModal'
+import '../styles/mealbuilder.css'
+
+const NEW_NAME = 'New meal'
+
+type Toast = { text: string; link?: { to: string; label: string } }
+
+export function MealBuilder() {
+  const { id: routeId } = useParams()
+  const navigate = useNavigate()
+
+  // `/meals/build` starts with no id: the plate is created lazily on the first
+  // dish add or the first rename, then the URL is swapped for /meals/build/:id so
+  // a refresh doesn't lose the work.
+  const [id, setId] = useState<string | null>(routeId ?? null)
+  // Mirrors `id` so an async write can decide whether the URL still needs
+  // swapping without reading stale closure state.
+  const idStateRef = useRef<string | null>(routeId ?? null)
+  useEffect(() => {
+    idStateRef.current = id
+  }, [id])
+  useEffect(() => {
+    if (routeId && routeId !== idStateRef.current) setId(routeId)
+  }, [routeId])
+
+  const { meal, loading, error, set } = useMeal(id)
+  const { persons } = usePersons()
+
+  // Locally-owned bits of the plate so typing/stepping paints instantly. Synced
+  // from the server plate whenever a DIFFERENT plate loads (not on every write,
+  // which would fight the optimistic value).
+  // Starts blank so the placeholder invites a name rather than making the user
+  // clear “New meal” first; the lazy create falls back to NEW_NAME.
+  const [name, setName] = useState('')
+  const [servings, setServings] = useState(4)
+  const [isSaved, setIsSaved] = useState(false)
+  // Adopt a newly-loaded plate's own values DURING render rather than in an effect.
+  // As an effect this landed a paint late: the bar rendered the placeholder 4 first
+  // and only then snapped to the plate's real number. That window is not just
+  // cosmetic — a stepper tap inside it was applied to 4 (giving 5) and then thrown
+  // away when the sync overwrote it, so the tap silently did nothing. Guarded on the
+  // id so it re-syncs only when a *different* plate loads; this is React's documented
+  // way to adjust state when the data it derives from changes.
+  const syncedRef = useRef<string | null>(null)
+  if (meal && syncedRef.current !== meal.id) {
+    syncedRef.current = meal.id
+    setName(meal.name)
+    setServings(meal.servings)
+    setIsSaved(meal.isSaved)
+  }
+
+  const [addingRole, setAddingRole] = useState<PlateRole | null>(null)
+  const [scheduling, setScheduling] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [toast, setToast] = useState<Toast | null>(null)
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 7000)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  // ── lazy create ───────────────────────────────────────────────────────────
+  // One create, ever: a fast rename-then-add must not fire two POSTs, so the
+  // in-flight promise is shared.
+  const idRef = useRef<string | null>(routeId ?? null)
+  const createRef = useRef<Promise<string> | null>(null)
+  const nameRef = useRef(name)
+  nameRef.current = name
+  const servingsRef = useRef(servings)
+  servingsRef.current = servings
+  // Which write is the newest — see run().
+  const seqRef = useRef(0)
+
+  const ensureId = useCallback(async (): Promise<string> => {
+    if (idRef.current) return idRef.current
+    if (!createRef.current) {
+      createRef.current = mealBuilderApi
+        .create({ name: nameRef.current.trim() || NEW_NAME, servings: servingsRef.current })
+        .then((m) => {
+          idRef.current = m.id
+          return m.id
+        })
+        .catch((e) => {
+          createRef.current = null
+          throw e
+        })
+    }
+    return createRef.current
+  }, [])
+
+  // Run a write against the plate (creating it first if this is a fresh one),
+  // repaint from the response, and only then adopt the new URL — so the refetch
+  // the id change triggers can't hand back a pre-write plate.
+  // `rollback` restores whatever the caller painted BEFORE the request. For the
+  // read-only callers (add/remove/re-role a dish) there's nothing to undo — the plate
+  // is still whatever the server last said — but servings, the library toggle and the
+  // name all update locally first, so without this the screen kept showing a value
+  // the server had rejected, silently, until a reload.
+  const run = useCallback(
+    async (fn: (mealId: string) => Promise<Meal>, rollback?: () => void) => {
+      const seq = ++seqRef.current
+      setBusy(true)
+      try {
+        const mealId = await ensureId()
+        const updated = await fn(mealId)
+        // Every write answers with the WHOLE plate, true as of its own commit. If a
+        // newer write has gone out since, this snapshot predates it — repainting
+        // would drop a dish that was added after it (or resurrect one removed), and
+        // it does not self-heal: useMeal only refetches on an id change, so the
+        // stale paint survives until the next mutation or a reload.
+        if (seq !== seqRef.current) return
+        set(updated)
+        if (idStateRef.current !== mealId) {
+          idStateRef.current = mealId
+          setId(mealId)
+          navigate(`/meals/build/${mealId}`, { replace: true })
+        }
+      } catch {
+        // Deliberately NOT gated on `seq`: a write that failed still failed, and
+        // staying quiet about it because something else went out afterwards is how
+        // finding 3 happened in the first place.
+        rollback?.()
+        setToast({ text: 'Couldn’t save that — check your connection and try again.' })
+      } finally {
+        if (seq === seqRef.current) setBusy(false)
+      }
+    },
+    [ensureId, navigate, set],
+  )
+
+  // ── name ──────────────────────────────────────────────────────────────────
+  const renamedRef = useRef(false)
+  useEffect(() => {
+    if (!renamedRef.current) return
+    const t = setTimeout(() => {
+      const next = name.trim()
+      if (!next || (meal && meal.name === next)) return
+      // Restoring the name re-runs this effect, but by then `name` matches the
+      // plate's own again, so the guard above returns before firing a second PATCH.
+      const prev = meal?.name ?? ''
+      void run(
+        (mealId) => mealBuilderApi.update(mealId, { name: next }),
+        () => setName(prev),
+      )
+    }, 600)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name])
+
+  // ── plate mutations ───────────────────────────────────────────────────────
+  const dishes = meal?.recipes ?? []
+  const onPlate = useMemo(() => new Set(dishes.map((d) => d.recipeId)), [dishes])
+
+  function addRecipe(recipeId: string, role: PlateRole) {
+    setAddingRole(null)
+    void run((mealId) => mealBuilderApi.addDish(mealId, { recipeId, role }))
+  }
+  // A saved meal added here flattens — its dishes come in individually and keep
+  // their own roles. Meals never nest (decision 12).
+  function addMeal(mealId: string) {
+    setAddingRole(null)
+    void run((plateId) => mealBuilderApi.flattenInto(plateId, mealId))
+  }
+  function removeDish(recipeId: string) {
+    void run((mealId) => mealBuilderApi.removeDish(mealId, recipeId))
+  }
+  function assignCook(recipeId: string, cookPersonId: string | null) {
+    void run((mealId) => mealBuilderApi.patchDish(mealId, recipeId, { cookPersonId }))
+  }
+  function changeServings(next: number) {
+    const n = Math.max(1, next)
+    if (n === servings) return
+    const prev = servings
+    setServings(n)
+    // On a plate that doesn't exist yet this just rides along on the lazy create
+    // — no point creating a meal because someone tapped the stepper.
+    if (!idRef.current) return
+    void run(
+      (mealId) => mealBuilderApi.update(mealId, { servings: n }),
+      () => setServings(prev),
+    )
+  }
+  function toggleSaved() {
+    const next = !isSaved
+    const prev = isSaved
+    setIsSaved(next)
+    void run(
+      (mealId) => mealBuilderApi.update(mealId, { isSaved: next }),
+      () => setIsSaved(prev),
+    )
+  }
+
+  async function addToList() {
+    if (!idRef.current || busy) return
+    setBusy(true)
+    try {
+      const r = await mealBuilderApi.addToList(idRef.current)
+      setToast({
+        text: `Added ${r.added} ${r.added === 1 ? 'item' : 'items'} to the grocery list`,
+        link: { to: '/lists', label: 'View grocery' },
+      })
+    } catch {
+      setToast({ text: 'Couldn’t add this plate to the list.' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // ── drag & drop (web/iPad only — iPhone taps to add) ──────────────────────
+  const dragRef = useRef<DragPayload | null>(null)
+  function dropOnRole(role: PlateRole) {
+    const item = dragRef.current
+    dragRef.current = null
+    if (!item) return
+    if (item.kind === 'meal') addMeal(item.id)
+    else if (item.kind === 'dish') {
+      // Already on the plate: this is a move, so it's an UPDATE. Dropping a dish
+      // back where it started must not round-trip to the server at all.
+      if (item.from === role) return
+      void run((mealId) => mealBuilderApi.patchDish(mealId, item.id, { role }))
+    } else addRecipe(item.id, role)
+  }
+
+  if (error) return <div className="mb-shell mb-empty">Couldn’t load that meal.</div>
+  if (loading && !meal) return <div className="mb-shell" />
+
+  return (
+    <div className="mb-shell">
+      <header className="mb-head">
+        <button type="button" className="pill mb-back" onClick={() => navigate('/meals')}>
+          ‹ Meals
+        </button>
+        <div className="mb-head-b">
+          <input
+            className="mb-name"
+            aria-label="Meal name"
+            value={name}
+            placeholder={NEW_NAME}
+            onChange={(e) => {
+              renamedRef.current = true
+              setName(e.target.value)
+            }}
+          />
+          <div className="mb-hint tiny muted">Building a meal · tap the name to rename</div>
+        </div>
+      </header>
+
+      <div className="mb-body">
+        <MealBuilderPlate
+          dishes={dishes}
+          persons={persons}
+          addingRole={addingRole}
+          onOpenDish={(recipeId) => navigate(`/meals/recipe/${recipeId}`)}
+          onRemoveDish={removeDish}
+          onAssignCook={assignCook}
+          onPickRole={(role) => setAddingRole(role)}
+          onDropOnRole={dropOnRole}
+          onDragItem={(payload) => {
+            dragRef.current = payload
+          }}
+        />
+        <MealBuilderLibrary
+          onPlate={onPlate}
+          hasMain={dishes.some((d) => d.role === 'main')}
+          addingRole={addingRole}
+          onCancelAdding={() => setAddingRole(null)}
+          onAddRecipe={addRecipe}
+          onAddMeal={addMeal}
+          onDragItem={(payload) => {
+            dragRef.current = payload
+          }}
+        />
+      </div>
+
+      <MealBuilderBar
+        name={name.trim() || NEW_NAME}
+        servings={servings}
+        totalMinutes={meal?.totalMinutes ?? null}
+        toBuy={meal?.toBuy ?? 0}
+        isSaved={isSaved}
+        empty={dishes.length === 0}
+        busy={busy}
+        onServings={changeServings}
+        onToggleSaved={toggleSaved}
+        onAddToList={addToList}
+        onSchedule={() => setScheduling(true)}
+        // A plate only has a cook route once it exists server-side; the bar hides
+        // the button on an empty plate, which is the same condition.
+        onCook={() => meal && navigate(`/meals/meal/${meal.id}/cook`)}
+      />
+
+      {scheduling && meal ? (
+        <MealBuilderScheduleModal
+          meal={meal}
+          onClose={() => setScheduling(false)}
+          onScheduled={({ meal: after, dayLabel }) => {
+            set(after)
+            setToast({
+              text: `Added “${after.name}” to ${dayLabel} · built ${after.toBuy}-item list`,
+              link: { to: '/lists', label: 'View grocery' },
+            })
+          }}
+        />
+      ) : null}
+
+      {toast ? (
+        <div className="mb-toast" role="status">
+          <span>{toast.text}</span>
+          {toast.link ? (
+            <Link className="mb-toast-link" to={toast.link.to}>
+              {toast.link.label}
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}

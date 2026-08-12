@@ -14,6 +14,10 @@ final class ScreensaverModel {
     var weather: WaffledAPI.Weather?
     var showing = false
     var dimmed = false
+    /// True while the software keyboard is up (a text field is focused). The saver holds
+    /// off starting so it can't drop over someone mid-typing (e.g. adding a list item on
+    /// an iPad). Inline fields aren't caught by `modalPresented()`, so this covers them.
+    var keyboardUp = false
 
     private var lastActivity = Date()
     private let api = WaffledAPI()
@@ -51,8 +55,9 @@ final class ScreensaverModel {
             if idle >= Double(max(1, cfg.screensaverMinutes) * 60) {
                 // Don't start the saver over an open sheet/cover — it presents above the
                 // app view tree, so the saver would render *under* it (a broken sandwich).
-                // Wait it out: hold the idle clock until the modal is dismissed.
-                if Self.modalPresented() { lastActivity = now } else { showing = true }
+                // Also hold off while a field is focused (keyboard up) so it can't drop over
+                // someone mid-typing. Either way, wait it out: hold the idle clock.
+                if Self.modalPresented() || keyboardUp { lastActivity = now } else { showing = true }
             }
         }
     }
@@ -116,8 +121,23 @@ struct KioskScreensaverHost: ViewModifier {
                 }
             }
             .onReceive(tick) { model.tick($0, tz: sync.householdTz) }
-            // Keep the screen awake while the saver is up (it IS the screensaver).
-            .onChange(of: model.showing) { _, on in UIApplication.shared.isIdleTimerDisabled = on }
+            // Track the software keyboard so the saver holds off while a field is focused.
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                model.keyboardUp = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                model.keyboardUp = false
+            }
+            .onChange(of: model.showing) { _, on in
+                // Keep the screen awake while the saver is up (it IS the screensaver).
+                UIApplication.shared.isIdleTimerDisabled = on
+                // Second guard: if the saver ever does come up with the keyboard showing
+                // (e.g. it was focused right as the idle timer fired), resign first
+                // responder so the keyboard doesn't sit lit under the overlay.
+                if on {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
     }
 
     /// Tapped the screensaver to wake. On a shared kiosk with "Return to profile picker"

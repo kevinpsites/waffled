@@ -14,7 +14,7 @@ import { type Tenant } from '../households/households'
 import { tenantRoute } from '../../platform/route-guards'
 import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync.service'
 import { recordMatch, WEIGHT } from '../goals/goal-match-memory'
-import { assertEventReferences, updateEvent, softDeleteEvent } from '../events/events'
+import { assertEventReferences, updateEvent, softDeleteEvent, readOnlyOrigin } from '../events/events'
 import { assertEventInHousehold, assertPersonInHousehold } from '../../platform/household-refs'
 
 type Api = ReturnType<typeof createAPI>
@@ -162,6 +162,14 @@ export function registerPowerSyncCrudRoutes(api: Api): void {
       if (!op || typeof op.id !== 'string' || !op.id) continue
       const data = op.data ?? {}
       if (op.table === 'events') {
+        // Events mirrored from a subscribed ICS feed are read-only: there is no
+        // write-back channel and the next poll restamps them from the feed. The
+        // REST routes 409 on this; here the op is DROPPED instead, because
+        // PowerSync retries a failed transaction indefinitely and an error would
+        // wedge the device's whole upload queue. Same silent-no-op contract as
+        // the cross-household guard above; the device's local row is corrected by
+        // the next sync down.
+        if (op.op !== 'PUT' && (await readOnlyOrigin(tenant.householdId, op.id))) continue
         if (op.op === 'PUT') await applyEventPut(tenant, op.id, data)
         else if (op.op === 'PATCH') await applyEventPatch(tenant, op.id, data)
         else if (op.op === 'DELETE') await softDeleteEvent(tenant.householdId, op.id)

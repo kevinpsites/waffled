@@ -8,7 +8,7 @@ description: What Waffled is, its three surfaces, and the core ideas behind it.
 Waffled is a **self-hosted family operating system**. One household, one source of truth for
 everything a family coordinates day to day:
 
-- 📅 **Calendar** with optional two-way Google Calendar sync
+- 📅 **Calendar** with optional two-way Google or Outlook sync, plus read-only ICS feeds
 - ✅ **Chores & stars** with a full earn → redeem → approve economy
 - 🎯 **Goals & rewards** (individual and shared)
 - 🍽️ **Meals & recipes** with a step-by-step cook mode and an auto-built grocery list

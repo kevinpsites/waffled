@@ -12,6 +12,9 @@ struct KioskListsView: View {
     @State private var creating = false
     /// Opening a recipe from a list's meal recap (forwarded to the Meals tab).
     var openRecipe: (WaffledAPI.RecipeSummary) -> Void = { _ in }
+    /// The same for a recap row backed by a Meal Builder plate. Without it those rows
+    /// draw a chevron and do nothing, while the recipe rows beside them navigate.
+    var openMeal: (WaffledAPI.MealDTO) -> Void = { _ in }
 
     /// The selected list, defaulting to the first (so the detail isn't empty on load).
     private var selected: WaffledAPI.ListSummary? {
@@ -28,7 +31,7 @@ struct KioskListsView: View {
             Rectangle().fill(WF.hair).frame(height: 1)
             Group {
                 if let sel = selected {
-                    ListDetailView(list: sel, openRecipe: openRecipe).id(sel.id)
+                    ListDetailView(list: sel, openRecipe: openRecipe, openMeal: openMeal).id(sel.id)
                 } else {
                     placeholder
                 }

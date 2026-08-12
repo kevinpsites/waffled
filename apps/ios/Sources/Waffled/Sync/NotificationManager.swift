@@ -233,12 +233,12 @@ private final class NotifDelegate: NSObject, UNUserNotificationCenterDelegate {
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let content = response.notification.request.content
-        // Cook-mode timer taps carry a recipe + step (no eventId) — deep-link into Cook
-        // Mode. Checked first so a cook timer is never mistaken for an event reminder.
-        if let recipeId = content.userInfo["cookRecipeId"] as? String {
-            let step = content.userInfo["cookStepIndex"] as? Int ?? 0
+        // Cook-mode timer taps carry a dish + step (+ its plate, no eventId) — deep-link
+        // into Cook Mode. Checked first so a cook timer is never mistaken for an event
+        // reminder; `CookTimerLink` owns the payload shape (including the pre-plates one).
+        if let link = CookTimerLink.from(userInfo: content.userInfo) {
             Task { @MainActor in
-                manager?.pendingCookTimer = CookTimerLink(recipeId: recipeId, stepIndex: step)
+                manager?.pendingCookTimer = link
                 completionHandler()
             }
             return

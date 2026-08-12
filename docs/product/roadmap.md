@@ -42,8 +42,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Today** — live cards + customizable per-user / family layouts.
 - **Calendar** — native events, Month/Week/Day/Agenda, create/edit/delete, participants,
   **recurring events** (RRULE picker, per-occurrence/this-and-following/all edits),
-  **two-way Google Calendar sync** (recurrences expanded on inbound), offline calendar
-  (PowerSync), AI heads-up + per-event insight.
+  **two-way Google Calendar sync** and **two-way Outlook / Microsoft 365 sync** (recurrences
+  expanded on inbound), **read-only ICS calendar feeds**, offline calendar (PowerSync), AI
+  heads-up + per-event insight.
 - **Chores & stars** — full loop: CRUD, weekly/custom schedules, **one-off + carry-over
   tasks** ("Just once" repeat + due date, unfinished one-offs roll forward with an
   **overdue · since …** badge, per-chore `rollover` toggle), up-for-grabs claim,
@@ -81,10 +82,27 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   [staged plan](../design/healthkit-goals.md); background sync + a rewards tie-in remain — see
   below.)*
 - **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
-  staples, live cross-surface refresh, **item attribution** ("added by …" / from a meal plan
-  or recipe), **add any recipe's ingredients from its page** (no meal-plan entry needed —
-  these survive the weekly rebuild), and **"Unscheduled" sections + week-rail rows** for
-  off-plan recipes in the grocery board's by-meal view.
+  staples, live cross-surface refresh **plus cross-device refresh** (foreground + ~20s poll,
+  since lists aren't on PowerSync), **item attribution** ("added by …" / from a meal plan
+  or recipe), **add any recipe's ingredients from its page** — now with a **pick-specific
+  picker** (add all or just what you need) — (no meal-plan entry needed; these survive the
+  weekly rebuild), **assign a store to an item + a By-store board view** (free-text
+  quick-select over your previously-used stores), **"Unscheduled" sections + week-rail
+  rows** for off-plan recipes in the grocery board's by-meal view, and **Share list** — hand
+  any list to a phone as grouped plain text via copy / share sheet / QR, with the store and
+  assignee noted per item.
+- **Meal Builder** — build one meal out of several recipes and treat it as one
+  thing: name a plate, add recipes under Main / Sides / Dessert, meal-level servings,
+  **a cook per dish**, and an optional "keep in library" that makes it reusable (saved
+  meals are first-class in the recipe library, with a `Meal · N` badge, a 🍽️ Meals filter
+  and search across the plate name *and* its dish titles). Schedule it to a night (one
+  slot, one calendar event, feeds the weekly grocery rebuild) **or** put just its shopping
+  on the list without scheduling — and take that back off again. The grocery board groups
+  a plate's items under the plate; cook mode takes the whole plate, tabbed across its
+  dishes with one shared timer dock, each dish keeping its own step and every timer
+  naming the pan that's beeping (on mobile, a jump leaves a "back to step N" pill).
+  Shipped on web, iPhone and iPad — add a dish by tapping the role's ＋, and drag a dish
+  between roles once it's on the plate.
 - **Meals & recipes** — week/month planners, recipe library, in-app editor (with
   **ingredient sections** + dividers and cross-section drag-drop), paste-markdown
   import **and share-as-markdown export** (a Share action compiles a recipe to the
@@ -169,7 +187,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   addresses, and on-device photo capture — see `apps/waffled-bite-firmware/README.md` for
   the full list of open items.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
-  are REST + live-refresh bus.
+  are REST + live-refresh bus, plus a **cross-device refresh** for lists (foreground + ~20s
+  poll on the open list) so a family member's edit lands without a manual reload.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend
   blips.
 - **Public ingress** (7.3) — configurable (Caddy auto-TLS / Cloudflare Tunnel), operator's
@@ -185,8 +204,30 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   match ("family walk" vs "Family walk after dinner"), and consider surfacing a member's
   cross-goal favourites when a specific goal has little history of its own.
 
-- **List sharing.** Let a household invite specific people to a list, choose whether
-  they can view or edit it, and revoke access later.
+- **List sharing (access, not a handoff).** Let a household invite specific people to a
+  list, choose whether they can view or edit it, and revoke access later. Distinct from the
+  shipped **Share list**, which is a one-way copy of the text to a phone and grants nobody
+  any access.
+
+- **Share list: a link-backed QR for long lists.** *Enhancement to the shipped
+  [Share list](/features/lists/) handoff.* Today the QR encodes the list **text
+  itself**, which is the feature's best property — the phone needs no app, no account,
+  and no round-trip to the server. But a QR's capacity is fixed, so a long list pushes
+  the code to a high version until its modules are too small for a camera to read. A
+  measured 45-item list is 1,137 bytes → version 28, 129×129 modules; drawn at 320px
+  that is 2.5 CSS px per module, under the ~3 a phone needs. The shipped behaviour is
+  therefore honest rather than clever: draw the code as large and as low-density as it
+  can be, and when the list still won't fit, say so and point at Copy / Share (which
+  have no length limit) instead of rendering a code that cannot work.
+  The enhancement: for lists past that threshold, have the QR encode a **short link**
+  to a read-only shared view of the list instead of its text, so the code stays small
+  and scannable at any length. That is a real feature, not a tweak — it needs a share
+  endpoint, an unguessable token, an expiry/revocation policy, and a decision about
+  whether the phone must be on the same LAN as the server (a self-hosted box usually
+  isn't reachable from cellular). Worth pairing with **List sharing** above, since both
+  want the same "a link that shows one list, to someone who isn't signed in" primitive.
+  (Share list itself now covers **every** list, not just groceries — grouping by aisle on
+  the grocery board and by section elsewhere — so the enhancement applies household-wide.)
 
 - **Waffled-Bite DIY hardware setup guide.** A real, consumer-facing walkthrough for
   buying the board yourself ([ELECROW CrowPanel Advanced 7", ESP32-P4](https://www.amazon.com/dp/B0G34WGWJR))
@@ -270,16 +311,17 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   cooked. We deliberately confirm rather than subtract exact amounts (units don't reconcile
   cleanly). **Later:** true unit/quantity reconciliation; vegetable-based "mains" + recipe filter.
 
-- **Assign & show a cook per meal (web + iPad + iPhone).** The `meal_plan_entries.cook_person_id`
-  column and the API's `cook` DTO already exist — and the demo seed even populates cooks (Jerry,
-  Kramer) — but **no UI actually assigns it**, so the data is running ahead of the product. Build
-  the real feature on all three surfaces: a **"who's cooking?" picker** when planning/editing a
-  meal (pick a household member, or leave it to the whole family) wired to the existing
-  `planMeal(…, cookPersonId:)` / `/api/meals/plan`, and a consistent **cook badge** (👩‍🍳 +
-  avatar/name) on the planner grid, the Today "meals" card, and the recipe detail. Today the phone
-  only *displays* the cook (`WeekPlannerView`) and web ignores `cook_person_id` entirely; re-planning
-  should preserve the existing cook. Keep it un-gated (collaborative/attribution-style, like list
-  authorship — no capability needed to volunteer or reassign a cook).
+- **Assign & show a cook per *slot* (web + iPad + iPhone).** Half of this shipped with the
+  Meal Builder: a plate assigns **a cook per dish** (`meal_recipes.cook_person_id`) with a
+  cook badge on each dish row, which is the right grain for a multi-dish meal. What's still
+  missing is the single-recipe case — `meal_plan_entries.cook_person_id` and the API's `cook`
+  DTO exist (the demo seed even populates cooks), but **no UI assigns it**, so that data is
+  still running ahead of the product. Left to build: a **"who's cooking?" picker** when
+  planning or editing a plain recipe slot, wired to the existing `planMeal(…, cookPersonId:)`
+  / `/api/meals/plan`, and the same cook badge on the planner grid, the Today "meals" card and
+  the recipe detail. The phone only *displays* that cook today (`WeekPlannerView`) and web
+  ignores it entirely; re-planning should preserve it. Un-gated (collaborative/attribution,
+  like list authorship — no capability needed to volunteer or reassign a cook).
 
 - **Apple Health → goals — remaining follow-ons (iPhone).** Tiers 0–2 shipped (see **Done** —
   the full metric set incl. rings/mindful/mood, the **four distance metrics** (walk + run,

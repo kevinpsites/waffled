@@ -96,11 +96,17 @@ nothing set, capture still works via an on-device heuristic.
 > Note: small local models (e.g. `llama3.2:3b`) are loose; a 7–8B model or hosted Claude
 > is meaningfully more reliable for parsing and recipe AI.
 
-## Optional: two-way Google Calendar sync
+## Optional: two-way calendar sync (Google or Outlook)
 
 Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALENDAR_REDIRECT_URI` in the
-env, then connect per person in **Settings → Calendars** ("Connect your calendar"). Waffled
-pulls events on a ~5-minute poll and pushes Waffled-authored events back.
+env — or `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, and `MS_CALENDAR_REDIRECT_URI` for
+[Outlook / Microsoft 365](/administration/outlook-calendar/) — then connect per person in
+**Settings → Calendars**. A household can mix both. Waffled pulls events on a ~5-minute poll
+and pushes Waffled-authored events back.
+
+Want a calendar on the wall without any of that? **Settings → Calendars → Calendar feeds**
+subscribes to any published `.ics` / `webcal://` link (a school schedule, a sports team) with
+no sign-in at all — read-only, refreshed every 15 minutes.
 
 ## Optional: single sign-on (OIDC)
 

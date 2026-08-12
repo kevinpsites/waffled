@@ -79,23 +79,61 @@ interface EntryEventRow {
   date: string
   meal_type: string
   recipe_id: string | null
+  meal_id: string | null
+  meal_name: string | null
   title: string | null
   event_id: string | null
   recipe_title: string | null
   recipe_emoji: string | null
 }
 
+// The one query both syncs use. A slot backed by a Meal Builder plate has
+// recipe_id NULL, so the recipe join says nothing — read the plate instead.
+const ENTRY_SQL = `select mpe.id, to_char(mpe.date,'YYYY-MM-DD') as date, mpe.meal_type, mpe.recipe_id, mpe.title, mpe.event_id,
+                          mpe.meal_id, ml.name as meal_name,
+                          r.title as recipe_title, r.emoji as recipe_emoji
+                     from meal_plan_entries mpe
+                     left join recipes r on r.id = mpe.recipe_id and r.deleted_at is null
+                     left join meals ml on ml.id = mpe.meal_id and ml.deleted_at is null
+                    where mpe.household_id = $1 and mpe.id = $2 and mpe.deleted_at is null`
+
+// The dishes on a plate, in plate order — the calendar event names them all.
+async function mealDishes(mealId: string): Promise<Array<{ title: string; emoji: string | null }>> {
+  const { rows } = await query<{ title: string | null; emoji: string | null }>(
+    `select r.title, r.emoji from meal_recipes mr
+       join recipes r on r.id = mr.recipe_id and r.deleted_at is null
+      where mr.meal_id = $1
+      order by mr.sort_order, r.title`,
+    [mealId]
+  )
+  return rows.filter((r): r is { title: string; emoji: string | null } => !!r.title)
+}
+
+// What a planned slot is called on the calendar: the plate's name (with its first
+// dish's emoji) for a Meal Builder plate, the recipe/free-text title otherwise, plus
+// the dish list that becomes the event description.
+async function describeEntry(e: EntryEventRow): Promise<{ dishName: string | null; emoji: string; description: string | null }> {
+  if (e.meal_id && e.meal_name) {
+    const dishes = await mealDishes(e.meal_id)
+    const emoji = dishes.find((d) => d.emoji)?.emoji
+    return {
+      dishName: e.title || e.meal_name,
+      emoji: emoji ? `${emoji} ` : '',
+      // "🍗 BBQ Chicken · 🥔 Potato Salad · 🥬 Coleslaw · 🍑 Peach Cobbler"
+      description: dishes.length ? dishes.map((d) => (d.emoji ? `${d.emoji} ${d.title}` : d.title)).join(' · ') : null,
+    }
+  }
+  return {
+    dishName: e.title || e.recipe_title,
+    emoji: e.recipe_emoji ? `${e.recipe_emoji} ` : '',
+    description: null,
+  }
+}
+
 // Create or update the companion calendar event for one planned meal, applying
 // current settings. If meals-on-calendar is off, removes any existing event.
 export async function syncMealEventForEntry(tenant: Tenant, entryId: string): Promise<void> {
-  const { rows } = await query<EntryEventRow>(
-    `select mpe.id, to_char(mpe.date,'YYYY-MM-DD') as date, mpe.meal_type, mpe.recipe_id, mpe.title, mpe.event_id,
-            r.title as recipe_title, r.emoji as recipe_emoji
-       from meal_plan_entries mpe
-       left join recipes r on r.id = mpe.recipe_id and r.deleted_at is null
-      where mpe.household_id = $1 and mpe.id = $2 and mpe.deleted_at is null`,
-    [tenant.householdId, entryId]
-  )
+  const { rows } = await query<EntryEventRow>(ENTRY_SQL, [tenant.householdId, entryId])
   const e = rows[0]
   if (!e) return
 
@@ -108,8 +146,8 @@ export async function syncMealEventForEntry(tenant: Tenant, entryId: string): Pr
   // Prefix with the meal type so a glance at the calendar says it's a planned
   // meal: "🍗 Dinner · Banh Mi-Style Chicken Bowls".
   const label = MEAL_LABEL[e.meal_type] || 'Meal'
-  const dishName = e.title || e.recipe_title
-  const emoji = e.recipe_emoji ? `${e.recipe_emoji} ` : ''
+  // A Meal Builder plate shows as the plate name, with every dish in the description.
+  const { dishName, emoji, description } = await describeEntry(e)
   const title = dishName ? `${emoji}${label} · ${dishName}` : label
   const time = settings.times[e.meal_type] || DEFAULT_TIMES[e.meal_type] || '12:00'
 
@@ -134,7 +172,7 @@ export async function syncMealEventForEntry(tenant: Tenant, entryId: string): Pr
     if (eventId) {
       const upd = await client.query<{ id: string }>(
         `update events set
-            title = $3,
+            title = $3, description = $11,
             starts_at = (($4::date + $5::time) at time zone $6),
             ends_at = (($4::date + $5::time) at time zone $6) + ($7 || ' minutes')::interval,
             all_day = false, timezone = $6, person_id = $8, calendar_id = $9::uuid,
@@ -143,21 +181,21 @@ export async function syncMealEventForEntry(tenant: Tenant, entryId: string): Pr
             updated_at = now()
           where household_id = $1 and id = $10
           returning id`,
-        [tenant.householdId, entryId, title, e.date, time, tz, settings.durationMinutes, settings.calendarPersonId, calendarId, eventId]
+        [tenant.householdId, entryId, title, e.date, time, tz, settings.durationMinutes, settings.calendarPersonId, calendarId, eventId, description]
       )
       if (!upd.rows[0]) eventId = null // event vanished — fall through and recreate
     }
     if (!eventId) {
       const ins = await client.query<{ id: string }>(
         `insert into events
-           (household_id, calendar_id, title, starts_at, ends_at, all_day, timezone, person_id, origin, origin_ref_id, sync_state)
-         values ($1, $9::uuid, $3,
+           (household_id, calendar_id, title, description, starts_at, ends_at, all_day, timezone, person_id, origin, origin_ref_id, sync_state)
+         values ($1, $9::uuid, $3, $10,
                  (($4::date + $5::time) at time zone $6),
                  (($4::date + $5::time) at time zone $6) + ($7 || ' minutes')::interval,
                  false, $6, $8, 'meal_plan', $2,
                  case when $9::uuid is not null then 'pending_push' else 'local_only' end)
          returning id`,
-        [tenant.householdId, entryId, title, e.date, time, tz, settings.durationMinutes, settings.calendarPersonId, calendarId]
+        [tenant.householdId, entryId, title, e.date, time, tz, settings.durationMinutes, settings.calendarPersonId, calendarId, description]
       )
       eventId = ins.rows[0].id
       await client.query(`update meal_plan_entries set event_id = $1 where id = $2 and household_id = $3`, [eventId, entryId, tenant.householdId])
@@ -196,14 +234,7 @@ export async function removeMealEventForEntry(householdId: string, entryId: stri
 // origin='meal_prep' + origin_ref_id=entry.id. If the reminder is off (globally
 // or for this meal type) any existing one is removed.
 export async function syncPrepReminderForEntry(tenant: Tenant, entryId: string): Promise<void> {
-  const { rows } = await query<EntryEventRow>(
-    `select mpe.id, to_char(mpe.date,'YYYY-MM-DD') as date, mpe.meal_type, mpe.recipe_id, mpe.title, mpe.event_id,
-            r.title as recipe_title, r.emoji as recipe_emoji
-       from meal_plan_entries mpe
-       left join recipes r on r.id = mpe.recipe_id and r.deleted_at is null
-      where mpe.household_id = $1 and mpe.id = $2 and mpe.deleted_at is null`,
-    [tenant.householdId, entryId]
-  )
+  const { rows } = await query<EntryEventRow>(ENTRY_SQL, [tenant.householdId, entryId])
   const e = rows[0]
   if (!e) return
 
@@ -214,7 +245,7 @@ export async function syncPrepReminderForEntry(tenant: Tenant, entryId: string):
   const existingId = existing.rows[0]?.id ?? null
 
   const settings = await getMealSettings(tenant.householdId)
-  const dishName = e.title || e.recipe_title
+  const { dishName } = await describeEntry(e)
   const enabled = settings.prepReminder && settings.prepReminderMealTypes.includes(e.meal_type) && !!dishName
   if (!enabled) {
     if (existingId) await softDeleteEvent(tenant.householdId, existingId)

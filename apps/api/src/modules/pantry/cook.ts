@@ -5,24 +5,9 @@
 // "egg" ↔ "eggplant").
 import { query } from '../../platform/db'
 import { listPantryStaples, ensureDefaultStaples } from '../lists/lists.service'
-
-const STOPWORDS = new Set(['and', 'the', 'with', 'for', 'fresh', 'large', 'small', 'whole', 'ground'])
-
-// Significant tokens of a name (lowercased words, length ≥ 3, minus stopwords).
-// `ground` is a stopword on its own but kept as part of multi-word matches via subset.
-function tokens(name: string): Set<string> {
-  return new Set(
-    name.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length >= 3 && !STOPWORDS.has(w))
-  )
-}
-
-// True when one token set is a (non-empty) subset of the other.
-function matches(a: Set<string>, b: Set<string>): boolean {
-  if (!a.size || !b.size) return false
-  const [small, big] = a.size <= b.size ? [a, b] : [b, a]
-  for (const t of small) if (!big.has(t)) return false
-  return true
-}
+// tokens()/matches() moved to ./match so the general on-hand counts (on-hand.ts)
+// use exactly the same matcher — behaviour here is unchanged.
+import { tokens, matches } from './match'
 
 // A recipe you can make right now (nothing to buy). `have` = the non-staple
 // ingredients you have (rendered as checked chips); `expiringItem` flags one that's

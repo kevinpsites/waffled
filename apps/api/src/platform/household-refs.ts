@@ -40,7 +40,7 @@ export async function assertPersonInHousehold(householdId: string, personId: str
 }
 
 async function assertHouseholdRow(
-  table: 'goals' | 'goal_lists' | 'calendars' | 'recipes' | 'lists' | 'events',
+  table: 'goals' | 'goal_lists' | 'calendars' | 'recipes' | 'meals' | 'lists' | 'events',
   householdId: string,
   id: string,
   label: string
@@ -65,6 +65,9 @@ export const assertCalendarInHousehold = (householdId: string, calendarId: strin
 
 export const assertRecipeInHousehold = (householdId: string, recipeId: string) =>
   assertHouseholdRow('recipes', householdId, recipeId, 'recipe')
+
+export const assertMealInHousehold = (householdId: string, mealId: string) =>
+  assertHouseholdRow('meals', householdId, mealId, 'meal')
 
 export const assertListInHousehold = (householdId: string, listId: string) =>
   assertHouseholdRow('lists', householdId, listId, 'list')

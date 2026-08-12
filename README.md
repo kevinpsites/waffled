@@ -20,7 +20,8 @@ A shared family operating system rendered across three surfaces:
 - **iOS app** — native Swift/SwiftUI capture companion. Offline-first (read + write).
 - **Web app** — full management/setup dashboard. Static SPA served by Caddy (same build as the kiosk).
 
-One household, one source of truth: calendar (2-way Google sync), chores & stars,
+One household, one source of truth: calendar (2-way Google **or** Outlook sync, plus
+read-only ICS feeds), chores & stars,
 goals & rewards, meals & recipes, lists, photos, and an AI "Add anything" capture bar.
 
 ## Repo layout
@@ -86,7 +87,8 @@ optional integrations or to run somewhere other than `localhost`. The required v
 are the four generated secrets and the remaining `POSTGRES_*` settings. Optional (leave blank
 to skip): `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OLLAMA_HOST` for the AI capture
 bar, and `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALENDAR_REDIRECT_URI`
-for 2-way Google Calendar sync. See the comments in `.env.example` for the full list
+(or the matching `MS_*` values) for 2-way Google / Outlook calendar sync. ICS calendar
+feeds need no credentials at all. See the comments in `.env.example` for the full list
 (session lifetimes, ports, published-image overrides).
 
 ### Upgrading
@@ -248,8 +250,9 @@ non-interactively (e.g. over plain SSH).
 3. Read the docs site (built from `website/docs/`, Astro Starlight) — the user-facing docs and the feature matrix (source: `website/docs/src/content/docs/reference/features.md`).
 4. Follow `docs/engineering-plan.md` — the milestone plan in bite-sized, committable chunks.
 
-> Only setting up Google Calendar sync? The **Google Calendar** admin guide on the docs site
-> (`website/docs/src/content/docs/administration/google-calendar.md`) has the OAuth-client walkthrough.
+> Only setting up calendar sync? The **Google Calendar** and **Outlook / Microsoft 365** admin
+> guides on the docs site (`website/docs/src/content/docs/administration/`) have the
+> OAuth-client walkthroughs. Subscribing to a published ICS link needs no setup at all.
 
 ## The stack in one breath
 

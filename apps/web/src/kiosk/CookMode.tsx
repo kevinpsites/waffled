@@ -1,44 +1,257 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { useMatch, useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { mealsApi, pantryApi, useRecipe, type RecipeMatch } from '../lib/api'
+import {
+  mealsApi,
+  pantryApi,
+  useRecipe,
+  type RecipeIngredient,
+  type RecipeMatch,
+  type RecipeStep,
+} from '../lib/api'
 import { CookConfirm } from './components/CookConfirm'
+import { CookTabs, type CookTabInfo } from './components/CookTabs'
+import { useCookPlate } from './components/CookDishes'
+import { fmt, useCookTimers, type CookTimer } from './components/CookTimers'
 import './../styles/cookmode.css'
-
-// A running (or fired) per-step countdown shown in the floating dock.
-interface CookTimer {
-  id: number
-  label: string
-  stepIndex: number // which step started it — drives "Jump to step"
-  totalSeconds: number
-  remainingSeconds: number
-  running: boolean
-  firing: boolean // hit zero; flashes + chimes until dismissed
-}
-
-// mm:ss for a duration (clamps negatives to 0).
-function fmt(secs: number): string {
-  const s = Math.max(0, Math.floor(secs))
-  const m = Math.floor(s / 60)
-  return `${m}:${String(s % 60).padStart(2, '0')}`
-}
 
 // Full-screen, step-by-step cooking view for the kiosk — large type for across-the-
 // kitchen reading, one step at a time, the step's ingredients pulled out, and a
 // screen wake-lock so the tablet doesn't sleep mid-recipe.
+//
+// Two ways in, one screen:
+//   /meals/recipe/:id/cook — one recipe, exactly as it has always worked.
+//   /meals/meal/:id/cook   — a whole Meal Builder plate, tabbed across its dishes
+//                            with independent step progress per dish.
 export function CookMode() {
   const { id } = useParams()
+  const plate = useMatch('/meals/meal/:id/cook')
+  if (plate) return <CookPlate mealId={id ?? null} />
+  return <CookRecipe recipeId={id ?? null} />
+}
+
+// ── one recipe ────────────────────────────────────────────────────────────────
+function CookRecipe({ recipeId }: { recipeId: string | null }) {
   const navigate = useNavigate()
-  const { recipe, ingredients, steps, loading, error } = useRecipe(id ?? null)
+  const { recipe, ingredients, steps, loading, error } = useRecipe(recipeId)
   const [i, setI] = useState(0)
-  const [showAll, setShowAll] = useState(false)
   const [done, setDone] = useState(false)
+  // Timers live above the cooking body here too, so both routes share one store —
+  // with a single dish there's nothing to switch between, so this is invisible.
+  const timers = useCookTimers()
+
+  const total = steps.length
+  // Dock (still-running timer): return to its step but KEEP it running.
+  const jumpToStep = useCallback((t: CookTimer) => {
+    setDone(false)
+    setI(Math.max(0, Math.min(t.stepIndex, total - 1)))
+  }, [total])
+  // Alarm (fired timer): jump to the step and clear the finished alarm.
+  const jumpFromAlarm = useCallback((t: CookTimer) => {
+    jumpToStep(t)
+    timers.dismiss(t.id)
+  }, [jumpToStep, timers])
+  // Replace (not push) the cook-mode history entry with the recipe so pressing
+  // back from the recipe goes to wherever you came from (Today, the meal plan)
+  // instead of bouncing back into cook mode — that round-trip was an endless loop.
+  const exit = () => navigate(`/meals/recipe/${recipeId}`, { replace: true })
+
+  useTopbarFull(
+    () => (
+      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
+        <button className="pill" style={{ cursor: 'pointer' }} onClick={exit}>✕ Exit cook mode</button>
+        <div className="cm-top-title wf-serif">{recipe?.title ?? ''}</div>
+        <div style={{ marginLeft: 'auto' }} className="cm-top-prog tiny muted">
+          {total > 0 && !done ? `Step ${i + 1} of ${total}` : ''}
+        </div>
+      </div>
+    ),
+    [recipe?.title, i, total, done, recipeId]
+  )
+
+  if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
+  if (error || !recipe) return <div className="muted" style={{ padding: 30 }}>This recipe isn’t available.</div>
+
+  return (
+    <>
+      <CookSession
+        recipeId={recipe.id}
+        title={recipe.title}
+        ingredients={ingredients}
+        steps={steps}
+        i={i}
+        setI={setI}
+        done={done}
+        setDone={setDone}
+        onExit={exit}
+        exitLabel="Back to recipe"
+        onStartTimer={(stepIndex, totalSeconds) =>
+          timers.start({ recipeId: recipe.id, dishLabel: recipe.title, dishEmoji: null, stepIndex, totalSeconds })
+        }
+      />
+      {/* One dish, so no dish line — the dock and alarm read exactly as they always have. */}
+      <TimerDock timers={timers.running} onToggle={timers.toggle} onDismiss={timers.dismiss} onJump={jumpToStep} />
+      <TimerAlarm firing={timers.firing} onDismiss={timers.dismiss} onSnooze={timers.snooze} onJump={jumpFromAlarm} />
+    </>
+  )
+}
+
+// ── a whole plate ─────────────────────────────────────────────────────────────
+// Every dish keeps its own step position, its own "cooked" state and — crucially —
+// its timers, all held here so they survive tab switches. The session below is keyed
+// by dish and remounts when you switch, so anything that has to outlive a tab switch
+// lives at this level: the chicken's timer keeps counting down while you're making
+// the potato salad.
+function CookPlate({ mealId }: { mealId: string | null }) {
+  const navigate = useNavigate()
+  const { name, dishes, loading, error } = useCookPlate(mealId)
+  const [active, setActive] = useState(0)
+  const [stepByDish, setStepByDish] = useState<Record<string, number>>({})
+  const [doneByDish, setDoneByDish] = useState<Record<string, boolean>>({})
+  const timers = useCookTimers()
+
+  // Tapping a timer anywhere on the plate takes you to ITS dish and ITS step —
+  // clamped against that dish's own step count, not the one you're looking at.
+  const jumpToDish = useCallback((t: CookTimer) => {
+    const k = dishes.findIndex((d) => d.recipeId === t.recipeId)
+    if (k < 0) return
+    const at = Math.max(0, Math.min(t.stepIndex, dishes[k].steps.length - 1))
+    setActive(k)
+    setStepByDish((m) => ({ ...m, [t.recipeId]: at }))
+    setDoneByDish((m) => ({ ...m, [t.recipeId]: false }))
+  }, [dishes])
+  const jumpFromAlarm = useCallback((t: CookTimer) => {
+    jumpToDish(t)
+    timers.dismiss(t.id)
+  }, [jumpToDish, timers])
+
+  const index = dishes.length > 0 ? Math.min(active, dishes.length - 1) : 0
+  const dish = dishes[index] ?? null
+  const rid = dish?.recipeId ?? null
+  const i = rid ? stepByDish[rid] ?? 0 : 0
+  const done = rid ? !!doneByDish[rid] : false
+  const total = dish?.steps.length ?? 0
+
+  // Controlled per-dish setters with the same shape as useState's, so the session
+  // body can keep using setI((n) => n + 1) without knowing it's on a plate.
+  const setI = useCallback<Dispatch<SetStateAction<number>>>(
+    (value) => {
+      if (!rid) return
+      setStepByDish((m) => {
+        const cur = m[rid] ?? 0
+        const next = typeof value === 'function' ? (value as (p: number) => number)(cur) : value
+        return { ...m, [rid]: next }
+      })
+    },
+    [rid]
+  )
+  const setDone = useCallback<Dispatch<SetStateAction<boolean>>>(
+    (value) => {
+      if (!rid) return
+      setDoneByDish((m) => {
+        const cur = !!m[rid]
+        const next = typeof value === 'function' ? (value as (p: boolean) => boolean)(cur) : value
+        return { ...m, [rid]: next }
+      })
+    },
+    [rid]
+  )
+
+  const exit = () => navigate(`/meals/build/${mealId}`, { replace: true })
+
+  useTopbarFull(
+    () => (
+      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
+        <button className="pill" style={{ cursor: 'pointer' }} onClick={exit}>✕ Exit cook mode</button>
+        <div className="cm-top-title wf-serif">{name ?? ''}</div>
+        <div style={{ marginLeft: 'auto' }} className="cm-top-prog tiny muted">
+          {dish && total > 0 && !done ? `${dish.title} · Step ${i + 1} of ${total}` : ''}
+        </div>
+      </div>
+    ),
+    [name, dish?.title, i, total, done, mealId]
+  )
+
+  if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
+  if (error) return <div className="muted" style={{ padding: 30 }}>This meal isn’t available.</div>
+  if (!dish) {
+    return (
+      <div className="muted" style={{ padding: 30 }}>
+        Nothing on this plate yet — add a dish to it and there’ll be something to cook.
+      </div>
+    )
+  }
+
+  const tabs: CookTabInfo[] = dishes.map((d) => ({
+    recipeId: d.recipeId,
+    title: d.title,
+    emoji: d.emoji,
+    stepIndex: stepByDish[d.recipeId] ?? 0,
+    total: d.steps.length,
+    done: !!doneByDish[d.recipeId],
+  }))
+
+  return (
+    <>
+      <CookSession
+        key={dish.recipeId}
+        recipeId={dish.recipeId}
+        title={dish.title}
+        ingredients={dish.ingredients}
+        steps={dish.steps}
+        i={i}
+        setI={setI}
+        done={done}
+        setDone={setDone}
+        onExit={exit}
+        exitLabel="Back to the plate"
+        header={<CookTabs tabs={tabs} activeIndex={index} onSelect={setActive} />}
+        onStartTimer={(stepIndex, totalSeconds) =>
+          timers.start({ recipeId: dish.recipeId, dishLabel: dish.title, dishEmoji: dish.emoji, stepIndex, totalSeconds })
+        }
+      />
+      {/* Everything running across the whole plate, each entry naming its dish. */}
+      <TimerDock timers={timers.running} showDish onToggle={timers.toggle} onDismiss={timers.dismiss} onJump={jumpToDish} />
+      <TimerAlarm firing={timers.firing} showDish onDismiss={timers.dismiss} onSnooze={timers.snooze} onJump={jumpFromAlarm} />
+    </>
+  )
+}
+
+// ── the cooking body ──────────────────────────────────────────────────────────
+// One dish's worth of cooking: the step stage, the controls and the all-ingredients
+// modal. Step position, "cooked" and the timers all live above (per recipe or per
+// dish) — on a plate this component is keyed by dish and remounts on every tab
+// switch, so nothing that must outlive a switch may be held here.
+function CookSession({
+  recipeId,
+  title,
+  ingredients,
+  steps,
+  i,
+  setI,
+  done,
+  setDone,
+  onExit,
+  exitLabel,
+  header,
+  onStartTimer,
+}: {
+  recipeId: string
+  title: string
+  ingredients: RecipeIngredient[]
+  steps: RecipeStep[]
+  i: number
+  setI: Dispatch<SetStateAction<number>>
+  done: boolean
+  setDone: Dispatch<SetStateAction<boolean>>
+  onExit: () => void
+  exitLabel: string
+  header?: ReactNode
+  onStartTimer: (stepIndex: number, totalSeconds: number) => void
+}) {
+  const [showAll, setShowAll] = useState(false)
   const [usedMatches, setUsedMatches] = useState<RecipeMatch[]>([])
   const [sheetOpen, setSheetOpen] = useState(false)
-  // Background timers — survive step navigation (the component never remounts) and
-  // render in a floating dock above every step + the done screen.
-  const [timers, setTimers] = useState<CookTimer[]>([])
-  const nextTimerId = useRef(1)
   const wakeRef = useRef<{ release: () => void } | null>(null)
 
   // Keep the kiosk awake while cooking; release on unmount.
@@ -55,145 +268,52 @@ export function CookMode() {
     }
   }, [])
 
-  // One ticker drives every running timer (decrement once/second; flag `firing` at 0).
-  const anyRunning = timers.some((t) => t.running)
-  useEffect(() => {
-    if (!anyRunning) return
-    const handle = setInterval(() => {
-      setTimers((ts) =>
-        ts.map((t) => {
-          if (!t.running) return t
-          const next = t.remainingSeconds - 1
-          if (next <= 0) return { ...t, remainingSeconds: 0, running: false, firing: true }
-          return { ...t, remainingSeconds: next }
-        })
-      )
-    }, 1000)
-    return () => clearInterval(handle)
-  }, [anyRunning])
-
-  // Dependency-free chime: a repeating short oscillator beep while any timer is firing.
-  const anyFiring = timers.some((t) => t.firing)
-  useEffect(() => {
-    if (!anyFiring) return
-    const Ctx = (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
-    if (!Ctx) return
-    const ctx = new Ctx()
-    const beep = () => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'sine'
-      osc.frequency.value = 880
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02)
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45)
-      osc.connect(gain).connect(ctx.destination)
-      osc.start()
-      osc.stop(ctx.currentTime + 0.5)
-    }
-    beep()
-    const handle = setInterval(beep, 1400)
-    return () => {
-      clearInterval(handle)
-      ctx.close().catch(() => {})
-    }
-  }, [anyFiring])
-
-  const startTimer = useCallback((label: string, totalSeconds: number, stepIndex: number) => {
-    if (totalSeconds <= 0) return
-    setTimers((ts) => [
-      ...ts,
-      { id: nextTimerId.current++, label, stepIndex, totalSeconds, remainingSeconds: totalSeconds, running: true, firing: false },
-    ])
-  }, [])
-  const toggleTimer = useCallback((tid: number) => {
-    setTimers((ts) => ts.map((t) => (t.id === tid && !t.firing ? { ...t, running: !t.running } : t)))
-  }, [])
-  const dismissTimer = useCallback((tid: number) => {
-    setTimers((ts) => ts.filter((t) => t.id !== tid))
-  }, [])
-  // Snooze a fired timer: restart it for `secs` more (clears the alarm).
-  const snoozeTimer = useCallback((tid: number, secs: number) => {
-    setTimers((ts) => ts.map((t) => (t.id === tid ? { ...t, remainingSeconds: secs, running: true, firing: false } : t)))
-  }, [])
-
-  const firingTimers = timers.filter((t) => t.firing)
-  const runningTimers = timers.filter((t) => !t.firing)
-  // "Jump to step" from the alarm: leave the done screen, go to that step, clear it.
-  // Dock (still-running timer): return to its step but KEEP the timer running.
-  const jumpToStep = useCallback((t: CookTimer) => {
-    setDone(false)
-    setI(Math.max(0, Math.min(t.stepIndex, steps.length - 1)))
-  }, [steps.length])
-  // Alarm (fired timer): jump to the step and clear the finished alarm.
-  const jumpToTimer = useCallback((t: CookTimer) => {
-    jumpToStep(t)
-    dismissTimer(t.id)
-  }, [jumpToStep, dismissTimer])
-
   const total = steps.length
-  // Replace (not push) the cook-mode history entry with the recipe so pressing
-  // back from the recipe goes to wherever you came from (Today, the meal plan)
-  // instead of bouncing back into cook mode — that round-trip was an endless loop.
-  const exit = () => navigate(`/meals/recipe/${id}`, { replace: true })
 
-  useTopbarFull(
-    () => (
-      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
-        <button className="pill" style={{ cursor: 'pointer' }} onClick={exit}>✕ Exit cook mode</button>
-        <div className="cm-top-title wf-serif">{recipe?.title ?? ''}</div>
-        <div style={{ marginLeft: 'auto' }} className="cm-top-prog tiny muted">
-          {total > 0 && !done ? `Step ${i + 1} of ${total}` : ''}
-        </div>
-      </div>
-    ),
-    [recipe?.title, i, total, done, id]
-  )
-
-  if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
-  if (error || !recipe) return <div className="muted" style={{ padding: 30 }}>This recipe isn’t available.</div>
-  if (total === 0) return <div className="muted" style={{ padding: 30 }}>No steps recorded for this recipe — nothing to cook through.</div>
+  if (total === 0) {
+    const empty = <div className="muted" style={{ padding: 30 }}>No steps recorded for this recipe — nothing to cook through.</div>
+    return header ? <div className="cookmode">{header}{empty}</div> : empty
+  }
 
   function finish() {
     setDone(true)
-    if (recipe) {
-      mealsApi.markCooked(recipe.id).catch(() => {})
-      // Offer to update the pantry with what this recipe likely used.
-      pantryApi.forRecipe(recipe.id).then((m) => { if (m.length) { setUsedMatches(m); setSheetOpen(true) } }).catch(() => {})
-    }
+    mealsApi.markCooked(recipeId).catch(() => {})
+    // Offer to update the pantry with what this recipe likely used.
+    pantryApi.forRecipe(recipeId).then((m) => { if (m.length) { setUsedMatches(m); setSheetOpen(true) } }).catch(() => {})
   }
 
   if (done) {
     return (
       <div className="cookmode cm-done">
+        {header}
         <div className="cm-done-emoji">🎉</div>
         <div className="wf-serif cm-done-h">Nicely done.</div>
-        <div className="muted cm-done-sub">“{recipe.title}” is marked as cooked.</div>
+        <div className="muted cm-done-sub">“{title}” is marked as cooked.</div>
         <div className="cm-done-actions">
           <button className="btn btn-ghost" onClick={() => { setDone(false); setI(0) }}>↻ Start over</button>
           {usedMatches.length > 0 && (
             <button className="btn btn-ghost" onClick={() => setSheetOpen(true)}>🧺 Update pantry</button>
           )}
-          <button className="btn btn-primary" onClick={exit}>Back to recipe</button>
+          <button className="btn btn-primary" onClick={onExit}>{exitLabel}</button>
         </div>
-        <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} onJump={jumpToStep} />
-        <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
         {sheetOpen && (
-          <CookConfirm title={recipe.title} matches={usedMatches} onClose={() => setSheetOpen(false)} />
+          <CookConfirm title={title} matches={usedMatches} onClose={() => setSheetOpen(false)} />
         )}
       </div>
     )
   }
 
-  const step = steps[i]
-  const pct = Math.round(((i + 1) / total) * 100)
+  const at = Math.max(0, Math.min(i, total - 1))
+  const step = steps[at]
+  const pct = Math.round(((at + 1) / total) * 100)
 
   return (
     <div className="cookmode">
+      {header}
       <div className="cm-progress"><span style={{ width: `${pct}%` }} /></div>
 
       <div className="cm-stage">
-        <div className="cm-step-n">Step {i + 1}</div>
+        <div className="cm-step-n">Step {at + 1}</div>
         <div className="cm-instruction wf-serif">{step.instruction}</div>
 
         {step.ingredients.length > 0 && (
@@ -212,22 +332,19 @@ export function CookMode() {
         {step.timerSeconds != null && step.timerSeconds > 0 ? (
           <button
             className="cm-timer-start"
-            onClick={() => startTimer(`Step ${i + 1}`, step.timerSeconds!, i)}
+            onClick={() => onStartTimer(at, step.timerSeconds!)}
           >
             ⏱ Start {fmt(step.timerSeconds)}
           </button>
         ) : (
-          <AddTimer
-            key={i}
-            onStart={(secs) => startTimer(`Step ${i + 1}`, secs, i)}
-          />
+          <AddTimer key={at} onStart={(secs) => onStartTimer(at, secs)} />
         )}
       </div>
 
       <div className="cm-controls">
-        <button className="cm-nav" disabled={i === 0} onClick={() => setI((n) => Math.max(0, n - 1))}>‹ Back</button>
+        <button className="cm-nav" disabled={at === 0} onClick={() => setI((n) => Math.max(0, n - 1))}>‹ Back</button>
         <button className="cm-allbtn" onClick={() => setShowAll(true)}>All ingredients</button>
-        {i < total - 1 ? (
+        {at < total - 1 ? (
           <button className="cm-nav cm-next" onClick={() => setI((n) => Math.min(total - 1, n + 1))}>Next ›</button>
         ) : (
           <button className="cm-nav cm-finish" onClick={finish}>✓ Finish &amp; mark cooked</button>
@@ -251,8 +368,6 @@ export function CookMode() {
         </div>
       )}
 
-      <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} onJump={jumpToStep} />
-      <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
     </div>
   )
 }
@@ -324,13 +439,17 @@ function AddTimer({ onStart }: { onStart: (secs: number) => void }) {
 // Full-screen takeover when one or more timers hit zero — large, centered, and
 // flashing so it grabs attention across the kitchen (the corner dock didn't). Each
 // fired timer can be snoozed (+1:00) or dismissed; the chime repeats until cleared.
+// On a plate every row leads with its dish: an alarm you can't attribute to a dish is
+// worse than no alarm at all when three things are on the stove.
 function TimerAlarm({
   firing,
+  showDish,
   onDismiss,
   onSnooze,
   onJump,
 }: {
   firing: CookTimer[]
+  showDish?: boolean
   onDismiss: (id: number) => void
   onSnooze: (id: number, secs: number) => void
   onJump: (t: CookTimer) => void
@@ -344,7 +463,14 @@ function TimerAlarm({
         <div className="cm-alarm-list">
           {firing.map((t) => (
             <div key={t.id} className="cm-alarm-row">
-              <span className="cm-alarm-label">{t.label} · {fmt(t.totalSeconds)}</span>
+              <span className="cm-alarm-label">
+                {showDish && (
+                  <span className="cm-alarm-dish">
+                    <span aria-hidden>{t.dishEmoji ?? '🍽️'}</span> {t.dishLabel}
+                  </span>
+                )}
+                {t.label} · {fmt(t.totalSeconds)}
+              </span>
               <div className="cm-alarm-actions">
                 <button className="cm-alarm-jump" onClick={() => onJump(t)}>Jump to step</button>
                 <button className="cm-alarm-snooze" onClick={() => onSnooze(t.id, 60)}>+1:00</button>
@@ -360,13 +486,17 @@ function TimerAlarm({
 
 // Fixed-position dock listing every active timer above the whole view. Multiple
 // concurrent timers stack; a fired one flashes (.cm-timer-firing) until dismissed.
+// On a plate this is the cross-dish view: every timer running anywhere on the plate,
+// each naming its dish, and tapping one takes you to that dish's step.
 function TimerDock({
   timers,
+  showDish,
   onToggle,
   onDismiss,
   onJump,
 }: {
   timers: CookTimer[]
+  showDish?: boolean
   onToggle: (id: number) => void
   onDismiss: (id: number) => void
   onJump: (t: CookTimer) => void
@@ -380,11 +510,16 @@ function TimerDock({
             className="cm-timer-info"
             role="button"
             tabIndex={0}
-            title="Jump to this step"
-            aria-label={`Jump to this step — ${t.label}`}
+            title={showDish ? `Jump to ${t.dishLabel} — ${t.label}` : 'Jump to this step'}
+            aria-label={`Jump to this step — ${showDish ? `${t.dishLabel} · ` : ''}${t.label}`}
             onClick={() => onJump(t)}
             onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onJump(t)}
           >
+            {showDish && (
+              <div className="cm-timer-dish">
+                <span aria-hidden>{t.dishEmoji ?? '🍽️'}</span> {t.dishLabel}
+              </div>
+            )}
             <div className="cm-timer-label">{t.label}</div>
             <div className="cm-timer-time">{t.firing ? 'Done!' : fmt(t.remainingSeconds)}</div>
           </div>

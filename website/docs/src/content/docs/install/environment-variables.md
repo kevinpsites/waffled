@@ -87,7 +87,8 @@ Keys never leave the server. See [AI providers](/administration/ai-providers/).
 
 ## Google Calendar (optional)
 
-Independent of login. See [Google Calendar](/administration/google-calendar/).
+Independent of login. See [Google Calendar](/administration/google-calendar/) and
+[Outlook / Microsoft 365](/administration/outlook-calendar/).
 
 | Variable | Purpose | Default |
 |---|---|---|
@@ -95,7 +96,12 @@ Independent of login. See [Google Calendar](/administration/google-calendar/).
 | `GOOGLE_CLIENT_SECRET` | OAuth client secret | null |
 | `GOOGLE_CALENDAR_REDIRECT_URI` | Registered redirect (`…/auth/google/calendar/callback`) | `http://localhost:8080/auth/google/calendar/callback` |
 | `GOOGLE_CALENDAR_SCOPES` | OAuth scopes | `openid email …/auth/calendar` |
-| `CALENDAR_SYNC_INTERVAL_MS` | Inbound sync poll interval | `300000` (5m) |
+| `MS_CLIENT_ID` | Azure app (client) id | null |
+| `MS_CLIENT_SECRET` | Azure client secret | null |
+| `MS_CALENDAR_REDIRECT_URI` | Registered redirect (`…/auth/microsoft/calendar/callback`) | null |
+| `MS_CALENDAR_SCOPES` | Microsoft Graph scopes | `openid email offline_access User.Read Calendars.ReadWrite` |
+| `CALENDAR_SYNC_INTERVAL_MS` | Inbound sync poll interval (Google + Outlook) | `300000` (5m) |
+| `ICS_SYNC_INTERVAL_MS` | Calendar-feed (ICS) refresh interval; `0` disables | `900000` (15m) |
 
 ## Media / storage
 
