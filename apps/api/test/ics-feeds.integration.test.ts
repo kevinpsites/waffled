@@ -221,6 +221,31 @@ describe('ICS calendar feeds', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  // "Personal" means "only the person it belongs to sees it", so a personal feed
+  // that belongs to nobody is a feed nobody can see: its events land with
+  // owner_person_id = NULL, and the visibility filter is
+  // `visibility = 'family' or owner_person_id = $viewer`, which NULL never matches.
+  // Worse, it looks like it worked — the feed syncs green with real import counts
+  // and no error, so the admin goes and debugs a URL that was fine. Refuse the
+  // combination at the one door every client comes through.
+  it('refuses a personal feed that belongs to nobody', async () => {
+    const res = await call('POST', '/api/calendar/feeds', kevin, {
+      url: `http://127.0.0.1:${stubPort}/school.ics`,
+      visibility: 'personal',
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/person/i)
+
+    // Personal WITH an owner is exactly what the option is for.
+    const ok = await call('POST', '/api/calendar/feeds', kevin, {
+      url: `http://127.0.0.1:${stubPort}/school.ics`,
+      visibility: 'personal',
+      personId: wallyId,
+    })
+    expect(ok.statusCode).toBe(201)
+    await dbQuery(`delete from ics_feeds where id = $1`, [JSON.parse(ok.body).feed.id])
+  })
+
   it('adds a feed (admin) and any member can list it', async () => {
     const res = await call('POST', '/api/calendar/feeds', kevin, {
       url: `http://127.0.0.1:${stubPort}/school.ics`,
@@ -410,6 +435,27 @@ describe('ICS calendar feeds', () => {
 
     // Non-admin cannot PATCH.
     expect((await call('PATCH', `/api/calendar/feeds/${feedId}`, wally, { name: 'x' })).statusCode).toBe(403)
+  })
+
+  // The same rule has to hold for edits, and on the RESULTING state rather than on
+  // whatever the body happens to mention: this feed is already personal, so clearing
+  // its person alone would strand it, without the word "visibility" appearing in the
+  // request at all.
+  it('refuses an edit that would leave a personal feed with nobody', async () => {
+    const orphaned = await call('PATCH', `/api/calendar/feeds/${feedId}`, kevin, { personId: null })
+    expect(orphaned.statusCode).toBe(400)
+    expect(JSON.parse(orphaned.body).message).toMatch(/person/i)
+
+    // Unchanged: the rejected edit must not have half-applied.
+    const after = await call('GET', '/api/calendar/feeds', kevin)
+    expect(JSON.parse(after.body).feeds[0]).toMatchObject({ personId: wallyId, visibility: 'personal' })
+
+    // Dropping the person AND going back to family together is fine.
+    const ok = await call('PATCH', `/api/calendar/feeds/${feedId}`, kevin, { personId: null, visibility: 'family' })
+    expect(ok.statusCode).toBe(200)
+    // Put it back for the tests that follow.
+    expect((await call('PATCH', `/api/calendar/feeds/${feedId}`, kevin,
+      { personId: wallyId, visibility: 'personal' })).statusCode).toBe(200)
   })
 
   // Feed events are a read-only mirror of someone else's calendar: Waffled has no

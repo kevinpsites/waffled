@@ -1379,7 +1379,7 @@ function feedHost(url: string): string {
   try { return new URL(url.replace(/^webcal:\/\//i, 'https://')).host } catch { return url }
 }
 
-function CalendarFeedsCard({ feeds, onChanged }: { feeds: IcsFeed[]; onChanged: () => void }) {
+export function CalendarFeedsCard({ feeds, onChanged }: { feeds: IcsFeed[]; onChanged: () => void }) {
   const { persons } = usePersons()
   const [url, setUrl] = useState('')
   const [name, setName] = useState('')
@@ -1406,8 +1406,16 @@ function CalendarFeedsCard({ feeds, onChanged }: { feeds: IcsFeed[]; onChanged: 
     }
   }
 
+  // "Private" means "only the person it belongs to sees it", so unassigning a private
+  // feed would leave it visible to nobody at all — its events import with a null owner
+  // and the personal filter never matches them. The API refuses that state; sharing it
+  // back with the family is the only sensible reading of "belongs to nobody".
   async function setPerson(f: IcsFeed, personId: string) {
-    await calendarsApi.updateFeed(f.id, { personId: personId || null })
+    const next = personId || null
+    await calendarsApi.updateFeed(f.id, {
+      personId: next,
+      ...(next ? {} : { visibility: 'family' }),
+    })
     onChanged()
   }
 
@@ -1464,22 +1472,26 @@ function CalendarFeedsCard({ feeds, onChanged }: { feeds: IcsFeed[]; onChanged: 
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
-          <label
-            className="cal-sync"
-            title={
-              f.visibility === 'personal'
-                ? 'Private — only the assigned person sees this feed. Uncheck to show it to the whole family.'
-                : 'Visible to the whole family, including the shared kiosk. Check to keep it private.'
-            }
-          >
-            <input
-              type="checkbox"
-              checked={f.visibility === 'personal'}
-              onChange={() => toggleVisibility(f)}
-              aria-label={`Private feed ${f.name ?? feedHost(f.url)}`}
-            />
-            Private
-          </label>
+          {/* Only offered once the feed belongs to someone — "private to nobody" is a
+              feed no one can see, and the API refuses it. */}
+          {f.personId && (
+            <label
+              className="cal-sync"
+              title={
+                f.visibility === 'personal'
+                  ? 'Private — only the assigned person sees this feed. Uncheck to show it to the whole family.'
+                  : 'Visible to the whole family, including the shared kiosk. Check to keep it private.'
+              }
+            >
+              <input
+                type="checkbox"
+                checked={f.visibility === 'personal'}
+                onChange={() => toggleVisibility(f)}
+                aria-label={`Private feed ${f.name ?? feedHost(f.url)}`}
+              />
+              Private
+            </label>
+          )}
           <button
             type="button"
             className="btn btn-ghost"

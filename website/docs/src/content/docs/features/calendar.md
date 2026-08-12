@@ -68,7 +68,10 @@ plan B when a workplace won't approve calendar OAuth access.
   feed row has an **↻ Sync** button when you don't want to wait for the cycle.
 - **Person mapping & privacy** — map a feed to a person to color its events, and
   tick the row's **Private** checkbox to keep its events visible only to that
-  person (the same family/personal visibility model as synced calendars).
+  person (the same family/personal visibility model as synced calendars). Private
+  is offered only once the feed belongs to someone: "private to nobody" would hide
+  the feed from everyone, including you, so unassigning a private feed shares it
+  back with the family.
 - **Feed events are read-only, everywhere.** A feed is a mirror of someone else's
   calendar and there's no way to write back to it, so Waffled won't let you edit or
   delete an imported event. Web and the iPhone/iPad apps hide the Edit and Delete

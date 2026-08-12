@@ -406,6 +406,20 @@ export function registerIcsFeedRoutes(api: Api): void {
     return { feeds: feeds.map(presentIcsFeed) }
   }))
 
+  // "Personal" means "only the person it belongs to sees it". With nobody to belong
+  // to, that resolves to nobody at all: imported events carry owner_person_id = NULL,
+  // and the read filter (`visibility = 'family' or owner_person_id = $viewer`) never
+  // matches NULL — so not even the admin who added the feed can see a thing.
+  //
+  // Nothing about it looks broken, which is the dangerous part: the feed syncs green,
+  // reports real import counts, and raises no error, so the admin goes off to debug a
+  // URL that was never wrong. Both clients hide the toggle until a person is picked;
+  // this is the rule underneath, so it holds for any client and for curl.
+  const ORPHANED_PERSONAL_MESSAGE =
+    'A private feed needs a person to belong to — pick one, or share it with the whole family.'
+  const orphanedPersonalFeed = (visibility: string, personId: string | null) =>
+    visibility === 'personal' && !personId
+
   api.post('/api/calendar/feeds', adminRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { url?: unknown; name?: unknown; personId?: unknown; visibility?: unknown }
     const url = normalizeUrl(body.url)
@@ -417,6 +431,9 @@ export function registerIcsFeedRoutes(api: Api): void {
     const visibility = body.visibility ?? 'family'
     if (visibility !== 'family' && visibility !== 'personal') {
       return res.status(400).json({ error: 'BadRequest', message: "visibility must be 'family' or 'personal'" })
+    }
+    if (orphanedPersonalFeed(visibility, personId)) {
+      return res.status(400).json({ error: 'BadRequest', message: ORPHANED_PERSONAL_MESSAGE })
     }
     const ins = await query<{ id: string }>(
       `insert into ics_feeds (household_id, url, name, person_id, visibility)
@@ -431,6 +448,13 @@ export function registerIcsFeedRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'feed not found' })
     const body = (req.body ?? {}) as { url?: unknown; name?: unknown; personId?: unknown; visibility?: unknown }
+
+    // Read first, so the personal/owner rule can be judged on the state the edit
+    // WOULD leave behind. Judging the body alone would miss the quiet route into a
+    // stranded feed: clearing the person on an already-personal feed never mentions
+    // visibility at all.
+    const existing = await getFeed(tenant.householdId, id)
+    if (!existing) return res.status(404).json({ error: 'NotFound', message: 'feed not found' })
 
     const sets: string[] = []
     const values: unknown[] = []
@@ -459,6 +483,13 @@ export function registerIcsFeedRoutes(api: Api): void {
     }
     if (sets.length === 0) {
       return res.status(400).json({ error: 'BadRequest', message: 'url, name, personId, or visibility required' })
+    }
+    const nextVisibility = 'visibility' in body ? String(body.visibility) : existing.visibility
+    const nextPersonId = 'personId' in body
+      ? (typeof body.personId === 'string' && UUID_RE.test(body.personId) ? body.personId : null)
+      : existing.person_id
+    if (orphanedPersonalFeed(nextVisibility, nextPersonId)) {
+      return res.status(400).json({ error: 'BadRequest', message: ORPHANED_PERSONAL_MESSAGE })
     }
     values.push(tenant.householdId, id)
     const { rowCount } = await query(

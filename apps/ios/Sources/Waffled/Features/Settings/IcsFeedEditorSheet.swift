@@ -6,6 +6,21 @@ import SwiftUI
 /// an optional name, who it belongs to, and whether the whole family sees it. The
 /// events it brings in are read-only — the sheet says so, because that's the part
 /// people are surprised by.
+/// The one rule the feed form has to enforce.
+///
+/// "Private" means "only the person it belongs to sees it", so a private feed that
+/// belongs to nobody is a feed nobody can see — its events import with no owner, and
+/// the personal filter never matches them. The API refuses that combination outright;
+/// this keeps the form from being able to ask for it, and quietly repairs an existing
+/// feed that's already in it.
+enum IcsFeedForm {
+    static func offersPrivate(personId: String?) -> Bool { personId != nil }
+
+    static func isPrivate(wanted: Bool, personId: String?) -> Bool {
+        personId == nil ? false : wanted
+    }
+}
+
 struct IcsFeedEditorSheet: View {
     /// nil = subscribing to a new feed.
     let feed: WaffledAPI.CalendarStatus.Feed?
@@ -52,16 +67,18 @@ struct IcsFeedEditorSheet: View {
                         }
                     }
 
-                    Button { personal.toggle() } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: personal ? "checkmark.square.fill" : "square")
-                                .font(.system(size: 17)).foregroundStyle(personal ? WF.primary : WF.ink3)
-                            Text("Private (only the person it belongs to sees it)")
-                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
-                            Spacer(minLength: 0)
+                    if IcsFeedForm.offersPrivate(personId: personId) {
+                        Button { personal.toggle() } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: personal ? "checkmark.square.fill" : "square")
+                                    .font(.system(size: 17)).foregroundStyle(personal ? WF.primary : WF.ink3)
+                                Text("Private (only the person it belongs to sees it)")
+                                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                                Spacer(minLength: 0)
+                            }
                         }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
 
                     LockNote("Events from a feed are read-only — Waffled can show them but can't change them.")
 
@@ -106,7 +123,9 @@ struct IcsFeedEditorSheet: View {
         saving = true; error = nil
         defer { saving = false }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        let visibility = personal ? "personal" : "family"
+        // Private is hidden while the feed belongs to nobody, so a stale tick must not
+        // ride along on the save (and an already-stranded feed repairs itself here).
+        let visibility = IcsFeedForm.isPrivate(wanted: personal, personId: personId) ? "personal" : "family"
         do {
             if let feed {
                 try await api.updateIcsFeed(id: feed.id, [
