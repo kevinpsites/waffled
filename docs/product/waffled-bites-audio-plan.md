@@ -74,10 +74,10 @@ These five are **built and tested** — `src/wb_synth.{h,cpp}`, 11 unit tests in
 | Sound | Recipe | Level |
 | --- | --- | --- |
 | `white` | Noise through one 6 kHz pole, so it's recognisably white without the harsh top | rms 0.24 |
-| `fan` | Three cascaded 420 Hz poles (brown-ish rumble, no hiss left) + a faint 118 Hz motor hum | rms 0.20 |
+| `fan` | Two cascaded 900 Hz poles (dull, no hiss) + a 120 Hz motor hum carried by its 2nd harmonic | rms 0.20 |
 | `rain` | Noise minus its own 1.5 kHz lowpass (= hiss) + randomly pitched, exponentially decaying droplets | rms 0.18 |
 | `ocean` | 200 Hz–1.3 kHz band-passed noise under a ~7 s swell, squared for a sharper crest | rms 0.155 |
-| `heartbeat` | Two enveloped sine thumps (52 Hz lub, 44 Hz dub 0.32 s later) at 60 bpm, silent between | peak 0.60 |
+| `heartbeat` | Two enveloped harmonic thumps (110 Hz lub, 88 Hz dub 0.32 s later) at 60 bpm, silent between | peak 0.87 |
 | `forest` | **Needs real recordings** (birds, crickets) — phase 2 |  |
 | `lullaby` | **Needs a real recording** (a synthesised melody sounds cheap) — phase 2 |  |
 
@@ -87,13 +87,20 @@ noise is near-Gaussian and peaks at ~5.5x its own RMS, so matching the others' l
 would drive its crests into the clamp. `white`, being barely-filtered uniform noise, has a
 crest factor of about 2 and can sit much hotter for the same peak.
 
-⚠️ **`heartbeat` is the recipe most at risk from the real speaker, and it will look like a
-bug.** Its thumps are 52 Hz and 44 Hz fundamentals, and D5's 30×20 mm cavity driver has
-almost no output down there — so the most likely outcome of the first hardware test is that
-heartbeat plays and *nothing audible comes out*. That is a speaker limit, not broken
-plumbing. The fix is a synthesis change (raise the fundamental, or add harmonics at 2x/3x
-so the pitch is inferred from overtones the driver can actually move), and it can only be
-judged on hardware.
+**`heartbeat` was inaudible on the real speaker, and is fixed.** This was predicted here
+and then confirmed on hardware: its thumps were 52/44 Hz fundamentals, and D5's 30×20 mm
+cavity driver has essentially no output that low, so the sound played and *nothing came
+out*. A speaker limit, not broken plumbing.
+
+The fix moved the energy up rather than up-pitching the sound: each thump is now a harmonic
+stack (fundamental + 2nd + 3rd + 5th) at 110 Hz (lub) and 88 Hz (dub), so most of the
+energy sits in 220–550 Hz where the driver actually moves air, while the ear still infers
+the low pitch from the harmonic series. The rhythm was always doing most of the work — a
+lub-dub at 60 bpm reads as a heartbeat nearly regardless of timbre.
+
+Locked by `test_heartbeat_survives_a_speaker_with_no_low_end`, which asserts the thump
+carries more than twice the high-frequency energy of a pure 55 Hz sine. That's a physical
+property rather than a taste, so it can't silently regress.
 
 Drawing the phase boundary here is the whole point of the plan. Synthesis-only kills, in
 one stroke: the audio **licensing** question (no CC-BY assets in an AGPL repo), the
@@ -223,12 +230,13 @@ re-run `--measure` afterwards, since changing a recipe changes its level):
 
 | Complaint | Knob |
 | --- | --- |
+| **Anything is too quiet except near 100%** | Almost certainly not the recipe — check the 24 dB range in `wb_synth_gain` and whether the sound's energy sits above ~300 Hz. Both hardware bugs so far were one of these two |
 | Rain sounds like a shaker or wind chime, not rain | Droplets are pure decaying sines firing ~30x/sec. Widen the `dropWait` range (`250u + rng % 900u`), drop the pitch range (`600 + 1800 Hz`), or lengthen the `0.028f` decay so each droplet is less tick-like |
-| The fan whines instead of rumbling | The hum is a single 118 Hz sine at `0.035f`. Lower the amplitude, or detune/soften it — one pure sine reads as electronic |
-| The fan is muddy / not fan-like | The three cascaded `lpCoeff(420.0f)` poles set the rumble; raise for more air, lower for more distant |
+| The fan whines instead of rumbling | The hum is 120 Hz plus its 2nd harmonic. Lower `0.030f` (the harmonic carries most of what you hear on this speaker) |
+| The fan is muddy, or too hissy | The two cascaded `lpCoeff(900.0f)` poles set the character. Lower for duller — but not far below ~600 Hz, or the speaker stops reproducing it at all |
 | White noise is harsh | Lower the `lpCoeff(6000.0f)` shelf |
 | Ocean surges too fast or too evenly | Swell rate `0.14f` Hz and the `0.22f + 0.78f * u * u` shape — the square is what sharpens the crest |
-| Heartbeat is inaudible on hardware | Expected — see the ⚠️ note in §3.2 |
+| Heartbeat is weak or thin | It's peak-limited, so raising the multipliers just clips. Lengthen the envelope (`0.010f` attack / `0.110f` decay) to carry more energy under the same peak, or lift the harmonic weights in `thump` |
 
 ## 4. Phase 1 — the sound machine, synthesised
 
@@ -418,18 +426,28 @@ soldering and no passives. Vendor sources disagree on whether the 7" board has o
 header or two — check the silkscreen — but §3.7's mono-to-both-channels output is correct
 either way.
 
-This makes the tuning target explicit: a small driver in a plastic cavity reproduces very
-little above ~10 kHz and has almost no low end, which means the hiss-heavy recipes
-(`white`, `rain`) will sound their worst on it and the brown-noise `fan` its best. **That
-argues for `fan` as the default sound rather than `white`.** Recipes get their final tuning
-pass on the real speaker, not on headphones (§3.8).
+This sets the tuning target — and the first version of this paragraph got it **exactly
+backwards**, which is worth recording because it caused two real bugs.
+
+It claimed the driver would flatter brown noise and punish hiss, and therefore that `fan`
+should be the default. Wrong. A 30×20 mm cavity driver has *almost no low end at all*, so
+low-frequency content is the thing it cannot reproduce. On hardware, the two low-frequency
+recipes were the two that failed: `fan` (three poles at 420 Hz) needed 75%+ on the slider
+to be heard, and `heartbeat` (52/44 Hz) was inaudible outright. The hiss-heavy recipes were
+fine.
+
+**The rule this speaker actually imposes:** keep the usable energy above roughly 300 Hz.
+Below that, measurements flatter a recipe that the hardware will simply not play. Both
+recipes were re-centred accordingly (§3.2), and the volume curve's range was cut from 40 dB
+to 24 dB — at 40 dB, volume 50 was only 10% amplitude, which this speaker cannot make
+audible for anything but the brightest sounds.
+
+The general lesson holds: recipes get their final tuning pass on the real speaker, never on
+headphones (§3.8), because a laptop reproduces a band the device does not have.
 
 ## 10. Still open
 
-**Q1 — Hidden or shown-disabled?** During phase 1, do `forest`/`lullaby`/birdsong disappear
-from the pickers or show greyed with a "coming soon" note? Lands on all three surfaces
-(device, web, iOS), each with its own hardcoded list. Recommend shown-disabled — a sound
-that vanishes and reappears looks like a bug, and it advertises what's coming.
+**Q2 — Should `alarm.tone` migrate from display strings to stable keys?** §5's gap 3. It's
 
 **Q2 — Should `alarm.tone` migrate from display strings to stable keys?** §5's gap 3. It's
 the right change and phase 1b is the natural moment, but it needs a back-compat mapping for
