@@ -136,6 +136,11 @@ export class SyncHealthMonitor {
   // knew that. The stall window is measured from here.
   private lastHealthyAt = 0
   private attempts = 0 // ladder position; resets on recovery
+  // The destructive rung is a one-shot per stall episode. If wiping didn't fix it,
+  // the replica was never the problem — and a service outage that outlasts the
+  // backoff cap would otherwise wipe and re-download forever, leaving the device
+  // with an empty local copy whenever it next goes genuinely offline.
+  private cleared = false
   private restartCount = 0
   private lastRestartAt: number | null = null
   private timer: ReturnType<typeof setInterval> | null = null
@@ -174,6 +179,10 @@ export class SyncHealthMonitor {
     if (s.connected && s.hasSynced) {
       this.lastHealthyAt = this.deps.now()
       this.attempts = 0 // recovered — the next stall starts from the soft rung again
+      // A verified full sync means the replica is healthy, so a *later* wedge may
+      // reach for the wipe once more. (Deliberately not reset by engineStarted(),
+      // which keeps ladder position on purpose — a restart loop must not re-arm it.)
+      this.cleared = false
     }
     this.publish()
   }
@@ -227,8 +236,11 @@ export class SyncHealthMonitor {
     }
     const hard = this.attempts >= 1 // soft first; escalate when it didn't take
     // Two failed restarts (one soft, one hard) make the replica itself the
-    // suspect — it survives a plain rebuild (same db file). From here, wipe it.
-    const clear = this.attempts >= 2
+    // suspect — it survives a plain rebuild (same db file). Wipe it once; if that
+    // didn't help it isn't the replica, so keep retrying non-destructively rather
+    // than re-wiping every backoff period for as long as the outage lasts.
+    const clear = this.attempts >= 2 && !this.cleared
+    if (clear) this.cleared = true
     this.attempts++
     this.restartCount++
     this.lastRestartAt = now

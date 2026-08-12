@@ -178,9 +178,11 @@ describe('SyncHealthMonitor restart ladder', () => {
     expect(getSyncHealth().restartCount).toBe(2)
   })
 
-  // A wedged/corrupt replica survives a plain hard restart (same db file), so from
-  // the third rung the watchdog asks for a wipe + full re-download.
-  it('escalates again to a clearing hard restart from the third attempt', async () => {
+  // A wedged/corrupt replica survives a plain hard restart (same db file), so on
+  // the third rung the watchdog asks for a wipe + full re-download — ONCE. If the
+  // wipe didn't help, the replica wasn't the problem, and repeating it during a
+  // long outage would destroy the offline copy over and over.
+  it('escalates to a clearing hard restart on the third attempt, then stops clearing', async () => {
     const { m, deps, advance } = makeMonitor()
     m.engineStarted()
     advance(STALL_AFTER_MS + 1)
@@ -193,7 +195,48 @@ describe('SyncHealthMonitor restart ladder', () => {
     expect(deps.hardRestart).toHaveBeenCalledTimes(2)
     expect(deps.hardRestart).toHaveBeenLastCalledWith({ clear: true })
     advance(RESTART_BACKOFF_BASE_MS * 4 + 1)
-    await m.tick() // 4: still clearing
+    await m.tick() // 4: back to a plain rebuild
+    expect(deps.hardRestart).toHaveBeenLastCalledWith({ clear: false })
+  })
+
+  // The outage that motivated this: the service is down for an hour while the
+  // browser still reports online with a valid token, so nothing pins the grace
+  // window. With the destructive rung latched on, every ≤16 min wiped the replica
+  // again — and once wiped, a genuinely offline stretch shows a blank calendar.
+  it('wipes the replica at most once across a long sustained outage', async () => {
+    const { m, deps, advance } = makeMonitor()
+    m.engineStarted()
+    advance(STALL_AFTER_MS + 1)
+    await m.tick()
+    for (let i = 0; i < 20; i++) {
+      advance(RESTART_BACKOFF_MAX_MS + 1)
+      await m.tick()
+    }
+    const clearing = vi.mocked(deps.hardRestart).mock.calls.filter(([o]) => o.clear)
+    expect(clearing).toHaveLength(1)
+    expect(vi.mocked(deps.hardRestart).mock.calls.length).toBeGreaterThan(10)
+  })
+
+  // A verified full recovery means the replica is healthy again, so a *later*
+  // wedge is allowed to reach for the wipe once more.
+  it('re-arms the clearing rung after a verified recovery', async () => {
+    const { m, deps, advance } = makeMonitor()
+    m.engineStarted()
+    advance(STALL_AFTER_MS + 1)
+    await m.tick() // soft
+    advance(RESTART_BACKOFF_BASE_MS + 1)
+    await m.tick() // hard
+    advance(RESTART_BACKOFF_BASE_MS * 2 + 1)
+    await m.tick() // hard + clear
+    expect(deps.hardRestart).toHaveBeenLastCalledWith({ clear: true })
+    m.noteStatus(CONNECTED) // fully synced again
+    m.noteStatus(DISCONNECTED)
+    advance(STALL_AFTER_MS + 1)
+    await m.tick() // soft
+    advance(RESTART_BACKOFF_BASE_MS + 1)
+    await m.tick() // hard
+    advance(RESTART_BACKOFF_BASE_MS * 2 + 1)
+    await m.tick() // hard + clear again
     expect(deps.hardRestart).toHaveBeenLastCalledWith({ clear: true })
   })
 
