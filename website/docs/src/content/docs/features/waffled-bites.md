@@ -28,9 +28,9 @@ came with your board into the 2-pin socket marked `SPK`.
 
 Three things aren't live yet, though they're all saved and synced correctly:
 
-- **Forest and lullaby stay silent.** Every other sound is generated on the device itself
-  from scratch, which is why it keeps playing even if your home server reboots overnight.
-  Those two need real recordings, which come later.
+- **Forest and lullaby show as "(soon)" and can't be picked yet.** Every other sound is
+  generated on the device itself from scratch, which is why it keeps playing even if your
+  home server reboots overnight. Those two need real recordings, which come later.
 - **The sleep timer doesn't stop playback yet** — the sound plays until you turn it off.
 - **The morning alarm's tone doesn't play.** The alarm time and tone are stored, but the
   device doesn't sound them yet.

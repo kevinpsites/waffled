@@ -29,9 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   down between them, so there's no pop at lights-out. Every sound is generated on the
   device from scratch rather than streamed — so it keeps playing through a Wi-Fi drop or
   an overnight reboot of your home server, and a kid's room never goes suddenly silent.
-  Plug the small speaker that came with your board into the socket marked `SPK`. Forest
-  and lullaby need real recordings and stay silent for now, the sleep timer's auto-off
-  isn't wired up yet, and the morning alarm's tone still doesn't play.
+  Plug the small speaker that came with your board into the socket marked `SPK`. Forest and
+  lullaby show as "(soon)" and can't be picked yet — they need real recordings — the sleep
+  timer's auto-off isn't wired up yet, and the morning alarm's tone still doesn't play.
 
 - **Waffled-Bite device: set up WiFi right on the screen.** Connecting a new device to
   your home network no longer requires flashing it with hardcoded credentials — it now
