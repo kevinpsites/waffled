@@ -201,6 +201,51 @@ describe('restartPowerSyncHard', () => {
     expect(fakes.instances).toHaveLength(2)
   })
 
+  // Sharing is only correct between callers that asked for the SAME thing. The
+  // single-flight guard used to alias on the promise alone, so a request with a
+  // different `clear` silently got the in-flight behaviour instead of its own.
+  describe('concurrent callers that disagree about clear', () => {
+    // Hold a restart open inside close() so a second request lands mid-flight.
+    function hangClose(instance: FakePowerSyncDatabase) {
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      instance.close = vi.fn(() => gate)
+      return release
+    }
+
+    // "Reset local copy" during a watchdog rebuild used to resolve as if it had
+    // wiped, re-enabling the button while the replica was untouched.
+    it('does not alias a clearing request onto an in-flight plain restart', async () => {
+      const db = await freshDbModule()
+      await db.connectPowerSync()
+      const release = hangClose(fakes.instances[0])
+      const plain = db.restartPowerSyncHard()
+      const clearing = db.restartPowerSyncHard({ clear: true })
+      expect(clearing).not.toBe(plain)
+      release()
+      await Promise.all([plain, clearing])
+      expect(fakes.instances).toHaveLength(3)
+      expect(fakes.instances[1].disconnectAndClear).toHaveBeenCalledTimes(1)
+    })
+
+    // The dangerous direction: "Restart sync" must never inherit a wipe the user
+    // did not ask for from the watchdog's top rung.
+    it('does not let an in-flight clearing restart absorb a plain restart', async () => {
+      const db = await freshDbModule()
+      await db.connectPowerSync()
+      const release = hangClose(fakes.instances[0])
+      const clearing = db.restartPowerSyncHard({ clear: true })
+      const plain = db.restartPowerSyncHard()
+      expect(plain).not.toBe(clearing)
+      release()
+      await Promise.all([clearing, plain])
+      expect(fakes.instances).toHaveLength(3)
+      expect(fakes.instances[1].disconnectAndClear).not.toHaveBeenCalled()
+    })
+  })
+
   it('notifies onPowerSyncRecreated subscribers (and disposers stop that)', async () => {
     const db = await freshDbModule()
     await db.connectPowerSync()

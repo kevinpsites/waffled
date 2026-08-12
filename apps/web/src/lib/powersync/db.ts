@@ -118,16 +118,27 @@ export async function restartPowerSyncSoft(): Promise<void> {
 }
 
 // Full rebuild: close the (possibly wedged) client and create a fresh one — also
-// what the Settings "Restart sync" button calls. Concurrent callers share one
-// restart. Never throws.
-let hardRestarting: Promise<void> | null = null
+// what the Settings "Restart sync" button calls. Never throws.
+//
+// Concurrent callers share one restart only when they asked for the SAME thing.
+// Aliasing across a differing `clear` was wrong in both directions: "Reset local
+// copy" during a watchdog rebuild would resolve without ever wiping, and — worse —
+// "Restart sync" during the watchdog's top rung would wipe a replica the user
+// never asked to wipe. A differing request queues behind the in-flight one instead.
+let hardRestarting: { clear: boolean; promise: Promise<void> } | null = null
 export function restartPowerSyncHard(opts: { clear?: boolean } = {}): Promise<void> {
-  if (!hardRestarting) {
-    hardRestarting = doHardRestart(opts).finally(() => {
-      hardRestarting = null
+  const clear = opts.clear ?? false
+  const inFlight = hardRestarting
+  if (inFlight && inFlight.clear === clear) return inFlight.promise
+  let entry: { clear: boolean; promise: Promise<void> }
+  const promise = (inFlight ? inFlight.promise.catch(() => {}) : Promise.resolve())
+    .then(() => doHardRestart({ clear }))
+    .finally(() => {
+      if (hardRestarting === entry) hardRestarting = null
     })
-  }
-  return hardRestarting
+  entry = { clear, promise }
+  hardRestarting = entry
+  return promise
 }
 
 async function doHardRestart({ clear = false }: { clear?: boolean } = {}): Promise<void> {
