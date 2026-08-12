@@ -449,6 +449,31 @@ t "kill_process_tree reaps a lane child, not just the lane shell" '
   fi
 '
 
+# The failures file must not outlive the run. An earlier version derived its name from
+# $$ and never deleted it, which left one file per run lying around in TMPDIR.
+t "the failures file is unpredictable, private to the run, and cleaned up" '
+  source "$WAFFLED" help >/dev/null 2>&1
+
+  reset_release_failures
+  first="$(release_failed_path)"
+  [ -n "$first" ] && [ -f "$first" ] || { echo "FAIL: no failures file was created"; exit 0; }
+  case "$first" in
+    *waffled-release-failures.??????) ;;
+    *) echo "FAIL: name is not mktemp-random: $first"; exit 0 ;;
+  esac
+
+  record_release_failure "some step"
+  clear_release_failures
+  [ -f "$first" ] && { echo "FAIL: failures file survived the run: $first"; exit 0; }
+
+  # A second run must not reuse the first name.
+  reset_release_failures
+  second="$(release_failed_path)"
+  clear_release_failures
+  [ "$first" != "$second" ] || { echo "FAIL: two runs shared a path: $first"; exit 0; }
+  echo "PASS"
+'
+
 # A clean run must stay quiet and succeed, so the summary cannot become noise.
 t "report_release_failures is silent and succeeds when every step passed" '
   source "$WAFFLED" help >/dev/null 2>&1

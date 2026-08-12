@@ -410,20 +410,31 @@ release_repository_ready() {
 # variable: checks run as background subshells (see release_project_checks) and an
 # assignment inside one never reaches the parent, so variable-based bookkeeping would
 # drop every lane failure and resurrect the silent exit this summary exists to prevent.
-# Derived from $$ rather than mktemp: bash keeps $$ at the original shell's PID inside a
-# subshell, so a lane and its parent agree on the path without having to pass anything
-# back. (Assigning the name lazily would happen in the lane's own copy of the variable
-# and be just as lost as the failure it was recording.)
+# The name is minted by mktemp in the PARENT, before any lane forks, and inherited by
+# the lanes — which is what makes it work. Minting it lazily would happen inside the
+# lane's own copy of the variable and be just as lost as the failure it was recording.
+# (An earlier version derived the name from $$ to avoid having to think about ordering;
+# that worked, but left a predictable world-writable path and a file per run.)
+release_failed_file=""
+
+reset_release_failures() {
+  [ -n "$release_failed_file" ] && rm -f "$release_failed_file"
+  release_failed_file="$(mktemp "${TMPDIR:-/tmp}/waffled-release-failures.XXXXXX")"
+}
+
 release_failed_path() {
-  printf '%s' "${TMPDIR:-/tmp}/waffled-release-failures.$$"
+  printf '%s' "$release_failed_file"
 }
 
 record_release_failure() {
-  printf '%s\n' "$1" >> "$(release_failed_path)"
+  [ -n "$release_failed_file" ] || reset_release_failures
+  printf '%s\n' "$1" >> "$release_failed_file"
 }
 
-reset_release_failures() {
-  rm -f "$(release_failed_path)"
+# Remove the file once its contents have been reported; nothing should outlive the run.
+clear_release_failures() {
+  [ -n "$release_failed_file" ] && rm -f "$release_failed_file"
+  release_failed_file=""
 }
 
 # Print every check that failed, and fail. Checks deliberately run to completion so one
@@ -432,7 +443,7 @@ reset_release_failures() {
 # silence after the last (green) step, looking like it gave up for no reason.
 report_release_failures() {
   local path; path="$(release_failed_path)"
-  [ -s "$path" ] || return 0
+  [ -n "$path" ] && [ -s "$path" ] || return 0
   echo
   echo "${c_red}Release checks failed:${c_reset}"
   while IFS= read -r label; do
@@ -671,9 +682,10 @@ release_project_checks() {
   release_lane_logdir=""
   rm -rf "$logdir"
 
-  if ! report_release_failures; then
-    return 1
-  fi
+  local checks_rc=0
+  report_release_failures || checks_rc=1
+  clear_release_failures
+  [ "$checks_rc" -eq 0 ] || return 1
   echo "${c_grn}All available release project checks passed.${c_reset}"
 }
 # Restore a dump into a short-lived, isolated Postgres container. This exercises the
