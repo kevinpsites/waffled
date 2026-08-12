@@ -287,6 +287,12 @@ static void wb_forget_pairing()
 {
   wb_store_clear("deviceSecret");
   g_deviceSecret.clear();
+  // Silence the speaker BEFORE the poll timer goes away. The poll is the only
+  // thing that ever calls wb_audio_apply, so without this an unpair while the
+  // sound machine is playing leaves it playing forever: onboarding has no
+  // Sounds screen to switch it off from, and nothing else can reach the HAL.
+  // Only a power cycle would stop it — in a kid's bedroom.
+  wb_audio_stop();
   if (g_pollTimer)
   {
     lv_timer_del(g_pollTimer);
