@@ -309,8 +309,16 @@ struct CalendarsSettingsView: View {
         await load()
     }
 
+    /// `try?` here would swallow the refusal and reload, redrawing the unchanged row
+    /// with no explanation — the same shape as the delete bug this branch fixed on
+    /// the event detail screen. If the server says no, say so.
     private func removeFeed(_ id: String) async {
-        try? await api.deleteIcsFeed(id: id)
+        message = nil
+        do {
+            try await api.deleteIcsFeed(id: id)
+        } catch {
+            message = APIErrorText.message(for: error, fallback: "Couldn’t remove that feed.")
+        }
         await load()
     }
 

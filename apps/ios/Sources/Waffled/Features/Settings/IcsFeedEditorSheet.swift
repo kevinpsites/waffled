@@ -131,8 +131,12 @@ struct IcsFeedEditorSheet: View {
             onSaved()
             dismiss()
         } catch {
-            // The server validates the URL; say what it said rather than a generic failure.
-            self.error = "Couldn’t save that feed. Check the link is a full http(s) address to an .ics file."
+            // The server validates the URL — say what it said. The URL hint is only
+            // the fallback, for when it said nothing (offline, a proxy's HTML 502):
+            // leading with it on a 403 or 404 sends people to fix a link that's fine.
+            self.error = APIErrorText.message(
+                for: error,
+                fallback: "Couldn’t save that feed. Check the link is a full http(s) address to an .ics file.")
         }
     }
 }
