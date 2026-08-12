@@ -17,6 +17,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **Calendar color control (web/kiosk)** — a household **Event style** (solid color blocks,
+  the default, or the softer tint), a **family color** for events that involve everyone
+  (instead of borrowing the owner's color), and a ninth **custom** swatch that opens a free
+  hex picker wherever a person's color is chosen. Chips carry their color as a CSS custom
+  property, so solid↔tinted is one root attribute and every calendar surface (month, week,
+  day, agenda, Today card, event detail) follows. Server-side `#RRGGBB` validation on the
+  person and household routes. **Web only — iOS parity is still open (see Planned).**
 - **Dark mode (web/kiosk + iPhone/iPad)** — a warm dark theme alongside light, chosen from
   **Settings → Appearance** (Light / Dark / Match system), saved per device and applied instantly,
   on every surface. Built on a consolidated design-token layer (web: one canonical `:root` + a
@@ -195,6 +202,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   choice.
 
 ## Planned 🚧
+
+- **Calendar color control on iPhone/iPad.** The web ships the household **Event style**,
+  the **family color** for whole-family events, and the custom hex swatch (see **Done**);
+  iOS still styles its own chips and colors every event by owner, and its member editor
+  offers only the eight presets. Parity means reading `settings.display` (both keys) in the
+  iOS calendar/Today surfaces and adding a color picker to the member editor.
 
 - **Smarter goal-note suggestions (Tier 2).** Tier 1 shipped (see **Done**): the Log
   sheet's "What did you do?" chips now suggest the notes actually logged against that

@@ -15,7 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Pick any color for a person, not just the eight presets.** The color row in the member
+  editor (and in My Profile, and the new family color) now ends with a ninth "custom"
+  swatch that opens your device's color picker, so everyone can have exactly the shade
+  they want. The server only accepts full `#RRGGBB` hex values.
+- **A color of your own for whole-family events.** Events that involve every member of the
+  household now paint in a household-level **family color** instead of borrowing whichever
+  person happened to own the event — so the calendar reads at a glance: everyone, some of
+  us, one person, or nobody yet. Set it in **Settings → Family & People → Family color**;
+  it starts as a warm orange. Web only for now; the iPhone/iPad apps still color those
+  events by owner.
+
 ### Changed
+
+- **Calendar events are now solid blocks of color.** Event chips across the month, week,
+  day and agenda views fill with the person's color instead of the old pale tint, which
+  reads far better from across the kitchen. **This changes how every existing household's
+  calendar looks after upgrading** — if you preferred the softer look, switch
+  **Settings → Family & People → Event style** back to *Tinted*. Tinted is also
+  theme-aware now, so it stays legible in dark mode.
 
 ### Fixed
 

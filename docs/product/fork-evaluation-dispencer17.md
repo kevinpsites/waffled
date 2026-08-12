@@ -56,7 +56,10 @@ This is the bigger finding — roughly half the diff is unlisted.
   and a "Separated days" option.
 - **Custom member colors + household "Event style" setting** — per-person hex with
   server-side validation (`persons.ts` +72), family color for whole-family events,
-  fully-tinted event chips.
+  fully-tinted event chips. **Ported (web).** We took the custom swatch + `HEX_COLOR`
+  validation, the family color, the `eventStyle` display setting, and made **solid the
+  default**; we deliberately left their color *themes* / Appearance theme set behind.
+  iOS parity is the one piece still outstanding.
 - **Rewards card** on the Today dashboard.
 - **Recipe editor rework** (+227/-…), clearer add-recipe flow in Meals.
 

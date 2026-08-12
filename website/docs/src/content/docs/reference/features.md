@@ -42,6 +42,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Disable password login / force SSO (break-glass guard) | ✅ | ✅ | ✅ | ✅ Done — config is web/server-only admin by design; every client's login screen honors it (an SSO-only server hides the email/password form on web **and** iPhone/iPad) |
 | **Member management** — grant a person a login (email ± password) + kiosk PIN | ✅ | ✅ | ✅ | ✅ Done |
 | **Members CRUD** (profiles: name, avatar, color, role, admin, birthday) | ✅ | ✅ | ✅ | ✅ Done |
+| **Custom member color** — a ninth swatch opens a free hex picker | ✅ | ❌ | ❌ | 🟡 Partial — web only (member editor + My Profile); iOS still offers the eight presets. Any `#RRGGBB` value is accepted and validated server-side |
 | **Role-based permissions** — per-role capability grid (Settings → Family); [model](/concepts/permissions/) | ✅ | ✅ | ✅ | ✅ Done (editable matrix, admin-only) |
 | Sign out (revokes refresh) | ✅ | ✅ | ✅ | ✅ Done |
 
@@ -91,6 +92,8 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Agenda **dims past events** | ✅ | ✅ | — | ✅ Done — the Calendar agenda **and** the Today dashboard's agenda card fade already-ended events (web + iPhone) |
 | Full-screen **event detail** (location/Directions, repeats, notes, timeline) | ✅ | ✅ | ✅ | ✅ Done (iPad detail is two-column) |
 | Per-person filter | ✅ | ✅ | ✅ | ✅ Done |
+| **Event style** — solid color blocks (default) or the softer tint, per household | ✅ | ❌ | ❌ | 🟡 Partial — web only. Set in **Settings → Family & People → Event style**; applies to the month, week, day and agenda views (and the Today agenda card). iPhone/iPad keep their own chip styling |
+| **Family color** for whole-family events (instead of the owner's color) | ✅ | ❌ | ❌ | 🟡 Partial — web only. An event whose people cover every member paints in **Settings → Family & People → Family color**; iOS still colors those events by owner |
 | **Two-way Google Calendar sync** (inbound poll + outbound push) | ✅ | ✅ | ✅ | ✅ Done (sync runs server-side; connect in Settings → Calendars) |
 | **Two-way Outlook / Microsoft 365 sync** (same engine, via Graph) | ✅ | ✅ | ✅ | ✅ Done — sync runs server-side, so synced events appear on every surface. Connect an account from **Settings → Calendars** on web, iPhone or iPad; needs a free Azure app registration |
 | **Calendar feeds (ICS)** — subscribe to any published .ics/webcal URL | ✅ | ✅ | ✅ | ✅ Done — read-only, no OAuth, polled every 15 min. Add and manage feeds from **Settings → Calendars** on any surface. Feed events can't be edited anywhere: the apps hide Edit/Delete and the API refuses the write (including quick-add and offline queues) |
@@ -320,6 +323,7 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | **Notifications** (reminders) | ❌ N/A | ✅ | ✅ | ✅ Done (mobile) |
 | **Login & security** (OIDC config, password toggle) | ✅ | 🟡 | 🟡 | ✅ Done (web); mobile shows accounts/sign-in, OIDC config is web-only |
 | Household settings (name, week start, timezone, location) | ✅ | ✅ | ✅ | ✅ Done |
+| **Event style + Family color** (how the calendar is colored) | ✅ | ❌ | ❌ | 🟡 Partial — web only, admin-gated (Settings → Family & People) |
 | **About** (version, editable server address + switch warning) | — | ✅ | ✅ | ✅ Done (mobile) |
 | **Lists** settings | 🚧 | 🚧 | 🚧 | 🚧 Planned ("Soon") |
 
