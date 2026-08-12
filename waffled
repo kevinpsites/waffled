@@ -462,6 +462,33 @@ report_release_failures() {
 # Set while phase-2 lanes are running, so the interrupt handler knows what to tear down.
 release_lane_pids=""
 release_lane_logdir=""
+release_ticker_pid=""
+
+# Lane output is buffered to files, so phase 2 shows nothing at all until the first lane
+# finishes — well over a minute of a silent terminal, which is hard to tell from a hang.
+# Emit a heartbeat naming the lanes still running.
+start_release_ticker() {
+  local started; started="$(date +%s)"
+  (
+    while :; do
+      sleep 30
+      echo "${c_dim}  …still running after $(( $(date +%s) - started ))s${c_reset}"
+    done
+  ) &
+  release_ticker_pid=$!
+}
+
+# Every step is guarded: `wait` on a job we just killed exits 143, and as the last
+# command of an && list that is enough to trip `set -e` in any caller that has not
+# suppressed it.
+stop_release_ticker() {
+  local pid="${release_ticker_pid:-}"
+  release_ticker_pid=""
+  [ -n "$pid" ] || return 0
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  return 0
+}
 
 # Kill a process and everything under it, deepest first. Lanes spawn heavyweight
 # children (vitest workers, Postgres containers, a Docker build, a chromium), and a
@@ -480,6 +507,7 @@ kill_process_tree() {
 release_interrupt_lanes() {
   local pid
   trap - INT TERM
+  stop_release_ticker
   echo
   echo "${c_ylw}Interrupted — stopping release check lanes…${c_reset}"
   for pid in ${release_lane_pids:-}; do kill_process_tree "$pid"; done
@@ -655,6 +683,7 @@ release_project_checks() {
   release_lane_pids="$pid_docker $pid_web $pid_misc"
   release_lane_logdir="$logdir"
   trap 'release_interrupt_lanes' INT TERM
+  start_release_ticker
 
   # Each lane's output is buffered to its own file and printed whole, so concurrent test
   # runners can't shred each other's output into unreadable interleaved lines.
@@ -677,6 +706,7 @@ release_project_checks() {
       echo "${c_ylw}(no output captured — the ${lane} lane produced no log)${c_reset}"
     fi
   done
+  stop_release_ticker
   trap - INT TERM
   release_lane_pids=""
   release_lane_logdir=""

@@ -474,6 +474,25 @@ t "the failures file is unpredictable, private to the run, and cleaned up" '
   echo "PASS"
 '
 
+# The heartbeat is a background job like the lanes are; it must not outlive the phase.
+t "the progress ticker starts and is reaped on stop" '
+  source "$WAFFLED" help >/dev/null 2>&1
+
+  start_release_ticker
+  pid="${release_ticker_pid:-}"
+  [ -n "$pid" ] || { echo "FAIL: the ticker never started"; exit 0; }
+  kill -0 "$pid" 2>/dev/null || { echo "FAIL: the ticker was not running"; exit 0; }
+
+  stop_release_ticker
+  sleep 1
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null || true
+    echo "FAIL: the ticker outlived stop_release_ticker"
+  else
+    [ -z "${release_ticker_pid:-}" ] && echo "PASS" || echo "FAIL: ticker pid not cleared"
+  fi
+'
+
 # A clean run must stay quiet and succeed, so the summary cannot become noise.
 t "report_release_failures is silent and succeeds when every step passed" '
   source "$WAFFLED" help >/dev/null 2>&1
