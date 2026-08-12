@@ -103,12 +103,31 @@ describe('RecipeEditor — edit: recipe notes vs your notes', () => {
     renderEdit()
 
     await screen.findByDisplayValue('Saved Recipe')
+    fireEvent.change(screen.getByLabelText('Your notes'), { target: { value: 'Use much less salt.' } })
     fireEvent.click(screen.getByText('Save changes'))
 
     await waitFor(() => expect(sent.some((s) => s.method === 'PATCH')).toBe(true))
     const b = sent.find((s) => s.method === 'PATCH')!.body as { notes: string | null; userNotes?: string }
     expect(b.notes).toBeNull() // the source's notes stay empty
-    expect(b.userNotes).toBe('Use less salt.') // personal notes stay personal
+    expect(b.userNotes).toBe('Use much less salt.') // personal notes stay personal
+  })
+
+  // Lost update: the editor holds the note it loaded with. Someone else's note —
+  // written from the recipe page's blur-autosave or the iOS app while this editor sat
+  // open — must not be overwritten by a save that never touched the notes box.
+  it('leaves an untouched note alone instead of writing back a stale copy', async () => {
+    const sent: Sent[] = []
+    mockEditApi(sent, makeDetail({ notes: null, userNotes: 'Written elsewhere.' }))
+    renderEdit()
+
+    await screen.findByDisplayValue('Saved Recipe')
+    fireEvent.change(screen.getByPlaceholderText('Recipe title'), { target: { value: 'Renamed Recipe' } })
+    fireEvent.click(screen.getByText('Save changes'))
+
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH')).toBe(true))
+    const b = sent.find((s) => s.method === 'PATCH')!.body as Record<string, unknown>
+    expect(b.title).toBe('Renamed Recipe')
+    expect('userNotes' in b).toBe(false) // the column is left exactly as the server has it
   })
 
   it('saves an edit to each field into its own column', async () => {

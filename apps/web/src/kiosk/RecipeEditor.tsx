@@ -321,9 +321,13 @@ export function RecipeEditor() {
       // replace: true so the editor page doesn't linger in history — otherwise
       // "‹ Recipes" from the saved recipe would walk back INTO the editor.
       if (isEdit) {
-        // Send userNotes as a string even when empty — the API only touches the column
-        // when it gets one, so a null would quietly fail to clear the note.
-        await mealsApi.updateRecipe(id!, { ...payload, userNotes })
+        // Only send userNotes when this editor actually changed it. The API writes the
+        // column whenever it gets a string, so an unconditional send would clobber a
+        // note written since we loaded — the recipe page autosaves it on blur, and iOS
+        // edits it too. Clearing still works: '' differs from the loaded note, and ''
+        // (not null) is what the API takes as "empty this column".
+        const notesPatch = userNotes !== (recipe?.userNotes ?? '') ? { userNotes } : {}
+        await mealsApi.updateRecipe(id!, { ...payload, ...notesPatch })
         navigate(`/meals/recipe/${id}`, { replace: true })
       } else {
         const created = await mealsApi.createRecipe(payload)
