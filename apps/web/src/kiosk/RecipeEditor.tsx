@@ -130,6 +130,10 @@ export function RecipeEditor() {
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
+  // The household's own note on the recipe (user_notes) is a different column from the
+  // recipe's own `notes`: it survives a re-import, and must never be written into the
+  // shared field — editing one recipe used to duplicate it there.
+  const [userNotes, setUserNotes] = useState('')
   const [ings, setIngs] = useState<EditIng[]>([blankIng()])
   const [stps, setStps] = useState<EditStep[]>([blankStep()])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
@@ -211,7 +215,8 @@ export function RecipeEditor() {
       setImageUrl(recipe.imageUrl ?? '')
     }
     setImagePreview(recipe.imageUrl ?? null)
-    setNotes(recipe.userNotes ?? recipe.notes ?? '')
+    setNotes(recipe.notes ?? '')
+    setUserNotes(recipe.userNotes ?? '')
     const ingRows: EditIng[] = ingredients.length
       ? ingredients.map((i) => ({
           uid: newUid(), name: i.name, amount: i.amount != null ? String(i.amount) : '', unit: i.unit ?? '',
@@ -316,7 +321,9 @@ export function RecipeEditor() {
       // replace: true so the editor page doesn't linger in history — otherwise
       // "‹ Recipes" from the saved recipe would walk back INTO the editor.
       if (isEdit) {
-        await mealsApi.updateRecipe(id!, payload)
+        // Send userNotes as a string even when empty — the API only touches the column
+        // when it gets one, so a null would quietly fail to clear the note.
+        await mealsApi.updateRecipe(id!, { ...payload, userNotes })
         navigate(`/meals/recipe/${id}`, { replace: true })
       } else {
         const created = await mealsApi.createRecipe(payload)
@@ -725,7 +732,22 @@ export function RecipeEditor() {
 
       <div className="card re-card">
         <div className="card-h re-section-h">Notes</div>
-        <textarea className="re-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything worth remembering…" rows={3} />
+        {isEdit ? (
+          // Editing an existing recipe: the recipe's own notes and yours are separate
+          // columns, so they get separate boxes.
+          <>
+            <label className="re-f">
+              <span>Recipe notes</span>
+              <textarea className="re-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything worth remembering…" rows={3} />
+            </label>
+            <label className="re-f" style={{ marginTop: 12 }}>
+              <span>Your notes</span>
+              <textarea className="re-notes" value={userNotes} onChange={(e) => setUserNotes(e.target.value)} placeholder="e.g. doubles well · go easy on the salt (kept across re-imports)" rows={3} />
+            </label>
+          </>
+        ) : (
+          <textarea className="re-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything worth remembering…" rows={3} />
+        )}
       </div>
 
       {saveErr && (

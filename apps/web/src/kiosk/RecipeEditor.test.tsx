@@ -82,6 +82,68 @@ function renderEdit() {
   )
 }
 
+// Two columns, two boxes: `notes` belongs to the recipe (and is what a re-import
+// rewrites), `userNotes` is the household's own note on it. Editing a recipe used to
+// prefill ONE box from userNotes and save it back into notes — duplicating personal
+// notes into the shared column, where the recipe page then showed them twice.
+describe('RecipeEditor — edit: recipe notes vs your notes', () => {
+  it('prefills each column into its own field', async () => {
+    const sent: Sent[] = []
+    mockEditApi(sent, makeDetail({ notes: 'Soak the lentils overnight.', userNotes: 'Kids love it — double it.' }))
+    renderEdit()
+
+    await screen.findByDisplayValue('Saved Recipe')
+    expect((screen.getByLabelText('Recipe notes') as HTMLTextAreaElement).value).toBe('Soak the lentils overnight.')
+    expect((screen.getByLabelText('Your notes') as HTMLTextAreaElement).value).toBe('Kids love it — double it.')
+  })
+
+  it('does not copy personal notes into the shared notes column on save', async () => {
+    const sent: Sent[] = []
+    mockEditApi(sent, makeDetail({ notes: null, userNotes: 'Use less salt.' }))
+    renderEdit()
+
+    await screen.findByDisplayValue('Saved Recipe')
+    fireEvent.click(screen.getByText('Save changes'))
+
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH')).toBe(true))
+    const b = sent.find((s) => s.method === 'PATCH')!.body as { notes: string | null; userNotes?: string }
+    expect(b.notes).toBeNull() // the source's notes stay empty
+    expect(b.userNotes).toBe('Use less salt.') // personal notes stay personal
+  })
+
+  it('saves an edit to each field into its own column', async () => {
+    const sent: Sent[] = []
+    mockEditApi(sent, makeDetail({ notes: 'Soak overnight.', userNotes: 'Double the batch.' }))
+    renderEdit()
+
+    await screen.findByDisplayValue('Saved Recipe')
+    fireEvent.change(screen.getByLabelText('Recipe notes'), { target: { value: 'Soak overnight, then rinse.' } })
+    fireEvent.change(screen.getByLabelText('Your notes'), { target: { value: 'Triple the batch.' } })
+    fireEvent.click(screen.getByText('Save changes'))
+
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH')).toBe(true))
+    const b = sent.find((s) => s.method === 'PATCH')!.body as { notes: string | null; userNotes?: string }
+    expect(b.notes).toBe('Soak overnight, then rinse.')
+    expect(b.userNotes).toBe('Triple the batch.')
+  })
+
+  // The API only writes user_notes when it's a string — sending null would silently
+  // keep the old note, so clearing the box has to send ''.
+  it('can clear your notes', async () => {
+    const sent: Sent[] = []
+    mockEditApi(sent, makeDetail({ notes: null, userNotes: 'Was useful once.' }))
+    renderEdit()
+
+    await screen.findByDisplayValue('Saved Recipe')
+    fireEvent.change(screen.getByLabelText('Your notes'), { target: { value: '' } })
+    fireEvent.click(screen.getByText('Save changes'))
+
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH')).toBe(true))
+    const b = sent.find((s) => s.method === 'PATCH')!.body as { userNotes?: string }
+    expect(b.userNotes).toBe('')
+  })
+})
+
 describe('RecipeEditor — new', () => {
   it('builds the create payload from the form (title, ingredient, step)', async () => {
     const sent: Sent[] = []
@@ -162,6 +224,23 @@ describe('RecipeEditor — new', () => {
     await waitFor(() => expect(sent2.some((s) => s.method === 'PATCH')).toBe(true))
     const patched = sent2.find((s) => s.method === 'PATCH')!.body as { ingredients: { amount: number | null }[] }
     expect(patched.ingredients[0].amount).toBe(1.5)
+  })
+
+  // A brand-new recipe has no "source" to keep notes apart from — one box, into `notes`.
+  it('keeps a single Notes box that writes the recipe notes', async () => {
+    const sent: Sent[] = []
+    mockApi(sent)
+    renderNew()
+
+    expect(screen.queryByLabelText('Your notes')).toBeNull()
+    fireEvent.change(screen.getByPlaceholderText('Recipe title'), { target: { value: 'Noted Soup' } })
+    fireEvent.change(screen.getByPlaceholderText('Anything worth remembering…'), { target: { value: 'From Grandma.' } })
+    fireEvent.click(screen.getByText('Create recipe'))
+
+    await waitFor(() => expect(sent.some((s) => s.url.endsWith('/api/recipes') && s.method === 'POST')).toBe(true))
+    const b = sent.find((s) => s.url.endsWith('/api/recipes') && s.method === 'POST')!.body as { notes: string | null; userNotes?: string }
+    expect(b.notes).toBe('From Grandma.')
+    expect(b.userNotes).toBeUndefined()
   })
 
   // Regression: a failed save just re-enabled the button, so a lost recipe looked
