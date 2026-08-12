@@ -250,6 +250,33 @@ export async function updateModules(
   return rows[0] ?? null
 }
 
+// Merge display preferences into settings.display (jsonb merge, same as modules
+// above, so sibling settings keys survive).
+export async function updateDisplay(
+  householdId: string,
+  patch: Record<string, string>
+): Promise<HouseholdRow | null> {
+  const { rows } = await query<HouseholdRow>(
+    `update households
+        set settings = jsonb_set(
+          coalesce(settings, '{}'::jsonb),
+          '{display}',
+          coalesce(settings->'display', '{}'::jsonb) || $2::jsonb
+        )
+      where id = $1
+      returning *`,
+    [householdId, JSON.stringify(patch)]
+  )
+  return rows[0] ?? null
+}
+
+// How event chips render across the calendar views: 'solid' (full-color blocks,
+// the default) or 'tinted' (the soft wash).
+const EVENT_STYLES = new Set(['solid', 'tinted'])
+// Person + family colors must be a full #RRGGBB hex — they go straight into CSS
+// custom properties on every calendar view. (Shared with account.ts.)
+export const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
+
 export function registerPersonRoutes(api: Api): void {
   // Household settings: the household + its members (with login/owner flags).
   api.get('/api/household/settings', tenantRoute((tenant) => householdSettings(tenant.householdId)))
@@ -307,6 +334,32 @@ export function registerPersonRoutes(api: Api): void {
     return { modules: (h.settings as { modules?: unknown })?.modules ?? {} }
   }))
 
+  // Display preferences (admins only). Stored in settings.display: eventStyle (how
+  // event chips are colored across the calendar views) and familyColorHex (the color
+  // for events that involve the whole family).
+  api.patch('/api/household/display', adminRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as Record<string, unknown>
+    const patch: Record<string, string> = {}
+    if (body.eventStyle !== undefined) {
+      if (typeof body.eventStyle !== 'string' || !EVENT_STYLES.has(body.eventStyle)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'eventStyle must be solid|tinted' })
+      }
+      patch.eventStyle = body.eventStyle
+    }
+    if (body.familyColorHex !== undefined) {
+      if (typeof body.familyColorHex !== 'string' || !HEX_COLOR.test(body.familyColorHex)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'familyColorHex must be a #RRGGBB hex color' })
+      }
+      patch.familyColorHex = body.familyColorHex
+    }
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: 'BadRequest', message: 'no valid display settings provided' })
+    }
+    const h = await updateDisplay(tenant.householdId, patch)
+    if (!h) return res.status(404).json({ error: 'NotFound', message: 'household not found' })
+    return { display: (h.settings as { display?: unknown })?.display ?? {} }
+  }))
+
   // List everyone in the household (any member may read).
   api.get('/api/persons', tenantRoute(async (tenant) => {
     const persons = await listPersons(tenant.householdId)
@@ -321,6 +374,9 @@ export function registerPersonRoutes(api: Api): void {
         error: 'BadRequest',
         message: 'name and memberType (adult|teen|kid) are required',
       })
+    }
+    if (body.colorHex != null && !HEX_COLOR.test(String(body.colorHex))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'colorHex must be a #RRGGBB hex color' })
     }
     const person = await createPerson(tenant.householdId, body as CreatePersonInput)
     return res.status(201).json({ person: presentPerson(person) })
@@ -343,6 +399,10 @@ export function registerPersonRoutes(api: Api): void {
     const patch = (req.body ?? {}) as Record<string, unknown>
     if (patch.memberType !== undefined && !MEMBER_TYPES.has(String(patch.memberType))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid memberType' })
+    }
+    // null clears the color; anything else must be a full #RRGGBB hex.
+    if (patch.colorHex != null && !HEX_COLOR.test(String(patch.colorHex))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'colorHex must be a #RRGGBB hex color' })
     }
     if ('allergens' in patch) patch.allergens = cleanAllergens(patch.allergens)
     if (!Object.keys(UPDATABLE).some((field) => field in patch)) {

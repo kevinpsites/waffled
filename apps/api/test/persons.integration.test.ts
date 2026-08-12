@@ -162,6 +162,19 @@ describe('POST /api/persons', () => {
     ).toBe(400)
   })
 
+  it('rejects a colorHex that is not a #RRGGBB hex (400)', async () => {
+    for (const colorHex of ['red', '#FFF', '#12345', 'FFCC00', '#GGGGGG']) {
+      const res = await call('POST', '/api/persons', kevin, { name: 'Bad color', memberType: 'kid', colorHex })
+      expect(res.statusCode, `colorHex=${colorHex}`).toBe(400)
+    }
+  })
+
+  it('accepts an off-palette custom hex', async () => {
+    const res = await call('POST', '/api/persons', kevin, { name: 'Custom', memberType: 'kid', colorHex: '#0f9d58' })
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).person.colorHex).toBe('#0f9d58')
+  })
+
   it('forbids a non-admin member from adding people (403)', async () => {
     await seedNonAdmin('dev|teen', kevinHouseholdId)
     const res = await call('POST', '/api/persons', mint('dev|teen'), {
@@ -205,6 +218,14 @@ describe('GET / PATCH /api/persons/:id', () => {
       (await call('PATCH', `/api/persons/${targetId}`, kevin, { memberType: 'alien' })).statusCode
     ).toBe(400)
     expect((await call('PATCH', `/api/persons/${targetId}`, kevin, {})).statusCode).toBe(400)
+  })
+
+  it('rejects a colorHex that is not a #RRGGBB hex (400)', async () => {
+    expect((await call('PATCH', `/api/persons/${targetId}`, kevin, { colorHex: 'blue' })).statusCode).toBe(400)
+    expect((await call('PATCH', `/api/persons/${targetId}`, kevin, { colorHex: '#12345' })).statusCode).toBe(400)
+    // …but a free custom hex is fine, and clearing it is still allowed.
+    expect((await call('PATCH', `/api/persons/${targetId}`, kevin, { colorHex: '#0f9d58' })).statusCode).toBe(200)
+    expect((await call('PATCH', `/api/persons/${targetId}`, kevin, { colorHex: null })).statusCode).toBe(200)
   })
 
   it('404s for an unknown or non-uuid id', async () => {
@@ -311,6 +332,51 @@ describe('onboarding (settings.onboarding)', () => {
   it('forbids a non-admin (403)', async () => {
     await seedNonAdmin('dev|ob-teen', kevinHouseholdId)
     expect((await call('PATCH', '/api/household/onboarding', mint('dev|ob-teen'), { opened: true })).statusCode).toBe(403)
+  })
+})
+
+describe('display preferences (settings.display)', () => {
+  it('is absent until set — the client resolves the default', async () => {
+    const { household } = JSON.parse((await call('GET', '/api/household', kevin)).body)
+    expect(household.settings?.display).toBeUndefined()
+  })
+
+  it('saves the event style and the whole-family color', async () => {
+    const res = await call('PATCH', '/api/household/display', kevin, { eventStyle: 'tinted', familyColorHex: '#F97316' })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).display).toMatchObject({ eventStyle: 'tinted', familyColorHex: '#F97316' })
+
+    // Persisted, and merged (a later patch of one key keeps the other).
+    const patched = await call('PATCH', '/api/household/display', kevin, { eventStyle: 'solid' })
+    expect(JSON.parse(patched.body).display).toMatchObject({ eventStyle: 'solid', familyColorHex: '#F97316' })
+    const { household } = JSON.parse((await call('GET', '/api/household', kevin)).body)
+    expect(household.settings.display).toMatchObject({ eventStyle: 'solid', familyColorHex: '#F97316' })
+  })
+
+  it('rejects an unknown event style (400)', async () => {
+    expect((await call('PATCH', '/api/household/display', kevin, { eventStyle: 'plaid' })).statusCode).toBe(400)
+  })
+
+  it('rejects a family color that is not a #RRGGBB hex (400)', async () => {
+    for (const familyColorHex of ['orange', '#FFF', '#12345', 42]) {
+      const res = await call('PATCH', '/api/household/display', kevin, { familyColorHex })
+      expect(res.statusCode, `familyColorHex=${familyColorHex}`).toBe(400)
+    }
+  })
+
+  it('rejects an empty patch (400)', async () => {
+    expect((await call('PATCH', '/api/household/display', kevin, {})).statusCode).toBe(400)
+    expect((await call('PATCH', '/api/household/display', kevin, { nope: true })).statusCode).toBe(400)
+  })
+
+  it('forbids a non-admin (403)', async () => {
+    await seedNonAdmin('dev|display-teen', kevinHouseholdId)
+    expect((await call('PATCH', '/api/household/display', mint('dev|display-teen'), { eventStyle: 'solid' })).statusCode).toBe(403)
+  })
+
+  it('is household-scoped (another household is untouched)', async () => {
+    const { household } = JSON.parse((await call('GET', '/api/household', kelly)).body)
+    expect(household.settings?.display).toBeUndefined()
   })
 })
 

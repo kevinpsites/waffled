@@ -131,6 +131,13 @@ describe('account API', () => {
     expect(after.colorHex).toBe('#ff0088')
   })
 
+  it('PUT /api/account/profile rejects a colorHex that is not a #RRGGBB hex (400)', async () => {
+    for (const colorHex of ['hotpink', '#ff08', 'ff0088']) {
+      const res = await call('PUT', '/api/account/profile', admin, { colorHex })
+      expect(res.statusCode, `colorHex=${colorHex}`).toBe(400)
+    }
+  })
+
   it('PUT /api/account/password: wrong current 403, short new 400, correct 200 then login works', async () => {
     expect((await call('PUT', '/api/account/password', admin, { currentPassword: 'nope', newPassword: 'brandnew1' })).statusCode).toBe(403)
     expect((await call('PUT', '/api/account/password', admin, { currentPassword: 'secret123', newPassword: 'short' })).statusCode).toBe(400)
