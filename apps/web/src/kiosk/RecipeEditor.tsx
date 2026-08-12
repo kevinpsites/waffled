@@ -6,7 +6,7 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { RECIPE_TEMPLATE, RECIPE_EXAMPLE } from './components/recipe-template'
 import { PhotoImportModal, DescribeImportModal } from './components/RecipeImportModals'
 import { mealsApi, uploadImage, useRecipe, type IngredientInput, type RecipeMetadataSuggestion, type RecipeWriteInput, type StepInput } from '../lib/api'
-import { parseAmt } from '../lib/amount'
+import { fmtAmt, parseAmt } from '../lib/amount'
 import { ApiSendError } from '../lib/api/client'
 import '../styles/recipe.css'
 
@@ -219,7 +219,9 @@ export function RecipeEditor() {
     setUserNotes(recipe.userNotes ?? '')
     const ingRows: EditIng[] = ingredients.length
       ? ingredients.map((i) => ({
-          uid: newUid(), name: i.name, amount: i.amount != null ? String(i.amount) : '', unit: i.unit ?? '',
+          // fmtAmt, not String() — a third of a cup is stored as 0.3333333333333333, and
+          // pasting that into the Qty box is how "⅓" turned into a decimal on every edit.
+          uid: newUid(), name: i.name, amount: i.amount != null ? fmtAmt(i.amount) : '', unit: i.unit ?? '',
           prepNote: i.prepNote ?? '', section: i.section ?? '',
         }))
       : [blankIng()]
@@ -247,7 +249,7 @@ export function RecipeEditor() {
     setNotes(p.recipe.notes ?? '')
     const ingRows: EditIng[] = p.ingredients.length
       ? p.ingredients.map((i) => ({
-          uid: newUid(), name: i.name, amount: i.amount != null ? String(i.amount) : '', unit: i.unit ?? '',
+          uid: newUid(), name: i.name, amount: i.amount != null ? fmtAmt(i.amount) : '', unit: i.unit ?? '',
           prepNote: i.prepNote ?? '', section: i.section ?? '',
         }))
       : [blankIng()]

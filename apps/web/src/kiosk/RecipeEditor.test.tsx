@@ -236,13 +236,29 @@ describe('RecipeEditor — new', () => {
     renderEdit()
 
     await screen.findByDisplayValue('Pancakes')
-    // Prefill shows the stored number; the fraction is not re-parsed away.
-    expect((screen.getByPlaceholderText('2') as HTMLInputElement).value).toBe('1.5')
+    // Prefill shows the amount the way it was typed, not the stored decimal.
+    expect((screen.getByPlaceholderText('2') as HTMLInputElement).value).toBe('1½')
 
     fireEvent.click(screen.getByText('Save changes'))
     await waitFor(() => expect(sent2.some((s) => s.method === 'PATCH')).toBe(true))
     const patched = sent2.find((s) => s.method === 'PATCH')!.body as { ingredients: { amount: number | null }[] }
     expect(patched.ingredients[0].amount).toBe(1.5)
+  })
+
+  // A third of a cup is stored as 0.3333333333333333. Re-opening the editor used to
+  // paste that straight into the Qty box; a save from there is exact but unreadable.
+  it('re-opens an awkward fraction as the fraction, not its decimal', async () => {
+    const sent: Sent[] = []
+    mockEditApi(sent, makeDetail({ title: 'Dressing' }, [{ name: 'oil', amount: 1 / 3, unit: 'cup' }]))
+    renderEdit()
+
+    await screen.findByDisplayValue('Dressing')
+    expect((screen.getByPlaceholderText('2') as HTMLInputElement).value).toBe('⅓')
+
+    fireEvent.click(screen.getByText('Save changes'))
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH')).toBe(true))
+    const patched = sent.find((s) => s.method === 'PATCH')!.body as { ingredients: { amount: number | null }[] }
+    expect(patched.ingredients[0].amount).toBeCloseTo(1 / 3, 10)
   })
 
   // A brand-new recipe has no "source" to keep notes apart from — one box, into `notes`.
