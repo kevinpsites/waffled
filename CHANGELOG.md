@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pick any color for a person, not just the eight presets.** The color row in the member
   editor (and in My Profile, and the new family color) now ends with a ninth "custom"
   swatch that opens your device's color picker, so everyone can have exactly the shade
-  they want. The server only accepts full `#RRGGBB` hex values.
+  they want. The server only accepts full `#RRGGBB` hex values for a new color — a
+  member still holding an older, odder value keeps it, so they can always be saved.
 - **A color of your own for whole-family events.** Events that involve every member of the
   household now paint in a household-level **family color** instead of borrowing whichever
   person happened to own the event — so the calendar reads at a glance: everyone, some of

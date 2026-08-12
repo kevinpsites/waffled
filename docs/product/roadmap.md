@@ -22,8 +22,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   (instead of borrowing the owner's color), and a ninth **custom** swatch that opens a free
   hex picker wherever a person's color is chosen. Chips carry their color as a CSS custom
   property, so solid↔tinted is one root attribute and every calendar surface (month, week,
-  day, agenda, Today card, event detail) follows. Server-side `#RRGGBB` validation on the
-  person and household routes. **Web only — iOS parity is still open (see Planned).**
+  day, agenda, Today card, event detail) follows — and each chip carries the ink (black or
+  white) that keeps its title readable on its own color, in both themes. Server-side
+  `#RRGGBB` validation on every route that writes a color, with a member's pre-existing
+  value kept so it can't block their save. **Web only — iOS parity is still open (see Planned).**
 - **Dark mode (web/kiosk + iPhone/iPad)** — a warm dark theme alongside light, chosen from
   **Settings → Appearance** (Light / Dark / Match system), saved per device and applied instantly,
   on every surface. Built on a consolidated design-token layer (web: one canonical `:root` + a

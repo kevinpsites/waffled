@@ -42,7 +42,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Disable password login / force SSO (break-glass guard) | ✅ | ✅ | ✅ | ✅ Done — config is web/server-only admin by design; every client's login screen honors it (an SSO-only server hides the email/password form on web **and** iPhone/iPad) |
 | **Member management** — grant a person a login (email ± password) + kiosk PIN | ✅ | ✅ | ✅ | ✅ Done |
 | **Members CRUD** (profiles: name, avatar, color, role, admin, birthday) | ✅ | ✅ | ✅ | ✅ Done |
-| **Custom member color** — a ninth swatch opens a free hex picker | ✅ | ❌ | ❌ | 🟡 Partial — web only (member editor + My Profile); iOS still offers the eight presets. Any `#RRGGBB` value is accepted and validated server-side |
+| **Custom member color** — a ninth swatch opens a free hex picker | ✅ | ❌ | ❌ | 🟡 Partial — web only (member editor + My Profile); iOS still offers the eight presets. Any `#RRGGBB` value is accepted and validated server-side; a solid chip picks black or white text so even a pale color stays readable |
 | **Role-based permissions** — per-role capability grid (Settings → Family); [model](/concepts/permissions/) | ✅ | ✅ | ✅ | ✅ Done (editable matrix, admin-only) |
 | Sign out (revokes refresh) | ✅ | ✅ | ✅ | ✅ Done |
 
