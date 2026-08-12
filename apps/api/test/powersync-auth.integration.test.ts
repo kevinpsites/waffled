@@ -130,7 +130,7 @@ describe('powersync url derivation', () => {
   const urlFor = async (headers: Record<string, string>) => {
     const res = await call('GET', '/api/powersync/token', kevin, headers)
     expect(res.statusCode).toBe(200)
-    return JSON.parse(res.body).powerSyncUrl as string
+    return JSON.parse(res.body).powerSyncUrl as string | null
   }
 
   afterEach(() => {
@@ -160,5 +160,18 @@ describe('powersync url derivation', () => {
   it('swaps in POWERSYNC_PORT when PowerSync is published elsewhere', async () => {
     process.env.POWERSYNC_PORT = '9443'
     expect(await urlFor({ host: '192.168.1.20:8080' })).toBe('http://192.168.1.20:9443')
+  })
+
+  // Deriving a URL for a PowerSync that isn't there hands the client an endpoint it
+  // will retry forever ("Offline", degraded sync health) where it used to notice the
+  // null and stay cleanly REST-only. POWERSYNC_PUBLIC_URL=off says so out loud.
+  it('reports no sync endpoint when POWERSYNC_PUBLIC_URL is off', async () => {
+    process.env.POWERSYNC_PUBLIC_URL = 'off'
+    expect(await urlFor({ host: '192.168.1.20:8080' })).toBeNull()
+  })
+
+  it('accepts the off switch in any case, with stray whitespace', async () => {
+    process.env.POWERSYNC_PUBLIC_URL = '  OFF '
+    expect(await urlFor({ host: '192.168.1.20:8080' })).toBeNull()
   })
 })

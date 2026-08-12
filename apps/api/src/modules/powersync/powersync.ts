@@ -77,11 +77,19 @@ export function mintPowerSyncToken(sub: string, householdId: string): string {
 // device at once and survives the server's DHCP address changing.
 //
 // POWERSYNC_PUBLIC_URL still wins when set, for deployments that front PowerSync
-// with its own hostname/TLS (where the derived host:port would be wrong).
+// with its own hostname/TLS (where the derived host:port would be wrong) — and
+// POWERSYNC_PUBLIC_URL=off means there is no PowerSync at all. That last one matters
+// because the derive always produces *some* URL: an api running without PowerSync
+// reachable (a bare dev api, an api-only deployment) would otherwise hand clients an
+// endpoint they retry forever — a permanent "Offline" banner and degraded sync
+// health — where a null lets them stay cleanly REST-only. Both clients already
+// handle it (`if (!token || !powerSyncUrl) return null`).
 const DEFAULT_POWERSYNC_PORT = '8090'
+const SYNC_DISABLED = 'off'
 
-export function powerSyncPublicUrl(req: Request): string {
+export function powerSyncPublicUrl(req: Request): string | null {
   const explicit = process.env.POWERSYNC_PUBLIC_URL?.trim()
+  if (explicit?.toLowerCase() === SYNC_DISABLED) return null
   if (explicit) return explicit.replace(/\/+$/, '')
   // A proxy chain appends, so the client-facing value is the FIRST entry.
   const headers = req.headers as Record<string, string | undefined>
