@@ -250,8 +250,12 @@ export async function updateModules(
   return rows[0] ?? null
 }
 
-// Merge display preferences into settings.display (jsonb merge, same as modules
-// above, so sibling settings keys survive).
+// Merge the calendar's display preferences into settings.display (jsonb merge,
+// same as modules above, so sibling settings keys survive).
+//
+// settings.display is SHARED with the kiosk display wrapper, which owns the
+// screensaver keys (see modules/kiosk/kiosk.ts DISPLAY_DEFAULTS). The contract
+// both sides keep: merge your write, and read/serve only your own keys.
 export async function updateDisplay(
   householdId: string,
   patch: Record<string, string>
@@ -273,6 +277,8 @@ export async function updateDisplay(
 // How event chips render across the calendar views: 'solid' (full-color blocks,
 // the default) or 'tinted' (the soft wash).
 const EVENT_STYLES = new Set(['solid', 'tinted'])
+// The calendar's share of settings.display (the kiosk owns the rest — see updateDisplay).
+const CALENDAR_DISPLAY_KEYS = ['eventStyle', 'familyColorHex'] as const
 // Person + family colors must be a full #RRGGBB hex — they go straight into CSS
 // custom properties on every calendar view. (Shared with account.ts.)
 export const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
@@ -357,7 +363,12 @@ export function registerPersonRoutes(api: Api): void {
     }
     const h = await updateDisplay(tenant.householdId, patch)
     if (!h) return res.status(404).json({ error: 'NotFound', message: 'household not found' })
-    return { display: (h.settings as { display?: unknown })?.display ?? {} }
+    // Serve only the calendar's own keys — the kiosk's screensaver settings share
+    // this object and aren't ours to hand back.
+    const stored = ((h.settings as { display?: Record<string, unknown> })?.display ?? {}) as Record<string, unknown>
+    const display: Record<string, unknown> = {}
+    for (const k of CALENDAR_DISPLAY_KEYS) if (stored[k] !== undefined) display[k] = stored[k]
+    return { display }
   }))
 
   // List everyone in the household (any member may read).

@@ -40,6 +40,12 @@ interface DisplaySettings {
   photoInterval: number // seconds between photos
   photoShuffle: boolean
 }
+// households.settings.display is SHARED, and this is the contract for it: the
+// kiosk wrapper owns the keys below (screensaver + photo playback), while the
+// calendar owns eventStyle/familyColorHex via PATCH /api/household/display.
+// Each side therefore (a) reads and serves only its own keys, and (b) *merges*
+// its write into the object instead of rewriting it — so neither can drop the
+// other's settings, and a display poll doesn't ship the calendar's.
 const DISPLAY_DEFAULTS: DisplaySettings = {
   screensaverMinutes: 15,
   content: 'photos',
@@ -105,7 +111,13 @@ async function readDisplay(householdId: string): Promise<DisplaySettings> {
     `select settings from households where id = $1`,
     [householdId]
   )
-  const d = rows[0]?.settings?.display ?? {}
+  const stored = rows[0]?.settings?.display ?? {}
+  // Only our own keys — anything else in there belongs to another owner.
+  const d = Object.fromEntries(
+    Object.keys(DISPLAY_DEFAULTS)
+      .filter((k) => stored[k as keyof DisplaySettings] !== undefined)
+      .map((k) => [k, stored[k as keyof DisplaySettings]])
+  ) as Partial<DisplaySettings>
   return { ...DISPLAY_DEFAULTS, ...d, nightDim: { ...DISPLAY_DEFAULTS.nightDim, ...(d.nightDim ?? {}) } }
 }
 
@@ -229,8 +241,16 @@ export function registerKioskRoutes(api: Api): void {
     const patch = sanitizeDisplay(req.body)
     const current = await readDisplay(tenant.householdId)
     const next: DisplaySettings = { ...current, ...patch, nightDim: { ...current.nightDim, ...(patch.nightDim ?? {}) } }
+    // Merge into settings.display rather than replacing it — the calendar's
+    // eventStyle/familyColorHex live in the same object (see DISPLAY_DEFAULTS).
     await query(
-      `update households set settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('display', $2::jsonb) where id = $1`,
+      `update households
+          set settings = jsonb_set(
+            coalesce(settings, '{}'::jsonb),
+            '{display}',
+            coalesce(settings->'display', '{}'::jsonb) || $2::jsonb
+          )
+        where id = $1`,
       [tenant.householdId, JSON.stringify(next)]
     )
     return next
