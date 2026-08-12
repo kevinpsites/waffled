@@ -322,9 +322,18 @@ describe('waffled-bites device pairing + parent control panel', () => {
     const chicagoNow = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hour12: false,
     }).formatToParts(new Date())
-    const h = Number(chicagoNow.find((p) => p.type === 'hour')!.value)
+    // Some ICU builds render midnight as "24" with hour12:false — the same
+    // quirk localParts() normalizes in waffledBites.ts. Without this the test
+    // reads hour 24 during the midnight hour, asks for a wake time of
+    // 24*60+m+10, and lands on a completely different day than it meant to.
+    const rawHour = chicagoNow.find((p) => p.type === 'hour')!.value
+    const h = rawHour === '24' ? 0 : Number(rawHour)
     const m = Number(chicagoNow.find((p) => p.type === 'minute')!.value)
-    const wakeMin = Math.min(1439, h * 60 + m + 10)
+    // Wraps rather than clamps. Clamping to 1439 meant that at 23:59 local the
+    // requested wake time WAS "right now", so the device was inside its own
+    // wake grace window and reported 'wake' instead of 'sleep'. Wrapping past
+    // midnight is handled correctly by wakeLightView's -1/0/+1 day candidates.
+    const wakeMin = (h * 60 + m + 10) % 1440
 
     await call('PATCH', `/api/waffled-bites/${deviceId}/settings`, {
       schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], wakeMin, leadMin: 0, bedtimeMin: 0 }],
