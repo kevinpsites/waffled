@@ -14,7 +14,10 @@ import { type Tenant } from '../households/households'
 import { tenantRoute } from '../../platform/route-guards'
 import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync.service'
 import { recordMatch, WEIGHT } from '../goals/goal-match-memory'
-import { assertEventReferences, updateEvent, softDeleteEvent, readOnlyOrigin } from '../events/events'
+import {
+  assertEventReferences, assertEventTimes, updateEvent, softDeleteEvent, readOnlyOrigin,
+  InvalidEventTimesError,
+} from '../events/events'
 import { assertEventInHousehold, assertPersonInHousehold } from '../../platform/household-refs'
 
 type Api = ReturnType<typeof createAPI>
@@ -32,6 +35,9 @@ const asBool = (v: unknown): boolean => v === true || v === 1 || v === '1'
 
 // events PUT — upsert the client's event row, then route to a calendar + push.
 async function applyEventPut(tenant: Tenant, id: string, data: Record<string, unknown>): Promise<void> {
+  // A PUT writes the whole row, so both halves are right here — createEvent (which
+  // carries the same guard) is not on this path.
+  assertEventTimes(asStr(data.starts_at), asStr(data.ends_at), asBool(data.all_day))
   const ins = await query<{ inserted: boolean }>(
     `insert into events
        (id, household_id, title, description, location, starts_at, ends_at, all_day, timezone,
@@ -170,9 +176,18 @@ export function registerPowerSyncCrudRoutes(api: Api): void {
         // the cross-household guard above; the device's local row is corrected by
         // the next sync down.
         if (op.op !== 'PUT' && (await readOnlyOrigin(tenant.householdId, op.id))) continue
-        if (op.op === 'PUT') await applyEventPut(tenant, op.id, data)
-        else if (op.op === 'PATCH') await applyEventPatch(tenant, op.id, data)
-        else if (op.op === 'DELETE') await softDeleteEvent(tenant.householdId, op.id)
+        try {
+          if (op.op === 'PUT') await applyEventPut(tenant, op.id, data)
+          else if (op.op === 'PATCH') await applyEventPatch(tenant, op.id, data)
+          else if (op.op === 'DELETE') await softDeleteEvent(tenant.householdId, op.id)
+        } catch (err) {
+          // An event that ends before it starts is dropped here for the same reason
+          // as a feed-owned one: PowerSync would retry the rejected transaction
+          // forever. Only OUR validation error is swallowed — a real failure (a DB
+          // outage, a Google push blowing up) must still surface as a 500 and be
+          // retried, or the write would be lost.
+          if (!(err instanceof InvalidEventTimesError)) throw err
+        }
       } else if (op.table === 'event_participants') {
         if (op.op === 'PUT' || op.op === 'PATCH') await applyParticipantPut(tenant, op.id, data)
         else if (op.op === 'DELETE') {

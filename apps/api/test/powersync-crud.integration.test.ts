@@ -243,3 +243,41 @@ describe('powersync crud upload', () => {
     expect((await call('POST', '/api/powersync/crud', mint('dev|nobody'), { ops: [] })).statusCode).toBe(403)
   })
 })
+
+// The upload sink can't answer a bad row with an error: PowerSync retries a failed
+// transaction forever, so a 4xx here would wedge the device's whole upload queue. A
+// backwards event is DROPPED instead — the same silent no-op contract as the
+// read-only-feed and cross-household guards; the next sync down corrects the device.
+describe('powersync crud: events that end before they start are dropped, not errored', () => {
+  const goodId = randomUUID()
+
+  const crud = (ops: unknown[]) => call('POST', '/api/powersync/crud', kevin, { ops })
+
+  async function titleOf(id: string): Promise<string | undefined> {
+    const r = JSON.parse((await call('GET', '/api/events?from=2026-08-01&to=2026-08-31', kevin)).body)
+    return (r.events as Array<{ id: string; title: string }>).find((e) => e.id === id)?.title
+  }
+
+  it('drops a backwards PUT but still applies the rest of the batch', async () => {
+    const badId = randomUUID()
+    const res = await crud([
+      { op: 'PUT', table: 'events', id: badId, data: {
+        title: 'Backwards', starts_at: '2026-08-10T16:00:00Z', ends_at: '2026-08-10T15:00:00Z', all_day: 0,
+      } },
+      { op: 'PUT', table: 'events', id: goodId, data: {
+        title: 'Fine', starts_at: '2026-08-10T15:00:00Z', ends_at: '2026-08-10T16:00:00Z', all_day: 0,
+      } },
+    ])
+    expect(res.statusCode).toBe(200)
+    expect(await titleOf(badId)).toBeUndefined()
+    expect(await titleOf(goodId)).toBe('Fine')
+  })
+
+  it('drops a backwards PATCH, leaving the stored row untouched', async () => {
+    const res = await crud([
+      { op: 'PATCH', table: 'events', id: goodId, data: { title: 'Nope', ends_at: '2026-08-10T14:00:00Z' } },
+    ])
+    expect(res.statusCode).toBe(200)
+    expect(await titleOf(goodId)).toBe('Fine')
+  })
+})
