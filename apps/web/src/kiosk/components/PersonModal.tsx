@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { personsApi, kioskApi, ALLERGEN_KEYS, ALLERGEN_LABELS, type SettingsMember } from '../../lib/api'
 import { SettingCard } from './SettingCard'
+import { ColorPicker, COLOR_SWATCHES } from './ColorPicker'
 
-const SWATCHES = ['#2F7FED', '#EC6049', '#25A368', '#8B5CF6', '#E0A500', '#EC4899', '#14B8A6', '#6B7280']
+const SWATCHES = COLOR_SWATCHES
 const MEMBER_TYPES = [
   { key: 'adult', label: 'Adult' },
   { key: 'teen', label: 'Teen' },
@@ -206,11 +207,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
 
           <div className="field">
             <span>Color</span>
-            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-              {SWATCHES.map((c) => (
-                <button type="button" key={c} aria-label={`color ${c}`} onClick={() => set('colorHex', c)} style={{ width: 30, height: 30, borderRadius: 999, background: c, border: form.colorHex === c ? '3px solid var(--ink)' : '2px solid #fff', boxShadow: '0 0 0 1px var(--hair)', cursor: 'pointer' }} />
-              ))}
-            </div>
+            <ColorPicker value={form.colorHex} onChange={(c) => set('colorHex', c)} />
           </div>
 
           <label className="field">

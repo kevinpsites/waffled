@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { EventModal } from './components/EventModal'
 import { useTopbarFull } from './topbar-slot'
 import { api, eventsApi, useEvent, useEventsRange, useHousehold, useGoals, mealsApi, invalidateGetCache, type AgendaEvent } from '../lib/api'
+import { useEventColor } from '../lib/event-color'
 import { deleteEventLocal, tombstoneEvent } from '../lib/powersync/events-local'
 import { suggestGoalForEvent } from '../lib/goal-match'
 import { describeRrule } from './components/recurrence'
@@ -29,6 +30,7 @@ function gapLabel(rowStart: string, thisStart: string): string {
 // The same-day timeline ("Where it falls today") with this event highlighted.
 function DayTimeline({ event, tz }: { event: AgendaEvent; tz: string }) {
   const navigate = useNavigate()
+  const colorOf = useEventColor('#A6A29B')
   const day = localDate(event.startsAt, tz)
   const { events } = useEventsRange(day, day)
   const sorted = [...events].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
@@ -47,7 +49,7 @@ function DayTimeline({ event, tz }: { event: AgendaEvent; tz: string }) {
       <div className="card-h" style={{ marginBottom: 12 }}>Where it falls today</div>
       {sorted.map((e) => {
         const me = e.id === event.id
-        const color = e.personColor ?? '#A6A29B'
+        const color = colorOf(e)
         return (
           <div
             key={e.id}
@@ -79,6 +81,7 @@ export function EventDetail() {
   const navigate = useNavigate()
   const { event, loading, notFound, refetch } = useEvent(id)
   const { household } = useHousehold()
+  const colorOf = useEventColor()
   const { goals } = useGoals()
   const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   const [editing, setEditing] = useState(false)
@@ -184,7 +187,7 @@ export function EventDetail() {
         }
       : event
 
-  const color = view.personColor ?? '#6B6B70'
+  const color = colorOf(view)
   const start = new Date(view.startsAt)
   const people = eventPeople(view)
   // Where this event came from. Deliberately provider-neutral: a connected

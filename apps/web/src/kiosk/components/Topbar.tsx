@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTopbarSlots } from '../topbar-slot'
 import { useHousehold, useWeather, type Weather } from '../../lib/api'
+import { applyEventStyle, eventStyle } from '../../lib/display'
 import { CaptureBar } from './CaptureBar'
 
 // Weather widget with a hover/tap popover that says where the reading comes from.
@@ -66,6 +67,12 @@ export function Topbar() {
   const { household } = useHousehold()
   const wx = useWeather()
   const tz = household?.timezone
+  // The topbar is the one piece of chrome on every kiosk screen that already
+  // reads the household, so it also stamps the event style onto <html> for the
+  // calendar's CSS. useHousehold re-fetches on the household-changed event, so
+  // flipping the setting in Settings restyles every open surface immediately —
+  // no separate sync component needed.
+  useEffect(() => applyEventStyle(eventStyle(household)), [household])
   if (full) return <div className="topbar">{full}</div>
   return (
     <div className="topbar">
