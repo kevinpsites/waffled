@@ -17,19 +17,24 @@ const float kFs = (float)WB_SAMPLE_RATE_HZ;
 // recipe's raw RMS and peak, and these numbers put them all near -13 dBFS
 // with headroom left. Re-run it after touching any recipe.
 //
-//   recipe   raw rms   crest factor   lands at
-//   white     0.481        2.1          0.24
-//   rain      0.504        3.7          0.20
-//   fan       0.087        3.9          0.20
-//   ocean     0.128        5.5          0.155
+//   recipe      lands at rms   peak
+//   white           0.240       0.49
+//   fan             0.200       0.84
+//   rain            0.179       0.63
+//   ocean           0.155       0.86
+//   heartbeat       0.141       0.86
 //
 // Ocean sits lower on purpose. Its swell rides band-passed noise, which is
 // near-Gaussian and so peaks at ~5.5x its own RMS; matching the others'
 // loudness would drive those peaks into the clamp. Uniform-ish white noise
 // gets away with far more because its crest factor is barely 2.
+//
+// Heartbeat is peak-limited rather than RMS-limited, being a pulse: its
+// envelope is shaped to carry as much energy as it can under the same peak,
+// because a fast spike hits full scale while still being too quiet to hear.
 const float kMakeupWhite = 0.499f;
 const float kMakeupRain = 0.397f;
-const float kMakeupFan = 2.292f;
+const float kMakeupFan = 1.349f;
 const float kMakeupOcean = 1.207f;
 
 // xorshift32. Seeded and carried in the struct rather than using rand(),
@@ -60,16 +65,36 @@ inline void advance(float &phase, float inc)
   if (phase >= kTwoPi) phase -= kTwoPi;
 }
 
-// One heart thump: a low sine under a fast-attack / short-decay envelope.
-// The attack is not instant — a step straight to full amplitude reads as a
-// click rather than a thump.
+// One heart thump: a harmonic stack under a fast-attack / short-decay
+// envelope. The attack is not instant — a step straight to full amplitude
+// reads as a click rather than a thump.
+//
+// Why a stack rather than the single low sine this used to be: the device's
+// speaker is a 30x20mm cavity driver with essentially no output below a couple
+// of hundred Hz, so the original 52 Hz fundamental was flat-out INAUDIBLE on
+// real hardware — confirmed on the board, not theorised. Putting most of the
+// energy in the 2nd/3rd/5th harmonics gives the driver something it can
+// actually move, while the ear still infers the low pitch from the harmonic
+// series (the "missing fundamental" effect).
+//
+// The rhythm is doing most of the work anyway: a lub-dub at 60 bpm reads as a
+// heartbeat almost regardless of timbre.
 inline float thump(float samplesSinceOnset, float hz)
 {
   if (samplesSinceOnset < 0.0f) return 0.0f;
   const float t = samplesSinceOnset / kFs;
   if (t > 0.35f) return 0.0f; // fully decayed; skip the transcendentals
-  const float env = (1.0f - expf(-t / 0.004f)) * expf(-t / 0.055f);
-  return env * sinf(kTwoPi * hz * t);
+  // Attack is slow enough, and decay long enough, that the thump carries real
+  // energy rather than being a spike. A pulse is PEAK-limited, so a fast spike
+  // hits full scale while staying too quiet to hear — which is why this was
+  // only audible with the volume at 100%.
+  const float env = (1.0f - expf(-t / 0.010f)) * expf(-t / 0.110f);
+  const float w = kTwoPi * hz * t;
+  const float tone = 0.50f * sinf(w)          //  fundamental — for real speakers
+                     + 0.70f * sinf(2.0f * w) //  the ones a small driver
+                     + 0.50f * sinf(3.0f * w) //  can actually reproduce
+                     + 0.25f * sinf(5.0f * w);
+  return env * tone * 0.45f;
 }
 
 inline int16_t toPcm(float v)
@@ -99,10 +124,15 @@ float wb_synth_gain(int volume)
 {
   if (volume <= 0) return 0.0f;
   if (volume >= 100) return 1.0f;
-  // -40 dB at the bottom of the useful range, straight line in dB. Volume 50
-  // lands at -20 dB, which is the point: loudness is logarithmic, so a linear
-  // slider would put every usable sleep level in its bottom few percent.
-  return powf(10.0f, (float)(volume - 100) * 0.02f);
+  // Straight line in dB, because loudness is logarithmic and a linear slider
+  // would cram every usable sleep level into its bottom few percent.
+  //
+  // The RANGE is 24 dB, not the 40 dB this started as. 40 dB is right for
+  // headphones and wrong for this hardware: it put volume 50 at just 10%
+  // amplitude, and on a 30x20mm driver that is inaudible — the fan and
+  // heartbeat only became usable above 75% on the slider. 24 dB keeps a real
+  // curve while leaving the middle of the slider actually useful.
+  return powf(10.0f, (float)(volume - 100) * 0.012f);
 }
 
 void wb_synth_init(WbSynth *s, WbSound sound, uint32_t seed)
@@ -129,7 +159,7 @@ void wb_synth_init(WbSynth *s, WbSound sound, uint32_t seed)
     s->makeup = kMakeupRain;
     break;
   case WbSound::Fan:
-    s->a1 = lpCoeff(420.0f); // three cascaded poles here = a dull rumble
+    s->a1 = lpCoeff(900.0f); // two cascaded poles here = dull, but audible
     s->makeup = kMakeupFan;
     break;
   case WbSound::Heartbeat:
@@ -161,15 +191,22 @@ void wb_synth_render(WbSynth *s, int16_t *out, size_t count, int volume)
 
     case WbSound::Fan:
     {
-      // Three cascaded one-poles turn white noise brown-ish: a low, wide
-      // rumble with no hiss left in it, which is what a box fan across a
-      // room actually sounds like.
+      // Two cascaded one-poles: still clearly duller than white noise (no
+      // hiss), but centred where the speaker can actually move air.
+      //
+      // This was three poles at 420 Hz, which measured beautifully and was
+      // nearly inaudible on the device — almost all of its energy sat below
+      // the driver's usable range, so "box fan" needed 75%+ on the slider to
+      // be heard at all. A small cavity driver does NOT flatter brown noise;
+      // it simply cannot reproduce it.
       const float x = noise(s->rng);
       s->lp[0] += s->a1 * (x - s->lp[0]);
       s->lp[1] += s->a1 * (s->lp[0] - s->lp[1]);
-      s->lp[2] += s->a1 * (s->lp[1] - s->lp[2]);
-      advance(s->phase, kTwoPi * 118.0f / kFs); // motor hum
-      y = s->lp[2] * s->makeup + 0.035f * sinf(s->phase);
+      // Motor hum, with its 2nd harmonic — the 120 Hz fundamental alone is
+      // below what this speaker reproduces, so the harmonic carries it.
+      advance(s->phase, kTwoPi * 120.0f / kFs);
+      const float hum = 0.018f * sinf(s->phase) + 0.030f * sinf(2.0f * s->phase);
+      y = s->lp[1] * s->makeup + hum;
       break;
     }
 
@@ -219,7 +256,7 @@ void wb_synth_render(WbSynth *s, int16_t *out, size_t count, int volume)
       // 60 bpm, lub then dub ~0.32 s later and quieter. The gaps are truly
       // silent by design — that's what makes it read as a heartbeat.
       const float t = (float)s->beat;
-      y = thump(t, 52.0f) * 0.80f + thump(t - 0.32f * kFs, 44.0f) * 0.50f;
+      y = thump(t, 110.0f) * 1.76f + thump(t - 0.32f * kFs, 88.0f) * 1.14f;
       if (++s->beat >= (uint32_t)WB_SAMPLE_RATE_HZ) s->beat = 0;
       break;
     }

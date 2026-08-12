@@ -116,10 +116,12 @@ void test_volume_curve_is_logarithmic_and_monotonic(void)
 {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, wb_synth_gain(100));
 
-  // Halfway up the slider must be well below half the gain, or the bottom
-  // half of the travel is wasted on levels that all sound the same.
-  TEST_ASSERT_TRUE(wb_synth_gain(50) < 0.25f);
-  TEST_ASSERT_TRUE(wb_synth_gain(50) > 0.02f);
+  // Halfway up the slider sits below half the gain (it's a dB curve, not a
+  // line), but not so far below that the middle of the slider is useless.
+  // The range is 24 dB: at the original 40 dB, volume 50 was 10% amplitude,
+  // which on the device's small speaker was inaudible for the quieter sounds.
+  TEST_ASSERT_TRUE(wb_synth_gain(50) < 0.40f);
+  TEST_ASSERT_TRUE(wb_synth_gain(50) > 0.15f);
 
   float prev = -1.0f;
   for (int v = 0; v <= 100; v++)
@@ -166,6 +168,47 @@ void test_the_continuous_sounds_are_loudness_matched(void)
     if (r > hi) hi = r;
   }
   TEST_ASSERT_TRUE(hi / lo < 1.8f); // within ~5 dB of each other
+}
+
+// The device's speaker is a 30x20mm cavity driver with essentially no output
+// below a couple of hundred Hz. A heartbeat built on a 52 Hz fundamental is
+// therefore INAUDIBLE on the actual hardware even though it looks perfect in
+// a WAV — which is exactly what happened on the first hardware test.
+//
+// So this asserts a physical property, not a taste: the thump must carry more
+// high-frequency energy than a pure low sine, or the speaker can't reproduce
+// it. Compared against a synthesised 55 Hz reference so the threshold is
+// meaningful rather than a magic number.
+void test_heartbeat_survives_a_speaker_with_no_low_end(void)
+{
+  static int16_t hb[N * 4];
+  render(WbSound::Heartbeat, hb, N * 4);
+
+  // Reference: a pure 55 Hz sine, i.e. the old heartbeat's fundamental.
+  static int16_t ref[N];
+  for (size_t i = 0; i < N; i++)
+    ref[i] = (int16_t)(sinf(2.0f * 3.14159265f * 55.0f * (float)i / 22050.0f) * 8000.0f);
+
+  TEST_ASSERT_TRUE(brightness(hb, N * 4) > brightness(ref, N) * 2.0f);
+}
+
+// Heartbeat is a pulse, so it's PEAK-limited where the continuous sounds are
+// RMS-limited — which made it so much quieter in practice that it was only
+// audible with the volume at 100%. Reported from the device, not theorised.
+//
+// A short spike can hit full scale and still carry very little energy, so
+// "doesn't clip" is not the same as "you can hear it". This pins the average
+// level to within a few dB of the continuous sounds.
+void test_heartbeat_is_audible_below_full_volume(void)
+{
+  static int16_t hb[N * 4], wh[N * 4];
+  render(WbSound::Heartbeat, hb, N * 4);
+  // Measured against white noise, not ocean: white's level is rock-steady,
+  // while ocean's swell makes its short-window RMS swing enough to make this
+  // assertion flap for reasons that have nothing to do with the heartbeat.
+  render(WbSound::White, wh, N * 4);
+
+  TEST_ASSERT_TRUE(rms(hb, N * 4) > rms(wh, N * 4) * 0.5f); // within ~6 dB
 }
 
 void test_heartbeat_thumps_once_a_second_with_a_quiet_gap(void)
@@ -287,6 +330,8 @@ int main(int argc, char **argv)
   RUN_TEST(test_no_sound_clips_at_full_volume);
   RUN_TEST(test_the_continuous_sounds_are_loudness_matched);
   RUN_TEST(test_heartbeat_thumps_once_a_second_with_a_quiet_gap);
+  RUN_TEST(test_heartbeat_survives_a_speaker_with_no_low_end);
+  RUN_TEST(test_heartbeat_is_audible_below_full_volume);
   RUN_TEST(test_brightness_matches_what_each_recipe_promises);
   RUN_TEST(test_consecutive_blocks_join_without_a_seam);
   RUN_TEST(test_render_is_deterministic_for_a_given_seed);
