@@ -26,6 +26,21 @@ describe('Compose network defaults', () => {
     expect(caddyfile).toContain('reverse_proxy powersync:8080')
   })
 
+  it('leaves the sync URL unset by default so the api derives it per device', async () => {
+    // A baked-in http://localhost:8090 would win over the derive and put every
+    // non-local device back on "Offline". The api still needs POWERSYNC_PORT to
+    // know which published port to point clients at.
+    const compose = await readFile(resolve(root, 'infra/compose/docker-compose.yml'), 'utf8')
+    const api = compose.split('\n  api:')[1].split('\n  powersync:')[0]
+    expect(api).toContain('POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-}')
+    expect(api).toContain('POWERSYNC_PORT: ${POWERSYNC_PORT:-8090}')
+
+    // …and guided setup only pins it where the derive can't work (its own hostname/TLS).
+    const cli = await readFile(resolve(root, 'waffled'), 'utf8')
+    expect(cli.match(/set_env_var POWERSYNC_PUBLIC_URL ""/g)).toHaveLength(2)
+    expect(cli).toContain('set_env_var POWERSYNC_PUBLIC_URL "https://$host:$ps_port"')
+  })
+
   it('keeps the Google OAuth callback behind the public Caddy ingress', async () => {
     const caddyfile = await readFile(resolve(root, 'infra/compose/caddy/Caddyfile'), 'utf8')
     expect(caddyfile).toMatch(/handle \/auth\/google\/\*/)

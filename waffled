@@ -1063,7 +1063,9 @@ case "$cmd" in
     case "$choice" in
       1)
         set_env_var PUBLIC_BASE_URL ""
-        set_env_var POWERSYNC_PUBLIC_URL "http://localhost:$ps_port"
+        # Left empty on purpose: the api derives the sync URL from the address each
+        # device used, so this keeps working if you later reach it over the LAN.
+        set_env_var POWERSYNC_PUBLIC_URL ""
         set_env_var POWERSYNC_CADDY_ADDRESS ":8090"
         set_env_var CADDY_SITE_ADDRESS ":80"
         echo "${c_grn}Set for localhost.${c_reset} Run ${c_dim}./waffled up${c_reset}, then open http://localhost:$http_port"
@@ -1074,7 +1076,9 @@ case "$cmd" in
         [ -n "$entered" ] && addr="$entered"
         [ -n "$addr" ] || { echo "${c_red}No address given — aborting.${c_reset}"; exit 1; }
         set_env_var PUBLIC_BASE_URL "http://$addr:$http_port"
-        set_env_var POWERSYNC_PUBLIC_URL "http://$addr:$ps_port"
+        # Derived per request from the address the device dialled, so the tablet keeps
+        # syncing even if this machine's DHCP lease hands it a new IP.
+        set_env_var POWERSYNC_PUBLIC_URL ""
         set_env_var POWERSYNC_CADDY_ADDRESS ":8090"
         set_env_var CADDY_SITE_ADDRESS ":80"
         echo "${c_grn}Set for your network ($addr).${c_reset} Run ${c_dim}./waffled up${c_reset}, then open http://$addr:$http_port on any device."
