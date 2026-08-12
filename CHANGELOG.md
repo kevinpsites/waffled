@@ -15,6 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A watchdog that keeps live sync honest — and a calendar that can no longer go
+  blank.** The web app now supervises its own offline sync engine. If it ever goes quiet
+  — online, signed in, but not actually syncing for three minutes — Waffled restarts it
+  by itself: first a quick reconnect, then a full rebuild, then, as a last resort, wiping
+  this browser's local copy and re-downloading it from the server (never while unsent
+  changes are still queued). Retries back off from two minutes up to sixteen, so a
+  server that is down for a while heals on its own without being hammered. Crucially, the
+  calendar stops trusting a local copy that is stalled or incomplete and reads straight
+  from the server instead, so a stuck sync engine can never show you an empty day that
+  isn't empty. A quiet strip appears while that is happening, and Settings → System
+  Health gains a **Live Sync (this browser)** card that tells the truth about what the
+  engine is doing — starting up, live, stalled, or failed with the actual error — plus
+  buttons to restart sync or reset the local copy yourself.
+
 ### Changed
 
 ### Fixed

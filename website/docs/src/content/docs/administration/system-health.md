@@ -36,6 +36,57 @@ the schema forward:
 ./waffled migrate
 ```
 
+### Live Sync (this browser)
+
+Every other card on this panel describes the **server**. The **Live Sync** card describes
+**the browser you are looking at** — whether *this* device's offline copy of the calendar
+is actually being kept up to date. Two people can be on the same healthy server and see
+different Live Sync states.
+
+| State | What it means | What to do |
+|---|---|---|
+| **starting…** | The sync engine is booting. It loads a small database engine into the browser, which takes a few seconds on a cold tab. | Nothing — wait. |
+| **live** | Connected and fully synced. The calendar reads from the local copy, so it's instant and works offline. | Nothing. |
+| **connecting…** | Between connections, or the first full sync hasn't finished. Normal after a reload or a network blip. | Nothing, unless it persists. |
+| **offline** | This device has no network. Sync is paused on purpose and no stall is counted. | Reconnect. |
+| **waiting for sign-in** | No credentials yet, so there is nothing to sync. | Sign in. |
+| **stalled — auto-restarting** | Online and signed in, but the engine hasn't reached a synced state for 3 minutes. The watchdog is already restarting it. | Usually nothing — see below. |
+| **failed to start** | The engine crashed on boot; the card shows the actual error. Common causes are a browser with storage disabled, private-browsing mode, or a very old browser. | Read the error, then try a normal browser window. |
+| **off** | The engine isn't running at all in this browser. | Reload the page. |
+
+**Your data is safe in every one of these states.** When the local copy can't be trusted —
+stalled, still starting, failed, or never fully synced — the calendar reads straight from
+the server instead. A stuck sync engine can slow live updates down; it can't show you a
+blank calendar.
+
+#### What the watchdog does on a stall
+
+Waffled tries to fix a stall by itself, escalating one rung at a time and backing off
+between attempts (2 minutes, then 4, 8, and 16 as a ceiling) so a server that's genuinely
+down heals on its own without being hammered:
+
+1. **Reconnect** — drop and re-dial the sync connection.
+2. **Rebuild** — throw the sync engine away and build a fresh one.
+3. **Reset the local copy** — wipe this browser's copy and re-download everything. This is
+   **skipped automatically while unsent changes are still queued**, so the watchdog can
+   never destroy a change that hasn't reached the server.
+
+A **⟳ Live sync is reconnecting** strip appears across the top of the app while this is
+happening — it's there to explain why live updates may lag, not to warn you about your
+data.
+
+The card also shows a **watchdog restarts** count for the current tab. A handful over a
+long session is unremarkable; a number that keeps climbing points at the PowerSync service
+rather than the browser — check the `waffled-powersync` container and see
+[Troubleshooting](/operations/troubleshooting/).
+
+#### Doing it by hand
+
+**⟳ Restart sync** rebuilds the engine immediately (rung 2) — the first thing to try if a
+device seems stuck. **🧹 Reset local copy** appears only while sync is stalled and does
+rung 3: it wipes this browser's local copy and re-downloads it from the server. Nothing
+you have saved is lost, and queued changes still block the wipe.
+
 ## Update notifier
 
 Waffled checks GitHub for new releases and shows **"Update available — vX.Y.Z"** in

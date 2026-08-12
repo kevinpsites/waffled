@@ -169,9 +169,9 @@ Ranked by value-to-effort:
    `POWERSYNC_PUBLIC_URL` still wins. This removes a documented footgun of ours and is
    worth taking on its own.
 2. **`endsAt` validation on events** — a few lines, obviously correct.
-3. **Sync watchdog** — see §6.
+3. ~~**Sync watchdog**~~ — **ported** (see §6). Our own adaptation, not a cherry-pick.
 
-## 6. The three features to understand (not ported)
+## 6. The three features to understand (two not ported)
 
 ### Smart Home (Home Assistant)
 
@@ -207,7 +207,7 @@ Clean, and the security model is the good part:
   `onnxruntime-web` + two `@picovoice/*` packages. If we ever adopt voice, I'd take
   push-to-talk and leave the wake word (and its binaries) behind, at least initially.
 
-### Sync watchdog (web)
+### Sync watchdog (web) — **PORTED**
 
 Prompted by a real incident (2026-07-20): the PowerSync web client stopped opening sync
 streams after a large server-side delete batch — no error, no reconnect, an empty replica
@@ -226,14 +226,23 @@ logic is plain and testable — 318 lines of tests. It:
 - distinguishes `starting` (WASM/OPFS boot takes seconds) and `failed` (with the error) from
   `off`, because users were reading the boot window as "sync is off".
 
-This is the fork change I'd most want upstream after the calendar work. It is self-contained
-and it fixes a failure mode we have no defence against today.
+This was the fork change I most wanted upstream after the calendar work, and it has now
+landed — re-implemented against our current `apps/web/src/lib/powersync/` layout rather
+than cherry-picked. All five parts above shipped: the status store, stall detection, the
+restart ladder (with a third rung that wipes the local replica, guarded by the pending-CRUD
+check), `isReplicaTrusted()` wired into the calendar hooks, and the honest `starting` /
+`failed` states on a **Live Sync (this browser)** card in System Health plus a stalled-sync
+banner. The replica-trust fallback covers the **calendar** hooks, which are the only web
+hooks that read from the replica today; the PowerSync schema carries only
+events/event_participants/event_occurrences/persons/households, so there is nothing else to
+extend it to until another domain joins.
 
 ## 7. Recommended sequencing
 
 1. **Now (this PR):** Outlook/M365, ICS feeds, Share list.
 2. **Next, small and high value:** per-request PowerSync URL derive, `endsAt` validation.
-3. **Then, worth a dedicated PR:** the sync watchdog + `isReplicaTrusted()` fallback.
+3. ~~**Then, worth a dedicated PR:** the sync watchdog + `isReplicaTrusted()` fallback.~~
+   **Done** — shipped as its own PR (see §6).
 4. **Deliberate decision needed:** the Today board v2 zone layout. It's a real improvement
    but it's a contract change and a big merge; it also has no iOS counterpart, which would
    widen the web/mobile gap.

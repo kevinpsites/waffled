@@ -23,6 +23,7 @@ Then dig into logs for the flagged service: `./waffled logs <svc>` (`postgres`, 
 | DB check down / can't connect | [Postgres unreachable](#postgres-unreachable) |
 | "schema behind" / migrations pending | [Migrations pending](#migrations-pending) |
 | All clients show an **Offline** banner | [PowerSync offline](#powersync-offline-banner) |
+| One browser shows "Live sync is reconnecting" | [Live sync stalled](#live-sync-stalled-in-one-browser) |
 | Calendars stale / sync failing / `push_failed` | [Calendar sync](#calendar-sync-failing-google-or-outlook) |
 | A subscribed ICS feed shows an error or never updates | [Calendar feeds](#calendar-feed-ics-not-updating) |
 | Photo/recipe uploads fail / storage degraded | [Media uploads failing](#media-uploads-failing) |
@@ -90,6 +91,26 @@ Then restart PowerSync to re-validate:
 **Also check `POWERSYNC_PUBLIC_URL`** — it must be the address clients actually use
 to reach PowerSync (e.g. your LAN IP / hostname, not `localhost`). A mismatch also
 manifests as clients that can't sync.
+
+### Live sync stalled in one browser
+
+**Symptom:** a **⟳ Live sync is reconnecting** strip across the top of the web app, and
+**Settings → System Health → Live Sync (this browser)** reading **stalled**. Usually one
+device, not all of them.
+
+**Diagnose:** the sync engine in *that browser* is online and signed in but hasn't reached
+a synced state for three minutes. Waffled is already restarting it on its own — reconnect,
+then rebuild, then wipe and re-download this browser's local copy — so the usual answer is
+to wait. Meanwhile the calendar reads straight from the server, so **the data on screen is
+current**; only live push updates lag.
+
+**Fix:** if it doesn't clear, use **⟳ Restart sync** on the Live Sync card, then **🧹 Reset
+local copy** (offered while stalled; it's skipped automatically if unsent changes are still
+queued). A reload also works.
+
+If the **watchdog restarts** count keeps climbing, or *every* device is stalled rather than
+one, the problem is the service, not the browser — see
+[PowerSync "Offline" banner](#powersync-offline-banner) above and `./waffled logs powersync`.
 
 ### Calendar sync failing (Google or Outlook)
 
