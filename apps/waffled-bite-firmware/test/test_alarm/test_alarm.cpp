@@ -290,12 +290,17 @@ void test_every_tone_survives_a_speaker_with_no_low_end(void)
 // the same way the sound machine's recipes are loudness-matched.
 void test_the_tones_are_loudness_matched(void)
 {
-  static int16_t buf[N * 3];
+  // Measured over a WHOLE alarm, not a short excerpt. Ocean tide swells on a
+  // 2-second cycle, so a 3-second window catches one and a half swells and
+  // reads high for reasons that have nothing to do with how loud the tone is.
+  // Twenty seconds is also simply the honest question: that's how long the
+  // thing plays for.
+  static int16_t buf[N * 20];
   float lo = 1.0f, hi = 0.0f;
   for (size_t i = 0; i < TONE_COUNT; i++)
   {
-    render_tone(ALL_TONES[i], buf, N * 3);
-    const float r = rms(buf, N * 3);
+    render_tone(ALL_TONES[i], buf, N * 20);
+    const float r = rms(buf, N * 20);
     if (r < lo) lo = r;
     if (r > hi) hi = r;
   }

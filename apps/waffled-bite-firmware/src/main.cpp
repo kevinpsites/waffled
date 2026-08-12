@@ -32,6 +32,7 @@
 #include "ui/bedtime_screen.h"
 #include "ui/offline_screen.h"
 #include "ui/forget_confirm_screen.h"
+#include "ui/alarm_screen.h"
 #include "icons/wb_icons.h"
 #include <ArduinoJson.h>
 #include <string>
@@ -142,6 +143,8 @@ static lv_obj_t *quiet_scr;   // force-shown whenever the poll reports quiet tim
 static lv_obj_t *timer_scr;   // picker <-> countdown, kept correctly built by every poll — see wb_do_poll
 static lv_obj_t *bedtime_scr; // plain preview OR wake-light sleep/warn/wake — see wb_bedtime_claim_of
 static lv_obj_t *forget_scr;  // rebuilt fresh each time (see settings_screen.cpp's 5-tap sequence), no live state to sync
+static lv_obj_t *alarm_scr;   // force-shown the moment the morning alarm fires; Stop hands back to home
+static bool g_alarmScreenUp = false;
 static lv_obj_t *offline_scr; // force-shown on the offline-badge threshold (see wb_mark_poll_failed) unless a lock (quiet/bedtime) is already active
 static bool onboarding_built = false;
 static bool g_quietWasActive = false;
@@ -218,21 +221,50 @@ static void wb_audio_apply(const WbSoundSettings &s)
 // The latch is a plain static: decision D2 rules out persisting anything
 // across a reboot, so an alarm missed while the device was off or offline is
 // simply missed. The device has no RTC to catch up from anyway.
-static void wb_alarm_apply(const WbAlarmSettings &a, int nowHour, int nowMin)
+// Tapping "Stop". Cancels only the ALARM — the sound machine still fades back
+// in if it was playing, per D4 — and returns to home immediately rather than
+// waiting for the next poll to notice.
+static void wb_alarm_stop_cb(void)
+{
+  wb_audio_alarm_dismiss();
+  g_alarmScreenUp = false;
+  lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+}
+
+static void wb_alarm_apply(const WbAlarmSettings &a, const WbDeviceState &s)
 {
   static int lastFiredMin = WB_ALARM_NEVER_FIRED;
 
   const WbAlarmStep step =
-      wb_alarm_step(a.on, a.hour, a.min, nowHour, nowMin, lastFiredMin);
+      wb_alarm_step(a.on, a.hour, a.min, s.nowHour, s.nowMin, lastFiredMin);
   lastFiredMin = step.lastFiredMin;
-  if (!step.fire) return;
 
-  // An unrecognised tone falls back rather than staying silent — the opposite
-  // of the sound machine's rule, because an alarm that makes no noise has
-  // failed at its only job. Birdsong lands here until phase 2 ships samples.
-  WbTone tone;
-  if (!wb_tone_parse(a.tone, &tone)) tone = wb_tone_default();
-  wb_audio_alarm(tone, a.volume);
+  if (step.fire)
+  {
+    // An unrecognised tone falls back rather than staying silent — the
+    // opposite of the sound machine's rule, because an alarm that makes no
+    // noise has failed at its only job. Birdsong lands here until phase 2
+    // ships samples.
+    WbTone tone;
+    if (!wb_tone_parse(a.tone, &tone)) tone = wb_tone_default();
+    wb_audio_alarm(tone, a.volume);
+
+    // Shown NOW, not on the next poll: five seconds of a tone playing with the
+    // ordinary home screen up reads as the device malfunctioning, which is
+    // exactly how it came across the first time this ran on real hardware.
+    wb_build_alarm_screen(alarm_scr, s.personName, s.nowHour, s.nowMin, wb_alarm_stop_cb);
+    lv_scr_load_anim(alarm_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+    g_alarmScreenUp = true;
+    return;
+  }
+
+  // The alarm ran its course (nobody tapped Stop) — take the screen away
+  // again, so the device isn't left showing "Good morning" all day.
+  if (g_alarmScreenUp && !wb_audio_alarm_active())
+  {
+    g_alarmScreenUp = false;
+    lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+  }
 }
 
 static std::string g_serverUrl;
@@ -432,7 +464,7 @@ static void wb_do_poll()
   {
     wb_mark_poll_ok();
     wb_audio_apply(liveState.sound);
-    wb_alarm_apply(liveState.alarm, liveState.nowHour, liveState.nowMin);
+    wb_alarm_apply(liveState.alarm, liveState);
     // Full clean+rebuild only ONCE per (re-)pairing session — the first real
     // poll after wb_enter_app()'s mock-data build. Every poll after that
     // used to lv_obj_clean+rebuild both screens unconditionally, even while
@@ -945,6 +977,7 @@ void setup()
   bedtime_scr = lv_obj_create(NULL);
   forget_scr = lv_obj_create(NULL);
   offline_scr = lv_obj_create(NULL);
+  alarm_scr = lv_obj_create(NULL);
 
   // A small "Offline" pill on the always-on-top layer — see g_offlineBadge's
   // header comment. Built once here, toggled hidden/visible by

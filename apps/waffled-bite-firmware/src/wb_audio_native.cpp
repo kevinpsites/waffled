@@ -139,6 +139,14 @@ void wb_audio_alarm(WbTone tone, int volume)
 
 bool wb_audio_alarm_active() { return s_alarm; }
 
+void wb_audio_alarm_dismiss()
+{
+  if (!s_dev) return;
+  SDL_LockAudioDevice(s_dev);
+  s_alarm = false;
+  SDL_UnlockAudioDevice(s_dev);
+}
+
 void wb_audio_stop()
 {
   if (!s_dev) return;

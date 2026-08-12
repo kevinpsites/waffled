@@ -39,6 +39,14 @@ void wb_audio_alarm(WbTone tone, int volume);
 
 bool wb_audio_alarm_active();
 
+// Ends a ringing alarm early — what the on-screen "Stop" button calls.
+//
+// NOT the same as wb_audio_stop(): this cancels only the alarm, so the sound
+// machine still fades back in if it was playing. Stopping outright would
+// silence the room as a side effect of dismissing an alarm, which is not what
+// tapping "Stop" on an alarm means.
+void wb_audio_alarm_dismiss();
+
 // Fades out and stops, then powers the amp down. Also CANCELS a running alarm
 // — this is what silences a device that's been unpaired, which has no UI left
 // to reach.

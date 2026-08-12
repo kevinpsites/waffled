@@ -256,6 +256,8 @@ void wb_audio_alarm(WbTone tone, int volume)
 
 bool wb_audio_alarm_active() { return s_wantAlarm; }
 
+void wb_audio_alarm_dismiss() { s_wantAlarm = false; }
+
 void wb_audio_stop()
 {
   s_wantPlay = false;
