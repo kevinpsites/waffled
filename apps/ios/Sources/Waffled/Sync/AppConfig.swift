@@ -148,6 +148,11 @@ enum DemoHooks {
     static var cookJump: String? { AppConfig.env("WAFFLED_COOK_JUMP") }
     /// Auto-open the first event's editor on the iPad calendar (verification).
     static var kioskOpenEdit: Bool { AppConfig.env("WAFFLED_KIOSK_OPEN_EDIT") == "1" }
+    /// Push straight into a Settings sub-page on launch (verification). Settings is a
+    /// nav stack you can only get into by tapping, and the simulator has no tap API,
+    /// so without this the sub-screens can't be looked at headlessly at all.
+    /// Currently: `calendars`.
+    static var settingsPage: String? { AppConfig.env("WAFFLED_SETTINGS_PAGE") }
     /// Initial Meals section for verification: week | month | recipes.
     static var mealsSection: String? { AppConfig.env("WAFFLED_MEALS_SECTION") }
     /// Auto-open the "Plan my week" sheet (verification).

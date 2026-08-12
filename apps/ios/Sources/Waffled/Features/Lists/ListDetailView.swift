@@ -37,7 +37,23 @@ final class ListDetailModel {
     /// Mutable so converting to/from a template flips the detail into template mode
     /// in place (the returned row carries the new listType).
     private(set) var list: WaffledAPI.ListSummary
-    private(set) var items: [WaffledAPI.ListItemDTO] = []
+    private(set) var items: [WaffledAPI.ListItemDTO] = [] {
+        didSet { shareText = ShareList.format(rows: items) }
+    }
+
+    /// The list as shareable plain text, rebuilt whenever the items change.
+    ///
+    /// Derived once per data change rather than in a computed property: the grocery
+    /// board's Share control lives in the toolbar, which re-renders on every keystroke
+    /// in the search field — and formatting is an O(n) group-and-sort over the whole
+    /// list. (Same rule as the pantry's precomputed expiry days.)
+    ///
+    /// Built from `items`, deliberately NOT `activeItems`: that one also applies the
+    /// search filter, and sharing "the list" should hand over the whole list rather
+    /// than whatever the sharer happened to have typed in the search box. `items` is
+    /// already scoped to the week being viewed (the board is fetched per week), and
+    /// the formatter drops checked rows itself.
+    private(set) var shareText: String = ""
     /// Checked items still shown in place (before they settle into Completed).
     private(set) var settling: Set<String> = []
     private(set) var loading = true
@@ -838,10 +854,10 @@ struct ListDetailView: View {
         }
     }
 
-    /// The list as plain text for the share sheet — unchecked items only, grouped by
-    /// aisle/section. Empty once everything is ticked off, which is when there's
-    /// nothing worth handing over.
-    private var shareText: String { ShareList.format(rows: model.items) }
+    /// Unchecked items only, grouped by aisle/section — empty once everything is
+    /// ticked off, which is when there's nothing worth handing over. Precomputed in
+    /// the model (see `ListDetailModel.shareText`).
+    private var shareText: String { model.shareText }
 
     /// Hand the list to whoever's doing the run. The system share sheet IS the
     /// handoff here (Messages, Mail, Notes, AirDrop): the web offers a QR code
@@ -919,11 +935,15 @@ struct ListDetailView: View {
     /// its full width and its own title treatment.
     @ViewBuilder private var kioskListHeader: some View {
         if model.isGrocery {
-            HStack(spacing: 10) {
-                Spacer(minLength: 0)
-                shareListIcon.foregroundStyle(WF.ink2)
+            // Only when there's something to share — otherwise the padding alone would
+            // leave an empty strip that appears and vanishes as the last item is ticked.
+            if !shareText.isEmpty {
+                HStack(spacing: 10) {
+                    Spacer(minLength: 0)
+                    shareListIcon.foregroundStyle(WF.ink2)
+                }
+                .padding(.horizontal, 16).padding(.top, 8)
             }
-            .padding(.horizontal, 16).padding(.top, 8)
         } else {
             HStack(spacing: 10) {
                 Text(model.list.name)

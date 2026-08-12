@@ -30,6 +30,8 @@ struct SettingsView: View {
     @Environment(Session.self) private var session
     @Environment(NotificationManager.self) private var notifications
     @State private var confirmSignOut = false
+    /// Guards the verification auto-push so returning to Settings doesn't re-enter it.
+    @State private var didAutoPush = false
     @State private var busy = false
     private var isAdmin: Bool { sync.currentPerson?.isAdmin == true }
 
@@ -54,7 +56,7 @@ struct SettingsView: View {
                     // settings screen of its own, so it's simply absent here.
                     SectionLabel(text: "Family").padding(.top, 8)
                     row("👨‍👩‍👧‍👦", "Family & People", "Members, roles, household") { path.append(.settingsFamily) }
-                    row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
+                    row("📅", "Calendars", "Google, Outlook & feeds") { path.append(.settingsCalendars) }
                     row("⭐", "Chores & Rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
                     row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
                     row("📋", "Lists", "Grocery & lists")
@@ -88,6 +90,15 @@ struct SettingsView: View {
         .background(WF.canvas)
         .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
         .task { await sync.loadIdentity() }
+        .task {
+            // Verification only: push into a sub-page that otherwise needs a tap.
+            guard !didAutoPush, let page = DemoHooks.settingsPage else { return }
+            didAutoPush = true
+            switch page {
+            case "calendars": path.append(.settingsCalendars)
+            default: break
+            }
+        }
     }
 
     /// Sign out lives right on the Settings landing (mirrors the web's footer).
