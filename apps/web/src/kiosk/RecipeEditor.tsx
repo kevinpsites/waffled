@@ -7,6 +7,7 @@ import { RECIPE_TEMPLATE, RECIPE_EXAMPLE } from './components/recipe-template'
 import { PhotoImportModal, DescribeImportModal } from './components/RecipeImportModals'
 import { mealsApi, uploadImage, useRecipe, type IngredientInput, type RecipeMetadataSuggestion, type RecipeWriteInput, type StepInput } from '../lib/api'
 import { parseAmt } from '../lib/amount'
+import { ApiSendError } from '../lib/api/client'
 import '../styles/recipe.css'
 
 // The one unified recipe editor — authoring a brand-new recipe and fully editing an
@@ -49,6 +50,13 @@ const META_FIELDS: { key: keyof RecipeWriteInput; label: string; placeholder: st
   { key: 'flavorProfile', label: 'Flavor', placeholder: 'savory, spicy…' },
   { key: 'collection', label: 'Collection', placeholder: 'Weeknight favorites…' },
 ]
+
+// Save failures used to be swallowed. Surface the server's own reason when it sent one
+// (same shape the import modals read), otherwise a plain "try again".
+function saveErrMessage(e: unknown): string {
+  const detail = e instanceof ApiSendError ? e.body?.message : undefined
+  return `Couldn’t save the recipe — ${detail || 'please try again.'}`
+}
 
 const blankIng = (): EditIng => ({ uid: newUid(), name: '', amount: '', unit: '', prepNote: '', section: '' })
 const blankStep = (): EditStep => ({ uid: newUid(), instruction: '', picks: [], extra: [], timerSeconds: null })
@@ -139,6 +147,7 @@ export function RecipeEditor() {
   const [parsing, setParsing] = useState(false)
   const [parseErr, setParseErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [prefilled, setPrefilled] = useState(false)
 
@@ -301,6 +310,7 @@ export function RecipeEditor() {
   async function save() {
     if (!title.trim() || saving) return
     setSaving(true)
+    setSaveErr(null)
     try {
       const payload = buildPayload()
       // replace: true so the editor page doesn't linger in history — otherwise
@@ -312,7 +322,10 @@ export function RecipeEditor() {
         const created = await mealsApi.createRecipe(payload)
         navigate(`/meals/recipe/${created.id}`, { replace: true })
       }
-    } catch {
+    } catch (e) {
+      // Say so — a silently re-enabled button looked exactly like a successful save,
+      // and the recipe was gone.
+      setSaveErr(saveErrMessage(e))
       setSaving(false)
     }
   }
@@ -715,6 +728,9 @@ export function RecipeEditor() {
         <textarea className="re-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything worth remembering…" rows={3} />
       </div>
 
+      {saveErr && (
+        <div className="tiny" role="alert" style={{ color: 'var(--danger)', fontWeight: 700, textAlign: 'right', marginTop: 6 }}>{saveErr}</div>
+      )}
       <div className="re-actions">
         {isEdit && <button type="button" className="pill re-delete-btn" onClick={() => setConfirmDelete(true)}>🗑 Delete recipe</button>}
         <div className="re-actions-right">

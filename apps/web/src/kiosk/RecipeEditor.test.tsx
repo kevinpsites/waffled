@@ -164,6 +164,27 @@ describe('RecipeEditor — new', () => {
     expect(patched.ingredients[0].amount).toBe(1.5)
   })
 
+  // Regression: a failed save just re-enabled the button, so a lost recipe looked
+  // exactly like a saved one.
+  it('shows an error when the save fails, and lets you retry', async () => {
+    const sent: Sent[] = []
+    globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+      const u = String(url)
+      const method = init?.method ?? 'GET'
+      sent.push({ method, url: u, body: init?.body ? JSON.parse(init.body) : undefined })
+      return { ok: false, status: 500, json: async () => ({ error: 'ServerError' }) }
+    }) as unknown as typeof fetch
+    renderNew()
+
+    fireEvent.change(screen.getByPlaceholderText('Recipe title'), { target: { value: 'Doomed Soup' } })
+    fireEvent.click(screen.getByText('Create recipe'))
+
+    expect(await screen.findByText(/Couldn’t save/)).toBeTruthy()
+    // still on the editor, button back to normal so the user can try again
+    expect(screen.queryByText('recipe page')).toBeNull()
+    expect((screen.getByText('Create recipe').closest('button') as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('per-step amount can be split (override the chip amount)', async () => {
     const sent: Sent[] = []
     mockApi(sent)
