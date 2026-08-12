@@ -702,4 +702,57 @@ describe('event times: endsAt must be after startsAt', () => {
     })
     expect(following.statusCode).toBe(400)
   })
+
+  // A materialized event_occurrences row is not guaranteed to be there: cancelling an
+  // occurrence tombstones it, and slots past the expansion horizon were never written.
+  // The guard has to reconstruct the slot from the series master in that case, or a
+  // one-sided patch has nothing to compare against and silently passes.
+  it('compares a one-sided override against the slot even when the occurrence row is gone', async () => {
+    const add = await call('POST', '/api/events', kevin, {
+      title: 'Cancelled then re-edited', startsAt: '2027-05-04T14:00:00Z', endsAt: '2027-05-04T15:00:00Z',
+      rrule: 'FREQ=WEEKLY;BYDAY=TU', recurrenceEndAt: '2027-05-25T23:59:59Z',
+    })
+    expect(add.statusCode).toBe(201)
+    const sid = JSON.parse(add.body).event.id
+    const occ = JSON.parse((await call('GET', '/api/events?from=2027-05-01&to=2027-05-31', kevin)).body)
+      .events.filter((e: { seriesId: string }) => e.seriesId === sid)
+    const slot = occ[1].occurrenceStart
+
+    // Cancelling tombstones the row the guard used to read.
+    const del = await call('DELETE', `/api/events/${sid}?scope=this&occurrenceStart=${encodeURIComponent(slot)}`, kevin)
+    expect(del.statusCode).toBe(204)
+
+    // endsAt alone, an hour before the slot starts. Nothing in the patch says when
+    // that is — it has to come from the master's rule slot.
+    const r = await call('PATCH', `/api/events/${sid}`, kevin, {
+      scope: 'this', occurrenceStart: slot, endsAt: '2027-05-11T13:00:00Z',
+    })
+    expect(r.statusCode).toBe(400)
+    expect(JSON.parse(r.body).message).toBe('endsAt must be after startsAt')
+  })
+
+  // The mirror failure of the same missing row: without the master to fall back on,
+  // an all-day series' occurrence is judged by the stricter timed rule and a
+  // legitimate same-instant all-day override is refused.
+  it('keeps the all-day rule for an override whose occurrence row is gone', async () => {
+    const add = await call('POST', '/api/events', kevin, {
+      title: 'Weekly all-day', allDay: true,
+      startsAt: '2027-06-01T00:00:00Z', endsAt: '2027-06-01T00:00:00Z',
+      rrule: 'FREQ=WEEKLY;BYDAY=TU', recurrenceEndAt: '2027-06-22T23:59:59Z',
+    })
+    expect(add.statusCode).toBe(201)
+    const sid = JSON.parse(add.body).event.id
+    const occ = JSON.parse((await call('GET', '/api/events?from=2027-06-01&to=2027-06-30', kevin)).body)
+      .events.filter((e: { seriesId: string }) => e.seriesId === sid)
+    const slot = occ[1].occurrenceStart
+
+    const del = await call('DELETE', `/api/events/${sid}?scope=this&occurrenceStart=${encodeURIComponent(slot)}`, kevin)
+    expect(del.statusCode).toBe(204)
+
+    const r = await call('PATCH', `/api/events/${sid}`, kevin, {
+      scope: 'this', occurrenceStart: slot,
+      startsAt: '2027-06-09T00:00:00Z', endsAt: '2027-06-09T00:00:00Z',
+    })
+    expect(r.statusCode).toBe(200)
+  })
 })

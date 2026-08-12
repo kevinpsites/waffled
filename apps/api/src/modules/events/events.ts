@@ -569,25 +569,39 @@ export async function overrideOccurrence(
   patch: Record<string, unknown>,
   opts: { cancel?: boolean } = {}
 ): Promise<boolean> {
-  const m = await query<{ id: string }>(
-    `select id from events where id = $1 and household_id = $2 and deleted_at is null and rrule is not null`,
+  const m = await query<{ id: string; starts_at: Date; ends_at: Date | null; all_day: boolean }>(
+    `select id, starts_at, ends_at, all_day from events
+      where id = $1 and household_id = $2 and deleted_at is null and rrule is not null`,
     [seriesId, householdId]
   )
-  if (!m.rows[0]) return false
+  const master = m.rows[0]
+  if (!master) return false
 
   // Same stored-row comparison as updateEvent, but the "current" values are this
   // occurrence's (the override row has no all_day of its own — it inherits).
   if ('startsAt' in patch || 'endsAt' in patch) {
-    const occ = await query<{ starts_at: Date; ends_at: Date | null; all_day: boolean }>(
-      `select starts_at, ends_at, all_day from event_occurrences
+    const occ = await query<{ starts_at: Date; ends_at: Date | null }>(
+      `select starts_at, ends_at from event_occurrences
         where household_id = $1 and event_id = $2 and original_start = $3 and deleted_at is null`,
       [householdId, seriesId, occurrenceStart]
     )
-    const row = occ.rows[0]
+    // No materialized row is normal, not exceptional: cancelling an occurrence
+    // tombstones it, and slots past the expansion horizon were never written. Without
+    // a fallback a one-sided patch would compare against null — the guard silently
+    // skipping, the same hole this check closes for updateEvent. Rebuild the slot the
+    // way the materializer does (expansion.service → recurrence.push): the start is
+    // the rule slot itself, the end is that plus the master's duration, and all_day
+    // always comes from the master (the occurrence row only mirrors it).
+    const row = occ.rows[0] ?? {
+      starts_at: new Date(occurrenceStart),
+      ends_at: master.ends_at
+        ? new Date(new Date(occurrenceStart).getTime() + (master.ends_at.getTime() - master.starts_at.getTime()))
+        : null,
+    }
     assertEventTimes(
-      'startsAt' in patch ? patch.startsAt : row?.starts_at ?? null,
-      'endsAt' in patch ? patch.endsAt : row?.ends_at ?? null,
-      row?.all_day ?? false
+      'startsAt' in patch ? patch.startsAt : row.starts_at,
+      'endsAt' in patch ? patch.endsAt : row.ends_at,
+      master.all_day
     )
   }
 
