@@ -310,6 +310,34 @@ describe('waffled-bites device pairing + parent control panel', () => {
     expect(state.settings.night).toMatchObject({ on: true, color: 'amber', brightness: 40 })
   })
 
+  // The firmware reads settings.alarm off this route to know when to ring and
+  // how loud, and alarm.volume is a NEW key with no schema anywhere — the
+  // parent PATCH deep-merges whatever it's given. That's exactly the kind of
+  // thing that works until someone adds an allowlist "for safety" and silently
+  // breaks the alarm's volume with no test to catch it.
+  //
+  // Retrofitted rather than TDD'd, and worth saying so: the deep-merge already
+  // behaved correctly, so this closes an existing gap rather than driving new
+  // behaviour.
+  it('round-trips the alarm settings the device needs, including a volume key it has never seen before', async () => {
+    const r = await call('PATCH', `/api/waffled-bites/${deviceId}/settings`, {
+      alarm: { on: true, hour: 6, min: 45, tone: 'Gentle bells', volume: 70 },
+    }, admin)
+    expect(r.statusCode).toBe(200)
+
+    const state = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
+    expect(state.settings.alarm).toMatchObject({ on: true, hour: 6, min: 45, tone: 'Gentle bells', volume: 70 })
+
+    // The alarm is parent-only: the device has no alarm UI, so its own narrower
+    // write path must not be able to set one (or silence one).
+    const before = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken)).settings.alarm
+    const smuggled = await call('PATCH', '/api/waffled-bites/device/settings', {
+      alarm: { on: false, hour: 3, min: 0, tone: 'Twinkle stars', volume: 0 },
+    }, deviceToken)
+    expect(smuggled.statusCode).toBe(200)
+    expect(json(smuggled).settings.alarm).toEqual(before)
+  })
+
   // ── wake-light schedule (bedtime -> yellow warning -> green wake) ──────────
   // Exact boundary behavior (midnight-crossing, day-attribution) is covered by
   // wake-light.unit.test.ts's injected-clock tests; this just proves the real

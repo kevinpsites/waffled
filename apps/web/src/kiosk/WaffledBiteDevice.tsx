@@ -27,6 +27,10 @@ const SOUNDS: Array<[string, string]> = [
 // doesn't carry yet, so they're shown but not selectable. Keep in step with
 // the firmware's wb_synth_parse and its WB_SOUND_OPTIONS.
 const SOUNDS_COMING_SOON = ['lullaby', 'forest'] as const
+// Birdsong is the one wake tone that needs a real recording rather than
+// synthesis, so it ships with the sampled sounds above rather than with the
+// other five tones.
+const ALARM_TONES_COMING_SOON = ['Birdsong'] as const
 const ALARM_TONES = ['Sunrise chime', 'Birdsong', 'Soft harp', 'Gentle bells', 'Ocean tide', 'Twinkle stars']
 const SLEEP_TIMERS = [0, 15, 30, 60, 120]
 const DOW: Array<[number, string]> = [[0, 'S'], [1, 'M'], [2, 'T'], [3, 'W'], [4, 'T'], [5, 'F'], [6, 'S']]
@@ -257,7 +261,10 @@ export function WaffledBiteDevice() {
   const s = device.settings
   const night = s.night ?? { on: false, color: 'amber', brightness: 40 }
   const sound = s.sound ?? { on: false, sound: 'ocean', volume: 45, timerMin: 0 }
-  const alarm = s.alarm ?? { on: false, hour: 6, min: 45, tone: 'Sunrise chime' }
+  // Field-by-field rather than `?? {...}`: every device paired before the alarm
+  // had its own volume has an `alarm` object with no `volume` key, and a whole-
+  // object fallback would leave it undefined for exactly those devices.
+  const alarm = { on: false, hour: 6, min: 45, tone: 'Sunrise chime', volume: 80, ...(s.alarm ?? {}) }
   const display = s.display ?? { brightness: 85, nightDim: true }
   const schedules = s.schedules ?? []
   const quiet = device.runtimeState.quiet
@@ -478,7 +485,11 @@ export function WaffledBiteDevice() {
                   }} />
                 </label>
                 <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Alarm sound</div>
-                <ChipPicker options={ALARM_TONES.map((t) => [t, t] as [string, string])} value={alarm.tone} onChange={(t) => patchSettings({ alarm: { ...alarm, tone: t } })} />
+                <ChipPicker options={ALARM_TONES.map((t) => [t, t] as [string, string])} value={alarm.tone} comingSoon={ALARM_TONES_COMING_SOON} onChange={(t) => patchSettings({ alarm: { ...alarm, tone: t } })} />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 12 }}>
+                  <span className="tiny muted" style={{ fontWeight: 700 }}>Volume</span>
+                  <Stepper value={alarm.volume} step={5} min={0} max={100} unit="%" onChange={(v) => patchSettings({ alarm: { ...alarm, volume: v } })} />
+                </div>
               </div>
             )}
           </ListRow>

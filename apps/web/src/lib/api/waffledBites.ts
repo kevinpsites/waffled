@@ -45,7 +45,11 @@ export interface WaffledBiteWakeLight {
 export interface WaffledBiteSettings {
   night?: { on: boolean; color: string; brightness: number }
   sound?: { on: boolean; sound: string; volume: number; timerMin: number }
-  alarm?: { on: boolean; hour: number; min: number; tone: string }
+  // `volume` is deliberately separate from sound.volume (decision D3) — a wake
+  // tone has to be heard through sleep, where a sound machine has to be
+  // ignorable. `tone` is a display string ('Sunrise chime'); the device also
+  // accepts stable keys, so migrating it later needs no firmware change.
+  alarm?: { on: boolean; hour: number; min: number; tone: string; volume: number }
   schedules?: WaffledBiteSchedule[]
   display?: { brightness: number; nightDim: boolean }
 }

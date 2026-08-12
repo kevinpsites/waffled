@@ -2222,7 +2222,18 @@ struct WaffledAPI: Sendable {
         // parent edits a wake-light row, before the whole array round-trips in one PATCH.
         struct Night: Decodable, Sendable { var on: Bool; var color: String; var brightness: Int }
         struct Sound: Decodable, Sendable { var on: Bool; var sound: String; var volume: Int; var timerMin: Int }
-        struct Alarm: Decodable, Sendable { var on: Bool; var hour: Int; var min: Int; var tone: String }
+        /// `volume` is OPTIONAL on purpose. The alarm got its own volume
+        /// (decision D3) after devices were already in the field, so existing
+        /// rows have an `alarm` object with no `volume` key — and Swift's
+        /// synthesised Decodable fails the WHOLE settings blob on one missing
+        /// non-optional field. Read it through `volumeOrDefault`.
+        struct Alarm: Decodable, Sendable {
+            var on: Bool; var hour: Int; var min: Int; var tone: String
+            var volume: Int?
+
+            static let defaultVolume = 80
+            var volumeOrDefault: Int { volume ?? Self.defaultVolume }
+        }
         struct Display: Decodable, Sendable { var brightness: Int; var nightDim: Bool }
         // Not `Identifiable` — edited in place by array index (`schedules.indices`), since
         // a content-derived id would change identity mid-edit (e.g. every keystroke on a
