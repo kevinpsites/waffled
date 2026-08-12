@@ -137,4 +137,23 @@ struct ShareListTests {
         #expect(mapped.group == "Toiletries")
         #expect(mapped.assignee == nil)
     }
+
+    // When a row carries BOTH, they can disagree — and the shared text has to match
+    // the board the sharer is looking at, which groups by `section`
+    // (`ListGrouping.sections`). Two ways they diverge:
+    //
+    //  - transiently, because "Move to section" updates `section` optimistically and
+    //    leaves `aisle` stale until the next load;
+    //  - permanently, because category "Other" makes the server send
+    //    `section: "Other"` alongside an `aisle` it guessed from the item's name.
+    //
+    // Handing someone a list that files tomatoes under a heading their screen doesn't
+    // show is exactly the drift this port existed to avoid.
+    @Test func prefersSectionOverAisleWhenTheyDisagree() {
+        let dto = WaffledAPI.ListItemDTO(
+            id: "3", name: "Grape tomatoes", quantity: nil, quantityInput: nil, checked: false,
+            section: "Other", store: nil, priority: nil, assignee: nil,
+            aisle: "Produce", sourceRecipeIds: nil, weekStart: nil)
+        #expect(ShareList.item(from: dto).group == "Other")
+    }
 }

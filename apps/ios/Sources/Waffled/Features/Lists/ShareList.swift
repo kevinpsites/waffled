@@ -35,13 +35,21 @@ enum ShareList {
         var assignee: String? = nil
     }
 
-    /// Adapt a real list row. Grocery rows are grouped by `aisle`, custom-list rows
-    /// by `section` — one adapter so both kinds of list share the formatter.
+    /// Adapt a real list row.
+    ///
+    /// `section` first, because that is what the board on screen groups by
+    /// (`ListGrouping.sections`) and the shared text must not contradict it. The two
+    /// disagree in practice: "Move to section" updates `section` optimistically and
+    /// leaves `aisle` stale, and a row categorized "Other" comes back with
+    /// `section: "Other"` beside an `aisle` the server guessed from the name.
+    /// Grocery rows still group by aisle — `load()` backfills `section` from `aisle`
+    /// when the row has no section of its own — so `aisle` is the fallback for rows
+    /// that arrive before that backfill.
     static func item(from dto: WaffledAPI.ListItemDTO) -> Item {
         Item(name: dto.name,
              quantity: dto.quantity,
              checked: dto.checked,
-             group: dto.aisle ?? dto.section ?? "",
+             group: dto.section ?? dto.aisle ?? "",
              store: dto.store,
              assignee: dto.assignee?.name)
     }
