@@ -192,7 +192,7 @@ export class SyncHealthMonitor {
   // events can't turn into a restart storm.
   async tick(): Promise<void> {
     const now = this.deps.now()
-    if (this.phase !== 'running') {
+    if (this.phase === 'off' || this.phase === 'starting') {
       this.publish()
       return
     }
@@ -203,7 +203,15 @@ export class SyncHealthMonitor {
       this.publish()
       return
     }
-    if (this.classify(now) === 'stalled') await this.maybeRestart(now)
+    if (this.phase === 'failed') {
+      // A crash used to latch forever — but the common causes (an OPFS lock held
+      // by another tab, a worker that died) clear on their own. Retry the rebuild
+      // on the same backoff. Never the destructive rung: no engine ever reached a
+      // connected state here, so there is no evidence the replica is at fault.
+      await this.maybeRestart(now, 'rebuild-only')
+    } else if (this.classify(now) === 'stalled') {
+      await this.maybeRestart(now)
+    }
     this.publish()
   }
 
@@ -229,17 +237,19 @@ export class SyncHealthMonitor {
     return now - this.lastHealthyAt > STALL_AFTER_MS ? 'stalled' : 'connecting'
   }
 
-  private async maybeRestart(now: number): Promise<void> {
+  // mode 'ladder' walks soft → hard → hard+clear. 'rebuild-only' is for a crashed
+  // engine: there is no client to soft-restart and no reason to suspect the replica.
+  private async maybeRestart(now: number, mode: 'ladder' | 'rebuild-only' = 'ladder'): Promise<void> {
     if (this.attempts > 0) {
       const backoff = Math.min(RESTART_BACKOFF_BASE_MS * 2 ** (this.attempts - 1), RESTART_BACKOFF_MAX_MS)
       if (this.lastRestartAt !== null && now - this.lastRestartAt < backoff) return
     }
-    const hard = this.attempts >= 1 // soft first; escalate when it didn't take
+    const hard = mode === 'rebuild-only' || this.attempts >= 1 // soft first; escalate when it didn't take
     // Two failed restarts (one soft, one hard) make the replica itself the
     // suspect — it survives a plain rebuild (same db file). Wipe it once; if that
     // didn't help it isn't the replica, so keep retrying non-destructively rather
     // than re-wiping every backoff period for as long as the outage lasts.
-    const clear = this.attempts >= 2 && !this.cleared
+    const clear = mode === 'ladder' && this.attempts >= 2 && !this.cleared
     if (clear) this.cleared = true
     this.attempts++
     this.restartCount++

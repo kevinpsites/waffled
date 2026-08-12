@@ -509,11 +509,14 @@ function BrowserSyncCard() {
         <button className="btn btn-ghost" disabled={restarting} onClick={() => run(() => restartPowerSyncHard())}>
           ⟳ Restart sync
         </button>
-        {health.status === 'stalled' && (
+        {/* The watchdog wipes at most once per stall and never on the failed path
+            (a boot crash is no evidence the replica is bad), so a genuinely corrupt
+            local copy needs this button reachable from both states. */}
+        {(health.status === 'stalled' || health.status === 'failed') && (
           <button
             className="btn btn-ghost"
             disabled={restarting}
-            title="Wipes this browser's local copy and re-downloads everything from the server. Skipped automatically if unsent changes are still queued."
+            title="Wipes this browser's local copy and re-downloads everything from the server. Skipped automatically if unsent changes are still queued, or if the queue can't be read."
             onClick={() => run(() => restartPowerSyncHard({ clear: true }))}
           >
             🧹 Reset local copy

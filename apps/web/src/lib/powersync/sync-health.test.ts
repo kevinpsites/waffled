@@ -287,18 +287,75 @@ describe('SyncHealthMonitor restart ladder', () => {
     expect(deps.hardRestart).not.toHaveBeenCalled()
   })
 
-  it('never restarts while the engine is not running (off / starting / failed)', async () => {
+  it('never restarts while the engine is off or still starting', async () => {
     const { m, deps, advance } = makeMonitor()
     advance(STALL_AFTER_MS * 3)
     await m.tick()
     m.engineStarting()
     advance(STALL_AFTER_MS * 3)
     await m.tick()
-    m.engineFailed(new Error('nope'))
-    advance(STALL_AFTER_MS * 3)
-    await m.tick()
     expect(deps.softRestart).not.toHaveBeenCalled()
     expect(deps.hardRestart).not.toHaveBeenCalled()
+  })
+})
+
+// A boot or rebuild crash used to latch: tick() returned early for any phase but
+// 'running', so nothing ever re-classified or retried. An OPFS lock held by
+// another tab — a transient that clears on its own — left the engine dead until
+// somebody found the Restart sync button.
+describe('recovering from a failed engine', () => {
+  it('retries a failed engine on the backoff ladder instead of latching', async () => {
+    const { m, deps, advance } = makeMonitor()
+    m.engineStarting()
+    m.engineFailed(new Error('OPFS locked'))
+    await m.tick()
+    expect(deps.hardRestart).toHaveBeenCalledTimes(1)
+    // Paced by the same backoff — no retry storm.
+    advance(RESTART_BACKOFF_BASE_MS / 2)
+    await m.tick()
+    expect(deps.hardRestart).toHaveBeenCalledTimes(1)
+    advance(RESTART_BACKOFF_BASE_MS + 1)
+    await m.tick()
+    expect(deps.hardRestart).toHaveBeenCalledTimes(2)
+  })
+
+  // A crash on boot is no evidence at all that the replica is bad — no engine ever
+  // reached a connected state to judge it. Retrying must never escalate to a wipe.
+  it('never wipes the replica while retrying a failed engine', async () => {
+    const { m, deps, advance } = makeMonitor()
+    m.engineFailed(new Error('OPFS locked'))
+    for (let i = 0; i < 10; i++) {
+      advance(RESTART_BACKOFF_MAX_MS + 1)
+      await m.tick()
+    }
+    expect(vi.mocked(deps.hardRestart).mock.calls.length).toBeGreaterThan(5)
+    expect(deps.softRestart).not.toHaveBeenCalled() // there is no client to soft-restart
+    for (const [opts] of vi.mocked(deps.hardRestart).mock.calls) expect(opts.clear).toBe(false)
+  })
+
+  it('does not retry a failed engine while offline or signed out', async () => {
+    let online = false
+    const { m, deps, advance } = makeMonitor({ isOnline: () => online })
+    m.engineFailed(new Error('OPFS locked'))
+    advance(RESTART_BACKOFF_MAX_MS + 1)
+    await m.tick()
+    expect(deps.hardRestart).not.toHaveBeenCalled()
+    expect(getSyncHealth().status).toBe('failed') // still honest about why
+    online = true
+    await m.tick()
+    expect(deps.hardRestart).toHaveBeenCalledTimes(1)
+  })
+
+  it('a successful retry leaves the failed state behind', async () => {
+    const { m, deps } = makeMonitor({ hardRestart: vi.fn(async () => {}) })
+    m.engineFailed(new Error('OPFS locked'))
+    await m.tick()
+    expect(deps.hardRestart).toHaveBeenCalledTimes(1)
+    m.engineStarting()
+    m.engineStarted()
+    m.noteStatus(CONNECTED)
+    expect(getSyncHealth().status).toBe('ok')
+    expect(getSyncHealth().lastError ?? null).toBeNull()
   })
 })
 

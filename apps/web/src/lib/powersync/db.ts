@@ -101,6 +101,12 @@ export async function connectPowerSync(): Promise<void> {
     // Surface the crash: a boot failure must not be indistinguishable from
     // "engine not running" on the Live Sync card.
     monitor.engineFailed(err)
+    // A dead engine still needs a heartbeat. The watchdog retries the rebuild from
+    // the failed phase, but startClient() never got far enough to arm the timer —
+    // so without this a transient boot failure (an OPFS lock held by another tab)
+    // would be permanent until somebody found the Restart sync button.
+    monitor.start()
+    watchConnectivity()
   }
 }
 
@@ -184,6 +190,10 @@ async function doHardRestart({ clear = false }: { clear?: boolean } = {}): Promi
     console.warn('PowerSync restart failed; falling back to REST only', err)
     db = null
     monitor.engineFailed(err)
+    // Idempotent — but a rebuild that failed on the very first boot attempt has no
+    // timer of its own, and the watchdog is the thing that will try again.
+    monitor.start()
+    watchConnectivity()
   }
 }
 

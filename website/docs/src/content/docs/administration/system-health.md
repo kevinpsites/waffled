@@ -51,7 +51,7 @@ different Live Sync states.
 | **offline** | This device has no network. Sync is paused on purpose and no stall is counted. | Reconnect. |
 | **waiting for sign-in** | No credentials yet, so there is nothing to sync. | Sign in. |
 | **stalled — auto-restarting** | Online and signed in, but the engine hasn't reached a synced state for 3 minutes. The watchdog is already restarting it. | Usually nothing — see below. |
-| **failed to start** | The engine crashed on boot; the card shows the actual error. Common causes are a browser with storage disabled, private-browsing mode, or a very old browser. | Read the error, then try a normal browser window. |
+| **failed to start** | The engine crashed on boot; the card shows the actual error. Common causes are a browser with storage disabled, private-browsing mode, another tab holding the local database, or a very old browser. The watchdog keeps retrying the rebuild on the same backoff, so the transient causes clear by themselves. | Read the error. If it persists, try a normal browser window, or **Reset local copy**. |
 | **off** | The engine isn't running at all in this browser. | Reload the page. |
 
 **Your data is safe in every one of these states.** When the local copy can't be trusted —
@@ -68,8 +68,16 @@ down heals on its own without being hammered:
 1. **Reconnect** — drop and re-dial the sync connection.
 2. **Rebuild** — throw the sync engine away and build a fresh one.
 3. **Reset the local copy** — wipe this browser's copy and re-download everything. This is
-   **skipped automatically while unsent changes are still queued**, so the watchdog can
-   never destroy a change that hasn't reached the server.
+   **skipped automatically whenever unsent changes might still be queued** — both when the
+   queue is known to hold work and when a wedged engine can't be asked — so the watchdog
+   can never destroy a change that hasn't reached the server.
+
+Rung 3 is **tried at most once**, then the watchdog falls back to repeating rung 2. If
+wiping the local copy didn't help, the local copy was never the problem, and a server
+that stays down for hours must not cost you your offline copy over and over. (A fully
+successful sync re-arms it, so a later, unrelated problem can reach for it again.) When
+the engine crashes on boot rather than stalling, the watchdog only retries rung 2 — a
+crash is no evidence the local copy is at fault.
 
 A **⟳ Live sync is reconnecting** strip appears across the top of the app while this is
 happening — it's there to explain why live updates may lag, not to warn you about your
@@ -83,9 +91,11 @@ rather than the browser — check the `waffled-powersync` container and see
 #### Doing it by hand
 
 **⟳ Restart sync** rebuilds the engine immediately (rung 2) — the first thing to try if a
-device seems stuck. **🧹 Reset local copy** appears only while sync is stalled and does
-rung 3: it wipes this browser's local copy and re-downloads it from the server. Nothing
-you have saved is lost, and queued changes still block the wipe.
+device seems stuck. **🧹 Reset local copy** appears while sync is stalled or the engine
+failed to start, and does rung 3: it wipes this browser's local copy and re-downloads it
+from the server. Nothing you have saved is lost, and unsent changes still block the wipe.
+The two buttons never get crossed: asking for one while the other is already running runs
+yours too, rather than quietly giving you the other one's result.
 
 ## Update notifier
 

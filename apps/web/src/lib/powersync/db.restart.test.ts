@@ -54,11 +54,12 @@ const okStatus = { connected: true, connecting: false, hasSynced: true, lastSync
 // vi.resetModules gives each test a fresh module graph — pull db AND the (also
 // fresh, hence already-reset) sync-health store from that same graph.
 let getSyncHealth: typeof import('./sync-health').getSyncHealth
+let HEALTH_TICK_MS: number
 
 async function freshDbModule() {
   vi.resetModules()
   const mod = await import('./db')
-  ;({ getSyncHealth } = await import('./sync-health'))
+  ;({ getSyncHealth, HEALTH_TICK_MS } = await import('./sync-health'))
   return mod
 }
 
@@ -109,6 +110,24 @@ describe('connectPowerSync', () => {
     await db.connectPowerSync()
     expect(db.getPowerSyncDb()).toBeNull()
     expect(fakes.instances[0].close).toHaveBeenCalledTimes(1)
+  })
+
+  // A boot crash used to leave no watchdog timer at all, so the retry the monitor
+  // now knows how to do would never have been driven.
+  it('still runs the watchdog after a boot failure so it can retry', async () => {
+    vi.useFakeTimers()
+    try {
+      const db = await freshDbModule()
+      fakes.failNext = { step: 'init', message: 'OPFS locked' }
+      await db.connectPowerSync()
+      expect(getSyncHealth().status).toBe('failed')
+      await vi.advanceTimersByTimeAsync(HEALTH_TICK_MS + 1)
+      // The tick drove a rebuild, and this time nothing is failing.
+      expect(fakes.instances.length).toBeGreaterThan(1)
+      expect(db.getPowerSyncDb()).not.toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('closes the half-built client when init() throws', async () => {

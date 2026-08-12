@@ -260,6 +260,10 @@ describe('Settings screen', () => {
     act(() => publishSyncHealth({ status: 'failed', ...base, lastError: 'OPFS unavailable' }))
     expect(screen.getByText(/state: failed/)).toBeInTheDocument()
     expect(screen.getByText(/OPFS unavailable/)).toBeInTheDocument()
+    // A boot crash the watchdog can't fix by rebuilding is usually a corrupt local
+    // copy — and the watchdog deliberately never wipes on the failed path, so the
+    // manual rung has to be reachable here too, not only from 'stalled'.
+    expect(screen.getByText(/Reset local copy/)).toBeInTheDocument()
 
     act(() => publishSyncHealth({ status: 'stalled', hasSynced: true, lastSyncedAt: 1, restartCount: 3, lastRestartAt: 2 }))
     expect(screen.getByText(/state: stalled/)).toBeInTheDocument()
