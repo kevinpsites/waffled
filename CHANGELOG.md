@@ -20,12 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   swatch that opens your device's color picker, so everyone can have exactly the shade
   they want. The server only accepts full `#RRGGBB` hex values for a new color — a
   member still holding an older, odder value keeps it, so they can always be saved.
+  editor (and in the new family color) now ends with a ninth "custom" swatch that opens
+  your device's color picker, so everyone can have exactly the shade they want. The server
+  only accepts full `#RRGGBB` hex values. On the web that's the member editor and My
+  Profile; on iPhone/iPad it's the member editor, and **Settings → Households** now lets
+  you pick your own color even if you're not an admin.
 - **A color of your own for whole-family events.** Events that involve every member of the
   household now paint in a household-level **family color** instead of borrowing whichever
   person happened to own the event — so the calendar reads at a glance: everyone, some of
   us, one person, or nobody yet. Set it in **Settings → Family & People → Family color**;
-  it starts as a warm orange. Web only for now; the iPhone/iPad apps still color those
-  events by owner.
+  it starts as a warm orange. Works on web, iPhone and iPad, on every calendar surface and
+  the Today dashboard.
 
 ### Changed
 
@@ -37,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are drawn in black or white — whichever stays readable on that person's color — so the
   lighter colors (gold, teal) and any pale custom hex you pick are legible in both light
   and dark mode. Tinted is also theme-aware now, so it stays legible in dark mode.
+  **Settings → Family & People → Event style** back to *Tinted*. Tinted is also
+  theme-aware now, so it stays legible in dark mode. The setting belongs to the household,
+  so the web, the wall tablet and everyone's phone all follow it.
 
 ### Fixed
 
