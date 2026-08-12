@@ -100,6 +100,31 @@ describe('connectPowerSync', () => {
   })
 })
 
+// The watchdog only re-classifies on its 30s tick, but the kiosk's offline strip
+// appears after 10s — so a stall that coincides with the network dropping used to
+// stack two banners for ~20s. Reacting to the browser's own events closes that gap.
+describe('connectivity events', () => {
+  function setOnline(value: boolean) {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value })
+  }
+
+  it('re-classifies immediately when the browser goes offline and comes back', async () => {
+    const db = await freshDbModule()
+    await db.connectPowerSync()
+    expect(getSyncHealth().status).toBe('connecting')
+
+    setOnline(false)
+    window.dispatchEvent(new Event('offline'))
+    await Promise.resolve()
+    expect(getSyncHealth().status).toBe('offline')
+
+    setOnline(true)
+    window.dispatchEvent(new Event('online'))
+    await Promise.resolve()
+    expect(getSyncHealth().status).toBe('connecting')
+  })
+})
+
 describe('restartPowerSyncSoft', () => {
   it('disconnects and reconnects the same client', async () => {
     const db = await freshDbModule()

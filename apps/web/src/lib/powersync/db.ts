@@ -57,6 +57,20 @@ async function startClient(): Promise<void> {
   await instance.connect(new WaffledConnector())
   monitor.engineStarted()
   monitor.start()
+  watchConnectivity()
+}
+
+// The watchdog re-classifies on its own (slow) tick, but the kiosk's offline strip
+// appears after ten seconds — so a stall that coincides with the network dropping
+// would stack two banners until the next tick caught up. Reacting to the browser's
+// own connectivity events keeps the two in step.
+let connectivityWatched = false
+function watchConnectivity(): void {
+  if (connectivityWatched || typeof window === 'undefined') return
+  connectivityWatched = true
+  const kick = () => void monitor.tick()
+  window.addEventListener('online', kick)
+  window.addEventListener('offline', kick)
 }
 
 // Stand up the local DB and start streaming this household's rows. Safe to call

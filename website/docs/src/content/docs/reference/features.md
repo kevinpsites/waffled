@@ -331,9 +331,9 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | Offline writes queued + drained on reconnect | 🟡 (calendar) | ✅ | ✅ | ✅ Done (events domain) |
 | Other domains (chores/rewards/goals/lists/meals/photos) | REST | REST | REST | 🟡 REST-only, kept fresh by the in-app refresh bus while online |
 | Offline status + pending-uploads + last-synced indicators | ✅ | ✅ | ✅ | ✅ Done |
-| **Sync watchdog** — detects a wedged sync engine and self-heals it | ✅ | ⬜ | ⬜ | ✅ Done (web) — a stall (online + signed in but not synced for 3 min) triggers a soft reconnect, then a client rebuild, then a replica wipe + re-download, with backoff from 2 min to 16 min; the wipe is skipped while local writes are still queued |
-| **Replica-trust fallback** — the calendar reads over the network when the local copy can't be trusted | ✅ | ⬜ | ⬜ | ✅ Done (web, calendar) — a stalled or never-fully-synced local copy can no longer outrank a good server response, so a wedged engine never renders an empty calendar |
-| **Live Sync (this browser)** card in System Health | ✅ | ⬜ | ⬜ | ✅ Done — distinguishes starting · live · connecting · stalled · failed (with the error) · off, counts watchdog restarts, and offers manual **Restart sync** / **Reset local copy** |
+| **Sync watchdog** — detects a wedged sync engine and self-heals it | ✅ | ⬜ | ⬜ | ✅ Done (web) — **not planned for iOS**, which keeps its existing PowerSync status handling. A stall (online + signed in but not synced for 3 min) triggers a soft reconnect, then a client rebuild, then a replica wipe + re-download, with backoff from 2 min to 16 min; the wipe is skipped while local writes are still queued |
+| **Replica-trust fallback** — the calendar reads over the network when the local copy can't be trusted | ✅ | ⬜ | ⬜ | ✅ Done (web calendar) — **not planned for iOS**. A stalled or never-fully-synced local copy can no longer outrank a good server response, so a wedged engine never renders an empty calendar |
+| **Live Sync (this browser)** card in System Health | ✅ | ⬜ | ⬜ | ✅ Done — web admin surface (like the System Health panel itself). Distinguishes starting · live · connecting · stalled · failed (with the error) · off, counts watchdog restarts, and offers manual **Restart sync** / **Reset local copy** |
 | Kiosk **PWA** + cached last-known state | 🚧 | ❌ N/A | ❌ N/A | 🟡 Web partial (7.1); mobile is a native app |
 | Self-host via **Docker Compose** (`./waffled up`) | ✅ | — | — | ✅ Done |
 | In-container **migrations** (one-shot) | ✅ | — | — | ✅ Done |
