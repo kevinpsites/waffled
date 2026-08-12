@@ -167,8 +167,12 @@ Ranked by value-to-effort:
    REST-only. The URL is now derived from the host each device actually used (honouring
    `x-forwarded-proto`/`x-forwarded-host`) with `POWERSYNC_PORT` applied; an explicit
    `POWERSYNC_PUBLIC_URL` still wins. Ours additionally drops compose's baked-in localhost
-   default (which would have beaten the derive) and stops `./waffled setup` pinning the
-   value outside hostname/TLS mode.
+   default (which would have beaten the derive), stops `./waffled setup` pinning the value
+   outside hostname/TLS mode, carries the fix to **existing** installs via an upgrade
+   bridge that clears a setup-generated pin on `up`/`upgrade`/`rebuild` (hostnames and
+   other deliberate values untouched), and keeps a way to say a deployment has no
+   PowerSync at all (`POWERSYNC_PUBLIC_URL=off` → clients stay REST-only instead of
+   retrying an endpoint that isn't there).
 2. ✅ **`endsAt` validation on events** — **ported, 2026-08-12**, with the fork's version
    corrected in two places: it is enforced in the service functions so all **three** event
    write paths are covered (REST, the PowerSync CRUD sink, quick-add — the fork guarded

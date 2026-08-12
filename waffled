@@ -143,6 +143,44 @@ ensure_powersync_proxy_env() {
   esac
 }
 
+# Return a replacement (empty — "derive it per request") for a POWERSYNC_PUBLIC_URL
+# that an older `./waffled setup` generated, or exit 1 to mean "leave it alone".
+#
+# SAFETY RULE: only a plain-http URL whose host is loopback or a BARE IPv4 address and
+# whose port is this install's POWERSYNC_PORT — precisely the two shapes setup used to
+# write (mode 1 http://localhost:$ps_port, mode 2 http://<lan-ip>:$ps_port), and the
+# two the api can now derive correctly for every device. Everything else is somebody's
+# decision and is never touched: any hostname (mode 3 pins one on purpose, with TLS),
+# https, a different port, a path (a proxy sits in front), `off` (this deployment has
+# no PowerSync), or anything unparseable.
+powersync_url_replacement() {
+  local current="$1" ps_port="$2" host
+  case "$current" in
+    http://*:"$ps_port") host="${current#http://}"; host="${host%:"$ps_port"}" ;;
+    *) return 1 ;;
+  esac
+  case "$host" in
+    localhost) ;;
+    ""|*[!0-9.]*) return 1 ;;   # empty, hostname, IPv6, or a path — not setup's doing
+  esac
+  printf ''
+}
+
+# Upgrade bridge for installs created before the api derived the sync URL itself. The
+# empty value `setup` now writes only reaches NEW installs; without this, every
+# household that ever ran setup keeps pointing its tablet at localhost (or at a LAN IP
+# that DHCP may have reassigned) and gets none of the fix.
+ensure_powersync_url_env() {
+  local current ps_port replacement
+  current="$(env_val POWERSYNC_PUBLIC_URL)"
+  [ -n "$current" ] || return 0
+  ps_port="$(env_val POWERSYNC_PORT)"; ps_port="${ps_port:-8090}"
+  if replacement="$(powersync_url_replacement "$current" "$ps_port")"; then
+    set_env_var POWERSYNC_PUBLIC_URL "$replacement"
+    echo "${c_grn}Cleared the pinned sync URL ($current) — devices now get one they can actually reach.${c_reset}"
+  fi
+}
+
 # Return a replacement only for the exact legacy localhost default. Custom OAuth
 # callbacks belong to the operator because changing one also requires updating the
 # Google Cloud console; those are warned about below, never silently overwritten.
@@ -913,7 +951,7 @@ cmd="${1:-help}"; shift || true
 case "$cmd" in
   up)
     preflight || exit 1
-    ensure_env; ensure_powersync_proxy_env; ensure_google_callback_env; export_build_meta
+    ensure_env; ensure_powersync_proxy_env; ensure_powersync_url_env; ensure_google_callback_env; export_build_meta
     # Default: pull the published images (fast — no local toolchain build) and start.
     # `./waffled up --build [svc]` (dev/bleeding-edge): build the images from source
     # instead, stamping the current git SHA into /healthz + /api/health.
@@ -948,6 +986,7 @@ case "$cmd" in
     preflight || exit 1
     ensure_env
     ensure_powersync_proxy_env
+    ensure_powersync_url_env
     ensure_google_callback_env
     script_before="$(script_checksum)"
     update_repo_for_upgrade || exit 1
@@ -977,7 +1016,7 @@ case "$cmd" in
     ;;
   down)    "${DC[@]}" down "$@" ;;
   restart) "${DC[@]}" restart "$@"; wait_for_services "$@" || true; echo; status || true ;;
-  rebuild) preflight || exit 1; ensure_env; ensure_powersync_proxy_env; ensure_google_callback_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; wait_for_services "$@" || true; echo; status || true ;;
+  rebuild) preflight || exit 1; ensure_env; ensure_powersync_proxy_env; ensure_powersync_url_env; ensure_google_callback_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; wait_for_services "$@" || true; echo; status || true ;;
   logs)    "${DC[@]}" logs -f --tail=120 "$@" ;;
   status|st|ps) status || true ;;
   migrate)

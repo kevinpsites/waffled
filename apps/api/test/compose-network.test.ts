@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
-import { dirname, resolve } from 'node:path'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
@@ -52,6 +54,93 @@ describe('Compose network defaults', () => {
     const cli = await readFile(resolve(root, 'waffled'), 'utf8')
     expect(cli.match(/set_env_var POWERSYNC_PUBLIC_URL ""/g)).toHaveLength(2)
     expect(cli).toContain('set_env_var POWERSYNC_PUBLIC_URL "https://$host:$ps_port"')
+
+    // The public demo box pins its own https sync hostname in the untracked
+    // infra/compose/.env.demo, where the derive would hand out the wrong one. Its
+    // launcher has its own env file and runs none of the ./waffled upgrade bridges,
+    // so nothing here can reach it. (The https shape is protected too — see the
+    // replacement table below.)
+    const demoCli = await readFile(resolve(root, 'waffled-demo'), 'utf8')
+    expect(demoCli).not.toContain('ensure_')
+  })
+
+  // Writing an empty value in `setup` only helps NEW installs. Every household that
+  // ran setup before this release still has the old pinned URL — localhost (mode 1)
+  // or a LAN IP that DHCP may since have reassigned (mode 2) — and would upgrade into
+  // exactly the bug the derive fixes. Clear those on the way in, like the Google
+  // callback bridge above.
+  it('clears a setup-generated sync URL and never a deliberate one', () => {
+    const cli = resolve(root, 'waffled')
+    const cases = [
+      'http://localhost:8090',            // setup mode 1
+      'http://127.0.0.1:8090',            // hand-written equivalent
+      'http://192.168.4.150:8090',        // setup mode 2, stale after a DHCP change
+      'https://sync.example.com',         // operator's own hostname/TLS
+      'https://waffled.example.com:8090', // setup mode 3
+      'http://sync.example.com:8090',     // a hostname is a choice, scheme aside
+      'http://192.168.4.150:9443',        // a port we didn't publish PowerSync on
+      'http://192.168.4.150:8090/sync',   // a path means a proxy in front
+      'off',                              // "this deployment has no PowerSync"
+    ]
+    // Sourcing the CLI resets $@ (it re-parses its own args), so stash ours first.
+    const result = execFileSync('bash', ['-c', `
+      script="$1"; shift; urls=("$@")
+      source "$script" help >/dev/null
+      for url in "\${urls[@]}"; do
+        set +e
+        out="$(powersync_url_replacement "$url" 8090)"; code=$?
+        set -e
+        printf '%s %s [%s]\n' "$url" "$code" "$out"
+      done
+    `, '_', cli, ...cases], { encoding: 'utf8' })
+
+    expect(result).toBe([
+      'http://localhost:8090 0 []',
+      'http://127.0.0.1:8090 0 []',
+      'http://192.168.4.150:8090 0 []',
+      'https://sync.example.com 1 []',
+      'https://waffled.example.com:8090 1 []',
+      'http://sync.example.com:8090 1 []',
+      'http://192.168.4.150:9443 1 []',
+      'http://192.168.4.150:8090/sync 1 []',
+      'off 1 []',
+      '',
+    ].join('\n'))
+  })
+
+  it('rewrites an installed .env in place, honouring its own POWERSYNC_PORT', () => {
+    const cli = resolve(root, 'waffled')
+    const dir = mkdtempSync(join(tmpdir(), 'waffled-env-'))
+    const envFile = join(dir, '.env')
+    writeFileSync(envFile, [
+      'POSTGRES_PASSWORD=keep-me',
+      'POWERSYNC_PORT=9443',
+      'POWERSYNC_PUBLIC_URL=http://192.168.4.150:9443',
+      '',
+    ].join('\n'))
+
+    // ENV_FILE is set after sourcing, so the real infra/compose/.env is never touched.
+    const out = execFileSync('bash', ['-c', `
+      script="$1"; env_file="$2"
+      source "$script" help >/dev/null
+      ENV_FILE="$env_file"
+      ensure_powersync_url_env
+    `, '_', cli, envFile], { encoding: 'utf8' })
+
+    const after = readFileSync(envFile, 'utf8')
+    expect(after).toContain('POWERSYNC_PUBLIC_URL=\n')
+    expect(after).toContain('POSTGRES_PASSWORD=keep-me')
+    expect(out).toContain('192.168.4.150:9443')
+
+    // A second pass is a no-op — nothing left to clear, and no stray key appended.
+    writeFileSync(envFile, 'POWERSYNC_PORT=8090\n')
+    execFileSync('bash', ['-c', `
+      script="$1"; env_file="$2"
+      source "$script" help >/dev/null
+      ENV_FILE="$env_file"
+      ensure_powersync_url_env
+    `, '_', cli, envFile], { encoding: 'utf8' })
+    expect(readFileSync(envFile, 'utf8')).toBe('POWERSYNC_PORT=8090\n')
   })
 
   it('keeps the Google OAuth callback behind the public Caddy ingress', async () => {
@@ -67,7 +156,7 @@ describe('Compose network defaults', () => {
     const cli = await readFile(resolve(root, 'waffled'), 'utf8')
     expect(cli.match(/set_env_var POWERSYNC_CADDY_ADDRESS/g)?.length).toBeGreaterThanOrEqual(3)
     expect(cli).toContain('set_env_var POWERSYNC_CADDY_ADDRESS "https://$host:8090"')
-    expect(cli).toContain('ensure_env; ensure_powersync_proxy_env; ensure_google_callback_env; export_build_meta')
+    expect(cli).toContain('ensure_env; ensure_powersync_proxy_env; ensure_powersync_url_env; ensure_google_callback_env; export_build_meta')
   })
 
   it('migrates only the legacy Google callback and preserves custom callbacks', () => {

@@ -119,7 +119,8 @@ re-consented. If any guide tells you to wipe a volume, stop. Restore from a back
 Almost always one of two things: a missing `POWERSYNC_JWT_PRIVATE_KEY` on an older/manual
 installation, or a `POWERSYNC_PUBLIC_URL` pinned to something clients can't actually reach
 (e.g. `localhost`, or a LAN IP the machine no longer has) — on a home network, clearing it lets
-Waffled derive the right address per device.
+Waffled derive the right address per device. The next `./waffled up` or `./waffled upgrade`
+clears a pinned address Waffled generated itself, so upgrading is usually enough.
 See [Troubleshooting → PowerSync offline](/operations/troubleshooting/#powersync-offline-banner).
 
 ## Contributing & project

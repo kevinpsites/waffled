@@ -88,7 +88,9 @@ proxy two upstreams and set the public URLs to match:
 - **PowerSync:** proxy a second hostname/port to Caddy's PowerSync listener (`8090`), and
   set `POWERSYNC_PUBLIC_URL` to that public address.
 
-This is the case where you **must** set `POWERSYNC_PUBLIC_URL` by hand. Left empty, Waffled
+This is the case where you **must** set `POWERSYNC_PUBLIC_URL` by hand — a hostname you set
+is never rewritten for you (only a plain-HTTP `localhost`/LAN-IP address that an older
+`./waffled setup` generated is cleared on upgrade). Left empty, Waffled
 derives the sync URL from the address the browser used — so an app reached over HTTPS at
 `https://home.example.com` would be told to sync at `https://home.example.com:8090`, which is
 wrong unless your outer proxy really does serve TLS there. Pin it to the address you actually
