@@ -56,10 +56,10 @@ This is the bigger finding — roughly half the diff is unlisted.
   and a "Separated days" option.
 - **Custom member colors + household "Event style" setting** — per-person hex with
   server-side validation (`persons.ts` +72), family color for whole-family events,
-  fully-tinted event chips. **Ported (web).** We took the custom swatch + `HEX_COLOR`
-  validation, the family color, the `eventStyle` display setting, and made **solid the
-  default**; we deliberately left their color *themes* / Appearance theme set behind.
-  iOS parity is the one piece still outstanding.
+  fully-tinted event chips. **Ported in full (web + iPhone/iPad).** We took the custom
+  swatch + `HEX_COLOR` validation, the family color, and the `eventStyle` display setting,
+  and made **solid the default**; we deliberately left their color *themes* / Appearance
+  theme set behind.
 - **Rewards card** on the Today dashboard.
 - **Recipe editor rework** (+227/-…), clearer add-recipe flow in Meals.
 
@@ -76,9 +76,10 @@ This is the bigger finding — roughly half the diff is unlisted.
 - **Event `endsAt` validation** in `events.ts` — rejects `endsAt <= startsAt` on POST and
   PATCH. Small, obviously correct, and we don't have it.
 
-## 4. The three features being ported upstream
+## 4. The first three features ported upstream — Outlook/M365, ICS feeds, Share list
 
-See the accompanying PR. Summary of what each actually costs:
+These shipped in **PR #149** (server + web), with iPhone/iPad parity in **PR #151**. Kept
+here as the record of what each actually cost:
 
 ### Outlook / Microsoft 365 sync — *medium, well-built*
 
@@ -161,7 +162,7 @@ no status probe. The button is unconditionally "Share list". Only new dependency
 
 ## 5. Things we should take regardless
 
-Ranked by value-to-effort:
+Ranked by value-to-effort. **All three have since shipped** — see §7.
 
 1. **Per-request PowerSync URL derivation** (`2d08c2c0`). Every client was handed
    `POWERSYNC_PUBLIC_URL`, which compose defaults to `http://localhost:8090` — only
@@ -229,19 +230,31 @@ logic is plain and testable — 318 lines of tests. It:
 - distinguishes `starting` (WASM/OPFS boot takes seconds) and `failed` (with the error) from
   `off`, because users were reading the boot window as "sync is off".
 
-This is the fork change I'd most want upstream after the calendar work. It is self-contained
-and it fixes a failure mode we have no defence against today.
+This was the fork change I most wanted upstream after the calendar work — self-contained,
+and it fixed a failure mode we had no defence against. **Ported in PR #156.**
 
-## 7. Recommended sequencing
+## 7. Sequencing — where we actually got to
 
-1. **Now (this PR):** Outlook/M365, ICS feeds, Share list.
-2. **Next, small and high value:** per-request PowerSync URL derive, `endsAt` validation.
-3. **Then, worth a dedicated PR:** the sync watchdog + `isReplicaTrusted()` fallback.
-4. **Deliberate decision needed:** the Today board v2 zone layout. It's a real improvement
+**Shipped:**
+
+1. **Outlook/M365, ICS feeds, Share list** — PR #149 (server + web), PR #151 (iPhone/iPad).
+2. **Per-request PowerSync URL derive** and **`endsAt` validation** — PRs #154 / #155.
+3. **The sync watchdog + `isReplicaTrusted()` fallback** — PR #156, plus three
+   recipe-editor bug fixes that came out of the same review pass.
+4. **Calendar color control** — custom hex swatch, family color, and the `eventStyle`
+   setting with **solid** as the default: PR #157 (server + web), and iPhone/iPad parity
+   in the PR that follows it.
+
+**Still open:**
+
+5. **Deliberate decision needed:** the Today board v2 zone layout. It's a real improvement
    but it's a contract change and a big merge; it also has no iOS counterpart, which would
    widen the web/mobile gap.
-5. **Probably skip:** Walmart matching (dead), Android TWA (explicitly not wanted), the
+6. **Not taken:** their color *themes* / Appearance theme set — we shipped our own dark
+   mode instead, and the `eventStyle` work above covers the calendar half of it.
+7. **Probably skip:** Walmart matching (dead), Android TWA (explicitly not wanted), the
    PowerShell server-move kit and `update.ps1` (fork-specific workflow), wake-word binaries.
+8. **Understood but not ported** (see §6): Smart Home / Home Assistant and kiosk voice.
 
 ## 8. Note for whoever merges upstream into the fork later
 

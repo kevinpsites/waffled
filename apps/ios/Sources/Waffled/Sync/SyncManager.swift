@@ -20,7 +20,24 @@ final class SyncManager {
     enum Status: String { case idle, connecting, connected, offline }
 
     private(set) var status: Status = .idle
-    private(set) var members: [SyncedMember] = []
+    private(set) var members: [SyncedMember] = [] { didSet { rebuildEventPalette() } }
+
+    // MARK: event coloring (settings.display)
+
+    /// How the calendar paints event chips, and the whole-family color — read from
+    /// `households.settings.display` alongside the module flags. Views read
+    /// `eventPalette`, which is rebuilt whenever the members or either setting change
+    /// rather than recomputed per render (CLAUDE.md's "precompute in the model" rule —
+    /// the calendar grids ask for a color once per event per frame).
+    private(set) var eventStyle: EventStyle = .solid { didSet { rebuildEventPalette() } }
+    private(set) var familyColorHex = EventPalette.defaultFamilyHex { didSet { rebuildEventPalette() } }
+    private(set) var eventPalette = EventPalette()
+
+    private func rebuildEventPalette() {
+        eventPalette = EventPalette(memberIds: Set(members.map(\.id)),
+                                    familyHex: familyColorHex, style: eventStyle)
+    }
+
     /// Every synced event (PowerSync streams the whole household, incl. personal ones).
     /// The visible slice + day index are rebuilt in `didSet`, NOT computed per read —
     /// the calendar/Today views read them several times per render (see CLAUDE.md's
@@ -109,6 +126,12 @@ final class SyncManager {
         if let m = try? await api.householdModules() {
             moduleFlags = m.modules
             rewardsSubEnabled = m.rewards
+            // Same `/api/household` read carries settings.display, so the calendar's
+            // event style + family color refresh with the module flags — including right
+            // after a Settings save, which is what restyles open surfaces live (the web
+            // does this via emitHouseholdChanged()).
+            eventStyle = EventStyle.resolve(m.eventStyle)
+            familyColorHex = EventPalette.normalizedFamilyHex(m.familyColorHex)
             modulesRev += 1
         }
     }

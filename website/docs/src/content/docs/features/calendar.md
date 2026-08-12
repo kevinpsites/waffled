@@ -58,8 +58,8 @@ everything else is shared and adapts by size.
 
 Color is how the calendar answers "whose thing is this?" from across the room, so
 it's worth a minute in **Settings → Family & People** (admins). Both settings below
-are **web/kiosk only** today — the iPhone and iPad apps keep their own chip styling
-and always color an event by its owner.
+live with the household, so the browser, the wall tablet and everyone's phone all
+follow them.
 
 ### Event style — solid or tinted
 
@@ -76,6 +76,11 @@ agenda views (and the Today dashboard's agenda card):
 The choice belongs to the **household**, not the device, so every screen in the house
 agrees. Flipping it restyles open screens immediately — no reload.
 
+The style applies to chips that have a **background** — month-cell chips, the week
+and day timeline blocks, all-day pills. The slim accent bars in the agenda and on the
+Today dashboard, and the dots in a month cell, take the event's *color* but have no
+fill to tint, so they look the same either way.
+
 :::note
 Upgrading an existing household? Solid is the default, so your calendar will look
 bolder than it used to. Switch **Event style** to *Tinted* to get the old look back.
@@ -83,9 +88,11 @@ bolder than it used to. Switch **Event style** to *Tinted* to get the old look b
 
 ### Person colors, and one for the whole family
 
-Every member has a color (**Settings → Family & People →** tap a person **→ Color**,
-or your own under **My Profile**). Beyond the eight presets there's a ninth **custom**
-swatch that opens your device's color picker, so you're not stuck with the palette.
+Every member has a color (**Settings → Family & People →** tap a person **→ Color**).
+Beyond the eight presets there's a ninth **custom** swatch that opens your device's
+color picker, so you're not stuck with the palette. To change **your own** color
+without being an admin, use **My Profile** on the web, or **Settings → Households**
+on iPhone/iPad.
 
 An event is colored by **who it belongs to**:
 
@@ -100,6 +107,9 @@ Family color**) and starts as a warm orange, deliberately outside the member pal
 Before this existed, a whole-family dinner just borrowed whichever member owned it,
 which made the calendar read as "Dad's dinner" instead of "our dinner". A household
 with only one member never uses it — there's no whole-vs-part distinction to draw.
+
+Member **avatars** always stay the person's own color, on every surface: the family
+color describes the *event*, not the people on it.
 
 ## Calendar feeds (ICS)
 

@@ -10,6 +10,9 @@ struct FamilyPeopleSettingsView: View {
     @State private var editor: PersonEditor?
     @State private var hName = ""
     @State private var hLocation = ""
+    /// The family color while the picker is open, plus its debounced save (see `familyColor`).
+    @State private var familyHex = EventPalette.defaultFamilyHex
+    @State private var familySave: Task<Void, Never>?
 
     private let api = WaffledAPI()
 
@@ -134,6 +137,32 @@ struct FamilyPeopleSettingsView: View {
                         .submitLabel(.done)
                         .onSubmit { commit(["location": .string(hLocation.trimmingCharacters(in: .whitespaces))]) }
                 }
+                // How the calendar paints event chips, and the color for events that
+                // involve the whole family (households.settings.display) — the same two
+                // rows the web puts here. Saving reloads the household so every open
+                // calendar surface restyles without a relaunch.
+                Divider().background(WF.hair)
+                fieldRow("🎨", "Event style") {
+                    Menu {
+                        ForEach(EventStyle.allCases) { s in
+                            Button(s.label) { Task { await saveDisplay(eventStyle: s) } }
+                        }
+                    } label: { WaffledSettingsMenuLabel(value: sync.eventStyle.label) }
+                }
+                Divider().background(WF.hair)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        Text("👨‍👩‍👧‍👦").font(.system(size: 16))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Family color").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                            Text("Events with the whole family use this color")
+                                .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    ColorSwatchPicker(hex: familyColor, size: 26)
+                }
+                .padding(.vertical, 12)
             }
             .padding(.horizontal, 14)
             .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
@@ -161,11 +190,41 @@ struct FamilyPeopleSettingsView: View {
     private func load() async {
         settings = try? await api.householdSettings()
         if let h = settings?.household { hName = h.name; hLocation = h.location ?? "" }
+        // settings.display isn't on /api/household/settings — SyncManager already holds it
+        // (loaded with the module flags), so seed the picker from there.
+        await sync.reloadModules()
+        familyHex = sync.familyColorHex
         loading = false
     }
 
     private func commit(_ body: [String: JSONValue]) {
         Task { _ = await sync.updateHousehold(body); await load() }
+    }
+
+    // MARK: display preferences (settings.display)
+
+    /// The family color the picker shows. Local state, because the native `ColorPicker`
+    /// streams a new value continuously while the user drags the wheel — writing straight
+    /// through would fire a PATCH per frame. The swatch updates instantly and the save is
+    /// debounced until the color settles.
+    private var familyColor: Binding<String> {
+        Binding(get: { familyHex }, set: { hex in
+            familyHex = hex
+            familySave?.cancel()
+            familySave = Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                await saveDisplay(familyColorHex: hex)
+            }
+        })
+    }
+
+    private func saveDisplay(eventStyle: EventStyle? = nil, familyColorHex: String? = nil) async {
+        // The API validates the hex; a rejected save just leaves the stored value in place
+        // (reloadModules re-reads it), so there's no local rule here to drift from it.
+        try? await api.setHouseholdDisplay(eventStyle: eventStyle, familyColorHex: familyColorHex)
+        await sync.reloadModules()
+        familyHex = sync.familyColorHex
     }
 }
 

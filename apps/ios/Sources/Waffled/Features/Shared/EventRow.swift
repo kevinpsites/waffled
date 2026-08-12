@@ -3,13 +3,18 @@ import SwiftUI
 /// One agenda row — owner color bar, title, time, owner avatar. Shared by the
 /// Today and Calendar surfaces; reads a `SyncedEvent` straight from the mirror.
 struct EventRow: View {
+    /// Read from the environment rather than threaded through, so every caller (Today on
+    /// iPhone today, whatever reuses this next) gets the family color without a signature
+    /// change. The avatar deliberately keeps the *owner's* color — that's identity, not
+    /// the event's chip color.
+    @Environment(SyncManager.self) private var sync
     let event: SyncedEvent
     let tz: TimeZone
 
     var body: some View {
         HStack(spacing: 12) {
             RoundedRectangle(cornerRadius: 99)
-                .fill(Color(hexString: event.colorHex) ?? WF.ink3)
+                .fill(sync.eventPalette.color(for: event))
                 .frame(width: 4, height: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text(event.title)

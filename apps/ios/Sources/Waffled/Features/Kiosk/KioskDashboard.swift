@@ -459,7 +459,8 @@ struct KioskDashboard: View {
 
     private func kioskEventRow(_ ev: SyncedEvent) -> some View {
         HStack(spacing: 14) {
-            RoundedRectangle(cornerRadius: 99).fill(Color(hexString: ev.colorHex) ?? WF.ink3).frame(width: 5, height: 40)
+            // The iPad twin of EventRow's bar — family-aware; the avatar keeps the owner's color.
+            RoundedRectangle(cornerRadius: 99).fill(sync.eventPalette.color(for: ev)).frame(width: 5, height: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text(ev.title).font(.system(size: 21, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 Text(timeText(ev)).font(.system(size: 15)).foregroundStyle(WF.ink3)

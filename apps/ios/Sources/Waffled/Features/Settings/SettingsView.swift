@@ -6,17 +6,40 @@ enum WaffledSwatch {
     static let all = ["#2F7FED", "#EC6049", "#25A368", "#8B5CF6", "#E0A500", "#EC4899", "#14B8A6", "#6B7280"]
 }
 
-/// A row of color swatches with the current one ringed.
+/// A row of color swatches with the current one ringed, plus a ninth **custom** swatch
+/// so colors aren't limited to the eight presets (matches the web's `ColorPicker`).
+///
+/// The custom swatch is SwiftUI's native `ColorPicker` well rather than a hand-rolled
+/// wheel — "a native control first", and it already renders as a swatch-sized circle.
+/// Its value is converted through `wfHexString`, which clamps to sRGB `#RRGGBB` so the
+/// picker can never hand the API a value its `HEX_COLOR` guard would 400 on.
 struct ColorSwatchPicker: View {
     @Binding var hex: String
+    var size: CGFloat = 30
+
+    /// True once the color isn't one of the eight presets — rings the custom well instead.
+    private var isCustom: Bool {
+        EventPalette.isHex(hex) && !WaffledSwatch.all.contains { $0.lowercased() == hex.lowercased() }
+    }
+
+    private var custom: Binding<Color> {
+        Binding(get: { Color(hexString: hex) ?? WF.ink3 },
+                set: { hex = UIColor($0).wfHexString })
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             ForEach(WaffledSwatch.all, id: \.self) { s in
                 Circle().fill(Color(hexString: s) ?? WF.ink3)
-                    .frame(width: 30, height: 30)
+                    .frame(width: size, height: size)
                     .overlay(Circle().strokeBorder(hex.lowercased() == s.lowercased() ? WF.ink : .clear, lineWidth: 2.5).padding(-3))
                     .onTapGesture { hex = s }
             }
+            ColorPicker("Custom color", selection: custom, supportsOpacity: false)
+                .labelsHidden()
+                .frame(width: size, height: size)
+                .overlay(Circle().strokeBorder(isCustom ? WF.ink : .clear, lineWidth: 2.5).padding(-3))
+                .accessibilityLabel("Custom color")
             Spacer(minLength: 0)
         }
     }

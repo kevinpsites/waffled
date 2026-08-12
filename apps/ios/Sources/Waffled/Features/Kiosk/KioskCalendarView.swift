@@ -296,14 +296,14 @@ struct KioskCalendarView: View {
     }
 
     private func eventChip(_ ev: SyncedEvent) -> some View {
-        let color = Color(hexString: ev.colorHex) ?? WF.ink3
+        let paint = sync.eventPalette.chip(for: ev)
         return HStack(spacing: 5) {
-            RoundedRectangle(cornerRadius: 99).fill(color).frame(width: 3, height: 13)
-            Text(chipLabel(ev)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+            RoundedRectangle(cornerRadius: 99).fill(paint.color).frame(width: 3, height: 13)
+            Text(chipLabel(ev)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 5).padding(.vertical, 2)
-        .background(color.opacity(0.12)).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .background(paint.background).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
     /// Month-cell chips show the title only — in a narrow cell a leading time pushes the
@@ -515,10 +515,13 @@ struct KioskCalendarView: View {
             .sorted { $0.count > $1.count }
     }
 
+    /// Distinct event colors for the mini-month dots — a whole-family event contributes
+    /// the family color, not each attendee's.
     private func dotColors(_ events: [SyncedEvent]) -> [String] {
         var seen = Set<String>(); var colors: [String] = []
+        let palette = sync.eventPalette
         for e in events {
-            let hex = e.colorHex ?? "#A6A29B"
+            let hex = palette.hex(for: e) ?? "#A6A29B"
             if seen.insert(hex).inserted { colors.append(hex) }
         }
         return colors
@@ -585,6 +588,8 @@ struct KioskCalendarView: View {
 /// A web-like time grid: an hour axis with one positioned-event-block column per day.
 /// Used by the Week (7 columns) and Day (1 column) calendar modes.
 struct CalTimeGrid: View {
+    /// For the family-aware event color + the household's chip style.
+    @Environment(SyncManager.self) private var sync
     let days: [String]
     let tz: TimeZone
     /// Prebuilt day → ordered events index (`SyncManager.eventsByDay`, possibly
@@ -745,12 +750,14 @@ struct CalTimeGrid: View {
         .background(WF.warnT).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
+    /// The all-day pill above the week/day grid — a chip with a background, so the
+    /// household's event style applies.
     private func miniChip(_ ev: SyncedEvent) -> some View {
-        let color = Color(hexString: ev.colorHex) ?? WF.ink3
-        return Text(ev.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+        let paint = sync.eventPalette.chip(for: ev)
+        return Text(ev.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
             .padding(.horizontal, 6).padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(color.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(paint.background).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
     /// Live red current-time indicator: a dot at the gutter edge + a rule across the
@@ -830,22 +837,23 @@ struct CalTimeGrid: View {
             let durMin = ev.endsAt.map { max(30, $0.timeIntervalSince(start) / 60) } ?? 60
             let height = max(26, CGFloat(durMin) / 60 * hourHeight - 3)
             let laneW = colWidth / CGFloat(placed.lanes)
-            let color = Color(hexString: ev.colorHex) ?? WF.ink3
+            let paint = sync.eventPalette.chip(for: ev)
             Button { onTapEvent(ev) } label: {
                 HStack(spacing: 5) {
-                    RoundedRectangle(cornerRadius: 99).fill(color).frame(width: 3)
+                    RoundedRectangle(cornerRadius: 99).fill(paint.color).frame(width: 3)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(ev.title).font(.system(size: placed.lanes > 1 ? 12 : 13, weight: .bold))
-                            .foregroundStyle(WF.ink).lineLimit(placed.lanes > 2 ? 1 : 2)
+                            .foregroundStyle(paint.foreground).lineLimit(placed.lanes > 2 ? 1 : 2)
                         if height > 38, placed.lanes < 3 {
-                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 11, weight: .medium)).foregroundStyle(WF.ink3)
+                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(paint.foreground.opacity(0.75))
                         }
                     }
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 6).padding(.vertical, 4)
                 .frame(width: max(0, laneW - 3), height: height, alignment: .topLeading)
-                .background(color.opacity(0.14))
+                .background(paint.background)
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(WF.card, lineWidth: 1))
             }

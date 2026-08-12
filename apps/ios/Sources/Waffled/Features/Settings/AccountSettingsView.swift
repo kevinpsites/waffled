@@ -17,6 +17,12 @@ struct AccountSettingsView: View {
     @State private var acceptingId: String?     // invite id mid-accept (spinner)
     @State private var actionError: String?
 
+    // Your own calendar color: the pending pick, its debounced save, and the server's
+    // complaint if it rejects one.
+    @State private var pendingColor: String?
+    @State private var colorSave: Task<Void, Never>?
+    @State private var colorError: String?
+
     private let api = WaffledAPI()
 
     private var me: WaffledAPI.HouseholdSettings.Member? {
@@ -43,7 +49,7 @@ struct AccountSettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 SectionLabel(text: "Signed in as")
                 HStack(spacing: 12) {
-                    Avatar(colorHex: me?.colorHex, emoji: me?.avatarEmoji ?? "🙂", size: 44)
+                    Avatar(colorHex: myColor, emoji: me?.avatarEmoji ?? "🙂", size: 44)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(me?.name ?? "—").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
                         HStack(spacing: 6) {
@@ -54,7 +60,49 @@ struct AccountSettingsView: View {
                     }
                     Spacer(minLength: 0)
                 }
+                // Your own calendar color (the web's My Profile row). Goes through
+                // /api/account/profile, so a teen or kid can set it without an admin —
+                // Family & People, the only other place a color can be edited, is admin-only.
+                if me != nil {
+                    Divider().background(WF.hair)
+                    SectionLabel(text: "Your color")
+                    ColorSwatchPicker(hex: myColorBinding, size: 28)
+                    if let colorError {
+                        Text(colorError).font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.danger)
+                    }
+                }
             }
+        }
+    }
+
+    /// The color the card shows: the pending pick while the picker is open, else the
+    /// server's. Keeps the avatar in step with the swatch before the save lands.
+    private var myColor: String? { pendingColor ?? me?.colorHex }
+
+    /// Debounced like the family color — the native picker streams values while dragging.
+    private var myColorBinding: Binding<String> {
+        Binding(get: { myColor ?? WaffledSwatch.all[0] }, set: { hex in
+            pendingColor = hex
+            colorSave?.cancel()
+            colorSave = Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                await saveMyColor(hex)
+            }
+        })
+    }
+
+    private func saveMyColor(_ hex: String) async {
+        colorError = nil
+        do {
+            try await api.updateOwnProfile(["colorHex": .string(hex)])
+            await load()
+            pendingColor = nil
+        } catch {
+            // The server owns hex validation (HEX_COLOR); surface its message and drop the
+            // pending pick so the card falls back to the stored color.
+            colorError = APIErrorText.message(for: error, fallback: "Couldn’t save that color.")
+            pendingColor = nil
         }
     }
 
