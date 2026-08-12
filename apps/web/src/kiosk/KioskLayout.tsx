@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation } from 'react-router'
 import { Rail } from './components/Rail'
 import { Topbar } from './components/Topbar'
 import { OfflineBanner } from './components/OfflineBanner'
+import { SyncHealthBanner } from './components/SyncHealthBanner'
 import { UpdateModal } from './components/UpdateModal'
 import { TopbarSlotProvider } from './topbar-slot'
 import { Icon } from './icons'
@@ -63,6 +64,7 @@ export function KioskLayout() {
         <Rail mobileOpen={navOpen} onNavigate={() => setNavOpen(false)} />
         <div className="kiosk-main">
           <OfflineBanner />
+          <SyncHealthBanner />
           <Topbar />
           <Outlet />
         </div>

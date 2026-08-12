@@ -29,6 +29,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   iPhone and iPad trees, and event detail). Server-side `#RRGGBB` validation on every route
   that writes a color, with a member's pre-existing value kept so it can't block their save;
   iOS also lets a non-admin set their own color from **Settings → Households**.
+- **Sync watchdog (web)** — the kiosk supervises its own PowerSync engine. A stall (online
+  and signed in, but not connected+synced for 3 min) triggers an escalating self-heal —
+  reconnect, then rebuild the client, then wipe and re-download the local replica — backing
+  off from 2 min to a 16 min ceiling, and never wiping while local writes are still queued.
+  The calendar hooks ask `isReplicaTrusted()` before letting the replica outrank REST, so a
+  wedged engine can no longer render a blank calendar; a stalled-sync strip and a **Live
+  Sync (this browser)** card in System Health (starting · live · stalled · failed-with-error
+  · off, plus manual restart / reset) make the state legible. Ported from the downstream
+  fork, which hit exactly this failure in production. **Web only** — iOS keeps its existing
+  PowerSync status handling.
 - **Dark mode (web/kiosk + iPhone/iPad)** — a warm dark theme alongside light, chosen from
   **Settings → Appearance** (Light / Dark / Match system), saved per device and applied instantly,
   on every surface. Built on a consolidated design-token layer (web: one canonical `:root` + a
@@ -200,7 +210,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   the full list of open items.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
   are REST + live-refresh bus, plus a **cross-device refresh** for lists (foreground + ~20s
-  poll on the open list) so a family member's edit lands without a manual reload.
+  poll on the open list) so a family member's edit lands without a manual reload. The
+  replica-trust fallback (see the sync watchdog under **Done**) therefore only applies to
+  the calendar hooks today — every domain added to PowerSync later should adopt the same
+  rule.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend
   blips.
 - **Public ingress** (7.3) — configurable (Caddy auto-TLS / Cloudflare Tunnel), operator's

@@ -335,6 +335,9 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | Offline writes queued + drained on reconnect | 🟡 (calendar) | ✅ | ✅ | ✅ Done (events domain) |
 | Other domains (chores/rewards/goals/lists/meals/photos) | REST | REST | REST | 🟡 REST-only, kept fresh by the in-app refresh bus while online |
 | Offline status + pending-uploads + last-synced indicators | ✅ | ✅ | ✅ | ✅ Done |
+| **Sync watchdog** — detects a wedged sync engine and self-heals it | ✅ | ⬜ | ⬜ | ✅ Done (web) — **not planned for iOS**, which keeps its existing PowerSync status handling. A stall (online + signed in but not synced for 3 min) triggers a soft reconnect, then a client rebuild, then a replica wipe + re-download, with backoff from 2 min to 16 min. The wipe is skipped whenever local writes might still be queued — including when a wedged client can't report its queue — and is tried at most once per stall (re-armed by a fully successful sync), so a long outage can't wipe the replica repeatedly. An engine that crashes on boot is retried on the same backoff, rebuild-only |
+| **Replica-trust fallback** — the calendar reads over the network when the local copy can't be trusted | ✅ | ⬜ | ⬜ | ✅ Done (web calendar) — **not planned for iOS**. A stalled or never-fully-synced local copy can no longer outrank a good server response, so a wedged engine never renders an empty calendar |
+| **Live Sync (this browser)** card in System Health | ✅ | ⬜ | ⬜ | ✅ Done — web admin surface (like the System Health panel itself). Distinguishes starting · live · connecting · stalled · failed (with the error) · off, counts watchdog restarts, and offers manual **Restart sync** / **Reset local copy** |
 | Kiosk **PWA** + cached last-known state | 🚧 | ❌ N/A | ❌ N/A | 🟡 Web partial (7.1); mobile is a native app |
 | Self-host via **Docker Compose** (`./waffled up`) | ✅ | — | — | ✅ Done |
 | In-container **migrations** (one-shot) | ✅ | — | — | ✅ Done |
@@ -362,6 +365,11 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 > rewards, goals, meals, photos) are REST-backed and need connectivity, kept in sync by
 > the in-app live-refresh bus while online. Bringing **chores** into PowerSync is the
 > prerequisite for offline chores *and* iOS chore reminders.
+>
+> The **replica-trust fallback** applies to the web calendar, because that's the only web
+> surface that reads from the local copy today. As other domains join PowerSync, they
+> should adopt the same rule: never let an untrusted local copy outrank a good server
+> response.
 
 ---
 

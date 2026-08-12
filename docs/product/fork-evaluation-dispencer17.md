@@ -183,9 +183,10 @@ Ranked by value-to-effort. **All three have since shipped** — see §7.
    only REST), and a PATCH carrying only `endsAt` is compared against the **stored**
    `startsAt` (the fork's condition skipped validation entirely in that case). The
    PowerSync path drops the op rather than erroring, since PowerSync retries forever.
-3. **Sync watchdog** — see §6.
+3. ✅ **Sync watchdog** — **ported, 2026-08-12** (see §6). Our own adaptation, not a
+   cherry-pick.
 
-## 6. The three features to understand (not ported)
+## 6. The three features to understand (two not ported)
 
 ### Smart Home (Home Assistant)
 
@@ -221,7 +222,7 @@ Clean, and the security model is the good part:
   `onnxruntime-web` + two `@picovoice/*` packages. If we ever adopt voice, I'd take
   push-to-talk and leave the wake word (and its binaries) behind, at least initially.
 
-### Sync watchdog (web)
+### Sync watchdog (web) — **PORTED**
 
 Prompted by a real incident (2026-07-20): the PowerSync web client stopped opening sync
 streams after a large server-side delete batch — no error, no reconnect, an empty replica
@@ -240,8 +241,16 @@ logic is plain and testable — 318 lines of tests. It:
 - distinguishes `starting` (WASM/OPFS boot takes seconds) and `failed` (with the error) from
   `off`, because users were reading the boot window as "sync is off".
 
-This was the fork change I most wanted upstream after the calendar work — self-contained,
-and it fixed a failure mode we had no defence against. **Ported in PR #155.**
+This was the fork change I most wanted upstream after the calendar work, and it has now
+landed — re-implemented against our current `apps/web/src/lib/powersync/` layout rather
+than cherry-picked. All five parts above shipped: the status store, stall detection, the
+restart ladder (with a third rung that wipes the local replica, guarded by the pending-CRUD
+check), `isReplicaTrusted()` wired into the calendar hooks, and the honest `starting` /
+`failed` states on a **Live Sync (this browser)** card in System Health plus a stalled-sync
+banner. The replica-trust fallback covers the **calendar** hooks, which are the only web
+hooks that read from the replica today; the PowerSync schema carries only
+events/event_participants/event_occurrences/persons/households, so there is nothing else to
+extend it to until another domain joins. **Ported in PR #155.**
 
 ## 7. Sequencing — where we actually got to
 
