@@ -251,12 +251,19 @@ private final class FakePlateServer: @unchecked Sendable {
     /// Schedule and Add-to-list.
     @Test func servingsTappedDuringTheCreateStillReachTheServer() async {
         let server = FakePlateServer()
+        let arrived = Gate()
         let opened = Gate()
-        server.gate = { await opened.wait() }
+        // Two gates, not one: `arrived` reports that the create has actually reached the
+        // server, `opened` releases it. Starting both with `async let` and hoping the add
+        // wins made this a scheduling race — when the bump ran first there was no create
+        // in flight to fold it into, so no PATCH was sent and the test failed. Rare when
+        // the machine is idle, regular once the release checks saturate it.
+        server.gate = { await arrived.open(); await opened.wait() }
         let m = MealBuilderModel(api: server.api())
 
         async let add: Void = m.addRecipe("chicken", role: PlateRoles.main)   // starts the create
-        async let bump: Void = m.changeServings(6)                            // …mid-flight
+        await arrived.wait()                                                  // …now genuinely in flight
+        async let bump: Void = m.changeServings(6)                            // …so this lands mid-create
         await opened.open()
         _ = await (add, bump)
 
