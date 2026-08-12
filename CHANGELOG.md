@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.13.0] - 2026-08-12
+
+### Added
+
 - **Two-way Outlook / Microsoft 365 calendar sync, right beside Google.** Connect an
   Outlook or Microsoft 365 account in Settings → Calendars — on the web, iPhone or iPad —
   and it syncs both ways on the
@@ -1729,7 +1737,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/kevinpsites/waffled/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/kevinpsites/waffled/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/kevinpsites/waffled/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kevinpsites/waffled/compare/v0.9.0...v0.10.0
