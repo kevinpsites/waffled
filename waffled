@@ -546,10 +546,11 @@ release_project_checks() {
   # own machine, so spending its cores is free; lanes are grouped by the resource they
   # contend for, and balanced so no one lane dominates:
   #
-  #   ios     xcodegen + xcodebuild            (phase 1, ALONE — see below)
-  #   docker  API tests, Docker e2e            (serial — they share the Docker daemon)
-  #   web     web typecheck, web tests         (the single longest Node step)
-  #   misc    everything else, all quick
+  #   ios      xcodegen + xcodebuild      (phase 1, ALONE — see below)
+  #   browser  Playwright smoke tests     (phase 1, ALONE — same reason)
+  #   docker   API tests, Docker e2e      (serial — they share the Docker daemon)
+  #   web      web tests                  (the single longest Node step)
+  #   misc     everything else, all quick
   #
   # Each step still runs even after an earlier one in its lane fails (`|| true`), so one
   # pass reports every problem — that is why run_release_step records failures to a file
@@ -589,17 +590,28 @@ release_project_checks() {
   }
 
   lane_web() {
-    run_release_step "web typecheck" "$ROOT/apps/web" npm run --silent typecheck || true
     run_release_step "web tests" "$ROOT/apps/web" npm test --silent || true
   }
 
+  # `web typecheck` (tsc -b --noEmit) and `web production build` (tsc -b && vite build)
+  # both write apps/web/tsconfig.tsbuildinfo. They live in the SAME lane so they are
+  # ordered against each other — split across lanes they raced on that file.
   lane_misc() {
     run_release_step "CLI tests" "$ROOT" bash tests/waffled.test.sh || true
     run_release_step "migration numbering" "$ROOT/apps/api" npm run --silent check:migrations || true
     run_release_step "API typecheck" "$ROOT/apps/api" npm run --silent typecheck || true
     run_release_step "API build" "$ROOT/apps/api" npm run --silent build || true
     run_release_step "documentation build" "$ROOT/website/docs" npm run --silent build || true
+    run_release_step "web typecheck" "$ROOT/apps/web" npm run --silent typecheck || true
     run_release_step "web production build" "$ROOT/apps/web" npm run --silent build || true
+  }
+
+  # Playwright is the other load-sensitive participant: retries are off, its timeouts are
+  # 30s/8s, and it drives a real chromium. Overlapped with a Docker image build, a
+  # Postgres boot and two vitest fleets it flakes for exactly the reason the iOS
+  # Simulator did. It also runs its own `tsc -b`, which is the third writer of
+  # tsconfig.tsbuildinfo. So it joins iOS in the isolated phase instead.
+  lane_browser() {
     if package_has_script "$ROOT/apps/web/package.json" test:browser; then
       run_release_step "browser smoke tests" "$ROOT/apps/web" npm run --silent test:browser || true
     fi
@@ -614,8 +626,9 @@ release_project_checks() {
   # release for a reason that has nothing to do with the code. Observed twice in three
   # fully-parallel runs. Isolating it costs ~18s against an all-lanes-at-once schedule
   # and buys back a release that doesn't fail at random — which is the entire point.
-  echo "${c_dim}Release checks — phase 1/2: iOS (alone; the Simulator is unreliable on a busy machine)…${c_reset}"
+  echo "${c_dim}Release checks — phase 1/2: iOS and browser tests (alone; both are unreliable on a busy machine)…${c_reset}"
   lane_ios
+  lane_browser
 
   echo
   echo "${c_dim}Release checks — phase 2/2: docker, web and misc lanes in parallel…${c_reset}"
