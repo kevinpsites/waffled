@@ -34,7 +34,7 @@ calling Compose directly so newly required values can be generated before valida
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `POWERSYNC_PUBLIC_URL` | The sync URL clients connect to — **must be reachable by the device** (LAN IP / hostname, not `localhost`) | `http://localhost:8090` |
+| `POWERSYNC_PUBLIC_URL` | The sync URL clients connect to. **Leave empty on a LAN** — Waffled derives it from the address each device used. Set it only when PowerSync has its own public hostname/TLS, or to `off` when you run the API without PowerSync at all (clients then stay on REST instead of retrying an endpoint that isn't there) | empty (derived) |
 | `PUBLIC_BASE_URL` | Public origin for OIDC + Google redirect URLs; empty = derived from request | empty |
 | `CADDY_SITE_ADDRESS` | `:80` (plain HTTP) or a hostname (triggers Caddy auto-TLS) | `:80` |
 | `POWERSYNC_CADDY_ADDRESS` | Caddy's dedicated sync listener (`./waffled setup` manages it) | `:8090` |

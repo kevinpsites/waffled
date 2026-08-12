@@ -1,7 +1,7 @@
 // PowerSync auth: our api serves a JWKS and mints short-lived RS256 tokens that
 // carry the caller's real household_id (resolved from the DB). PowerSync validates
 // those tokens against the JWKS; sync rules scope buckets by the household_id claim.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createPublicKey } from 'node:crypto'
 import jwt from 'jsonwebtoken'
@@ -30,8 +30,8 @@ interface RunResult {
   body: string
 }
 
-function call(method: string, path: string, token?: string) {
-  const headers: Record<string, string> = {}
+function call(method: string, path: string, token?: string, extraHeaders: Record<string, string> = {}) {
+  const headers: Record<string, string> = { ...extraHeaders }
   if (token) headers.authorization = `Bearer ${token}`
   return app.run(
     { httpMethod: method, path, headers, queryStringParameters: {}, body: null, isBase64Encoded: false },
@@ -119,5 +119,59 @@ describe('powersync auth', () => {
   it('refuses a PowerSync token for an unprovisioned caller (403)', async () => {
     const res = await call('GET', '/api/powersync/token', mint('dev|nobody'))
     expect(res.statusCode).toBe(403)
+  })
+})
+
+// A fixed sync URL (it used to default to http://localhost:8090) only ever works on
+// the server itself — every other device resolves localhost to ITSELF and silently
+// degrades to REST-only. The URL is derived from the host the device actually
+// reached us on, unless the operator pinned one.
+describe('powersync url derivation', () => {
+  const urlFor = async (headers: Record<string, string>) => {
+    const res = await call('GET', '/api/powersync/token', kevin, headers)
+    expect(res.statusCode).toBe(200)
+    return JSON.parse(res.body).powerSyncUrl as string | null
+  }
+
+  afterEach(() => {
+    delete process.env.POWERSYNC_PUBLIC_URL
+    delete process.env.POWERSYNC_PORT
+  })
+
+  it('honours an explicitly configured POWERSYNC_PUBLIC_URL', async () => {
+    process.env.POWERSYNC_PUBLIC_URL = 'https://powersync.example.com/'
+    expect(await urlFor({ host: '192.168.1.20:8080' })).toBe('https://powersync.example.com')
+  })
+
+  it('derives from x-forwarded-proto / x-forwarded-host when proxied', async () => {
+    expect(
+      await urlFor({
+        host: 'api:3000',
+        'x-forwarded-proto': 'https, http',
+        'x-forwarded-host': 'waffled.example.com , api.internal',
+      })
+    ).toBe('https://waffled.example.com:8090')
+  })
+
+  it('falls back to the Host header (the LAN address the device dialled)', async () => {
+    expect(await urlFor({ host: '192.168.1.20:8080' })).toBe('http://192.168.1.20:8090')
+  })
+
+  it('swaps in POWERSYNC_PORT when PowerSync is published elsewhere', async () => {
+    process.env.POWERSYNC_PORT = '9443'
+    expect(await urlFor({ host: '192.168.1.20:8080' })).toBe('http://192.168.1.20:9443')
+  })
+
+  // Deriving a URL for a PowerSync that isn't there hands the client an endpoint it
+  // will retry forever ("Offline", degraded sync health) where it used to notice the
+  // null and stay cleanly REST-only. POWERSYNC_PUBLIC_URL=off says so out loud.
+  it('reports no sync endpoint when POWERSYNC_PUBLIC_URL is off', async () => {
+    process.env.POWERSYNC_PUBLIC_URL = 'off'
+    expect(await urlFor({ host: '192.168.1.20:8080' })).toBeNull()
+  })
+
+  it('accepts the off switch in any case, with stray whitespace', async () => {
+    process.env.POWERSYNC_PUBLIC_URL = '  OFF '
+    expect(await urlFor({ host: '192.168.1.20:8080' })).toBeNull()
   })
 })

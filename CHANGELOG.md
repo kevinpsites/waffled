@@ -65,6 +65,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   into the recipe's source notes, so the recipe page ended up showing the same note twice.
   The editor now has separate **Recipe notes** and **Your notes** boxes, each saved to its
   own place.
+- **The tablet stops showing "Offline."** Waffled used to hand every device the same
+  fixed sync address, which out of the box was `localhost` — right on the server itself,
+  and wrong on a kiosk tablet or a phone, where "localhost" means *that device*. Sync
+  quietly never connected: no live updates between rooms, no offline cache, a permanent
+  Offline banner. Each device is now told to sync at whatever address it used to reach the
+  server, so it works everywhere at once — and keeps working when your router hands the
+  machine a new IP. If you've set `POWERSYNC_PUBLIC_URL` by hand it is still honoured, for
+  servers that publish sync on their own hostname; on a home network you can now leave it
+  empty. **Existing installs are fixed on the next `./waffled up` or `./waffled upgrade`**,
+  which clears the old pinned address for you — but only when it's the one Waffled itself
+  generated (a plain-HTTP `localhost` or LAN-IP address on the sync port). A sync hostname
+  you chose is left exactly as you set it, and setting `POWERSYNC_PUBLIC_URL=off` now tells
+  Waffled you run the API without PowerSync at all, so devices stay on the plain API
+  instead of retrying a sync server that isn't there.
+- **An event can no longer end before it starts.** A backwards start/end time — from the
+  calendar editor, a quick-add, or an edit made offline — used to be saved as-is and then
+  render as a negative-length block that sorted oddly on the agenda and was rejected on the
+  way out to Google. It's now refused wherever the edit comes from, including when you
+  change only the end time and leave the start alone.
 
 ## [0.13.0] - 2026-08-12
 

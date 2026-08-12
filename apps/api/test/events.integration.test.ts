@@ -595,3 +595,164 @@ describe('recurring events api', () => {
     expect(after.map((o) => o.startsAt)).toEqual(['2026-11-03T14:00:00.000Z', '2026-11-10T14:00:00.000Z'])
   })
 })
+
+// An event that ends before it starts renders as a negative-length block and sorts
+// nonsensically on every surface. Refuse it at the API, because the clients each
+// reach events by a different route (REST, the PowerSync upload sink, quick-add) —
+// see the CRUD sink's own coverage for the offline path.
+describe('event times: endsAt must be after startsAt', () => {
+  const at = (h: number) => `2027-03-04T${String(h).padStart(2, '0')}:00:00.000Z`
+
+  async function makeEvent(body: Record<string, unknown>): Promise<string> {
+    const r = await call('POST', '/api/events', kevin, { title: 'Timed', startsAt: at(9), endsAt: at(10), ...body })
+    expect(r.statusCode).toBe(201)
+    return JSON.parse(r.body).event.id
+  }
+
+  it('refuses a create whose end precedes its start', async () => {
+    const r = await call('POST', '/api/events', kevin, { title: 'Backwards', startsAt: at(10), endsAt: at(9) })
+    expect(r.statusCode).toBe(400)
+    expect(JSON.parse(r.body)).toMatchObject({ error: 'BadRequest', message: 'endsAt must be after startsAt' })
+  })
+
+  it('refuses a zero-length timed create', async () => {
+    const r = await call('POST', '/api/events', kevin, { title: 'Instant', startsAt: at(10), endsAt: at(10) })
+    expect(r.statusCode).toBe(400)
+  })
+
+  it('refuses a patch that moves both ends into the wrong order', async () => {
+    const id = await makeEvent({})
+    const r = await call('PATCH', `/api/events/${id}`, kevin, { startsAt: at(14), endsAt: at(13) })
+    expect(r.statusCode).toBe(400)
+    expect(JSON.parse(r.body).message).toBe('endsAt must be after startsAt')
+  })
+
+  // The case the fork's version misses: with no startsAt in the patch there is
+  // nothing to compare against unless you go and read the stored one.
+  it('compares a patch that carries only endsAt against the STORED startsAt', async () => {
+    const id = await makeEvent({})
+    const r = await call('PATCH', `/api/events/${id}`, kevin, { endsAt: at(8) })
+    expect(r.statusCode).toBe(400)
+    expect(JSON.parse(r.body).message).toBe('endsAt must be after startsAt')
+    const kept = JSON.parse((await call('GET', `/api/events/${id}`, kevin)).body).event
+    expect(kept.endsAt).toBe(at(10))
+  })
+
+  // …and the mirror image: only startsAt, pushed past the stored end.
+  it('compares a patch that carries only startsAt against the STORED endsAt', async () => {
+    const id = await makeEvent({})
+    const r = await call('PATCH', `/api/events/${id}`, kevin, { startsAt: at(11) })
+    expect(r.statusCode).toBe(400)
+    expect(JSON.parse(r.body).message).toBe('endsAt must be after startsAt')
+  })
+
+  it('still allows clearing the end, and a patch that keeps the order', async () => {
+    const id = await makeEvent({})
+    expect((await call('PATCH', `/api/events/${id}`, kevin, { endsAt: at(12) })).statusCode).toBe(200)
+    expect((await call('PATCH', `/api/events/${id}`, kevin, { endsAt: null })).statusCode).toBe(200)
+    // With no stored end, moving the start alone is unconstrained.
+    expect((await call('PATCH', `/api/events/${id}`, kevin, { startsAt: at(20) })).statusCode).toBe(200)
+  })
+
+  // All-day spans are day-granular and Google's all-day end is exclusive, so a
+  // same-day all-day event legitimately lands on start == end.
+  it('allows an all-day event that starts and ends on the same instant', async () => {
+    const r = await call('POST', '/api/events', kevin, {
+      title: 'Field trip', allDay: true, startsAt: at(0), endsAt: at(0),
+    })
+    expect(r.statusCode).toBe(201)
+  })
+
+  // Turning off all-day re-reads the SAME stored pair under the stricter timed rule,
+  // so the patch has to be checked even though it carries neither timestamp.
+  it('refuses turning a same-instant all-day event into a timed one', async () => {
+    const r = await call('POST', '/api/events', kevin, {
+      title: 'Sports day', allDay: true, startsAt: at(0), endsAt: at(0),
+    })
+    expect(r.statusCode).toBe(201)
+    const id = JSON.parse(r.body).event.id
+    expect((await call('PATCH', `/api/events/${id}`, kevin, { allDay: false })).statusCode).toBe(400)
+  })
+
+  it('still refuses an all-day event that ends before it starts', async () => {
+    const r = await call('POST', '/api/events', kevin, {
+      title: 'Backwards trip', allDay: true, startsAt: '2027-03-05T00:00:00.000Z', endsAt: at(0),
+    })
+    expect(r.statusCode).toBe(400)
+  })
+
+  it('refuses a backwards scope=this override and a backwards scope=following split', async () => {
+    const add = await call('POST', '/api/events', kevin, {
+      title: 'Weekly thing', startsAt: '2027-04-06T14:00:00Z', endsAt: '2027-04-06T15:00:00Z',
+      rrule: 'FREQ=WEEKLY;BYDAY=TU', recurrenceEndAt: '2027-04-27T23:59:59Z',
+    })
+    expect(add.statusCode).toBe(201)
+    const sid = JSON.parse(add.body).event.id
+    const occ = JSON.parse((await call('GET', '/api/events?from=2027-04-01&to=2027-04-30', kevin)).body)
+      .events.filter((e: { seriesId: string }) => e.seriesId === sid)
+    const slot = occ[1].occurrenceStart
+
+    const one = await call('PATCH', `/api/events/${sid}`, kevin, {
+      scope: 'this', occurrenceStart: slot, startsAt: '2027-04-13T16:00:00Z', endsAt: '2027-04-13T15:00:00Z',
+    })
+    expect(one.statusCode).toBe(400)
+
+    const following = await call('PATCH', `/api/events/${sid}`, kevin, {
+      scope: 'following', occurrenceStart: slot, startsAt: '2027-04-13T16:00:00Z', endsAt: '2027-04-13T15:00:00Z',
+    })
+    expect(following.statusCode).toBe(400)
+  })
+
+  // A materialized event_occurrences row is not guaranteed to be there: cancelling an
+  // occurrence tombstones it, and slots past the expansion horizon were never written.
+  // The guard has to reconstruct the slot from the series master in that case, or a
+  // one-sided patch has nothing to compare against and silently passes.
+  it('compares a one-sided override against the slot even when the occurrence row is gone', async () => {
+    const add = await call('POST', '/api/events', kevin, {
+      title: 'Cancelled then re-edited', startsAt: '2027-05-04T14:00:00Z', endsAt: '2027-05-04T15:00:00Z',
+      rrule: 'FREQ=WEEKLY;BYDAY=TU', recurrenceEndAt: '2027-05-25T23:59:59Z',
+    })
+    expect(add.statusCode).toBe(201)
+    const sid = JSON.parse(add.body).event.id
+    const occ = JSON.parse((await call('GET', '/api/events?from=2027-05-01&to=2027-05-31', kevin)).body)
+      .events.filter((e: { seriesId: string }) => e.seriesId === sid)
+    const slot = occ[1].occurrenceStart
+
+    // Cancelling tombstones the row the guard used to read.
+    const del = await call('DELETE', `/api/events/${sid}?scope=this&occurrenceStart=${encodeURIComponent(slot)}`, kevin)
+    expect(del.statusCode).toBe(204)
+
+    // endsAt alone, an hour before the slot starts. Nothing in the patch says when
+    // that is — it has to come from the master's rule slot.
+    const r = await call('PATCH', `/api/events/${sid}`, kevin, {
+      scope: 'this', occurrenceStart: slot, endsAt: '2027-05-11T13:00:00Z',
+    })
+    expect(r.statusCode).toBe(400)
+    expect(JSON.parse(r.body).message).toBe('endsAt must be after startsAt')
+  })
+
+  // The mirror failure of the same missing row: without the master to fall back on,
+  // an all-day series' occurrence is judged by the stricter timed rule and a
+  // legitimate same-instant all-day override is refused.
+  it('keeps the all-day rule for an override whose occurrence row is gone', async () => {
+    const add = await call('POST', '/api/events', kevin, {
+      title: 'Weekly all-day', allDay: true,
+      startsAt: '2027-06-01T00:00:00Z', endsAt: '2027-06-01T00:00:00Z',
+      rrule: 'FREQ=WEEKLY;BYDAY=TU', recurrenceEndAt: '2027-06-22T23:59:59Z',
+    })
+    expect(add.statusCode).toBe(201)
+    const sid = JSON.parse(add.body).event.id
+    const occ = JSON.parse((await call('GET', '/api/events?from=2027-06-01&to=2027-06-30', kevin)).body)
+      .events.filter((e: { seriesId: string }) => e.seriesId === sid)
+    const slot = occ[1].occurrenceStart
+
+    const del = await call('DELETE', `/api/events/${sid}?scope=this&occurrenceStart=${encodeURIComponent(slot)}`, kevin)
+    expect(del.statusCode).toBe(204)
+
+    const r = await call('PATCH', `/api/events/${sid}`, kevin, {
+      scope: 'this', occurrenceStart: slot,
+      startsAt: '2027-06-09T00:00:00Z', endsAt: '2027-06-09T00:00:00Z',
+    })
+    expect(r.statusCode).toBe(200)
+  })
+})

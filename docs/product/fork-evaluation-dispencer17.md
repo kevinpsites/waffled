@@ -164,15 +164,25 @@ no status probe. The button is unconditionally "Share list". Only new dependency
 
 Ranked by value-to-effort. **All three have since shipped** — see §7.
 
-1. **Per-request PowerSync URL derivation** (`2d08c2c0`). Every client was handed
-   `POWERSYNC_PUBLIC_URL`, which compose defaults to `http://localhost:8090` — only
-   reachable on the server itself. Kiosk tablets and phones resolved `localhost` to
-   themselves, never opened a sync stream, and silently degraded to REST-only. Their fix
-   derives the URL from the host each device actually used (honouring
-   `x-forwarded-proto`/`host`) and applies `POWERSYNC_PORT`; an explicit
-   `POWERSYNC_PUBLIC_URL` still wins. This removes a documented footgun of ours and is
-   worth taking on its own.
-2. **`endsAt` validation on events** — a few lines, obviously correct.
+1. ✅ **Per-request PowerSync URL derivation** (`2d08c2c0`) — **ported, 2026-08-12.** Every
+   client was handed `POWERSYNC_PUBLIC_URL`, which compose defaulted to
+   `http://localhost:8090` — only reachable on the server itself. Kiosk tablets and phones
+   resolved `localhost` to themselves, never opened a sync stream, and silently degraded to
+   REST-only. The URL is now derived from the host each device actually used (honouring
+   `x-forwarded-proto`/`x-forwarded-host`) with `POWERSYNC_PORT` applied; an explicit
+   `POWERSYNC_PUBLIC_URL` still wins. Ours additionally drops compose's baked-in localhost
+   default (which would have beaten the derive), stops `./waffled setup` pinning the value
+   outside hostname/TLS mode, carries the fix to **existing** installs via an upgrade
+   bridge that clears a setup-generated pin on `up`/`upgrade`/`rebuild` (hostnames and
+   other deliberate values untouched), and keeps a way to say a deployment has no
+   PowerSync at all (`POWERSYNC_PUBLIC_URL=off` → clients stay REST-only instead of
+   retrying an endpoint that isn't there).
+2. ✅ **`endsAt` validation on events** — **ported, 2026-08-12**, with the fork's version
+   corrected in two places: it is enforced in the service functions so all **three** event
+   write paths are covered (REST, the PowerSync CRUD sink, quick-add — the fork guarded
+   only REST), and a PATCH carrying only `endsAt` is compared against the **stored**
+   `startsAt` (the fork's condition skipped validation entirely in that case). The
+   PowerSync path drops the op rather than erroring, since PowerSync retries forever.
 3. **Sync watchdog** — see §6.
 
 ## 6. The three features to understand (not ported)
@@ -231,30 +241,31 @@ logic is plain and testable — 318 lines of tests. It:
   `off`, because users were reading the boot window as "sync is off".
 
 This was the fork change I most wanted upstream after the calendar work — self-contained,
-and it fixed a failure mode we had no defence against. **Ported in PR #156.**
+and it fixed a failure mode we had no defence against. **Ported in PR #155.**
 
 ## 7. Sequencing — where we actually got to
 
 **Shipped:**
 
 1. **Outlook/M365, ICS feeds, Share list** — PR #149 (server + web), PR #151 (iPhone/iPad).
-2. **Per-request PowerSync URL derive** and **`endsAt` validation** — PRs #154 / #155.
-3. **The sync watchdog + `isReplicaTrusted()` fallback** — PR #156, plus three
-   recipe-editor bug fixes that came out of the same review pass.
-4. **Calendar color control** — custom hex swatch, family color, and the `eventStyle`
-   setting with **solid** as the default: PR #157 (server + web), and iPhone/iPad parity
-   in the PR that follows it.
+2. **Per-request PowerSync URL derive** and **`endsAt` validation** — PR #154. See §5,
+   which records where our versions go beyond the fork's.
+3. **The sync watchdog + `isReplicaTrusted()` fallback** — PR #155.
+4. **Three recipe-editor bug fixes** that came out of the same review pass — PR #156.
+5. **Calendar color control** — custom hex swatch, family color, and the `eventStyle`
+   setting with **solid** as the default: PR #157 (server + web), PR #158 (iPhone/iPad).
 
 **Still open:**
 
-5. **Deliberate decision needed:** the Today board v2 zone layout. It's a real improvement
+6. **Deliberate decision needed:** the Today board v2 zone layout. It's a real improvement
    but it's a contract change and a big merge; it also has no iOS counterpart, which would
-   widen the web/mobile gap.
-6. **Not taken:** their color *themes* / Appearance theme set — we shipped our own dark
+   widen the web/mobile gap. Now written up under *Planned* in the
+   [roadmap](roadmap.md), together with the **week calendar card** that depends on it.
+7. **Not taken:** their color *themes* / Appearance theme set — we shipped our own dark
    mode instead, and the `eventStyle` work above covers the calendar half of it.
-7. **Probably skip:** Walmart matching (dead), Android TWA (explicitly not wanted), the
+8. **Probably skip:** Walmart matching (dead), Android TWA (explicitly not wanted), the
    PowerShell server-move kit and `update.ps1` (fork-specific workflow), wake-word binaries.
-8. **Understood but not ported** (see §6): Smart Home / Home Assistant and kiosk voice.
+9. **Understood but not ported** (see §6): Smart Home / Home Assistant and kiosk voice.
 
 ## 8. Note for whoever merges upstream into the fork later
 

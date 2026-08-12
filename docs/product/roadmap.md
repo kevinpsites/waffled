@@ -216,6 +216,28 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   match ("family walk" vs "Family walk after dinner"), and consider surfacing a member's
   cross-goal favourites when a specific goal has little history of its own.
 
+- **Today board v2 — a zone layout instead of a card order.** Today's board is a flat,
+  reorderable list of cards in fixed columns; you choose the order and nothing else. v2
+  replaces that with a **recursive zone tree** — split a zone, drop cards into it, and get
+  a FancyZones-style layout the household actually designs: **live drag and resize with
+  auto-save**, **layout presets** to start from, **density modes**, **hide-empty-cards**,
+  a full-width band, and per-card "quiet" settings (e.g. cap a card at N items so a long
+  list doesn't swallow the screen), with today's flat order migrated in automatically.
+  Two things make this a deliberate decision rather than a straight port: it **changes the
+  `/api/today-layout` contract** every surface reads, and it has **no iOS counterpart** —
+  the iPhone/iPad Today boards use their own layout config, so shipping web-only would
+  widen the mobile gap rather than close it. Prior art in the
+  [dispencer17 fork](fork-evaluation-dispencer17.md) (`zone-layout.ts`, `today-presets.ts`,
+  `today-card-slot.tsx`).
+
+- **Week calendar card on the Today board.** A whole-week view sitting on Today itself,
+  rather than a trip to the Calendar page: a **people filter** to narrow it to one person,
+  an **in-progress pulse** on whatever is happening right now, and a **"Separated days"**
+  option for households that read the week as columns rather than one continuous list.
+  Depends on the zone layout above — a week card wants real width and height, which the
+  current fixed-column board can't give it. Also from the
+  [dispencer17 fork](fork-evaluation-dispencer17.md).
+
 - **List sharing (access, not a handoff).** Let a household invite specific people to a
   list, choose whether they can view or edit it, and revoke access later. Distinct from the
   shipped **Share list**, which is a one-way copy of the text to a phone and grants nobody
