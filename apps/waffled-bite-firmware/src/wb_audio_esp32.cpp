@@ -53,8 +53,15 @@ namespace
 i2s_chan_handle_t s_tx = NULL;
 TaskHandle_t s_task = NULL;
 
-// Written by whoever calls the public API, read by the audio task. Single
-// writer per field and word-sized, so no lock is needed for these.
+// Written by whoever calls the public API, read by the audio task. Word-sized,
+// so each read/write is atomic and no lock is needed.
+//
+// NOT single-writer, despite an earlier comment here saying so: the audio task
+// itself clears s_restart (when it re-seeds) and s_wantAlarm (when the alarm
+// finishes), so those two are written from both sides. That's safe because
+// each side only ever clears a flag the other side sets, and a lost clear
+// self-corrects on the next block — but it is not the simpler invariant the
+// old comment claimed.
 volatile bool s_wantPlay = false;
 volatile int s_wantSound = (int)WbSound::White;
 volatile int s_wantVolume = 50;
@@ -96,7 +103,14 @@ void audioTask(void *)
   wb_audio_seq_init(&seq);
 
   WbSynth synth;
+  // Initialised here, not just on the sequence's initTone: an alarm cancelled
+  // while it was still ducking reaches the release phase (which renders the
+  // tone as it fades) without ever having been told to start one. Left
+  // indeterminate, that reads a garbage tone index straight into the recipe
+  // table. The native backend can't reproduce it — its voice is namespace
+  // scope and therefore zero-initialised.
   WbToneVoice tone;
+  wb_tone_init(&tone, wb_tone_default());
   float fade = 0.0f;
   const float fadeStep = 1.0f / ((float)WB_SAMPLE_RATE_HZ * (WB_AUDIO_FADE_MS / 1000.0f));
 
@@ -260,8 +274,14 @@ void wb_audio_alarm_dismiss() { s_wantAlarm = false; }
 
 void wb_audio_stop()
 {
+  // The SOUND MACHINE only — deliberately does NOT touch the alarm.
+  //
+  // main.cpp reconciles playback with settings on every poll, and calls this
+  // whenever the sound machine is off. Cancelling the alarm here cut a
+  // 20-second alarm down to one poll (~5 s) for every device with the sound
+  // machine off, which is the default. Anything that means "silence
+  // everything" must call wb_audio_alarm_dismiss() as well.
   s_wantPlay = false;
-  s_wantAlarm = false; // cancels a ringing alarm — see the header
 }
 
 bool wb_audio_is_playing() { return s_running; }

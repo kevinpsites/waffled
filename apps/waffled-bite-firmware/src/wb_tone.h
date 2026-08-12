@@ -51,10 +51,17 @@ bool wb_tone_parse(const char *name, WbTone *out);
 // only job.
 WbTone wb_tone_default(void);
 
-// A motif is at most this many notes deep at once. Generous: the densest
-// recipe (twinkle stars, 8 strikes in 2 s with a 0.12 s decay) never has more
-// than about three ringing together.
-#define WB_TONE_VOICES 8
+// How many notes can ring at once. MEASURED, with headroom: the worst case is
+// soft harp at 8 (its 0.40 s decay outlives the 0.35 s gap between strikes, so
+// notes pile up across motif repeats), and every other recipe peaks at 5-6.
+// Twinkle stars looks denser — 8 strikes in 2 s — but its 0.12 s decay retires
+// them long before the next lands.
+//
+// Sized to 12 rather than 8 deliberately. A full pool makes strike() drop a
+// note silently, and at 8 the harp sat at exactly capacity: correct today, but
+// any nudge to a decay or a note spacing would start losing notes with nothing
+// to say so. test_alarm.cpp asserts no recipe ever fills the pool.
+#define WB_TONE_VOICES 12
 #define WB_TONE_MAX_PARTIALS 4
 
 // One ringing note.

@@ -49,7 +49,10 @@ export interface WaffledBiteSettings {
   // tone has to be heard through sleep, where a sound machine has to be
   // ignorable. `tone` is a display string ('Sunrise chime'); the device also
   // accepts stable keys, so migrating it later needs no firmware change.
-  alarm?: { on: boolean; hour: number; min: number; tone: string; volume: number }
+  // `volume` is optional because it genuinely is on the wire: every device
+  // paired before the alarm got its own volume has an alarm object without it.
+  // Typing it as required would let a reader assume a number is always there.
+  alarm?: { on: boolean; hour: number; min: number; tone: string; volume?: number }
   schedules?: WaffledBiteSchedule[]
   display?: { brightness: number; nightDim: boolean }
 }

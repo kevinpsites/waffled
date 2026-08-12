@@ -47,9 +47,13 @@ bool wb_audio_alarm_active();
 // tapping "Stop" on an alarm means.
 void wb_audio_alarm_dismiss();
 
-// Fades out and stops, then powers the amp down. Also CANCELS a running alarm
-// — this is what silences a device that's been unpaired, which has no UI left
-// to reach.
+// Fades the SOUND MACHINE out and stops it, then powers the amp down.
+//
+// Does NOT cancel a running alarm, and must not: main.cpp reconciles playback
+// with settings on every poll and calls this whenever the sound machine is
+// off, so cancelling here truncated the alarm to a single poll (~5 s) on every
+// device with the sound machine off — the default. "Silence everything" (an
+// unpair, say) is this PLUS wb_audio_alarm_dismiss().
 //
 // The order matters and is the whole reason this isn't just "write zeros":
 // the amp is only enabled once real samples are flowing, and disabled only

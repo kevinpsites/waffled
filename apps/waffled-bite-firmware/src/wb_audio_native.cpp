@@ -151,8 +151,9 @@ void wb_audio_stop()
 {
   if (!s_dev) return;
   SDL_LockAudioDevice(s_dev);
+  // The SOUND MACHINE only — see the ESP32 backend for why this must not
+  // cancel the alarm.
   s_playing = false;
-  s_alarm = false; // cancels a ringing alarm — see the header
   SDL_UnlockAudioDevice(s_dev);
 }
 

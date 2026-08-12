@@ -221,14 +221,30 @@ static void wb_audio_apply(const WbSoundSettings &s)
 // The latch is a plain static: decision D2 rules out persisting anything
 // across a reboot, so an alarm missed while the device was off or offline is
 // simply missed. The device has no RTC to catch up from anyway.
+// Hands the screen back when the alarm is over — whether it was stopped or
+// simply ran out.
+//
+// Home is only the right destination when nothing else is claiming the screen.
+// Quiet time and the wake-light lock re-assert themselves on an EDGE rather
+// than on every poll, so navigating to home unconditionally would defeat an
+// active lock for the rest of its period — and tapping Stop is exactly the
+// path a kid would find. Clearing those trackers makes the lock blocks further
+// down this same poll (or the next one, for a tap) force their screen back in.
+static void wb_release_alarm_screen()
+{
+  g_alarmScreenUp = false;
+  g_quietWasActive = false;  // re-assert quiet time, if it's active
+  g_bedtimeScrBuilt = false; // re-assert the wake-light lock, if it's active
+  lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+}
+
 // Tapping "Stop". Cancels only the ALARM — the sound machine still fades back
-// in if it was playing, per D4 — and returns to home immediately rather than
-// waiting for the next poll to notice.
+// in if it was playing, per D4 — and returns immediately rather than waiting
+// for the next poll to notice.
 static void wb_alarm_stop_cb(void)
 {
   wb_audio_alarm_dismiss();
-  g_alarmScreenUp = false;
-  lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+  wb_release_alarm_screen();
 }
 
 static void wb_alarm_apply(const WbAlarmSettings &a, const WbDeviceState &s)
@@ -260,11 +276,7 @@ static void wb_alarm_apply(const WbAlarmSettings &a, const WbDeviceState &s)
 
   // The alarm ran its course (nobody tapped Stop) — take the screen away
   // again, so the device isn't left showing "Good morning" all day.
-  if (g_alarmScreenUp && !wb_audio_alarm_active())
-  {
-    g_alarmScreenUp = false;
-    lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
-  }
+  if (g_alarmScreenUp && !wb_audio_alarm_active()) wb_release_alarm_screen();
 }
 
 static std::string g_serverUrl;
@@ -353,6 +365,8 @@ static void wb_forget_pairing()
   // Sounds screen to switch it off from, and nothing else can reach the HAL.
   // Only a power cycle would stop it — in a kid's bedroom.
   wb_audio_stop();
+  wb_audio_alarm_dismiss(); // wb_audio_stop is the sound machine only — a ringing
+                            // alarm would otherwise survive the unpair too
   if (g_pollTimer)
   {
     lv_timer_del(g_pollTimer);

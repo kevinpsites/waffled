@@ -341,6 +341,40 @@ void test_a_tone_keeps_ringing_for_the_whole_alarm(void)
   }
 }
 
+// A full voice pool makes wb_tone.cpp's strike() drop a note on the floor,
+// silently — the motif would just be missing a note, with nothing anywhere
+// saying why.
+//
+// This is closer than it looks: soft harp's 0.40 s decay outlives the 0.35 s
+// gap between its strikes, so notes accumulate across motif repeats and it
+// peaks at 8. That was exactly the old pool size. Nothing was being dropped,
+// but there was no margin either, and a later tweak to a decay or a spacing
+// would have started losing notes.
+void test_no_tone_exhausts_its_voice_pool(void)
+{
+  static int16_t buf[512];
+  for (size_t i = 0; i < TONE_COUNT; i++)
+  {
+    WbToneVoice v;
+    wb_tone_init(&v, ALL_TONES[i]);
+
+    int worst = 0;
+    for (int block = 0; block < 20 * 22050 / 512; block++) // a full alarm
+    {
+      wb_tone_render(&v, buf, 512, 100);
+      int live = 0;
+      for (int n = 0; n < WB_TONE_VOICES; n++)
+        if (v.notes[n].active) live++;
+      if (live > worst) worst = live;
+    }
+
+    char msg[112];
+    snprintf(msg, sizeof(msg), "%s peaks at %d of %d voices", tone_name(ALL_TONES[i]), worst,
+             WB_TONE_VOICES);
+    TEST_ASSERT_TRUE_MESSAGE(worst < WB_TONE_VOICES, msg);
+  }
+}
+
 // Same seam guarantee as the sound machine: the alarm is rendered in whatever
 // block size the I2S driver asks for, so block boundaries must be inaudible.
 void test_consecutive_tone_blocks_join_without_a_seam(void)
@@ -400,6 +434,7 @@ int main(void)
   RUN_TEST(test_every_tone_survives_a_speaker_with_no_low_end);
   RUN_TEST(test_the_tones_are_loudness_matched);
   RUN_TEST(test_a_tone_keeps_ringing_for_the_whole_alarm);
+  RUN_TEST(test_no_tone_exhausts_its_voice_pool);
   RUN_TEST(test_consecutive_tone_blocks_join_without_a_seam);
   RUN_TEST(test_the_alarm_volume_uses_the_sound_machines_curve);
   RUN_TEST(test_alarm_volume_zero_is_exactly_silent);
