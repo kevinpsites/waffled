@@ -124,13 +124,18 @@ async function doHardRestart({ clear = false }: { clear?: boolean } = {}): Promi
       // The top rung, for a replica that survives plain rebuilds (same db file).
       // Wiping and re-downloading is cheap — but never while local writes are
       // still waiting to upload: family data beats the replica, every time.
-      let pending: unknown = null
+      //
+      // "Couldn't read the queue" is NOT "the queue is empty". This rung only ever
+      // runs against an already-wedged client, which is precisely the one whose
+      // probe throws — so a failed probe must skip the wipe, or the guarantee
+      // evaporates in the exact case it exists for.
+      let queueKnownEmpty = false
       try {
-        pending = await old.getNextCrudTransaction()
+        queueKnownEmpty = (await old.getNextCrudTransaction()) == null
       } catch {
-        /* a wedged client can't report its queue — treat as empty and rebuild */
+        /* wedged client, unreadable queue — assume writes are pending, don't wipe */
       }
-      if (pending == null) {
+      if (queueKnownEmpty) {
         try {
           await old.disconnectAndClear()
         } catch {

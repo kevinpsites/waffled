@@ -230,7 +230,11 @@ describe('restartPowerSyncHard({ clear: true })', () => {
     expect(fakes.instances).toHaveLength(2)
   })
 
-  it('rebuilds anyway when a wedged client cannot report its queue', async () => {
+  // The clearing rung only ever runs against an already-wedged client — which is
+  // exactly the client whose queue probe is most likely to throw. "Couldn't read
+  // the queue" must never be read as "the queue is empty", or the one case the
+  // guarantee exists for is the one case that destroys unsent family data.
+  it('rebuilds WITHOUT wiping when a wedged client cannot report its queue', async () => {
     const db = await freshDbModule()
     await db.connectPowerSync()
     const old = fakes.instances[0]
@@ -238,6 +242,8 @@ describe('restartPowerSyncHard({ clear: true })', () => {
       throw new Error('wedged')
     })
     await db.restartPowerSyncHard({ clear: true })
+    expect(old.disconnectAndClear).not.toHaveBeenCalled()
+    expect(old.close).toHaveBeenCalledTimes(1)
     expect(fakes.instances).toHaveLength(2)
   })
 
