@@ -182,9 +182,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   hardware. Tap-to-complete on the device's own task list handles chores needing a
   parent's OK (shows "Waiting on a parent's approval" rather than silently reverting)
   and photo-required chores (hidden from the device's list entirely — no camera-capture
-  flow yet, so those are completed from a parent's phone/web instead). **Pending:** OTA updates,
-  TLS certificate validation for `https://` server addresses, and on-device photo
-  capture — see `apps/waffled-bite-firmware/README.md` for the full list of open items.
+  flow yet, so those are completed from a parent's phone/web instead). **Pending:** device
+  audio (see below), OTA updates, TLS certificate validation for `https://` server
+  addresses, and on-device photo capture — see `apps/waffled-bite-firmware/README.md` for
+  the full list of open items.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
   are REST + live-refresh bus, plus a **cross-device refresh** for lists (foreground + ~20s
   poll on the open list) so a family member's edit lands without a manual reload.
@@ -236,6 +237,27 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   covers the engineering bring-up log; this would be the "buy this, plug in this cable,
   run this command" doc on the docs site, paired with the existing pairing walkthrough
   in [`waffled-bites.md`](../../website/docs/src/content/docs/features/waffled-bites.md).
+
+- **Waffled-Bite audio — finish what the speaker can't do yet.** Phase 1 has **shipped**:
+  white noise, ocean, rain, box fan and heartbeat play on the device's own speaker, from
+  both the Sounds tile and a parent's panel, with a live volume slider and no pops. What's
+  left is the **sleep timer's auto-off** (the sound plays until it's switched off), the
+  **morning alarm's tone** (the device doesn't parse `settings.alarm` at all yet), and the
+  **sampled sounds** (`forest`/`lullaby`, shown disabled until real recordings exist). Plan:
+  [`waffled-bites-audio-plan.md`](waffled-bites-audio-plan.md). Phase 1 **synthesises** white
+  noise, ocean, rain, box fan and heartbeat on the device itself — no audio files, no
+  streaming, so a kid's room stays quiet-not-silent even if the home server reboots at 2am
+  — plus the morning alarm's tone, which today is a setting you can pick from six options
+  and never hear. Phase 2 adds the sounds that need real recordings (forest, lullaby,
+  birdsong), downloaded once from the server and cached on the device.
+
+  **Phase 1 is working on real hardware** — the five synthesised sounds play through the
+  device's speaker from both the Sounds tile and a parent's panel, with live volume and no
+  pops. Remaining: the sampled sounds, the sleep timer's auto-off, and the alarm tone.
+  Signed off: 22.05 kHz mono; the sound machine plays
+  straight through quiet time and bedtime; the alarm gets its own volume and **pauses** the
+  sound machine for 20 seconds rather than sounding over it; no playback resume after a
+  reboot; and the hardware is the speaker that shipped with the board.
 
 - **QR-code pairing for Waffled-Bites.** The device has a screen but no camera (the
   ELECROW board has none), so a QR flow only works one direction: the device renders a

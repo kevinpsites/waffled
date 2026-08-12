@@ -6,5 +6,5 @@
 idf_component_register(
   SRC_DIRS "." "ui" "fonts" "icons"
   INCLUDE_DIRS "."
-  EXCLUDE_SRCS "sdl_main.cpp" "wb_http_native.cpp" "wb_store_native.cpp" "wb_wifi_native.cpp"
+  EXCLUDE_SRCS "sdl_main.cpp" "wb_http_native.cpp" "wb_store_native.cpp" "wb_wifi_native.cpp" "wb_audio_native.cpp"
 )

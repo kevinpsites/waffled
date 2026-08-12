@@ -15,6 +15,7 @@
 #include <lvgl.h>
 #include "lgfx_device.h"
 #include "wb_state.h"
+#include "wb_audio.h"
 #include "wb_http.h"
 #include "wb_store.h"
 #include "wb_tick_hal.h"
@@ -182,6 +183,30 @@ static bool g_bedtimeScrBuilt = false;
 // `liveState` rather than syncing widgets that no longer exist post-rebuild.
 static bool g_liveScreensBuilt = false;
 
+// Keeps the speaker in step with settings.sound.
+//
+// Called from every successful poll (so a parent flipping the sound from the
+// web app is heard within ~5s) AND straight from a local tap, because routing
+// a tap through the poll would mean a kid taps "off" and waits five seconds in
+// the dark — indistinguishable from broken.
+//
+// Idempotent: re-issuing the same sound while it's already playing only
+// refreshes the volume, so calling this every poll costs nothing.
+static void wb_audio_apply(const WbSoundSettings &s)
+{
+  WbSound sound;
+  // An unknown or not-yet-synthesisable sound (forest/lullaby are phase 2)
+  // deliberately falls through to silence rather than substituting something
+  // else — a kid who asked for a lullaby is better served by nothing than by
+  // white noise.
+  if (!s.on || !wb_synth_parse(s.tone, &sound))
+  {
+    wb_audio_stop();
+    return;
+  }
+  wb_audio_play(sound, s.volume);
+}
+
 static std::string g_serverUrl;
 static std::string g_deviceSecret;
 static std::string g_accessToken;
@@ -262,6 +287,12 @@ static void wb_forget_pairing()
 {
   wb_store_clear("deviceSecret");
   g_deviceSecret.clear();
+  // Silence the speaker BEFORE the poll timer goes away. The poll is the only
+  // thing that ever calls wb_audio_apply, so without this an unpair while the
+  // sound machine is playing leaves it playing forever: onboarding has no
+  // Sounds screen to switch it off from, and nothing else can reach the HAL.
+  // Only a power cycle would stop it — in a kid's bedroom.
+  wb_audio_stop();
   if (g_pollTimer)
   {
     lv_timer_del(g_pollTimer);
@@ -372,6 +403,7 @@ static void wb_do_poll()
   if (wb_state_from_json(doc, liveState))
   {
     wb_mark_poll_ok();
+    wb_audio_apply(liveState.sound);
     // Full clean+rebuild only ONCE per (re-)pairing session — the first real
     // poll after wb_enter_app()'s mock-data build. Every poll after that
     // used to lv_obj_clean+rebuild both screens unconditionally, even while
@@ -633,6 +665,13 @@ static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &opt
     sound["on"] = on;
     sound["sound"] = optionKey;
     sound["volume"] = sliderValue;
+    // Optimistic: react to the tap now, don't wait for the PATCH + poll.
+    WbSoundSettings local;
+    local.on = on;
+    snprintf(local.tone, WB_TONE_LEN, "%s", optionKey.c_str());
+    local.volume = sliderValue;
+    local.timerMin = 0;
+    wb_audio_apply(local);
   }
   else
   {
@@ -803,6 +842,7 @@ void setup()
 {
 #if defined(ARDUINO)
   Serial.begin(115200);
+  wb_audio_init(); // cheap and non-blocking; leaves the amp off and silent
   Wire.begin(WB_TOUCH_SDA, WB_TOUCH_SCL);
   // Plain on/off for now, not PWM brightness — the LEDC API differs across
   // arduino-esp32 core versions (ledcAttach(pin,...) vs. the older

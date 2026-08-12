@@ -97,6 +97,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that family member took part, not just whoever tapped Log), and until a goal has enough
   history of its own the familiar defaults fill in the rest.
 
+- **Waffled-Bite device: the sound machine actually makes sound.** Picking white noise,
+  ocean, rain, a box fan or a heartbeat now plays it through the device's own speaker,
+  from either the device's Sounds tile or a parent's control panel, with a live volume
+  slider. Sounds fade in and out instead of clicking on, and the amplifier is powered
+  down between them, so there's no pop at lights-out. Every sound is generated on the
+  device from scratch rather than streamed — so it keeps playing through a Wi-Fi drop or
+  an overnight reboot of your home server, and a kid's room never goes suddenly silent.
+  Plug the small speaker that came with your board into the socket marked `SPK`. Forest and
+  lullaby show as "(soon)" and can't be picked yet — they need real recordings — the sleep
+  timer's auto-off isn't wired up yet, and the morning alarm's tone still doesn't play.
+
 - **Waffled-Bite device: set up WiFi right on the screen.** Connecting a new device to
   your home network no longer requires flashing it with hardcoded credentials — it now
   scans for nearby networks, lets you pick one and enter the password on the device's
@@ -189,6 +200,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the center, with a consistent gap between them.
 
 ### Fixed
+
+- **The Waffled-Bite control panel keeps itself up to date.** The panel read the device
+  once when you opened it and then never again, so anything your child did on the device
+  — switching the sound machine on, starting a timer — didn't show up until you reloaded,
+  and a device that dropped offline could keep showing as online. It now refreshes on its
+  own every few seconds while you're looking at it, on **web, iPhone and iPad**, and stops
+  while the tab or app is in the background so it costs nothing when you're not watching.
 
 - **The calendar grid now says which month you're looking at.** The app header shows
   today's date, so paging the grid forward left nothing on the grid itself saying where
