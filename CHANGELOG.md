@@ -1651,6 +1651,22 @@ requires user-facing notes under `[Unreleased]`; and runs the CLI, migration, AP
 (when configured), docs, Docker E2E, and locally available iOS checks. It does not bump versions,
 commit, or tag anything; build tools may refresh ignored local artifacts.
 
+Those checks run in **lanes** rather than one serial column, because a release is cut on your own
+machine and there is no reason to leave its cores idle. **Phase 1 runs the iOS and browser tests
+alone**, then **phase 2 runs the `docker`, `web` and `misc` lanes in parallel**, grouped by the
+resource each contends for. Those two are deliberately not overlapped: on a saturated machine the
+iOS Simulator does not just run slowly, it dies outright (`Failed to launch app … Mach error -308
+(ipc/mig) server died`), and Playwright runs a real browser with retries off — both fail the
+release for reasons unrelated to your code. Each lane buffers its output and prints it whole, so
+lanes appear one after another rather than interleaved; a heartbeat marks elapsed time while they
+run, and every step reports its own wall time. Ctrl-C stops the lanes and their children.
+
+**A run that fails ends with a `Release checks failed:` summary naming each failed step** — checks
+deliberately continue after a failure so one pass surfaces everything, which means the culprit may
+be thousands of lines above. A lane that *dies* (OOM, SIGKILL) is itself reported as a failure, so
+an interrupted run can never be mistaken for a passing one. If you see neither that summary nor
+`All available release project checks passed.`, the run did not finish.
+
 **To cut a release:** run **`./waffled release X.Y.Z`** locally on `main`. It repeats the checks
 before changing anything, then in one commit it:
 1. Reviews the `[Unreleased]` notes with you (**requires at least one entry**), dates the

@@ -251,12 +251,20 @@ private final class FakePlateServer: @unchecked Sendable {
     /// Schedule and Add-to-list.
     @Test func servingsTappedDuringTheCreateStillReachTheServer() async {
         let server = FakePlateServer()
+        let arrived = Gate()
         let opened = Gate()
-        server.gate = { await opened.wait() }
+        // Two gates, not one: `arrived` reports that the create has actually reached the
+        // server, `opened` releases it. Starting both with `async let` and hoping the add
+        // wins made this a scheduling race — when the bump ran first there was no create
+        // in flight to fold it into, so no PATCH was sent and the test failed. Rare when
+        // the machine is idle, regular once the release checks saturate it.
+        server.gate = { await arrived.open(); await opened.wait() }
         let m = MealBuilderModel(api: server.api())
 
         async let add: Void = m.addRecipe("chicken", role: PlateRoles.main)   // starts the create
-        async let bump: Void = m.changeServings(6)                            // …mid-flight
+        let inFlight = await gateOpened(arrived)                              // …now genuinely in flight
+        #expect(inFlight, "the create never reached the server, so the interleaving under test never happened")
+        async let bump: Void = m.changeServings(6)                            // …so this lands mid-create
         await opened.open()
         _ = await (add, bump)
 
@@ -384,6 +392,28 @@ private final class FakePlateServer: @unchecked Sendable {
         await m.addToGrocery()
         #expect(server.addedToList == 1)
         #expect(m.message?.contains("4") == true)
+    }
+}
+
+/// `gate.wait()` with a deadline, returning false if it never opened in time.
+///
+/// Swift Testing has no default per-test timeout, and the release checks run the iOS
+/// suite alone in their first phase — so an unbounded wait on a gate that never opens
+/// does not fail a test, it stalls the entire release. A regression where the code under
+/// test never reaches the gated call should surface as a failed expectation, not a hang.
+/// On timeout the gate is opened so the waiting task can finish rather than leak.
+private func gateOpened(_ gate: Gate, within seconds: Double = 5) async -> Bool {
+    await withTaskGroup(of: Bool.self) { group in
+        group.addTask { await gate.wait(); return true }
+        group.addTask {
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            return false
+        }
+        let opened = await group.next() ?? false
+        if !opened { await gate.open() }   // release the waiter
+        group.cancelAll()                  // and cancel the timer if it is still pending
+        await group.waitForAll()
+        return opened
     }
 }
 

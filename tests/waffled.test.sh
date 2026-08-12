@@ -319,6 +319,197 @@ t "verify_backup_restore rejects a corrupt archive before starting Postgres" '
   echo "PASS"
 '
 
+# --- 12. a failed release check must SAY which step failed -------------------------
+# Regression: release_project_checks accumulated `fail=1` and ended with a bare
+# `[ "$fail" -eq 0 ] || return 1`, so a run whose FIRST step failed still executed
+# every remaining step and then exited silently. The operator saw the last step's
+# green tick and a returned prompt, with no indication of what actually broke.
+t "a failed release step is named in the end-of-run summary" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+
+  reset_release_failures   # the file is keyed on $$; a recycled PID must not leak in
+  set +e
+  run_release_step "green step" "$tmp" true  >/dev/null 2>&1
+  run_release_step "red step"   "$tmp" false >/dev/null 2>&1
+  out="$(report_release_failures 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || { echo "FAIL: summary reported success despite a failed step"; exit 0; }
+  case "$out" in
+    *"red step"*) ;;
+    *) echo "FAIL: summary never named the failed step: $out"; exit 0 ;;
+  esac
+  case "$out" in
+    *"green step"*) echo "FAIL: summary named a step that passed: $out"; exit 0 ;;
+  esac
+  echo "PASS"
+'
+
+# Checks run in parallel lanes as background subshells. A shell variable assigned inside
+# a background subshell never reaches the parent, so bookkeeping kept in a variable would
+# silently drop every failure that happened in a lane — restoring the exact silent-exit
+# bug the summary was added to kill.
+t "a failure inside a background lane still reaches the summary" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+
+  reset_release_failures   # the file is keyed on $$; a recycled PID must not leak in
+  set +e
+  ( run_release_step "lane step" "$tmp" false >/dev/null 2>&1 ) &
+  wait
+  out="$(report_release_failures 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || { echo "FAIL: a background lane failure was lost"; exit 0; }
+  case "$out" in
+    *"lane step"*) echo "PASS" ;;
+    *) echo "FAIL: summary never named the lane step: $out" ;;
+  esac
+'
+
+# A lane records its own step failures as it goes, so a lane that is KILLED records
+# nothing at all. Trusting the file alone then reads an empty file as "everything
+# passed" — and the release proceeds to bump, commit and tag on checks that never ran.
+# That is worse than the silent exit this summary replaced: a confident false green.
+t "a lane killed mid-run fails the release instead of passing it" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  reset_release_failures
+
+  # A lane that dies having recorded nothing. `sh -c` because $$ inside it is that
+  # child'"'"'s own PID — bash keeps $$ at the parent even in a subshell, and BASHPID is
+  # bash 4.0+, which the 3.2 compat target rules out.
+  sh -c '"'"'kill -9 $$'"'"' &
+  pid=$!
+
+  set +e
+  wait_for_lane "misc" "$pid" >/dev/null 2>&1
+  out="$(report_release_failures 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || { echo "FAIL: a killed lane was reported as a pass"; exit 0; }
+  case "$out" in
+    *"misc lane"*) echo "PASS" ;;
+    *) echo "FAIL: summary never mentioned the dead lane: $out" ;;
+  esac
+'
+
+# …but a lane that finishes normally must not be reported as dead, or every clean run
+# would fail.
+t "a lane that exits cleanly is not reported as dead" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  reset_release_failures
+
+  ( true ) &
+  pid=$!
+
+  set +e
+  wait_for_lane "web" "$pid" >/dev/null 2>&1
+  rc_lane=$?
+  out="$(report_release_failures 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc_lane" -eq 0 ] || { echo "FAIL: a clean lane was treated as dead"; exit 0; }
+  [ "$rc" -eq 0 ] || { echo "FAIL: clean lane produced a failure summary: $out"; exit 0; }
+  echo "PASS"
+'
+
+# Ctrl-C must take the lanes down with it. A lane is a background job in a script, so
+# bash sets its SIGINT to ignored and it shares the shell process group — interrupting
+# the run used to leave testcontainers, a Docker build and a chromium still burning the
+# machine after the operator got their prompt back. The lane shell is not enough either:
+# the expensive things are its CHILDREN.
+t "kill_process_tree reaps a lane child, not just the lane shell" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+
+  # A stand-in lane: a subshell that spawns a long-running child and then waits, the
+  # same shape as a lane running vitest or a Docker build.
+  ( sh -c "echo \$\$ > $tmp/child.pid; sleep 60" & sleep 60 ) &
+  lane=$!
+
+  for _ in 1 2 3 4 5; do [ -s "$tmp/child.pid" ] && break; sleep 1; done
+  child="$(cat "$tmp/child.pid" 2>/dev/null || echo 0)"
+  [ "$child" -gt 0 ] || { echo "FAIL: the stand-in lane never spawned a child"; exit 0; }
+  kill -0 "$child" 2>/dev/null || { echo "FAIL: child was not alive to begin with"; exit 0; }
+
+  kill_process_tree "$lane"
+  wait "$lane" 2>/dev/null || true
+  sleep 1
+
+  if kill -0 "$child" 2>/dev/null; then
+    kill -9 "$child" 2>/dev/null || true
+    echo "FAIL: the child survived — lane children would be orphaned on Ctrl-C"
+  else
+    echo "PASS"
+  fi
+'
+
+# The failures file must not outlive the run. An earlier version derived its name from
+# $$ and never deleted it, which left one file per run lying around in TMPDIR.
+t "the failures file is unpredictable, private to the run, and cleaned up" '
+  source "$WAFFLED" help >/dev/null 2>&1
+
+  reset_release_failures
+  first="$(release_failed_path)"
+  [ -n "$first" ] && [ -f "$first" ] || { echo "FAIL: no failures file was created"; exit 0; }
+  case "$first" in
+    *waffled-release-failures.??????) ;;
+    *) echo "FAIL: name is not mktemp-random: $first"; exit 0 ;;
+  esac
+
+  record_release_failure "some step"
+  clear_release_failures
+  [ -f "$first" ] && { echo "FAIL: failures file survived the run: $first"; exit 0; }
+
+  # A second run must not reuse the first name.
+  reset_release_failures
+  second="$(release_failed_path)"
+  clear_release_failures
+  [ "$first" != "$second" ] || { echo "FAIL: two runs shared a path: $first"; exit 0; }
+  echo "PASS"
+'
+
+# The heartbeat is a background job like the lanes are; it must not outlive the phase.
+t "the progress ticker starts and is reaped on stop" '
+  source "$WAFFLED" help >/dev/null 2>&1
+
+  start_release_ticker
+  pid="${release_ticker_pid:-}"
+  [ -n "$pid" ] || { echo "FAIL: the ticker never started"; exit 0; }
+  kill -0 "$pid" 2>/dev/null || { echo "FAIL: the ticker was not running"; exit 0; }
+
+  stop_release_ticker
+  sleep 1
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null || true
+    echo "FAIL: the ticker outlived stop_release_ticker"
+  else
+    [ -z "${release_ticker_pid:-}" ] && echo "PASS" || echo "FAIL: ticker pid not cleared"
+  fi
+'
+
+# A clean run must stay quiet and succeed, so the summary cannot become noise.
+t "report_release_failures is silent and succeeds when every step passed" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+
+  reset_release_failures   # the file is keyed on $$; a recycled PID must not leak in
+  set +e
+  run_release_step "green step" "$tmp" true >/dev/null 2>&1
+  out="$(report_release_failures 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -eq 0 ] || { echo "FAIL: clean run reported failure: $out"; exit 0; }
+  [ -z "$out" ] || { echo "FAIL: clean run printed a summary: $out"; exit 0; }
+  echo "PASS"
+'
+
 echo
 if [ "$fails" -gt 0 ]; then
   echo "$fails/$runs waffled test(s) FAILED"
