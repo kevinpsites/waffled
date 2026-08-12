@@ -19,6 +19,7 @@ vi.mock('./client', () => ({
   apiDelete: vi.fn(),
 }))
 
+import { emit } from './bus'
 import { useWaffledBiteDevice } from './waffledBites'
 
 function Probe({ personId }: { personId: string | null }) {
@@ -68,5 +69,17 @@ describe('useWaffledBiteDevice', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  // The `waffledBites` topic existed in bus.ts from the start but nothing ever
+  // emitted it, so a mutation on one surface left the other stale until a poll.
+  it('refreshes immediately when a mutation taps the waffledBites topic', async () => {
+    render(<Probe personId="p-1" />)
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(get).toHaveBeenCalledTimes(1)
+
+    await act(async () => { emit('waffledBites') })
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(get).toHaveBeenCalledTimes(2)
   })
 })

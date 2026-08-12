@@ -3,6 +3,7 @@
 // personId (to look it up / pair one) or deviceId (once paired).
 import { useEffect, useState } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
+import { tap, useRefetchOn, useLiveRefresh } from './bus'
 
 export interface WaffledBiteTask {
   id: string
@@ -63,23 +64,29 @@ export const waffledBitesApi = {
     apiGet<{ device: WaffledBiteDevice | null }>(`/api/persons/${personId}/waffled-bite`).then((r) => r.device),
   mintPairingCode: (personId: string, label?: string) =>
     apiSend<{ code: string; personId: string; expiresAt: string }>('POST', `/api/persons/${personId}/waffled-bite/pairing-code`, { label }),
-  unpair: (deviceId: string) => apiDelete(`/api/waffled-bites/${deviceId}`),
+  // Every mutation taps the `waffledBites` topic so other surfaces showing the
+  // same device in this tab (the person profile's card, the control panel)
+  // refresh without waiting for a poll. The topic already existed in bus.ts;
+  // nothing had ever emitted it.
+  unpair: (deviceId: string) => apiDelete(`/api/waffled-bites/${deviceId}`).then(tap('waffledBites')),
   updateSettings: (deviceId: string, patch: WaffledBiteSettings) =>
-    apiSend<{ settings: WaffledBiteSettings }>('PATCH', `/api/waffled-bites/${deviceId}/settings`, patch).then((r) => r.settings),
+    apiSend<{ settings: WaffledBiteSettings }>('PATCH', `/api/waffled-bites/${deviceId}/settings`, patch)
+      .then((r) => r.settings)
+      .then(tap('waffledBites')),
   quietStart: (deviceId: string, durationSec: number) =>
-    apiSend('POST', `/api/waffled-bites/${deviceId}/quiet/start`, { durationSec }),
-  quietPause: (deviceId: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/quiet/pause`, {}),
-  quietResume: (deviceId: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/quiet/resume`, {}),
+    apiSend('POST', `/api/waffled-bites/${deviceId}/quiet/start`, { durationSec }).then(tap('waffledBites')),
+  quietPause: (deviceId: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/quiet/pause`, {}).then(tap('waffledBites')),
+  quietResume: (deviceId: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/quiet/resume`, {}).then(tap('waffledBites')),
   quietAddTime: (deviceId: string, seconds: number) =>
-    apiSend('POST', `/api/waffled-bites/${deviceId}/quiet/add-time`, { seconds }),
-  quietEnd: (deviceId: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/quiet/end`, {}),
+    apiSend('POST', `/api/waffled-bites/${deviceId}/quiet/add-time`, { seconds }).then(tap('waffledBites')),
+  quietEnd: (deviceId: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/quiet/end`, {}).then(tap('waffledBites')),
   timerStart: (deviceId: string, durationSec: number) =>
-    apiSend('POST', `/api/waffled-bites/${deviceId}/timer/start`, { durationSec }),
-  timerPause: (deviceId: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/timer/pause`, {}),
-  timerResume: (deviceId: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/timer/resume`, {}),
+    apiSend('POST', `/api/waffled-bites/${deviceId}/timer/start`, { durationSec }).then(tap('waffledBites')),
+  timerPause: (deviceId: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/timer/pause`, {}).then(tap('waffledBites')),
+  timerResume: (deviceId: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/timer/resume`, {}).then(tap('waffledBites')),
   timerAddTime: (deviceId: string, seconds: number) =>
-    apiSend('POST', `/api/waffled-bites/${deviceId}/timer/add-time`, { seconds }),
-  timerEnd: (deviceId: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/timer/end`, {}),
+    apiSend('POST', `/api/waffled-bites/${deviceId}/timer/add-time`, { seconds }).then(tap('waffledBites')),
+  timerEnd: (deviceId: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/timer/end`, {}).then(tap('waffledBites')),
   nudge: (deviceId: string, message: string) => apiSend('POST', `/api/waffled-bites/${deviceId}/nudge`, { message }),
 }
 
@@ -92,8 +99,9 @@ export interface WaffledBiteDeviceState {
 
 // Mirrors usePersonOverview/usePantry's shape: plain useState+useEffect+nonce, no
 // mutation-hook abstraction — callers refetch() after a successful mutation.
-// How often an open control panel re-reads the device. The device itself polls
-// the server every ~5s, so this bounds device→parent latency at roughly 15s.
+// Tighter than useLiveRefresh's 20s default: this panel is a live remote
+// control for a device the kid is touching, not a shopping list. The device
+// polls the server every ~5s, so 10s here bounds device→parent at roughly 15s.
 const WB_POLL_MS = 10_000
 
 export function useWaffledBiteDevice(personId: string | null): WaffledBiteDeviceState {
@@ -107,32 +115,27 @@ export function useWaffledBiteDevice(personId: string | null): WaffledBiteDevice
       return
     }
     let alive = true
-    // Only the FIRST load shows a spinner. The poll below refreshes in place —
-    // flipping `loading` every 10s would make the panel flicker forever.
     setLoading(true)
-    const load = (first: boolean) =>
-      waffledBitesApi
-        .get(personId)
-        .then((d) => alive && (setDevice(d), first && setLoading(false), setError(false)))
-        .catch(() => alive && (setError(true), first && setLoading(false)))
-
-    load(true)
-
-    // Without this the panel fetched once and never again, so anything done ON
-    // the device — a kid switching the sound machine on, starting a timer, or
-    // the device dropping offline — stayed invisible until the page was
-    // reloaded. Parent→device was live via the device's own poll; the reverse
-    // direction simply never arrived.
-    const timer = setInterval(() => {
-      // Don't poll a panel nobody is looking at; refresh on the way back.
-      if (typeof document !== 'undefined' && document.hidden) return
-      load(false)
-    }, WB_POLL_MS)
-
+    waffledBitesApi
+      .get(personId)
+      .then((d) => alive && (setDevice(d), setLoading(false), setError(false)))
+      .catch(() => alive && (setError(true), setLoading(false)))
     return () => {
       alive = false
-      clearInterval(timer)
     }
   }, [personId, nonce])
+  // Same tab, other surface (the person profile's device card) — instant.
+  useRefetchOn(['waffledBites'], () => {
+    if (personId) setNonce((n) => n + 1)
+  })
+  // Cross-device liveness. Without it the panel fetched once and never again,
+  // so anything done ON the device — a kid switching the sound machine on,
+  // starting a timer, the device dropping offline — stayed invisible until a
+  // reload: parent→device was live via the device's own poll, while the
+  // reverse direction never arrived. Also refetches the moment the tab regains
+  // focus, which a bare interval doesn't.
+  useLiveRefresh(() => {
+    if (personId) setNonce((n) => n + 1)
+  }, WB_POLL_MS)
   return { device, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
