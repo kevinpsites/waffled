@@ -6,7 +6,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { query, getPool } from '../../platform/db'
 import { tenantRoute } from '../../platform/route-guards'
 import { hashPassword, verifyPassword } from '../auth/auth'
-import { updatePerson, HEX_COLOR } from '../persons/persons'
+import { updatePerson, getPerson, HEX_COLOR, resolveColorHex } from '../persons/persons'
 import type { Tenant } from '../households/households'
 
 type Api = ReturnType<typeof createAPI>
@@ -111,11 +111,17 @@ export function registerAccountRoutes(api: Api): void {
     }
     if ('avatarEmoji' in body && body.avatarEmoji !== undefined) patch.avatarEmoji = body.avatarEmoji
     if ('colorHex' in body && body.colorHex !== undefined) {
-      // null clears it; a custom color must still be a full #RRGGBB hex.
+      // null clears it; a custom color must still be a full #RRGGBB hex — unless
+      // it's the legacy value this person already holds (the profile card resends
+      // colorHex on every save, so rejecting it would block the whole form).
       if (body.colorHex != null && !HEX_COLOR.test(String(body.colorHex))) {
-        return res.status(400).json({ error: 'BadRequest', message: 'colorHex must be a #RRGGBB hex color' })
-      }
-      patch.colorHex = body.colorHex
+        const existing = await getPerson(tenant.householdId, tenant.personId)
+        const resolved = resolveColorHex(body.colorHex, existing?.color_hex ?? null)
+        if (!resolved) {
+          return res.status(400).json({ error: 'BadRequest', message: 'colorHex must be a #RRGGBB hex color' })
+        }
+        patch.colorHex = resolved
+      } else patch.colorHex = body.colorHex
     }
     if ('birthday' in body && body.birthday !== undefined) patch.birthday = body.birthday
 

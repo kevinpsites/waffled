@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { personsApi, kioskApi, ALLERGEN_KEYS, ALLERGEN_LABELS, type SettingsMember } from '../../lib/api'
+import type { ApiSendError } from '../../lib/api/client'
 import { SettingCard } from './SettingCard'
 import { ColorPicker, COLOR_SWATCHES } from './ColorPicker'
 
@@ -32,6 +33,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
     allergens: person?.allergens ?? [],
   })
   const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [tab, setTab] = useState<'general' | 'signin'>('general')
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
@@ -149,12 +151,17 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
       showOnKiosk: form.showOnKiosk,
       allergens: form.allergens,
     }
+    setSaveErr(null)
     try {
       if (editing) await personsApi.updatePerson(person!.id, payload)
       else await personsApi.createPerson(payload)
       onSaved()
       onClose()
-    } catch {
+    } catch (err) {
+      // Say why. Swallowing this hid a real dead end: a member holding a color
+      // from before the server validated colors 400'd on every save (the editor
+      // resends colorHex), so nothing about them could be changed, silently.
+      setSaveErr((err as ApiSendError)?.body?.message || 'Couldn’t save — please try again.')
       setSaving(false)
     }
   }
@@ -252,6 +259,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
             </div>
           </SettingCard>
 
+          {saveErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>{saveErr}</div>}
           <button type="submit" className="btn btn-primary" disabled={!form.name.trim() || saving} style={{ width: '100%', justifyContent: 'center' }}>
             {saving ? 'Saving…' : editing ? 'Save changes' : 'Add person'}
           </button>

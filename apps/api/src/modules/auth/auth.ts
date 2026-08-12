@@ -16,6 +16,7 @@ import {
   setLastHousehold,
   pendingInvitesForEmail,
 } from './accounts'
+import { HEX_COLOR } from '../persons/persons'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -109,6 +110,11 @@ export function registerAuthRoutes(api: Api): void {
     }
     if (password.length < 8) {
       return res.status(400).json({ error: 'BadRequest', message: 'password must be at least 8 characters' })
+    }
+    // The first admin's color is a member color like any other — validate it here
+    // too, not just on /api/persons.
+    if (b.admin?.colorHex != null && !HEX_COLOR.test(String(b.admin.colorHex))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'colorHex must be a #RRGGBB hex color' })
     }
     const sub = randomUUID()
     try {

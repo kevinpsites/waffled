@@ -280,8 +280,37 @@ const EVENT_STYLES = new Set(['solid', 'tinted'])
 // The calendar's share of settings.display (the kiosk owns the rest — see updateDisplay).
 const CALENDAR_DISPLAY_KEYS = ['eventStyle', 'familyColorHex'] as const
 // Person + family colors must be a full #RRGGBB hex — they go straight into CSS
-// custom properties on every calendar view. (Shared with account.ts.)
+// custom properties on every calendar view. (Shared with account.ts, app.ts and
+// auth.ts: every path that writes a color validates it.)
 export const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
+
+/**
+ * Best-effort repair of a color we already stored, for values that predate this
+ * validation: `#abc` → `#aabbcc`. Returns null when there's nothing to recover
+ * (a palette token, a CSS color name), in which case the value is kept as-is
+ * rather than blocking the save. Deliberately NOT used to loosen new input.
+ */
+export function migrateColorHex(value: unknown): string | null {
+  const v = String(value ?? '').trim()
+  if (HEX_COLOR.test(v)) return v
+  const short = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/.exec(v)
+  return short ? `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}` : null
+}
+
+/**
+ * Resolve a colorHex a client sent for a person who already has one. A full
+ * #RRGGBB passes through; anything else is only accepted when it's the value we
+ * already hold — the member editor and the profile card resend colorHex on every
+ * save, so rejecting a legacy value would lock that member out of being saved at
+ * all. Such a value is migrated to #RRGGBB when it can be, and kept otherwise.
+ * Returns null when the value is genuinely new bad input (→ 400).
+ */
+export function resolveColorHex(value: unknown, stored: string | null): string | null {
+  const v = String(value ?? '')
+  if (HEX_COLOR.test(v)) return v
+  if (stored === null || v !== stored) return null
+  return migrateColorHex(v) ?? stored
+}
 
 export function registerPersonRoutes(api: Api): void {
   // Household settings: the household + its members (with login/owner flags).
@@ -411,9 +440,16 @@ export function registerPersonRoutes(api: Api): void {
     if (patch.memberType !== undefined && !MEMBER_TYPES.has(String(patch.memberType))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid memberType' })
     }
-    // null clears the color; anything else must be a full #RRGGBB hex.
+    // null clears the color; anything else must be a full #RRGGBB hex — except a
+    // legacy value this member already holds, which is accepted (and migrated
+    // where possible) so a pre-validation color can't block every future save.
     if (patch.colorHex != null && !HEX_COLOR.test(String(patch.colorHex))) {
-      return res.status(400).json({ error: 'BadRequest', message: 'colorHex must be a #RRGGBB hex color' })
+      const existing = await getPerson(tenant.householdId, id)
+      const resolved = resolveColorHex(patch.colorHex, existing?.color_hex ?? null)
+      if (!resolved) {
+        return res.status(400).json({ error: 'BadRequest', message: 'colorHex must be a #RRGGBB hex color' })
+      }
+      patch.colorHex = resolved
     }
     if ('allergens' in patch) patch.allergens = cleanAllergens(patch.allergens)
     if (!Object.keys(UPDATABLE).some((field) => field in patch)) {

@@ -228,6 +228,31 @@ describe('GET / PATCH /api/persons/:id', () => {
     expect((await call('PATCH', `/api/persons/${targetId}`, kevin, { colorHex: null })).statusCode).toBe(200)
   })
 
+  // Colors predate this validation, so a member can be holding something that
+  // isn't #RRGGBB. The editor resends colorHex on every save, so a hard reject
+  // would mean that member can never be saved again — not their name, not their
+  // birthday, nothing. Resending the value we already hold is accepted (and
+  // migrated to #RRGGBB where that's possible); only *new* bad input is rejected.
+  it('accepts a legacy color the member already holds, and migrates it when it can', async () => {
+    const { query } = await import('../src/platform/db')
+
+    await query(`update persons set color_hex = 'person-3' where id = $1`, [targetId])
+    const passthrough = await call('PATCH', `/api/persons/${targetId}`, kevin, { name: 'Bram Sr', colorHex: 'person-3' })
+    expect(passthrough.statusCode).toBe(200)
+    expect(JSON.parse(passthrough.body).person).toMatchObject({ name: 'Bram Sr', colorHex: 'person-3' })
+
+    // A shorthand hex is recoverable — take the save and store the full form.
+    await query(`update persons set color_hex = '#abc' where id = $1`, [targetId])
+    const migrated = await call('PATCH', `/api/persons/${targetId}`, kevin, { name: 'Bram Sr', colorHex: '#abc' })
+    expect(migrated.statusCode).toBe(200)
+    expect(JSON.parse(migrated.body).person.colorHex).toBe('#aabbcc')
+
+    // …but a *different* bad value is still new input, and still rejected.
+    await query(`update persons set color_hex = 'person-3' where id = $1`, [targetId])
+    expect((await call('PATCH', `/api/persons/${targetId}`, kevin, { colorHex: 'person-4' })).statusCode).toBe(400)
+    await query(`update persons set color_hex = '#111111' where id = $1`, [targetId])
+  })
+
   it('404s for an unknown or non-uuid id', async () => {
     expect((await call('GET', '/api/persons/not-a-uuid', kevin)).statusCode).toBe(404)
     expect(

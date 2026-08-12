@@ -38,6 +38,14 @@ afterAll(async () => {
 describe('built-in auth', () => {
   const setup = { household: { name: 'Sites', timezone: 'America/Chicago' }, admin: { name: 'Kevin', email: 'kevin@example.com', password: 'hunter2hunter' } }
 
+  // Signup takes an admin color, which lands in the calendar's CSS like any other
+  // member color — so it validates here too, before the instance is initialized.
+  it('rejects an admin color that is not a #RRGGBB hex (400)', async () => {
+    const res = await call('POST', '/api/auth/setup', { ...setup, admin: { ...setup.admin, colorHex: 'rebeccapurple' } })
+    expect(res.statusCode).toBe(400)
+    expect(json(await call('GET', '/api/auth/status')).initialized).toBe(false)
+  })
+
   it('starts uninitialized then sets up the first admin + household', async () => {
     expect(json(await call('GET', '/api/auth/status')).initialized).toBe(false)
 
