@@ -14,7 +14,7 @@ Waffled-Bites is a kid-facing companion device — a small touchscreen that sits
 - 🌙 **Live quiet-time control** — start, pause, add 5 minutes, or end a stay-in-room countdown right from your phone or the web, and watch it count down.
 - 💡 **Night light** — pick a color and brightness.
 - 🌅 **Wake-up light schedule** — set per-day-of-week rules; the light glows yellow a few minutes before wake time, then green when it's okay to get up.
-- ⏰ **Morning alarm** — a time, a gentle tone, and its own volume separate from the sound machine's. If the sound machine is playing, it fades down for the alarm and comes back afterwards.
+- ⏰ **Morning alarm** — a time, a gentle tone, and its own volume separate from the sound machine's. When it rings, the device shows a full-screen "Good morning" with a big **Stop** button; it also stops on its own after twenty seconds. If the sound machine is playing, it fades down for the alarm and comes back afterwards — including when the alarm is stopped early.
 - 🔊 **Sound machine** — white noise, ocean, rain, a box fan or a heartbeat, with a volume slider. Plays through the device's own speaker.
 - 🔆 **Screen & display** — daytime brightness and an auto-dark-at-night option.
 - ⏱️ **Set a timer** — a countdown either a parent or the kid can start, pause, add time to, or end, right on the device.

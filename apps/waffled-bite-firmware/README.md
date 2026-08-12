@@ -161,6 +161,19 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
   otherwise start the sound machine up underneath the tone. That's unreachable from a
   test if the sequencing lives inside the I2S task.
 
+  While it rings, `src/ui/alarm_screen.cpp` takes the screen with a **Stop** button —
+  loaded the moment the alarm fires, not on the next poll. Stop calls
+  `wb_audio_alarm_dismiss()`, which cancels only the alarm (the sound machine still fades
+  back in); `wb_audio_stop()` is the one that silences everything, and unpairing uses it.
+
+  **The tones are written for the CPU budget, not just for the ear.** They're a voice pool
+  of coupled-form resonators with one-pole envelopes — multiply-and-add per sample. The
+  first version computed each note analytically (~18 sinf + 12 expf per sample), which
+  measured fine and rendered a clean WAV but was audibly SCRATCHY on the board: this core
+  also draws the screen, and libm is expensive on the P4. If a recipe ever sounds wrong on
+  hardware, render it with `tools/audio/render_wav.cpp` first — clean on a laptop and bad
+  on the device means starvation, not a bad recipe.
+
   Full plan in
   [`docs/product/waffled-bites-audio-plan.md`](../../docs/product/waffled-bites-audio-plan.md);
   phase 2 adds sampled forest/lullaby/birdsong cached in the unused `spiffs` partition.

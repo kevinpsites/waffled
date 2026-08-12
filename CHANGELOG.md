@@ -117,7 +117,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   has to be ignorable. If the sound machine is playing when the alarm fires, it **fades down
   for the alarm and comes back afterwards** rather than competing with it — an alarm playing
   over white noise is one nobody wakes up to — and if the room was already quiet, it stays
-  quiet afterwards. Birdsong shows as "(soon)": it's the one tone that needs a real
+  quiet afterwards. When it rings, the device shows a full-screen "Good morning" with a big
+  **Stop** button, so a kid can silence it without hunting through menus; stopping it early
+  brings the sound machine back just the same. It also stops by itself after twenty seconds
+  if nobody taps anything. Birdsong shows as "(soon)": it's the one tone that needs a real
   recording.
 
 - **Waffled-Bite device: set up WiFi right on the screen.** Connecting a new device to

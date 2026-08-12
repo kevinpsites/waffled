@@ -282,6 +282,16 @@ re-run `--measure` afterwards, since changing a recipe changes its level):
 *sit at 440 Hz or above and are held against the same brightness floor the heartbeat fix*
 *introduced.*
 
+*And one the plan couldn't have: **CPU cost is a tuning constraint here, not just an***
+*implementation detail. The first version computed each note analytically — around 18*
+*sines and 12 exponentials per sample — which measured correctly and rendered a clean WAV*
+*but came out audibly scratchy on the device, because that's the core drawing the screen*
+*and on the P4 those calls cost hundreds of cycles each. The tones are now a voice pool of*
+*coupled-form resonators with one-pole envelopes: multiply-and-add per sample, ~3.5-7.6x*
+*cheaper on the host and much more than that on the board. Rendering the same audio to a*
+*WAV and listening on a laptop is what separated "the recipe is wrong" from "the device*
+*can't play it" — worth reaching for first next time.*
+
 The web UI already offers six `ALARM_TONES` (`WaffledBiteDevice.tsx:26`) that do nothing.
 **An alarm that makes no sound is not an alarm.** Worth doing in the same body of work as
 phase 1 while the audio path is fresh.
@@ -442,6 +452,16 @@ amount of work, and pause is the better behaviour.
 *Sub-question, not blocking:* should tapping the screen during those 20 seconds dismiss the
 alarm early (and resume the sound machine immediately)? Almost certainly yes, but it's
 additive and phase 1b can ship without it.
+
+***Answered on hardware: yes, and "not blocking" was wrong.*** The first time this ran on a
+real device the tone came out of the speaker with the ordinary home screen showing and no
+way to silence it, which reads as a malfunction rather than as an alarm. There is now a
+full-screen alarm takeover (`src/ui/alarm_screen.cpp`) with a **Stop** button, loaded the
+instant the alarm fires rather than on the next poll — a five-second gap between the sound
+starting and the screen appearing is its own bug. Stop calls `wb_audio_alarm_dismiss()`,
+which cancels **only** the alarm so the sound machine still fades back in; silencing the
+room is not what dismissing an alarm means. If nobody taps it, the screen clears itself
+when the 20 seconds are up.
 
 **D5 — Use the speaker(s) that came with the board.** No enclosure design, no driver
 sourcing. The board carries the amp and a **2-pin JST PH 2.0 header silkscreened `SPK`**;
