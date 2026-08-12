@@ -328,6 +328,7 @@ t "a failed release step is named in the end-of-run summary" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
 
+  reset_release_failures   # the file is keyed on $$; a recycled PID must not leak in
   set +e
   run_release_step "green step" "$tmp" true  >/dev/null 2>&1
   run_release_step "red step"   "$tmp" false >/dev/null 2>&1
@@ -354,6 +355,7 @@ t "a failure inside a background lane still reaches the summary" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
 
+  reset_release_failures   # the file is keyed on $$; a recycled PID must not leak in
   set +e
   ( run_release_step "lane step" "$tmp" false >/dev/null 2>&1 ) &
   wait
@@ -373,6 +375,7 @@ t "report_release_failures is silent and succeeds when every step passed" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
 
+  reset_release_failures   # the file is keyed on $$; a recycled PID must not leak in
   set +e
   run_release_step "green step" "$tmp" true >/dev/null 2>&1
   out="$(report_release_failures 2>&1)"
