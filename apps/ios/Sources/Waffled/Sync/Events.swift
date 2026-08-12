@@ -60,6 +60,17 @@ enum EventOrigin {
     static func isReadOnly(detailOrigin: String?, mirrorOrigin: String?) -> Bool {
         isReadOnly(detailOrigin ?? mirrorOrigin)
     }
+
+    /// May `EventEditSheet` offer Save and Delete for this event?
+    ///
+    /// The gate lives on the SHEET rather than on the screens that present it: the
+    /// detail view is only one route in — `PersonView`'s day list opens the editor
+    /// directly — and gating each call site is only ever as complete as whoever
+    /// enumerated them. `nil` is a brand-new event, which is never gated.
+    static func blocksEditing(_ event: SyncedEvent?) -> Bool {
+        guard let event else { return false }
+        return event.isReadOnly
+    }
 }
 
 /// Timestamp handling that mirrors the web client (`events-local.ts`): server-

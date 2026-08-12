@@ -875,6 +875,10 @@ struct EventEditSheet: View {
                     bottomBar.padding(.top, 6)
                 }
                 .padding(18)
+                // Read-only: the fields stay legible (this is still how you look at a
+                // feed event's details) but nothing here can be changed. Cancel lives
+                // in the toolbar, outside this, so there's always a way out.
+                .disabled(isReadOnly)
             }
             .background(WF.canvas)
             .navigationTitle(editing ? "Edit event" : "New event")
@@ -917,7 +921,21 @@ struct EventEditSheet: View {
         .modifier(KioskSheetPresentation(kiosk: DeviceExperience.current == .kiosk))
     }
 
-    private var bottomBar: some View {
+    /// A subscribed feed is a one-way read, so this event can't be saved or deleted
+    /// from here. Gating the SHEET (not the screens that present it) means every
+    /// route in is covered — the detail view, `PersonView`'s day list, and anything
+    /// added later. See `EventOrigin.blocksEditing`.
+    private var isReadOnly: Bool { EventOrigin.blocksEditing(event) }
+
+    @ViewBuilder private var bottomBar: some View {
+        if isReadOnly {
+            LockNote.subscribedFeedEvent
+        } else {
+            editControls
+        }
+    }
+
+    private var editControls: some View {
         HStack(spacing: 14) {
             if editing {
                 Button {

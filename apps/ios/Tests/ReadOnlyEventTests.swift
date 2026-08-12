@@ -46,4 +46,29 @@ struct ReadOnlyEventTests {
         #expect(!EventOrigin.isReadOnly(detailOrigin: nil, mirrorOrigin: nil))
         #expect(!EventOrigin.isReadOnly(detailOrigin: "google", mirrorOrigin: nil))
     }
+
+    // The editor is the thing worth protecting, not any one route into it. Gating
+    // only the detail screen left `PersonView`'s day list — which opens the edit
+    // sheet directly — still offering Save and Delete on a feed event, so the gate
+    // belongs on the sheet where every entry point has to pass through it.
+    @Test func blocksEditingAFeedEventWhicheverScreenOpenedIt() {
+        let feedEvent = SyncedEvent(id: "1", title: "Band concert", startsAtRaw: nil, startsAt: nil,
+                                    allDay: false, personId: "emma", colorHex: nil, emoji: nil, origin: "ics")
+        #expect(EventOrigin.blocksEditing(feedEvent))
+    }
+
+    @Test func leavesOwnAndProviderEventsEditableInTheSheet() {
+        let ownEvent = SyncedEvent(id: "2", title: "Dentist", startsAtRaw: nil, startsAt: nil,
+                                   allDay: false, personId: nil, colorHex: nil, emoji: nil)
+        let googleEvent = SyncedEvent(id: "3", title: "Standup", startsAtRaw: nil, startsAt: nil,
+                                      allDay: false, personId: nil, colorHex: nil, emoji: nil, origin: "google")
+        #expect(!EventOrigin.blocksEditing(ownEvent))
+        #expect(!EventOrigin.blocksEditing(googleEvent))
+    }
+
+    // The same sheet creates events, and a brand-new event has no origin yet — it
+    // must not be gated, or the app can't add events at all.
+    @Test func neverBlocksCreatingANewEvent() {
+        #expect(!EventOrigin.blocksEditing(nil))
+    }
 }

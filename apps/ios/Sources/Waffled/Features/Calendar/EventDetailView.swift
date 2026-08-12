@@ -113,16 +113,7 @@ struct EventDetailView: View {
     /// fix is to edit it in the calendar that owns it, or unsubscribe in Settings.
     @ViewBuilder private var deleteButton: some View {
         if isReadOnly {
-            HStack(spacing: 7) {
-                Image(systemName: "lock").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
-                Text("From a subscribed calendar feed — read-only here. Change it in the calendar it comes from, or remove the feed in Settings → Calendars.")
-                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
-            .padding(.top, 4)
+            LockNote.subscribedFeedEvent.padding(.top, 4)
         } else {
             deleteControl
         }
