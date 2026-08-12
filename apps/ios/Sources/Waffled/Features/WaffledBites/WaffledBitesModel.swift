@@ -23,15 +23,27 @@ enum WaffledBiteOptions {
     /// Keep in step with the firmware's `wb_synth_parse` / `WB_SOUND_OPTIONS`
     /// and the web panel's `SOUNDS_COMING_SOON`.
     static let soundsComingSoon: Set<String> = ["lullaby", "forest"]
-    static let alarmTones = ["Sunrise chime", "Birdsong", "Soft harp", "Gentle bells", "Ocean tide", "Twinkle stars"]
+    /// Key + label, like `sounds` — the KEY is what's stored in
+    /// `settings.alarm.tone`. These were bare labels stored as-is until
+    /// migration 0095: the stored value and the on-screen copy were one string,
+    /// so renaming a chip repointed every paired device's alarm and nothing
+    /// could be localised. The firmware's `wb_tone_parse` accepts both
+    /// spellings, so the migration needed no release alongside it.
+    static let alarmTones: [(key: String, label: String)] = [
+        ("sunriseChime", "Sunrise chime"), ("birdsong", "Birdsong"), ("softHarp", "Soft harp"),
+        ("gentleBells", "Gentle bells"), ("oceanTide", "Ocean tide"), ("twinkleStars", "Twinkle stars"),
+    ]
     /// Birdsong is the one wake tone that needs a real recording rather than
     /// synthesis, so it waits for the sound pack alongside the sampled sounds
     /// above. Keep in step with the firmware's `wb_tone_parse` and the web
     /// panel's `ALARM_TONES_COMING_SOON`.
-    static let alarmTonesComingSoon: Set<String> = ["Birdsong"]
+    static let alarmTonesComingSoon: Set<String> = ["birdsong"]
 
     static func nightHex(_ key: String) -> UInt32 { nightColors.first { $0.key == key }?.hex ?? nightColors[0].hex }
     static func soundLabel(_ key: String) -> String { sounds.first { $0.key == key }?.label ?? key.capitalized }
+    /// Falls back to the raw stored value rather than blanking: 0095 leaves a
+    /// tone it doesn't recognise alone, so one can still arrive here.
+    static func toneLabel(_ key: String) -> String { alarmTones.first { $0.key == key }?.label ?? key }
 
     /// Preset-minutes label: "Nh" at/above an hour, else "Nm" — matches the web's `fmtPreset`.
     static func presetLabel(_ min: Int) -> String { min >= 60 ? "\(min / 60)h" : "\(min)m" }
@@ -48,7 +60,7 @@ extension WaffledAPI.WaffledBiteSettings {
         Filled(
             night: night ?? .init(on: false, color: "amber", brightness: 40),
             sound: sound ?? .init(on: false, sound: "ocean", volume: 45, timerMin: 0),
-            alarm: alarm ?? .init(on: false, hour: 6, min: 45, tone: "Sunrise chime",
+            alarm: alarm ?? .init(on: false, hour: 6, min: 45, tone: "sunriseChime",
                                   volume: Alarm.defaultVolume),
             schedules: schedules ?? [],
             display: display ?? .init(brightness: 85, nightDim: true))
@@ -210,7 +222,7 @@ final class WaffledBitesModel {
     }
     private func patchAlarm(_ mutate: (inout WaffledAPI.WaffledBiteSettings.Alarm) -> Void) async {
         var alarm = device?.settings.withDefaults.alarm
-            ?? .init(on: false, hour: 6, min: 45, tone: "Sunrise chime",
+            ?? .init(on: false, hour: 6, min: 45, tone: "sunriseChime",
                      volume: WaffledAPI.WaffledBiteSettings.Alarm.defaultVolume)
         mutate(&alarm)
         // `volumeOrDefault`, not `volume`: this rebuilds the whole alarm object

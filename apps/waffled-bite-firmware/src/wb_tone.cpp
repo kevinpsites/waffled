@@ -133,7 +133,9 @@ bool wb_tone_parse(const char *name, WbTone *out)
     const char *key;
     WbTone tone;
   };
-  // Both spellings for each tone — see the header for why.
+  // Both spellings for each tone — the key is what the apps store now (and
+  // what API migration 0095 rewrote existing rows to); the display string is
+  // kept for rows that migration couldn't reach. See the header for why.
   static const Entry kTones[] = {
       {"Sunrise chime", "sunriseChime", WbTone::SunriseChime},
       {"Soft harp", "softHarp", WbTone::SoftHarp},

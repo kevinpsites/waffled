@@ -35,12 +35,16 @@ enum class WbTone
   TwinkleStars,
 };
 
-// Accepts BOTH the display strings the parent app stores today ("Sunrise
-// chime") and the stable keys it may migrate to ("sunriseChime").
+// Accepts BOTH the stable keys the parent app stores ("sunriseChime") and the
+// display strings it used to store ("Sunrise chime").
 //
-// Accepting both is what keeps that migration (plan §5 gap 3, open question
-// Q2) from having to be timed against a firmware release: existing rows work
-// now, migrated rows work later, and no backfill has to land in lockstep.
+// The migration is DONE — the apps write keys, and API migration 0095
+// rewrote the existing rows. Accepting both is exactly what let that land on
+// its own schedule rather than being timed against a firmware release (plan §5
+// gap 3, open question Q2), and the display-string branch stays for the rows
+// that migration deliberately can't reach: a device that hasn't checked in
+// since, a database restored from an older backup, or a rolled-back app
+// writing labels again. Cheap to keep, and its absence would be silent.
 // Returns false and leaves `*out` untouched for anything unrecognised.
 bool wb_tone_parse(const char *name, WbTone *out);
 
