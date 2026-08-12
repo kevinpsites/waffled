@@ -16,9 +16,9 @@ namespace
 SDL_AudioDeviceID s_dev = 0;
 WbSynth s_synth;
 bool s_playing = false;
+int s_current = -1; // which sound s_synth was initialised for
 int s_volume = 50;
 float s_fade = 0.0f;
-bool s_wantPlay = false;
 
 // Same 400 ms fade as the device, for the same anti-pop reason — desktop
 // speakers click too, and tuning fades against a sound that doesn't fade
@@ -70,10 +70,20 @@ void wb_audio_play(WbSound sound, int volume)
 {
   if (!s_dev) return;
   SDL_LockAudioDevice(s_dev);
-  wb_synth_init(&s_synth, sound, 0x5EEDu);
+  // Only re-seed the synth when the sound actually changes. main.cpp calls
+  // this on EVERY poll (~5s) to keep playback in step with settings, and
+  // re-initialising each time restarts every slow LFO from zero — ocean's ~7s
+  // swell could never reach its crest, and the heartbeat would never advance
+  // past its first beat. The simulator is exactly where the plan says these
+  // recipes get judged by ear, so silently rebuilding state there is worse
+  // than a cosmetic bug.
+  if (!s_playing || (int)sound != s_current)
+  {
+    wb_synth_init(&s_synth, sound, 0x5EEDu);
+    s_current = (int)sound;
+  }
   s_volume = volume;
   s_playing = true;
-  s_wantPlay = true;
   SDL_UnlockAudioDevice(s_dev);
 }
 
@@ -90,7 +100,6 @@ void wb_audio_stop()
   if (!s_dev) return;
   SDL_LockAudioDevice(s_dev);
   s_playing = false;
-  s_wantPlay = false;
   SDL_UnlockAudioDevice(s_dev);
 }
 

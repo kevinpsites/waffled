@@ -150,8 +150,13 @@ void audioTask(void *)
         s_stereo[i * 2 + 1] = v;
       }
 
+      // i2s_channel_write is what paces this loop: it blocks until the DMA
+      // has room. If it ever fails instead (a disabled channel, a timeout),
+      // nothing throttles the task and it spins at priority 5 on core 1 —
+      // so yield explicitly rather than assuming the write always blocks.
       size_t written = 0;
-      i2s_channel_write(s_tx, s_stereo, sizeof(s_stereo), &written, 500);
+      if (i2s_channel_write(s_tx, s_stereo, sizeof(s_stereo), &written, 500) != ESP_OK)
+        vTaskDelay(pdMS_TO_TICKS(5));
 
       if (phase == Phase::Stopping && fade <= 0.0f)
       {
@@ -226,8 +231,15 @@ void wb_audio_init()
 void wb_audio_play(WbSound sound, int volume)
 {
   s_wantVolume = volume;
-  if (s_wantPlay && (int)sound != s_wantSound) s_restart = true;
+  // Publish the new sound BEFORE raising s_restart, never the other way round.
+  // Callers run on core 0 and the audio task on core 1, so if s_restart were
+  // visible first the task could re-init the synth with the OLD sound and then
+  // clear the flag — and nothing re-arms it, because by the next poll
+  // s_wantSound already equals the requested sound, so the comparison below is
+  // false. A lost sound change would be permanent, not self-healing.
+  const bool changing = s_wantPlay && (int)sound != s_wantSound;
   s_wantSound = (int)sound;
+  if (changing) s_restart = true;
   s_wantPlay = true;
 }
 
