@@ -23,7 +23,7 @@ const WbDeviceState &wb_mock_state(void)
       {WbWakeLightState::None, -1, -1},
       {false, "white", 50, 0},        // sound: off, defaults picked to match apps/web's own fallback UI state
       {true, "amber", 40},            // night: on, matching the pre-settings-screen mock's nightlightOn=true
-      {false, 6, 45, "Sunrise chime", 80}, // alarm: off — the simulator shouldn't ring on its own
+      {false, 6, 45, "sunriseChime", 80},  // alarm: off — the simulator shouldn't ring on its own
       16, 13, 3, 10, 15,              // now: 4:13pm, Wed Oct 15 — matches this screen's original hardcoded placeholder text
   };
   return state;
@@ -137,7 +137,7 @@ bool wb_state_from_json(JsonDocument &doc, WbDeviceState &out)
   out.alarm.on = alarm["on"] | false;
   out.alarm.hour = alarm["hour"] | 6;
   out.alarm.min = alarm["min"] | 45;
-  copyField(out.alarm.tone, WB_TONE_LEN, alarm["tone"], "Sunrise chime");
+  copyField(out.alarm.tone, WB_TONE_LEN, alarm["tone"], "sunriseChime");
   // D3: its own volume, defaulting louder than the sound machine — a wake
   // tone that has to be heard through sleep, not one that has to be ignorable.
   out.alarm.volume = alarm["volume"] | 80;

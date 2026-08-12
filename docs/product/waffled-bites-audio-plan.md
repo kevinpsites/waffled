@@ -9,8 +9,9 @@ screen, settings sync — and made **no sound at all**, because nothing in
 Sounds tile and from a parent's panel, with live volume and no pops. **Phase 1b (§5) is
 built too**: the device parses `settings.alarm`, five of the six wake tones are
 synthesised (birdsong needs a recording and moves to §6), the alarm has its own volume,
-and decision D4's pause/resume sequence runs. Remaining: the sleep timer's auto-off and
-the sampled sounds (§6).
+and decision D4's pause/resume sequence runs. **The sleep timer's auto-off is built
+too** — `wb_sleep_timer.{h,cpp}`, another pure decision in the same shape as `wb_alarm`.
+Remaining: the sampled sounds (§6).
 
 The alarm's phase logic lives in `wb_audio_seq` — a pure state machine both backends
 drive — specifically so D4 is unit-testable. It replaced hand-rolled sequencing inside the
@@ -52,7 +53,8 @@ scoping it in here would triple the work for zero benefit to a kid trying to sle
 | I2S output + amp sequencing + fades (`wb_audio`) | **Done, hardware-verified** — `src/wb_audio_{esp32,native}.cpp` |
 | Wake tones (`wb_tone`, 5 recipes) + alarm timing (`wb_alarm`) | **Done** — `src/wb_tone.{h,cpp}`, `src/wb_alarm.{h,cpp}`, `test/test_alarm/` |
 | D4 alarm sequence (pause -> tone -> hand back) | **Done** — `src/wb_audio_seq.{h,cpp}`, `test/test_audio_seq/` |
-| Sleep timer auto-off, sampled sounds | Still open (§6) |
+| Sleep timer auto-off (`wb_sleep_timer`, 12 unit tests) | **Done** — `src/wb_sleep_timer.{h,cpp}`, `test/test_sleep_timer/` |
+| Sampled sounds | Still open (§6) |
 
 ## 3. The load-bearing decisions
 

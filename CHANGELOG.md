@@ -105,8 +105,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   device from scratch rather than streamed — so it keeps playing through a Wi-Fi drop or
   an overnight reboot of your home server, and a kid's room never goes suddenly silent.
   Plug the small speaker that came with your board into the socket marked `SPK`. Forest and
-  lullaby show as "(soon)" and can't be picked yet — they need real recordings — and the
-  sleep timer's auto-off isn't wired up yet.
+  lullaby show as "(soon)" and can't be picked yet — they need real recordings.
+
+- **Waffled-Bite device: the sleep timer actually stops the sound.** Picking 15m, 30m, 1h
+  or 2h under the sound machine has been savable for a while without the device ever acting
+  on it — the sound just played until somebody switched it off. Now it fades out when the
+  time is up, and the parent panel updates to match, so the app never reads "On" over a
+  silent speaker. The countdown restarts whenever the sound machine is switched on again,
+  a different sound is picked, or the timer length is changed — so nudging the volume
+  doesn't quietly buy another half hour. It keeps counting while the device is offline,
+  which is the whole point: a bedtime timer has to end even if the Wi-Fi drops.
 
 - **Waffled-Bite device: the morning alarm rings.** The alarm time and tone have been
   saveable for a while without the device ever making a sound at the appointed hour; now it

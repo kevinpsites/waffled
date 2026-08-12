@@ -195,11 +195,11 @@ void test_setting_the_alarm_to_right_now_rings_it(void)
 
 // ── the tone list ──────────────────────────────────────────────────────────
 
-// The stored value is a display string today ('Sunrise chime'), and the plan
-// (§5 gap 3, Q2) recommends migrating to stable keys. Accepting BOTH is what
-// lets that migration happen later without the firmware caring: existing rows
-// work now, migrated rows work after, and no backfill has to be timed against
-// a firmware release.
+// The stored value is a stable key ('sunriseChime') since migration 0095.
+// Accepting BOTH spellings is what let that migration land on its own
+// schedule rather than in lockstep with a firmware release — and it still
+// earns its keep for rows the migration can't reach: an old backup, or a
+// rolled-back app writing display strings again.
 void test_tone_parse_accepts_both_display_strings_and_stable_keys(void)
 {
   WbTone got;

@@ -27,13 +27,16 @@ fan or heartbeat and it plays on the device, fading in and out rather than click
 alarm rings at the time you set, for about twenty seconds. Plug the small speaker that came
 with your board into the 2-pin socket marked `SPK`.
 
-Two things aren't live yet, though they're saved and synced correctly:
+The **sleep timer** works too: pick 15m, 30m, 1h or 2h and the sound fades out when the
+time is up, whether or not the device can reach your server. The control panel updates to
+match, so it never shows "On" over a silent speaker.
+
+One thing isn't live yet, though it's saved and synced correctly:
 
 - **Forest, lullaby and birdsong show as "(soon)" and can't be picked yet.** Every other
   sound and tone is generated on the device itself from scratch, which is why they keep
   working even if your home server reboots overnight. Those three need real recordings,
   which come later.
-- **The sleep timer doesn't stop playback yet** — the sound plays until you turn it off.
 :::
 
 :::note[Why the alarm sounds the way it does]

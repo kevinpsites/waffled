@@ -243,7 +243,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   speaker, from both the Sounds tile and a parent's panel, with a live volume slider and no
   pops — and the **morning alarm now rings**, with five synthesised wake tones, its own
   volume, and a pause/resume that hands the sound machine back afterwards. What's left is
-  the **sleep timer's auto-off** (the sound plays until it's switched off) and the **sampled
+  the **sampled
   sounds** (`forest`/`lullaby`/birdsong, shown disabled until real recordings exist). Plan:
   [`waffled-bites-audio-plan.md`](waffled-bites-audio-plan.md). Everything is **synthesised**
   on the device itself — no audio files, no streaming, so a kid's room stays

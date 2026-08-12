@@ -455,6 +455,7 @@ static void wb_forget_pairing_and_unpair()
 static WbTaskCompleteResult wb_complete_task(const std::string &taskId);
 static WbTaskCompleteResult wb_uncomplete_task(const std::string &taskId);
 static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue);
+static bool wb_sync_sound_off();
 static bool wb_start_timer(int durationSec);
 static bool wb_end_timer();
 
@@ -540,6 +541,13 @@ static void wb_do_poll()
     // timer against these settings even if every later poll fails.
     g_lastSound = liveState.sound;
     wb_audio_apply(g_lastSound);
+    // The sleep timer has run out, but the server still believes the sound
+    // machine is on — say otherwise, so the parent panel and the room agree.
+    // Re-evaluated every poll rather than latched, which is also how it
+    // recovers when the timer expired during an offline stretch: the write is
+    // simply retried until it lands, and stops being attempted the moment a
+    // poll comes back reporting `on: false`.
+    if (g_sleepTimer.expired && liveState.sound.on) wb_sync_sound_off();
     wb_alarm_apply(liveState.alarm, liveState);
     // Full clean+rebuild only ONCE per (re-)pairing session — the first real
     // poll after wb_enter_app()'s mock-data build. Every poll after that
@@ -787,6 +795,43 @@ static WbTaskCompleteResult wb_uncomplete_task(const std::string &taskId)
 // timerMin out here doesn't clobber it), and on success runs an immediate
 // poll so the tile's own On/Off subtitle and any other open screen catch up
 // without waiting up to 5s.
+// Tells the SERVER the sound machine is off once the sleep timer has run out,
+// so the parent panel matches the room instead of still reading "On" over a
+// silent speaker.
+//
+// Deliberately does NOT touch local state. The obvious shortcut — reuse
+// wb_patch_settings, which optimistically sets g_lastSound.on = false — is a
+// trap: if the PATCH then FAILS, the next successful poll returns on=true, the
+// sleep timer sees `on` go false->true, calls that a fresh session, and plays
+// for another full timerMin. Leaving local state alone makes a failed write
+// harmless — `expired` stays sticky, the room stays quiet, and the caller
+// simply tries again on the next poll.
+//
+// Nor does it re-poll on success the way wb_patch_settings does: this is
+// called FROM wb_do_poll, and wb_do_poll() calling itself would recurse.
+static bool wb_sync_sound_off()
+{
+  if (wb_tick_ms() >= g_tokenExpiresAtMs)
+  {
+    if (!wb_refresh_access_token())
+      return false;
+  }
+
+  // sound/night are the only keys this device-authed route accepts, and the
+  // tone/volume are sent unchanged — the only edit is `on`.
+  JsonDocument reqDoc;
+  JsonObject sound = reqDoc["sound"].to<JsonObject>();
+  sound["on"] = false;
+  sound["sound"] = g_lastSound.tone;
+  sound["volume"] = g_lastSound.volume;
+  std::string body;
+  serializeJson(reqDoc, body);
+
+  std::string url = g_serverUrl + "/api/waffled-bites/device/settings";
+  WbHttpResponse resp = wb_http_patch(url.c_str(), body.c_str(), g_accessToken.c_str());
+  return resp.ok && resp.status == 200;
+}
+
 static bool wb_patch_settings(WbSettingsKey key, bool on, const std::string &optionKey, int sliderValue)
 {
   if (wb_tick_ms() >= g_tokenExpiresAtMs)
