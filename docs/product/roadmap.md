@@ -197,9 +197,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   run this command" doc on the docs site, paired with the existing pairing walkthrough
   in [`waffled-bites.md`](../../website/docs/src/content/docs/features/waffled-bites.md).
 
-- **Waffled-Bite sound machine — make the speaker actually work.** The Sounds tile, its
-  seven sounds, the volume slider and the sleep timer all sync end to end today and produce
-  no sound. Plan:
+- **Waffled-Bite audio — finish what the speaker can't do yet.** Phase 1 has **shipped**:
+  white noise, ocean, rain, box fan and heartbeat play on the device's own speaker, from
+  both the Sounds tile and a parent's panel, with a live volume slider and no pops. What's
+  left is the **sleep timer's auto-off** (the sound plays until it's switched off), the
+  **morning alarm's tone** (the device doesn't parse `settings.alarm` at all yet), and the
+  **sampled sounds** (`forest`/`lullaby`, shown disabled until real recordings exist). Plan:
   [`waffled-bites-audio-plan.md`](waffled-bites-audio-plan.md). Phase 1 **synthesises** white
   noise, ocean, rain, box fan and heartbeat on the device itself — no audio files, no
   streaming, so a kid's room stays quiet-not-silent even if the home server reboots at 2am

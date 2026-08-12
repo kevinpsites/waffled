@@ -78,7 +78,12 @@ void measure(const std::vector<int16_t> &pcm, double *rmsOut, double *peakOut)
 int main(int argc, char **argv)
 {
   const bool measureOnly = (argc > 1 && strcmp(argv[1], "--measure") == 0);
-  const size_t seconds = (size_t)((argc > 2 && !measureOnly) ? atoi(argv[2]) : 20);
+  // Clamped: atoi returns 0 for junk, and a 0-length render writes a WAV with
+  // a valid header and no audio — which looks like the synth broke.
+  int wanted = (argc > 2 && !measureOnly) ? atoi(argv[2]) : 20;
+  if (wanted < 1) wanted = 20;
+  if (wanted > 600) wanted = 600;
+  const size_t seconds = (size_t)wanted;
   const size_t total = (size_t)WB_SAMPLE_RATE_HZ * (measureOnly ? 30 : seconds);
 
   if (!measureOnly && argc < 2)

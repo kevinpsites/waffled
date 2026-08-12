@@ -124,7 +124,7 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 > above the hardware-bring-up entries as **simulator-proven, not hardware-proven**.
 
 - **Audio works on real hardware — with three gaps.** `src/wb_synth.{h,cpp}` synthesises
-  all five phase-1 sounds (white/ocean/rain/fan/heartbeat) from scratch, with 11 unit tests
+  all five phase-1 sounds (white/ocean/rain/fan/heartbeat) from scratch, with 14 unit tests
   in `test/test_synth/` (`pio test -e native_test`), and `src/wb_audio_esp32.cpp` carries
   them to the NS4168 over I2S. **Verified on the board:** the sound machine plays from the
   device's Sounds tile and from a parent's panel, with a live volume slider and no pops.
