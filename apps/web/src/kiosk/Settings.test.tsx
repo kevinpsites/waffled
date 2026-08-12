@@ -104,10 +104,18 @@ describe('Settings screen', () => {
     fireEvent.change(select, { target: { value: 'tinted' } })
     await waitFor(() => expect(patches).toContainEqual({ eventStyle: 'tinted' }))
 
-    // The family color is the same swatch picker, saved to the same endpoint.
+    // The family color is the same swatch picker, saved to the same endpoint —
+    // but dragging around the OS color picker fires an `input` per step, and
+    // each one used to be its own PATCH + refetch racing the others (with the
+    // controlled value snapping back mid-drag). Only the committed color saves.
     expect(screen.getByText('Family color')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Pick a custom color'), { target: { value: '#123456' } })
-    await waitFor(() => expect(patches).toContainEqual({ familyColorHex: '#123456' }))
+    const custom = screen.getByLabelText('Pick a custom color')
+    const colorPatches = () => patches.filter((p) => 'familyColorHex' in p)
+    for (const step of ['#111111', '#221133', '#123456']) fireEvent.input(custom, { target: { value: step } })
+    expect(colorPatches()).toHaveLength(0)
+
+    fireEvent.change(custom, { target: { value: '#123456' } })
+    await waitFor(() => expect(colorPatches()).toEqual([{ familyColorHex: '#123456' }]))
   })
 
   it('shows the Display & Kiosk panel with the family-display toggle', async () => {
