@@ -1651,6 +1651,15 @@ requires user-facing notes under `[Unreleased]`; and runs the CLI, migration, AP
 (when configured), docs, Docker E2E, and locally available iOS checks. It does not bump versions,
 commit, or tag anything; build tools may refresh ignored local artifacts.
 
+Those checks run in **four parallel lanes** — `ios`, `docker`, `web`, and `misc` — grouped by the
+resource each contends for, because a release is cut on your own machine and there is no reason to
+leave its cores idle (~228s serial → ~102s). Each lane buffers its output and prints it whole, so
+the lanes appear one after another rather than interleaved, and every step reports its own wall
+time. **A run that fails ends with a `Release checks failed:` summary naming each failed step** —
+checks deliberately continue after a failure so one pass surfaces everything, which means the
+culprit may be thousands of lines above. If you do not see either that summary or
+`All available release project checks passed.`, the run did not finish.
+
 **To cut a release:** run **`./waffled release X.Y.Z`** locally on `main`. It repeats the checks
 before changing anything, then in one commit it:
 1. Reviews the `[Unreleased]` notes with you (**requires at least one entry**), dates the
