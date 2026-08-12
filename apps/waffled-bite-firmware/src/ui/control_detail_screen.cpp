@@ -283,13 +283,27 @@ void wb_build_control_detail_screen(
         lv_obj_set_flex_align(chip, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
         lv_obj_t *chip_lbl = lv_label_create(chip);
-        lv_label_set_text(chip_lbl, options[i].label);
+        if (options[i].comingSoon)
+        {
+          char soon[48]; // lv_label_set_text copies, so a stack buffer is fine
+          snprintf(soon, sizeof(soon), "%s (soon)", options[i].label);
+          lv_label_set_text(chip_lbl, soon);
+          lv_obj_set_style_text_opa(chip_lbl, LV_OPA_40, 0);
+        }
+        else
+        {
+          lv_label_set_text(chip_lbl, options[i].label);
+        }
         lv_obj_set_style_text_font(chip_lbl, &lv_font_montserrat_16, 0);
       }
       wb_style_option_chip(chip, options[i].hasSwatch, selected);
+      if (options[i].comingSoon) lv_obj_set_style_bg_opa(chip, LV_OPA_30, 0);
 
       WbOptionChipCtx *chip_ctx = new WbOptionChipCtx{ctx, options[i].key, chip_row, options[i].hasSwatch, options[i].swatchHex};
-      lv_obj_add_event_cb(chip, wb_option_chip_clicked_cb, LV_EVENT_CLICKED, chip_ctx);
+      // No click handler for a sound we can't play — the chip is inert, not
+      // a tap that silently does nothing.
+      if (!options[i].comingSoon)
+        lv_obj_add_event_cb(chip, wb_option_chip_clicked_cb, LV_EVENT_CLICKED, chip_ctx);
       lv_obj_add_event_cb(chip, wb_option_chip_delete_cb, LV_EVENT_DELETE, chip_ctx);
       // wb_sync_control_detail_screen's way to re-derive each chip's key/
       // swatch without re-deriving from the raw WbControlOption array.

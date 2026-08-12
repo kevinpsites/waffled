@@ -15,7 +15,13 @@ struct WbControlOption
   const char *label;          // shown on the chip, e.g. "Ocean waves"
   bool hasSwatch = false;     // true for color options (Nightlight) — Sounds tones leave this false
   uint32_t swatchHex = 0;     // 0xRRGGBB, only meaningful when hasSwatch is true
+  bool comingSoon = false;    // rendered dimmed and inert — see below
 };
+// `comingSoon` exists because a chip you can tap that then does nothing reads
+// as a broken device, not as an unfinished feature. The sampled sounds
+// (lullaby, forest) need real recordings the firmware doesn't have yet, so
+// they're shown — they're advertised in the docs, and hiding them would be its
+// own kind of lie — but dimmed, labelled, and not tappable.
 
 // Optimistic-update contract, same shape as tasks_screen.h's
 // WbTaskCompleteCallback: return true only on a confirmed 200. Always
