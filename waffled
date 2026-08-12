@@ -406,11 +406,37 @@ release_repository_ready() {
   echo "${c_grn}Release repository checks passed:${c_reset} main matches origin, versions are $api_ver, and CHANGELOG has $entries entries."
 }
 
+# Names of the checks that failed this run, newline-separated. A plain string rather
+# than an array: expanding an empty array under `set -u` aborts on bash 3.2 (macOS
+# stock), the same trap that produced the v0.8.0 wait_for_services regression.
+release_failed=""
+
+record_release_failure() {
+  release_failed="${release_failed}${release_failed:+
+}$1"
+}
+
+# Print every check that failed, and fail. Checks deliberately run to completion so one
+# pass surfaces ALL the breakage, which means the operator has scrolled past thousands
+# of lines of test output by the end — without this summary the run just exits 1 in
+# silence after the last (green) step, looking like it gave up for no reason.
+report_release_failures() {
+  [ -n "$release_failed" ] || return 0
+  echo
+  echo "${c_red}Release checks failed:${c_reset}"
+  printf '%s\n' "$release_failed" | while IFS= read -r label; do
+    [ -n "$label" ] && echo "  ${c_red}✗${c_reset} $label"
+  done
+  echo "${c_dim}Nothing was bumped, committed, or tagged.${c_reset}"
+  return 1
+}
+
 run_release_step() {
   local label="$1" dir="$2"; shift 2
   echo "${c_dim}release check ▸ ${label}…${c_reset}"
   if ! ( cd "$dir" && "$@" ); then
     echo "${c_red}release check ✗ ${label} failed${c_reset}"
+    record_release_failure "$label"
     return 1
   fi
   echo "${c_grn}release check ✓ ${label}${c_reset}"
@@ -471,10 +497,12 @@ release_project_checks() {
   if [ "$(uname -s)" = "Darwin" ]; then
     if ! command -v xcodegen >/dev/null 2>&1 || ! command -v xcodebuild >/dev/null 2>&1; then
       echo "${c_red}iOS release checks require Xcode and XcodeGen on macOS.${c_reset}"
+      record_release_failure "iOS tests (Xcode or XcodeGen not installed)"
       fail=1
     elif [ ! -f "$ROOT/apps/ios/Vendor/powersync-swift/Package.swift" ]; then
       echo "${c_red}The patched PowerSync package is missing.${c_reset}"
       echo "Run 'cd apps/ios && ./Scripts/vendor-powersync.sh', then retry."
+      record_release_failure "iOS tests (vendored PowerSync package missing)"
       fail=1
     elif run_release_step "iOS project generation" "$ROOT/apps/ios" xcodegen generate; then
       run_release_step "iOS tests" "$ROOT/apps/ios" xcodebuild test \
@@ -487,7 +515,10 @@ release_project_checks() {
     echo "${c_ylw}iOS tests are unavailable on this platform; require a green Xcode Cloud build for this main SHA.${c_reset}"
   fi
 
-  [ "$fail" -eq 0 ] || return 1
+  if [ "$fail" -ne 0 ]; then
+    report_release_failures
+    return 1
+  fi
   echo "${c_grn}All available release project checks passed.${c_reset}"
 }
 # Restore a dump into a short-lived, isolated Postgres container. This exercises the

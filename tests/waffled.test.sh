@@ -319,6 +319,49 @@ t "verify_backup_restore rejects a corrupt archive before starting Postgres" '
   echo "PASS"
 '
 
+# --- 12. a failed release check must SAY which step failed -------------------------
+# Regression: release_project_checks accumulated `fail=1` and ended with a bare
+# `[ "$fail" -eq 0 ] || return 1`, so a run whose FIRST step failed still executed
+# every remaining step and then exited silently. The operator saw the last step's
+# green tick and a returned prompt, with no indication of what actually broke.
+t "a failed release step is named in the end-of-run summary" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+
+  set +e
+  run_release_step "green step" "$tmp" true  >/dev/null 2>&1
+  run_release_step "red step"   "$tmp" false >/dev/null 2>&1
+  out="$(report_release_failures 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || { echo "FAIL: summary reported success despite a failed step"; exit 0; }
+  case "$out" in
+    *"red step"*) ;;
+    *) echo "FAIL: summary never named the failed step: $out"; exit 0 ;;
+  esac
+  case "$out" in
+    *"green step"*) echo "FAIL: summary named a step that passed: $out"; exit 0 ;;
+  esac
+  echo "PASS"
+'
+
+# A clean run must stay quiet and succeed, so the summary cannot become noise.
+t "report_release_failures is silent and succeeds when every step passed" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+
+  set +e
+  run_release_step "green step" "$tmp" true >/dev/null 2>&1
+  out="$(report_release_failures 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -eq 0 ] || { echo "FAIL: clean run reported failure: $out"; exit 0; }
+  [ -z "$out" ] || { echo "FAIL: clean run printed a summary: $out"; exit 0; }
+  echo "PASS"
+'
+
 echo
 if [ "$fails" -gt 0 ]; then
   echo "$fails/$runs waffled test(s) FAILED"
