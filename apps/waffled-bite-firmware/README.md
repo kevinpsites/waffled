@@ -148,9 +148,20 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 
   (It writes outside the repo on purpose — phase 1 ships zero audio assets.)
 
-  The morning alarm's six `ALARM_TONES` remain decorative, and the device doesn't parse
-  `settings.alarm` at all (`GET /device/state` returns it, but `WbDeviceState` has no field
-  for it). Full plan in
+  **The morning alarm rings too.** The device parses `settings.alarm` and fires the tone
+  when the poll's household-local clock reaches it — see `wb_alarm.{h,cpp}` for the timing
+  decision (pure, so the latch that makes it ring once rather than on all dozen polls of
+  that minute is unit-tested) and `wb_tone.{h,cpp}` for the five synthesised tones.
+  Birdsong needs a recording and waits for phase 2 with the sampled sounds.
+
+  Decision D4's sequence — duck the sound machine, ring for 20 s, hand playback back —
+  lives in `wb_audio_seq.{h,cpp}`, a pure phase machine that BOTH backends drive. It's
+  pure for a specific reason: `main.cpp` reconciles playback with `settings.sound` on
+  every poll, so roughly four polls land inside a 20-second alarm, and each would
+  otherwise start the sound machine up underneath the tone. That's unreachable from a
+  test if the sequencing lives inside the I2S task.
+
+  Full plan in
   [`docs/product/waffled-bites-audio-plan.md`](../../docs/product/waffled-bites-audio-plan.md);
   phase 2 adds sampled forest/lullaby/birdsong cached in the unused `spiffs` partition.
   Signed off: 22.05 kHz/16-bit/mono; audio is independent of the quiet-time/bedtime locks

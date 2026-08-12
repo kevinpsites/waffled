@@ -4,10 +4,20 @@ The Waffled-Bite's Sounds tile was fully wired end to end — parent web panel, 
 screen, settings sync — and made **no sound at all**, because nothing in
 `apps/waffled-bite-firmware` touched I2S. This plan closes that, in two phases.
 
-**Status: phase 1 works on real hardware.** The synthesis engine (§3.2, §8) and the
-`wb_audio` HAL (§3.4) are both built, and the sound machine plays through the device's
-speaker from the Sounds tile and from a parent's panel, with live volume and no pops.
-Remaining: the sleep timer's auto-off, the alarm tone (§5), and the sampled sounds (§6).
+**Status: phases 1 and 1b work.** The synthesis engine (§3.2, §8) and the `wb_audio` HAL
+(§3.4) are both built, and the sound machine plays through the device's speaker from the
+Sounds tile and from a parent's panel, with live volume and no pops. **Phase 1b (§5) is
+built too**: the device parses `settings.alarm`, five of the six wake tones are
+synthesised (birdsong needs a recording and moves to §6), the alarm has its own volume,
+and decision D4's pause/resume sequence runs. Remaining: the sleep timer's auto-off and
+the sampled sounds (§6).
+
+The alarm's phase logic lives in `wb_audio_seq` — a pure state machine both backends
+drive — specifically so D4 is unit-testable. It replaced hand-rolled sequencing inside the
+I2S task, where none of it could be checked without standing next to the device at 6:45am.
+The case that justified the extraction: `main.cpp` reconciles playback with settings on
+every poll, so about four polls land inside a 20-second alarm, and each would otherwise
+have started the sound machine up underneath the tone.
 
 Two hardware findings, now recorded in `wb_audio_esp32.cpp` rather than here: the vendor's
 I2S pins are correct and the P4 hits 22.05 kHz exactly, and **the NS4168 enable on GPIO30
@@ -40,7 +50,9 @@ scoping it in here would triple the work for zero benefit to a kid trying to sle
 | 5s poll keeping both sides in sync | Done (`wb_do_poll` in `main.cpp`) |
 | Sound generation (`wb_synth`, 5 recipes, 11 unit tests) | **Done** — `src/wb_synth.{h,cpp}`, `test/test_synth/` |
 | I2S output + amp sequencing + fades (`wb_audio`) | **Done, hardware-verified** — `src/wb_audio_{esp32,native}.cpp` |
-| Sleep timer auto-off, alarm tone, sampled sounds | Still open (§5, §6) |
+| Wake tones (`wb_tone`, 5 recipes) + alarm timing (`wb_alarm`) | **Done** — `src/wb_tone.{h,cpp}`, `src/wb_alarm.{h,cpp}`, `test/test_alarm/` |
+| D4 alarm sequence (pause -> tone -> hand back) | **Done** — `src/wb_audio_seq.{h,cpp}`, `test/test_audio_seq/` |
+| Sleep timer auto-off, sampled sounds | Still open (§6) |
 
 ## 3. The load-bearing decisions
 
@@ -256,7 +268,19 @@ re-run `--measure` afterwards, since changing a recipe changes its level):
    unchanged. Nothing in the lock code paths should touch `wb_audio` — that's the whole
    point of a sound machine, and coupling them would be a bug, not a feature.
 
-## 5. Phase 1b — the morning alarm tone (small, high value)
+## 5. Phase 1b — the morning alarm tone (small, high value) — BUILT
+
+*Built. The three gaps below were the plan; here's how each was actually closed.*
+*Gap 1: `WbAlarmSettings` + a parse in `wb_state.cpp`, fired from a pure decision*
+*(`wb_alarm_step`) that latches so the dozen polls of the alarm's minute ring once.*
+*Gap 2: `alarm.volume` exists, with a slider on both parent surfaces; it runs through*
+*`wb_synth_gain`, the sound machine's own curve, so "50" means one thing on the device.*
+*Gap 3 was sidestepped rather than settled — see Q2 in §10.*
+
+*One constraint the plan didn't anticipate: every tone had to clear the >300 Hz bar D5*
+*describes, which ruled out the obvious low-fundamental takes on "Ocean tide". All five*
+*sit at 440 Hz or above and are held against the same brightness floor the heartbeat fix*
+*introduced.*
 
 The web UI already offers six `ALARM_TONES` (`WaffledBiteDevice.tsx:26`) that do nothing.
 **An alarm that makes no sound is not an alarm.** Worth doing in the same body of work as
@@ -448,10 +472,15 @@ headphones (§3.8), because a laptop reproduces a band the device does not have.
 ## 10. Still open
 
 **Q2 — Should `alarm.tone` migrate from display strings to stable keys?** §5's gap 3. It's
-
-**Q2 — Should `alarm.tone` migrate from display strings to stable keys?** §5's gap 3. It's
-the right change and phase 1b is the natural moment, but it needs a back-compat mapping for
+the right change and phase 1b was the natural moment, but it needs a back-compat mapping for
 existing rows and touches all three surfaces, so it's worth calling rather than assuming.
+
+*Still open, but no longer blocking anything.* `wb_tone_parse` accepts **both** spellings —
+the display strings stored today (`'Sunrise chime'`) and the stable keys a migration would
+write (`'sunriseChime'`). Six lines of firmware, and it means the migration can happen
+whenever, in its own change, without having to be timed against a firmware release: existing
+rows work now, migrated rows work later. The question is now purely "is the cleanup worth
+doing", not "does the alarm depend on it".
 
 **Q3 — Does the default sound change from `white` to `fan`?** D5's speaker analysis argues
 yes. Cheap to do now, mildly annoying later (it would silently change what an existing
