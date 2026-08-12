@@ -406,14 +406,24 @@ release_repository_ready() {
   echo "${c_grn}Release repository checks passed:${c_reset} main matches origin, versions are $api_ver, and CHANGELOG has $entries entries."
 }
 
-# Names of the checks that failed this run, newline-separated. A plain string rather
-# than an array: expanding an empty array under `set -u` aborts on bash 3.2 (macOS
-# stock), the same trap that produced the v0.8.0 wait_for_services regression.
-release_failed=""
+# Names of the checks that failed this run, one per line, in a FILE rather than a shell
+# variable: checks run as background subshells (see release_project_checks) and an
+# assignment inside one never reaches the parent, so variable-based bookkeeping would
+# drop every lane failure and resurrect the silent exit this summary exists to prevent.
+# Derived from $$ rather than mktemp: bash keeps $$ at the original shell's PID inside a
+# subshell, so a lane and its parent agree on the path without having to pass anything
+# back. (Assigning the name lazily would happen in the lane's own copy of the variable
+# and be just as lost as the failure it was recording.)
+release_failed_path() {
+  printf '%s' "${TMPDIR:-/tmp}/waffled-release-failures.$$"
+}
 
 record_release_failure() {
-  release_failed="${release_failed}${release_failed:+
-}$1"
+  printf '%s\n' "$1" >> "$(release_failed_path)"
+}
+
+reset_release_failures() {
+  rm -f "$(release_failed_path)"
 }
 
 # Print every check that failed, and fail. Checks deliberately run to completion so one
@@ -421,25 +431,29 @@ record_release_failure() {
 # of lines of test output by the end — without this summary the run just exits 1 in
 # silence after the last (green) step, looking like it gave up for no reason.
 report_release_failures() {
-  [ -n "$release_failed" ] || return 0
+  local path; path="$(release_failed_path)"
+  [ -s "$path" ] || return 0
   echo
   echo "${c_red}Release checks failed:${c_reset}"
-  printf '%s\n' "$release_failed" | while IFS= read -r label; do
+  while IFS= read -r label; do
     [ -n "$label" ] && echo "  ${c_red}✗${c_reset} $label"
-  done
+  done < "$path"
   echo "${c_dim}Nothing was bumped, committed, or tagged.${c_reset}"
   return 1
 }
 
 run_release_step() {
-  local label="$1" dir="$2"; shift 2
+  local label="$1" dir="$2" started ended; shift 2
+  started="$(date +%s)"
   echo "${c_dim}release check ▸ ${label}…${c_reset}"
   if ! ( cd "$dir" && "$@" ); then
-    echo "${c_red}release check ✗ ${label} failed${c_reset}"
+    ended="$(date +%s)"
+    echo "${c_red}release check ✗ ${label} failed${c_reset} ${c_dim}($((ended - started))s)${c_reset}"
     record_release_failure "$label"
     return 1
   fi
-  echo "${c_grn}release check ✓ ${label}${c_reset}"
+  ended="$(date +%s)"
+  echo "${c_grn}release check ✓ ${label}${c_reset} ${c_dim}($((ended - started))s)${c_reset}"
 }
 
 run_release_api_step() {
@@ -478,45 +492,92 @@ release_project_checks() {
   done
   [ "$fail" -eq 0 ] || return 1
 
-  run_release_step "CLI tests" "$ROOT" bash tests/waffled.test.sh || fail=1
-  run_release_step "migration numbering" "$ROOT/apps/api" npm run --silent check:migrations || fail=1
-  run_release_step "API typecheck" "$ROOT/apps/api" npm run --silent typecheck || fail=1
-  run_release_step "web typecheck" "$ROOT/apps/web" npm run --silent typecheck || fail=1
-  run_release_step "web tests" "$ROOT/apps/web" npm test --silent || fail=1
-  # Provider credentials in an operator's shell must not change test expectations
-  # or allow an integration test to reach a real external AI service.
-  run_release_api_step "API tests" npm test --silent || fail=1
-  run_release_api_step "API Docker e2e" npm run --silent test:e2e || fail=1
-  run_release_step "API build" "$ROOT/apps/api" npm run --silent build || fail=1
-  run_release_step "web production build" "$ROOT/apps/web" npm run --silent build || fail=1
-  if package_has_script "$ROOT/apps/web/package.json" test:browser; then
-    run_release_step "browser smoke tests" "$ROOT/apps/web" npm run --silent test:browser || fail=1
-  fi
-  run_release_step "documentation build" "$ROOT/website/docs" npm run --silent build || fail=1
+  reset_release_failures
 
-  if [ "$(uname -s)" = "Darwin" ]; then
+  # Checks run in four parallel lanes rather than one serial column. Releases are cut on
+  # a developer's own machine, so spending its cores is free; the lanes are grouped by
+  # the resource they contend for, and balanced so no one lane dominates:
+  #
+  #   ios     xcodegen + xcodebuild            (Xcode; touches neither Node nor Docker)
+  #   docker  API tests, Docker e2e            (serial — they share the Docker daemon)
+  #   web     web typecheck, web tests         (the single longest Node step)
+  #   misc    everything else, all quick
+  #
+  # Each step still runs even after an earlier one in its lane fails (`|| true`), so one
+  # pass reports every problem — that is why run_release_step records failures to a file
+  # instead of a variable, which a background subshell could not propagate back.
+  lane_ios() {
+    if [ "$(uname -s)" != "Darwin" ]; then
+      echo "${c_ylw}iOS tests are unavailable on this platform; require a green Xcode Cloud build for this main SHA.${c_reset}"
+      return 0
+    fi
     if ! command -v xcodegen >/dev/null 2>&1 || ! command -v xcodebuild >/dev/null 2>&1; then
       echo "${c_red}iOS release checks require Xcode and XcodeGen on macOS.${c_reset}"
       record_release_failure "iOS tests (Xcode or XcodeGen not installed)"
-      fail=1
-    elif [ ! -f "$ROOT/apps/ios/Vendor/powersync-swift/Package.swift" ]; then
+      return 0
+    fi
+    if [ ! -f "$ROOT/apps/ios/Vendor/powersync-swift/Package.swift" ]; then
       echo "${c_red}The patched PowerSync package is missing.${c_reset}"
       echo "Run 'cd apps/ios && ./Scripts/vendor-powersync.sh', then retry."
       record_release_failure "iOS tests (vendored PowerSync package missing)"
-      fail=1
-    elif run_release_step "iOS project generation" "$ROOT/apps/ios" xcodegen generate; then
-      run_release_step "iOS tests" "$ROOT/apps/ios" xcodebuild test \
-        -project Waffled.xcodeproj -scheme Waffled \
-        -destination 'platform=iOS Simulator,name=iPhone 17 Pro' || fail=1
-    else
-      fail=1
+      return 0
     fi
-  else
-    echo "${c_ylw}iOS tests are unavailable on this platform; require a green Xcode Cloud build for this main SHA.${c_reset}"
-  fi
+    run_release_step "iOS project generation" "$ROOT/apps/ios" xcodegen generate || return 0
+    run_release_step "iOS tests" "$ROOT/apps/ios" xcodebuild test \
+      -project Waffled.xcodeproj -scheme Waffled \
+      -destination 'platform=iOS Simulator,name=iPhone 17 Pro' || true
+  }
 
-  if [ "$fail" -ne 0 ]; then
-    report_release_failures
+  # Provider credentials in an operator's shell must not change test expectations
+  # or allow an integration test to reach a real external AI service.
+  lane_docker() {
+    run_release_api_step "API tests" npm test --silent || true
+    run_release_api_step "API Docker e2e" npm run --silent test:e2e || true
+  }
+
+  lane_web() {
+    run_release_step "web typecheck" "$ROOT/apps/web" npm run --silent typecheck || true
+    run_release_step "web tests" "$ROOT/apps/web" npm test --silent || true
+  }
+
+  lane_misc() {
+    run_release_step "CLI tests" "$ROOT" bash tests/waffled.test.sh || true
+    run_release_step "migration numbering" "$ROOT/apps/api" npm run --silent check:migrations || true
+    run_release_step "API typecheck" "$ROOT/apps/api" npm run --silent typecheck || true
+    run_release_step "API build" "$ROOT/apps/api" npm run --silent build || true
+    run_release_step "documentation build" "$ROOT/website/docs" npm run --silent build || true
+    run_release_step "web production build" "$ROOT/apps/web" npm run --silent build || true
+    if package_has_script "$ROOT/apps/web/package.json" test:browser; then
+      run_release_step "browser smoke tests" "$ROOT/apps/web" npm run --silent test:browser || true
+    fi
+  }
+
+  local logdir pid_ios pid_docker pid_web pid_misc
+  logdir="$(mktemp -d)"
+  echo "${c_dim}Running release checks in 4 parallel lanes (ios, docker, web, misc)…${c_reset}"
+
+  lane_ios    > "$logdir/ios.log"    2>&1 & pid_ios=$!
+  lane_docker > "$logdir/docker.log" 2>&1 & pid_docker=$!
+  lane_web    > "$logdir/web.log"    2>&1 & pid_web=$!
+  lane_misc   > "$logdir/misc.log"   2>&1 & pid_misc=$!
+
+  # Each lane's output is buffered to its own file and printed whole, so four concurrent
+  # test runners can't shred each other's output into unreadable interleaved lines.
+  local lane
+  for lane in misc web docker ios; do
+    case "$lane" in
+      misc)   wait "$pid_misc"   || true ;;
+      web)    wait "$pid_web"    || true ;;
+      docker) wait "$pid_docker" || true ;;
+      ios)    wait "$pid_ios"    || true ;;
+    esac
+    echo
+    echo "${c_dim}—— ${lane} lane ——${c_reset}"
+    cat "$logdir/$lane.log"
+  done
+  rm -rf "$logdir"
+
+  if ! report_release_failures; then
     return 1
   fi
   echo "${c_grn}All available release project checks passed.${c_reset}"

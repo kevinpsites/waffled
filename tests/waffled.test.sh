@@ -346,6 +346,28 @@ t "a failed release step is named in the end-of-run summary" '
   echo "PASS"
 '
 
+# Checks run in parallel lanes as background subshells. A shell variable assigned inside
+# a background subshell never reaches the parent, so bookkeeping kept in a variable would
+# silently drop every failure that happened in a lane — restoring the exact silent-exit
+# bug the summary was added to kill.
+t "a failure inside a background lane still reaches the summary" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+
+  set +e
+  ( run_release_step "lane step" "$tmp" false >/dev/null 2>&1 ) &
+  wait
+  out="$(report_release_failures 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || { echo "FAIL: a background lane failure was lost"; exit 0; }
+  case "$out" in
+    *"lane step"*) echo "PASS" ;;
+    *) echo "FAIL: summary never named the lane step: $out" ;;
+  esac
+'
+
 # A clean run must stay quiet and succeed, so the summary cannot become noise.
 t "report_release_failures is silent and succeeds when every step passed" '
   source "$WAFFLED" help >/dev/null 2>&1
