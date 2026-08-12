@@ -125,6 +125,17 @@ export function useWaffledBiteDevice(personId: string | null): WaffledBiteDevice
     }
   }, [personId, nonce])
   // Same tab, other surface (the person profile's device card) — instant.
+  //
+  // Callers ALSO do `mutation().then(refetch)`, which looks like it would
+  // double-fetch, since the mutation taps this same topic. It doesn't: both
+  // paths call setNonce, React batches them into one render, and the effect
+  // above runs once. Measured, not assumed — one mutation, one GET.
+  //
+  // Both are kept on purpose, because they answer different questions. The
+  // explicit refetch is a screen's own correctness ("I changed this, reload
+  // it") and holds even if the tap is later removed; the topic is how OTHER
+  // surfaces find out. Dropping the refetches would make every screen depend
+  // on the bus being wired right for its own display to be correct.
   useRefetchOn(['waffledBites'], () => {
     if (personId) setNonce((n) => n + 1)
   })
