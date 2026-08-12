@@ -370,6 +370,54 @@ t "a failure inside a background lane still reaches the summary" '
   esac
 '
 
+# A lane records its own step failures as it goes, so a lane that is KILLED records
+# nothing at all. Trusting the file alone then reads an empty file as "everything
+# passed" — and the release proceeds to bump, commit and tag on checks that never ran.
+# That is worse than the silent exit this summary replaced: a confident false green.
+t "a lane killed mid-run fails the release instead of passing it" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  reset_release_failures
+
+  # A lane that dies having recorded nothing. `sh -c` because $$ inside it is that
+  # child'"'"'s own PID — bash keeps $$ at the parent even in a subshell, and BASHPID is
+  # bash 4.0+, which the 3.2 compat target rules out.
+  sh -c '"'"'kill -9 $$'"'"' &
+  pid=$!
+
+  set +e
+  wait_for_lane "misc" "$pid" >/dev/null 2>&1
+  out="$(report_release_failures 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc" -ne 0 ] || { echo "FAIL: a killed lane was reported as a pass"; exit 0; }
+  case "$out" in
+    *"misc lane"*) echo "PASS" ;;
+    *) echo "FAIL: summary never mentioned the dead lane: $out" ;;
+  esac
+'
+
+# …but a lane that finishes normally must not be reported as dead, or every clean run
+# would fail.
+t "a lane that exits cleanly is not reported as dead" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  reset_release_failures
+
+  ( true ) &
+  pid=$!
+
+  set +e
+  wait_for_lane "web" "$pid" >/dev/null 2>&1
+  rc_lane=$?
+  out="$(report_release_failures 2>&1)"
+  rc=$?
+  set -e
+
+  [ "$rc_lane" -eq 0 ] || { echo "FAIL: a clean lane was treated as dead"; exit 0; }
+  [ "$rc" -eq 0 ] || { echo "FAIL: clean lane produced a failure summary: $out"; exit 0; }
+  echo "PASS"
+'
+
 # A clean run must stay quiet and succeed, so the summary cannot become noise.
 t "report_release_failures is silent and succeeds when every step passed" '
   source "$WAFFLED" help >/dev/null 2>&1

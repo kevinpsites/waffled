@@ -442,6 +442,21 @@ report_release_failures() {
   return 1
 }
 
+# Wait for a lane and fail the release if it DIED rather than finished. A lane records
+# its own step failures as it goes, so a lane that is killed — OOM or SIGKILL on the
+# machine these checks deliberately saturate — records nothing at all. Trusting the
+# failures file alone then reads an empty file as "everything passed" and the release
+# goes on to bump, commit and tag checks that never ran: a confident false green, which
+# is worse than the silent exit the summary replaced.
+wait_for_lane() { # wait_for_lane <name> <pid>
+  local name="$1" pid="$2" rc=0
+  wait "$pid" || rc=$?
+  [ "$rc" -eq 0 ] && return 0
+  echo "${c_red}release check ✗ ${name} lane exited abnormally (status ${rc})${c_reset}"
+  record_release_failure "${name} lane exited abnormally (status ${rc}) — its checks did not all run"
+  return 1
+}
+
 run_release_step() {
   local label="$1" dir="$2" started ended; shift 2
   started="$(date +%s)"
@@ -577,16 +592,24 @@ release_project_checks() {
 
   # Each lane's output is buffered to its own file and printed whole, so concurrent test
   # runners can't shred each other's output into unreadable interleaved lines.
+  # Fixed order rather than completion order: detecting "which finished first" needs
+  # `wait -n` (bash 4.3+), and macOS stock bash is 3.2. misc is by far the shortest lane,
+  # so waiting misc → web → docker approximates completion order anyway.
   local lane
   for lane in misc web docker; do
     case "$lane" in
-      misc)   wait "$pid_misc"   || true ;;
-      web)    wait "$pid_web"    || true ;;
-      docker) wait "$pid_docker" || true ;;
+      misc)   wait_for_lane misc   "$pid_misc"   || true ;;
+      web)    wait_for_lane web    "$pid_web"    || true ;;
+      docker) wait_for_lane docker "$pid_docker" || true ;;
     esac
     echo
     echo "${c_dim}—— ${lane} lane ——${c_reset}"
-    cat "$logdir/$lane.log"
+    # Guarded: a lane killed before its log existed must not vanish without comment.
+    if [ -f "$logdir/$lane.log" ]; then
+      cat "$logdir/$lane.log"
+    else
+      echo "${c_ylw}(no output captured — the ${lane} lane produced no log)${c_reset}"
+    fi
   done
   rm -rf "$logdir"
 
