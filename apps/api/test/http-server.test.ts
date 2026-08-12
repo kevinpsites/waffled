@@ -126,6 +126,18 @@ describe('Node HTTP request body limits', () => {
     expect(result.routeCalls).toBe(0)
   })
 
+  it('applies the per-path limit, not the default, when Content-Length is absent', async () => {
+    // The streaming branch counts bytes as they arrive and must compare them against the
+    // limit for *this* path. Every other streaming assertion uses /api/auth/login, whose
+    // limit is the default — so a streaming branch that ignored the path and always
+    // compared against DEFAULT_BODY_LIMIT_BYTES would pass the whole suite while
+    // 413-ing every real photo upload. A body over the default but well under the media
+    // limit has to reach the route.
+    const result = await post('/api/media', Buffer.alloc(DEFAULT_BODY_LIMIT_BYTES + 1, 'a'), false)
+    expect(result.status).toBe(200)
+    expect(result.routeCalls).toBe(1)
+  })
+
   it('allows the larger media envelope but still caps it', async () => {
     const allowed = await post('/api/media', Buffer.alloc(DEFAULT_BODY_LIMIT_BYTES + 1, 'a'))
     expect(allowed.status).toBe(200)
