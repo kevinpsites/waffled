@@ -123,14 +123,22 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 > individual screens below have not each been re-verified on real silicon. Treat everything
 > above the hardware-bring-up entries as **simulator-proven, not hardware-proven**.
 
-- **The speaker is still silent — but the sounds now exist.** `src/wb_synth.{h,cpp}`
-  synthesises all five phase-1 sounds (white/ocean/rain/fan/heartbeat) from scratch, with 11
-  unit tests in `test/test_synth/` (`pio test -e native_test`). What's missing is the
-  plumbing between it and the amp: **nothing in this firmware touches I2S yet**, so the
-  Sounds tile, the volume slider and the sleep timer still sync end to end and make no
-  sound.
+- **Audio works on real hardware — with three gaps.** `src/wb_synth.{h,cpp}` synthesises
+  all five phase-1 sounds (white/ocean/rain/fan/heartbeat) from scratch, with 11 unit tests
+  in `test/test_synth/` (`pio test -e native_test`), and `src/wb_audio_esp32.cpp` carries
+  them to the NS4168 over I2S. **Verified on the board:** the sound machine plays from the
+  device's Sounds tile and from a parent's panel, with a live volume slider and no pops.
+  Still open: the sampled sounds (`forest`/`lullaby`), the **sleep timer's auto-off**
+  (`timerMin` is parsed but not acted on, so playback runs until it's switched off), and
+  the alarm tone.
 
-  You can hear the recipes today without a board — `tools/audio/render_wav.cpp` renders
+  **Two hardware facts worth not re-deriving.** The vendor's I2S pins are right (LRCLK 21,
+  BCLK 22, DOUT 23) and the P4's clock divider hits 22.05 kHz exactly. And the NS4168
+  enable on GPIO30 is **active LOW** — driving it low turns the amp ON, the opposite of
+  what the pin name suggests. Wired backwards it fails in the most misleading way
+  available: every call returns `ESP_OK`, every write succeeds, and nothing comes out.
+
+  You can also hear the recipes without a board — `tools/audio/render_wav.cpp` renders
   them to WAV from the real synth:
 
   ```
@@ -140,7 +148,7 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 
   (It writes outside the repo on purpose — phase 1 ships zero audio assets.)
 
-  The morning alarm's six `ALARM_TONES` are still decorative, and the device doesn't parse
+  The morning alarm's six `ALARM_TONES` remain decorative, and the device doesn't parse
   `settings.alarm` at all (`GET /device/state` returns it, but `WbDeviceState` has no field
   for it). Full plan in
   [`docs/product/waffled-bites-audio-plan.md`](../../docs/product/waffled-bites-audio-plan.md);

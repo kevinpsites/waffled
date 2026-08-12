@@ -22,6 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that family member took part, not just whoever tapped Log), and until a goal has enough
   history of its own the familiar defaults fill in the rest.
 
+- **Waffled-Bite device: the sound machine actually makes sound.** Picking white noise,
+  ocean, rain, a box fan or a heartbeat now plays it through the device's own speaker,
+  from either the device's Sounds tile or a parent's control panel, with a live volume
+  slider. Sounds fade in and out instead of clicking on, and the amplifier is powered
+  down between them, so there's no pop at lights-out. Every sound is generated on the
+  device from scratch rather than streamed — so it keeps playing through a Wi-Fi drop or
+  an overnight reboot of your home server, and a kid's room never goes suddenly silent.
+  Plug the small speaker that came with your board into the socket marked `SPK`. Forest
+  and lullaby need real recordings and stay silent for now, the sleep timer's auto-off
+  isn't wired up yet, and the morning alarm's tone still doesn't play.
+
 - **Waffled-Bite device: set up WiFi right on the screen.** Connecting a new device to
   your home network no longer requires flashing it with hardcoded credentials — it now
   scans for nearby networks, lets you pick one and enter the password on the device's

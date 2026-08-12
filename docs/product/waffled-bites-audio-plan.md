@@ -1,12 +1,18 @@
 # Waffled-Bite device audio — the sound machine (implementation plan)
 
-The Waffled-Bite's Sounds tile is fully wired end to end — parent web panel, device
-screen, settings sync — and makes **no sound at all**. Nothing in
-`apps/waffled-bite-firmware` touches I2S today. This plan closes that, in two phases.
+The Waffled-Bite's Sounds tile was fully wired end to end — parent web panel, device
+screen, settings sync — and made **no sound at all**, because nothing in
+`apps/waffled-bite-firmware` touched I2S. This plan closes that, in two phases.
 
-**Status:** the synthesis engine is built and tested (§3.2, §8); the I2S/HAL plumbing that
-would let it reach the speaker is not. You can hear the sounds on a laptop today — see
-§3.8.
+**Status: phase 1 works on real hardware.** The synthesis engine (§3.2, §8) and the
+`wb_audio` HAL (§3.4) are both built, and the sound machine plays through the device's
+speaker from the Sounds tile and from a parent's panel, with live volume and no pops.
+Remaining: the sleep timer's auto-off, the alarm tone (§5), and the sampled sounds (§6).
+
+Two hardware findings, now recorded in `wb_audio_esp32.cpp` rather than here: the vendor's
+I2S pins are correct and the P4 hits 22.05 kHz exactly, and **the NS4168 enable on GPIO30
+is active LOW** — the opposite of what the pin name implies, and silent-with-no-errors when
+wired the other way.
 
 Written as a follow-on to the firmware's milestone 8 (see
 `apps/waffled-bite-firmware/README.md`). Read that first for the board, the two build
@@ -33,11 +39,8 @@ scoping it in here would triple the work for zero benefit to a kid trying to sle
 | Device state struct | Done (`WbSoundSettings`, `src/wb_state.h:22`) |
 | 5s poll keeping both sides in sync | Done (`wb_do_poll` in `main.cpp`) |
 | Sound generation (`wb_synth`, 5 recipes, 11 unit tests) | **Done** — `src/wb_synth.{h,cpp}`, `test/test_synth/` |
-| Anything that gets those samples to the speaker | **Nothing. No I2S, no HAL.** |
-
-So this is not a feature that needs designing — it needs a speaker driver behind an
-interface that already exists. The half that decides what the device *sounds like* is
-built and can be listened to today (§3.8); what remains is plumbing.
+| I2S output + amp sequencing + fades (`wb_audio`) | **Done, hardware-verified** — `src/wb_audio_{esp32,native}.cpp` |
+| Sleep timer auto-off, alarm tone, sampled sounds | Still open (§5, §6) |
 
 ## 3. The load-bearing decisions
 

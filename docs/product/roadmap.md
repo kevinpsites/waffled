@@ -207,9 +207,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   and never hear. Phase 2 adds the sounds that need real recordings (forest, lullaby,
   birdsong), downloaded once from the server and cached on the device.
 
-  **In progress:** the synthesis engine is built and unit-tested (`wb_synth`, five sounds,
-  11 tests) and can be rendered to WAV and listened to on a laptop; what remains is the I2S
-  path between it and the amplifier. Signed off: 22.05 kHz mono; the sound machine plays
+  **Phase 1 is working on real hardware** — the five synthesised sounds play through the
+  device's speaker from both the Sounds tile and a parent's panel, with live volume and no
+  pops. Remaining: the sampled sounds, the sleep timer's auto-off, and the alarm tone.
+  Signed off: 22.05 kHz mono; the sound machine plays
   straight through quiet time and bedtime; the alarm gets its own volume and **pauses** the
   sound machine for 20 seconds rather than sounding over it; no playback resume after a
   reboot; and the hardware is the speaker that shipped with the board.
