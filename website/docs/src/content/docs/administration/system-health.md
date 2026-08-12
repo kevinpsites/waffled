@@ -76,17 +76,21 @@ Rung 3 is **tried at most once**, then the watchdog falls back to repeating rung
 wiping the local copy didn't help, the local copy was never the problem, and a server
 that stays down for hours must not cost you your offline copy over and over. (A fully
 successful sync re-arms it, so a later, unrelated problem can reach for it again.) When
-the engine crashes on boot rather than stalling, the watchdog only retries rung 2 — a
-crash is no evidence the local copy is at fault.
+the engine crashes on boot rather than stalling, the watchdog only ever retries rung 2 —
+a crash is no evidence the local copy is at fault — and those retries are counted
+separately, so a run of crashes can never push a later stall up the ladder toward the
+wipe.
 
 A **⟳ Live sync is reconnecting** strip appears across the top of the app while this is
 happening — it's there to explain why live updates may lag, not to warn you about your
 data.
 
 The card also shows a **watchdog restarts** count for the current tab. A handful over a
-long session is unremarkable; a number that keeps climbing points at the PowerSync service
-rather than the browser — check the `waffled-powersync` container and see
-[Troubleshooting](/operations/troubleshooting/).
+long session is unremarkable. A number that keeps climbing means the watchdog is retrying
+and not getting anywhere: read the **state** next to it to see which. Alongside
+**stalled**, suspect the PowerSync service — check the `waffled-powersync` container and
+see [Troubleshooting](/operations/troubleshooting/). Alongside **failed to start**, the
+problem is this browser, and the error on the card names it.
 
 #### Doing it by hand
 

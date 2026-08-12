@@ -135,7 +135,11 @@ export class SyncHealthMonitor {
   // while it *can't* be (offline / signed out / just started), the last moment we
   // knew that. The stall window is measured from here.
   private lastHealthyAt = 0
-  private attempts = 0 // ladder position; resets on recovery
+  private attempts = 0 // stall-ladder position; resets on recovery
+  // Crash retries are paced separately. Sharing `attempts` would let a run of boot
+  // failures pre-charge the ladder, so the first stall after the engine finally
+  // came up would skip both non-destructive rungs and go straight to the wipe.
+  private bootAttempts = 0
   // The destructive rung is a one-shot per stall episode. If wiping didn't fix it,
   // the replica was never the problem — and a service outage that outlasts the
   // backoff cap would otherwise wipe and re-download forever, leaving the device
@@ -158,6 +162,10 @@ export class SyncHealthMonitor {
     this.phase = 'running'
     this.lastError = null
     this.lastHealthyAt = this.deps.now() // fresh grace window; ladder position kept on purpose
+    // The engine is up, so whatever was blocking the boot is gone: a later crash
+    // deserves a prompt retry rather than the old run's inflated backoff. (Only
+    // the crash counter — the stall ladder is deliberately preserved above.)
+    this.bootAttempts = 0
     this.publish()
   }
 
@@ -240,18 +248,21 @@ export class SyncHealthMonitor {
   // mode 'ladder' walks soft → hard → hard+clear. 'rebuild-only' is for a crashed
   // engine: there is no client to soft-restart and no reason to suspect the replica.
   private async maybeRestart(now: number, mode: 'ladder' | 'rebuild-only' = 'ladder'): Promise<void> {
-    if (this.attempts > 0) {
-      const backoff = Math.min(RESTART_BACKOFF_BASE_MS * 2 ** (this.attempts - 1), RESTART_BACKOFF_MAX_MS)
+    const ladder = mode === 'ladder'
+    const spent = ladder ? this.attempts : this.bootAttempts
+    if (spent > 0) {
+      const backoff = Math.min(RESTART_BACKOFF_BASE_MS * 2 ** (spent - 1), RESTART_BACKOFF_MAX_MS)
       if (this.lastRestartAt !== null && now - this.lastRestartAt < backoff) return
     }
-    const hard = mode === 'rebuild-only' || this.attempts >= 1 // soft first; escalate when it didn't take
+    const hard = !ladder || this.attempts >= 1 // soft first; escalate when it didn't take
     // Two failed restarts (one soft, one hard) make the replica itself the
     // suspect — it survives a plain rebuild (same db file). Wipe it once; if that
     // didn't help it isn't the replica, so keep retrying non-destructively rather
     // than re-wiping every backoff period for as long as the outage lasts.
-    const clear = mode === 'ladder' && this.attempts >= 2 && !this.cleared
+    const clear = ladder && this.attempts >= 2 && !this.cleared
     if (clear) this.cleared = true
-    this.attempts++
+    if (ladder) this.attempts++
+    else this.bootAttempts++
     this.restartCount++
     this.lastRestartAt = now
     try {

@@ -346,6 +346,43 @@ describe('recovering from a failed engine', () => {
     expect(deps.hardRestart).toHaveBeenCalledTimes(1)
   })
 
+  // The rebuild-only path must not spend the stall ladder's budget. If crash
+  // retries advanced `attempts`, the FIRST stall after the engine finally came up
+  // would evaluate `attempts >= 2` and jump straight to the wipe — skipping both
+  // the soft and the plain-hard rung, on no evidence about the replica at all.
+  it('does not let boot-failure retries pre-charge the stall ladder', async () => {
+    const { m, deps, advance } = makeMonitor()
+    m.engineFailed(new Error('OPFS locked'))
+    for (let i = 0; i < 3; i++) {
+      advance(RESTART_BACKOFF_MAX_MS + 1)
+      await m.tick()
+    }
+    expect(deps.hardRestart).toHaveBeenCalledTimes(3)
+    // The lock clears, the engine boots — and then the first sync wedges.
+    m.engineStarted()
+    m.noteStatus({ connected: true, connecting: false, hasSynced: false, lastSyncedAt: null })
+    advance(RESTART_BACKOFF_MAX_MS + 1) // past the stall window and any backoff
+    await m.tick()
+    expect(deps.softRestart).toHaveBeenCalledTimes(1) // rung 1, from the top
+    expect(deps.hardRestart).toHaveBeenCalledTimes(3) // no new hard restart yet
+    for (const [opts] of vi.mocked(deps.hardRestart).mock.calls) expect(opts.clear).toBe(false)
+  })
+
+  // Pacing still has to survive the round trip: a boot that succeeds resets the
+  // crash counter, so the next crash isn't throttled by an old one.
+  it('resets the crash-retry pacing once the engine boots successfully', async () => {
+    const { m, deps, advance } = makeMonitor()
+    m.engineFailed(new Error('OPFS locked'))
+    for (let i = 0; i < 3; i++) {
+      advance(RESTART_BACKOFF_MAX_MS + 1)
+      await m.tick()
+    }
+    m.engineStarted()
+    m.engineFailed(new Error('worker gone'))
+    await m.tick() // a fresh crash retries at once, not on the old inflated backoff
+    expect(deps.hardRestart).toHaveBeenCalledTimes(4)
+  })
+
   it('a successful retry leaves the failed state behind', async () => {
     const { m, deps } = makeMonitor({ hardRestart: vi.fn(async () => {}) })
     m.engineFailed(new Error('OPFS locked'))
