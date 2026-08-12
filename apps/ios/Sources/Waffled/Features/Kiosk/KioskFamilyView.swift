@@ -82,7 +82,7 @@ struct KioskFamilyView: View {
                     } else {
                         ForEach(events.prefix(3)) { ev in
                             HStack(spacing: 8) {
-                                RoundedRectangle(cornerRadius: 99).fill(Color(hexString: ev.colorHex) ?? tint).frame(width: 3, height: 16)
+                                RoundedRectangle(cornerRadius: 99).fill(sync.eventPalette.color(for: ev, fallback: tint)).frame(width: 3, height: 16)
                                 Text(ev.allDay ? "All day" : (ev.startsAt.map { EventTime.timeLabel($0, sync.householdTz) } ?? ""))
                                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                                     .frame(width: 62, alignment: .leading)
