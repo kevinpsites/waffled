@@ -1,6 +1,8 @@
 // esp32-p4/Arduino backend for wb_http.h — Arduino's HTTPClient.
-// UNVERIFIED — no board in hand yet (same caveat as lgfx_device.h and
-// platformio.ini's esp32-p4 section). Uses HTTPClient::begin(const String&)
+// The board is in hand and bring-up tested, but this specific path has NOT
+// been driven against a real backend from the board yet — the end-to-end
+// pairing/polling verification was done on `native` (see the README). Treat
+// pairing-from-hardware as unproven. Uses HTTPClient::begin(const String&)
 // (the single-argument overload), which auto-detects http:// vs https://
 // and manages its own internal WiFiClient/WiFiClientSecure — this avoids
 // hand-constructing a WiFiClientSecure ourselves and hitting API

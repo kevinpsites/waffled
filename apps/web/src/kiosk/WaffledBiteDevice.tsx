@@ -23,6 +23,10 @@ const SOUNDS: Array<[string, string]> = [
   ['white', 'White noise'], ['ocean', 'Ocean waves'], ['rain', 'Gentle rain'],
   ['fan', 'Box fan'], ['heartbeat', 'Heartbeat'], ['lullaby', 'Lullaby'], ['forest', 'Forest'],
 ]
+// The device generates its sounds itself; these two need real recordings it
+// doesn't carry yet, so they're shown but not selectable. Keep in step with
+// the firmware's wb_synth_parse and its WB_SOUND_OPTIONS.
+const SOUNDS_COMING_SOON = ['lullaby', 'forest'] as const
 const ALARM_TONES = ['Sunrise chime', 'Birdsong', 'Soft harp', 'Gentle bells', 'Ocean tide', 'Twinkle stars']
 const SLEEP_TIMERS = [0, 15, 30, 60, 120]
 const DOW: Array<[number, string]> = [[0, 'S'], [1, 'M'], [2, 'T'], [3, 'W'], [4, 'T'], [5, 'F'], [6, 'S']]
@@ -130,12 +134,22 @@ function Stepper({ value, onChange, step = 1, min, max, unit }: {
   )
 }
 
-function ChipPicker<T extends string>({ options, value, onChange }: { options: Array<[T, string]>; value: T; onChange: (v: T) => void }) {
+function ChipPicker<T extends string>({ options, value, onChange, comingSoon }: { options: Array<[T, string]>; value: T; onChange: (v: T) => void; comingSoon?: readonly string[] }) {
   return (
     <div className="rw-cur-pick">
-      {options.map(([id, label]) => (
-        <button key={id} type="button" className={`rw-cur-chip ${value === id ? 'on' : ''}`} onClick={() => onChange(id)}>{label}</button>
-      ))}
+      {options.map(([id, label]) => {
+        const soon = comingSoon?.includes(id) ?? false
+        return (
+          <button
+            key={id}
+            type="button"
+            disabled={soon}
+            title={soon ? "This one needs a real recording the device doesn't have yet" : undefined}
+            className={`rw-cur-chip ${value === id ? 'on' : ''}`}
+            onClick={() => onChange(id)}
+          >{soon ? `${label} (soon)` : label}</button>
+        )
+      })}
     </div>
   )
 }
@@ -436,7 +450,7 @@ export function WaffledBiteDevice() {
             {sound.on && (
               <div style={{ marginTop: 12 }}>
                 <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Sound</div>
-                <ChipPicker options={SOUNDS} value={sound.sound} onChange={(id) => patchSettings({ sound: { ...sound, sound: id } })} />
+                <ChipPicker options={SOUNDS} value={sound.sound} comingSoon={SOUNDS_COMING_SOON} onChange={(id) => patchSettings({ sound: { ...sound, sound: id } })} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0' }}>
                   <span className="tiny muted" style={{ fontWeight: 700 }}>Volume</span>
                   <Stepper value={sound.volume} step={5} min={0} max={100} unit="%" onChange={(v) => patchSettings({ sound: { ...sound, volume: v } })} />

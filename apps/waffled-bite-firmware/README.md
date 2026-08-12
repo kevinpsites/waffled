@@ -49,8 +49,10 @@ remaining rough edges.
   real touchscreen has no keyboard to trigger this. If clicks stop landing right in the
   simulator, close the window and re-run `pio run -e native -t exec` rather than debugging
   the app.
-- **`esp32-p4`** — the real board. **Unverified** — no board in hand yet (ordered);
-  compiles clean against the real toolchain, that's as far as this has been proven.
+- **`esp32-p4`** — the real board, **in hand and bring-up tested** (WiFi provisioning +
+  dozens of reboot tests — see the status paragraph above). This bullet previously read
+  "no board in hand yet (ordered)"; that was written at the 20 Jul port and went stale
+  three days later.
 
 Both environments build the same `src/main.cpp`; only `src/lgfx_device.h` branches
 (`#if defined(ARDUINO)`) to pick the real DSI-panel/GT911-touch HAL vs. the SDL one.
@@ -115,11 +117,46 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 ## What's not done
 
 > **Status summary:** the app itself is now code-complete — every screen described below
-> is wired to the real API and has been run against the real `./waffled-demo` backend. But
-> all of that verification happened in the `native` desktop simulator; the `esp32-p4`
-> target has never run on the actual board (still not in hand — see "unverified on real
-> silicon" below). Treat everything above the hardware-bring-up entries as **simulator-proven,
-> not hardware-proven**.
+> is wired to the real API and has been run against the real `./waffled-demo` backend.
+> Most of that verification happened in the `native` desktop simulator; the board itself is
+> in hand and has been bring-up tested (WiFi provisioning, reboot reliability), but the
+> individual screens below have not each been re-verified on real silicon. Treat everything
+> above the hardware-bring-up entries as **simulator-proven, not hardware-proven**.
+
+- **Audio works on real hardware — with three gaps.** `src/wb_synth.{h,cpp}` synthesises
+  all five phase-1 sounds (white/ocean/rain/fan/heartbeat) from scratch, with 14 unit tests
+  in `test/test_synth/` (`pio test -e native_test`), and `src/wb_audio_esp32.cpp` carries
+  them to the NS4168 over I2S. **Verified on the board:** the sound machine plays from the
+  device's Sounds tile and from a parent's panel, with a live volume slider and no pops.
+  Still open: the sampled sounds (`forest`/`lullaby`), the **sleep timer's auto-off**
+  (`timerMin` is parsed but not acted on, so playback runs until it's switched off), and
+  the alarm tone.
+
+  **Two hardware facts worth not re-deriving.** The vendor's I2S pins are right (LRCLK 21,
+  BCLK 22, DOUT 23) and the P4's clock divider hits 22.05 kHz exactly. And the NS4168
+  enable on GPIO30 is **active LOW** — driving it low turns the amp ON, the opposite of
+  what the pin name suggests. Wired backwards it fails in the most misleading way
+  available: every call returns `ESP_OK`, every write succeeds, and nothing comes out.
+
+  You can also hear the recipes without a board — `tools/audio/render_wav.cpp` renders
+  them to WAV from the real synth:
+
+  ```
+  clang++ -std=c++14 -O2 -Isrc tools/audio/render_wav.cpp src/wb_synth.cpp -o /tmp/wb_render
+  /tmp/wb_render ~/Desktop/waffled-bite-sounds 20
+  ```
+
+  (It writes outside the repo on purpose — phase 1 ships zero audio assets.)
+
+  The morning alarm's six `ALARM_TONES` remain decorative, and the device doesn't parse
+  `settings.alarm` at all (`GET /device/state` returns it, but `WbDeviceState` has no field
+  for it). Full plan in
+  [`docs/product/waffled-bites-audio-plan.md`](../../docs/product/waffled-bites-audio-plan.md);
+  phase 2 adds sampled forest/lullaby/birdsong cached in the unused `spiffs` partition.
+  Signed off: 22.05 kHz/16-bit/mono; audio is independent of the quiet-time/bedtime locks
+  (they must not touch `wb_audio`); no reboot persistence; the alarm gets its own
+  `alarm.volume` and **pauses** the sound machine for 20 s rather than playing over it; and
+  the speaker is the one that shipped with the board (2-pin JST PH 2.0 header marked `SPK`).
 
 - **Sounds and Nightlight are done.** Tapping either tile on the Grown-up controls
   screen opens a shared toggle+picker+slider detail screen (`src/ui/control_detail_screen.cpp` —

@@ -24,6 +24,7 @@ struct WaffledBitesView: View {
     @FocusState private var hmFocus: HMField?
     private enum HMField { case quietHours, quietMinutes, timerHours, timerMinutes }
     @State private var scheduleRows: [EditableSchedule] = []
+    @Environment(\.scenePhase) private var scenePhase
 
     init(personId: String, personName: String) {
         self.personId = personId
@@ -50,7 +51,21 @@ struct WaffledBitesView: View {
         .background(WF.canvas)
         .navigationTitle("Waffled-Bite")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await model.load() }
+        // Keyed on scenePhase so SwiftUI restarts this when the app returns to
+        // the foreground and cancels it when the view goes away. Without the
+        // polling, anything the kid changed ON the device — switching the sound
+        // machine on, starting a timer, going offline — stayed invisible here
+        // until a manual pull-to-refresh, since the panel only reloaded after
+        // the PARENT's own actions.
+        //
+        // 10s matches the web panel; combined with the device's own ~5s poll
+        // that bounds device→parent at roughly 15s. Backgrounded means no
+        // polling at all, which is why this is keyed rather than unconditional.
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await model.load()
+            await PollLoop.run(every: .seconds(10)) { await model.load() }
+        }
         .refreshable { await model.load() }
         .onChange(of: model.device?.settings.schedules) { _, _ in
             scheduleRows = (model.device?.settings.withDefaults.schedules ?? []).map(EditableSchedule.init)
@@ -369,7 +384,8 @@ struct WaffledBitesView: View {
             }.tint(WF.primary)
             if settings.sound.on {
                 WBChipFlow(items: WaffledBiteOptions.sounds.map(\.key),
-                           label: WaffledBiteOptions.soundLabel, isSelected: { $0 == settings.sound.sound }) { key in
+                           label: WaffledBiteOptions.soundLabel, isSelected: { $0 == settings.sound.sound },
+                           comingSoon: WaffledBiteOptions.soundsComingSoon) { key in
                     Task { await model.setSoundOption(key) }
                 }
                 Stepper("Volume \(settings.sound.volume)%",
@@ -509,6 +525,10 @@ private struct WBChipFlow: View {
     let items: [String]
     let label: (String) -> String
     let isSelected: (String) -> Bool
+    /// Keys that exist but can't be chosen yet — shown dimmed and disabled
+    /// rather than hidden, since a chip that taps fine and then does nothing
+    /// reads as a broken device.
+    var comingSoon: Set<String> = []
     let onSelect: (String) -> Void
 
     var body: some View {
@@ -516,7 +536,12 @@ private struct WBChipFlow: View {
         // LazyVGrid-style flexible columns keeps this dependency-free.
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 8)], alignment: .leading, spacing: 8) {
             ForEach(items, id: \.self) { key in
-                WBChip(label: label(key), filled: isSelected(key)) { onSelect(key) }
+                let soon = comingSoon.contains(key)
+                WBChip(label: soon ? "\(label(key)) (soon)" : label(key), filled: isSelected(key)) {
+                    if !soon { onSelect(key) }
+                }
+                .disabled(soon)
+                .opacity(soon ? 0.45 : 1)
             }
         }
     }

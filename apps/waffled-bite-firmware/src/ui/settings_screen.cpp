@@ -89,9 +89,14 @@ static lv_obj_t *make_control_tile(lv_obj_t *parent, const lv_image_dsc_t *icon,
 // Matches apps/web/src/kiosk/WaffledBiteDevice.tsx's SOUNDS/NIGHT_COLORS
 // key lists exactly, so the device and the parent web app agree on what a
 // given settings.sound.sound / settings.night.color value means.
+// lullaby/forest are marked comingSoon: they need real recordings the firmware
+// doesn't carry yet, so they render dimmed and inert rather than as chips that
+// tap fine and then play nothing. Keep in step with wb_synth_parse, which
+// rejects the same two keys.
 static const WbControlOption WB_SOUND_OPTIONS[] = {
     {"white", "White noise"}, {"ocean", "Ocean waves"}, {"rain", "Gentle rain"},
-    {"fan", "Box fan"}, {"heartbeat", "Heartbeat"}, {"lullaby", "Lullaby"}, {"forest", "Forest"},
+    {"fan", "Box fan"}, {"heartbeat", "Heartbeat"},
+    {"lullaby", "Lullaby", false, 0, true}, {"forest", "Forest", false, 0, true},
 };
 // Hex values copied verbatim from WaffledBiteDevice.tsx's NIGHT_COLORS const
 // (not invented) so the device's swatches match what the parent web app

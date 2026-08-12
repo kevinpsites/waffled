@@ -18,6 +18,11 @@ enum WaffledBiteOptions {
         ("white", "White noise"), ("ocean", "Ocean waves"), ("rain", "Gentle rain"),
         ("fan", "Box fan"), ("heartbeat", "Heartbeat"), ("lullaby", "Lullaby"), ("forest", "Forest"),
     ]
+    /// The device synthesises its sounds on-board; these two need real
+    /// recordings it doesn't carry yet, so they're shown but not selectable.
+    /// Keep in step with the firmware's `wb_synth_parse` / `WB_SOUND_OPTIONS`
+    /// and the web panel's `SOUNDS_COMING_SOON`.
+    static let soundsComingSoon: Set<String> = ["lullaby", "forest"]
     static let alarmTones = ["Sunrise chime", "Birdsong", "Soft harp", "Gentle bells", "Ocean tide", "Twinkle stars"]
 
     static func nightHex(_ key: String) -> UInt32 { nightColors.first { $0.key == key }?.hex ?? nightColors[0].hex }

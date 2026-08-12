@@ -103,6 +103,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that family member took part, not just whoever tapped Log), and until a goal has enough
   history of its own the familiar defaults fill in the rest.
 
+- **Waffled-Bite device: the sound machine actually makes sound.** Picking white noise,
+  ocean, rain, a box fan or a heartbeat now plays it through the device's own speaker,
+  from either the device's Sounds tile or a parent's control panel, with a live volume
+  slider. Sounds fade in and out instead of clicking on, and the amplifier is powered
+  down between them, so there's no pop at lights-out. Every sound is generated on the
+  device from scratch rather than streamed — so it keeps playing through a Wi-Fi drop or
+  an overnight reboot of your home server, and a kid's room never goes suddenly silent.
+  Plug the small speaker that came with your board into the socket marked `SPK`. Forest and
+  lullaby show as "(soon)" and can't be picked yet — they need real recordings — the sleep
+  timer's auto-off isn't wired up yet, and the morning alarm's tone still doesn't play.
+
 - **Waffled-Bite device: set up WiFi right on the screen.** Connecting a new device to
   your home network no longer requires flashing it with hardcoded credentials — it now
   scans for nearby networks, lets you pick one and enter the password on the device's
@@ -195,6 +206,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the center, with a consistent gap between them.
 
 ### Fixed
+
+- **The Waffled-Bite control panel keeps itself up to date.** The panel read the device
+  once when you opened it and then never again, so anything your child did on the device
+  — switching the sound machine on, starting a timer — didn't show up until you reloaded,
+  and a device that dropped offline could keep showing as online. It now refreshes on its
+  own every few seconds while you're looking at it, on **web, iPhone and iPad**, and stops
+  while the tab or app is in the background so it costs nothing when you're not watching.
 
 - **The calendar grid now says which month you're looking at.** The app header shows
   today's date, so paging the grid forward left nothing on the grid itself saying where
@@ -1656,6 +1674,22 @@ diverged, or stale checkout; checks that the current API, web, Compose, and iOS 
 requires user-facing notes under `[Unreleased]`; and runs the CLI, migration, API, web, browser
 (when configured), docs, Docker E2E, and locally available iOS checks. It does not bump versions,
 commit, or tag anything; build tools may refresh ignored local artifacts.
+
+Those checks run in **lanes** rather than one serial column, because a release is cut on your own
+machine and there is no reason to leave its cores idle. **Phase 1 runs the iOS and browser tests
+alone**, then **phase 2 runs the `docker`, `web` and `misc` lanes in parallel**, grouped by the
+resource each contends for. Those two are deliberately not overlapped: on a saturated machine the
+iOS Simulator does not just run slowly, it dies outright (`Failed to launch app … Mach error -308
+(ipc/mig) server died`), and Playwright runs a real browser with retries off — both fail the
+release for reasons unrelated to your code. Each lane buffers its output and prints it whole, so
+lanes appear one after another rather than interleaved; a heartbeat marks elapsed time while they
+run, and every step reports its own wall time. Ctrl-C stops the lanes and their children.
+
+**A run that fails ends with a `Release checks failed:` summary naming each failed step** — checks
+deliberately continue after a failure so one pass surfaces everything, which means the culprit may
+be thousands of lines above. A lane that *dies* (OOM, SIGKILL) is itself reported as a failure, so
+an interrupted run can never be mistaken for a passing one. If you see neither that summary nor
+`All available release project checks passed.`, the run did not finish.
 
 **To cut a release:** run **`./waffled release X.Y.Z`** locally on `main`. It repeats the checks
 before changing anything, then in one commit it:
