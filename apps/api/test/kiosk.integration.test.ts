@@ -259,6 +259,32 @@ describe('kiosk pairing + profile tokens', () => {
     expect(json(await call('GET', '/api/kiosk/display', undefined, admin)).photoAlbum).toBeNull()
   })
 
+  // settings.display is shared: this kiosk wrapper owns the screensaver keys, and
+  // the calendar owns eventStyle/familyColorHex (PATCH /api/household/display).
+  // The contract is "each writer merges, and only serves its own keys" — before it
+  // was made explicit, this PUT rewrote the whole `display` object and the calendar
+  // keys survived only because the read spread them straight back out again.
+  it('shares settings.display with the calendar without clobbering or leaking it', async () => {
+    expect((await call('PATCH', '/api/household/display', { eventStyle: 'tinted', familyColorHex: '#ABCDEF' }, admin)).statusCode).toBe(200)
+
+    // A kiosk write must not drop the calendar's keys…
+    expect((await call('PUT', '/api/kiosk/display', { screensaverMinutes: 25 }, admin)).statusCode).toBe(200)
+    const calendar = json(await call('GET', '/api/household/settings', undefined, admin)).household.settings.display
+    expect(calendar).toMatchObject({ eventStyle: 'tinted', familyColorHex: '#ABCDEF' })
+
+    // …and the calendar's write must not drop the kiosk's, nor hand them back.
+    const patched = json(await call('PATCH', '/api/household/display', { eventStyle: 'solid' }, admin))
+    expect(patched.display).toEqual({ eventStyle: 'solid', familyColorHex: '#ABCDEF' })
+    const kioskAfter = json(await call('GET', '/api/kiosk/display', undefined, admin))
+    expect(kioskAfter.screensaverMinutes).toBe(25)
+    expect(kioskAfter.photoAlbum).toBeNull() // and the earlier kiosk keys too
+
+    // The kiosk endpoint serves the kiosk's own shape — no calendar keys leaking
+    // into every display poll.
+    expect(kioskAfter).not.toHaveProperty('eventStyle')
+    expect(kioskAfter).not.toHaveProperty('familyColorHex')
+  })
+
   it('lets a device token read display settings (dual-auth)', async () => {
     const r = await call('GET', '/api/kiosk/display', undefined, deviceToken)
     expect(r.statusCode).toBe(200)

@@ -41,5 +41,8 @@ your phone as it does on the wall.
 ## Notes
 - **Match system** uses your device/browser's `prefers-color-scheme`; no account setting is
   involved, so each device can differ.
+- Looking for the calendar's colors instead? Person colors, the **family color**, and the
+  solid-vs-tinted **event style** live with the household, not the device — see
+  [Colors on the calendar](/features/calendar/#colors-on-the-calendar).
 - Because the preference lives on the device, signing in as a different family member on the
   same kiosk keeps that kiosk's chosen theme.

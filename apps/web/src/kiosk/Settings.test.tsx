@@ -80,6 +80,44 @@ describe('Settings screen', () => {
     expect(screen.queryByText('Notifications')).not.toBeInTheDocument()
   })
 
+  it('exposes the event style + family color on Family & People, defaulting to solid', async () => {
+    const patches: Array<Record<string, unknown>> = []
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/api/household/display')) {
+        patches.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        return { ok: true, json: async () => ({ display: {} }) }
+      }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+
+    // A household that has never touched the setting reads as solid.
+    const select = screen.getByLabelText('Event style') as HTMLSelectElement
+    expect(select).toHaveClass('sel')
+    expect(select.value).toBe('solid')
+    fireEvent.change(select, { target: { value: 'tinted' } })
+    await waitFor(() => expect(patches).toContainEqual({ eventStyle: 'tinted' }))
+
+    // The family color is the same swatch picker, saved to the same endpoint —
+    // but dragging around the OS color picker fires an `input` per step, and
+    // each one used to be its own PATCH + refetch racing the others (with the
+    // controlled value snapping back mid-drag). Only the committed color saves.
+    expect(screen.getByText('Family color')).toBeInTheDocument()
+    const custom = screen.getByLabelText('Pick a custom color')
+    const colorPatches = () => patches.filter((p) => 'familyColorHex' in p)
+    for (const step of ['#111111', '#221133', '#123456']) fireEvent.input(custom, { target: { value: step } })
+    expect(colorPatches()).toHaveLength(0)
+
+    fireEvent.change(custom, { target: { value: '#123456' } })
+    await waitFor(() => expect(colorPatches()).toEqual([{ familyColorHex: '#123456' }]))
+  })
+
   it('shows the Display & Kiosk panel with the family-display toggle', async () => {
     mockApi()
     renderSettings()

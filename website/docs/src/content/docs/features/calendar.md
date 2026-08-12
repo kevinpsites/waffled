@@ -17,6 +17,9 @@ gated off**.
 ## Highlights
 - 📅 **Native events** — create / edit / delete, with **multiple participants per
   event** (stacked avatars, each in the person's color) and a **per-person filter**.
+- 🎨 **Color you control** — solid or tinted event chips, any custom hex per person,
+  and a **family color** for events that involve everyone. See
+  [Colors on the calendar](#colors-on-the-calendar).
 - **Four views** — Month / Week / Day / Agenda:
   - a live red **"now" line** on Week & Day
   - month cells show **event titles** (tap a day for times)
@@ -50,6 +53,53 @@ gated off**.
 
 iPad uses distinct wide grids and lays the event detail out in **two columns**;
 everything else is shared and adapts by size.
+
+## Colors on the calendar
+
+Color is how the calendar answers "whose thing is this?" from across the room, so
+it's worth a minute in **Settings → Family & People** (admins). Both settings below
+are **web/kiosk only** today — the iPhone and iPad apps keep their own chip styling
+and always color an event by its owner.
+
+### Event style — solid or tinted
+
+**Event style** decides how an event chip is painted in the month, week, day and
+agenda views (and the Today dashboard's agenda card):
+
+- **Solid colors** *(default)* — the chip fills with the event's color and the title
+  flips to whichever of black or white reads better on it, so a pale yellow or a
+  bright teal stays legible. This is the most glanceable option and what a
+  wall-mounted kiosk wants.
+- **Tinted** — a soft wash of the color with matching colored text: quieter, closer
+  to a paper planner. It's theme-aware, so it stays readable in dark mode.
+
+The choice belongs to the **household**, not the device, so every screen in the house
+agrees. Flipping it restyles open screens immediately — no reload.
+
+:::note
+Upgrading an existing household? Solid is the default, so your calendar will look
+bolder than it used to. Switch **Event style** to *Tinted* to get the old look back.
+:::
+
+### Person colors, and one for the whole family
+
+Every member has a color (**Settings → Family & People →** tap a person **→ Color**,
+or your own under **My Profile**). Beyond the eight presets there's a ninth **custom**
+swatch that opens your device's color picker, so you're not stuck with the palette.
+
+An event is colored by **who it belongs to**:
+
+| The event involves | Its color |
+| --- | --- |
+| One person (or some of the family) | That person's color — the owner's, when several people are on it |
+| **Everyone in the household** | The **family color** |
+| Nobody yet | A neutral grey |
+
+The **family color** is set once for the household (**Settings → Family & People →
+Family color**) and starts as a warm orange, deliberately outside the member palette.
+Before this existed, a whole-family dinner just borrowed whichever member owned it,
+which made the calendar read as "Dad's dinner" instead of "our dinner". A household
+with only one member never uses it — there's no whole-vs-part distinction to draw.
 
 ## Calendar feeds (ICS)
 

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { AgendaEvent } from '../../lib/api'
+import { useEventColor } from '../../lib/event-color'
 import { localDate, ymd } from './cal-utils'
 import { AgendaRow, isPastEvent } from './AgendaView'
 
@@ -31,6 +32,7 @@ export function MonthDayPanel({
   onOpenEvent: (e: AgendaEvent) => void
   onCreate: (date: string) => void
 }) {
+  const colorOf = useEventColor('#A6A29B')
   const now = new Date()
   const todayKey = ymd(now)
 
@@ -72,7 +74,7 @@ export function MonthDayPanel({
       ) : (
         <div className="cal-day-list">
           {dayEvents.map((e) => (
-            <AgendaRow key={e.id} event={e} past={isPastEvent(e, now)} onClick={() => onOpenEvent(e)} />
+            <AgendaRow key={e.id} event={e} past={isPastEvent(e, now)} color={colorOf(e)} onClick={() => onOpenEvent(e)} />
           ))}
         </div>
       )}

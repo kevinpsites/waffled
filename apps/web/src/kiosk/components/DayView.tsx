@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { type AgendaEvent, type Countdown } from '../../lib/api'
+import { evVars, useEventColor } from '../../lib/event-color'
 import { DOW_FULL, MONTHS, ymd, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, packLanes } from './cal-utils'
 import { CountdownChip } from './CountdownChip'
 
@@ -26,6 +27,7 @@ export function DayView({
   onOpenCountdown?: (c: Countdown) => void
   onCreate: (date: string, time?: string) => void
 }) {
+  const colorOf = useEventColor()
   const key = ymd(day)
   const hours = useMemo(() => Array.from({ length: DAY_END - DAY_START + 1 }, (_, i) => DAY_START + i), [])
 
@@ -69,9 +71,9 @@ export function DayView({
           <div className="dv-rail-lbl">ALL-DAY</div>
           <div className="dv-allday-cell">
             {allDay.map((e) => {
-              const color = e.personColor ?? '#6B6B70'
+              const color = colorOf(e)
               return (
-                <div key={e.id} className="dv-allday-ev" style={{ background: `${color}22`, color }} onClick={() => onOpenEvent(e)}>
+                <div key={e.id} className="dv-allday-ev ev-tint" style={evVars(color)} onClick={() => onOpenEvent(e)}>
                   {e.title}
                 </div>
               )
@@ -102,7 +104,7 @@ export function DayView({
               const startMin = minutesOfDay(e.startsAt) - DAY_START * 60
               const top = Math.max(0, (startMin / 60) * HOUR_PX)
               const height = Math.max(26, (durationMin(e) / 60) * HOUR_PX - 3)
-              const color = e.personColor ?? '#6B6B70'
+              const color = colorOf(e)
               const isMeal = e.origin === 'meal_plan'
               const lane = lanes.get(e.id) ?? { lane: 0, lanes: 1 }
               const width = `calc((100% - 8px) / ${lane.lanes})`
@@ -110,8 +112,8 @@ export function DayView({
               return (
                 <div
                   key={e.id}
-                  className={`dv-ev ${isMeal ? 'ev-meal' : ''}`}
-                  style={{ top, height, left, width, background: `${color}22`, color, borderLeft: `3px solid ${color}` }}
+                  className={`dv-ev ev-tint ${isMeal ? 'ev-meal' : ''}`}
+                  style={{ top, height, left, width, ...evVars(color), borderLeft: `3px solid ${color}` }}
                   title={isMeal ? 'Planned meal' : undefined}
                   onClick={(ev) => { ev.stopPropagation(); onOpenEvent(e) }}
                 >

@@ -3,7 +3,10 @@ import { useSearchParams } from 'react-router'
 import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { useThemePref } from '../lib/theme'
+import { eventStyle } from '../lib/display'
+import { familyColorHex } from '../lib/event-color'
 import { PersonModal } from './components/PersonModal'
+import { ColorPicker, COLOR_SWATCHES } from './components/ColorPicker'
 import { SettingCard } from './components/SettingCard'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
@@ -573,7 +576,7 @@ function UpdateBanner({ upd, onToggle, toggling }: { upd: UpdateInfo; onToggle: 
 
 // Same swatch palette the Family & People person editor uses, so a member's
 // self-service color picker matches what an admin sees.
-const ACCOUNT_SWATCHES = ['#2F7FED', '#EC6049', '#25A368', '#8B5CF6', '#E0A500', '#EC4899', '#14B8A6', '#6B7280']
+const ACCOUNT_SWATCHES = COLOR_SWATCHES
 
 // Pull the server's `{ error, message }` message off a caught apiSend error
 // (ApiSendError carries `.body`), falling back to a friendly default.
@@ -664,17 +667,7 @@ function MyProfilePanel() {
 
         <div className="field">
           <span>Color</span>
-          <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-            {ACCOUNT_SWATCHES.map((c) => (
-              <button
-                type="button"
-                key={c}
-                aria-label={`color ${c}`}
-                onClick={() => { setColorHex(c); setSaved(false) }}
-                style={{ width: 30, height: 30, borderRadius: 999, background: c, border: colorHex === c ? '3px solid var(--ink)' : '2px solid #fff', boxShadow: '0 0 0 1px var(--hair)', cursor: 'pointer' }}
-              />
-            ))}
-          </div>
+          <ColorPicker value={colorHex} onChange={(c) => { setColorHex(c); setSaved(false) }} />
         </div>
 
         <label className="field">
@@ -895,6 +888,15 @@ function FamilyPanel() {
     refetch()
   }
 
+  // Display preferences: how event chips are painted, and the color used for
+  // events that involve the whole family. emitHouseholdChanged() re-reads the
+  // household everywhere, so the calendar restyles without a reload.
+  async function saveDisplay(patch: { eventStyle?: string; familyColorHex?: string }) {
+    await personsApi.setDisplay(patch)
+    emitHouseholdChanged()
+    refetch()
+  }
+
   return (
     <div className="set-panel">
       <div className="set-head">
@@ -932,6 +934,20 @@ function FamilyPanel() {
             <option value="sunday">Sunday</option>
             <option value="monday">Monday</option>
           </select>
+        </SettingRow>
+        <SettingRow icon="🎨" title="Event style" sub="How calendar events are colored">
+          <select
+            className="sel"
+            aria-label="Event style"
+            value={eventStyle(household)}
+            onChange={(e) => saveDisplay({ eventStyle: e.target.value })}
+          >
+            <option value="solid">Solid colors</option>
+            <option value="tinted">Tinted</option>
+          </select>
+        </SettingRow>
+        <SettingRow icon="👨‍👩‍👧‍👦" title="Family color" sub="Events with the whole family use this color">
+          <ColorPicker value={familyColorHex(household)} onChange={(hex) => saveDisplay({ familyColorHex: hex })} size={24} />
         </SettingRow>
         <SettingRow icon="🌐" title="Time zone" sub="Used for every calendar &amp; reminder">
           <select className="sel" value={household.timezone} onChange={(e) => saveHousehold({ timezone: e.target.value })}>

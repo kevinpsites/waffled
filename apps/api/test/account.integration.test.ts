@@ -131,6 +131,27 @@ describe('account API', () => {
     expect(after.colorHex).toBe('#ff0088')
   })
 
+  it('PUT /api/account/profile rejects a colorHex that is not a #RRGGBB hex (400)', async () => {
+    for (const colorHex of ['hotpink', '#ff08', 'ff0088']) {
+      const res = await call('PUT', '/api/account/profile', admin, { colorHex })
+      expect(res.statusCode, `colorHex=${colorHex}`).toBe(400)
+    }
+  })
+
+  // …but the profile card resends whatever color it was given, so a value that
+  // predates this validation must not lock you out of saving your own profile.
+  it('PUT /api/account/profile takes back a legacy color it already stored', async () => {
+    const { query } = await import('../src/platform/db')
+    await query(`update persons set color_hex = 'person-2' where id = (select person_id from identities where auth0_user_id = $1)`, ['dev|admin'])
+
+    const res = await call('PUT', '/api/account/profile', admin, { name: 'Kevin S', colorHex: 'person-2' })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse((await call('GET', '/api/account', admin)).body).colorHex).toBe('person-2')
+
+    expect((await call('PUT', '/api/account/profile', admin, { colorHex: 'person-9' })).statusCode).toBe(400)
+    await call('PUT', '/api/account/profile', admin, { colorHex: '#ff0088' })
+  })
+
   it('PUT /api/account/password: wrong current 403, short new 400, correct 200 then login works', async () => {
     expect((await call('PUT', '/api/account/password', admin, { currentPassword: 'nope', newPassword: 'brandnew1' })).statusCode).toBe(403)
     expect((await call('PUT', '/api/account/password', admin, { currentPassword: 'secret123', newPassword: 'short' })).statusCode).toBe(400)
