@@ -17,6 +17,21 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **Per-person calendar columns (web/kiosk + iPhone/iPad)** — a **People** view beside
+  Month/Week/Day/Agenda that splits one day into a column per family member (the layout the
+  dispencer17 fork had). "Whose column" resolves to **`events.person_id`** — the assignee
+  that already drives the event's color, not `owner_person_id`, which `0074` added for
+  personal-calendar visibility — **plus every participant**, so a shared event shows up for
+  everyone it involves rather than only its owner. Bucketing is column-driven (each person
+  is asked "is this yours?"), which ignores the external participants `0009` allows without
+  inventing a column for them; anything nobody claims lands in a leading **Everyone**
+  column instead of vanishing. Lanes are packed per column, so an event shown in three
+  columns still spans full width where nothing else overlaps it. No schema or API work was
+  needed: participants already ride both the REST payload and the PowerSync replica, so the
+  view works offline like the others. iOS renders it on **both** iPhone and iPad (the
+  earlier estimate assumed kiosk-only) with the same `CalTimeGrid` the Week view uses,
+  generalised so a column can be a person instead of a date.
+
 - **Calendar color control (web/kiosk + iPhone/iPad)** — a household **Event style** (solid
   color blocks, the default, or the softer tint), a **family color** for events that involve
   everyone (instead of borrowing the owner's color), and a ninth **custom** swatch that opens
@@ -244,18 +259,6 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   `0074_calendar_visibility` (simplest rule: treat them as `family`), and on iOS events come
   from PowerSync while chores are REST-only, so an offline phone renders events and silently
   drops the overlay. See [Upkeep plan](./upkeep-plan.md#how-this-lands-on-the-calendar-item-3).
-
-- **Per-person calendar columns.** A day/week view that gives each member their own column
-  (the layout the dispencer17 fork had). The data foundation exists; the decision that sets
-  the effort is **which field defines "whose column"** — `events.person_id` (assignee →
-  color, already denormalized into occurrences by `0048_event_recurrence`, so no extra
-  join), `owner_person_id` (the visibility owner from `0074`), or `event_participants`
-  (with `role`). An event with three participants either fans out into three columns or
-  picks one. Recommended: anchor on `person_id`, optional fan-out by participant, leading
-  "Family" column for unassigned. Sizing: web ~2 days (a fifth mode beside
-  `month | week | day | agenda` in `Calendar.tsx` — same fetch, new grouping component);
-  iOS ~2–3 days targeting **`KioskCalendarView` only**, since columns only work at
-  iPad/kiosk width and `CalendarView` (iPhone) would need a different design.
 
 - **Smarter goal-note suggestions (Tier 2).** Tier 1 shipped (see **Done**): the Log
   sheet's "What did you do?" chips now suggest the notes actually logged against that

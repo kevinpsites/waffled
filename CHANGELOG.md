@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   card pins a goal; the choice is remembered **per device**, so the kitchen display and
   your phone can each keep a different list up. The auto-built grocery list keeps its
   own card and isn't offered here. Web/kiosk and iPhone; add or remove it in Customize.
+- **A People view on the calendar — one column per person.** A new **People** view sits
+  beside Month/Week/Day/Agenda and splits a single day into a column for each family
+  member, so you can see at a glance who is where without reading everyone's events as one
+  jumbled list. An event appears in its owner's column **and** in the column of everyone
+  else on it, so the family dinner shows up in three columns rather than hiding under one
+  name; anything with nobody attached collects in a leading **Everyone** column. The
+  columns work exactly like the days in Week view — same time grid, same all-day row — and
+  they're on the web/kiosk, iPhone and iPad.
 - **Recently viewed recipes.** The recipe library now opens with a strip of what you
   just had open, so getting back to last night's dinner is one tap instead of a search.
   It's **your own** history by default — two people sharing a kitchen browse for
