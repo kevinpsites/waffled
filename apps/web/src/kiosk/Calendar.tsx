@@ -7,11 +7,12 @@ import { MonthView } from './components/MonthView'
 import { WeekView } from './components/WeekView'
 import { DayView } from './components/DayView'
 import { AgendaView } from './components/AgendaView'
+import { PeopleView } from './components/PeopleView'
 import { useTopbarRight } from './topbar-slot'
-import { useEventsRange, useHousehold, useCountdowns, type AgendaEvent, type Countdown } from '../lib/api'
+import { useEventsRange, useHousehold, useCountdowns, usePersons, type AgendaEvent, type Countdown } from '../lib/api'
 import { MONTHS, MONTHS_SHORT, DOW_FULL, ymd, addDays, startOfWeek, eventDetailPath } from './components/cal-utils'
 
-type View = 'month' | 'week' | 'day' | 'agenda'
+type View = 'month' | 'week' | 'day' | 'people' | 'agenda'
 
 // Remember the last view + focused date across navigations (opening an event
 // detail unmounts Calendar), so coming "back" returns you to where you were
@@ -37,7 +38,8 @@ function rangeFor(view: View, anchor: Date): { from: string; to: string } {
     const ws = startOfWeek(anchor)
     return { from: ymd(ws), to: ymd(addDays(ws, 6)) }
   }
-  if (view === 'day') {
+  // 'people' is the same single day as 'day', just split into per-person columns.
+  if (view === 'day' || view === 'people') {
     return { from: ymd(anchor), to: ymd(anchor) }
   }
   if (view === 'agenda') {
@@ -54,7 +56,8 @@ function rangeFor(view: View, anchor: Date): { from: string; to: string } {
 // The label between the nav arrows for the current view.
 function periodLabel(view: View, anchor: Date): string {
   if (view === 'month') return `${MONTHS[anchor.getMonth()]} ${anchor.getFullYear()}`
-  if (view === 'day') return `${DOW_FULL[anchor.getDay()]}, ${MONTHS[anchor.getMonth()]} ${anchor.getDate()}`
+  if (view === 'day' || view === 'people')
+    return `${DOW_FULL[anchor.getDay()]}, ${MONTHS[anchor.getMonth()]} ${anchor.getDate()}`
   const ws = startOfWeek(anchor)
   const we = addDays(ws, 6)
   const start = `${MONTHS_SHORT[ws.getMonth()]} ${ws.getDate()}`
@@ -64,7 +67,7 @@ function periodLabel(view: View, anchor: Date): string {
 
 // A `?date=YYYY-MM-DD` present in the URL wins over the remembered state — it's how
 // deep-links (e.g. tapping a countdown on Today) land the calendar on a given day.
-const VIEWS: View[] = ['month', 'week', 'day', 'agenda']
+const VIEWS: View[] = ['month', 'week', 'day', 'people', 'agenda']
 
 export function Calendar() {
   const navigate = useNavigate()
@@ -94,6 +97,8 @@ export function Calendar() {
 
   const { household } = useHousehold()
   const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  // The roster drives the People view's columns (one per person, in roster order).
+  const { persons } = usePersons()
 
   // Countdown badges on the calendar (all three sources, keyed by target day).
   const { countdowns } = useCountdowns()
@@ -137,7 +142,7 @@ export function Calendar() {
     setAnchor(d)
     setView('day')
   }
-  const navLabel = view === 'month' ? 'month' : view === 'day' ? 'day' : 'week'
+  const navLabel = view === 'month' ? 'month' : view === 'day' || view === 'people' ? 'day' : 'week'
 
   // The view toggle + period nav live in the topbar's right slot (replacing the
   // capture bar on this screen), matching the per-screen-topbar pattern.
@@ -145,7 +150,7 @@ export function Calendar() {
     () => (
       <div className="cal-topbar">
         <div className="seg">
-          {(['month', 'week', 'day', 'agenda'] as View[]).map((v) => (
+          {VIEWS.map((v) => (
             <button key={v} type="button" className={view === v ? 'on' : ''} onClick={() => setView(v)}>
               {v[0].toUpperCase() + v.slice(1)}
             </button>
@@ -174,7 +179,7 @@ export function Calendar() {
   const isCurrentPeriod = useMemo(() => {
     const now = new Date()
     if (view === 'month') return anchor.getFullYear() === now.getFullYear() && anchor.getMonth() === now.getMonth()
-    if (view === 'day') return ymd(anchor) === ymd(now)
+    if (view === 'day' || view === 'people') return ymd(anchor) === ymd(now)
     return ymd(startOfWeek(anchor)) === ymd(startOfWeek(now))
   }, [view, anchor])
 
@@ -234,6 +239,16 @@ export function Calendar() {
           countdownsByDate={countdownsByDate}
           onOpenEvent={openEvent}
           onOpenCountdown={openCountdown}
+          onCreate={(date, time) => setModal({ date, time })}
+        />
+      )}
+      {view === 'people' && (
+        <PeopleView
+          day={anchor}
+          events={events}
+          people={persons}
+          tz={tz}
+          onOpenEvent={openEvent}
           onCreate={(date, time) => setModal({ date, time })}
         />
       )}
