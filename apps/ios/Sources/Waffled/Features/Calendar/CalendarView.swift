@@ -20,10 +20,15 @@ struct CalendarView: View {
     @State private var countdowns = CountdownsModel()
     @State private var editingCountdown: WaffledAPI.Countdown?
 
-    enum CalMode: String, CaseIterable { case agenda, month, day
+    enum CalMode: String, CaseIterable { case agenda, month, day, people
         var label: String { rawValue.capitalized }
         var icon: String {
-            switch self { case .agenda: return "list.bullet"; case .month: return "calendar"; case .day: return "calendar.day.timeline.left" }
+            switch self {
+            case .agenda: return "list.bullet"
+            case .month: return "calendar"
+            case .day: return "calendar.day.timeline.left"
+            case .people: return "person.2"
+            }
         }
     }
 
@@ -60,6 +65,12 @@ struct CalendarView: View {
     var body: some View {
         VStack(spacing: 0) {
             header.padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 10)
+            if mode == .people {
+                // People owns its own scrolling (the grid pins the person headers above
+                // a scrolling hour body), so it sits OUTSIDE the page scroll view the
+                // other modes share — nesting it would scroll the headers away.
+                peopleContent.padding(.horizontal, 18).padding(.bottom, 110)
+            } else {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: mode == .agenda ? 18 : 14) {
@@ -67,6 +78,7 @@ struct CalendarView: View {
                         case .agenda: agendaContent
                         case .month:  monthContent
                         case .day:    dayContent
+                        case .people: EmptyView()   // rendered outside this scroll view
                         }
                     }
                     .padding(.horizontal, 18).padding(.bottom, 110)
@@ -81,6 +93,7 @@ struct CalendarView: View {
                 // month or day. Simultaneous (not exclusive) so vertical scrolling still
                 // works; we only act on a clearly-horizontal flick.
                 .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleCalendarSwipe))
+            }
             }
         }
         .background(WF.canvas)
@@ -128,7 +141,8 @@ struct CalendarView: View {
                 Button { stepMonth(-1) } label: { chevron("chevron.left") }
                 Text(monthTitle(monthAnchor, year: true)).font(WF.serif(24)).foregroundStyle(WF.ink).lineLimit(1)
                 Button { stepMonth(1) } label: { chevron("chevron.right") }
-            case .day:
+            // People is the same single day as Day, just split into per-person columns.
+            case .day, .people:
                 Button { stepDay(-1) } label: { chevron("chevron.left") }
                 Text(dayTitle(selectedDay)).font(WF.serif(22)).foregroundStyle(WF.ink).lineLimit(1)
                 Button { stepDay(1) } label: { chevron("chevron.right") }
@@ -369,6 +383,41 @@ struct CalendarView: View {
         .padding(.top, 2)
     }
 
+    // MARK: people grid — one column per person for the selected day
+
+    /// The People mode deliberately ignores `filterPerson`: the columns ARE the
+    /// per-person split, so filtering to one person would leave a single column and
+    /// make the mode pointless.
+    ///
+    /// Uses the same `CalTimeGrid` as the iPad Week/Day views, with people as the
+    /// columns instead of days — strict equal-width columns under a pinned header
+    /// band, exactly like Mon/Tue/Wed.
+    @ViewBuilder private var peopleContent: some View {
+        let members = sync.members.map {
+            PeopleColumns.Member(id: $0.id, name: $0.name, colorHex: $0.colorHex, avatarEmoji: $0.emoji)
+        }
+        if members.isEmpty {
+            Text("Add family members to see per-person columns.")
+                .font(.system(size: 14)).foregroundStyle(WF.ink3)
+                .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 40)
+        } else {
+            let columns = PeopleColumns.build(Agenda.forDay(sync.events, day: selectedDay, tz: tz), people: members)
+            CalTimeGrid(days: columns.map(\.id), tz: tz,
+                        byDay: Dictionary(uniqueKeysWithValues: columns.map { ($0.id, $0.events) }),
+                        headers: .people(columns.map {
+                            PeopleColumns.Member(id: $0.id, name: $0.name,
+                                                 colorHex: $0.colorHex, avatarEmoji: $0.avatarEmoji)
+                        }),
+                        selectedDay: selectedDay,
+                        onTapEvent: { detailEvent = $0 },
+                        onAddAt: { editing = .new($0) },
+                        onPickDay: { _ in },
+                        // Column keys are person ids, so the grid can't infer "is today".
+                        showsNowLine: selectedDay == Agenda.todayKey(tz),
+                        scrollToHour: dayScrollHour())
+        }
+    }
+
     /// Live red current-time indicator (dot in the hour gutter + a rule across the day),
     /// repositioned every minute. Only shown when the day view is on today.
     private var nowLine: some View {
@@ -470,7 +519,9 @@ struct CalendarView: View {
         switch mode {
         case .month: stepMonth(dir)
         case .day:   stepDay(dir)
-        case .agenda: break
+        // People owns the horizontal axis — its column strip scrolls sideways, so a
+        // swipe-to-step-day here would fight the scroll. Use the header chevrons.
+        case .agenda, .people: break
         }
     }
 
