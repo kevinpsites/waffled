@@ -1247,3 +1247,82 @@
   .re-ing-row .re-ing-drag { grid-row: 1 / 4; }
   .re-ing-row .re-ing-x { grid-row: 1 / 4; grid-column: 4 / 5; }
 }
+
+/* ---- Recently viewed rail (recipe library) ------------------------------- */
+/* A horizontal shortcut strip above the library grid. Deliberately smaller and
+   flatter than a .recipes-card: it's a way back to something you just had open,
+   not a third way to browse, and it must not compete with the grid below. */
+.recents {
+  margin: 4px 0 18px;
+}
+.recents-h {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.recents-title {
+  font-weight: 800;
+  color: var(--ink2);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.recents-scope {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.recents-scope .pill {
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 12px;
+}
+.recents-scope .pill.on {
+  background: var(--ink);
+  color: var(--on-ink);
+  border-color: var(--ink);
+}
+/* Scrolls sideways rather than wrapping — a rail that reflows into three rows
+   stops reading as "recent" and starts competing with the grid. */
+.recents-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+.recents-card {
+  flex: 0 0 auto;
+  width: 108px;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+}
+.recents-img {
+  height: 68px;
+  border-radius: var(--r-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--hair);
+}
+.recents-card:hover .recents-img {
+  box-shadow: var(--sh-2);
+}
+.recents-t {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

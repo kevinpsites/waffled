@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Recently viewed recipes.** The recipe library now opens with a strip of what you
+  just had open, so getting back to last night's dinner is one tap instead of a search.
+  It's **your own** history by default — two people sharing a kitchen browse for
+  different reasons — with an **Everyone** switch for the household's combined history
+  when the question is "what were we cooking last week?". Deleted recipes drop out of
+  it, and a recipe you open fifty times stays one entry rather than flooding the strip.
 - **Copy any list as a Markdown checklist.** Alongside the existing share, lists now offer
   **Copy as Markdown** — the same items, written as `- [ ]` tick boxes under `##` section
   headings, so pasting into Notes, Obsidian, a GitHub issue, or anywhere else that speaks

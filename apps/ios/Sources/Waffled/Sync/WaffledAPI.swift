@@ -637,6 +637,24 @@ struct WaffledAPI: Sendable {
         try await getJSON("/api/recipes/\(id)", as: RecipeDetailDTO.self)
     }
 
+    /// Whose history a recently-viewed list reflects.
+    enum RecentRecipeScope: String, Sendable { case me, household }
+
+    /// Recently-opened recipes, newest first — the caller's own, or the household's
+    /// combined history collapsed to one entry per recipe.
+    func recentRecipes(scope: RecentRecipeScope = .me, limit: Int = 12) async throws -> [RecipeSummary] {
+        struct Resp: Decodable { let recipes: [RecipeSummary] }
+        return try await getJSON("/api/recipes/recent?scope=\(scope.rawValue)&limit=\(limit)", as: Resp.self).recipes
+    }
+
+    /// Record that this recipe was opened, for the recently-viewed rail.
+    ///
+    /// Deliberately throws nothing: this is a convenience signal, and a failure to
+    /// record it must never surface as an error on the recipe the user is reading.
+    func recordRecipeView(id: String) async {
+        try? await send("POST", "/api/recipes/\(id)/view", body: [:])
+    }
+
     struct RecipeMarkdown: Decodable, Sendable {
         let markdown: String
         let filename: String

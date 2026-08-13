@@ -199,6 +199,25 @@ describe('POST /api/recipes/:id/view', () => {
   it('401s without a token', async () => {
     expect((await call('POST', `/api/recipes/${recipes.Tacos}/view`)).statusCode).toBe(401)
   })
+
+  // person_id is a NOT NULL FK, and the kiosk/device session resolves its tenant
+  // through a lazily-created `kiosk:<personId>` identity rather than a normal login.
+  // If that path ever yielded something other than a live persons row, opening a
+  // recipe on the iPad would be an FK violation (a 500 on a primary surface), and
+  // the route's 404 branch would never run. Both resolver paths join persons today;
+  // this pins that.
+  it('records a view from a kiosk-style device session', async () => {
+    const kioskSub = `kiosk:${kevinId}`
+    await withClient((c) =>
+      c.query(
+        `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified)
+         values ($1,$2,'password',$3,true)`,
+        [householdId, kevinId, kioskSub]
+      )
+    )
+    const res = await call('POST', `/api/recipes/${recipes.Lasagna}/view`, mint(kioskSub))
+    expect(res.statusCode).toBe(204)
+  })
 })
 
 describe('GET /api/recipes/recent', () => {

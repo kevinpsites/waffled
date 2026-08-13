@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
 import { MultiSelect } from './components/MultiSelect'
 import { MealCard } from './components/MealCard'
-import { useRecipes, useSavedMeals, type Recipe } from '../lib/api'
+import { useRecipes, useRecentRecipes, useSavedMeals, type Recipe } from '../lib/api'
 import './../styles/recipe.css'
 
 const GRAD_BY_CATEGORY: Record<string, string> = {
@@ -51,6 +51,7 @@ const SORTS: Array<{ key: string; label: string }> = [
 export function RecipesLibrary() {
   const navigate = useNavigate()
   const { recipes, loading, error } = useRecipes()
+  const recent = useRecentRecipes()
   const [params] = useSearchParams()
   const initArr = (k: string) => params.get(k)?.split(',').filter(Boolean) ?? []
 
@@ -168,6 +169,51 @@ export function RecipesLibrary() {
         <span className="tiny muted recipes-count">{shownCount} of {totalCount}</span>
         {anyFilter ? <button type="button" className="pill recipes-clear" onClick={clearAll}>Clear</button> : null}
       </div>
+
+      {/* A shortcut back to what you just had open, above the library proper. Hidden
+          entirely with no history — an empty strip under a heading is worse than
+          nothing. Never filtered by the controls above: it's a shortcut, not a
+          second view of the list. */}
+      {recent.recipes.length > 0 && (
+        <div className="recents" data-testid="recent-recipes">
+          <div className="recents-h">
+            <span className="recents-title">Recently viewed</span>
+            <div className="recents-scope">
+              <button
+                type="button"
+                className={`pill ${recent.scope === 'me' ? 'on' : ''}`}
+                onClick={() => recent.setScope('me')}
+              >
+                Me
+              </button>
+              <button
+                type="button"
+                className={`pill ${recent.scope === 'household' ? 'on' : ''}`}
+                onClick={() => recent.setScope('household')}
+              >
+                Everyone
+              </button>
+            </div>
+          </div>
+          <div className="recents-row">
+            {recent.recipes.map((r) => (
+              <div
+                key={r.id}
+                role="button"
+                tabIndex={0}
+                className="recents-card"
+                onClick={() => navigate(`/meals/recipe/${r.id}`)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/meals/recipe/${r.id}`) } }}
+              >
+                <div className={`recents-img ${gradClass(r)}`}>
+                  {r.imageUrl ? <img className="rc-img-photo" src={r.imageUrl} alt="" /> : (r.emoji ?? '🍽️')}
+                </div>
+                <div className="recents-t">{r.title}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && <div className="muted" style={{ padding: 20 }}>Couldn't load recipes — try reloading or signing in again.</div>}
       {!error && !loading && shownCount === 0 && (

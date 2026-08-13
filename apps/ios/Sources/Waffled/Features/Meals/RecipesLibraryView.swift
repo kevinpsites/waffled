@@ -90,6 +90,12 @@ struct RecipesLibraryView: View {
     /// hosted by four different navigation stacks, only one of which knows MealsRoute.
     @State private var building: MealBuilderStart?
     @FocusState private var searchFocused: Bool
+    /// Recently-opened recipes — a shortcut back to what you just had open.
+    @State private var recent: [WaffledAPI.RecipeSummary] = []
+    /// Whose history the rail shows. Per-device (a viewing preference, not household
+    /// config), so it's `@AppStorage` rather than server state — same as the web's
+    /// localStorage key, and the same reason the pinned Today goal is stored locally.
+    @AppStorage("waffled.recentRecipesScope") private var recentScope = "me"
 
     /// Seed `initialProtein` to open the library pre-filtered to one protein (the
     /// "Cook from your pantry" mains deep-link), or `initialNewOnly` to open filtered
@@ -121,10 +127,13 @@ struct RecipesLibraryView: View {
             searchField
             controlsBar
             if f.any { filterBar }
+            recentRail
             content
         }
         .background(WF.canvas)
-        .refreshable { await model.load() }
+        .task { await loadRecent() }
+        .onChange(of: recentScope) { _, _ in Task { await loadRecent() } }
+        .refreshable { await model.load(); await loadRecent() }
         .fullScreenCover(isPresented: $creating) {
             RecipeEditorView(mode: .create) { _ in Task { await model.load() } }
         }
@@ -133,7 +142,9 @@ struct RecipesLibraryView: View {
                 // A plate built here belongs in the library the moment it's saved.
                 .onDisappear { Task { await model.load() } }
         }
-        .onChange(of: sync.mealsRev) { _, _ in Task { await model.load() } }
+        // Coming back from a recipe reorders the rail too — the visit just recorded is
+        // the newest one.
+        .onChange(of: sync.mealsRev) { _, _ in Task { await model.load(); await loadRecent() } }
         // In pick mode (the planner's "Choose a recipe" sheet), focus search on open.
         .task {
             if onPick != nil { try? await Task.sleep(for: .milliseconds(350)); searchFocused = true }
@@ -297,6 +308,71 @@ struct RecipesLibraryView: View {
                 Label(v.capitalized, systemImage: set.wrappedValue.contains(v) ? "checkmark" : "")
             }
         }
+    }
+
+    /// A horizontal shortcut strip back to recently-opened recipes. Rendered only
+    /// when there IS history — an empty strip under a heading is worse than nothing —
+    /// and deliberately smaller than a `RecipeCard`, so it reads as a way back rather
+    /// than a second library.
+    @ViewBuilder private var recentRail: some View {
+        if !recent.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    SectionLabel(text: "Recently viewed")
+                    Spacer(minLength: 8)
+                    Picker("", selection: $recentScope) {
+                        Text("Me").tag("me")
+                        Text("Everyone").tag("household")
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 156)
+                }
+                .padding(.horizontal, 16)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(recent) { r in
+                            recentTile(r)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+            .padding(.top, 6).padding(.bottom, 10)
+        }
+    }
+
+    // Mirrors `card(_:)`: a picker-mode tap hands the recipe back, otherwise it
+    // pushes the detail through the same route the grid uses.
+    @ViewBuilder private func recentTile(_ r: WaffledAPI.RecipeSummary) -> some View {
+        if let onPick {
+            Button { onPick(r) } label: { recentTileLabel(r) }.buttonStyle(.plain)
+        } else {
+            NavigationLink(value: MealsRoute.recipe(r)) { recentTileLabel(r) }.buttonStyle(.plain)
+        }
+    }
+
+    private func recentTileLabel(_ r: WaffledAPI.RecipeSummary) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // CachedImage for the same reason the grid uses it — these scroll, and
+            // AsyncImage would re-decode on every pass.
+            CachedImage(r.imageUrl, contentMode: .fill) {
+                RecipeGradient.forCategory(r.category)
+                    .overlay(Text(r.emoji ?? RecipeGradient.emoji(r.category)).font(.system(size: 26)))
+            }
+            .frame(width: 104, height: 68).clipped()
+            .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+
+            Text(r.title)
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink)
+                .lineLimit(2).multilineTextAlignment(.leading)
+                .frame(width: 104, alignment: .leading)
+        }
+    }
+
+    private func loadRecent() async {
+        let scope: WaffledAPI.RecentRecipeScope = recentScope == "household" ? .household : .me
+        recent = (try? await WaffledAPI().recentRecipes(scope: scope)) ?? []
     }
 
     /// Inline chips for whatever's active, with a one-tap Clear (shown only when

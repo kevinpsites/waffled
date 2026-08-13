@@ -319,6 +319,17 @@ export const mealsApi = {
     patch: RecipeWriteInput & { isFavorite?: boolean; rating?: number; userNotes?: string; overrides?: RecipeOverrides },
   ) => apiSend<{ recipe: RecipeDetail }>('PATCH', `/api/recipes/${id}`, patch).then((r) => r.recipe),
   markCooked: (id: string) => apiSend<{ recipe: RecipeDetail }>('POST', `/api/recipes/${id}/cooked`).then((r) => r.recipe),
+  // Recently-opened recipes — the caller's own, or the whole household's.
+  recentRecipes: (scope: RecentScope, limit?: number) =>
+    apiGet<{ recipes: Recipe[]; scope: RecentScope }>(
+      `/api/recipes/recent?scope=${scope}${limit ? `&limit=${limit}` : ''}`
+    ),
+  // Record that this recipe was opened. Deliberately swallows failures: this is
+  // telemetry for a convenience rail, and it must never surface as an error on the
+  // recipe the user is trying to read.
+  recordRecipeView: (id: string): void => {
+    void apiSend('POST', `/api/recipes/${id}/view`).catch(() => {})
+  },
   createRecipe: (input: RecipeWriteInput & { title: string }) =>
     apiSend<{ recipe: RecipeDetail }>('POST', '/api/recipes', input).then(tap('recipes')).then((r) => r.recipe),
   deleteRecipe: (id: string) => apiDelete(`/api/recipes/${id}`).then(tap('recipes')),
@@ -371,6 +382,53 @@ export interface RecipesState {
   recipes: Recipe[]
   loading: boolean
   error: boolean
+}
+
+/** Whose history a recently-viewed list reflects. */
+export type RecentScope = 'me' | 'household'
+
+export interface RecentRecipesState extends RecipesState {
+  scope: RecentScope
+  setScope: (s: RecentScope) => void
+}
+
+// Recently-opened recipes, newest first. The scope choice is per-device (it's a
+// viewing preference, not household config) and remembered so the rail comes back
+// the way you left it.
+const RECENT_SCOPE_KEY = 'waffled.recentRecipesScope'
+
+export function useRecentRecipes(limit = 12): RecentRecipesState {
+  const [scope, setScopeState] = useState<RecentScope>(() =>
+    (typeof localStorage !== 'undefined' && localStorage.getItem(RECENT_SCOPE_KEY)) === 'household'
+      ? 'household'
+      : 'me'
+  )
+  const [state, setState] = useState<RecipesState>({ recipes: [], loading: true, error: false })
+  const [nonce, setNonce] = useState(0)
+  const refetch = useCallback(() => setNonce((n) => n + 1), [])
+
+  const setScope = useCallback((s: RecentScope) => {
+    setScopeState(s)
+    try {
+      localStorage.setItem(RECENT_SCOPE_KEY, s)
+    } catch {
+      // private mode / storage disabled — the choice just won't persist
+    }
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    mealsApi
+      .recentRecipes(scope, limit)
+      .then((d) => alive && setState({ recipes: d.recipes, loading: false, error: false }))
+      .catch(() => alive && setState({ recipes: [], loading: false, error: true }))
+    return () => {
+      alive = false
+    }
+  }, [scope, limit, nonce])
+  // A newly-opened recipe (or a deleted one) should reorder the rail on return.
+  useRefetchOn(['recipes'], refetch)
+  return { ...state, scope, setScope }
 }
 
 export function useRecipes(): RecipesState {
@@ -446,5 +504,14 @@ export function useRecipe(id: string | null): RecipeState {
       alive = false
     }
   }, [id, nonce])
+
+  // Record the open for the "Recently viewed" rail. Keyed on `id` alone, NOT on
+  // `nonce`: a refetch after an edit is the same visit, and counting it would let a
+  // recipe you're editing outrank one you actually went and read.
+  useEffect(() => {
+    if (!id) return
+    mealsApi.recordRecipeView(id)
+  }, [id])
+
   return { ...state, refetch }
 }
