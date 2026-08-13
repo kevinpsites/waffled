@@ -19,6 +19,8 @@ import {
   softDeleteRecipe,
   suggestRecipeMetadata,
   listRecipes,
+  recordRecipeView,
+  listRecentlyViewedRecipes,
   getRecipe,
   addIngredients,
   listIngredients,
@@ -117,6 +119,24 @@ export function registerMealRoutes(api: Api): void {
       [tenant.householdId]
     )
     return { sections: rows.map((r) => r.section) }
+  }))
+
+  // The caller's recently-opened recipes, newest first — or the whole household's
+  // with ?scope=household, collapsed to one row per recipe at its latest view
+  // ("what were we cooking last week?" is a family question, not a personal one).
+  // Registered before /api/recipes/:id so "recent" isn't taken as an id.
+  api.get('/api/recipes/recent', tenantRoute(async (tenant, req: Request) => {
+    const scope = req.query.scope === 'household' ? 'household' : 'me'
+    // Clamp rather than reject: this feeds a rail, and an absurd limit is a client
+    // bug, not something worth failing a page render over.
+    const asked = parseInt(String(req.query.limit ?? ''), 10)
+    const limit = Number.isFinite(asked) && asked > 0 ? Math.min(asked, 50) : 12
+    const recipes = await listRecentlyViewedRecipes(
+      tenant.householdId,
+      scope === 'household' ? null : tenant.personId,
+      limit
+    )
+    return { recipes: recipes.map(presentRecipe), scope }
   }))
 
   api.get('/api/recipes/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
@@ -300,6 +320,17 @@ export function registerMealRoutes(api: Api): void {
       }
       return res.status(200).json({ suggestion: null, via: 'none', error: message })
     }
+  }))
+
+  // Record that the caller opened this recipe — feeds GET /api/recipes/recent.
+  // Fire-and-forget from the client's point of view (204, no body): a failed view
+  // record must never make opening a recipe look broken.
+  api.post('/api/recipes/:id/view', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    const recorded = await recordRecipeView(tenant, id)
+    if (!recorded) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    return res.status(204).send('')
   }))
 
   // Mark a recipe cooked — bumps cooked_count + last_cooked_at (powers "recently
