@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Copy any list as a Markdown checklist.** Alongside the existing share, lists now offer
+  **Copy as Markdown** — the same items, written as `- [ ]` tick boxes under `##` section
+  headings, so pasting into Notes, Obsidian, a GitHub issue, or anywhere else that speaks
+  Markdown gives you a working checklist instead of flat text. It carries exactly what the
+  plain share does (unchecked items only, in the board's walking order, with store and
+  assignee notes), and the QR handoff is unchanged. On the web it's a button in the Share
+  list dialog; on iPhone/iPad it's in the list's ⋯ menu, and behind the share icon on the
+  grocery board.
 - **Pick any color for a person, not just the eight presets.** The color row in the member
   editor (and in My Profile, and the new family color) now ends with a ninth "custom"
   swatch that opens your device's color picker, so everyone can have exactly the shade

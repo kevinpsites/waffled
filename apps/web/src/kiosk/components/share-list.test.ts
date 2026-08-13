@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatShareList, type ShareListItem } from './share-list'
+import { formatShareList, formatShareListMarkdown, type ShareListItem } from './share-list'
 
 const item = (name: string, quantity: string | null, aisle: string, checked = false): ShareListItem => ({
   name,
@@ -110,5 +110,78 @@ describe('formatShareList', () => {
       const text = formatShareList([{ ...item('Bananas', null, 'Produce'), store: '  ', assignee: '' }])
       expect(text).toBe('PRODUCE\n- Bananas')
     })
+  })
+})
+
+// The Markdown variant is the same list in a form that pastes into a notes app as
+// a working checklist. It shares the grouping/ordering rules above exactly — only
+// the line and header syntax differ — so these tests mirror the plain-text suite.
+describe('formatShareListMarkdown', () => {
+  it('renders unchecked items as open task boxes under ## headers', () => {
+    const md = formatShareListMarkdown([
+      item('Milk', '1 gal', 'Dairy & Chilled'),
+      item('Asparagus', '2 bunch', 'Produce'),
+      item('Tomatoes', '2', 'Produce'),
+    ])
+    expect(md).toBe(
+      [
+        '## Produce',
+        '- [ ] Asparagus (2 bunch)',
+        '- [ ] Tomatoes (2)',
+        '',
+        '## Dairy & Chilled',
+        '- [ ] Milk (1 gal)',
+      ].join('\n')
+    )
+  })
+
+  it('omits the parens when an item has no quantity', () => {
+    expect(formatShareListMarkdown([item('Bread', null, 'Bakery')])).toBe('## Bakery\n- [ ] Bread')
+  })
+
+  // Same rule as the plain-text share: the export is the shopping list, and a
+  // checked item is already in the cart. Every emitted box is therefore unticked.
+  it('excludes checked items entirely rather than emitting [x]', () => {
+    const md = formatShareListMarkdown([
+      item('Asparagus', '2 bunch', 'Produce'),
+      item('Butter', null, 'Dairy & Chilled', true),
+    ])
+    expect(md).toBe('## Produce\n- [ ] Asparagus (2 bunch)')
+    expect(md).not.toContain('[x]')
+  })
+
+  it('files aisle-less items under Other', () => {
+    const md = formatShareListMarkdown([item('Cookies', null, ''), item('Asparagus', '2 bunch', 'Produce')])
+    expect(md).toBe(['## Produce', '- [ ] Asparagus (2 bunch)', '', '## Other', '- [ ] Cookies'].join('\n'))
+  })
+
+  it('appends unknown aisles after the known board order', () => {
+    const md = formatShareListMarkdown([item('Charcoal', null, 'Seasonal'), item('Asparagus', null, 'Produce')])
+    expect(md).toBe(['## Produce', '- [ ] Asparagus', '', '## Seasonal', '- [ ] Charcoal'].join('\n'))
+  })
+
+  it('returns an empty string when everything is checked', () => {
+    expect(formatShareListMarkdown([item('Butter', null, 'Dairy & Chilled', true)])).toBe('')
+  })
+
+  // An ungrouped custom list is a flat checklist — a lone "## Other" is noise.
+  it('omits headers entirely when nothing in the list is grouped', () => {
+    const md = formatShareListMarkdown([
+      item('Wood screws', '1 box', ''),
+      item('Sandpaper', null, ''),
+      item('Wood glue', null, ''),
+    ])
+    expect(md).toBe(['- [ ] Wood screws (1 box)', '- [ ] Sandpaper', '- [ ] Wood glue'].join('\n'))
+  })
+
+  it('keeps the header when the single group is a real section', () => {
+    expect(formatShareListMarkdown([item('Wood screws', null, 'Hardware')])).toBe('## Hardware\n- [ ] Wood screws')
+  })
+
+  it('carries store and assignee notes through unchanged', () => {
+    const md = formatShareListMarkdown([
+      { ...item('Whole milk', '1 gal', 'Dairy & Chilled'), store: 'Costco', assignee: 'Kelly' },
+    ])
+    expect(md).toBe('## Dairy & Chilled\n- [ ] Whole milk (1 gal) [Costco · Kelly]')
   })
 })
