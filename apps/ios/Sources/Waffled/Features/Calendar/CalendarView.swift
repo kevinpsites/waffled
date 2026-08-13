@@ -519,8 +519,9 @@ struct CalendarView: View {
         switch mode {
         case .month: stepMonth(dir)
         case .day:   stepDay(dir)
-        // People owns the horizontal axis — its column strip scrolls sideways, so a
-        // swipe-to-step-day here would fight the scroll. Use the header chevrons.
+        // People renders outside the gesture's scroll view, so this never fires for
+        // it; the case is here to keep the switch exhaustive. Step days with the
+        // header chevrons.
         case .agenda, .people: break
         }
     }

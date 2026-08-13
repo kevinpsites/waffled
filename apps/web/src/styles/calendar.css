@@ -319,23 +319,13 @@
 }
 
 /* ============  PEOPLE VIEW — one day, a column per person  ============ */
-/* Reuses the day view's rail/event vocabulary (.dv-rail-lbl, .dv-hr, .dv-ev). The
-   body scrolls BOTH ways: sideways for households with more people than fit, down
-   through the hours. The header band sticks to the top and the hour rail sticks to
-   the left, so neither is lost while scrolling the other axis. */
-.pv-screen { flex: 1; display: flex; flex-direction: column; min-height: 0; gap: 14px; --dv-rail: 64px; }
-.pv-body { flex: 1; overflow: auto; }
-.pv-grid { display: grid; position: relative; min-width: min-content; }
-.pv-corner { position: sticky; top: 0; left: 0; z-index: 6; background: var(--bg); }
-.pv-sticky-l { position: sticky; left: 0; z-index: 4; background: var(--bg); }
-.pv-head { position: sticky; top: 0; z-index: 3; background: var(--bg);
-  display: flex; align-items: center; gap: 6px; padding: 6px 8px;
-  border-bottom: 1px solid var(--hair); border-left: 1px solid var(--hair); min-width: 0; }
-.pv-dot { flex: none; width: 9px; height: 9px; border-radius: 999px; }
-.pv-emo { flex: none; font-size: 13px; }
-.pv-name { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pv-allday-cell { padding: 5px; display: flex; flex-wrap: wrap; gap: 5px;
-  border-bottom: 1px solid var(--hair); border-left: 1px solid var(--hair); min-height: 34px; }
-.pv-rail { position: sticky; left: 0; z-index: 4; background: var(--bg); }
-.pv-col { position: relative; cursor: pointer; border-left: 1px solid var(--hair);
-  background-image: linear-gradient(to bottom, var(--hair-2) 1px, transparent 1px); }
+/* Built on the WEEK grid (.wk / .wk-head / .wk-allday / .wk-grid) so a person's
+   column reads exactly like a day's — same shared --wk-cols template, same
+   dividers, same event chips. Only the column HEADER differs: a name over an
+   avatar, where the week shows a weekday over a date. */
+.pv-screen { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.pv-day-h { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.pv-person-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* Same footprint as .wk-dn's today-circle, so the two header shapes line up. */
+.pv-person-av { width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center;
+  font-size: 15px; line-height: 1; }

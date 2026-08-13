@@ -32,9 +32,21 @@ const noop = () => {}
 describe('PeopleView', () => {
   it('draws a column per household person', () => {
     render(<PeopleView day={day} events={[]} people={family} tz="America/Los_Angeles" onOpenEvent={noop} onCreate={noop} />)
-    expect(document.querySelectorAll('.pv-head')).toHaveLength(2)
+    expect(document.querySelectorAll('.pv-day-h')).toHaveLength(2)
     expect(screen.getByText('Jerry')).toBeInTheDocument()
     expect(screen.getByText('Elaine')).toBeInTheDocument()
+  })
+
+  // A person's column is meant to BE a week column, not a lookalike: the header,
+  // all-day row and body must share the week grid's one `--wk-cols` template, or
+  // they drift out of alignment the moment a name is long.
+  it('is built on the week grid, with a track per person', () => {
+    render(<PeopleView day={day} events={[]} people={family} tz="America/Los_Angeles" onOpenEvent={noop} onCreate={noop} />)
+    const wk = document.querySelector('.wk') as HTMLElement
+    expect(wk).toBeTruthy()
+    expect(wk.style.getPropertyValue('--wk-cols')).toContain('repeat(2,')
+    expect(document.querySelector('.wk-head')).toBeTruthy()
+    expect(document.querySelectorAll('.wk-col')).toHaveLength(2)
   })
 
   it('shows a shared event in each participant’s column', () => {
@@ -53,9 +65,9 @@ describe('PeopleView', () => {
   it('leaves a person’s column empty when nothing is theirs', () => {
     const mine = ev('solo', { title: 'Poker night', personId: 'p1' })
     render(<PeopleView day={day} events={[mine]} people={family} tz="America/Los_Angeles" onOpenEvent={noop} onCreate={noop} />)
-    const cols = document.querySelectorAll('.pv-col')
-    expect(cols[0].querySelectorAll('.dv-ev')).toHaveLength(1)
-    expect(cols[1].querySelectorAll('.dv-ev')).toHaveLength(0)
+    const cols = document.querySelectorAll('.wk-col')
+    expect(cols[0].querySelectorAll('.wk-ev')).toHaveLength(1)
+    expect(cols[1].querySelectorAll('.wk-ev')).toHaveLength(0)
   })
 
   it('asks for family members when the household has none', () => {
