@@ -1278,10 +1278,14 @@
   font-size: 12px;
   padding: 4px 12px;
 }
+/* Matches the established selected-pill look (.ph-album-actions .pill.on). Uses
+   --primary + --on-accent deliberately: --primary stays saturated in both themes so
+   white text is always legible. (--on-ink is an iOS-only token and does not exist
+   here — using it left the label dark-on-dark and invisible.) */
 .recents-scope .pill.on {
-  background: var(--ink);
-  color: var(--on-ink);
-  border-color: var(--ink);
+  background: var(--primary);
+  color: var(--on-accent);
+  border-color: var(--primary);
 }
 /* Scrolls sideways rather than wrapping — a rail that reflows into three rows
    stops reading as "recent" and starts competing with the grid. */
