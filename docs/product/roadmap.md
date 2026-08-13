@@ -221,6 +221,42 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
+- **Upkeep — recurring household maintenance as its own module.** Where "air filter every
+  3 months", "toothbrush heads", and "trash out weekly" live. Deliberately *not* chores:
+  no reward, no approval, no photo proof, no assignee — and chores can't express these
+  schedules anyway (`ensureTodayInstances` matches only `FREQ=DAILY` and `FREQ=WEEKLY` +
+  `BYDAY`, by SQL substring; there is no `MONTHLY` and no `INTERVAL`). The decided model is
+  **completion-anchored** — due N months after you *actually last did it*, so being late
+  shifts the next one — which `chore_instances` (one materialized row per `due_on` on a
+  calendar grid) structurally cannot represent. One `upkeep_items` row carrying
+  `every` / `last_completed_at` / `next_due_at`, plus an `upkeep_completions` log so
+  "filter last changed Mar 12" is answerable; items surface on Today/Calendar only inside a
+  lead-time window. Reuses the countdowns presentation for "N days until Y" — whether that
+  aggregator is source-pluggable is the main open question. Full design, schema sketch and
+  sizing: [Upkeep plan](./upkeep-plan.md).
+
+- **Calendar as the all-in-one dated view.** Overlay the dated non-events — `chore_instances.due_on`
+  and (once built) `upkeep_items.next_due_at` — onto the calendar as read-only all-day chips,
+  tapping through to the chore/upkeep rather than the event editor. Deliberately chips, not
+  time-grid blocks: a chore's `due_time` is a soft target, not an appointment. `list_items`
+  stays out — it has no due column and lists shouldn't become a half-built task manager. Two
+  seams to settle first: chores/upkeep have no visibility concept under
+  `0074_calendar_visibility` (simplest rule: treat them as `family`), and on iOS events come
+  from PowerSync while chores are REST-only, so an offline phone renders events and silently
+  drops the overlay. See [Upkeep plan](./upkeep-plan.md#how-this-lands-on-the-calendar-item-3).
+
+- **Per-person calendar columns.** A day/week view that gives each member their own column
+  (the layout the dispencer17 fork had). The data foundation exists; the decision that sets
+  the effort is **which field defines "whose column"** — `events.person_id` (assignee →
+  color, already denormalized into occurrences by `0048_event_recurrence`, so no extra
+  join), `owner_person_id` (the visibility owner from `0074`), or `event_participants`
+  (with `role`). An event with three participants either fans out into three columns or
+  picks one. Recommended: anchor on `person_id`, optional fan-out by participant, leading
+  "Family" column for unassigned. Sizing: web ~2 days (a fifth mode beside
+  `month | week | day | agenda` in `Calendar.tsx` — same fetch, new grouping component);
+  iOS ~2–3 days targeting **`KioskCalendarView` only**, since columns only work at
+  iPad/kiosk width and `CalendarView` (iPhone) would need a different design.
+
 - **Smarter goal-note suggestions (Tier 2).** Tier 1 shipped (see **Done**): the Log
   sheet's "What did you do?" chips now suggest the notes actually logged against that
   goal, scoped per participant, blended with the defaults. Tier 2 makes the ranking
