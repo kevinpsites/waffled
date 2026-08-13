@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiGet, apiGetCached, apiSend, apiDelete, localToday } from './client'
 import { useRefetchOn } from './bus'
-import { watchAgendaRows, eventsForDay, eventsForRange, getHouseholdTz, getLocalEvent, dropTombstoned, isEventTombstoned } from '../powersync/events-local'
+import { watchAgendaRows, eventsForDay, eventsForRange, getHouseholdTz, getLocalEvent, dropTombstoned, isEventTombstoned, type LocalEventRow } from '../powersync/events-local'
+import { isReplicaTrusted, subscribeSyncHealth } from '../powersync/sync-health'
 
 export interface Participant {
   id: string
@@ -92,18 +93,37 @@ export interface AgendaState {
   error: boolean
 }
 
-// Offline-first reads: the local PowerSync DB drives state once it streams a
-// result (live + works offline); REST is the baseline for the first paint and
-// whenever PowerSync isn't available. `localActive` stops a REST response (incl. a
-// failure while offline) from clobbering local data once local has taken over.
-export function useEventsToday(): AgendaState & { refetch: () => void } {
-  const date = localToday()
+// Offline-first reads with replica-trust arbitration. The local PowerSync DB
+// drives state (live, and it works offline) — but only while the replica is
+// TRUSTED: it has completed a full sync and the engine isn't wedged (see
+// sync-health). An untrusted replica may paint, but only until REST lands. That
+// distinction is the fix for the incident where a wedged engine left an empty
+// replica in charge and the kiosk rendered a blank calendar while REST had the
+// real data all along.
+//
+// REST is therefore the baseline for the first paint, for REST-only mode, and
+// whenever trust is lost. A REST failure never blanks rows already on screen.
+function useAgendaFeed(
+  computeLocal: (rows: LocalEventRow[], tz: string) => AgendaEvent[],
+  fetchRest: () => Promise<AgendaEvent[]>,
+  deps: unknown[],
+  loadingOnRefetch: boolean
+): AgendaState & { refetch: () => void } {
   const [state, setState] = useState<AgendaState>({ events: [], loading: true, error: false })
   const [nonce, setNonce] = useState(0)
   const localActive = useRef(false)
+  const restLoaded = useRef(false)
+  // Latest closures without re-running the effects (their identity changes every render).
+  const computeRef = useRef(computeLocal)
+  computeRef.current = computeLocal
+  const fetchRef = useRef(fetchRest)
+  fetchRef.current = fetchRest
 
-  // Local-first: stream agenda rows straight from the local DB.
+  // Local-first: stream agenda rows straight from the local DB. A trusted replica
+  // takes over from REST; an untrusted one only fills in before REST arrives.
   useEffect(() => {
+    localActive.current = false
+    restLoaded.current = false
     let alive = true
     let dispose = () => {}
     void (async () => {
@@ -112,8 +132,9 @@ export function useEventsToday(): AgendaState & { refetch: () => void } {
       dispose = watchAgendaRows(
         (rows) => {
           if (!alive) return
-          localActive.current = true
-          setState({ events: eventsForDay(rows, tz, date), loading: false, error: false })
+          const trusted = isReplicaTrusted()
+          localActive.current = trusted
+          if (trusted || !restLoaded.current) setState({ events: computeRef.current(rows, tz), loading: false, error: false })
         },
         () => {
           localActive.current = false // local failed → let REST drive
@@ -124,73 +145,77 @@ export function useEventsToday(): AgendaState & { refetch: () => void } {
       alive = false
       dispose()
     }
-  }, [date])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps)
 
-  // REST baseline — only applies while local hasn't taken over.
+  // REST baseline — applies whenever the local replica hasn't (trustedly) taken
+  // over. On failure keep whatever is already painted rather than blanking it.
   useEffect(() => {
     let alive = true
-    eventsApi
-      .eventsToday(date)
-      .then((d) => alive && !localActive.current && setState({ events: dropTombstoned(d.events), loading: false, error: false }))
-      .catch(() => alive && !localActive.current && setState({ events: [], loading: false, error: true }))
+    if (loadingOnRefetch) setState((s) => ({ ...s, loading: true }))
+    fetchRef
+      .current()
+      .then((events) => {
+        if (!alive) return
+        restLoaded.current = true
+        if (!localActive.current) setState({ events, loading: false, error: false })
+      })
+      .catch(() => {
+        if (!alive || localActive.current) return
+        setState((s) => (s.events.length ? { ...s, loading: false } : { events: [], loading: false, error: true }))
+      })
     return () => {
       alive = false
     }
-  }, [date, nonce])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...deps, nonce])
 
-  // Planning a meal now creates a calendar event — refresh the agenda when meals
-  // change (covers the REST path; PowerSync streams it live on its own).
-  useRefetchOn(['meals'], () => setNonce((n) => n + 1))
+  // When replica trust flips (the engine stalls, or recovers), re-arbitrate: hand
+  // the wheel straight back to REST on a stall; on recovery the replica re-takes
+  // over at its next emission.
+  const trustedRef = useRef(isReplicaTrusted())
+  useEffect(
+    () =>
+      subscribeSyncHealth(() => {
+        const trusted = isReplicaTrusted()
+        if (trusted === trustedRef.current) return
+        trustedRef.current = trusted
+        if (!trusted) localActive.current = false
+        setNonce((n) => n + 1)
+      }),
+    []
+  )
 
   return { ...state, refetch: () => setNonce((n) => n + 1) }
 }
 
+export function useEventsToday(): AgendaState & { refetch: () => void } {
+  const date = localToday()
+  // No spinner on refetch here: the Today card is always on screen, so flashing
+  // it would be worse than briefly showing the previous day's rows.
+  const feed = useAgendaFeed(
+    (rows, tz) => eventsForDay(rows, tz, date),
+    () => eventsApi.eventsToday(date).then((d) => dropTombstoned(d.events)),
+    [date],
+    false
+  )
+  // Planning a meal now creates a calendar event — refresh the agenda when meals
+  // change (covers the REST path; PowerSync streams it live on its own).
+  useRefetchOn(['meals'], feed.refetch)
+  return feed
+}
+
 export function useEventsRange(from: string, to: string): AgendaState & { refetch: () => void } {
-  const [state, setState] = useState<AgendaState>({ events: [], loading: true, error: false })
-  const [nonce, setNonce] = useState(0)
-  const localActive = useRef(false)
-
-  useEffect(() => {
-    localActive.current = false
-    let alive = true
-    let dispose = () => {}
-    void (async () => {
-      const tz = await getHouseholdTz()
-      if (!alive) return
-      dispose = watchAgendaRows(
-        (rows) => {
-          if (!alive) return
-          localActive.current = true
-          setState({ events: eventsForRange(rows, tz, from, to), loading: false, error: false })
-        },
-        () => {
-          localActive.current = false
-        }
-      )
-    })()
-    return () => {
-      alive = false
-      dispose()
-    }
-  }, [from, to])
-
-  useEffect(() => {
-    let alive = true
-    setState((s) => ({ ...s, loading: true }))
-    eventsApi
-      .eventsRange(from, to)
-      .then((d) => alive && !localActive.current && setState({ events: dropTombstoned(d.events), loading: false, error: false }))
-      .catch(() => alive && !localActive.current && setState({ events: [], loading: false, error: true }))
-    return () => {
-      alive = false
-    }
-  }, [from, to, nonce])
-
+  const feed = useAgendaFeed(
+    (rows, tz) => eventsForRange(rows, tz, from, to),
+    () => eventsApi.eventsRange(from, to).then((d) => dropTombstoned(d.events)),
+    [from, to],
+    true
+  )
   // Planning a meal now creates a calendar event — refresh when meals change
   // (covers the REST path; PowerSync streams it live on its own).
-  useRefetchOn(['meals'], () => setNonce((n) => n + 1))
-
-  return { ...state, refetch: () => setNonce((n) => n + 1) }
+  useRefetchOn(['meals'], feed.refetch)
+  return feed
 }
 
 // One event with its full detail (the EventDetail screen). Paints instantly from

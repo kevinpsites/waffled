@@ -42,6 +42,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Disable password login / force SSO (break-glass guard) | ✅ | ✅ | ✅ | ✅ Done — config is web/server-only admin by design; every client's login screen honors it (an SSO-only server hides the email/password form on web **and** iPhone/iPad) |
 | **Member management** — grant a person a login (email ± password) + kiosk PIN | ✅ | ✅ | ✅ | ✅ Done |
 | **Members CRUD** (profiles: name, avatar, color, role, admin, birthday) | ✅ | ✅ | ✅ | ✅ Done |
+| **Custom member color** — a ninth swatch opens a free hex picker | ✅ | ✅ | ✅ | ✅ Done — any `#RRGGBB` value, validated server-side, and a solid chip picks black or white text so even a pale color stays readable. Web: member editor + My Profile. iPhone/iPad: member editor, plus **Settings → Households** so a non-admin can set their own color |
 | **Role-based permissions** — per-role capability grid (Settings → Family); [model](/concepts/permissions/) | ✅ | ✅ | ✅ | ✅ Done (editable matrix, admin-only) |
 | Sign out (revokes refresh) | ✅ | ✅ | ✅ | ✅ Done |
 
@@ -91,6 +92,8 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Agenda **dims past events** | ✅ | ✅ | — | ✅ Done — the Calendar agenda **and** the Today dashboard's agenda card fade already-ended events (web + iPhone) |
 | Full-screen **event detail** (location/Directions, repeats, notes, timeline) | ✅ | ✅ | ✅ | ✅ Done (iPad detail is two-column) |
 | Per-person filter | ✅ | ✅ | ✅ | ✅ Done |
+| **Event style** — solid color blocks (default) or the softer tint, per household | ✅ | ✅ | ✅ | ✅ Done — set in **Settings → Family & People → Event style**; applies to every chip with a background (month cells, week/day blocks, all-day pills) on web, iPhone and iPad. Accent bars and month dots take the color but not the style |
+| **Family color** for whole-family events (instead of the owner's color) | ✅ | ✅ | ✅ | ✅ Done — an event whose people cover every member paints in **Settings → Family & People → Family color**, on every calendar surface and the Today dashboard. A one-person household never qualifies. Member avatars keep the owner's color |
 | **Two-way Google Calendar sync** (inbound poll + outbound push) | ✅ | ✅ | ✅ | ✅ Done (sync runs server-side; connect in Settings → Calendars) |
 | **Two-way Outlook / Microsoft 365 sync** (same engine, via Graph) | ✅ | ✅ | ✅ | ✅ Done — sync runs server-side, so synced events appear on every surface. Connect an account from **Settings → Calendars** on web, iPhone or iPad; needs a free Azure app registration |
 | **Calendar feeds (ICS)** — subscribe to any published .ics/webcal URL | ✅ | ✅ | ✅ | ✅ Done — read-only, no OAuth, polled every 15 min. Add and manage feeds from **Settings → Calendars** on any surface. Feed events can't be edited anywhere: the apps hide Edit/Delete and the API refuses the write (including quick-add and offline queues) |
@@ -320,6 +323,7 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | **Notifications** (reminders) | ❌ N/A | ✅ | ✅ | ✅ Done (mobile) |
 | **Login & security** (OIDC config, password toggle) | ✅ | 🟡 | 🟡 | ✅ Done (web); mobile shows accounts/sign-in, OIDC config is web-only |
 | Household settings (name, week start, timezone, location) | ✅ | ✅ | ✅ | ✅ Done |
+| **Event style + Family color** (how the calendar is colored) | ✅ | ✅ | ✅ | ✅ Done — admin-gated (Settings → Family & People) on every surface |
 | **About** (version, editable server address + switch warning) | — | ✅ | ✅ | ✅ Done (mobile) |
 | **Lists** settings | 🚧 | 🚧 | 🚧 | 🚧 Planned ("Soon") |
 
@@ -331,6 +335,9 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | Offline writes queued + drained on reconnect | 🟡 (calendar) | ✅ | ✅ | ✅ Done (events domain) |
 | Other domains (chores/rewards/goals/lists/meals/photos) | REST | REST | REST | 🟡 REST-only, kept fresh by the in-app refresh bus while online |
 | Offline status + pending-uploads + last-synced indicators | ✅ | ✅ | ✅ | ✅ Done |
+| **Sync watchdog** — detects a wedged sync engine and self-heals it | ✅ | ⬜ | ⬜ | ✅ Done (web) — **not planned for iOS**, which keeps its existing PowerSync status handling. A stall (online + signed in but not synced for 3 min) triggers a soft reconnect, then a client rebuild, then a replica wipe + re-download, with backoff from 2 min to 16 min. The wipe is skipped whenever local writes might still be queued — including when a wedged client can't report its queue — and is tried at most once per stall (re-armed by a fully successful sync), so a long outage can't wipe the replica repeatedly. An engine that crashes on boot is retried on the same backoff, rebuild-only |
+| **Replica-trust fallback** — the calendar reads over the network when the local copy can't be trusted | ✅ | ⬜ | ⬜ | ✅ Done (web calendar) — **not planned for iOS**. A stalled or never-fully-synced local copy can no longer outrank a good server response, so a wedged engine never renders an empty calendar |
+| **Live Sync (this browser)** card in System Health | ✅ | ⬜ | ⬜ | ✅ Done — web admin surface (like the System Health panel itself). Distinguishes starting · live · connecting · stalled · failed (with the error) · off, counts watchdog restarts, and offers manual **Restart sync** / **Reset local copy** |
 | Kiosk **PWA** + cached last-known state | 🚧 | ❌ N/A | ❌ N/A | 🟡 Web partial (7.1); mobile is a native app |
 | Self-host via **Docker Compose** (`./waffled up`) | ✅ | — | — | ✅ Done |
 | In-container **migrations** (one-shot) | ✅ | — | — | ✅ Done |
@@ -358,6 +365,11 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 > rewards, goals, meals, photos) are REST-backed and need connectivity, kept in sync by
 > the in-app live-refresh bus while online. Bringing **chores** into PowerSync is the
 > prerequisite for offline chores *and* iOS chore reminders.
+>
+> The **replica-trust fallback** applies to the web calendar, because that's the only web
+> surface that reads from the local copy today. As other domains join PowerSync, they
+> should adopt the same rule: never let an untrusted local copy outrank a good server
+> response.
 
 ---
 

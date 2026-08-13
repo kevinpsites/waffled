@@ -4,6 +4,7 @@ import { EventModal } from './EventModal'
 import { eventPeople } from './cal-utils'
 import { isPastEvent } from './AgendaView'
 import { useEventsToday, usePersons, type AgendaEvent } from '../../lib/api'
+import { evVars, useEventColor } from '../../lib/event-color'
 
 function formatTime(e: AgendaEvent): string {
   if (e.allDay) return 'all day'
@@ -11,8 +12,8 @@ function formatTime(e: AgendaEvent): string {
   return `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function AgendaRow({ event, past = false, onClick }: { event: AgendaEvent; past?: boolean; onClick: () => void }) {
-  const color = event.personColor ?? '#A6A29B'
+function AgendaRow({ event, past = false, color: colorProp, onClick }: { event: AgendaEvent; past?: boolean; color?: string; onClick: () => void }) {
+  const color = colorProp ?? event.personColor ?? '#A6A29B'
   return (
     <div
       className={`agenda-row${past ? ' past' : ''}`}
@@ -41,11 +42,11 @@ function AgendaRow({ event, past = false, onClick }: { event: AgendaEvent; past?
 
 // When the day is light (≤3 events), show roomier square-ish cards instead of
 // tight rows so the calendar doesn't look sparse.
-function AgendaBigCard({ event, past = false, onClick }: { event: AgendaEvent; past?: boolean; onClick: () => void }) {
-  const color = event.personColor ?? '#A6A29B'
+function AgendaBigCard({ event, past = false, color: colorProp, onClick }: { event: AgendaEvent; past?: boolean; color?: string; onClick: () => void }) {
+  const color = colorProp ?? event.personColor ?? '#A6A29B'
   return (
-    <div className={`agenda-bigcard${past ? ' past' : ''}`} onClick={onClick} role="button" tabIndex={0} style={{ borderTop: `3px solid ${color}` }}>
-      <div className="ab-time" style={{ color }}>{formatTime(event)}</div>
+    <div className={`agenda-bigcard${past ? ' past' : ''}`} onClick={onClick} role="button" tabIndex={0} style={{ borderTop: `3px solid ${color}`, ...evVars(color) }}>
+      <div className="ab-time ev-ink">{formatTime(event)}</div>
       <div className="ab-title">{event.title}</div>
       {event.location && <div className="tiny muted ab-loc">📍 {event.location}</div>}
       <div className="ab-foot">
@@ -82,6 +83,7 @@ function Avatars({ event }: { event: AgendaEvent }) {
 export function AgendaCard() {
   const { events, loading, error, refetch } = useEventsToday()
   const { persons = [] } = usePersons()
+  const colorOf = useEventColor('#A6A29B')
   const [selected, setSelected] = useState<AgendaEvent | null>(null)
   // Today's events can be filtered to one person (owner or participant). null = all.
   const [filterId, setFilterId] = useState<string | null>(null)
@@ -139,11 +141,11 @@ export function AgendaCard() {
       {!loading && !error && shown.length > 0 && shown.length <= 3 ? (
         <div className="agenda-biggrid">
           {shown.map((e) => (
-            <AgendaBigCard key={e.id} event={e} past={isPastEvent(e, now)} onClick={() => setSelected(e)} />
+            <AgendaBigCard key={e.id} event={e} past={isPastEvent(e, now)} color={colorOf(e)} onClick={() => setSelected(e)} />
           ))}
         </div>
       ) : (
-        shown.map((e) => <AgendaRow key={e.id} event={e} past={isPastEvent(e, now)} onClick={() => setSelected(e)} />)
+        shown.map((e) => <AgendaRow key={e.id} event={e} past={isPastEvent(e, now)} color={colorOf(e)} onClick={() => setSelected(e)} />)
       )}
       {selected && <EventModal event={selected} onClose={() => setSelected(null)} onSaved={refetch} />}
     </div>

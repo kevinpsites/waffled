@@ -224,6 +224,19 @@ body {
   flex: none;
 }
 
+/* Stalled-sync strip — the same quiet shape as the offline banner, shown only
+   while the sync watchdog is restarting a wedged engine (REST keeps data fresh
+   meanwhile, so this is an explanation, not a warning). */
+.sync-banner {
+  background: var(--offline);
+  color: var(--offline-fg);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  padding: 7px 14px;
+  flex: none;
+}
+
 /* topbar wraps when it runs out of room */
 .topbar {
   flex-wrap: wrap;

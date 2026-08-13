@@ -437,6 +437,43 @@ select.cap-edit-sub { cursor: pointer; }
 .ev.time::before { content: attr(data-t); color: inherit; opacity: .7; margin-right: 5px; font-weight: 700; }
 .ev-more { font-size: 11px; color: var(--ink-3); font-weight: 600; padding-left: 4px; }
 
+/* Theme-aware event tinting. A chip sets its resolved color as `--ev` and takes
+   `.ev-tint`; the wash and the text derive from it by mixing against the current
+   theme's ink — darker, richer text in light, a bright pastel in dark — instead
+   of a fixed `${hex}22` wash + raw color text, which goes illegible in dark.
+   `.ev-ink` is the text-only variant (a colored time/label on a card). */
+.ev-tint {
+  background: color-mix(in srgb, var(--ev, var(--ink-3)) 14%, transparent);
+  color: color-mix(in srgb, var(--ev, var(--ink-3)) 58%, var(--ink));
+}
+:root[data-theme="dark"] .ev-tint, .dark .ev-tint {
+  background: color-mix(in srgb, var(--ev, var(--ink-3)) 24%, transparent);
+  color: color-mix(in srgb, var(--ev, var(--ink-3)) 42%, var(--ink));
+}
+.ev-ink { color: color-mix(in srgb, var(--ev, var(--ink-3)) 70%, var(--ink)); }
+:root[data-theme="dark"] .ev-ink, .dark .ev-ink {
+  color: color-mix(in srgb, var(--ev, var(--ink-3)) 55%, var(--ink));
+}
+
+/* Solid event style — the default (Settings → Family & People → Event style):
+   chips fill with the resolved color. Keyed off `data-ev-style` on the root
+   (stamped from the household setting) so the solid↔tinted switch is pure CSS
+   and the `--ev` mechanism above is untouched. Dark mode mixes toward black so
+   solid chips keep depth against dark cards.
+   The text is NOT a fixed white — white clears WCAG AA on only one of the eight
+   member colors (gold manages 2.2:1). Each chip carries the ink that wins on its
+   own fill as `--ev-on` / `--ev-on-dark` (see lib/event-color.ts `evVars`); the
+   hardcoded fallbacks are the readable ink for the `--ink-3` fill above. */
+:root[data-ev-style="solid"] .ev-tint {
+  background: var(--ev, var(--ink-3));
+  color: var(--ev-on, #000000);
+}
+:root[data-ev-style="solid"][data-theme="dark"] .ev-tint,
+:root[data-ev-style="solid"] .dark .ev-tint {
+  background: color-mix(in srgb, var(--ev, var(--ink-3)) 82%, black);
+  color: var(--ev-on-dark, #FFFFFF);
+}
+
 /* ===== chore columns ============================================ */
 .chore-col { background: var(--card); border-radius: var(--r-lg); padding: 16px;
   display: flex; flex-direction: column; gap: 11px; box-shadow: var(--sh-2); }

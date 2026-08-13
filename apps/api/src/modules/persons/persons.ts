@@ -250,6 +250,68 @@ export async function updateModules(
   return rows[0] ?? null
 }
 
+// Merge the calendar's display preferences into settings.display (jsonb merge,
+// same as modules above, so sibling settings keys survive).
+//
+// settings.display is SHARED with the kiosk display wrapper, which owns the
+// screensaver keys (see modules/kiosk/kiosk.ts DISPLAY_DEFAULTS). The contract
+// both sides keep: merge your write, and read/serve only your own keys.
+export async function updateDisplay(
+  householdId: string,
+  patch: Record<string, string>
+): Promise<HouseholdRow | null> {
+  const { rows } = await query<HouseholdRow>(
+    `update households
+        set settings = jsonb_set(
+          coalesce(settings, '{}'::jsonb),
+          '{display}',
+          coalesce(settings->'display', '{}'::jsonb) || $2::jsonb
+        )
+      where id = $1
+      returning *`,
+    [householdId, JSON.stringify(patch)]
+  )
+  return rows[0] ?? null
+}
+
+// How event chips render across the calendar views: 'solid' (full-color blocks,
+// the default) or 'tinted' (the soft wash).
+const EVENT_STYLES = new Set(['solid', 'tinted'])
+// The calendar's share of settings.display (the kiosk owns the rest — see updateDisplay).
+const CALENDAR_DISPLAY_KEYS = ['eventStyle', 'familyColorHex'] as const
+// Person + family colors must be a full #RRGGBB hex — they go straight into CSS
+// custom properties on every calendar view. (Shared with account.ts, app.ts and
+// auth.ts: every path that writes a color validates it.)
+export const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
+
+/**
+ * Best-effort repair of a color we already stored, for values that predate this
+ * validation: `#abc` → `#aabbcc`. Returns null when there's nothing to recover
+ * (a palette token, a CSS color name), in which case the value is kept as-is
+ * rather than blocking the save. Deliberately NOT used to loosen new input.
+ */
+export function migrateColorHex(value: unknown): string | null {
+  const v = String(value ?? '').trim()
+  if (HEX_COLOR.test(v)) return v
+  const short = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/.exec(v)
+  return short ? `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}` : null
+}
+
+/**
+ * Resolve a colorHex a client sent for a person who already has one. A full
+ * #RRGGBB passes through; anything else is only accepted when it's the value we
+ * already hold — the member editor and the profile card resend colorHex on every
+ * save, so rejecting a legacy value would lock that member out of being saved at
+ * all. Such a value is migrated to #RRGGBB when it can be, and kept otherwise.
+ * Returns null when the value is genuinely new bad input (→ 400).
+ */
+export function resolveColorHex(value: unknown, stored: string | null): string | null {
+  const v = String(value ?? '')
+  if (HEX_COLOR.test(v)) return v
+  if (stored === null || v !== stored) return null
+  return migrateColorHex(v) ?? stored
+}
+
 export function registerPersonRoutes(api: Api): void {
   // Household settings: the household + its members (with login/owner flags).
   api.get('/api/household/settings', tenantRoute((tenant) => householdSettings(tenant.householdId)))
@@ -307,6 +369,37 @@ export function registerPersonRoutes(api: Api): void {
     return { modules: (h.settings as { modules?: unknown })?.modules ?? {} }
   }))
 
+  // Display preferences (admins only). Stored in settings.display: eventStyle (how
+  // event chips are colored across the calendar views) and familyColorHex (the color
+  // for events that involve the whole family).
+  api.patch('/api/household/display', adminRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as Record<string, unknown>
+    const patch: Record<string, string> = {}
+    if (body.eventStyle !== undefined) {
+      if (typeof body.eventStyle !== 'string' || !EVENT_STYLES.has(body.eventStyle)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'eventStyle must be solid|tinted' })
+      }
+      patch.eventStyle = body.eventStyle
+    }
+    if (body.familyColorHex !== undefined) {
+      if (typeof body.familyColorHex !== 'string' || !HEX_COLOR.test(body.familyColorHex)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'familyColorHex must be a #RRGGBB hex color' })
+      }
+      patch.familyColorHex = body.familyColorHex
+    }
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: 'BadRequest', message: 'no valid display settings provided' })
+    }
+    const h = await updateDisplay(tenant.householdId, patch)
+    if (!h) return res.status(404).json({ error: 'NotFound', message: 'household not found' })
+    // Serve only the calendar's own keys — the kiosk's screensaver settings share
+    // this object and aren't ours to hand back.
+    const stored = ((h.settings as { display?: Record<string, unknown> })?.display ?? {}) as Record<string, unknown>
+    const display: Record<string, unknown> = {}
+    for (const k of CALENDAR_DISPLAY_KEYS) if (stored[k] !== undefined) display[k] = stored[k]
+    return { display }
+  }))
+
   // List everyone in the household (any member may read).
   api.get('/api/persons', tenantRoute(async (tenant) => {
     const persons = await listPersons(tenant.householdId)
@@ -321,6 +414,9 @@ export function registerPersonRoutes(api: Api): void {
         error: 'BadRequest',
         message: 'name and memberType (adult|teen|kid) are required',
       })
+    }
+    if (body.colorHex != null && !HEX_COLOR.test(String(body.colorHex))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'colorHex must be a #RRGGBB hex color' })
     }
     const person = await createPerson(tenant.householdId, body as CreatePersonInput)
     return res.status(201).json({ person: presentPerson(person) })
@@ -343,6 +439,17 @@ export function registerPersonRoutes(api: Api): void {
     const patch = (req.body ?? {}) as Record<string, unknown>
     if (patch.memberType !== undefined && !MEMBER_TYPES.has(String(patch.memberType))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid memberType' })
+    }
+    // null clears the color; anything else must be a full #RRGGBB hex — except a
+    // legacy value this member already holds, which is accepted (and migrated
+    // where possible) so a pre-validation color can't block every future save.
+    if (patch.colorHex != null && !HEX_COLOR.test(String(patch.colorHex))) {
+      const existing = await getPerson(tenant.householdId, id)
+      const resolved = resolveColorHex(patch.colorHex, existing?.color_hex ?? null)
+      if (!resolved) {
+        return res.status(400).json({ error: 'BadRequest', message: 'colorHex must be a #RRGGBB hex color' })
+      }
+      patch.colorHex = resolved
     }
     if ('allergens' in patch) patch.allergens = cleanAllergens(patch.allergens)
     if (!Object.keys(UPDATABLE).some((field) => field in patch)) {

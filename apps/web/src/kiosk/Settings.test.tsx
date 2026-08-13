@@ -1,7 +1,8 @@
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { Settings } from './Settings'
 import type { PermissionMatrix } from '../lib/api'
+import { publishSyncHealth, __resetSyncHealthForTests } from '../lib/powersync/sync-health'
 
 const renderSettings = () => render(<MemoryRouter><Settings /></MemoryRouter>)
 
@@ -38,6 +39,12 @@ function mockApi() {
 }
 
 describe('Settings screen', () => {
+  // The sync-health store is module-global; reset it so a Live Sync assertion in
+  // one test can't be satisfied by a snapshot another test published.
+  beforeEach(() => {
+    __resetSyncHealthForTests()
+  })
+
   it('offers a compact section menu for narrow layouts', async () => {
     mockApi()
     renderSettings()
@@ -78,6 +85,44 @@ describe('Settings screen', () => {
     await screen.findByText('Kevin')
     expect(screen.queryByText('Lists')).not.toBeInTheDocument()
     expect(screen.queryByText('Notifications')).not.toBeInTheDocument()
+  })
+
+  it('exposes the event style + family color on Family & People, defaulting to solid', async () => {
+    const patches: Array<Record<string, unknown>> = []
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/api/household/display')) {
+        patches.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        return { ok: true, json: async () => ({ display: {} }) }
+      }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+
+    // A household that has never touched the setting reads as solid.
+    const select = screen.getByLabelText('Event style') as HTMLSelectElement
+    expect(select).toHaveClass('sel')
+    expect(select.value).toBe('solid')
+    fireEvent.change(select, { target: { value: 'tinted' } })
+    await waitFor(() => expect(patches).toContainEqual({ eventStyle: 'tinted' }))
+
+    // The family color is the same swatch picker, saved to the same endpoint —
+    // but dragging around the OS color picker fires an `input` per step, and
+    // each one used to be its own PATCH + refetch racing the others (with the
+    // controlled value snapping back mid-drag). Only the committed color saves.
+    expect(screen.getByText('Family color')).toBeInTheDocument()
+    const custom = screen.getByLabelText('Pick a custom color')
+    const colorPatches = () => patches.filter((p) => 'familyColorHex' in p)
+    for (const step of ['#111111', '#221133', '#123456']) fireEvent.input(custom, { target: { value: step } })
+    expect(colorPatches()).toHaveLength(0)
+
+    fireEvent.change(custom, { target: { value: '#123456' } })
+    await waitFor(() => expect(colorPatches()).toEqual([{ familyColorHex: '#123456' }]))
   })
 
   it('shows the Display & Kiosk panel with the family-display toggle', async () => {
@@ -219,6 +264,50 @@ describe('Settings screen', () => {
     expect(screen.getByText('Calendar Sync')).toBeInTheDocument()
     expect(screen.getByText(/Build abc123/)).toBeInTheDocument()
     expect(screen.getByText(/DEGRADED/)).toBeInTheDocument()
+
+    // Live Sync is about THIS browser, not the server — with no engine running
+    // it must say so plainly rather than looking like a server component.
+    expect(screen.getByText('Live Sync (this browser)')).toBeInTheDocument()
+    expect(screen.getByText(/state: off/)).toBeInTheDocument()
+  })
+
+  // Boot takes seconds and a boot crash was silent — both used to read as "off",
+  // which is what made people think sync had been switched off.
+  it('distinguishes starting and failed from off on the Live Sync card', async () => {
+    globalThis.fetch = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/api/health')) return { ok: false, status: 500, json: async () => ({}) }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('System Health'))
+
+    // The server report failed to load — the browser's own sync state is exactly
+    // what you want to read at that moment, so the card still renders.
+    expect(await screen.findByText('Live Sync (this browser)')).toBeInTheDocument()
+
+    const base = { hasSynced: null, lastSyncedAt: null, restartCount: 0, lastRestartAt: null }
+    act(() => publishSyncHealth({ status: 'starting', ...base }))
+    expect(screen.getByText(/state: starting/)).toBeInTheDocument()
+
+    act(() => publishSyncHealth({ status: 'failed', ...base, lastError: 'OPFS unavailable' }))
+    expect(screen.getByText(/state: failed/)).toBeInTheDocument()
+    expect(screen.getByText(/OPFS unavailable/)).toBeInTheDocument()
+    // A boot crash the watchdog can't fix by rebuilding is usually a corrupt local
+    // copy — and the watchdog deliberately never wipes on the failed path, so the
+    // manual rung has to be reachable here too, not only from 'stalled'.
+    expect(screen.getByText(/Reset local copy/)).toBeInTheDocument()
+
+    act(() => publishSyncHealth({ status: 'stalled', hasSynced: true, lastSyncedAt: 1, restartCount: 3, lastRestartAt: 2 }))
+    expect(screen.getByText(/state: stalled/)).toBeInTheDocument()
+    expect(screen.getByText(/watchdog restarts: 3/)).toBeInTheDocument()
+    // The replica-wiping rung is only offered once the engine is genuinely wedged.
+    expect(screen.getByText(/Reset local copy/)).toBeInTheDocument()
   })
 
   it('keeps household kiosk controls available when global sign-in config is forbidden', async () => {

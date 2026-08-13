@@ -1701,6 +1701,12 @@ struct WaffledAPI: Sendable {
     struct HouseholdModules: Sendable, Equatable {
         let modules: [String: Bool]
         let rewards: Bool
+        /// `settings.display` — how the calendar paints event chips, and the color for
+        /// events that involve the whole family. Both are raw strings: resolution (and
+        /// the "anything but tinted is solid" rule) lives in `EventStyle`/`EventPalette`
+        /// so it matches the web's `display.ts` exactly. nil = never set.
+        var eventStyle: String? = nil
+        var familyColorHex: String? = nil
     }
     func householdModules() async throws -> HouseholdModules {
         struct Resp: Decodable {
@@ -1710,13 +1716,32 @@ struct WaffledAPI: Sendable {
                 struct S: Decodable {
                     let modules: [String: Bool]?
                     let chores: C?
+                    let display: D?
                     struct C: Decodable { let rewards: Bool? }
+                    // `settings.display` is shared with the kiosk screensaver config;
+                    // only the two calendar keys are read here.
+                    struct D: Decodable { let eventStyle: String?; let familyColorHex: String? }
                 }
             }
         }
         let r = try await getJSON("/api/household", as: Resp.self)
-        return HouseholdModules(modules: r.household?.settings?.modules ?? [:],
-                                rewards: r.household?.settings?.chores?.rewards ?? true)
+        let s = r.household?.settings
+        return HouseholdModules(modules: s?.modules ?? [:],
+                                rewards: s?.chores?.rewards ?? true,
+                                eventStyle: s?.display?.eventStyle,
+                                familyColorHex: s?.display?.familyColorHex)
+    }
+
+    /// Save the calendar's display preferences (admins only server-side). Merges into
+    /// `settings.display` — the kiosk screensaver keys in the same object survive.
+    @discardableResult
+    func setHouseholdDisplay(eventStyle: EventStyle? = nil, familyColorHex: String? = nil) async throws -> Bool {
+        var body: [String: JSONValue] = [:]
+        if let eventStyle { body["eventStyle"] = .string(eventStyle.rawValue) }
+        if let familyColorHex { body["familyColorHex"] = .string(familyColorHex) }
+        guard !body.isEmpty else { return false }
+        try await send("PATCH", "/api/household/display", body: body)
+        return true
     }
 
     /// Enable/disable optional modules (admins). Body is `{ key: bool }`; the server
@@ -2055,6 +2080,10 @@ struct WaffledAPI: Sendable {
     func createPerson(_ body: [String: JSONValue]) async throws { try await send("POST", "/api/persons", body: body) }
     /// Edit a member (admins) — same fields.
     func updatePerson(id: String, _ body: [String: JSONValue]) async throws { try await send("PATCH", "/api/persons/\(id)", body: body) }
+
+    /// Update the signed-in person's OWN profile. Unlike `updatePerson` this isn't
+    /// admin-gated — it's how a teen/kid picks their own calendar color.
+    func updateOwnProfile(_ body: [String: JSONValue]) async throws { try await send("PUT", "/api/account/profile", body: body) }
     /// Soft-delete a member (admins; the household owner can't be removed).
     func deletePerson(id: String) async throws { try await delete("/api/persons/\(id)") }
 

@@ -4,7 +4,7 @@
 // tested; watchAgendaRows streams live rows. Falls back gracefully (no DB → no-op).
 import type { AgendaEvent, Participant } from '../api/events'
 import { currentViewerPersonId } from '../api/client'
-import { getPowerSyncDb } from './db'
+import { getPowerSyncDb, onPowerSyncRecreated } from './db'
 
 // Personal-calendar visibility: a family event is visible to everyone; a personal
 // event only to its owner. A row with no visibility (older/local rows) is treated as
@@ -338,23 +338,40 @@ export async function deleteEventLocal(id: string): Promise<boolean> {
 
 // Stream agenda rows live from the local DB. Returns a disposer; a no-op disposer
 // when PowerSync isn't running so callers can use it unconditionally.
+//
+// The watch belongs to one client instance, so a watchdog hard restart would
+// otherwise kill it silently — the restart meant to unwedge the calendar would be
+// the thing that froze it. It re-arms on onPowerSyncRecreated instead.
 export function watchAgendaRows(onRows: (rows: LocalEventRow[]) => void, onError?: (e: unknown) => void): () => void {
-  const db = getPowerSyncDb()
-  if (!db) return () => {}
-  const controller = new AbortController()
-  try {
-    db.watch(
-      AGENDA_SQL,
-      [],
-      {
-        onResult: (result) => onRows(dropTombstoned((result.rows?._array ?? []) as LocalEventRow[])),
-        onError: (e) => onError?.(e),
-      },
-      { signal: controller.signal, tables: ['events', 'event_participants', 'event_occurrences', 'persons'] }
-    )
-  } catch (e) {
-    onError?.(e)
-    return () => {}
+  let disposed = false
+  let controller = new AbortController()
+  const arm = () => {
+    const db = getPowerSyncDb()
+    if (!db) return
+    controller = new AbortController()
+    try {
+      db.watch(
+        AGENDA_SQL,
+        [],
+        {
+          onResult: (result) => onRows(dropTombstoned((result.rows?._array ?? []) as LocalEventRow[])),
+          onError: (e) => onError?.(e),
+        },
+        { signal: controller.signal, tables: ['events', 'event_participants', 'event_occurrences', 'persons'] }
+      )
+    } catch (e) {
+      onError?.(e)
+    }
   }
-  return () => controller.abort()
+  arm()
+  const offRecreate = onPowerSyncRecreated(() => {
+    if (disposed) return
+    controller.abort()
+    arm()
+  })
+  return () => {
+    disposed = true
+    offRecreate()
+    controller.abort()
+  }
 }

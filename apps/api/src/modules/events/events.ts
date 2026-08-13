@@ -54,6 +54,39 @@ export async function readOnlyOrigin(householdId: string, eventId: string): Prom
   return isReadOnlyOrigin(origin) ? origin : null
 }
 
+// An event that ends before it starts is nonsense on every surface: the agenda
+// renders a negative-length block, the duration maths in the goal recap and the
+// capture bar go backwards, and Google rejects the push. Enforced in the SERVICE
+// functions rather than only in the route handlers, because events have three write
+// paths (REST, the PowerSync upload sink, quick-add's mutate verbs) and a guard at
+// one of them is bypassable from the other two — the same mistake the read-only
+// -origin rule above was written to avoid.
+export class InvalidEventTimesError extends Error {
+  statusCode = 400
+
+  constructor(message = 'endsAt must be after startsAt') {
+    super(message)
+    this.name = 'BadRequest'
+  }
+}
+
+function instantMs(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const ms = value instanceof Date ? value.getTime() : Date.parse(String(value))
+  return Number.isNaN(ms) ? null : ms
+}
+
+/** Throws unless the pair is ordered. A missing/cleared end is open-ended, not an
+ *  error. All-day spans are day-granular and Google's all-day end is EXCLUSIVE, so a
+ *  one-day all-day event legitimately lands on start === end; only a strictly earlier
+ *  end is wrong there. Timed events must have real length. */
+export function assertEventTimes(startsAt: unknown, endsAt: unknown, allDay: boolean): void {
+  const start = instantMs(startsAt)
+  const end = instantMs(endsAt)
+  if (start === null || end === null) return
+  if (allDay ? end < start : end <= start) throw new InvalidEventTimesError()
+}
+
 // camelCase API field → events column. Anything not here can't be patched.
 // (person_id is set from participantIds; personId is also accepted directly.)
 const UPDATABLE: Record<string, string> = {
@@ -193,6 +226,7 @@ async function replaceParticipants(
 }
 
 export async function createEvent(tenant: Tenant, input: CreateEventInput): Promise<EventRow> {
+  assertEventTimes(input.startsAt, input.endsAt, input.allDay ?? false)
   const personIds = input.participantIds ?? (input.personId ? [input.personId] : [])
   const primary = personIds[0] ?? input.personId ?? null
   // Pick the destination calendar: an explicit picker choice (calendarId present)
@@ -352,6 +386,28 @@ export async function updateEvent(
   const personIds = Array.isArray(patch.participantIds)
     ? [...new Set(patch.participantIds as string[])]
     : null
+
+  // A patch may carry only one half of the pair — "make it end at 4" says nothing
+  // about the start — so the missing half comes from the STORED row. Checking only
+  // patch-against-patch (as the upstream fix did) lets a one-sided edit invert an
+  // event silently. allDay counts too: clearing it re-reads the same stored pair
+  // under the stricter timed rule, where a same-instant all-day span is zero-length.
+  if ('startsAt' in patch || 'endsAt' in patch || 'allDay' in patch) {
+    const cur = await query<{ starts_at: Date; ends_at: Date | null; all_day: boolean }>(
+      `select starts_at, ends_at, all_day from events
+        where household_id = $1 and id = $2 and deleted_at is null`,
+      [householdId, id]
+    )
+    const row = cur.rows[0]
+    // No row ⇒ let the update below return null and the caller 404.
+    if (row) {
+      assertEventTimes(
+        'startsAt' in patch ? patch.startsAt : row.starts_at,
+        'endsAt' in patch ? patch.endsAt : row.ends_at,
+        'allDay' in patch ? Boolean(patch.allDay) : row.all_day
+      )
+    }
+  }
 
   const client = await getPool().connect()
   try {
@@ -513,11 +569,41 @@ export async function overrideOccurrence(
   patch: Record<string, unknown>,
   opts: { cancel?: boolean } = {}
 ): Promise<boolean> {
-  const m = await query<{ id: string }>(
-    `select id from events where id = $1 and household_id = $2 and deleted_at is null and rrule is not null`,
+  const m = await query<{ id: string; starts_at: Date; ends_at: Date | null; all_day: boolean }>(
+    `select id, starts_at, ends_at, all_day from events
+      where id = $1 and household_id = $2 and deleted_at is null and rrule is not null`,
     [seriesId, householdId]
   )
-  if (!m.rows[0]) return false
+  const master = m.rows[0]
+  if (!master) return false
+
+  // Same stored-row comparison as updateEvent, but the "current" values are this
+  // occurrence's (the override row has no all_day of its own — it inherits).
+  if ('startsAt' in patch || 'endsAt' in patch) {
+    const occ = await query<{ starts_at: Date; ends_at: Date | null }>(
+      `select starts_at, ends_at from event_occurrences
+        where household_id = $1 and event_id = $2 and original_start = $3 and deleted_at is null`,
+      [householdId, seriesId, occurrenceStart]
+    )
+    // No materialized row is normal, not exceptional: cancelling an occurrence
+    // tombstones it, and slots past the expansion horizon were never written. Without
+    // a fallback a one-sided patch would compare against null — the guard silently
+    // skipping, the same hole this check closes for updateEvent. Rebuild the slot the
+    // way the materializer does (expansion.service → recurrence.push): the start is
+    // the rule slot itself, the end is that plus the master's duration, and all_day
+    // always comes from the master (the occurrence row only mirrors it).
+    const row = occ.rows[0] ?? {
+      starts_at: new Date(occurrenceStart),
+      ends_at: master.ends_at
+        ? new Date(new Date(occurrenceStart).getTime() + (master.ends_at.getTime() - master.starts_at.getTime()))
+        : null,
+    }
+    assertEventTimes(
+      'startsAt' in patch ? patch.startsAt : row.starts_at,
+      'endsAt' in patch ? patch.endsAt : row.ends_at,
+      master.all_day
+    )
+  }
 
   const sets: string[] = []
   const vals: unknown[] = []
@@ -600,6 +686,7 @@ export async function splitSeries(
     const dur = durationMs(m)
     const newEnd =
       'endsAt' in patch ? (patch.endsAt as string | null) : dur != null ? new Date(new Date(newStart).getTime() + dur) : null
+    assertEventTimes(newStart, newEnd, 'allDay' in patch ? Boolean(patch.allDay) : m.all_day)
     const newPersonId = participantIds
       ? participantIds[0] ?? null
       : 'personId' in patch

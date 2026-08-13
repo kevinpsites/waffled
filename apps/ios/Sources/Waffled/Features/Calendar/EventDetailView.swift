@@ -32,7 +32,15 @@ struct EventDetailView: View {
     /// A materialized occurrence of a repeating series (the mirror sets `occurrenceStart`
     /// only for those). Drives the this/following delete chooser.
     private var wasRecurring: Bool { event.occurrenceStart != nil }
-    private var tint: Color { Color(hexString: detail?.personColor ?? event.colorHex ?? "") ?? WF.ink3 }
+    /// The header accent. Family-aware, so the detail screen agrees with the chip the
+    /// user tapped; the REST detail's `personColor` is only the fallback for the mirror's
+    /// own color, never a way around the family rule.
+    private var tint: Color {
+        if let family = sync.eventPalette.hex(for: event), sync.eventPalette.isFamilyEvent(event) {
+            return Color(hexString: family) ?? WF.ink3
+        }
+        return Color(hexString: detail?.personColor ?? event.colorHex ?? "") ?? WF.ink3
+    }
     private var title: String { detail?.title ?? event.title }
     private var start: Date? { parseISO(detail?.startsAt) ?? event.startsAt }
     private var end: Date? { parseISO(detail?.endsAt) ?? event.endsAt }
@@ -304,7 +312,7 @@ struct EventDetailView: View {
                     Text(e.allDay ? "all day" : fmtTime(e.startsAt))
                         .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                         .frame(width: 64, alignment: .leading)
-                    RoundedRectangle(cornerRadius: 2).fill(Color(hexString: e.colorHex ?? "") ?? WF.ink3)
+                    RoundedRectangle(cornerRadius: 2).fill(sync.eventPalette.color(for: e))
                         .frame(width: 4, height: 22)
                     Text(e.title).font(.system(size: 14, weight: e.id == event.id ? .bold : .semibold))
                         .foregroundStyle(e.id == event.id ? WF.ink : WF.ink2).lineLimit(1)

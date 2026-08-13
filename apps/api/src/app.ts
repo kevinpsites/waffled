@@ -21,7 +21,7 @@ import {
   type Tenant,
 } from './modules/households/households'
 import { authenticateApiKey, enforceApiKeyScope, registerApiKeyRoutes } from './modules/api-keys/api-keys'
-import { registerPersonRoutes } from './modules/persons/persons'
+import { registerPersonRoutes, HEX_COLOR } from './modules/persons/persons'
 import { registerListRoutes } from './modules/lists/lists.routes'
 import { registerPantryRoutes } from './modules/pantry/pantry'
 import { registerChoreRoutes } from './modules/chores/chores.routes'
@@ -182,6 +182,10 @@ api.post('/api/households', async (req: Request, res: Response) => {
     return res
       .status(400)
       .json({ error: 'BadRequest', message: 'name, timezone, and person.name are required' })
+  }
+  // The owner's color reaches the calendar's CSS like any other member color.
+  if (body.person.colorHex != null && !HEX_COLOR.test(String(body.person.colorHex))) {
+    return res.status(400).json({ error: 'BadRequest', message: 'person.colorHex must be a #RRGGBB hex color' })
   }
 
   // The additional household links to the caller's existing account.

@@ -15,9 +15,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Pick any color for a person, not just the eight presets.** The color row in the member
+  editor (and in My Profile, and the new family color) now ends with a ninth "custom"
+  swatch that opens your device's color picker, so everyone can have exactly the shade
+  they want. The server only accepts full `#RRGGBB` hex values for a new color — a
+  member still holding an older, odder value keeps it, so they can always be saved.
+  editor (and in the new family color) now ends with a ninth "custom" swatch that opens
+  your device's color picker, so everyone can have exactly the shade they want. The server
+  only accepts full `#RRGGBB` hex values. On the web that's the member editor and My
+  Profile; on iPhone/iPad it's the member editor, and **Settings → Households** now lets
+  you pick your own color even if you're not an admin.
+- **A color of your own for whole-family events.** Events that involve every member of the
+  household now paint in a household-level **family color** instead of borrowing whichever
+  person happened to own the event — so the calendar reads at a glance: everyone, some of
+  us, one person, or nobody yet. Set it in **Settings → Family & People → Family color**;
+  it starts as a warm orange. Works on web, iPhone and iPad, on every calendar surface and
+  the Today dashboard.
+- **A watchdog that keeps live sync honest — and a calendar that can no longer go
+  blank.** The web app now supervises its own offline sync engine. If it ever goes quiet
+  — online, signed in, but not actually syncing for three minutes — Waffled restarts it
+  by itself: first a quick reconnect, then a full rebuild, then, as a last resort and only
+  once, wiping this browser's local copy and re-downloading it from the server — never
+  while unsent changes might still be waiting to upload. Retries back off from two minutes
+  up to sixteen, so a server that is down for a while heals on its own without being
+  hammered, and without ever wiping your local copy more than once on the way. An engine
+  that crashes on startup is retried too, instead of staying dead. Crucially, the
+  calendar stops trusting a local copy that is stalled or incomplete and reads straight
+  from the server instead, so a stuck sync engine can never show you an empty day that
+  isn't empty. A quiet strip appears while that is happening, and Settings → System
+  Health gains a **Live Sync (this browser)** card that tells the truth about what the
+  engine is doing — starting up, live, stalled, or failed with the actual error — plus
+  buttons to restart sync or reset the local copy yourself.
+
 ### Changed
 
+- **Calendar events are now solid blocks of color.** Event chips across the month, week,
+  day and agenda views fill with the person's color instead of the old pale tint, which
+  reads far better from across the kitchen. **This changes how every existing household's
+  calendar looks after upgrading** — if you preferred the softer look, switch
+  **Settings → Family & People → Event style** back to *Tinted*. Titles on a solid chip
+  are drawn in black or white — whichever stays readable on that person's color — so the
+  lighter colors (gold, teal) and any pale custom hex you pick are legible in both light
+  and dark mode. Tinted is also theme-aware now, so it stays legible in dark mode.
+  **Settings → Family & People → Event style** back to *Tinted*. Tinted is also
+  theme-aware now, so it stays legible in dark mode. The setting belongs to the household,
+  so the web, the wall tablet and everyone's phone all follow it.
+
 ### Fixed
+
+- **Fractions in a recipe's quantity column no longer disappear.** Typing an amount the
+  way recipes are actually written — `1/2`, `1 1/2`, `½` — saved the ingredient with **no
+  quantity at all**, silently, on the web recipe editor. Those amounts are now understood
+  and stored, and they come back out the way you wrote them: eighths, fifths and sixths
+  read as `⅛`, `⅕` and `⅙` on the recipe page and the grocery picker instead of rounded
+  decimals like `0.13`, and re-opening the editor shows `⅓` rather than
+  `0.3333333333333333`. So "1½ cups flour" stays "1½ cups flour". Amounts already lost to
+  this will need re-typing once.
+- **A recipe that fails to save or delete now says so.** If a save didn't go through, the
+  button simply came back and nothing else happened — indistinguishable from a successful
+  save, so it was easy to walk away and lose the recipe. A failed delete was the same: the
+  confirmation closed and the recipe looked gone. The editor now shows what went wrong and
+  leaves the recipe on screen so you can try again.
+- **Your personal notes stay yours.** Editing a recipe on the web copied your own notes
+  into the recipe's source notes, so the recipe page ended up showing the same note twice.
+  The editor now has separate **Recipe notes** and **Your notes** boxes, each saved to its
+  own place.
+- **The tablet stops showing "Offline."** Waffled used to hand every device the same
+  fixed sync address, which out of the box was `localhost` — right on the server itself,
+  and wrong on a kiosk tablet or a phone, where "localhost" means *that device*. Sync
+  quietly never connected: no live updates between rooms, no offline cache, a permanent
+  Offline banner. Each device is now told to sync at whatever address it used to reach the
+  server, so it works everywhere at once — and keeps working when your router hands the
+  machine a new IP. If you've set `POWERSYNC_PUBLIC_URL` by hand it is still honoured, for
+  servers that publish sync on their own hostname; on a home network you can now leave it
+  empty. **Existing installs are fixed on the next `./waffled up` or `./waffled upgrade`**,
+  which clears the old pinned address for you — but only when it's the one Waffled itself
+  generated (a plain-HTTP `localhost` or LAN-IP address on the sync port). A sync hostname
+  you chose is left exactly as you set it, and setting `POWERSYNC_PUBLIC_URL=off` now tells
+  Waffled you run the API without PowerSync at all, so devices stay on the plain API
+  instead of retrying a sync server that isn't there.
+- **An event can no longer end before it starts.** A backwards start/end time — from the
+  calendar editor, a quick-add, or an edit made offline — used to be saved as-is and then
+  render as a negative-length block that sorted oddly on the agenda and was rejected on the
+  way out to Google. It's now refused wherever the edit comes from, including when you
+  change only the end time and leave the start alone.
 
 ## [0.13.0] - 2026-08-12
 

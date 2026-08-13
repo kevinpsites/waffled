@@ -61,10 +61,13 @@ setting does.
 
 ## Real-device tips
 
-- Set the tablet's **server address** to the **Mac/host LAN IP**, and make sure
-  **`POWERSYNC_PUBLIC_URL` matches** it — see
-  [Reverse proxy & TLS](/install/reverse-proxy/). A mismatch shows an **"Offline"**
-  banner (see [Troubleshooting](/operations/troubleshooting/)).
+- Set the tablet's **server address** to the **Mac/host LAN IP** — that's all that's
+  needed, since sync follows the address the device used. If you deliberately pinned
+  `POWERSYNC_PUBLIC_URL` in `infra/compose/.env`, it must match; a stale value shows an
+  **"Offline"** banner. (An address Waffled itself pinned on an older install is cleared
+  automatically the next time you run `./waffled up` or `./waffled upgrade`.) See
+  [Reverse proxy & TLS](/install/reverse-proxy/) and
+  [Troubleshooting](/operations/troubleshooting/).
 - **Web camera / barcode scanning** needs a **secure context** — HTTPS or `localhost`.
 - **iPhone is never a kiosk** — kiosk mode is for tablets.
 - 🚧 **PWA offline caching** for the web kiosk is partial/planned.
