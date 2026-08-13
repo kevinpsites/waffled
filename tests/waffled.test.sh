@@ -161,7 +161,34 @@ t "backup_safety_warnings is quiet when media and offsite copies are configured"
   [ -z "$out" ] && echo "PASS" || echo "FAIL: unexpected warning output: $out"
 '
 
-# --- 8. release checks require a clean, synchronized main branch --------------------
+# --- 8. PowerSync CSP allows the derived WebSocket endpoint --------------------------
+t "PowerSync CSP follows the configured public URL" '
+  source "$WAFFLED" help >/dev/null 2>&1
+  tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+  ENV_FILE="$tmp/.env"
+  {
+    echo "POWERSYNC_PUBLIC_URL=https://sync.example.test:8090"
+    echo "POWERSYNC_CADDY_ADDRESS=:8090"
+  } > "$ENV_FILE"
+
+  ensure_powersync_proxy_env
+  grep -qxF "POWERSYNC_WS_URL=wss://sync.example.test:8090" "$ENV_FILE" || {
+    echo "FAIL: HTTPS endpoint did not derive a WSS source"; exit 0;
+  }
+  grep -qF "{\$POWERSYNC_WS_URL}" "$ROOT/infra/compose/caddy/Caddyfile" || {
+    echo "FAIL: WebSocket source missing from Caddy CSP"; exit 0;
+  }
+  grep -qF "POWERSYNC_WS_URL: \${POWERSYNC_WS_URL:-ws://localhost:8090}" "$ROOT/infra/compose/docker-compose.yml" || {
+    echo "FAIL: WebSocket source is not passed to Caddy"; exit 0;
+  }
+
+  set_env_var POWERSYNC_PUBLIC_URL "http://192.0.2.10:8090"
+  ensure_powersync_proxy_env
+  grep -qxF "POWERSYNC_WS_URL=ws://192.0.2.10:8090" "$ENV_FILE" && echo "PASS" ||
+    echo "FAIL: HTTP endpoint did not derive a WS source"
+'
+
+# --- 9. release checks require a clean, synchronized main branch --------------------
 t "release_repository_ready accepts a clean main synchronized with origin" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
@@ -189,7 +216,7 @@ t "release_repository_ready accepts a clean main synchronized with origin" '
   esac
 '
 
-# --- 9. backup verification restores only into a disposable Postgres container ------
+# --- 10. backup verification restores only into a disposable Postgres container -----
 t "verify_backup_restore exercises the dump and removes its disposable database" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
@@ -227,7 +254,7 @@ t "verify_backup_restore exercises the dump and removes its disposable database"
   esac
 '
 
-# --- 10. release checks reject stale main and isolate test credentials --------------
+# --- 11. release checks reject stale main and isolate test credentials --------------
 t "release_repository_ready rejects main when origin has advanced" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
@@ -292,7 +319,7 @@ t "run_release_api_step strips ambient AI provider configuration" '
   esac
 '
 
-# --- 11. backup verification rejects corrupt archives before restore ----------------
+# --- 12. backup verification rejects corrupt archives before restore ----------------
 t "verify_backup_restore rejects a corrupt archive before starting Postgres" '
   source "$WAFFLED" help >/dev/null 2>&1
   tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
