@@ -6,18 +6,19 @@ import type { ListItem, ListSummary } from '../../lib/api'
 // itself — the same shape as the Goals card's pinned goal, and stored per device
 // for the same reason (it's a viewing preference, not household config).
 // Hoisted: vi.mock's factory runs before module-level consts are initialized.
-const { listsRef, itemsRef, setItemChecked, detailFor } = vi.hoisted(() => ({
+const { listsRef, itemsRef, setItemChecked, detailFor, listsError } = vi.hoisted(() => ({
   listsRef: { current: [] as ListSummary[] },
   itemsRef: { current: [] as ListItem[] },
   setItemChecked: vi.fn(async () => {}),
   detailFor: { current: null as string | null },
+  listsError: { current: false },
 }))
 
 vi.mock('../../lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/api')>()
   return {
     ...actual,
-    useLists: () => ({ lists: listsRef.current, loading: false, error: false, refetch: () => {} }),
+    useLists: () => ({ lists: listsRef.current, loading: false, error: listsError.current, refetch: () => {} }),
     useListDetail: (id: string | null) => {
       detailFor.current = id
       return { items: itemsRef.current, loading: false, error: false, setItems: () => {}, refetch: () => {} }
@@ -37,6 +38,7 @@ beforeEach(() => {
   localStorage.clear()
   setItemChecked.mockClear()
   detailFor.current = null
+  listsError.current = false
   listsRef.current = [list('l1', 'Hardware store'), list('l2', 'Packing')]
   itemsRef.current = [item('i1', 'Wood screws'), item('i2', 'Sandpaper'), item('i3', 'Wood glue', true)]
 })
@@ -103,5 +105,16 @@ describe('ListCard (Today)', () => {
     listsRef.current = []
     render(<ListCard />)
     expect(screen.getByText(/no lists yet/i)).toBeInTheDocument()
+  })
+
+  // "No lists yet" is a claim about the household. Making it when the fetch simply
+  // failed tells the user their lists are gone — the GroceryCard beside it says
+  // "couldn't load", and this must match.
+  it('says it couldn’t load rather than claiming there are no lists', () => {
+    listsRef.current = []
+    listsError.current = true
+    render(<ListCard />)
+    expect(screen.getByText(/couldn't load/i)).toBeInTheDocument()
+    expect(screen.queryByText(/no lists yet/i)).not.toBeInTheDocument()
   })
 })

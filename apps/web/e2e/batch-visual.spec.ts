@@ -97,11 +97,14 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('the Share list dialog fits its three actions on one row', async ({ page }) => {
+  // Desktop Chromium has no navigator.share, so the modal would render only TWO
+  // buttons and the three-in-a-row case — the one that can wrap badly — would go
+  // untested. Stub it so all three render.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'share', { value: async () => {}, configurable: true })
+  })
   await signIn(page)
-  page.on('pageerror', (e) => console.log('PAGEERROR:', e.message))
-  page.on('console', (m) => { if (m.type() === 'error') console.log('CONSOLE:', m.text()) })
   await page.goto('/lists')
-  await page.waitForTimeout(1500)
   // Share lives behind the selected list's ⋯ menu, and only while something is
   // still unchecked.
   await page.getByText('Hardware store').first().click()
@@ -114,13 +117,16 @@ test('the Share list dialog fits its three actions on one row', async ({ page })
   await expect(share).toBeVisible()
   await page.screenshot({ path: 'test-results/share-list-markdown.png', fullPage: false })
 
-  // The three actions must sit on ONE row inside the 560px card — a wrapped
-  // third button is the regression this test exists to catch.
-  const copy = page.getByRole('button', { name: 'Copy list' })
-  const [a, b] = [await copy.boundingBox(), await share.boundingBox()]
-  expect(a).not.toBeNull()
-  expect(b).not.toBeNull()
-  expect(Math.abs((a!.y ?? 0) - (b!.y ?? 0))).toBeLessThan(4)
+  // All three actions must sit on ONE row inside the 560px card — a wrapped third
+  // button is the regression this test exists to catch.
+  const boxes = await Promise.all(
+    ['Share…', 'Copy list', 'Copy as Markdown'].map((name) =>
+      page.getByRole('button', { name }).boundingBox()
+    )
+  )
+  for (const b of boxes) expect(b).not.toBeNull()
+  const ys = boxes.map((b) => b!.y)
+  expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(4)
 })
 
 test('the Today board renders the pinned Lists card', async ({ page }) => {

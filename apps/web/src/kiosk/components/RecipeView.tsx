@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { mealBuilderApi, mealsApi, pantryApi, useRecipe, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
+import { mealBuilderApi, mealsApi, pantryApi, useRecipe, useRecordRecipeView, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
 import { ScheduleModal } from './ScheduleModal'
 import { RecipeGroceryModal } from './RecipeGroceryModal'
 import { CookConfirm } from './CookConfirm'
@@ -142,6 +142,9 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   // onHand/toBuy default here so a caller (or a test) that stubs useRecipe without
   // them can't turn an absent count into a crash — absent means "no claim", same as null.
   const { recipe, ingredients, steps, onHand = null, toBuy = 0, toBuyNames = [], loading, error, refetch } = useRecipe(id)
+  // Records the visit for the Recently-viewed rail — on the SCREEN, not in useRecipe
+  // (the editor and Cook Mode fetch through that hook too).
+  useRecordRecipeView(id)
   const [servings, setServings] = useState<number | null>(null)
   const [showAllTags, setShowAllTags] = useState(false)
   const [fav, setFav] = useState(false)

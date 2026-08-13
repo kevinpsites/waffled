@@ -387,6 +387,23 @@ export interface RecipesState {
 /** Whose history a recently-viewed list reflects. */
 export type RecentScope = 'me' | 'household'
 
+/**
+ * Record that a recipe was opened, for the "Recently viewed" rail.
+ *
+ * Belongs to the recipe *screen*, deliberately NOT to `useRecipe` — that hook is
+ * also what the editor and Cook Mode fetch through, and counting those would fill
+ * the rail with recipes nobody browsed. This mirrors iOS, which records in
+ * `RecipeDetailView.task`.
+ *
+ * Keyed on `id` alone: a refetch after an edit is the same visit.
+ */
+export function useRecordRecipeView(id: string | null): void {
+  useEffect(() => {
+    if (!id) return
+    mealsApi.recordRecipeView(id)
+  }, [id])
+}
+
 export interface RecentRecipesState extends RecipesState {
   scope: RecentScope
   setScope: (s: RecentScope) => void
@@ -504,14 +521,5 @@ export function useRecipe(id: string | null): RecipeState {
       alive = false
     }
   }, [id, nonce])
-
-  // Record the open for the "Recently viewed" rail. Keyed on `id` alone, NOT on
-  // `nonce`: a refetch after an edit is the same visit, and counting it would let a
-  // recipe you're editing outrank one you actually went and read.
-  useEffect(() => {
-    if (!id) return
-    mealsApi.recordRecipeView(id)
-  }, [id])
-
   return { ...state, refetch }
 }

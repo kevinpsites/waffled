@@ -21,6 +21,9 @@ struct TodayListCard: View {
     @State private var lists: [WaffledAPI.ListSummary] = []
     @State private var items: [WaffledAPI.ListItemDTO] = []
     @State private var loaded = false
+    /// The lists fetch failed — "no lists yet" is a claim about the household, so it
+    /// must not be made when we simply couldn't ask.
+    @State private var failed = false
     /// Ticked locally so the row leaves immediately — the card only ever shows
     /// unfinished items, so there is nothing to strike through and wait on.
     @State private var done: Set<String> = []
@@ -94,7 +97,9 @@ struct TodayListCard: View {
 
     @ViewBuilder private var content: some View {
         if pickable.isEmpty {
-            Text(loaded ? "No lists yet — make one in Lists and it'll show up here." : "Loading…")
+            Text(!loaded ? "Loading…"
+                 : failed ? "Couldn't load your lists — pull to refresh or sign in again."
+                 : "No lists yet — make one in Lists and it'll show up here.")
                 .font(.system(size: 13)).foregroundStyle(WF.ink3)
         } else if open.isEmpty {
             Text(loaded ? "All done here. 🎉" : "Loading…")
@@ -131,7 +136,12 @@ struct TodayListCard: View {
     }
 
     private func load() async {
-        lists = (try? await WaffledAPI().listSummaries()) ?? []
+        if let fetched = try? await WaffledAPI().listSummaries() {
+            lists = fetched
+            failed = false
+        } else {
+            failed = true
+        }
         await loadItems()
         loaded = true
     }
