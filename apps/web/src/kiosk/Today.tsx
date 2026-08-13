@@ -3,6 +3,7 @@ import { AgendaCard } from './components/AgendaCard'
 import { TonightCardSlot, WeekDinnersCard } from './components/MealsColumn'
 import { ChoresCard } from './components/ChoresCard'
 import { GroceryCard } from './components/GroceryCard'
+import { ListCard } from './components/ListCard'
 import { CountdownsCard } from './components/CountdownsCard'
 import { FamilyNightCard } from './components/FamilyNightCard'
 import { GoalSpotlightCard } from './components/GoalSpotlightCard'
@@ -27,6 +28,7 @@ const CARDS: Record<string, { label: string; node: ReactNode; fill?: boolean }> 
   week: { label: "This week's dinners", node: <WeekDinnersCard /> },
   chores: { label: 'Family Chores', node: <ChoresCard /> },
   grocery: { label: 'Grocery', node: <GroceryCard />, fill: true },
+  lists: { label: 'Lists', node: <ListCard />, fill: true },
   countdowns: { label: 'Countdowns', node: <CountdownsCard /> },
   familyNight: { label: 'Family Night', node: <FamilyNightCard /> },
   goals: { label: 'Goals', node: <GoalSpotlightCard /> },
@@ -115,6 +117,7 @@ export function Today() {
       tonight: showMeals,
       week: showMeals,
       grocery: showGrocery,
+      lists: showGrocery, // same module — the Lists card pins a custom list
     }),
     [showPantry, showFamilyNight, showGoals, showChores, showMeals, showGrocery]
   )
@@ -128,6 +131,9 @@ export function Today() {
     cols = hideModuleCard(cols, 'tonight', showMeals)
     cols = hideModuleCard(cols, 'week', showMeals)
     cols = hideModuleCard(cols, 'grocery', showGrocery)
+    // Not in the default layout (it's new, and an existing household shouldn't have
+    // its board rearranged under it) — so inject like pantry rather than only strip.
+    cols = applyModuleCard(cols, 'lists', showGrocery, hidden, 2)
     return { cols, hidden }
   }, [resolved, showPantry, showFamilyNight, showGoals, showChores, showMeals, showGrocery])
   const [editing, setEditing] = useState(false)

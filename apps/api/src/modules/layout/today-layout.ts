@@ -11,9 +11,13 @@ import { tenantRoute } from '../../platform/route-guards'
 type Api = ReturnType<typeof createAPI>
 
 // The cards that can appear on Today. Order here is the default reading order.
-// Module cards (pantry, familyNight, goals) are injected on the client when their module
-// is on; they must be accepted here too or saving a layout that includes one 400s.
-export const TODAY_CARDS = ['agenda', 'countdowns', 'tonight', 'week', 'chores', 'grocery', 'pantry', 'familyNight', 'goals'] as const
+// Module cards (pantry, familyNight, goals, lists) are injected on the client when their
+// module is on; they must be accepted here too or saving a layout that includes one 400s.
+//
+// `lists` is ONE key, not one per list: which list it pins is a per-device choice the
+// card itself owns (localStorage / @AppStorage). A `list:<uuid>` key would have to be
+// validated here and reaped when its list is deleted — this keeps the card set closed.
+export const TODAY_CARDS = ['agenda', 'countdowns', 'tonight', 'week', 'chores', 'grocery', 'lists', 'pantry', 'familyNight', 'goals'] as const
 type CardKey = (typeof TODAY_CARDS)[number]
 const CARD_SET = new Set<string>(TODAY_CARDS)
 
