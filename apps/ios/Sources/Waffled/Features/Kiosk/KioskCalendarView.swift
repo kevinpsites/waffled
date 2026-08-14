@@ -198,7 +198,10 @@ struct KioskCalendarView: View {
                 }
                 .buttonStyle(.plain)
             }
-            personFilter
+            // Hidden in People mode: the columns already ARE the per-person split, so
+            // a "show me one person" filter on top of them is redundant (and People
+            // reads the unfiltered index anyway, so the chips would look inert).
+            if mode != .people { personFilter }
         }
     }
 
