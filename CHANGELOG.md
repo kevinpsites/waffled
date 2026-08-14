@@ -28,7 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   else on it, so the family dinner shows up in three columns rather than hiding under one
   name; anything with nobody attached collects in a leading **Everyone** column. The
   columns work exactly like the days in Week view — same time grid, same all-day row — and
-  they're on the web/kiosk, iPhone and iPad.
+  they're on the web/kiosk and iPad. (Not on iPhone: a phone screen splits into columns too
+  narrow to read a title in — filter the calendar to one person there instead.)
 - **Recently viewed recipes.** The recipe library now opens with a strip of what you
   just had open, so getting back to last night's dinner is one tap instead of a search.
   It's **your own** history by default — two people sharing a kitchen browse for

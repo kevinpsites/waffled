@@ -17,7 +17,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
-- **Per-person calendar columns (web/kiosk + iPhone/iPad)** — a **People** view beside
+- **Per-person calendar columns (web/kiosk + iPad)** — a **People** view beside
   Month/Week/Day/Agenda that splits one day into a column per family member (the layout the
   dispencer17 fork had). "Whose column" resolves to **`events.person_id`** — the assignee
   that already drives the event's color, not `owner_person_id`, which `0074` added for
@@ -28,9 +28,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   column instead of vanishing. Lanes are packed per column, so an event shown in three
   columns still spans full width where nothing else overlaps it. No schema or API work was
   needed: participants already ride both the REST payload and the PowerSync replica, so the
-  view works offline like the others. iOS renders it on **both** iPhone and iPad (the
-  earlier estimate assumed kiosk-only) with the same `CalTimeGrid` the Week view uses,
-  generalised so a column can be a person instead of a date.
+  view works offline like the others. On iOS it's **iPad-only**, as the original sizing
+  predicted — it was briefly on iPhone too, but four members already truncate titles to
+  "Dinn…", so the phone keeps Agenda/Month/Day and its person filter. The iPad reuses the
+  same `CalTimeGrid` the Week view uses, generalised so a column can be a person instead of
+  a date; the person filter chips are hidden in People mode, since the columns already are
+  that split.
 
 - **Calendar color control (web/kiosk + iPhone/iPad)** — a household **Event style** (solid
   color blocks, the default, or the softer tint), a **family color** for events that involve
