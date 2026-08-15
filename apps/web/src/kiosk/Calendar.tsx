@@ -115,7 +115,9 @@ export function Calendar() {
         setSelectedDay(defaultDayForMonth(next))
         return next
       }
-      return view === 'day' ? addDays(a, delta) : addDays(a, delta * 7)
+      // People is a single day (split into per-person columns), so it steps a day —
+      // same as Day. Only the week-shaped views move seven at a time.
+      return view === 'day' || view === 'people' ? addDays(a, delta) : addDays(a, delta * 7)
     })
   }
   function goToday() {
