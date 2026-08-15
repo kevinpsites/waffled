@@ -340,7 +340,11 @@ export function registerPantryRoutes(api: Api): void {
     if (b.expiresOn != null && b.expiresOn !== '' && !DATE_RE.test(String(b.expiresOn))) {
       return res.status(400).json({ error: 'BadRequest', message: 'expiresOn must be YYYY-MM-DD' })
     }
-    const addAmt = Number.isFinite(Number(b.amount)) ? Number(b.amount) : 1
+    // The scan sheet's amount is a free-text field you can clear. Blank parses as 0,
+    // which would report "incremented" while adding nothing — a scan always means at
+    // least one of the thing, so anything not a positive number counts as 1.
+    const typed = Number(String(b.amount ?? '').trim())
+    const addAmt = Number.isFinite(typed) && typed > 0 ? typed : 1
     const barcode = typeof b.barcode === 'string' && b.barcode.trim() ? b.barcode.trim() : null
     const match = barcode
       ? await query<PantryRow>(`select ${RETURNING} from pantry_items where household_id=$1 and barcode=$2 and used_up_at is null and deleted_at is null order by created_at limit 1`, [tenant.householdId, barcode])
@@ -355,7 +359,9 @@ export function registerPantryRoutes(api: Api): void {
       )
       return res.status(200).json({ item: present(upd.rows[0]), incremented: true })
     }
-    const row = await insertItem(tenant.householdId, { ...b, name })
+    // Store the resolved count, so a blank/unparsable amount lands as "1" rather than
+    // an empty amount the next scan would have to guess at.
+    const row = await insertItem(tenant.householdId, { ...b, name, amount: amountString(addAmt) })
     return res.status(201).json({ item: present(row), incremented: false })
   }))
 

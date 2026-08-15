@@ -313,6 +313,20 @@ describe('pantry Open Food Facts integration', () => {
     expect(JSON.parse(noisy.body).item.amount).toBe('0.3')
   })
 
+  // The amount field is clearable on both clients, and a blank one used to parse as 0 —
+  // so a re-scan reported "incremented" while moving nothing.
+  it('treats a blank or junk scan amount as one', async () => {
+    const first = await call('POST', '/api/pantry/scan', kevin, { name: 'Olive oil', location: 'Pantry', amount: '', barcode: '55550004' })
+    expect(JSON.parse(first.body).item.amount).toBe('1')
+
+    const second = await call('POST', '/api/pantry/scan', kevin, { name: 'Olive oil', location: 'Pantry', amount: '   ', barcode: '55550004' })
+    expect(JSON.parse(second.body)).toMatchObject({ incremented: true })
+    expect(JSON.parse(second.body).item.amount).toBe('2')
+
+    const third = await call('POST', '/api/pantry/scan', kevin, { name: 'Olive oil', location: 'Pantry', amount: 'a splash', barcode: '55550004' })
+    expect(JSON.parse(third.body).item.amount).toBe('3')
+  })
+
   it('adds a new section on the fly and files an item under it', async () => {
     const before = JSON.parse((await call('GET', '/api/pantry', kevin)).body).locations as string[]
     expect(before).not.toContain('Garage shelf')
