@@ -57,47 +57,9 @@ enum PeopleColumns {
         return columns
     }
 
-    struct Placement: Equatable { let lane: Int; let lanes: Int }
-
-    /// Lay ONE column's timed events into side-by-side lanes (interval partitioning:
-    /// cluster transitively-overlapping events, then give each the first free lane).
-    ///
-    /// This must be run per column, never once across all of them: an event that
-    /// appears in three people's columns would otherwise take its widest cluster's
-    /// lane count everywhere and render as a sliver in the columns where it is the
-    /// only thing on screen.
-    static func lanes(for events: [SyncedEvent]) -> [String: Placement] {
-        func startOf(_ e: SyncedEvent) -> Date { e.startsAt ?? .distantPast }
-        func endOf(_ e: SyncedEvent) -> Date {
-            let s = startOf(e)
-            return s.addingTimeInterval(e.endsAt.map { max(1800, $0.timeIntervalSince(s)) } ?? 3600)
-        }
-        let sorted = events.filter { !$0.allDay && $0.startsAt != nil }.sorted { startOf($0) < startOf($1) }
-        var out: [String: Placement] = [:]
-        var i = 0
-        while i < sorted.count {
-            var clusterEnd = endOf(sorted[i])
-            var j = i + 1
-            while j < sorted.count, startOf(sorted[j]) < clusterEnd {
-                clusterEnd = max(clusterEnd, endOf(sorted[j]))
-                j += 1
-            }
-            let cluster = Array(sorted[i..<j])
-            var laneEnds: [Date] = []
-            var laneOf: [String: Int] = [:]
-            for e in cluster {
-                if let free = laneEnds.firstIndex(where: { $0 <= startOf(e) }) {
-                    laneEnds[free] = endOf(e)
-                    laneOf[e.id] = free
-                } else {
-                    laneOf[e.id] = laneEnds.count
-                    laneEnds.append(endOf(e))
-                }
-            }
-            let count = max(1, laneEnds.count)
-            for e in cluster { out[e.id] = Placement(lane: laneOf[e.id] ?? 0, lanes: count) }
-            i = j
-        }
-        return out
-    }
+    // No lane packing lives here. The People view renders through `CalTimeGrid`,
+    // which packs each column's events itself in `placedEvents(_:)` — one
+    // implementation, on the path that actually ships. A second copy in this file
+    // would only ever be exercised by tests, so it could stay green while the real
+    // one regressed.
 }

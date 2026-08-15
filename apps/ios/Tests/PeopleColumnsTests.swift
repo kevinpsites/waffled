@@ -80,18 +80,11 @@ private func landedIn(_ cols: [PeopleColumns.Column], _ eventId: String) -> [Str
         #expect(!cols.contains { $0.id == PeopleColumns.unassignedId })
     }
 
-    // Lanes are packed per column. An event shown in several columns must be full
-    // width in the ones where nothing else overlaps it — packing globally would
-    // shrink it everywhere because of a clash in someone else's column.
-    @Test func lanesArePackedPerColumnNotGlobally() {
-        let shared = event("shared", owner: "p1", participants: ["p1", "p2"], minutes: 90)
-        let jerryOnly = event("solo", owner: "p1", at: 1800, minutes: 90)
-        let cols = PeopleColumns.build([shared, jerryOnly], people: family)
-        let jerry = PeopleColumns.lanes(for: cols.first { $0.id == "p1" }!.events)
-        let elaine = PeopleColumns.lanes(for: cols.first { $0.id == "p2" }!.events)
-        #expect(jerry["shared"]?.lanes == 2)
-        #expect(elaine["shared"]?.lanes == 1)
-    }
+    // No lane-packing test here on purpose. The People view renders through
+    // `CalTimeGrid`, which packs lanes itself in `placedEvents(_:)`; a test against a
+    // second copy of that algorithm in this file would go green while the code that
+    // actually ships broke. The per-column guarantee is covered on the web side by
+    // `cal-people.test.ts`, which exercises the lanes the view really reads.
 }
 
 // The People view is iPad-only. A phone column is too narrow to be worth the mode —
