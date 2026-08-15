@@ -686,7 +686,10 @@ struct GoalLogSheet: View {
     private var confirmLabel: String { isHabit ? "Mark done for today" : isTime ? "Log \(durationLabel)" : "Log \(goalFmt(logAmount))\(unitSuffix)" }
     private var chips: [(label: String, value: Double)] {
         if isHours {
-            return [("30m", 0.5), ("1 hr", 1), ("1.5 hr", 1.5), ("2 hr", 2)]
+            // Short sessions are the ones people log by tapping; a 2-hour block is rare
+            // enough to type, and 20 minutes is the one that kept needing the keypad.
+            // 6dp so the chip highlights against the hours+minutes fields it sets.
+            return [("20m", ((1.0 / 3) * 1e6).rounded() / 1e6), ("30m", 0.5), ("1 hr", 1), ("1.5 hr", 1.5)]
         }
         let u = goal.unit.map { " \($0)" } ?? ""
         return [1, 2, 3, 5].map { (label: "\(Int($0))\(u)", value: Double($0)) }
