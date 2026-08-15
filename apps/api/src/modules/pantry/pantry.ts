@@ -46,6 +46,14 @@ const RETURNING = `id, name, amount, unit, location, expires_on::text as expires
   barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, traces, dietary, source, low_at, is_meal,
   added_on::text as added_on, created_at::text as created_at`
 
+// Amounts are free text ("2", "0.5", "a pinch"), so the places that do arithmetic on
+// them — the scan count-up and the cook decrement — go through Number and can pick up
+// binary-float noise (0.1 + 0.2 = 0.30000000000000004). Round to 3 decimals so half a
+// bag stays "0.5" instead of turning into a wall of digits in the UI.
+function amountString(n: number): string {
+  return String(Math.round(n * 1000) / 1000)
+}
+
 function present(r: PantryRow) {
   return {
     id: r.id,
@@ -298,7 +306,7 @@ export function registerPantryRoutes(api: Api): void {
         sql = keep
           ? `update pantry_items set amount = $3 where household_id = $1 and id = $2 returning ${RETURNING}`
           : `update pantry_items set used_up_at = now() where household_id = $1 and id = $2 returning ${RETURNING}`
-        if (keep) params.push(String(next))
+        if (keep) params.push(amountString(next))
       } else {
         sql = `update pantry_items set used_up_at = now() where household_id = $1 and id = $2 returning ${RETURNING}`
       }
@@ -343,7 +351,7 @@ export function registerPantryRoutes(api: Api): void {
       const next = (Number.isFinite(cur) ? cur : 0) + addAmt
       const upd = await query<PantryRow>(
         `update pantry_items set amount=$1 where household_id=$2 and id=$3 returning ${RETURNING}`,
-        [String(next), tenant.householdId, ex.id]
+        [amountString(next), tenant.householdId, ex.id]
       )
       return res.status(200).json({ item: present(upd.rows[0]), incremented: true })
     }
@@ -404,6 +412,30 @@ export function registerPantryRoutes(api: Api): void {
     )
     if (!rowCount) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
     return res.status(204).send('')
+  }))
+
+  // Add ONE section to the location list, without sending the whole array — so the
+  // add/scan sheets can create a section on the fly ("Garage shelf") mid-add instead
+  // of sending the user to Settings. Appends (never reorders or drops), and an
+  // existing name in any casing is a no-op so two devices can't duplicate it.
+  api.post('/api/pantry/locations', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const settings = await requirePantry(tenant)
+    const b = (req.body ?? {}) as { name?: unknown }
+    const name = typeof b.name === 'string' ? b.name.trim().slice(0, 60) : ''
+    if (!name) return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
+    const current = readLocations(settings)
+    if (current.some((l) => l.toLowerCase() === name.toLowerCase())) {
+      return res.status(200).json({ locations: current, added: false })
+    }
+    const { rows } = await query<{ settings: unknown }>(
+      `update households
+          set settings = coalesce(settings, '{}'::jsonb)
+               || jsonb_build_object('pantry', coalesce(settings->'pantry', '{}'::jsonb) || $2::jsonb)
+        where id = $1
+        returning settings`,
+      [tenant.householdId, JSON.stringify({ locations: [...current, name] })]
+    )
+    return res.status(201).json({ locations: readLocations(rows[0]?.settings), added: true })
   }))
 
   // Update the pantry module's per-household config (any member): the location list

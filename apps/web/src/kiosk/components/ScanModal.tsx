@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { pantryApi, flaggedAllergens, ALLERGEN_LABELS, productSourceLabel, type OffProduct, type PantryItemInput } from '../../lib/api'
 import { AllergenBadge } from './Allergens'
+import { LocationField } from './LocationField'
 
 // Barcode scan-into-pantry. Uses the device camera (zxing decoder, which works in
 // Chrome/Edge/Android and Safari/iOS) to read a barcode, looks it up via Open Food
@@ -10,12 +11,13 @@ import { AllergenBadge } from './Allergens'
 // The camera needs a SECURE CONTEXT (https or localhost). On a plain-http LAN origin
 // window.isSecureContext is false and getUserMedia is blocked, so we surface a clear
 // warning and fall back to typing the barcode. (HTTPS is a documented requirement.)
-export function ScanModal({ locations, avoidAllergens, allergenPeople, onClose, onAdded }: {
+export function ScanModal({ locations, avoidAllergens, allergenPeople, onClose, onAdded, onLocationsChanged }: {
   locations: string[]
   avoidAllergens: string[]
   allergenPeople: Record<string, string[]>
   onClose: () => void
   onAdded: () => void
+  onLocationsChanged: () => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<IScannerControls | null>(null)
@@ -183,7 +185,7 @@ export function ScanModal({ locations, avoidAllergens, allergenPeople, onClose, 
 
                 <div className="pl-scan-fields">
                   <label><span>Where</span>
-                    <select value={location} onChange={(e) => setLocation(e.target.value)}>{locations.map((l) => <option key={l} value={l}>{l}</option>)}</select>
+                    <LocationField value={location} locations={locations} onChange={setLocation} onLocationsChanged={onLocationsChanged} />
                   </label>
                   <label><span>Amount</span>
                     <input value={amount} onChange={(e) => setAmount(e.target.value)} />

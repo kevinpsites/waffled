@@ -294,6 +294,50 @@ describe('pantry Open Food Facts integration', () => {
     expect(JSON.parse(dup.body).item.amount).toBe('5')
   })
 
+  // Half a bag, a quarter of a block — pantry amounts aren't always whole.
+  it('scan counts up in fractions without float noise', async () => {
+    const half = await call('POST', '/api/pantry/scan', kevin, { name: 'Rice', location: 'Pantry', unit: 'bag', amount: '0.5', barcode: '55550002' })
+    expect(JSON.parse(half.body).item.amount).toBe('0.5')
+
+    // A leading-dot amount is what people actually type.
+    const quarter = await call('POST', '/api/pantry/scan', kevin, { name: 'Rice', location: 'Pantry', amount: '.25', barcode: '55550002' })
+    expect(JSON.parse(quarter.body)).toMatchObject({ incremented: true })
+    expect(JSON.parse(quarter.body).item.amount).toBe('0.75')
+
+    const rest = await call('POST', '/api/pantry/scan', kevin, { name: 'Rice', location: 'Pantry', amount: '0.25', barcode: '55550002' })
+    expect(JSON.parse(rest.body).item.amount).toBe('1')
+
+    // 0.1 + 0.2 must not surface as 0.30000000000000004.
+    await call('POST', '/api/pantry/scan', kevin, { name: 'Yeast', location: 'Pantry', amount: '0.1', barcode: '55550003' })
+    const noisy = await call('POST', '/api/pantry/scan', kevin, { name: 'Yeast', location: 'Pantry', amount: '0.2', barcode: '55550003' })
+    expect(JSON.parse(noisy.body).item.amount).toBe('0.3')
+  })
+
+  it('adds a new section on the fly and files an item under it', async () => {
+    const before = JSON.parse((await call('GET', '/api/pantry', kevin)).body).locations as string[]
+    expect(before).not.toContain('Garage shelf')
+
+    const add = await call('POST', '/api/pantry/locations', kevin, { name: '  Garage shelf ' })
+    expect(add.statusCode).toBe(201)
+    const locations = JSON.parse(add.body).locations as string[]
+    expect(locations).toContain('Garage shelf')
+    expect(locations.slice(0, before.length)).toEqual(before) // appended, nothing clobbered
+
+    // Adding it again (any casing) is a no-op, not a duplicate.
+    const again = await call('POST', '/api/pantry/locations', kevin, { name: 'garage shelf' })
+    expect(again.statusCode).toBe(200)
+    expect((JSON.parse(again.body).locations as string[]).filter((l) => l.toLowerCase() === 'garage shelf')).toHaveLength(1)
+
+    expect((await call('POST', '/api/pantry/locations', kevin, { name: '   ' })).statusCode).toBe(400)
+
+    // An item filed there lands in the new section (not the "Other" catch-all).
+    const item = JSON.parse((await call('POST', '/api/pantry', kevin, { name: 'Paper towels', location: 'Garage shelf' })).body).item
+    expect(item.location).toBe('Garage shelf')
+    const list = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
+    expect(list.locations).toContain('Garage shelf')
+    expect((list.items as Array<{ name: string; location: string }>).find((i) => i.name === 'Paper towels')?.location).toBe('Garage shelf')
+  })
+
   it("rolls a member's allergens into allergenPeople (known keys only)", async () => {
     const me = JSON.parse((await call('GET', '/api/persons', kevin)).body).persons[0]
     const upd = await call('PATCH', `/api/persons/${me.id}`, kevin, { allergens: ['gluten', 'bogus'] })

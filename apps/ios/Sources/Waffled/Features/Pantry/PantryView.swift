@@ -60,15 +60,19 @@ struct PantryView: View {
         .task { await model.load() }
         .refreshable { await model.load() }
         .fullScreenCover(isPresented: $showScan) {
-            PantryScanView(locations: model.locations) { await model.load() }
+            PantryScanView(locations: model.locations, avoid: model.avoidSet,
+                           allergenPeople: model.allergenPeople,
+                           onLocationsChanged: { await model.load() }) { await model.load() }
         }
         .sheet(isPresented: $addManually) {
-            PantryItemEditor(mode: .add, locations: model.locations) { body in
+            PantryItemEditor(mode: .add, locations: model.locations,
+                             onLocationsChanged: { await model.load() }) { body in
                 _ = try? await WaffledAPI().pantryCreate(body); await model.load()
             }
         }
         .sheet(item: $editingItem) { item in
-            PantryItemEditor(mode: .edit(item), locations: model.locations) { body in
+            PantryItemEditor(mode: .edit(item), locations: model.locations,
+                             onLocationsChanged: { await model.load() }) { body in
                 if let updated = try? await WaffledAPI().pantryUpdate(id: item.id, body) { model.replace(updated) }
             } onDelete: {
                 await model.delete(item)

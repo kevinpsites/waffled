@@ -352,6 +352,12 @@
 .pl-barcode-row { display: flex; gap: 8px; }
 .pl-barcode-row input { flex: 1; min-width: 0; }
 .pl-barcode-row .pill { flex: none; cursor: pointer; }
+/* The new-section row lives inside a half-width grid cell (next to Expires / Amount),
+   so the name field takes its own line and the buttons wrap under it — side by side
+   there's ~70px left for the input, which truncates the placeholder. */
+.pl-newloc-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.pl-newloc-row input { flex: 1 1 100%; min-width: 0; }
+.pl-newloc-row .pill { flex: none; cursor: pointer; }
 .pl-lookup-msg { font-size: 12.5px; font-weight: 600; color: var(--ink-3); margin-top: 6px; display: block; }
 .pl-lookup-msg.ok { color: var(--success); }
 

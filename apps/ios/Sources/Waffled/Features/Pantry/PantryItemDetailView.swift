@@ -45,7 +45,8 @@ struct PantryItemDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $editing) {
             if let item {
-                PantryItemEditor(mode: .edit(item), locations: model.locations) { body in
+                PantryItemEditor(mode: .edit(item), locations: model.locations,
+                                 onLocationsChanged: { await model.load() }) { body in
                     if let updated = try? await WaffledAPI().pantryUpdate(id: item.id, body) { model.replace(updated) }
                 } onDelete: {
                     // Removing the item empties `model.items`, so the detail's `item == nil`

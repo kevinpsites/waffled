@@ -149,6 +149,10 @@ export const pantryApi = {
   // Apply confirmed consumption; returns the updated items.
   consume: (items: Array<{ id: string; mode: 'used_up' | 'decrement' }>) =>
     apiSend<{ items: PantryItem[] }>('POST', '/api/pantry/consume', { items }).then((r) => r.items),
+  // Append ONE section to the location list — lets the add/scan sheets create a
+  // section on the fly without pulling the whole config down and pushing it back.
+  addLocation: (name: string) =>
+    apiSend<{ locations: string[]; added: boolean }>('POST', '/api/pantry/locations', { name }),
   // Module config: locations, Today-card toggle, avoid-allergens, the running-low
   // threshold, and/or per-location icons.
   setConfig: (patch: { locations?: string[]; showOnToday?: boolean; avoidAllergens?: string[]; lowThreshold?: number; locationIcons?: Record<string, string>; staleMonths?: number }) =>
