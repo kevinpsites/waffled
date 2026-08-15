@@ -231,10 +231,13 @@ export async function confirmRecap(
           [doneBy, stepId, goalId, tenant.householdId]
         )
         if ((upd.rowCount ?? 0) > 0) {
+          // Dated to the OCCURRENCE, not to now — a recap is usually answered days
+          // after the fact, and the tick belongs on the day the event happened.
           await client.query(
-            `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by)
-             values ($1,$2,$3,1,$4,'auto_calendar','goal_step',$5,$6)`,
-            [tenant.householdId, goalId, doneBy, note ?? null, stepId, tenant.personId]
+            `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by, logged_at)
+             values ($1,$2,$3,1,$4,'auto_calendar','goal_step',$5,$6,
+                     ($7::date + time '12:00') at time zone (select timezone from households where id = $1))`,
+            [tenant.householdId, goalId, doneBy, note ?? null, stepId, tenant.personId, occurrenceDate]
           )
         }
       }
@@ -245,10 +248,13 @@ export async function confirmRecap(
     await client.query('commit')
     // Write progress OUTSIDE the claim transaction (logProgress opens its own
     // connection). The claim row already guarantees idempotency.
+    // Backdated to the occurrence: you answer "did this happen?" days after the
+    // event, but the progress belongs on the event's own day — not on today.
     const logIds = await logProgress(tenant, goalId, amount, personIds, note ?? null, {
       source: 'auto_calendar',
       refType: 'event',
       refId: eventId,
+      at: occurrenceDate,
     })
     if (logIds[0]) {
       await query(`update event_goal_logs set goal_log_id = $1 where id = $2`, [logIds[0], claim.rows[0].id])

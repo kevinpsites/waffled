@@ -266,6 +266,53 @@ describe('calendar → goal recap', () => {
     expect((await recap(goalId)).length).toBe(0)
   })
 
+  // A recap is answered AFTER the fact — often days later. The entry belongs on the
+  // day the event happened, not the day you got round to confirming it.
+  it('lands the confirmed entry on the event’s day, not today', async () => {
+    const goalId = await makeGoal({ title: 'Backdated recap' })
+    const eventId = await linkedEvent(goalId, 60, [kevinId], 72) // ended 3 days ago
+    const occ = (await recap(goalId))[0].occurrenceDate as string
+    const today = await withClient(async (cl) =>
+      (await cl.query<{ d: string }>(`select (now() at time zone 'America/Chicago')::date::text as d`)).rows[0].d
+    )
+    expect(occ).not.toBe(today) // guard: the fixture really is in the past
+
+    const c = await call('POST', '/api/goal-calendar/recap/confirm', kevin, {
+      eventId, occurrenceDate: occ, amount: 2, personIds: [kevinId],
+    })
+    expect(JSON.parse(c.body).status).toBe('logged')
+
+    const detail = JSON.parse((await call('GET', `/api/goals/${goalId}`, kevin)).body).goal
+    expect(detail.recent[0].dateKey).toBe(occ)
+    const act = JSON.parse((await call('GET', `/api/goals/${goalId}/activity`, kevin)).body)
+    expect((act.days as Array<{ dateKey: string; total: number }>).find((d) => d.dateKey === occ)?.total).toBe(2)
+  })
+
+  it('checklist: the mirrored tick also lands on the event’s day', async () => {
+    const g = await call('POST', '/api/goals', kevin, {
+      goalListId: listId, title: 'Reno backdate', goalType: 'checklist', trackingMode: 'shared_total',
+      autoFromCalendar: true, participantIds: [kevinId], steps: [{ label: 'Grout the tile' }],
+    })
+    const goalId = JSON.parse(g.body).goal.id
+    const start = new Date(Date.now() - 72 * 3600_000)
+    const ev = await call('POST', '/api/events', kevin, {
+      title: 'Grouting', startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 3600_000).toISOString(),
+      participantIds: [kevinId], goalId,
+      goalStepId: JSON.parse((await call('GET', `/api/goals/${goalId}`, kevin)).body).goal.steps[0].id,
+    })
+    const eventId = JSON.parse(ev.body).event.id
+    const occ = (await recap(goalId))[0].occurrenceDate as string
+    await call('POST', '/api/goal-calendar/recap/confirm', kevin, { eventId, occurrenceDate: occ, amount: 1, personIds: [kevinId] })
+
+    const day = await withClient(async (cl) =>
+      (await cl.query<{ d: string }>(
+        `select (logged_at at time zone 'America/Chicago')::date::text as d
+           from goal_logs where goal_id=$1 and deleted_at is null`, [goalId]
+      )).rows[0].d
+    )
+    expect(day).toBe(occ)
+  })
+
   it('excludes cancelled, future, and non-opted-in events', async () => {
     // cancelled status
     const g1 = await makeGoal({ title: 'Cancelled' })
