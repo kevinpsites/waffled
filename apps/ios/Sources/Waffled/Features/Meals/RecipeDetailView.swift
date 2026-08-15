@@ -110,10 +110,12 @@ struct RecipeDetailView: View {
         }
         .task {
             await loadDetail()
-            // Feeds the library's "Recently viewed" rail. Fire-and-forget, and only
-            // once per visit — `.task` is keyed to this view's lifetime, so an edit
-            // that reloads the detail doesn't count as looking at it again.
-            await api.recordRecipeView(id: recipe.id)
+            // Feeds the library's "Recently viewed" rail. Genuinely fire-and-forget:
+            // detached, so an unreachable API can't hold Cook Mode below behind a
+            // URLSession timeout on a request whose result nobody waits for. Once per
+            // visit — `.task` is keyed to this view's lifetime, so an edit that
+            // reloads the detail doesn't count as looking at it again.
+            Task { await api.recordRecipeView(id: recipe.id) }
             if autoCook, !steps.isEmpty { startCookMode() }
         }
         .fullScreenCover(item: $buildingMeal) { start in
