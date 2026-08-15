@@ -72,12 +72,19 @@ export function PeopleView({
   }
 
   // The same shared template the week grid uses, with a track per person instead of
-  // per day. minmax keeps a column readable when the household is large.
-  const cols = { '--wk-cols': `64px repeat(${columns.length}, minmax(120px, 1fr))` } as React.CSSProperties
+  // per day. minmax keeps a column readable when the household is large — which
+  // means the grid can be wider than the pane, so `--wk-min` states that width and
+  // `.pv-hscroll` scrolls the header, all-day and body rows together. (The week grid
+  // never needed this: `repeat(7, 1fr)` has no floor, so it can always shrink to fit.)
+  const cols = {
+    '--wk-cols': `64px repeat(${columns.length}, minmax(120px, 1fr))`,
+    '--wk-min': `calc(64px + ${columns.length} * 120px)`,
+  } as React.CSSProperties
 
   return (
     <div className="pv-screen">
       <div className="wk" style={cols} data-testid="people-columns">
+       <div className="pv-hscroll">
         <div className="wk-head">
           <div className="wk-rail-sp" />
           {columns.map((c) => (
@@ -168,6 +175,7 @@ export function PeopleView({
             )}
           </div>
         </div>
+       </div>
       </div>
     </div>
   )
