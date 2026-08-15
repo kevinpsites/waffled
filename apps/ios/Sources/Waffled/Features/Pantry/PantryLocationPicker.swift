@@ -54,7 +54,7 @@ struct PantryLocationPicker: View {
                             .padding(.horizontal, 12).padding(.vertical, 7).wfChip(selected: on)
                     }.buttonStyle(.plain)
                 }
-                Button { failed = false; adding = true; focused = true } label: {
+                Button { failed = false; adding = true } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus").font(.system(size: 11, weight: .bold))
                         Text("New").font(.system(size: 13, weight: .semibold))
@@ -71,6 +71,10 @@ struct PantryLocationPicker: View {
         HStack(spacing: 8) {
             TextField("New section name", text: $draft)
                 .focused($focused)
+                // Focus has to be set once the field is actually in the hierarchy —
+                // assigning it in the same tap that flips `adding` is dropped, and the
+                // row appears without a keyboard.
+                .onAppear { focused = true }
                 .textInputAutocapitalization(.words)
                 .submitLabel(.done)
                 .onSubmit { create() }
