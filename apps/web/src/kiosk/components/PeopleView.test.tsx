@@ -74,4 +74,12 @@ describe('PeopleView', () => {
     render(<PeopleView day={day} events={[]} people={[]} tz="America/Los_Angeles" onOpenEvent={noop} onCreate={noop} />)
     expect(screen.getByText(/add family members/i)).toBeInTheDocument()
   })
+
+  // The roster arrives async, so an empty `people` means "not here yet" as often as
+  // it means "nobody" — and telling a four-person household to add family members
+  // while its own roster is in flight is a false claim, not just a flicker.
+  it('does not ask for family members while the roster is still loading', () => {
+    render(<PeopleView day={day} events={[]} people={[]} loading tz="America/Los_Angeles" onOpenEvent={noop} onCreate={noop} />)
+    expect(screen.queryByText(/add family members/i)).not.toBeInTheDocument()
+  })
 })

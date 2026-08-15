@@ -98,7 +98,7 @@ export function Calendar() {
   const { household } = useHousehold()
   const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   // The roster drives the People view's columns (one per person, in roster order).
-  const { persons } = usePersons()
+  const { persons, loading: personsLoading } = usePersons()
 
   // Countdown badges on the calendar (all three sources, keyed by target day).
   const { countdowns } = useCountdowns()
@@ -249,6 +249,7 @@ export function Calendar() {
           day={anchor}
           events={events}
           people={persons}
+          loading={personsLoading}
           tz={tz}
           onOpenEvent={openEvent}
           onCreate={(date, time) => setModal({ date, time })}

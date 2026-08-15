@@ -24,6 +24,7 @@ export function PeopleView({
   day,
   events,
   people,
+  loading = false,
   tz,
   onOpenEvent,
   onCreate,
@@ -31,6 +32,8 @@ export function PeopleView({
   day: Date
   events: AgendaEvent[]
   people: ColumnPerson[]
+  /** The roster is still being fetched — an empty `people` means "not yet", not "nobody". */
+  loading?: boolean
   tz: string
   onOpenEvent: (e: AgendaEvent) => void
   onCreate: (date: string, time?: string) => void
@@ -57,8 +60,14 @@ export function PeopleView({
     el.scrollTop = (isToday ? Math.max(0, now.getHours() - 1) : 7) * HOUR_PX
   }, [key, isToday, people.length])
 
+  // "Add family members" is a claim about the household, so wait until the roster
+  // has actually come back empty before making it.
   if (people.length === 0) {
-    return <div className="pv-screen"><p className="muted">Add family members to see per-person columns.</p></div>
+    return (
+      <div className="pv-screen">
+        <p className="muted">{loading ? 'Loading…' : 'Add family members to see per-person columns.'}</p>
+      </div>
+    )
   }
 
   // The same shared template the week grid uses, with a track per person instead of
