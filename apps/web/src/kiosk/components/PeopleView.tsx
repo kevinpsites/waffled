@@ -48,6 +48,7 @@ export function PeopleView({
 
   const now = new Date()
   const isToday = ymd(now) === key
+  const nowTop = ((now.getHours() * 60 + now.getMinutes() - DAY_START * 60) / 60) * HOUR_PX
 
   // Open at the morning (or an hour before "now" on today) rather than at midnight.
   // `people.length` is in the deps because the roster arrives async: until it does
@@ -156,6 +157,15 @@ export function PeopleView({
                 </div>
               )
             })}
+
+            {/* One rule across every column — the time is the same for the whole
+                household, so it belongs to the grid rather than to any one person.
+                Starts after the hour rail (the 64px first track of --wk-cols). */}
+            {isToday && (
+              <div className="pv-now" style={{ top: nowTop }}>
+                <span className="dv-now-dot" />
+              </div>
+            )}
           </div>
         </div>
       </div>

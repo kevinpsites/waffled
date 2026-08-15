@@ -75,6 +75,20 @@ describe('PeopleView', () => {
     expect(screen.getByText(/add family members/i)).toBeInTheDocument()
   })
 
+  // Day view draws a "now" rule across the same single day, and the iPad People
+  // columns pass showsNowLine — so leaving it out here made the current time visible
+  // everywhere except this one view.
+  it('draws the now line when the day being shown is today, and not otherwise', () => {
+    const { unmount } = render(
+      <PeopleView day={new Date()} events={[]} people={family} tz="America/Los_Angeles" onOpenEvent={noop} onCreate={noop} />
+    )
+    expect(document.querySelector('.pv-now')).toBeTruthy()
+    unmount()
+
+    render(<PeopleView day={day} events={[]} people={family} tz="America/Los_Angeles" onOpenEvent={noop} onCreate={noop} />)
+    expect(document.querySelector('.pv-now')).toBeNull()
+  })
+
   // The roster arrives async, so an empty `people` means "not here yet" as often as
   // it means "nobody" — and telling a four-person household to add family members
   // while its own roster is in flight is a false claim, not just a flicker.
