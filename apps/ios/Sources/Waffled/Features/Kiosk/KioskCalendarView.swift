@@ -738,7 +738,15 @@ struct CalTimeGrid: View {
                 .background(WF.card)
                 .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
-                .task(id: "\(days.joined())-\(scrollToHour)") {
+                // Deliberately NOT `.task(id:)`. This positions the grid when it first
+                // appears and then leaves it alone: each `mode` is its own branch of
+                // the switch in `content`, so entering People builds a fresh grid and
+                // gets its `scrollToHour`, while paging to the next week or day keeps
+                // the same grid — and whatever offset you had scrolled to. Keying on
+                // `days` would snap you back to the top on every chevron tap, and
+                // keying on `scrollToHour` would let any synced event on the visible
+                // day yank the grid out from under you mid-read.
+                .task {
                     try? await Task.sleep(for: .milliseconds(150))
                     proxy.scrollTo(scrollToHour, anchor: .top)
                 }
