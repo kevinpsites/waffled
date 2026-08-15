@@ -15,6 +15,8 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
+const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
 // The view toggle + period nav render into the topbar's right slot, so a probe
 // surfaces them for assertions without mounting the whole Topbar (which would
 // duplicate the month name via the live date).
@@ -115,5 +117,32 @@ describe('Calendar screen', () => {
       `${MONTHS[now.getMonth()]} ${now.getFullYear()}`
     )
     expect(screen.queryByRole('button', { name: 'Back to today' })).toBeNull()
+  })
+
+  // People is one day split into per-person columns — the SAME single day Day view
+  // shows, which is why its arrows are labelled "Next day"/"Previous day". They have
+  // to move one day: stepping a week left you on a date the label never promised.
+  it('steps one day at a time in the People view', async () => {
+    mockRange([])
+    renderCalendar()
+
+    fireEvent.click(screen.getByRole('button', { name: 'People' }))
+    // Earlier tests leave the anchor paged away; the period pill jumps back to today.
+    fireEvent.click(document.querySelector('.cal-period') as HTMLElement)
+
+    const label = () => (document.querySelector('.cal-period') as HTMLElement).textContent
+    // Built with plain Date arithmetic rather than the app's own helper, so the
+    // expectation can't inherit the bug it's checking for.
+    const labelFor = (d: Date) => `${DOW[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`
+    const plusDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n, 12)
+
+    const now = new Date()
+    expect(label()).toBe(labelFor(now))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next day' }))
+    expect(label()).toBe(labelFor(plusDays(now, 1)))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous day' }))
+    expect(label()).toBe(labelFor(now))
   })
 })

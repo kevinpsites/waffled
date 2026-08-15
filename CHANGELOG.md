@@ -15,6 +15,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
+  hardware run, the packing list, whatever's live this week — right on the Today board,
+  with tap-to-tick-off. Pick which list from the card itself, the same way the Goals
+  card pins a goal; the choice is remembered **per device**, so the kitchen display and
+  your phone can each keep a different list up. The auto-built grocery list keeps its
+  own card and isn't offered here. Web/kiosk and iPhone; add or remove it in Customize.
+- **A People view on the calendar — one column per person.** A new **People** view sits
+  beside Month/Week/Day/Agenda and splits a single day into a column for each family
+  member, so you can see at a glance who is where without reading everyone's events as one
+  jumbled list. An event appears in its owner's column **and** in the column of everyone
+  else on it, so the family dinner shows up in three columns rather than hiding under one
+  name; anything with nobody attached collects in a leading **Everyone** column. The
+  columns work exactly like the days in Week view — same time grid, same all-day row — and
+  they're on the web/kiosk and iPad. (Not on iPhone: a phone screen splits into columns too
+  narrow to read a title in — filter the calendar to one person there instead.)
+- **Recently viewed recipes.** The recipe library now opens with a strip of what you
+  just had open, so getting back to last night's dinner is one tap instead of a search.
+  It's **your own** history by default — two people sharing a kitchen browse for
+  different reasons — with an **Everyone** switch for the household's combined history
+  when the question is "what were we cooking last week?". Deleted recipes drop out of
+  it, and a recipe you open fifty times stays one entry rather than flooding the strip.
+- **Copy any list as a Markdown checklist.** Alongside the existing share, lists now offer
+  **Copy as Markdown** — the same items, written as `- [ ]` tick boxes under `##` section
+  headings, so pasting into Notes, Obsidian, a GitHub issue, or anywhere else that speaks
+  Markdown gives you a working checklist instead of flat text. It carries exactly what the
+  plain share does (unchecked items only, in the board's walking order, with store and
+  assignee notes), and the QR handoff is unchanged. On the web it's a button in the Share
+  list dialog; on iPhone/iPad it's in the list's ⋯ menu, and behind the share icon on the
+  grocery board.
 - **Pick any color for a person, not just the eight presets.** The color row in the member
   editor (and in My Profile, and the new family color) now ends with a ninth "custom"
   swatch that opens your device's color picker, so everyone can have exactly the shade

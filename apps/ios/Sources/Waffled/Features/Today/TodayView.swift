@@ -407,8 +407,8 @@ struct TodayView: View {
 
     static let cardLabels = [
         "agenda": "Agenda", "countdowns": "Countdowns", "tonight": "Tonight's dinner",
-        "chores": "Chores", "grocery": "Grocery", "goals": "Goals", "pantry": "Pantry",
-        "familyNight": "Family Night",
+        "chores": "Chores", "grocery": "Grocery", "lists": "Lists", "goals": "Goals",
+        "pantry": "Pantry", "familyNight": "Family Night",
     ]
     private static let smallCards: Set<String> = ["chores", "grocery"]
 
@@ -428,6 +428,7 @@ struct TodayView: View {
         case "tonight": return sync.module(.meals)
         case "chores": return sync.module(.chores)
         case "grocery": return sync.module(.lists)
+        case "lists": return sync.module(.lists)
         case "goals": return sync.module(.goals)
         case "pantry": return sync.module(.pantry)
         case "familyNight": return sync.module(.familyNight)
@@ -457,6 +458,7 @@ struct TodayView: View {
         case "tonight": tonightCard
         case "chores": Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
         case "grocery": Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
+        case "lists": TodayListCard { path.append(.list($0)) }
         case "pantry": PantryTodayCard { path.append(.pantry) }
         case "familyNight": FamilyNightCard()
         case "goals": goalsCard

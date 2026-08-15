@@ -17,6 +17,24 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **Per-person calendar columns (web/kiosk + iPad)** — a **People** view beside
+  Month/Week/Day/Agenda that splits one day into a column per family member (the layout the
+  dispencer17 fork had). "Whose column" resolves to **`events.person_id`** — the assignee
+  that already drives the event's color, not `owner_person_id`, which `0074` added for
+  personal-calendar visibility — **plus every participant**, so a shared event shows up for
+  everyone it involves rather than only its owner. Bucketing is column-driven (each person
+  is asked "is this yours?"), which ignores the external participants `0009` allows without
+  inventing a column for them; anything nobody claims lands in a leading **Everyone**
+  column instead of vanishing. Lanes are packed per column, so an event shown in three
+  columns still spans full width where nothing else overlaps it. No schema or API work was
+  needed: participants already ride both the REST payload and the PowerSync replica, so the
+  view works offline like the others. On iOS it's **iPad-only**, as the original sizing
+  predicted — it was briefly on iPhone too, but four members already truncate titles to
+  "Dinn…", so the phone keeps Agenda/Month/Day and its person filter. The iPad reuses the
+  same `CalTimeGrid` the Week view uses, generalised so a column can be a person instead of
+  a date; the person filter chips are hidden in People mode, since the columns already are
+  that split.
+
 - **Calendar color control (web/kiosk + iPhone/iPad)** — a household **Event style** (solid
   color blocks, the default, or the softer tint), a **family color** for events that involve
   everyone (instead of borrowing the owner's color), and a ninth **custom** swatch that opens
@@ -220,6 +238,30 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   choice.
 
 ## Planned 🚧
+
+- **Upkeep — recurring household maintenance as its own module.** Where "air filter every
+  3 months", "toothbrush heads", and "trash out weekly" live. Deliberately *not* chores:
+  no reward, no approval, no photo proof, no assignee — and chores can't express these
+  schedules anyway (`ensureTodayInstances` matches only `FREQ=DAILY` and `FREQ=WEEKLY` +
+  `BYDAY`, by SQL substring; there is no `MONTHLY` and no `INTERVAL`). The decided model is
+  **completion-anchored** — due N months after you *actually last did it*, so being late
+  shifts the next one — which `chore_instances` (one materialized row per `due_on` on a
+  calendar grid) structurally cannot represent. One `upkeep_items` row carrying
+  `every` / `last_completed_at` / `next_due_at`, plus an `upkeep_completions` log so
+  "filter last changed Mar 12" is answerable; items surface on Today/Calendar only inside a
+  lead-time window. Reuses the countdowns presentation for "N days until Y" — whether that
+  aggregator is source-pluggable is the main open question. Full design, schema sketch and
+  sizing: [Upkeep plan](./upkeep-plan.md).
+
+- **Calendar as the all-in-one dated view.** Overlay the dated non-events — `chore_instances.due_on`
+  and (once built) `upkeep_items.next_due_at` — onto the calendar as read-only all-day chips,
+  tapping through to the chore/upkeep rather than the event editor. Deliberately chips, not
+  time-grid blocks: a chore's `due_time` is a soft target, not an appointment. `list_items`
+  stays out — it has no due column and lists shouldn't become a half-built task manager. Two
+  seams to settle first: chores/upkeep have no visibility concept under
+  `0074_calendar_visibility` (simplest rule: treat them as `family`), and on iOS events come
+  from PowerSync while chores are REST-only, so an offline phone renders events and silently
+  drops the overlay. See [Upkeep plan](./upkeep-plan.md#how-this-lands-on-the-calendar-item-3).
 
 - **Smarter goal-note suggestions (Tier 2).** Tier 1 shipped (see **Done**): the Log
   sheet's "What did you do?" chips now suggest the notes actually logged against that

@@ -20,10 +20,17 @@ struct CalendarView: View {
     @State private var countdowns = CountdownsModel()
     @State private var editingCountdown: WaffledAPI.Countdown?
 
+    /// No People mode here on purpose — it's iPad-only. A phone splits into columns
+    /// too narrow to read (four members already truncate titles to "Dinn…"), and the
+    /// person filter below covers "just show me one person's day" on a phone.
     enum CalMode: String, CaseIterable { case agenda, month, day
         var label: String { rawValue.capitalized }
         var icon: String {
-            switch self { case .agenda: return "list.bullet"; case .month: return "calendar"; case .day: return "calendar.day.timeline.left" }
+            switch self {
+            case .agenda: return "list.bullet"
+            case .month: return "calendar"
+            case .day: return "calendar.day.timeline.left"
+            }
         }
     }
 

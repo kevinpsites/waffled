@@ -280,6 +280,50 @@ export async function softDeleteRecipe(tenant: Tenant, id: string): Promise<bool
   }
 }
 
+// Record that a person opened a recipe. One row per (person, recipe) whose timestamp
+// moves, so a recipe opened fifty times stays one entry — see migration 0096.
+// Returns false when the recipe isn't this household's (or is deleted), so the route
+// can 404 without leaking whether the id exists elsewhere.
+export async function recordRecipeView(tenant: Tenant, recipeId: string): Promise<boolean> {
+  const { rows } = await query<{ id: string }>(
+    `insert into recipe_views (household_id, person_id, recipe_id)
+     select $1, $2, r.id from recipes r
+      where r.id = $3 and r.household_id = $1 and r.deleted_at is null
+     on conflict (person_id, recipe_id) do update set viewed_at = now()
+     returning id`,
+    [tenant.householdId, tenant.personId, recipeId]
+  )
+  return rows.length > 0
+}
+
+// Recently-opened recipes, newest first. `personId` null = the whole household's
+// history, collapsed to one row per recipe at its latest view (so a recipe both
+// parents opened appears once, at the newer time).
+//
+// Soft-deleted recipes are filtered here rather than cleaned up on delete: the FK's
+// ON DELETE CASCADE never fires for a soft delete, and a deleted recipe reappearing
+// in a "recently viewed" rail would be a dead link.
+export async function listRecentlyViewedRecipes(
+  householdId: string,
+  personId: string | null,
+  limit: number
+): Promise<RecipeRow[]> {
+  const { rows } = await query<RecipeRow>(
+    `select r.*, max(v.viewed_at) as last_viewed_at
+       from recipe_views v
+       join recipes r on r.id = v.recipe_id
+      where v.household_id = $1
+        and r.household_id = $1
+        and r.deleted_at is null
+        and ($2::uuid is null or v.person_id = $2)
+      group by r.id
+      order by max(v.viewed_at) desc
+      limit $3`,
+    [householdId, personId, limit]
+  )
+  return rows
+}
+
 export async function listRecipes(householdId: string): Promise<RecipeRow[]> {
   const { rows } = await query<RecipeRow>(
     `select * from recipes where household_id = $1 and deleted_at is null order by title`,

@@ -38,7 +38,10 @@ final class ListDetailModel {
     /// in place (the returned row carries the new listType).
     private(set) var list: WaffledAPI.ListSummary
     private(set) var items: [WaffledAPI.ListItemDTO] = [] {
-        didSet { shareText = ShareList.format(rows: items) }
+        didSet {
+            shareText = ShareList.format(rows: items)
+            shareMarkdown = ShareList.formatMarkdown(rows: items)
+        }
     }
 
     /// The list as shareable plain text, rebuilt whenever the items change.
@@ -54,6 +57,10 @@ final class ListDetailModel {
     /// already scoped to the week being viewed (the board is fetched per week), and
     /// the formatter drops checked rows itself.
     private(set) var shareText: String = ""
+    /// The same list as a Markdown checklist, for pasting into a notes app that
+    /// renders `- [ ]` as a real tick box. Precomputed alongside `shareText` for the
+    /// same reason, and holds exactly the same items (unchecked only).
+    private(set) var shareMarkdown: String = ""
     /// Checked items still shown in place (before they settle into Completed).
     private(set) var settling: Set<String> = []
     private(set) var loading = true
@@ -871,21 +878,41 @@ struct ListDetailView: View {
         }
     }
 
-    /// The same action as a bare icon, for grocery — which has no ⋯ menu (it's
-    /// auto-built, so it has no rename/template/delete actions to put in one).
+    /// The handoff actions behind the share icon, for grocery — which has no ⋯ menu
+    /// (it's auto-built, so it has no rename/template/delete actions to put in one).
+    ///
+    /// A menu rather than a bare ShareLink because there are now two ways to hand the
+    /// list over — the share sheet and the Markdown copy — and grocery is the list
+    /// people actually share, so it can't be the one that's missing an option.
     @ViewBuilder private var shareListIcon: some View {
-        let text = shareText
-        if !text.isEmpty {
-            ShareLink(item: text, subject: Text(model.list.name)) {
+        if !shareText.isEmpty {
+            Menu {
+                shareListButton
+                copyMarkdownButton
+            } label: {
                 Image(systemName: "square.and.arrow.up").font(.system(size: 18, weight: .regular))
             }
         }
     }
 
-    /// Menu contents — same options on iPhone and iPad: Share, Select, Edit list,
-    /// template actions, Delete.
+    /// Copy the list as a Markdown checklist. Sits beside Share rather than replacing
+    /// it: the share sheet hands the list to a person, this hands it to a document.
+    @ViewBuilder private var copyMarkdownButton: some View {
+        if !model.shareMarkdown.isEmpty {
+            Button {
+                UIPasteboard.general.string = model.shareMarkdown
+                showToast("Copied as Markdown")
+            } label: {
+                Label("Copy as Markdown", systemImage: "checklist")
+            }
+        }
+    }
+
+    /// Menu contents — same options on iPhone and iPad: Share, Copy as Markdown,
+    /// Select, Edit list, template actions, Delete.
     @ViewBuilder private var listActionButtons: some View {
         shareListButton
+        copyMarkdownButton
         // Enter multi-select to bulk-edit section / assignee / priority.
         Button { withAnimation { selecting = true; selectedIDs = []; resetBulkStaging() } } label: {
             Label("Select items to edit", systemImage: "checklist")

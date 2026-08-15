@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
-import { formatShareList, type ShareListItem } from './share-list'
+import { formatShareList, formatShareListMarkdown, type ShareListItem } from './share-list'
 import {
   QR_DISPLAY_PX,
   QR_ERROR_CORRECTION,
@@ -26,7 +26,8 @@ export function ShareListModal({ items, onClose }: { items: ShareListItem[]; onC
   const text = formatShareList(items)
   const count = items.filter((i) => !i.checked).length
   const [qr, setQr] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  // Which of the two copy targets was last used, so only that button confirms.
+  const [copied, setCopied] = useState<'text' | 'md' | null>(null)
 
   // Measure before drawing: how many modules would this payload need, and does
   // that leave enough pixels each at the size we display it?
@@ -54,11 +55,14 @@ export function ShareListModal({ items, onClose }: { items: ShareListItem[]; onC
       .catch(() => setQr(null))
   }, [text, scannable])
 
-  async function copy() {
+  // The plain text is what the QR encodes and what most phones want in a message.
+  // Markdown is the same list with `- [ ]` boxes, for pasting into a notes app
+  // that renders them as a real checklist — a second target, never a replacement.
+  async function copy(as: 'text' | 'md') {
     try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      await navigator.clipboard.writeText(as === 'md' ? formatShareListMarkdown(items) : text)
+      setCopied(as)
+      setTimeout(() => setCopied(null), 2000)
     } catch {
       // clipboard unavailable (http / permissions) — the QR still works
     }
@@ -104,8 +108,15 @@ export function ShareListModal({ items, onClose }: { items: ShareListItem[]; onC
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {canShare() && <button type="button" className="btn btn-primary" onClick={share}>Share…</button>}
-                  <button type="button" className={`btn ${canShare() ? 'btn-ghost' : 'btn-primary'}`} onClick={copy}>
-                    {copied ? 'Copied ✓' : 'Copy list'}
+                  <button
+                    type="button"
+                    className={`btn ${canShare() ? 'btn-ghost' : 'btn-primary'}`}
+                    onClick={() => copy('text')}
+                  >
+                    {copied === 'text' ? 'Copied ✓' : 'Copy list'}
+                  </button>
+                  <button type="button" className="btn btn-ghost" onClick={() => copy('md')}>
+                    {copied === 'md' ? 'Copied ✓' : 'Copy as Markdown'}
                   </button>
                 </div>
               </div>

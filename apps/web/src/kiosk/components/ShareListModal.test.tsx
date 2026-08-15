@@ -129,4 +129,41 @@ describe('ShareListModal', () => {
     const block = document.querySelector('.share-list-text') as HTMLElement
     expect(block.textContent).toBe(EXPECTED_TEXT)
   })
+
+  // Markdown is a second copy target, not a replacement: the QR and the plain
+  // "Copy list" handoff keep emitting the exact same bytes they always have.
+  describe('copy as Markdown', () => {
+    const EXPECTED_MD = [
+      '## Produce',
+      '- [ ] Asparagus (2 bunch)',
+      '- [ ] Tomatoes (2)',
+      '',
+      '## Dairy & Chilled',
+      '- [ ] Milk (1 gal)',
+      '',
+      '## Other',
+      '- [ ] Cookies',
+    ].join('\n')
+
+    it('copies the list as a Markdown checklist', async () => {
+      const writeText = stubClipboard()
+      render(<ShareListModal items={items} onClose={() => {}} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Copy as Markdown' }))
+      expect(writeText).toHaveBeenCalledWith(EXPECTED_MD)
+      expect(await screen.findByText('Copied ✓')).toBeInTheDocument()
+    })
+
+    it('leaves the plain-text copy and the QR payload untouched', async () => {
+      const writeText = stubClipboard()
+      render(<ShareListModal items={items} onClose={() => {}} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Copy list' }))
+      expect(writeText).toHaveBeenCalledWith(EXPECTED_TEXT)
+      expect(QRCode.toDataURL).toHaveBeenCalledWith(EXPECTED_TEXT, expect.anything())
+    })
+
+    it('is not offered when there is nothing left to get', () => {
+      render(<ShareListModal items={[items[4]]} onClose={() => {}} />)
+      expect(screen.queryByRole('button', { name: 'Copy as Markdown' })).not.toBeInTheDocument()
+    })
+  })
 })

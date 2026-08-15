@@ -157,3 +157,74 @@ struct ShareListTests {
         #expect(ShareList.item(from: dto).group == "Other")
     }
 }
+
+// The Markdown variant — the same list as a checklist that a notes app renders with
+// real tick boxes. Mirrors `formatShareListMarkdown` in the web's share-list.ts case
+// for case, exactly as the plain-text suite above mirrors `formatShareList`.
+struct ShareListMarkdownTests {
+    private func item(_ name: String, _ quantity: String?, _ group: String,
+                      _ checked: Bool = false,
+                      store: String? = nil, assignee: String? = nil) -> ShareList.Item {
+        ShareList.Item(name: name, quantity: quantity, checked: checked,
+                       group: group, store: store, assignee: assignee)
+    }
+
+    @Test func rendersUncheckedItemsAsOpenTaskBoxesUnderHeaders() {
+        let md = ShareList.formatMarkdown([
+            item("Milk", "1 gal", "Dairy & Chilled"),
+            item("Asparagus", "2 bunch", "Produce"),
+            item("Tomatoes", "2", "Produce"),
+        ])
+        #expect(md == ["## Produce", "- [ ] Asparagus (2 bunch)", "- [ ] Tomatoes (2)", "",
+                       "## Dairy & Chilled", "- [ ] Milk (1 gal)"].joined(separator: "\n"))
+    }
+
+    @Test func omitsTheParensWhenAnItemHasNoQuantity() {
+        #expect(ShareList.formatMarkdown([item("Bread", nil, "Bakery")]) == "## Bakery\n- [ ] Bread")
+    }
+
+    // Same rule as the plain-text share: the export IS the shopping list, and a
+    // checked item is already in the cart. Every emitted box is therefore unticked.
+    @Test func excludesCheckedItemsRatherThanEmittingTickedBoxes() {
+        let md = ShareList.formatMarkdown([
+            item("Asparagus", "2 bunch", "Produce"),
+            item("Butter", nil, "Dairy & Chilled", true),
+        ])
+        #expect(md == "## Produce\n- [ ] Asparagus (2 bunch)")
+        #expect(!md.contains("[x]"))
+    }
+
+    @Test func filesGroupLessItemsUnderOther() {
+        let md = ShareList.formatMarkdown([item("Cookies", nil, ""), item("Asparagus", "2 bunch", "Produce")])
+        #expect(md == ["## Produce", "- [ ] Asparagus (2 bunch)", "", "## Other", "- [ ] Cookies"].joined(separator: "\n"))
+    }
+
+    @Test func appendsUnknownAislesAfterTheKnownBoardOrder() {
+        let md = ShareList.formatMarkdown([item("Charcoal", nil, "Seasonal"), item("Asparagus", nil, "Produce")])
+        #expect(md == ["## Produce", "- [ ] Asparagus", "", "## Seasonal", "- [ ] Charcoal"].joined(separator: "\n"))
+    }
+
+    @Test func returnsAnEmptyStringWhenEverythingIsChecked() {
+        #expect(ShareList.formatMarkdown([item("Butter", nil, "Dairy & Chilled", true)]).isEmpty)
+    }
+
+    @Test func omitsHeadersEntirelyWhenNothingIsGrouped() {
+        let md = ShareList.formatMarkdown([
+            item("Wood screws", "1 box", ""),
+            item("Sandpaper", nil, ""),
+            item("Wood glue", nil, ""),
+        ])
+        #expect(md == ["- [ ] Wood screws (1 box)", "- [ ] Sandpaper", "- [ ] Wood glue"].joined(separator: "\n"))
+    }
+
+    @Test func keepsTheHeaderWhenTheSingleGroupIsARealSection() {
+        #expect(ShareList.formatMarkdown([item("Wood screws", nil, "Hardware")]) == "## Hardware\n- [ ] Wood screws")
+    }
+
+    @Test func carriesStoreAndAssigneeNotesThroughUnchanged() {
+        let md = ShareList.formatMarkdown([
+            item("Whole milk", "1 gal", "Dairy & Chilled", store: "Costco", assignee: "Kelly"),
+        ])
+        #expect(md == "## Dairy & Chilled\n- [ ] Whole milk (1 gal) [Costco · Kelly]")
+    }
+}
