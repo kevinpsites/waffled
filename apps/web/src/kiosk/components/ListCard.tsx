@@ -12,7 +12,7 @@ import { useLists, useListDetail, groceryApi, type ListItem } from '../../lib/ap
 export const TODAY_LIST_PICK_KEY = 'waffled.todayListPick'
 
 export function ListCard() {
-  const { lists, error: listsError } = useLists()
+  const { lists, loading: listsLoading, error: listsError } = useLists()
   const [pick, setPick] = useState<string | null>(
     () => (typeof localStorage !== 'undefined' ? localStorage.getItem(TODAY_LIST_PICK_KEY) : null)
   )
@@ -91,14 +91,17 @@ export function ListCard() {
         )}
       </div>
 
-      {/* "No lists yet" is a claim about the household, so only make it when the
-          fetch actually succeeded — otherwise a dropped connection reads as an
-          empty house. Matches the GroceryCard sitting next to it. */}
+      {/* "No lists yet" is a claim about the household, so only make it once the
+          fetch has actually come back empty — a dropped connection reads as an empty
+          house, and so does an in-flight request on a slow link. Matches the
+          GroceryCard sitting next to it. */}
       {pickable.length === 0 && (
         <div className="tiny muted" style={{ paddingBottom: 6 }}>
           {listsError
             ? "Couldn't load your lists — reload or sign in again."
-            : "No lists yet — make one in Lists and it'll show up here."}
+            : listsLoading
+              ? 'Loading…'
+              : "No lists yet — make one in Lists and it'll show up here."}
         </div>
       )}
       {active && loading && <div className="tiny muted">Loading…</div>}

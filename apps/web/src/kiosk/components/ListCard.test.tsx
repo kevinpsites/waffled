@@ -6,19 +6,20 @@ import type { ListItem, ListSummary } from '../../lib/api'
 // itself — the same shape as the Goals card's pinned goal, and stored per device
 // for the same reason (it's a viewing preference, not household config).
 // Hoisted: vi.mock's factory runs before module-level consts are initialized.
-const { listsRef, itemsRef, setItemChecked, detailFor, listsError } = vi.hoisted(() => ({
+const { listsRef, itemsRef, setItemChecked, detailFor, listsError, listsLoading } = vi.hoisted(() => ({
   listsRef: { current: [] as ListSummary[] },
   itemsRef: { current: [] as ListItem[] },
   setItemChecked: vi.fn(async () => {}),
   detailFor: { current: null as string | null },
   listsError: { current: false },
+  listsLoading: { current: false },
 }))
 
 vi.mock('../../lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/api')>()
   return {
     ...actual,
-    useLists: () => ({ lists: listsRef.current, loading: false, error: listsError.current, refetch: () => {} }),
+    useLists: () => ({ lists: listsRef.current, loading: listsLoading.current, error: listsError.current, refetch: () => {} }),
     useListDetail: (id: string | null) => {
       detailFor.current = id
       return { items: itemsRef.current, loading: false, error: false, setItems: () => {}, refetch: () => {} }
@@ -39,6 +40,7 @@ beforeEach(() => {
   setItemChecked.mockClear()
   detailFor.current = null
   listsError.current = false
+  listsLoading.current = false
   listsRef.current = [list('l1', 'Hardware store'), list('l2', 'Packing')]
   itemsRef.current = [item('i1', 'Wood screws'), item('i2', 'Sandpaper'), item('i3', 'Wood glue', true)]
 })
@@ -116,5 +118,16 @@ describe('ListCard (Today)', () => {
     render(<ListCard />)
     expect(screen.getByText(/couldn't load/i)).toBeInTheDocument()
     expect(screen.queryByText(/no lists yet/i)).not.toBeInTheDocument()
+  })
+
+  // Same reasoning as the error case, one step earlier: an in-flight fetch also has
+  // no lists to show yet, and announcing an empty house for the length of a slow
+  // request is a false claim the card walks back a moment later.
+  it('says nothing about an empty household while the lists are still loading', () => {
+    listsRef.current = []
+    listsLoading.current = true
+    render(<ListCard />)
+    expect(screen.queryByText(/no lists yet/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/couldn't load/i)).not.toBeInTheDocument()
   })
 })
