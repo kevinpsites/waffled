@@ -131,7 +131,11 @@ struct RecipesLibraryView: View {
             content
         }
         .background(WF.canvas)
-        .task { await loadRecent() }
+        // `.onAppear`, not `.task`: this has to re-run when the library is returned
+        // TO — popping back from a recipe is what makes that recipe the newest entry
+        // in the rail. `.onAppear` fires on every appearance by contract; `.task`'s
+        // behaviour on a NavigationStack pop is an implementation detail to rely on.
+        .onAppear { Task { await loadRecent() } }
         .onChange(of: recentScope) { _, _ in Task { await loadRecent() } }
         .refreshable { await model.load(); await loadRecent() }
         .fullScreenCover(isPresented: $creating) {
@@ -142,8 +146,10 @@ struct RecipesLibraryView: View {
                 // A plate built here belongs in the library the moment it's saved.
                 .onDisappear { Task { await model.load() } }
         }
-        // Coming back from a recipe reorders the rail too — the visit just recorded is
-        // the newest one.
+        // A recipe or meal written anywhere else (another device, the editor, the
+        // planner) reloads the library — and the rail with it, since a rename or a
+        // delete has to be reflected there too. Recording a VIEW doesn't move this
+        // rev; returning to the library is what refreshes the rail, above.
         .onChange(of: sync.mealsRev) { _, _ in Task { await model.load(); await loadRecent() } }
         // In pick mode (the planner's "Choose a recipe" sheet), focus search on open.
         .task {
