@@ -26,6 +26,19 @@ enum PantryAllergen {
     static let keys = ["gluten", "milk", "soy", "egg", "peanut", "tree_nut", "fish", "shellfish", "sesame"]
 
     static func label(_ key: String) -> String { labels[key] ?? key.capitalized }
+
+    /// Which of these allergens the household flags (its avoid-list ∪ every member's).
+    /// Takes a plain list so it serves both an on-hand item and a just-scanned product.
+    static func flagged(_ allergens: [String], avoid: Set<String>) -> [String] {
+        allergens.filter { avoid.contains($0) }
+    }
+
+    /// Who those allergens affect, by name, each listed once.
+    static func affected(_ allergens: [String], people: [String: [String]]) -> [String] {
+        var names: Set<String> = []
+        for a in allergens { for p in people[a] ?? [] { names.insert(p) } }
+        return names.sorted()
+    }
     static func badge(_ key: String) -> Badge {
         badges[key] ?? Badge(short: String(key.prefix(2)).uppercased(), bg: Color(hex: 0x8A8A8A), fg: .white)
     }
