@@ -76,8 +76,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   engine is doing — starting up, live, stalled, or failed with the actual error — plus
   buttons to restart sync or reset the local copy yourself.
 
+- **Make a new pantry section while you're putting the shopping away.** The "Where" picker
+  in both the add-by-hand and barcode-scan sheets now ends with a **＋ New** option: name
+  the place ("Garage shelf", "Chest freezer") and the item files there straight away. The
+  new section joins the household's pantry list, so it shows up in the sidebar and on
+  everyone else's devices too — no trip to Settings mid-unpack. Web, iPhone and iPad.
+- **Half a bag is now a real amount when you scan.** The scan sheet's amount is typeable
+  instead of a whole-numbers-only stepper, with one-tap **¼ ½ ¾** shortcuts, so an opened
+  bag of flour or a part-used block of cheese goes in as what it actually is. Amounts add
+  up correctly across re-scans (½ + ¼ = ¾) and no longer come back as a wall of decimal
+  digits.
+- **A scan now tells you who in the house can't eat it.** When a barcode matches a product
+  database, the confirm sheet on iPhone/iPad shows the full allergen list with anything
+  your household avoids ringed in red, a "may contain" row for traces, and a plain warning
+  naming the people affected — "Contains Dairy — affects Elaine." (The web scanner already
+  did this.)
+
 ### Changed
 
+- **Quick "log time" buttons now start at 20 minutes.** The goal time chips are **20m ·
+  30m · 1 hr · 1.5 hr** — the 2-hour button is gone, since a block that long is easier to
+  type than a twenty-minute session was to tap out. Web, iPhone and iPad.
 - **Calendar events are now solid blocks of color.** Event chips across the month, week,
   day and agenda views fill with the person's color instead of the old pale tint, which
   reads far better from across the kitchen. **This changes how every existing household's
@@ -91,6 +110,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so the web, the wall tablet and everyone's phone all follow it.
 
 ### Fixed
+
+- **Confirming a calendar event's progress now counts it on the day it happened.** When
+  you answer "did this happen?" for an event linked to a goal, the entry landed on
+  **today** — so catching up on Thursday put Monday's run on Thursday, breaking streaks
+  and putting the wrong day on the goal's calendar. It's now dated to the event itself,
+  for both amount-based goals and checklist steps.
 
 - **Fractions in a recipe's quantity column no longer disappear.** Typing an amount the
   way recipes are actually written — `1/2`, `1 1/2`, `½` — saved the ingredient with **no

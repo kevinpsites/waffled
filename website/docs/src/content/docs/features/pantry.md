@@ -10,9 +10,11 @@ Pantry tracks what's actually on your shelves — quantities and locations, barc
 ## Highlights
 
 - 📦 **Items with quantities + locations** — default Freezer / Fridge / Pantry (a household-customizable list with per-location emoji icons); a quantity stepper plus tap-to-type, and stepping below one marks an item **used up**.
+- ➕ **New sections without leaving the sheet** — the "Where" picker in both the add-by-hand and scan sheets ends with **＋ New**: name it ("Garage shelf") and the item files there. It joins the household's location list, so it appears in the sidebar and on everyone's devices.
+- ½ **Part-of-a-package amounts** — amounts take fractions (`0.5`, `.25`), with one-tap **¼ ½ ¾** shortcuts on the scan sheet, so half a bag of flour goes in as half a bag. Re-scanning the same barcode adds the fractions up.
 - 🗂️ **Redesigned list** — a location sidebar with counts, search, sort (Expiring / A–Z / Recent / Oldest), a card grid, and an item detail sheet; a Today card surfaces use-soon and running-low items.
 - 🔦 **Open Food Facts integration** — barcode lookup (cached), nutrition and allergen snapshots, "may contain" traces, dietary flags (Vegan / Vegetarian / Palm-oil-free), and replace-photo.
-- ⚠️ **Allergen warnings** — household avoid-list ∪ per-person allergens become colored letter badges with a persistent key, a red ring on avoided items, and a "⚠ Affects {people}" note.
+- ⚠️ **Allergen warnings** — household avoid-list ∪ per-person allergens become colored letter badges with a persistent key, a red ring on avoided items, and a "⚠ Affects {people}" note. The **scan confirm sheet** shows the same warning at the moment you scan, before the item is ever put away.
 - 📉 **Running-low threshold** — a household default with a per-item override drives a **Low** badge.
 - ⏳ **Item age** — an added/bought date distinct from expiry powers a "Been a while" group, an "Oldest" sort, and an age chip.
 - 📷 **Barcode camera scanner** — iOS uses native AVFoundation (EAN / UPC / Code128, with a "Type instead" fallback); the web uses zxing and needs a secure context (see [Reverse proxy & TLS](/install/reverse-proxy/)).
