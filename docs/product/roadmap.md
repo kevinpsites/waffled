@@ -395,7 +395,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Used some / Used it up / Didn't use; staples skipped) that decrements or uses-up on-hand
   stock; leftover items get an "Ate it" action; cooking also flips today's planned slot to
   cooked. We deliberately confirm rather than subtract exact amounts (units don't reconcile
-  cleanly). **Later:** true unit/quantity reconciliation; vegetable-based "mains" + recipe filter.
+  cleanly). Putting the shopping away also got out of the way of itself: the "Where" picker
+  creates a **section on the fly** (`POST /api/pantry/locations`), scanned amounts take
+  **fractions** (½ a bag, with ¼/½/¾ shortcuts), and the iOS scan sheet now shows the same
+  **allergen warning** the web one does — badges, "may contain" traces, and who it affects.
+  **Later:** true unit/quantity reconciliation; vegetable-based "mains" + recipe filter.
 
 - **Assign & show a cook per *slot* (web + iPad + iPhone).** Half of this shipped with the
   Meal Builder: a plate assigns **a cook per dish** (`meal_recipes.cook_person_id`) with a
