@@ -57,7 +57,14 @@ struct PantryView: View {
         .background(WF.canvas)
         .navigationTitle("Pantry").navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openItemId) { id in PantryItemDetailView(itemId: id, model: model) }
-        .task { await model.load() }
+        .task {
+            await model.load()
+            // Headless verification (see DemoHooks.pantryItem): open an item's detail
+            // without a tap. No-op unless WAFFLED_PANTRY_ITEM is set.
+            if let want = DemoHooks.pantryItem, openItemId == nil {
+                openItemId = want == "first" ? model.items.first?.id : want
+            }
+        }
         .refreshable { await model.load() }
         .fullScreenCover(isPresented: $showScan) {
             PantryScanView(locations: model.locations, avoid: model.avoidSet,
