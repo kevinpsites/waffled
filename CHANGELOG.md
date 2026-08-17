@@ -111,6 +111,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Edit button on a pantry item is reachable again on iPhone.** The item's detail
+  screen let its last row slide under the bottom tab bar, so no amount of scrolling
+  brought **Edit** into reach and an item could only be changed from the web. The screen
+  now leaves room for the bar, the way every other screen in the app does.
+
 - **Confirming a calendar event's progress now counts it on the day it happened.** When
   you answer "did this happen?" for an event linked to a goal, the entry landed on
   **today** — so catching up on Thursday put Monday's run on Thursday, breaking streaks
