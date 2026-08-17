@@ -30,6 +30,17 @@ function call(method: string, path: string, body?: unknown, token?: string) {
 }
 const json = (r: RunResult) => JSON.parse(r.body)
 
+// `hour12: false` may use ICU's h24 cycle, where the midnight hour is rendered
+// as "24" instead of "00". Keep real-clock fixtures in the 0-1439 minute range
+// regardless of the runner's locale/ICU build.
+function minuteOfDay(parts: Intl.DateTimeFormatPart[]): number {
+  const hourPart = parts.find((p) => p.type === 'hour')?.value
+  const minutePart = parts.find((p) => p.type === 'minute')?.value
+  if (hourPart == null || minutePart == null) throw new Error('Formatted time is missing hour or minute parts')
+  const hour = hourPart === '24' ? 0 : Number(hourPart)
+  return hour * 60 + Number(minutePart)
+}
+
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
   const url = pg.getConnectionUri()
@@ -346,26 +357,23 @@ describe('waffled-bites device pairing + parent control panel', () => {
   // Exact boundary behavior (midnight-crossing, day-attribution) is covered by
   // wake-light.unit.test.ts's injected-clock tests; this just proves the real
   // HTTP wiring (household tz lookup, settings.schedules parsing) actually
-  // reaches wakeLightView. wakeMin is anchored to "shortly after right now"
-  // (Chicago-local) rather than a fixed 23:59 — a fixed near-midnight wake
-  // time collides with its own WAKE_GRACE_MIN window once real wall-clock
-  // time crosses midnight, which is exactly what made this test flaky.
+  // reaches wakeLightView. wakeMin is anchored two hours after right now
+  // (Chicago-local), with midnight rollover. Two hours keeps the fixture beyond
+  // the one-hour wake grace period, so neither 23:xx nor 00:xx can accidentally
+  // match the previous day's green-light window.
+  it('normalizes ICU h24 midnight parts for real-clock schedule fixtures', () => {
+    expect(minuteOfDay([
+      { type: 'hour', value: '24' },
+      { type: 'literal', value: ':' },
+      { type: 'minute', value: '42' },
+    ])).toBe(42)
+  })
+
   it("computes the wake-light state from the household's real schedule + timezone on both the device poll and the parent view", async () => {
     const chicagoNow = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hour12: false,
+      timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
     }).formatToParts(new Date())
-    // Some ICU builds render midnight as "24" with hour12:false — the same
-    // quirk localParts() normalizes in waffledBites.ts. Without this the test
-    // reads hour 24 during the midnight hour, asks for a wake time of
-    // 24*60+m+10, and lands on a completely different day than it meant to.
-    const rawHour = chicagoNow.find((p) => p.type === 'hour')!.value
-    const h = rawHour === '24' ? 0 : Number(rawHour)
-    const m = Number(chicagoNow.find((p) => p.type === 'minute')!.value)
-    // Wraps rather than clamps. Clamping to 1439 meant that at 23:59 local the
-    // requested wake time WAS "right now", so the device was inside its own
-    // wake grace window and reported 'wake' instead of 'sleep'. Wrapping past
-    // midnight is handled correctly by wakeLightView's -1/0/+1 day candidates.
-    const wakeMin = (h * 60 + m + 10) % 1440
+    const wakeMin = (minuteOfDay(chicagoNow) + 2 * 60) % (24 * 60)
 
     await call('PATCH', `/api/waffled-bites/${deviceId}/settings`, {
       schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], wakeMin, leadMin: 0, bedtimeMin: 0 }],
