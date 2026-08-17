@@ -3,6 +3,7 @@
 // never touch Postgres.
 import { Pool, type QueryResult, type QueryResultRow } from 'pg'
 import { traceDb } from './telemetry'
+import { log } from './logger'
 
 let pool: Pool | null = null
 
@@ -11,6 +12,16 @@ export function getPool(): Pool {
     const connectionString = process.env.DATABASE_URL
     if (!connectionString) throw new Error('DATABASE_URL is not set')
     pool = new Pool({ connectionString })
+    // A connection can die while it is sitting IDLE in the pool — Postgres restarts,
+    // an operator runs pg_terminate_backend, a proxy reaps the socket. pg-pool reports
+    // that by emitting 'error' on the Pool, and Pool is an EventEmitter: with no listener
+    // the emit THROWS, from inside a socket callback, which is an uncaught exception that
+    // takes the whole API process down. There is nothing to recover here — pg-pool has
+    // already discarded the dead client, so the next query dials a fresh one — but the
+    // failure must be logged rather than fatal.
+    pool.on('error', (err) => {
+      log.error('idle postgres connection died', { err })
+    })
   }
   return pool
 }

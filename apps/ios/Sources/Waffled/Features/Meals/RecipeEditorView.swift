@@ -418,6 +418,9 @@ struct RecipeEditorView: View {
         }
     }
 
+    /// True when there's an image to remove — an uploaded preview or a link/blob URL.
+    private var hasPhoto: Bool { photoPreview != nil || !imageUrl.trimmingCharacters(in: .whitespaces).isEmpty }
+
     private var photoRow: some View {
         field("PHOTO (OPTIONAL)") {
             HStack(spacing: 10) {
@@ -437,6 +440,23 @@ struct RecipeEditorView: View {
                         .padding(.horizontal, 12).padding(.vertical, 10).background(WF.panel).clipShape(Capsule())
                 }
                 .disabled(uploadingPhoto)
+                // Remove the current image (clears the upload, the link, AND the stored
+                // blob — see buildBody). Only shown when there's something to remove.
+                if hasPhoto {
+                    Button {
+                        photoPreview = nil
+                        storageKey = nil
+                        contentType = nil
+                        imageUrl = ""
+                        photoItem = nil
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 14, weight: .bold)).foregroundStyle(WF.danger)
+                            .frame(width: 40, height: 40).background(WF.dangerT).clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove photo")
+                }
             }
         }
     }
@@ -800,8 +820,16 @@ struct RecipeEditorView: View {
         if let storageKey {
             body["storageKey"] = .string(storageKey)
             if let contentType { body["contentType"] = .string(contentType) }
+        } else if imageUrl.trimmingCharacters(in: .whitespaces).isEmpty {
+            // No uploaded blob and no link → clear the image. Sending storageKey:null
+            // (not just imageUrl:null) is what makes the server drop a previously
+            // uploaded blob — otherwise the stored photo keeps winning and "removing"
+            // the image does nothing.
+            body["imageUrl"] = .null
+            body["storageKey"] = .null
+            body["contentType"] = .null
         } else {
-            body["imageUrl"] = str(imageUrl)
+            body["imageUrl"] = .string(imageUrl.trimmingCharacters(in: .whitespaces))
         }
         return body
     }

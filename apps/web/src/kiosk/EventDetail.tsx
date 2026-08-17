@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { EventModal } from './components/EventModal'
 import { useTopbarFull } from './topbar-slot'
 import { api, eventsApi, useEvent, useEventsRange, useHousehold, useGoals, mealsApi, invalidateGetCache, type AgendaEvent } from '../lib/api'
+import { useEventColor } from '../lib/event-color'
 import { deleteEventLocal, tombstoneEvent } from '../lib/powersync/events-local'
 import { suggestGoalForEvent } from '../lib/goal-match'
 import { describeRrule } from './components/recurrence'
@@ -29,6 +30,7 @@ function gapLabel(rowStart: string, thisStart: string): string {
 // The same-day timeline ("Where it falls today") with this event highlighted.
 function DayTimeline({ event, tz }: { event: AgendaEvent; tz: string }) {
   const navigate = useNavigate()
+  const colorOf = useEventColor('#A6A29B')
   const day = localDate(event.startsAt, tz)
   const { events } = useEventsRange(day, day)
   const sorted = [...events].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
@@ -47,7 +49,7 @@ function DayTimeline({ event, tz }: { event: AgendaEvent; tz: string }) {
       <div className="card-h" style={{ marginBottom: 12 }}>Where it falls today</div>
       {sorted.map((e) => {
         const me = e.id === event.id
-        const color = e.personColor ?? '#A6A29B'
+        const color = colorOf(e)
         return (
           <div
             key={e.id}
@@ -79,6 +81,7 @@ export function EventDetail() {
   const navigate = useNavigate()
   const { event, loading, notFound, refetch } = useEvent(id)
   const { household } = useHousehold()
+  const colorOf = useEventColor()
   const { goals } = useGoals()
   const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   const [editing, setEditing] = useState(false)
@@ -104,6 +107,8 @@ export function EventDetail() {
 
   // Resolve the recipe for a planned-meal event so we can offer "View recipe".
   const isMeal = event?.origin === 'meal_plan'
+  // Imported from a subscribed ICS feed: read-only here, changed at the source.
+  const isFeedEvent = event?.origin === 'ics'
   const [recipeId, setRecipeId] = useState<string | null>(null)
   useEffect(() => {
     if (!isMeal || !event?.originRefId) return
@@ -143,19 +148,26 @@ export function EventDetail() {
           ‹ Calendar
         </button>
         <div className="ed-actions">
-          <button type="button" className="pill" onClick={del}>
-            🗑 {confirmDelete ? 'Confirm' : event?.rrule && occurrenceOn ? 'Delete this' : 'Delete'}
-          </button>
-          <button type="button" className="pill" onClick={() => setEditing(true)}>
-            ✎ Edit
-          </button>
+          {/* A feed event mirrors someone else's calendar — the api refuses to
+              patch/delete it (409), and the next poll would restamp any change
+              anyway. Offer only what actually works: a local reminder. */}
+          {!isFeedEvent && (
+            <>
+              <button type="button" className="pill" onClick={del}>
+                🗑 {confirmDelete ? 'Confirm' : event?.rrule && occurrenceOn ? 'Delete this' : 'Delete'}
+              </button>
+              <button type="button" className="pill" onClick={() => setEditing(true)}>
+                ✎ Edit
+              </button>
+            </>
+          )}
           <button type="button" className="btn btn-primary" onClick={() => setRemindShown(true)}>
             ⏰ Remind me
           </button>
         </div>
       </div>
     ),
-    [confirmDelete, deleting, id, event?.rrule, occurrenceOn]
+    [confirmDelete, deleting, id, event?.rrule, occurrenceOn, isFeedEvent]
   )
 
   if (loading && !event) return <div className="muted" style={{ padding: 40 }}>Loading…</div>
@@ -175,12 +187,16 @@ export function EventDetail() {
         }
       : event
 
-  const color = view.personColor ?? '#6B6B70'
+  const color = colorOf(view)
   const start = new Date(view.startsAt)
   const people = eventPeople(view)
-  const calStatus =
-    view.calendarName
-      ? `${view.calendarName}${view.syncState === 'synced' ? ' · synced from Google' : ' · pending sync'}`
+  // Where this event came from. Deliberately provider-neutral: a connected
+  // calendar may be Google OR Outlook, and a feed event isn't "synced" at all —
+  // it's a read-only mirror we re-read on a schedule.
+  const calStatus = isFeedEvent
+    ? `${view.calendarName ?? 'Calendar feed'} · from a subscribed calendar feed (read-only)`
+    : view.calendarName
+      ? `${view.calendarName}${view.syncState === 'synced' ? ' · synced' : ' · pending sync'}`
       : 'Waffled only'
 
   // Smart suggestion for an untagged, non-meal, single event that looks like a

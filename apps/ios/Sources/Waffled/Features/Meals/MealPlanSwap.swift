@@ -119,10 +119,15 @@ enum MealPlanSwap {
 }
 
 private extension WaffledAPI.WeekEntryDTO {
-    /// A copy of this entry relocated to another slot — recipe, free-text title, and
-    /// cook travel with it (mirrors what the server keeps on an upsert).
+    /// A copy of this entry relocated to another slot — recipe, **plate**, free-text
+    /// title, and cook all travel with it (mirrors what the server keeps on an upsert).
+    ///
+    /// The plate has to be carried explicitly: a slot backed by a Meal Builder plate has
+    /// no `recipeId`, so rebuilding the entry from the recipe fields alone drops the
+    /// dishes and leaves the plate's name behind as dead text — a four-dish dinner
+    /// silently becomes a bare title the moment it is dragged.
     func moved(to date: String, slot: String) -> WaffledAPI.WeekEntryDTO {
         .init(id: id, date: date, mealType: slot, title: title,
-              recipeId: recipeId, recipe: recipe, cook: cook)
+              recipeId: recipeId, mealId: mealId, meal: meal, recipe: recipe, cook: cook)
     }
 }

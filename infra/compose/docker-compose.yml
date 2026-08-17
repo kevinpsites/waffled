@@ -125,8 +125,13 @@ services:
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       MEDIA_DIR: ${MEDIA_DIR:-/data/media}
       MEDIA_BASE_URL: ${MEDIA_BASE_URL:-/media}
-      # Returned by /api/powersync/token so clients know where to connect.
-      POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}
+      # Returned by /api/powersync/token so clients know where to connect. Leave it
+      # EMPTY on a LAN: the api derives the URL from the address each device used, so
+      # the kiosk tablet and phones get one they can actually reach (a fixed localhost
+      # value only ever works on the server itself). Set it when PowerSync has its own
+      # public hostname/TLS. POWERSYNC_PORT tells the api which published port to use.
+      POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-}
+      POWERSYNC_PORT: ${POWERSYNC_PORT:-8090}
       # Stable RS256 signing key for PowerSync tokens (base64 of a PEM, or raw PEM).
       POWERSYNC_JWT_PRIVATE_KEY: ${POWERSYNC_JWT_PRIVATE_KEY:?Run ./waffled up to generate POWERSYNC_JWT_PRIVATE_KEY}
       # --- AI capture bar (6.6): set any subset; pick the active one in Settings.
@@ -148,6 +153,11 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI:-}
       GOOGLE_CALENDAR_SCOPES: ${GOOGLE_CALENDAR_SCOPES:-}
+      # --- Outlook / Microsoft 365 calendar OAuth. Same engine as Google, via Graph.
+      MS_CLIENT_ID: ${MS_CLIENT_ID:-}
+      MS_CLIENT_SECRET: ${MS_CLIENT_SECRET:-}
+      MS_CALENDAR_REDIRECT_URI: ${MS_CALENDAR_REDIRECT_URI:-}
+      MS_CALENDAR_SCOPES: ${MS_CALENDAR_SCOPES:-}
       # --- OpenTelemetry (optional, OFF by default). Set OTEL_EXPORTER_OTLP_ENDPOINT
       # to export traces+metrics to any OTLP backend. `./waffled observability up` runs a
       # local Grafana stack (the `observability` profile below) and sets this for you.

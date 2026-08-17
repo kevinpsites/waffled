@@ -20,7 +20,24 @@ final class SyncManager {
     enum Status: String { case idle, connecting, connected, offline }
 
     private(set) var status: Status = .idle
-    private(set) var members: [SyncedMember] = []
+    private(set) var members: [SyncedMember] = [] { didSet { rebuildEventPalette() } }
+
+    // MARK: event coloring (settings.display)
+
+    /// How the calendar paints event chips, and the whole-family color — read from
+    /// `households.settings.display` alongside the module flags. Views read
+    /// `eventPalette`, which is rebuilt whenever the members or either setting change
+    /// rather than recomputed per render (CLAUDE.md's "precompute in the model" rule —
+    /// the calendar grids ask for a color once per event per frame).
+    private(set) var eventStyle: EventStyle = .solid { didSet { rebuildEventPalette() } }
+    private(set) var familyColorHex = EventPalette.defaultFamilyHex { didSet { rebuildEventPalette() } }
+    private(set) var eventPalette = EventPalette()
+
+    private func rebuildEventPalette() {
+        eventPalette = EventPalette(memberIds: Set(members.map(\.id)),
+                                    familyHex: familyColorHex, style: eventStyle)
+    }
+
     /// Every synced event (PowerSync streams the whole household, incl. personal ones).
     /// The visible slice + day index are rebuilt in `didSet`, NOT computed per read —
     /// the calendar/Today views read them several times per render (see CLAUDE.md's
@@ -109,6 +126,12 @@ final class SyncManager {
         if let m = try? await api.householdModules() {
             moduleFlags = m.modules
             rewardsSubEnabled = m.rewards
+            // Same `/api/household` read carries settings.display, so the calendar's
+            // event style + family color refresh with the module flags — including right
+            // after a Settings save, which is what restyles open surfaces live (the web
+            // does this via emitHouseholdChanged()).
+            eventStyle = EventStyle.resolve(m.eventStyle)
+            familyColorHex = EventPalette.normalizedFamilyHex(m.familyColorHex)
             modulesRev += 1
         }
     }
@@ -552,9 +575,13 @@ final class SyncManager {
 
     /// Plan (upsert) a meal slot from the weekly planner; bumps `mealsRev` so the
     /// Today card and any open week reload.
-    func setMealPlan(date: String, mealType: String, recipeId: String?, title: String?, cookPersonId: String? = nil) async -> Bool {
+    /// `mealId` puts a Meal Builder plate in the slot rather than a single recipe —
+    /// what a planner drag writes when the thing being dragged is a plate.
+    func setMealPlan(date: String, mealType: String, recipeId: String?, title: String?,
+                     cookPersonId: String? = nil, mealId: String? = nil) async -> Bool {
         let ok = await restCommit {
-            try await api.planMeal(date: date, mealType: mealType, recipeId: recipeId, title: title, cookPersonId: cookPersonId)
+            try await api.planMeal(date: date, mealType: mealType, recipeId: recipeId, title: title,
+                                   cookPersonId: cookPersonId, mealId: mealId)
         }
         if ok { mealsRev += 1 }
         return ok
@@ -862,7 +889,7 @@ final class SyncManager {
                     sql: """
                     SELECT e.id AS id, e.id AS series_id, NULL AS occurrence_start,
                            e.title, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.location, e.person_id,
-                           e.visibility, e.owner_person_id,
+                           e.visibility, e.owner_person_id, e.origin,
                            p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
                            (SELECT group_concat(ep.person_id) FROM event_participants ep
                              WHERE ep.event_id = e.id) AS participant_ids
@@ -874,6 +901,8 @@ final class SyncManager {
                            coalesce(o.title, m.title) AS title, o.starts_at, o.ends_at, o.all_day, m.is_countdown,
                            coalesce(o.location, m.location) AS location, o.person_id,
                            o.visibility, o.owner_person_id,
+                           -- an occurrence is as read-only as the series it belongs to
+                           m.origin AS origin,
                            p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
                            (SELECT group_concat(ep.person_id) FROM event_participants ep
                              WHERE ep.event_id = m.id) AS participant_ids
@@ -896,6 +925,7 @@ final class SyncManager {
                             personId: try cursor.getStringOptional(name: "person_id"),
                             colorHex: try cursor.getStringOptional(name: "person_color"),
                             emoji: try cursor.getStringOptional(name: "person_emoji"),
+                            origin: try cursor.getStringOptional(name: "origin"),
                             endsAt: EventTime.parse(try cursor.getStringOptional(name: "ends_at")),
                             isCountdown: (try cursor.getIntOptional(name: "is_countdown")) == 1,
                             location: try cursor.getStringOptional(name: "location"),

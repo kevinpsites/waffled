@@ -3,7 +3,7 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { tenantRoute } from '../../platform/route-guards'
 import { encryptionAvailable } from '../../platform/crypto'
-import { googleConfigured } from '../../integrations/google'
+import { anyProviderConfigured } from './providers/provider'
 import { pushPending, syncHousehold } from './calendar-sync.service'
 
 type Api = ReturnType<typeof createAPI>
@@ -14,10 +14,10 @@ export function registerCalendarSyncRoutes(api: Api): void {
   // Pull connected calendars now. Any household member can refresh; the work is
   // read-from-Google + mirror, gated only on the connection being configured.
   api.post('/api/calendar/sync', tenantRoute(async (tenant, req: Request, res: Response) => {
-    if (!googleConfigured() || !encryptionAvailable()) {
+    if (!anyProviderConfigured() || !encryptionAvailable()) {
       return res.status(501).json({
         error: 'NotConfigured',
-        message: 'Google OAuth / token encryption is not configured on the server',
+        message: 'Calendar OAuth / token encryption is not configured on the server',
       })
     }
     const calendarId =

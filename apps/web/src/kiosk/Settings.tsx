@@ -1,9 +1,14 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
+import { useSyncHealth, type SyncHealthStatus } from '../lib/powersync/sync-health'
+import { restartPowerSyncHard } from '../lib/powersync/db'
+import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { useThemePref } from '../lib/theme'
+import { eventStyle } from '../lib/display'
+import { familyColorHex } from '../lib/event-color'
 import { PersonModal } from './components/PersonModal'
+import { ColorPicker, COLOR_SWATCHES } from './components/ColorPicker'
 import { SettingCard } from './components/SettingCard'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
@@ -464,6 +469,67 @@ function NewApiKeyModal({ catalog, onClose, onCreated }: {
   )
 }
 
+// Per-browser PowerSync health inside System Health. Unlike every other card
+// here, this one is about THIS device rather than the server. It distinguishes an
+// empty-but-stalled local replica from "genuinely no data", names a boot failure
+// instead of letting it read as "off", and offers the manual rungs of the
+// watchdog's restart ladder.
+const SYNC_STATE_LABEL: Record<SyncHealthStatus, string> = {
+  off: 'off — reading over the network',
+  starting: 'starting…',
+  failed: 'failed to start — reading over the network',
+  'no-auth': 'waiting for sign-in',
+  offline: 'offline',
+  connecting: 'connecting…',
+  ok: 'live',
+  stalled: 'stalled — auto-restarting',
+}
+
+function BrowserSyncCard() {
+  const health = useSyncHealth()
+  const [restarting, setRestarting] = useState(false)
+  const badge: HealthStatus =
+    health.status === 'ok' ? 'ok' : health.status === 'stalled' || health.status === 'failed' ? 'down' : 'degraded'
+  function run(restart: () => Promise<void>) {
+    setRestarting(true)
+    void restart().finally(() => setRestarting(false))
+  }
+  return (
+    <SettingCard className="health-card">
+      <div className="health-card-h">
+        <span className={`health-badge health-${badge}`}>{HEALTH_ICON[badge]}</span>
+        <CardHeader title="Live Sync (this browser)" />
+      </div>
+      <div className="health-fields">
+        <span className="health-chip">state: {SYNC_STATE_LABEL[health.status]}</span>
+        {health.lastSyncedAt != null && (
+          <span className="health-chip">last synced: {new Date(health.lastSyncedAt).toLocaleString()}</span>
+        )}
+        {health.restartCount > 0 && <span className="health-chip">watchdog restarts: {health.restartCount}</span>}
+        {health.status === 'failed' && health.lastError && <span className="health-chip">error: {health.lastError}</span>}
+      </div>
+      <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button className="btn btn-ghost" disabled={restarting} onClick={() => run(() => restartPowerSyncHard())}>
+          ⟳ Restart sync
+        </button>
+        {/* The watchdog wipes at most once per stall and never on the failed path
+            (a boot crash is no evidence the replica is bad), so a genuinely corrupt
+            local copy needs this button reachable from both states. */}
+        {(health.status === 'stalled' || health.status === 'failed') && (
+          <button
+            className="btn btn-ghost"
+            disabled={restarting}
+            title="Wipes this browser's local copy and re-downloads everything from the server. Skipped automatically if unsent changes are still queued, or if the queue can't be read."
+            onClick={() => run(() => restartPowerSyncHard({ clear: true }))}
+          >
+            🧹 Reset local copy
+          </button>
+        )}
+      </div>
+    </SettingCard>
+  )
+}
+
 function SystemHealthPanel() {
   const [report, setReport] = useState<HealthReport | null>(null)
   const [error, setError] = useState(false)
@@ -490,7 +556,6 @@ function SystemHealthPanel() {
     }
   }
 
-  if (error) return null
   return (
     <div className="set-panel">
       <div className="set-head">
@@ -505,7 +570,16 @@ function SystemHealthPanel() {
         Live status of the self-hosted stack. Same data as <code>./waffled doctor</code> in a terminal.
       </div>
       {upd && <UpdateBanner upd={upd} onToggle={toggleUpd} toggling={togglingUpd} />}
-      {!report ? (
+      {/* This browser's own sync state, outside the server-report gate below: an
+          unreachable API is exactly when you most want to read it. */}
+      <div className="health-grid" style={{ marginBottom: error || !report ? 0 : 14 }}>
+        <BrowserSyncCard />
+      </div>
+      {error ? (
+        <div className="tiny muted" style={{ fontWeight: 600, padding: 8 }}>
+          Couldn’t reach the server for the rest of the report.
+        </div>
+      ) : !report ? (
         <div className="tiny muted" style={{ fontWeight: 600, padding: 8 }}>Loading…</div>
       ) : (
         <>
@@ -573,7 +647,7 @@ function UpdateBanner({ upd, onToggle, toggling }: { upd: UpdateInfo; onToggle: 
 
 // Same swatch palette the Family & People person editor uses, so a member's
 // self-service color picker matches what an admin sees.
-const ACCOUNT_SWATCHES = ['#2F7FED', '#EC6049', '#25A368', '#8B5CF6', '#E0A500', '#EC4899', '#14B8A6', '#6B7280']
+const ACCOUNT_SWATCHES = COLOR_SWATCHES
 
 // Pull the server's `{ error, message }` message off a caught apiSend error
 // (ApiSendError carries `.body`), falling back to a friendly default.
@@ -664,17 +738,7 @@ function MyProfilePanel() {
 
         <div className="field">
           <span>Color</span>
-          <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-            {ACCOUNT_SWATCHES.map((c) => (
-              <button
-                type="button"
-                key={c}
-                aria-label={`color ${c}`}
-                onClick={() => { setColorHex(c); setSaved(false) }}
-                style={{ width: 30, height: 30, borderRadius: 999, background: c, border: colorHex === c ? '3px solid var(--ink)' : '2px solid #fff', boxShadow: '0 0 0 1px var(--hair)', cursor: 'pointer' }}
-              />
-            ))}
-          </div>
+          <ColorPicker value={colorHex} onChange={(c) => { setColorHex(c); setSaved(false) }} />
         </div>
 
         <label className="field">
@@ -895,6 +959,15 @@ function FamilyPanel() {
     refetch()
   }
 
+  // Display preferences: how event chips are painted, and the color used for
+  // events that involve the whole family. emitHouseholdChanged() re-reads the
+  // household everywhere, so the calendar restyles without a reload.
+  async function saveDisplay(patch: { eventStyle?: string; familyColorHex?: string }) {
+    await personsApi.setDisplay(patch)
+    emitHouseholdChanged()
+    refetch()
+  }
+
   return (
     <div className="set-panel">
       <div className="set-head">
@@ -932,6 +1005,20 @@ function FamilyPanel() {
             <option value="sunday">Sunday</option>
             <option value="monday">Monday</option>
           </select>
+        </SettingRow>
+        <SettingRow icon="🎨" title="Event style" sub="How calendar events are colored">
+          <select
+            className="sel"
+            aria-label="Event style"
+            value={eventStyle(household)}
+            onChange={(e) => saveDisplay({ eventStyle: e.target.value })}
+          >
+            <option value="solid">Solid colors</option>
+            <option value="tinted">Tinted</option>
+          </select>
+        </SettingRow>
+        <SettingRow icon="👨‍👩‍👧‍👦" title="Family color" sub="Events with the whole family use this color">
+          <ColorPicker value={familyColorHex(household)} onChange={(hex) => saveDisplay({ familyColorHex: hex })} size={24} />
         </SettingRow>
         <SettingRow icon="🌐" title="Time zone" sub="Used for every calendar &amp; reminder">
           <select className="sel" value={household.timezone} onChange={(e) => saveHousehold({ timezone: e.target.value })}>
@@ -1370,6 +1457,168 @@ function isReadOnly(accessRole: string | null): boolean {
 // Calendars: connect Google accounts, map each calendar to a person (color/owner),
 // toggle which ones Waffled syncs, and pull events on demand. Connect navigates to
 // Google's consent screen; the api callback redirects back here when it's done.
+// ── Calendar feeds: read-only ICS URL subscriptions ─────────────────────────
+// The no-OAuth calendar source: paste any published .ics / webcal link (school
+// schedule, sports team, an Outlook "publish calendar" URL) and Waffled polls it.
+// Renders whether or not an OAuth provider is configured — that independence is
+// the whole point.
+function feedHost(url: string): string {
+  try { return new URL(url.replace(/^webcal:\/\//i, 'https://')).host } catch { return url }
+}
+
+export function CalendarFeedsCard({ feeds, onChanged }: { feeds: IcsFeed[]; onChanged: () => void }) {
+  const { persons } = usePersons()
+  const [url, setUrl] = useState('')
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [syncingId, setSyncingId] = useState<string | null>(null)
+  const canAdd = /^(https?|webcal):\/\/.+\../i.test(url.trim())
+
+  async function add() {
+    setBusy(true)
+    setErr('')
+    try {
+      const { feed } = await calendarsApi.addFeed({ url: url.trim(), name: name.trim() || undefined })
+      setUrl('')
+      setName('')
+      onChanged()
+      // Kick the first poll right away so events appear without waiting for the
+      // 15-minute cycle; refresh again when it lands (success or error badge).
+      calendarsApi.syncFeed(feed.id).then(onChanged, onChanged)
+    } catch {
+      setErr('Could not add that feed — check the URL and try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // "Private" means "only the person it belongs to sees it", so unassigning a private
+  // feed would leave it visible to nobody at all — its events import with a null owner
+  // and the personal filter never matches them. The API refuses that state; sharing it
+  // back with the family is the only sensible reading of "belongs to nobody".
+  async function setPerson(f: IcsFeed, personId: string) {
+    const next = personId || null
+    await calendarsApi.updateFeed(f.id, {
+      personId: next,
+      ...(next ? {} : { visibility: 'family' }),
+    })
+    onChanged()
+  }
+
+  async function toggleVisibility(f: IcsFeed) {
+    await calendarsApi.updateFeed(f.id, { visibility: f.visibility === 'personal' ? 'family' : 'personal' })
+    onChanged()
+  }
+
+  async function syncNow(f: IcsFeed) {
+    setSyncingId(f.id)
+    try {
+      await calendarsApi.syncFeed(f.id)
+    } finally {
+      setSyncingId(null)
+      onChanged()
+    }
+  }
+
+  async function remove(f: IcsFeed) {
+    if (!window.confirm('Remove this calendar feed? Its imported events are removed too.')) return
+    await calendarsApi.removeFeed(f.id)
+    onChanged()
+  }
+
+  return (
+    <SettingCard style={{ marginTop: 18 }}>
+      <div className="set-row2-t" style={{ marginBottom: 4 }}>🔗 Calendar feeds</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
+        Subscribe to any published calendar link (.ics or webcal) — school schedules, sports teams, a work
+        calendar published from Outlook. No sign-in needed; Waffled checks for changes every 15 minutes.
+      </div>
+
+      {feeds.map((f) => (
+        <div className="set-row2" key={f.id}>
+          <div className="set-ic2">📡</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="set-row2-t" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {f.name ?? feedHost(f.url)}
+            </div>
+            <div className="tiny muted" style={{ fontWeight: 600 }}>
+              {feedHost(f.url)} · {f.lastSyncedAt ? `Last synced ${fmtWhen(f.lastSyncedAt)}` : 'Not synced yet'}
+              {f.lastError && <span style={{ color: 'var(--primary)', fontWeight: 700 }}> · ⚠ {f.lastError}</span>}
+            </div>
+          </div>
+          <select
+            className="sel"
+            value={f.personId ?? ''}
+            onChange={(e) => setPerson(f, e.target.value)}
+            title="Who this feed belongs to (sets event color)"
+            aria-label={`Person for feed ${f.name ?? feedHost(f.url)}`}
+          >
+            <option value="">Unassigned</option>
+            {persons.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          {/* Only offered once the feed belongs to someone — "private to nobody" is a
+              feed no one can see, and the API refuses it. */}
+          {f.personId && (
+            <label
+              className="cal-sync"
+              title={
+                f.visibility === 'personal'
+                  ? 'Private — only the assigned person sees this feed. Uncheck to show it to the whole family.'
+                  : 'Visible to the whole family, including the shared kiosk. Check to keep it private.'
+              }
+            >
+              <input
+                type="checkbox"
+                checked={f.visibility === 'personal'}
+                onChange={() => toggleVisibility(f)}
+                aria-label={`Private feed ${f.name ?? feedHost(f.url)}`}
+              />
+              Private
+            </label>
+          )}
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => syncNow(f)}
+            disabled={syncingId === f.id}
+            title="Refresh this feed now"
+            aria-label={`Sync feed ${f.name ?? feedHost(f.url)}`}
+          >
+            ↻
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => remove(f)}
+            title="Remove this feed"
+            aria-label={`Remove feed ${f.name ?? feedHost(f.url)}`}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: feeds.length ? 12 : 0 }}>
+        <label className="field" style={{ flex: '2 1 220px' }}>
+          <span>Feed URL</span>
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…/calendar.ics" />
+        </label>
+        <label className="field" style={{ flex: '1 1 140px' }}>
+          <span>Name (optional)</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="School calendar" />
+        </label>
+        <button type="button" className="btn btn-primary" onClick={add} disabled={busy || !canAdd}>
+          {busy ? 'Adding…' : 'Add feed'}
+        </button>
+      </div>
+      {err && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 8 }}>{err}</div>}
+    </SettingCard>
+  )
+}
+
 function CalendarsPanel() {
   const [status, setStatus] = useState<CalendarStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1394,11 +1643,14 @@ function CalendarsPanel() {
   if (loading) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
   if (error || !status) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Couldn't load calendars — try reloading or signing in again.</div></div>
 
-  async function connect() {
+  async function connect(provider: 'google' | 'microsoft' = 'google') {
     setConnecting(true)
     try {
-      const { url } = await calendarsApi.connectCalendar(window.location.href)
-      window.location.href = url // full-page handoff to Google's consent screen
+      const { url } =
+        provider === 'microsoft'
+          ? await calendarsApi.connectMicrosoftCalendar(window.location.href)
+          : await calendarsApi.connectCalendar(window.location.href)
+      window.location.href = url // full-page handoff to the provider's consent screen
     } catch {
       setConnecting(false)
     }
@@ -1529,17 +1781,20 @@ function CalendarsPanel() {
     )
   }
 
-  if (!status.configured) {
+  if (!status.configured && !status.microsoftConfigured) {
     return (
       <div className="set-panel">
         <div className="set-head"><div className="wf-serif set-head-t">Calendars</div></div>
         <SettingCard>
           <div className="muted" style={{ fontWeight: 600 }}>
-            Google Calendar isn’t configured on the server yet. Set <code>GOOGLE_CLIENT_ID</code>,{' '}
-            <code>GOOGLE_CLIENT_SECRET</code>, <code>GOOGLE_CALENDAR_REDIRECT_URI</code> and{' '}
-            <code>TOKEN_ENCRYPTION_KEY</code> in the server environment, then reload.
+            No calendar provider is configured on the server yet. For Google set <code>GOOGLE_CLIENT_ID</code>,{' '}
+            <code>GOOGLE_CLIENT_SECRET</code>, <code>GOOGLE_CALENDAR_REDIRECT_URI</code>; for Outlook set{' '}
+            <code>MS_CLIENT_ID</code>, <code>MS_CLIENT_SECRET</code>, <code>MS_CALENDAR_REDIRECT_URI</code> — plus{' '}
+            <code>TOKEN_ENCRYPTION_KEY</code> — then reload.
           </div>
         </SettingCard>
+        {/* Feed subscriptions need no OAuth provider — they work regardless. */}
+        <CalendarFeedsCard feeds={status.feeds ?? []} onChanged={load} />
       </div>
     )
   }
@@ -1559,13 +1814,22 @@ function CalendarsPanel() {
 
       {!status.connected ? (
         <SettingCard>
-          <div className="set-row2-t" style={{ marginBottom: 6 }}>Connect a Google Account</div>
+          <div className="set-row2-t" style={{ marginBottom: 6 }}>Connect a calendar account</div>
           <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
-            Bring your family’s Google calendars into Waffled. You’ll pick which ones sync and who each one belongs to.
+            Bring your family’s calendars into Waffled. You’ll pick which ones sync and who each one belongs to.
           </div>
-          <button type="button" className="btn btn-primary" onClick={connect} disabled={connecting}>
-            {connecting ? 'Opening Google…' : 'Connect Google Calendar'}
-          </button>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {status.configured && (
+              <button type="button" className="btn btn-primary" onClick={() => connect('google')} disabled={connecting}>
+                {connecting ? 'Opening…' : 'Connect Google Calendar'}
+              </button>
+            )}
+            {status.microsoftConfigured && (
+              <button type="button" className="btn btn-primary" onClick={() => connect('microsoft')} disabled={connecting}>
+                {connecting ? 'Opening…' : 'Connect Outlook Calendar'}
+              </button>
+            )}
+          </div>
         </SettingCard>
       ) : (
         <>
@@ -1608,13 +1872,13 @@ function CalendarsPanel() {
                   tabIndex={0}
                   onClick={() => setCollapsed((c) => ({ ...c, [acct.id]: !c[acct.id] }))}
                 >
-                  <span className="set-ic2">🔗</span>
+                  <span className="set-ic2">{acct.provider === 'microsoft' ? '📧' : '🔗'}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span className="set-row2-t" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {acct.email ?? acct.googleSub}
                     </span>
                     <span className="tiny muted" style={{ fontWeight: 600 }}>
-                      {syncingCount} of {all.length} syncing · connected {fmtWhen(acct.connectedAt)}
+                      {acct.provider === 'microsoft' ? 'Outlook' : 'Google'} · {syncingCount} of {all.length} syncing · connected {fmtWhen(acct.connectedAt)}
                     </span>
                   </span>
                   {/* A dead Google sign-in (expired/revoked refresh token) surfaces here
@@ -1656,11 +1920,21 @@ function CalendarsPanel() {
             )
           })}
 
-          <button type="button" className="btn btn-ghost set-add" onClick={connect} disabled={connecting}>
-            ＋ Connect another account
-          </button>
+          {status.configured && (
+            <button type="button" className="btn btn-ghost set-add" onClick={() => connect('google')} disabled={connecting}>
+              ＋ Connect another Google account
+            </button>
+          )}
+          {status.microsoftConfigured && (
+            <button type="button" className="btn btn-ghost set-add" onClick={() => connect('microsoft')} disabled={connecting}>
+              ＋ Connect an Outlook account
+            </button>
+          )}
         </>
       )}
+
+      {/* ICS subscriptions sit below the OAuth accounts — a third calendar source. */}
+      <CalendarFeedsCard feeds={status.feeds ?? []} onChanged={load} />
     </div>
   )
 }

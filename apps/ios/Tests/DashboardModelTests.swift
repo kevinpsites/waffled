@@ -36,6 +36,20 @@ private func dinner(_ date: String, title: String? = "Tacos") -> WaffledAPI.Week
                             title: title, recipeId: nil, recipe: nil, cook: nil)
 }
 
+/// A night holding a Meal Builder plate — no `recipeId`, dishes on `meal`.
+private func plateDinner(_ date: String, name: String = "BBQ Sunday",
+                         dishes: [String] = ["r1", "r2", "r3"]) -> WaffledAPI.WeekEntryDTO {
+    WaffledAPI.WeekEntryDTO(
+        id: UUID().uuidString, date: date, mealType: "dinner", title: name, recipeId: nil,
+        mealId: "m1",
+        meal: .init(id: "m1", name: name, servings: 6,
+                    recipes: dishes.enumerated().map { i, r in
+                        .init(recipeId: r, title: "Dish \(r)", emoji: nil,
+                              role: i == 0 ? "main" : "side", sortOrder: i)
+                    }),
+        recipe: nil, cook: nil)
+}
+
 private func person(_ name: String, total: Int, done: Int = 0) -> WaffledAPI.PersonChoresDTO {
     WaffledAPI.PersonChoresDTO(id: UUID().uuidString, name: name, avatarEmoji: nil,
                                colorHex: nil, total: total, done: done, stars: done)
@@ -148,5 +162,61 @@ private let today = "2026-07-16"
         await m.load(todayKey: today)
         #expect(m.chores.map(\.name) == ["June"])
         #expect(m.groceryRemaining == 2)
+    }
+}
+
+// A night can hold a Meal Builder plate instead of a single recipe. The plate-backed
+// slot has NO `recipeId`, and the Tonight card decided everything from that one field:
+// it announced "No recipe attached yet" about a meal with three dishes, and offered
+// neither "View recipe" nor "Cook Mode". Both Today trees (iPhone `TodayView` and the
+// iPad `KioskDashboard`) gate on `TonightMeal`, so fixing it here fixes both.
+@MainActor
+@Suite struct TonightMealPlateTests {
+    @Test func aPlateNightIsCookableAndNamed() {
+        let t = TonightMeal(plateDinner(today))
+        #expect(t.title == "BBQ Sunday")
+        #expect(t.isMealBacked)
+        #expect(t.mealId == "m1")
+        #expect(t.dishCount == 3)
+        // The card's action gate: there IS something to open here.
+        #expect(t.isCookable)
+        #expect(t.eatingOut == false)
+    }
+
+    /// `recipeSummary` is the placeholder the card opens for a single recipe. A plate
+    /// has no single recipe to stand in for it, so this stays nil — the card must route
+    /// by `mealId` instead of quietly opening the wrong thing.
+    @Test func aPlateHasNoStandInRecipe() {
+        #expect(TonightMeal(plateDinner(today)).recipeSummary == nil)
+    }
+
+    @Test func anOrdinaryRecipeNightIsUnchanged() {
+        let e = WaffledAPI.WeekEntryDTO(id: "1", date: today, mealType: "dinner", title: nil,
+                                        recipeId: "r9",
+                                        recipe: .init(title: "Curry", emoji: "🍛", category: "dinner",
+                                                      prepTimeMinutes: 5, cookTimeMinutes: 30,
+                                                      servings: 4, imageUrl: nil),
+                                        cook: nil)
+        let t = TonightMeal(e)
+        #expect(t.isMealBacked == false)
+        #expect(t.dishCount == 0)
+        #expect(t.isCookable)
+        #expect(t.recipeSummary?.id == "r9")
+    }
+
+    /// A free-text "takeout" night still reads as eating out...
+    @Test func aFreeTextTakeoutNightStillReadsAsEatingOut() {
+        let t = TonightMeal(dinner(today, title: "Takeout"))
+        #expect(t.eatingOut)
+        #expect(t.isCookable == false)
+    }
+
+    /// ...but a PLATE someone named "Takeout Night" is a real meal with real dishes,
+    /// and must not be swallowed by that heuristic.
+    @Test func aPlateNamedLikeTakeoutIsStillAPlate() {
+        let t = TonightMeal(plateDinner(today, name: "Takeout Night"))
+        #expect(t.eatingOut == false)
+        #expect(t.isCookable)
+        #expect(t.title == "Takeout Night")
     }
 }

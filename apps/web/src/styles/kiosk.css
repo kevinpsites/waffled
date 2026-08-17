@@ -224,6 +224,19 @@ body {
   flex: none;
 }
 
+/* Stalled-sync strip — the same quiet shape as the offline banner, shown only
+   while the sync watchdog is restarting a wedged engine (REST keeps data fresh
+   meanwhile, so this is an explanation, not a warning). */
+.sync-banner {
+  background: var(--offline);
+  color: var(--offline-fg);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  padding: 7px 14px;
+  flex: none;
+}
+
 /* topbar wraps when it runs out of room */
 .topbar {
   flex-wrap: wrap;
@@ -879,6 +892,9 @@ button.tick {
   border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer;
 }
 .rw-cur-chip.on { border-color: var(--person-3); color: var(--person-3); }
+/* A choice that exists but isn't available yet — dimmed and inert, so it reads
+   as "not ready" rather than as a control that quietly does nothing. */
+.rw-cur-chip:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* archived rewards (admin, collapsed) */
 .rw-archived { margin-top: 4px; }

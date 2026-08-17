@@ -7,11 +7,12 @@ import { MonthView } from './components/MonthView'
 import { WeekView } from './components/WeekView'
 import { DayView } from './components/DayView'
 import { AgendaView } from './components/AgendaView'
+import { PeopleView } from './components/PeopleView'
 import { useTopbarRight } from './topbar-slot'
-import { useEventsRange, useHousehold, useCountdowns, type AgendaEvent, type Countdown } from '../lib/api'
+import { useEventsRange, useHousehold, useCountdowns, usePersons, type AgendaEvent, type Countdown } from '../lib/api'
 import { MONTHS, MONTHS_SHORT, DOW_FULL, ymd, addDays, startOfWeek, eventDetailPath } from './components/cal-utils'
 
-type View = 'month' | 'week' | 'day' | 'agenda'
+type View = 'month' | 'week' | 'day' | 'people' | 'agenda'
 
 // Remember the last view + focused date across navigations (opening an event
 // detail unmounts Calendar), so coming "back" returns you to where you were
@@ -37,7 +38,8 @@ function rangeFor(view: View, anchor: Date): { from: string; to: string } {
     const ws = startOfWeek(anchor)
     return { from: ymd(ws), to: ymd(addDays(ws, 6)) }
   }
-  if (view === 'day') {
+  // 'people' is the same single day as 'day', just split into per-person columns.
+  if (view === 'day' || view === 'people') {
     return { from: ymd(anchor), to: ymd(anchor) }
   }
   if (view === 'agenda') {
@@ -54,7 +56,8 @@ function rangeFor(view: View, anchor: Date): { from: string; to: string } {
 // The label between the nav arrows for the current view.
 function periodLabel(view: View, anchor: Date): string {
   if (view === 'month') return `${MONTHS[anchor.getMonth()]} ${anchor.getFullYear()}`
-  if (view === 'day') return `${DOW_FULL[anchor.getDay()]}, ${MONTHS[anchor.getMonth()]} ${anchor.getDate()}`
+  if (view === 'day' || view === 'people')
+    return `${DOW_FULL[anchor.getDay()]}, ${MONTHS[anchor.getMonth()]} ${anchor.getDate()}`
   const ws = startOfWeek(anchor)
   const we = addDays(ws, 6)
   const start = `${MONTHS_SHORT[ws.getMonth()]} ${ws.getDate()}`
@@ -64,7 +67,7 @@ function periodLabel(view: View, anchor: Date): string {
 
 // A `?date=YYYY-MM-DD` present in the URL wins over the remembered state — it's how
 // deep-links (e.g. tapping a countdown on Today) land the calendar on a given day.
-const VIEWS: View[] = ['month', 'week', 'day', 'agenda']
+const VIEWS: View[] = ['month', 'week', 'day', 'people', 'agenda']
 
 export function Calendar() {
   const navigate = useNavigate()
@@ -94,6 +97,8 @@ export function Calendar() {
 
   const { household } = useHousehold()
   const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  // The roster drives the People view's columns (one per person, in roster order).
+  const { persons, loading: personsLoading } = usePersons()
 
   // Countdown badges on the calendar (all three sources, keyed by target day).
   const { countdowns } = useCountdowns()
@@ -110,7 +115,9 @@ export function Calendar() {
         setSelectedDay(defaultDayForMonth(next))
         return next
       }
-      return view === 'day' ? addDays(a, delta) : addDays(a, delta * 7)
+      // People is a single day (split into per-person columns), so it steps a day —
+      // same as Day. Only the week-shaped views move seven at a time.
+      return view === 'day' || view === 'people' ? addDays(a, delta) : addDays(a, delta * 7)
     })
   }
   function goToday() {
@@ -137,7 +144,7 @@ export function Calendar() {
     setAnchor(d)
     setView('day')
   }
-  const navLabel = view === 'month' ? 'month' : view === 'day' ? 'day' : 'week'
+  const navLabel = view === 'month' ? 'month' : view === 'day' || view === 'people' ? 'day' : 'week'
 
   // The view toggle + period nav live in the topbar's right slot (replacing the
   // capture bar on this screen), matching the per-screen-topbar pattern.
@@ -145,7 +152,7 @@ export function Calendar() {
     () => (
       <div className="cal-topbar">
         <div className="seg">
-          {(['month', 'week', 'day', 'agenda'] as View[]).map((v) => (
+          {VIEWS.map((v) => (
             <button key={v} type="button" className={view === v ? 'on' : ''} onClick={() => setView(v)}>
               {v[0].toUpperCase() + v.slice(1)}
             </button>
@@ -169,8 +176,32 @@ export function Calendar() {
     [view, anchor.getTime()]
   )
 
+  // Is the anchor inside the period the user is actually living in? Drives the
+  // "you've paged away" flag on the grid heading below.
+  const isCurrentPeriod = useMemo(() => {
+    const now = new Date()
+    if (view === 'month') return anchor.getFullYear() === now.getFullYear() && anchor.getMonth() === now.getMonth()
+    if (view === 'day' || view === 'people') return ymd(anchor) === ymd(now)
+    return ymd(startOfWeek(anchor)) === ymd(startOfWeek(now))
+  }, [view, anchor])
+
   return (
     <div className="cal-screen">
+      {/* The app header shows TODAY's date, so the grid states its own period —
+          otherwise paging to another month leaves nothing on the grid saying so.
+          Agenda is excluded: its rows carry their own dates. */}
+      {view !== 'agenda' && (
+        <div className="cal-period-head">
+          <h2 className="wf-serif cal-period-title" data-testid="cal-period-heading">
+            {periodLabel(view, anchor)}
+          </h2>
+          {!isCurrentPeriod && (
+            <button type="button" className="pill cal-period-back" onClick={goToday}>
+              Back to today
+            </button>
+          )}
+        </div>
+      )}
       {view === 'month' && (
         <MonthView
           year={anchor.getFullYear()}
@@ -210,6 +241,17 @@ export function Calendar() {
           countdownsByDate={countdownsByDate}
           onOpenEvent={openEvent}
           onOpenCountdown={openCountdown}
+          onCreate={(date, time) => setModal({ date, time })}
+        />
+      )}
+      {view === 'people' && (
+        <PeopleView
+          day={anchor}
+          events={events}
+          people={persons}
+          loading={personsLoading}
+          tz={tz}
+          onOpenEvent={openEvent}
           onCreate={(date, time) => setModal({ date, time })}
         />
       )}

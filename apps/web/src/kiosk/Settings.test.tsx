@@ -1,7 +1,8 @@
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { Settings } from './Settings'
 import type { PermissionMatrix } from '../lib/api'
+import { publishSyncHealth, __resetSyncHealthForTests } from '../lib/powersync/sync-health'
 
 const renderSettings = () => render(<MemoryRouter><Settings /></MemoryRouter>)
 
@@ -38,6 +39,12 @@ function mockApi() {
 }
 
 describe('Settings screen', () => {
+  // The sync-health store is module-global; reset it so a Live Sync assertion in
+  // one test can't be satisfied by a snapshot another test published.
+  beforeEach(() => {
+    __resetSyncHealthForTests()
+  })
+
   it('offers a compact section menu for narrow layouts', async () => {
     mockApi()
     renderSettings()
@@ -78,6 +85,44 @@ describe('Settings screen', () => {
     await screen.findByText('Kevin')
     expect(screen.queryByText('Lists')).not.toBeInTheDocument()
     expect(screen.queryByText('Notifications')).not.toBeInTheDocument()
+  })
+
+  it('exposes the event style + family color on Family & People, defaulting to solid', async () => {
+    const patches: Array<Record<string, unknown>> = []
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/api/household/display')) {
+        patches.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        return { ok: true, json: async () => ({ display: {} }) }
+      }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+
+    // A household that has never touched the setting reads as solid.
+    const select = screen.getByLabelText('Event style') as HTMLSelectElement
+    expect(select).toHaveClass('sel')
+    expect(select.value).toBe('solid')
+    fireEvent.change(select, { target: { value: 'tinted' } })
+    await waitFor(() => expect(patches).toContainEqual({ eventStyle: 'tinted' }))
+
+    // The family color is the same swatch picker, saved to the same endpoint —
+    // but dragging around the OS color picker fires an `input` per step, and
+    // each one used to be its own PATCH + refetch racing the others (with the
+    // controlled value snapping back mid-drag). Only the committed color saves.
+    expect(screen.getByText('Family color')).toBeInTheDocument()
+    const custom = screen.getByLabelText('Pick a custom color')
+    const colorPatches = () => patches.filter((p) => 'familyColorHex' in p)
+    for (const step of ['#111111', '#221133', '#123456']) fireEvent.input(custom, { target: { value: step } })
+    expect(colorPatches()).toHaveLength(0)
+
+    fireEvent.change(custom, { target: { value: '#123456' } })
+    await waitFor(() => expect(colorPatches()).toEqual([{ familyColorHex: '#123456' }]))
   })
 
   it('shows the Display & Kiosk panel with the family-display toggle', async () => {
@@ -219,6 +264,50 @@ describe('Settings screen', () => {
     expect(screen.getByText('Calendar Sync')).toBeInTheDocument()
     expect(screen.getByText(/Build abc123/)).toBeInTheDocument()
     expect(screen.getByText(/DEGRADED/)).toBeInTheDocument()
+
+    // Live Sync is about THIS browser, not the server — with no engine running
+    // it must say so plainly rather than looking like a server component.
+    expect(screen.getByText('Live Sync (this browser)')).toBeInTheDocument()
+    expect(screen.getByText(/state: off/)).toBeInTheDocument()
+  })
+
+  // Boot takes seconds and a boot crash was silent — both used to read as "off",
+  // which is what made people think sync had been switched off.
+  it('distinguishes starting and failed from off on the Live Sync card', async () => {
+    globalThis.fetch = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/api/health')) return { ok: false, status: 500, json: async () => ({}) }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('System Health'))
+
+    // The server report failed to load — the browser's own sync state is exactly
+    // what you want to read at that moment, so the card still renders.
+    expect(await screen.findByText('Live Sync (this browser)')).toBeInTheDocument()
+
+    const base = { hasSynced: null, lastSyncedAt: null, restartCount: 0, lastRestartAt: null }
+    act(() => publishSyncHealth({ status: 'starting', ...base }))
+    expect(screen.getByText(/state: starting/)).toBeInTheDocument()
+
+    act(() => publishSyncHealth({ status: 'failed', ...base, lastError: 'OPFS unavailable' }))
+    expect(screen.getByText(/state: failed/)).toBeInTheDocument()
+    expect(screen.getByText(/OPFS unavailable/)).toBeInTheDocument()
+    // A boot crash the watchdog can't fix by rebuilding is usually a corrupt local
+    // copy — and the watchdog deliberately never wipes on the failed path, so the
+    // manual rung has to be reachable here too, not only from 'stalled'.
+    expect(screen.getByText(/Reset local copy/)).toBeInTheDocument()
+
+    act(() => publishSyncHealth({ status: 'stalled', hasSynced: true, lastSyncedAt: 1, restartCount: 3, lastRestartAt: 2 }))
+    expect(screen.getByText(/state: stalled/)).toBeInTheDocument()
+    expect(screen.getByText(/watchdog restarts: 3/)).toBeInTheDocument()
+    // The replica-wiping rung is only offered once the engine is genuinely wedged.
+    expect(screen.getByText(/Reset local copy/)).toBeInTheDocument()
   })
 
   it('keeps household kiosk controls available when global sign-in config is forbidden', async () => {
@@ -311,5 +400,106 @@ describe('Settings screen', () => {
 
     // Debounced auto-save persists prepReminder: true.
     await waitFor(() => expect(putBodies.some((b) => b.prepReminder === true)).toBe(true), { timeout: 2000 })
+  })
+
+  // Calendars panel is provider-aware: each configured provider gets its own
+  // connect button, and the "not configured" copy only shows when BOTH are off.
+  function mockCalendarStatus(status: Record<string, unknown>, onConnect?: (url: string) => void) {
+    globalThis.fetch = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/api/calendar/microsoft/connect')) {
+        onConnect?.(u)
+        return { ok: true, json: async () => ({ url: 'https://login.microsoftonline.com/consent' }) }
+      }
+      if (u.includes('/api/calendar/google/status')) return { ok: true, json: async () => status }
+      if (u.includes('/api/countdowns')) return { ok: true, json: async () => ({ countdowns: [], sleeps: false, birthdayHorizonDays: 183 }) }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+  }
+
+  it('offers an Outlook connect button when Microsoft OAuth is configured', async () => {
+    const connects: string[] = []
+    mockCalendarStatus(
+      { configured: true, microsoftConfigured: true, connected: false, accounts: [], calendars: [] },
+      (u) => connects.push(u)
+    )
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Calendars'))
+
+    // Both providers are offered side by side.
+    expect(await screen.findByText('Connect Google Calendar')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Connect Outlook Calendar'))
+    await waitFor(() => expect(connects.length).toBe(1))
+  })
+
+  it('hides the Outlook button when only Google is configured', async () => {
+    mockCalendarStatus({ configured: true, microsoftConfigured: false, connected: false, accounts: [], calendars: [] })
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Calendars'))
+
+    expect(await screen.findByText('Connect Google Calendar')).toBeInTheDocument()
+    expect(screen.queryByText('Connect Outlook Calendar')).toBeNull()
+  })
+
+  it('lists ICS feeds and adds one, even with no OAuth provider configured', async () => {
+    const posts: Array<Record<string, unknown>> = []
+    const feed = {
+      id: 'f1', url: 'https://school.example/cal.ics', name: 'School', personId: null,
+      personName: null, personColor: null, visibility: 'family',
+      lastSyncedAt: null, lastError: null, createdAt: '2026-08-01T00:00:00Z',
+    }
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/api/calendar/feeds') && init?.method === 'POST' && !u.endsWith('/sync')) {
+        posts.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        return { ok: true, json: async () => ({ feed }) }
+      }
+      if (u.includes('/api/calendar/feeds')) return { ok: true, json: async () => ({ feedId: 'f1', imported: 3, updated: 0, deleted: 0 }) }
+      if (u.includes('/api/calendar/google/status')) {
+        return { ok: true, json: async () => ({ configured: false, microsoftConfigured: false, connected: false, accounts: [], calendars: [], feeds: [feed] }) }
+      }
+      if (u.includes('/api/countdowns')) return { ok: true, json: async () => ({ countdowns: [], sleeps: false, birthdayHorizonDays: 183 }) }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Calendars'))
+
+    // Feeds render even though neither OAuth provider is configured — that
+    // independence is the point of the feature.
+    expect(await screen.findByText('School')).toBeInTheDocument()
+    expect(screen.getByText(/No calendar provider is configured/)).toBeInTheDocument()
+
+    // Add is disabled until the URL looks like a feed, then POSTs it.
+    const addBtn = screen.getByText('Add feed')
+    expect(addBtn).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Feed URL'), { target: { value: 'webcal://team.example/games.ics' } })
+    fireEvent.click(addBtn)
+    await waitFor(() => expect(posts.length).toBe(1))
+    expect(posts[0].url).toBe('webcal://team.example/games.ics')
+  })
+
+  it('only shows the not-configured notice when NEITHER provider is configured', async () => {
+    mockCalendarStatus({ configured: false, microsoftConfigured: true, connected: false, accounts: [], calendars: [] })
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Calendars'))
+
+    // Microsoft alone is enough to render the connect card, not the env-var notice.
+    expect(await screen.findByText('Connect Outlook Calendar')).toBeInTheDocument()
+    expect(screen.queryByText('Connect Google Calendar')).toBeNull()
+    expect(screen.queryByText(/No calendar provider is configured/)).toBeNull()
   })
 })

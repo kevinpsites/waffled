@@ -280,6 +280,50 @@ export async function softDeleteRecipe(tenant: Tenant, id: string): Promise<bool
   }
 }
 
+// Record that a person opened a recipe. One row per (person, recipe) whose timestamp
+// moves, so a recipe opened fifty times stays one entry — see migration 0096.
+// Returns false when the recipe isn't this household's (or is deleted), so the route
+// can 404 without leaking whether the id exists elsewhere.
+export async function recordRecipeView(tenant: Tenant, recipeId: string): Promise<boolean> {
+  const { rows } = await query<{ id: string }>(
+    `insert into recipe_views (household_id, person_id, recipe_id)
+     select $1, $2, r.id from recipes r
+      where r.id = $3 and r.household_id = $1 and r.deleted_at is null
+     on conflict (person_id, recipe_id) do update set viewed_at = now()
+     returning id`,
+    [tenant.householdId, tenant.personId, recipeId]
+  )
+  return rows.length > 0
+}
+
+// Recently-opened recipes, newest first. `personId` null = the whole household's
+// history, collapsed to one row per recipe at its latest view (so a recipe both
+// parents opened appears once, at the newer time).
+//
+// Soft-deleted recipes are filtered here rather than cleaned up on delete: the FK's
+// ON DELETE CASCADE never fires for a soft delete, and a deleted recipe reappearing
+// in a "recently viewed" rail would be a dead link.
+export async function listRecentlyViewedRecipes(
+  householdId: string,
+  personId: string | null,
+  limit: number
+): Promise<RecipeRow[]> {
+  const { rows } = await query<RecipeRow>(
+    `select r.*, max(v.viewed_at) as last_viewed_at
+       from recipe_views v
+       join recipes r on r.id = v.recipe_id
+      where v.household_id = $1
+        and r.household_id = $1
+        and r.deleted_at is null
+        and ($2::uuid is null or v.person_id = $2)
+      group by r.id
+      order by max(v.viewed_at) desc
+      limit $3`,
+    [householdId, personId, limit]
+  )
+  return rows
+}
+
 export async function listRecipes(householdId: string): Promise<RecipeRow[]> {
   const { rows } = await query<RecipeRow>(
     `select * from recipes where household_id = $1 and deleted_at is null order by title`,
@@ -564,23 +608,28 @@ interface EntryRow extends QueryResultRow {
   date: string
   meal_type: string
   recipe_id: string | null
+  meal_id: string | null
   title: string | null
   cook_person_id: string | null
 }
 
+// A slot holds EITHER a recipe or a Meal Builder plate — never both — so the upsert
+// always writes both columns and one of them is NULL. (Leaving the loser behind would
+// make a slot that flipped type still look like the old one to the grocery build and
+// the calendar.)
 export async function upsertEntry(
   planId: string,
   tenant: Tenant,
-  input: { date: string; mealType: string; recipeId: string | null; title: string | null; cookPersonId: string | null }
+  input: { date: string; mealType: string; recipeId: string | null; mealId?: string | null; title: string | null; cookPersonId: string | null }
 ): Promise<EntryRow> {
   const { rows } = await query<EntryRow>(
-    `insert into meal_plan_entries (household_id, meal_plan_id, date, meal_type, recipe_id, title, cook_person_id)
-     values ($1,$2,$3,$4,$5,$6,$7)
+    `insert into meal_plan_entries (household_id, meal_plan_id, date, meal_type, recipe_id, meal_id, title, cook_person_id)
+     values ($1,$2,$3,$4,$5,$8,$6,$7)
      on conflict (meal_plan_id, date, meal_type)
-     do update set recipe_id = excluded.recipe_id, title = excluded.title,
+     do update set recipe_id = excluded.recipe_id, meal_id = excluded.meal_id, title = excluded.title,
                    cook_person_id = excluded.cook_person_id, deleted_at = null
-     returning id, to_char(date,'YYYY-MM-DD') as date, meal_type, recipe_id, title, cook_person_id`,
-    [tenant.householdId, planId, input.date, input.mealType, input.recipeId, input.title, input.cookPersonId]
+     returning id, to_char(date,'YYYY-MM-DD') as date, meal_type, recipe_id, meal_id, title, cook_person_id`,
+    [tenant.householdId, planId, input.date, input.mealType, input.recipeId, input.title, input.cookPersonId, input.mealId ?? null]
   )
   return rows[0]
 }
@@ -601,6 +650,9 @@ interface WeekEntryRow extends QueryResultRow {
   meal_type: string
   title: string | null
   recipe_id: string | null
+  meal_id: string | null
+  meal_name: string | null
+  meal_servings: number | null
   recipe_title: string | null
   recipe_emoji: string | null
   prep_time_minutes: number | null
@@ -621,23 +673,52 @@ export async function weekEntries(householdId: string, start: string, days = 7) 
   const span = Math.max(1, Math.min(45, Math.floor(days)))
   const { rows } = await query<WeekEntryRow>(
     `select mpe.id, to_char(mpe.date,'YYYY-MM-DD') as date, mpe.meal_type, mpe.title, mpe.recipe_id,
+            mpe.meal_id, ml.name as meal_name, ml.servings as meal_servings,
             r.title as recipe_title, r.emoji as recipe_emoji, r.category,
             r.prep_time_minutes, r.cook_time_minutes, r.servings, r.image_url, r.storage_key,
             mpe.cook_person_id, p.name as cook_name, p.avatar_emoji as cook_avatar, p.color_hex as cook_color
        from meal_plan_entries mpe
        left join recipes r on r.id = mpe.recipe_id and r.deleted_at is null
+       left join meals ml on ml.id = mpe.meal_id and ml.deleted_at is null
        left join persons p on p.id = mpe.cook_person_id and p.deleted_at is null
       where mpe.household_id = $1 and mpe.deleted_at is null
         and mpe.date >= $2::date and mpe.date < ($2::date + $3::int)
       order by mpe.date, mpe.meal_type`,
     [householdId, start, span]
   )
+  // A slot backed by a Meal Builder plate carries its dishes, so the week grid /
+  // kiosk card can render "BBQ Sunday · 4 dishes" instead of an empty slot.
+  const mealIds = [...new Set(rows.map((r) => r.meal_id).filter((id): id is string => !!id))]
+  const dishesByMeal = new Map<string, Array<{ recipeId: string; title: string | null; emoji: string | null; role: string; sortOrder: number }>>()
+  if (mealIds.length) {
+    const { rows: dishes } = await query<{ meal_id: string; recipe_id: string; title: string | null; emoji: string | null; role: string; sort_order: number }>(
+      `select mr.meal_id, mr.recipe_id, r.title, r.emoji, mr.role, mr.sort_order
+         from meal_recipes mr
+         left join recipes r on r.id = mr.recipe_id and r.deleted_at is null
+        where mr.meal_id = any($1::uuid[])
+        order by mr.sort_order`,
+      [mealIds]
+    )
+    for (const d of dishes) {
+      const list = dishesByMeal.get(d.meal_id) ?? dishesByMeal.set(d.meal_id, []).get(d.meal_id)!
+      list.push({ recipeId: d.recipe_id, title: d.title, emoji: d.emoji, role: d.role, sortOrder: d.sort_order })
+    }
+  }
   return rows.map((e) => ({
     id: e.id,
     date: e.date,
     mealType: e.meal_type,
     title: e.title,
     recipeId: e.recipe_id,
+    mealId: e.meal_id,
+    meal: e.meal_id
+      ? {
+          id: e.meal_id,
+          name: e.meal_name,
+          servings: e.meal_servings,
+          recipes: dishesByMeal.get(e.meal_id) ?? [],
+        }
+      : null,
     cook: e.cook_person_id
       ? { personId: e.cook_person_id, name: e.cook_name, avatarEmoji: e.cook_avatar, colorHex: e.cook_color }
       : null,
@@ -661,6 +742,8 @@ export function presentEntry(e: EntryRow) {
     date: e.date,
     mealType: e.meal_type,
     recipeId: e.recipe_id,
+    // A Meal Builder plate in this slot (mutually exclusive with recipeId).
+    mealId: e.meal_id ?? null,
     title: e.title,
     cookPersonId: e.cook_person_id,
   }

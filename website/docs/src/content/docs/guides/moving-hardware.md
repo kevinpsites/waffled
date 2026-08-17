@@ -57,15 +57,17 @@ schema up to the pinned version automatically. See
 
 ## 4. Fix device reachability for the new address
 
-The new machine has a new IP/hostname, so update the sync address:
+The new machine has a new IP/hostname, so update the public address:
 
 ```bash
 ./waffled setup   # new LAN IP or hostname
 ./waffled up      # apply it
 ```
 
-This sets `POWERSYNC_PUBLIC_URL` correctly so tablets and the iOS app can find
-the new host. Hostname/HTTPS details:
+Sync itself needs no help — a device is told to sync at whatever address it used
+to reach the server, so pointing the tablet and the iOS app at the new host is
+enough. `setup` fixes `PUBLIC_BASE_URL`, which calendar and sign-in redirects
+depend on. Hostname/HTTPS details:
 [Reverse proxy & TLS](/install/reverse-proxy/).
 
 ## Verify

@@ -6,6 +6,10 @@
 // touch normal tenant routes, and a tenant token can't touch the device routes.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
+import { Client } from 'pg'
+import { readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
 import { runMigrations } from '../src/migrate'
 
 let pg: StartedPostgreSqlContainer
@@ -321,6 +325,34 @@ describe('waffled-bites device pairing + parent control panel', () => {
     expect(state.settings.night).toMatchObject({ on: true, color: 'amber', brightness: 40 })
   })
 
+  // The firmware reads settings.alarm off this route to know when to ring and
+  // how loud, and alarm.volume is a NEW key with no schema anywhere — the
+  // parent PATCH deep-merges whatever it's given. That's exactly the kind of
+  // thing that works until someone adds an allowlist "for safety" and silently
+  // breaks the alarm's volume with no test to catch it.
+  //
+  // Retrofitted rather than TDD'd, and worth saying so: the deep-merge already
+  // behaved correctly, so this closes an existing gap rather than driving new
+  // behaviour.
+  it('round-trips the alarm settings the device needs, including a volume key it has never seen before', async () => {
+    const r = await call('PATCH', `/api/waffled-bites/${deviceId}/settings`, {
+      alarm: { on: true, hour: 6, min: 45, tone: 'gentleBells', volume: 70 },
+    }, admin)
+    expect(r.statusCode).toBe(200)
+
+    const state = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken))
+    expect(state.settings.alarm).toMatchObject({ on: true, hour: 6, min: 45, tone: 'gentleBells', volume: 70 })
+
+    // The alarm is parent-only: the device has no alarm UI, so its own narrower
+    // write path must not be able to set one (or silence one).
+    const before = json(await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken)).settings.alarm
+    const smuggled = await call('PATCH', '/api/waffled-bites/device/settings', {
+      alarm: { on: false, hour: 3, min: 0, tone: 'twinkleStars', volume: 0 },
+    }, deviceToken)
+    expect(smuggled.statusCode).toBe(200)
+    expect(json(smuggled).settings.alarm).toEqual(before)
+  })
+
   // ── wake-light schedule (bedtime -> yellow warning -> green wake) ──────────
   // Exact boundary behavior (midnight-crossing, day-attribution) is covered by
   // wake-light.unit.test.ts's injected-clock tests; this just proves the real
@@ -452,5 +484,141 @@ describe('waffled-bites device pairing + parent control panel', () => {
 
     // Idempotent-ish: an already-revoked device's own unpair call 404s, not a crash.
     expect((await call('POST', `/api/waffled-bites/${otherDeviceId}/nudge`, { message: 'x' }, admin)).statusCode).toBe(404)
+  })
+})
+
+// ── 0095: alarm.tone display strings → stable keys ────────────────────────────
+// `settings.alarm.tone` used to store the picker's ENGLISH LABEL ("Sunrise
+// chime"), so the stored value and the copy on screen were the same string.
+// Renaming a label for copy reasons would have silently repointed every paired
+// device's alarm, and the value could never be localised. The apps now store a
+// stable key; this migration rewrites the rows written before they did.
+//
+// Exercised the way accounts.integration.test.ts exercises 0055's backfill:
+// migrate to *just before* the migration, seed legacy-shaped rows, then apply
+// it. Its own container, because the suite above needs a fully-migrated DB.
+const migrationsDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
+const TONE_MIGRATION = '0095_waffled_bite_alarm_tone_keys'
+
+function migrationsBefore(name: string): number {
+  const files = readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort()
+  const idx = files.findIndex((f) => f.startsWith(name))
+  if (idx < 0) throw new Error(`migration ${name} not found`)
+  return idx
+}
+
+describe('0095 waffled-bite alarm tone keys — backfill', () => {
+  let tonePg: StartedPostgreSqlContainer
+  let toneUrl: string
+
+  beforeAll(async () => {
+    tonePg = await new PostgreSqlContainer('postgres:16').start()
+    toneUrl = tonePg.getConnectionUri()
+    await runMigrations(toneUrl, migrationsDir, migrationsBefore(TONE_MIGRATION))
+  }, 120_000)
+  afterAll(async () => {
+    await tonePg?.stop()
+  })
+
+  async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
+    const client = new Client({ connectionString: toneUrl })
+    await client.connect()
+    try {
+      return await fn(client)
+    } finally {
+      await client.end()
+    }
+  }
+
+  // Every row is a *separate* device, because a paired Waffled-Bite is unique
+  // per kid (uq_waffled_bite_devices_person), so each case needs its own kid.
+  async function seed(c: Client, name: string, alarm: unknown): Promise<string> {
+    const h = await c.query<{ id: string }>(
+      `insert into households (name, timezone) values ('Tones','America/Chicago') returning id`
+    )
+    const hid = h.rows[0].id
+    const p = await c.query<{ id: string }>(
+      `insert into persons (household_id, name, member_type) values ($1,$2,'kid') returning id`,
+      [hid, name]
+    )
+    const d = await c.query<{ id: string }>(
+      `insert into waffled_bite_devices (household_id, person_id, token_hash, settings)
+       values ($1,$2,'hash-' || $3, $4::jsonb) returning id`,
+      [hid, p.rows[0].id, name, JSON.stringify(alarm === undefined ? {} : { alarm })]
+    )
+    return d.rows[0].id
+  }
+
+  const toneOf = async (c: Client, id: string): Promise<string | null> =>
+    (await c.query<{ tone: string | null }>(
+      `select settings->'alarm'->>'tone' as tone from waffled_bite_devices where id = $1`, [id]
+    )).rows[0].tone
+
+  it('rewrites every legacy display string to its stable key, and leaves keys and unknown values alone', async () => {
+    const ids = await withClient(async (c) => ({
+      // the six labels the picker has ever offered
+      sunrise: await seed(c, 'legacy-sunrise', { on: true, hour: 6, min: 45, tone: 'Sunrise chime', volume: 80 }),
+      birdsong: await seed(c, 'legacy-birdsong', { on: true, hour: 7, min: 0, tone: 'Birdsong', volume: 80 }),
+      harp: await seed(c, 'legacy-harp', { on: false, hour: 6, min: 0, tone: 'Soft harp', volume: 60 }),
+      bells: await seed(c, 'legacy-bells', { on: true, hour: 6, min: 15, tone: 'gentleBells', volume: 70 }),
+      ocean: await seed(c, 'legacy-ocean', { on: true, hour: 6, min: 30, tone: 'Ocean tide', volume: 75 }),
+      twinkle: await seed(c, 'legacy-twinkle', { on: true, hour: 7, min: 15, tone: 'Twinkle stars', volume: 65 }),
+      // already migrated — a second run must not touch it (this is the
+      // idempotency case: re-running the backfill sees exactly these rows)
+      already: await seed(c, 'already-key', { on: true, hour: 6, min: 45, tone: 'gentleBells', volume: 80 }),
+      // something nobody recognises: leave it, so the firmware's own
+      // unknown-tone fallback decides rather than this migration guessing
+      unknown: await seed(c, 'unknown-tone', { on: true, hour: 6, min: 45, tone: 'Kazoo fanfare', volume: 80 }),
+      // an alarm block with no tone at all, and a device with no alarm block:
+      // neither may sprout a tone key
+      noTone: await seed(c, 'no-tone', { on: true, hour: 6, min: 45, volume: 80 }),
+      noAlarm: await seed(c, 'no-alarm', undefined),
+    }))
+
+    await runMigrations(toneUrl, migrationsDir)
+
+    await withClient(async (c) => {
+      expect(await toneOf(c, ids.sunrise)).toBe('sunriseChime')
+      expect(await toneOf(c, ids.birdsong)).toBe('birdsong')
+      expect(await toneOf(c, ids.harp)).toBe('softHarp')
+      expect(await toneOf(c, ids.bells)).toBe('gentleBells')
+      expect(await toneOf(c, ids.ocean)).toBe('oceanTide')
+      expect(await toneOf(c, ids.twinkle)).toBe('twinkleStars')
+
+      expect(await toneOf(c, ids.already)).toBe('gentleBells')
+      expect(await toneOf(c, ids.unknown)).toBe('Kazoo fanfare')
+      expect(await toneOf(c, ids.noTone)).toBeNull()
+      expect(await toneOf(c, ids.noAlarm)).toBeNull()
+
+      // The rest of the alarm — and the rest of settings — has to survive: the
+      // device reads on/hour/min/volume off the same object.
+      const row = (await c.query<{ alarm: Record<string, unknown> }>(
+        `select settings->'alarm' as alarm from waffled_bite_devices where id = $1`, [ids.sunrise]
+      )).rows[0].alarm
+      expect(row).toEqual({ on: true, hour: 6, min: 45, tone: 'sunriseChime', volume: 80 })
+
+      // A device that never had an alarm keeps an untouched (empty) settings blob.
+      const empty = (await c.query<{ settings: unknown }>(
+        `select settings from waffled_bite_devices where id = $1`, [ids.noAlarm]
+      )).rows[0].settings
+      expect(empty).toEqual({})
+    })
+  })
+
+  it('is idempotent — running the backfill again changes nothing', async () => {
+    // The migration has already run above, so re-apply its SQL directly. This is
+    // the real guard against a hosted machine where the migration is re-run (or
+    // where new rows were written by an already-updated app in between).
+    const sql = readdirSync(migrationsDir).find((f) => f.startsWith(TONE_MIGRATION))
+    expect(sql).toBeTruthy()
+    const body = (await import('node:fs')).readFileSync(resolve(migrationsDir, sql as string), 'utf8')
+    const up = body.split(/^-- Down Migration/m)[0]
+
+    await withClient(async (c) => {
+      const before = await c.query(`select id, settings from waffled_bite_devices order by id`)
+      await c.query(up)
+      const after = await c.query(`select id, settings from waffled_bite_devices order by id`)
+      expect(after.rows).toEqual(before.rows)
+    })
   })
 })

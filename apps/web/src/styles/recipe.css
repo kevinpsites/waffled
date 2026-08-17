@@ -151,10 +151,21 @@
   font-size: 15px;
   min-width: 0;
 }
-.ring-row.on .ring-name,
-.ring-row.on .ring-amt {
+/* Two screens share .ring-row and "on" means the opposite thing in each, so the checked
+   treatment is per-screen. Cooking checklist: "on" = already got it, so strike it out.
+   Grocery picker: "on" = will be added, so keep it fully legible and dim the ones being
+   left behind instead (mirrors the iOS sheet). */
+.ring-row.checklist.on .ring-name,
+.ring-row.checklist.on .ring-amt {
   color: var(--ink-3);
   text-decoration: line-through;
+}
+.ring-row.picking {
+  opacity: 0.55;
+  transition: opacity 0.12s ease;
+}
+.ring-row.picking.on {
+  opacity: 1;
 }
 
 /* on-hand banner */
@@ -395,6 +406,51 @@
   font-weight: 800;
   color: var(--primary-d);
   cursor: pointer;
+}
+/* Expanded, the banner stops being one line — top-align the icon and the action
+   rather than floating them against the middle of a list. */
+.rd-ai.is-open {
+  align-items: flex-start;
+}
+/* The count itself is the control. Styled as the text it replaces, so the banner
+   still reads as a sentence rather than sprouting a button — but it has to LOOK
+   openable, or nobody finds it: a dotted underline plus a caret in the count's
+   own colour (a grey 9px caret read as a speck of dust). */
+.rd-ai-buy {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.rd-ai-buy b {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.rd-ai-caret {
+  font-size: 11px;
+  color: var(--ai-d);
+}
+.rd-ai-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.rd-ai-list li {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-2);
+  background: var(--card);
+  border: 1px solid var(--hair-2);
+  border-radius: 999px;
+  padding: 3px 9px;
 }
 .rd-added {
   color: var(--ink-3);
@@ -1190,4 +1246,87 @@
   .re-ing-row .re-ing-prep { grid-column: 2 / 4; }
   .re-ing-row .re-ing-drag { grid-row: 1 / 4; }
   .re-ing-row .re-ing-x { grid-row: 1 / 4; grid-column: 4 / 5; }
+}
+
+/* ---- Recently viewed rail (recipe library) ------------------------------- */
+/* A horizontal shortcut strip above the library grid. Deliberately smaller and
+   flatter than a .recipes-card: it's a way back to something you just had open,
+   not a third way to browse, and it must not compete with the grid below. */
+.recents {
+  margin: 4px 0 18px;
+}
+.recents-h {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.recents-title {
+  font-weight: 800;
+  color: var(--ink2);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.recents-scope {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.recents-scope .pill {
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 12px;
+}
+/* Matches the established selected-pill look (.ph-album-actions .pill.on). Uses
+   --primary + --on-accent deliberately: --primary stays saturated in both themes so
+   white text is always legible. (--on-ink is an iOS-only token and does not exist
+   here — using it left the label dark-on-dark and invisible.) */
+.recents-scope .pill.on {
+  background: var(--primary);
+  color: var(--on-accent);
+  border-color: var(--primary);
+}
+/* Scrolls sideways rather than wrapping — a rail that reflows into three rows
+   stops reading as "recent" and starts competing with the grid. */
+.recents-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+.recents-card {
+  flex: 0 0 auto;
+  width: 108px;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+}
+.recents-img {
+  height: 68px;
+  border-radius: var(--r-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--hair);
+}
+.recents-card:hover .recents-img {
+  box-shadow: var(--sh-2);
+}
+.recents-t {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

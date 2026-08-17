@@ -23,7 +23,24 @@ const SOUNDS: Array<[string, string]> = [
   ['white', 'White noise'], ['ocean', 'Ocean waves'], ['rain', 'Gentle rain'],
   ['fan', 'Box fan'], ['heartbeat', 'Heartbeat'], ['lullaby', 'Lullaby'], ['forest', 'Forest'],
 ]
-const ALARM_TONES = ['Sunrise chime', 'Birdsong', 'Soft harp', 'Gentle bells', 'Ocean tide', 'Twinkle stars']
+// The device generates its sounds itself; these two need real recordings it
+// doesn't carry yet, so they're shown but not selectable. Keep in step with
+// the firmware's wb_synth_parse and its WB_SOUND_OPTIONS.
+const SOUNDS_COMING_SOON = ['lullaby', 'forest'] as const
+// Birdsong is the one wake tone that needs a real recording rather than
+// synthesis, so it ships with the sampled sounds above rather than with the
+// other five tones.
+const ALARM_TONES_COMING_SOON = ['birdsong'] as const
+// Key + label, like SOUNDS above — the KEY is what's stored. These used to be
+// bare labels stored as-is, so `settings.alarm.tone` held 'Sunrise chime': the
+// stored value and the on-screen copy were one string, which meant renaming a
+// chip silently repointed every paired device's alarm and nothing could ever be
+// localised. Migration 0095 rewrote the rows; the firmware's wb_tone_parse takes
+// both spellings, so no release had to be timed against it.
+const ALARM_TONES: Array<[string, string]> = [
+  ['sunriseChime', 'Sunrise chime'], ['birdsong', 'Birdsong'], ['softHarp', 'Soft harp'],
+  ['gentleBells', 'Gentle bells'], ['oceanTide', 'Ocean tide'], ['twinkleStars', 'Twinkle stars'],
+]
 const SLEEP_TIMERS = [0, 15, 30, 60, 120]
 const DOW: Array<[number, string]> = [[0, 'S'], [1, 'M'], [2, 'T'], [3, 'W'], [4, 'T'], [5, 'F'], [6, 'S']]
 const QUIET_PRESETS = [10, 15, 20, 30, 60]
@@ -130,12 +147,22 @@ function Stepper({ value, onChange, step = 1, min, max, unit }: {
   )
 }
 
-function ChipPicker<T extends string>({ options, value, onChange }: { options: Array<[T, string]>; value: T; onChange: (v: T) => void }) {
+function ChipPicker<T extends string>({ options, value, onChange, comingSoon }: { options: Array<[T, string]>; value: T; onChange: (v: T) => void; comingSoon?: readonly string[] }) {
   return (
     <div className="rw-cur-pick">
-      {options.map(([id, label]) => (
-        <button key={id} type="button" className={`rw-cur-chip ${value === id ? 'on' : ''}`} onClick={() => onChange(id)}>{label}</button>
-      ))}
+      {options.map(([id, label]) => {
+        const soon = comingSoon?.includes(id) ?? false
+        return (
+          <button
+            key={id}
+            type="button"
+            disabled={soon}
+            title={soon ? "This one needs a real recording the device doesn't have yet" : undefined}
+            className={`rw-cur-chip ${value === id ? 'on' : ''}`}
+            onClick={() => onChange(id)}
+          >{soon ? `${label} (soon)` : label}</button>
+        )
+      })}
     </div>
   )
 }
@@ -243,7 +270,10 @@ export function WaffledBiteDevice() {
   const s = device.settings
   const night = s.night ?? { on: false, color: 'amber', brightness: 40 }
   const sound = s.sound ?? { on: false, sound: 'ocean', volume: 45, timerMin: 0 }
-  const alarm = s.alarm ?? { on: false, hour: 6, min: 45, tone: 'Sunrise chime' }
+  // Field-by-field rather than `?? {...}`: every device paired before the alarm
+  // had its own volume has an `alarm` object with no `volume` key, and a whole-
+  // object fallback would leave it undefined for exactly those devices.
+  const alarm = { on: false, hour: 6, min: 45, tone: 'sunriseChime', volume: 80, ...(s.alarm ?? {}) }
   const display = s.display ?? { brightness: 85, nightDim: true }
   const schedules = s.schedules ?? []
   const quiet = device.runtimeState.quiet
@@ -436,7 +466,7 @@ export function WaffledBiteDevice() {
             {sound.on && (
               <div style={{ marginTop: 12 }}>
                 <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Sound</div>
-                <ChipPicker options={SOUNDS} value={sound.sound} onChange={(id) => patchSettings({ sound: { ...sound, sound: id } })} />
+                <ChipPicker options={SOUNDS} value={sound.sound} comingSoon={SOUNDS_COMING_SOON} onChange={(id) => patchSettings({ sound: { ...sound, sound: id } })} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0' }}>
                   <span className="tiny muted" style={{ fontWeight: 700 }}>Volume</span>
                   <Stepper value={sound.volume} step={5} min={0} max={100} unit="%" onChange={(v) => patchSettings({ sound: { ...sound, volume: v } })} />
@@ -464,7 +494,11 @@ export function WaffledBiteDevice() {
                   }} />
                 </label>
                 <div className="tiny muted" style={{ fontWeight: 700, marginBottom: 6 }}>Alarm sound</div>
-                <ChipPicker options={ALARM_TONES.map((t) => [t, t] as [string, string])} value={alarm.tone} onChange={(t) => patchSettings({ alarm: { ...alarm, tone: t } })} />
+                <ChipPicker options={ALARM_TONES} value={alarm.tone} comingSoon={ALARM_TONES_COMING_SOON} onChange={(t) => patchSettings({ alarm: { ...alarm, tone: t } })} />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 12 }}>
+                  <span className="tiny muted" style={{ fontWeight: 700 }}>Volume</span>
+                  <Stepper value={alarm.volume} step={5} min={0} max={100} unit="%" onChange={(v) => patchSettings({ alarm: { ...alarm, volume: v } })} />
+                </div>
               </div>
             )}
           </ListRow>

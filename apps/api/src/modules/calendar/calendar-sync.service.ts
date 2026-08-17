@@ -15,20 +15,15 @@ import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { log } from '../../platform/logger'
 import { runJob, registerJob } from '../../platform/jobs'
-import { decryptSecret, encryptionAvailable } from '../../platform/crypto'
+import { decryptSecret, encryptSecret, encryptionAvailable } from '../../platform/crypto'
 import {
-  googleConfigured,
-  refreshAccessToken,
-  listEventsPage,
-  insertEvent,
-  patchEvent,
-  deleteEvent,
   SyncTokenInvalidError,
   type GoogleEvent,
   type GoogleEventDateTime,
   type GoogleEventWrite,
   type GoogleWriteResult,
 } from '../../integrations/google'
+import { providerFor, anyProviderConfigured, type CalendarProviderAdapter } from './providers/provider'
 import type { CalendarSyncResult, HouseholdSyncResult, WriteTarget, PushPendingResult } from './calendar-sync.types'
 import { applySeriesMeta } from '../events/event-series-meta'
 
@@ -43,6 +38,7 @@ interface SelectedCalendarRow extends QueryResultRow {
   id: string
   household_id: string
   account_id: string
+  provider: string
   google_calendar_id: string
   summary: string | null
   timezone: string | null
@@ -57,7 +53,7 @@ interface SelectedCalendarRow extends QueryResultRow {
 // account's refresh token and the household tz (fallback for all-day anchoring).
 async function selectedCalendars(householdId: string, onlyId?: string): Promise<SelectedCalendarRow[]> {
   const { rows } = await query<SelectedCalendarRow>(
-    `select c.id, c.household_id, c.account_id, c.google_calendar_id, c.summary, c.timezone,
+    `select c.id, c.household_id, c.account_id, a.provider, c.google_calendar_id, c.summary, c.timezone,
             c.person_id, c.visibility, c.sync_token, a.refresh_token_encrypted, h.timezone as household_timezone
        from calendars c
        join calendar_accounts a on a.id = c.account_id and a.deleted_at is null
@@ -68,6 +64,29 @@ async function selectedCalendars(householdId: string, onlyId?: string): Promise<
     onlyId ? [householdId, onlyId] : [householdId]
   )
   return rows
+}
+
+// Microsoft rotates refresh tokens on every exchange — persist the replacement
+// so the account survives past the old token's revocation. (No-op for Google.)
+async function persistRotatedToken(accountId: string, newRefreshToken: string): Promise<void> {
+  await query(`update calendar_accounts set refresh_token_encrypted = $2, updated_at = now() where id = $1`, [
+    accountId,
+    encryptSecret(newRefreshToken),
+  ])
+}
+
+// Refresh an account's access token via its provider adapter, persisting a
+// rotated refresh token when the provider issues one.
+async function refreshForAccount(
+  adapter: CalendarProviderAdapter,
+  accountId: string,
+  refreshTokenEncrypted: string
+): Promise<string> {
+  const tok = await adapter.refreshAccessToken(decryptSecret(refreshTokenEncrypted))
+  if (adapter.rotatingRefreshTokens && tok.refreshToken) {
+    await persistRotatedToken(accountId, tok.refreshToken)
+  }
+  return tok.accessToken
 }
 
 // Google gives start/end as either a date (all-day) or an offset-bearing dateTime.
@@ -81,14 +100,15 @@ function resolveInstant(
   return { raw: dt.dateTime, allDay: false, tz: dt.timeZone ?? fallbackTz }
 }
 
-// Upsert one Google event into events, keyed by (calendar_id, google_event_id).
-// Google-owned columns are overwritten; person_id is seeded from the calendar
-// mapping but coalesced on update so a manual reassignment survives.
-// Returns 'imported' | 'updated' | 'deleted'.
+// Upsert one provider event into events, keyed by (calendar_id, google_event_id
+// = the provider's event id). Provider-owned columns are overwritten; person_id
+// is seeded from the calendar mapping but coalesced on update so a manual
+// reassignment survives. Returns 'imported' | 'updated' | 'deleted'.
 async function applyEvent(
   client: PoolClient,
   cal: SelectedCalendarRow,
-  ev: GoogleEvent
+  ev: GoogleEvent,
+  origin: string
 ): Promise<'imported' | 'updated' | 'deleted'> {
   // Tombstone: incremental sync returns cancelled instances for deletions.
   if (ev.status === 'cancelled') {
@@ -113,7 +133,7 @@ async function applyEvent(
        status, google_event_id, ical_uid, etag, sequence, google_updated, sync_state,
        visibility, owner_person_id
      ) values (
-       $1, $2, $3, 'google',
+       $1, $2, $3, $19,
        $4, $5, $6,
        case when $7 then ($8::text)::timestamp at time zone $9 else ($8::text)::timestamptz end,
        case when $10::text is null then null
@@ -164,6 +184,7 @@ async function applyEvent(
       ev.updated,
       cal.visibility,
       cal.person_id,
+      origin,
     ]
   )
   // Series-level goal inheritance: if this Google instance belongs to a goal-tracked
@@ -178,6 +199,7 @@ async function applyEvent(
 // A 410 (stale token) drops the cursor and retries once as a full-window sync.
 async function syncCalendar(
   cal: SelectedCalendarRow,
+  adapter: CalendarProviderAdapter,
   accessToken: string,
   now: number
 ): Promise<CalendarSyncResult> {
@@ -209,7 +231,7 @@ async function syncCalendar(
       try {
         for (;;) {
           if (++pages > MAX_PAGES) break
-          const page = await listEventsPage(accessToken, cal.google_calendar_id, {
+          const page = await adapter.listEventsPage(accessToken, cal.google_calendar_id, {
             syncToken: syncToken ?? undefined,
             timeMin: syncToken ? undefined : fullWindow.timeMin,
             timeMax: syncToken ? undefined : fullWindow.timeMax,
@@ -219,7 +241,7 @@ async function syncCalendar(
           await client.query('begin')
           try {
             for (const ev of page.events) {
-              const outcome = await applyEvent(client, cal, ev)
+              const outcome = await applyEvent(client, cal, ev, adapter.origin)
               counts[outcome]++
             }
             await client.query('commit')
@@ -296,9 +318,8 @@ export async function syncHousehold(
     if (cached) return cached
     let entry: { accessToken?: string; error?: string }
     try {
-      const refresh = decryptSecret(cal.refresh_token_encrypted)
-      const tok = await refreshAccessToken(refresh)
-      entry = { accessToken: tok.accessToken }
+      const adapter = providerFor(cal.provider)
+      entry = { accessToken: await refreshForAccount(adapter, cal.account_id, cal.refresh_token_encrypted) }
     } catch (err) {
       entry = { error: err instanceof Error ? err.message : 'token refresh failed' }
     }
@@ -322,7 +343,7 @@ export async function syncHousehold(
       continue
     }
     try {
-      results.push(await syncCalendar(cal, tok.accessToken, now))
+      results.push(await syncCalendar(cal, providerFor(cal.provider), tok.accessToken, now))
     } catch (err) {
       results.push({ ...base, error: err instanceof Error ? err.message : 'sync failed' })
     }
@@ -351,8 +372,8 @@ export async function syncHousehold(
 // calendars (reader/freeBusyReader) are never write targets.
 export async function resolveWriteTarget(householdId: string, personId: string | null): Promise<WriteTarget | null> {
   if (!personId) return null
-  const { rows } = await query<{ calendar_id: string; google_calendar_id: string; refresh_token_encrypted: string }>(
-    `select c.id as calendar_id, c.google_calendar_id, a.refresh_token_encrypted
+  const { rows } = await query<{ calendar_id: string; google_calendar_id: string; refresh_token_encrypted: string; provider: string; account_id: string }>(
+    `select c.id as calendar_id, c.google_calendar_id, a.refresh_token_encrypted, a.provider, a.id as account_id
        from calendars c
        join calendar_accounts a on a.id = c.account_id and a.deleted_at is null
       where c.household_id = $1 and c.person_id = $2 and c.deleted_at is null
@@ -363,7 +384,7 @@ export async function resolveWriteTarget(householdId: string, personId: string |
   )
   const r = rows[0]
   return r
-    ? { calendarId: r.calendar_id, googleCalendarId: r.google_calendar_id, refreshTokenEncrypted: r.refresh_token_encrypted }
+    ? { calendarId: r.calendar_id, googleCalendarId: r.google_calendar_id, refreshTokenEncrypted: r.refresh_token_encrypted, provider: r.provider, accountId: r.account_id }
     : null
 }
 
@@ -371,8 +392,8 @@ export async function resolveWriteTarget(householdId: string, personId: string |
 // returns it if it's a writable, connected calendar in the household — otherwise
 // null, so an invalid/stale choice falls back to a local-only event.
 export async function resolveWriteTargetById(householdId: string, calendarId: string): Promise<WriteTarget | null> {
-  const { rows } = await query<{ calendar_id: string; google_calendar_id: string; refresh_token_encrypted: string }>(
-    `select c.id as calendar_id, c.google_calendar_id, a.refresh_token_encrypted
+  const { rows } = await query<{ calendar_id: string; google_calendar_id: string; refresh_token_encrypted: string; provider: string; account_id: string }>(
+    `select c.id as calendar_id, c.google_calendar_id, a.refresh_token_encrypted, a.provider, a.id as account_id
        from calendars c
        join calendar_accounts a on a.id = c.account_id and a.deleted_at is null
       where c.household_id = $1 and c.id = $2 and c.deleted_at is null
@@ -382,7 +403,7 @@ export async function resolveWriteTargetById(householdId: string, calendarId: st
   )
   const r = rows[0]
   return r
-    ? { calendarId: r.calendar_id, googleCalendarId: r.google_calendar_id, refreshTokenEncrypted: r.refresh_token_encrypted }
+    ? { calendarId: r.calendar_id, googleCalendarId: r.google_calendar_id, refreshTokenEncrypted: r.refresh_token_encrypted, provider: r.provider, accountId: r.account_id }
     : null
 }
 
@@ -401,16 +422,18 @@ interface PushRow extends QueryResultRow {
   deleted_at: Date | null
   google_calendar_id: string
   refresh_token_encrypted: string
+  provider: string
+  account_id: string
 }
 
 // Events joined to their (connected) write calendar + account. all-day dates are
-// rendered in the event's own zone so Google gets the right calendar day.
+// rendered in the event's own zone so the provider gets the right calendar day.
 const PUSH_SELECT = `
   select e.id, e.title, e.description, e.location, e.all_day, e.timezone,
          e.starts_at, e.ends_at, e.google_event_id, e.deleted_at,
          to_char(e.starts_at at time zone e.timezone, 'YYYY-MM-DD') as start_date,
          to_char(e.ends_at   at time zone e.timezone, 'YYYY-MM-DD') as end_date,
-         c.google_calendar_id, a.refresh_token_encrypted
+         c.google_calendar_id, a.refresh_token_encrypted, a.provider, a.id as account_id
     from events e
     join calendars c on c.id = e.calendar_id and c.deleted_at is null
     join calendar_accounts a on a.id = c.account_id and a.deleted_at is null
@@ -439,15 +462,16 @@ function buildWriteBody(ev: PushRow): GoogleEventWrite {
   }
 }
 
-// Caches one refreshed access token per refresh-token (i.e. per account) so a
-// batch push doesn't re-exchange for every event. Dedups concurrent callers.
-function makeTokenCache(): (refreshEncrypted: string) => Promise<string> {
+// Caches one refreshed access token per account so a batch push doesn't
+// re-exchange for every event. Dedups concurrent callers. Provider-aware:
+// rotation persistence happens inside refreshForAccount.
+function makeTokenCache(): (provider: string, accountId: string, refreshEncrypted: string) => Promise<string> {
   const m = new Map<string, Promise<string>>()
-  return (refreshEncrypted) => {
-    let p = m.get(refreshEncrypted)
+  return (provider, accountId, refreshEncrypted) => {
+    let p = m.get(accountId)
     if (!p) {
-      p = refreshAccessToken(decryptSecret(refreshEncrypted)).then((t) => t.accessToken)
-      m.set(refreshEncrypted, p)
+      p = refreshForAccount(providerFor(provider), accountId, refreshEncrypted)
+      m.set(accountId, p)
     }
     return p
   }
@@ -470,24 +494,25 @@ type PushOutcome = 'created' | 'updated' | 'deleted' | 'skipped' | 'failed'
 async function pushById(
   householdId: string,
   eventId: string,
-  getToken: (refreshEncrypted: string) => Promise<string>
+  getToken: (provider: string, accountId: string, refreshEncrypted: string) => Promise<string>
 ): Promise<PushOutcome> {
   const { rows } = await query<PushRow>(`${PUSH_SELECT} and e.id = $2`, [householdId, eventId])
   const ev = rows[0]
   if (!ev) return 'skipped'
   try {
-    const accessToken = await getToken(ev.refresh_token_encrypted)
+    const adapter = providerFor(ev.provider)
+    const accessToken = await getToken(ev.provider, ev.account_id, ev.refresh_token_encrypted)
     if (ev.deleted_at) {
-      if (ev.google_event_id) await deleteEvent(accessToken, ev.google_calendar_id, ev.google_event_id)
+      if (ev.google_event_id) await adapter.deleteEvent(accessToken, ev.google_calendar_id, ev.google_event_id)
       await query(`update events set sync_state = 'synced' where id = $1`, [ev.id])
       return 'deleted'
     }
     const body = buildWriteBody(ev)
     if (ev.google_event_id) {
-      await storeWriteResult(ev.id, await patchEvent(accessToken, ev.google_calendar_id, ev.google_event_id, body))
+      await storeWriteResult(ev.id, await adapter.patchEvent(accessToken, ev.google_calendar_id, ev.google_event_id, body))
       return 'updated'
     }
-    await storeWriteResult(ev.id, await insertEvent(accessToken, ev.google_calendar_id, body))
+    await storeWriteResult(ev.id, await adapter.insertEvent(accessToken, ev.google_calendar_id, body))
     return 'created'
   } catch (err) {
     console.error('calendar push failed', eventId, err)
@@ -553,8 +578,8 @@ export function startSyncScheduler(): void {
   if (schedulerTimer) return
   const intervalMs = parseInt(process.env.CALENDAR_SYNC_INTERVAL_MS ?? '300000', 10)
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) return
-  if (!googleConfigured() || !encryptionAvailable()) {
-    log.info('calendar sync scheduler not started (Google/encryption not configured)')
+  if (!anyProviderConfigured() || !encryptionAvailable()) {
+    log.info('calendar sync scheduler not started (no provider/encryption configured)')
     return
   }
   registerJob('calendar-sync')

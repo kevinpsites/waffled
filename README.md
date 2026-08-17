@@ -20,7 +20,8 @@ A shared family operating system rendered across three surfaces:
 - **iOS app** — native Swift/SwiftUI capture companion. Offline-first (read + write).
 - **Web app** — full management/setup dashboard. Static SPA served by Caddy (same build as the kiosk).
 
-One household, one source of truth: calendar (2-way Google sync), chores & stars,
+One household, one source of truth: calendar (2-way Google **or** Outlook sync, plus
+read-only ICS feeds), chores & stars,
 goals & rewards, meals & recipes, lists, photos, and an AI "Add anything" capture bar.
 
 ## Repo layout
@@ -73,11 +74,13 @@ and, once up, prints the exact URL to open. Open the kiosk at `http://localhost:
 first load you'll get a **setup wizard**: enter a household name + timezone and create
 your **admin account** (name, email, password). That's it — you're in.
 
-> **Using it from a tablet or the iOS app?** Run `./waffled setup` — one question
-> (localhost / your LAN IP / a hostname), auto-detects your IP, and writes the address
-> settings so off-device sync works (a `localhost` sync URL is the usual "shows Offline
-> on the tablet" trap). Run it before `./waffled up`, or any time later and re-run
-> `./waffled up` to apply it (a bare `./waffled restart` won't pick up the change).
+> **Using it from a tablet or the iOS app?** Point the device at `http://<your-ip>:8080`
+> and sync just works: each device is told to sync at the address it used to reach the
+> server, so it never gets handed a `localhost` it would resolve to itself (the old
+> "shows Offline on the tablet" trap). Run `./waffled setup` too — one question
+> (localhost / your LAN IP / a hostname) — so calendar and sign-in redirects point at the
+> right address. Run it before `./waffled up`, or any time later and re-run `./waffled up`
+> to apply it (a bare `./waffled restart` won't pick up the change).
 
 ### `.env`
 
@@ -86,7 +89,8 @@ optional integrations or to run somewhere other than `localhost`. The required v
 are the four generated secrets and the remaining `POSTGRES_*` settings. Optional (leave blank
 to skip): `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OLLAMA_HOST` for the AI capture
 bar, and `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALENDAR_REDIRECT_URI`
-for 2-way Google Calendar sync. See the comments in `.env.example` for the full list
+(or the matching `MS_*` values) for 2-way Google / Outlook calendar sync. ICS calendar
+feeds need no credentials at all. See the comments in `.env.example` for the full list
 (session lifetimes, ports, published-image overrides).
 
 ### Upgrading
@@ -248,8 +252,9 @@ non-interactively (e.g. over plain SSH).
 3. Read the docs site (built from `website/docs/`, Astro Starlight) — the user-facing docs and the feature matrix (source: `website/docs/src/content/docs/reference/features.md`).
 4. Follow `docs/engineering-plan.md` — the milestone plan in bite-sized, committable chunks.
 
-> Only setting up Google Calendar sync? The **Google Calendar** admin guide on the docs site
-> (`website/docs/src/content/docs/administration/google-calendar.md`) has the OAuth-client walkthrough.
+> Only setting up calendar sync? The **Google Calendar** and **Outlook / Microsoft 365** admin
+> guides on the docs site (`website/docs/src/content/docs/administration/`) have the
+> OAuth-client walkthroughs. Subscribing to a published ICS link needs no setup at all.
 
 ## The stack in one breath
 

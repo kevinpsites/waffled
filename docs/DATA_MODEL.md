@@ -137,7 +137,7 @@ create table identities (                          -- only members who log in (k
   is_primary     boolean not null default false
 );
 
-create table connected_accounts (                  -- Google OAuth grants for Calendar (encrypted)
+create table connected_accounts (                  -- Google/Microsoft OAuth grants for Calendar (encrypted)
   <base>,
   person_id        uuid not null references persons(id),
   provider         text not null default 'google',
@@ -149,7 +149,7 @@ create table connected_accounts (                  -- Google OAuth grants for Ca
   status           text not null default 'active'  -- active | needs_reauth
 );
 
-create table calendars (                           -- person ↔ Google calendar mapping
+create table calendars (                           -- person ↔ provider calendar mapping
   <base>,
   connected_account_id uuid references connected_accounts(id),  -- which token reaches it
   person_id        uuid references persons(id),    -- whose calendar (null = shared "Family")
@@ -204,14 +204,20 @@ create table events (                              -- masters + single events
   reminders jsonb,                                   -- [{method,minutes}] → Google reminders.overrides
   -- ── WAFFLED-OWNED (sync NEVER overwrites) ──
   person_id uuid references persons(id),             -- assignee → color
-  origin text not null default 'manual',             -- manual | google | meal_plan | task | ai_capture
+  origin text not null default 'manual',             -- manual | google | outlook | ics | meal_plan | task | ai_capture
   origin_ref_id uuid,                                -- soft link to source row (meal_plan_entry, …)
-  -- ── Google sync bookkeeping ──
+  -- ── Provider sync bookkeeping (named for their Google origin; the columns hold
+  --    Microsoft Graph ids and ICS VEVENT UIDs too — see calendar_accounts.provider) ──
   google_event_id text, ical_uid text, etag text, sequence int, google_updated timestamptz,
   sync_state text not null default 'local_only'      -- local_only | pending_push | synced | push_failed
 );
 create unique index uq_events_google on events (calendar_id, google_event_id)
   where google_event_id is not null;
+-- ICS feed events have calendar_id NULL, and Postgres treats NULLs as distinct, so the
+-- index above cannot arbitrate them. This partial index is their ON CONFLICT target,
+-- keyed on (feed id, VEVENT UID), and is what makes a feed re-sync idempotent.
+create unique index uq_events_ics_feed_uid on events (origin_ref_id, google_event_id)
+  where origin = 'ics' and google_event_id is not null;
 create index ix_events_household_start on events (household_id, starts_at) where deleted_at is null;
 create index ix_events_recurrence on events (household_id, recurrence_end_at) where rrule is not null;
 

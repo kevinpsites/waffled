@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { usePersons, eventsApi, type AgendaEvent } from '../../lib/api'
+import { useEventColor } from '../../lib/event-color'
 import { Icon } from '../icons'
 import {
   MONTHS, ymd, addDays, startOfWeek, localDate, fmtTime, eventPeople,
@@ -22,8 +23,10 @@ export function isPastEvent(e: AgendaEvent, now: Date): boolean {
   return end.getTime() < now.getTime()
 }
 
-export function AgendaRow({ event, past = false, onClick }: { event: AgendaEvent; past?: boolean; onClick: () => void }) {
-  const color = event.personColor ?? '#A6A29B'
+// `color` comes from useEventColor (family-aware) where the caller has it; the
+// plain owner color is the fallback for callers that don't.
+export function AgendaRow({ event, past = false, color: colorProp, onClick }: { event: AgendaEvent; past?: boolean; color?: string; onClick: () => void }) {
+  const color = colorProp ?? event.personColor ?? '#A6A29B'
   const people = eventPeople(event)
   const lead = people[0]
   return (
@@ -43,7 +46,7 @@ export function AgendaRow({ event, past = false, onClick }: { event: AgendaEvent
 
 // Small month grid in the sidebar with per-day event dots; clicking a day jumps
 // the calendar to that week.
-function MiniMonth({ events, tz, onPickDate }: { events: AgendaEvent[]; tz: string; onPickDate: (d: Date) => void }) {
+function MiniMonth({ events, tz, colorOf, onPickDate }: { events: AgendaEvent[]; tz: string; colorOf: (e: AgendaEvent) => string; onPickDate: (d: Date) => void }) {
   const today = new Date()
   const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() })
   const todayKey = ymd(today)
@@ -58,10 +61,10 @@ function MiniMonth({ events, tz, onPickDate }: { events: AgendaEvent[]; tz: stri
     const map: Record<string, Set<string>> = {}
     for (const e of events) {
       const k = localDate(e.startsAt, tz)
-      ;(map[k] ??= new Set()).add(e.personColor ?? '#A6A29B')
+      ;(map[k] ??= new Set()).add(colorOf(e))
     }
     return map
-  }, [events, tz])
+  }, [events, tz, colorOf])
 
   function shift(delta: number) {
     setView((v) => {
@@ -158,6 +161,8 @@ export function AgendaView({
   onCreate: (date: string) => void
 }) {
   const { persons = [] } = usePersons()
+  // The agenda surfaces use a lighter unassigned grey than the calendar grids.
+  const colorOf = useEventColor('#A6A29B')
   const today = new Date()
   const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate())
   const todayKey = ymd(today)
@@ -220,14 +225,14 @@ export function AgendaView({
               <button type="button" className="ag-group-add" title={`Add an event on ${g.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`} aria-label="Add an event on this day" onClick={() => onCreate(g.key)}>＋</button>
             </div>
             {g.events.map((e) => (
-              <AgendaRow key={e.id} event={e} past={isPastEvent(e, today)} onClick={() => onOpenEvent(e)} />
+              <AgendaRow key={e.id} event={e} past={isPastEvent(e, today)} color={colorOf(e)} onClick={() => onOpenEvent(e)} />
             ))}
           </div>
         ))}
       </div>
 
       <div className="ag-side">
-        <MiniMonth events={events} tz={tz} onPickDate={onPickDate} />
+        <MiniMonth events={events} tz={tz} colorOf={colorOf} onPickDate={onPickDate} />
 
         <HeadsUpCard refreshKey={events.length} />
 

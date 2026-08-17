@@ -22,10 +22,12 @@ to create an `.env` file, buy a domain, or obtain any API keys for the core app.
 ## Install
 
 > **Setting this up for a tablet, phone, or another computer?** That's the whole point —
-> an always-on kiosk tablet + the iOS app. Run **`./waffled setup`** *first* (one question,
-> auto-detects your LAN IP) so sync works off-device. You can also run it **any time later**
-> — just re-run `./waffled up` afterward. Skipping it is the #1 cause of the tablet showing
-> "Offline." Details: [Accessing it from other devices](#accessing-it-from-other-devices).
+> an always-on kiosk tablet + the iOS app. Sync now finds its own way: a device is told to
+> sync at whatever address it used to reach the server, so a tablet on `192.168.1.20:8080`
+> syncs against that same machine rather than itself. Still run **`./waffled setup`** (one
+> question, auto-detects your LAN IP) so calendar and sign-in redirects point at the right
+> address — before installing, or any time later followed by `./waffled up`. Details:
+> [Accessing it from other devices](#accessing-it-from-other-devices).
 
 ```bash
 git clone https://github.com/kevinpsites/waffled.git
@@ -96,11 +98,17 @@ nothing set, capture still works via an on-device heuristic.
 > Note: small local models (e.g. `llama3.2:3b`) are loose; a 7–8B model or hosted Claude
 > is meaningfully more reliable for parsing and recipe AI.
 
-## Optional: two-way Google Calendar sync
+## Optional: two-way calendar sync (Google or Outlook)
 
 Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALENDAR_REDIRECT_URI` in the
-env, then connect per person in **Settings → Calendars** ("Connect your calendar"). Waffled
-pulls events on a ~5-minute poll and pushes Waffled-authored events back.
+env — or `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, and `MS_CALENDAR_REDIRECT_URI` for
+[Outlook / Microsoft 365](/administration/outlook-calendar/) — then connect per person in
+**Settings → Calendars**. A household can mix both. Waffled pulls events on a ~5-minute poll
+and pushes Waffled-authored events back.
+
+Want a calendar on the wall without any of that? **Settings → Calendars → Calendar feeds**
+subscribes to any published `.ics` / `webcal://` link (a school schedule, a sports team) with
+no sign-in at all — read-only, refreshed every 15 minutes.
 
 ## Optional: single sign-on (OIDC)
 
@@ -124,19 +132,21 @@ writes the address settings for you:
 
 - **Just this computer (localhost)** — the default; nothing to do.
 - **Other devices on my network** — a tablet/phone/laptop on your LAN. `setup` detects
-  this machine's IP and sets `POWERSYNC_PUBLIC_URL` + `PUBLIC_BASE_URL` to it, so the
-  kiosk and [iOS app](/features/mobile/) can sync. Open `http://<ip>:8080` on the device. *(Reserve a static
-  IP for this machine in your router so the address doesn't drift.)*
+  this machine's IP and sets `PUBLIC_BASE_URL` to it. The sync address is worked out per
+  device from the address it dialled, so the kiosk and [iOS app](/features/mobile/) sync
+  without any further configuration. Open `http://<ip>:8080` on the device. *(Reserve a
+  static IP for this machine in your router so redirects and bookmarks don't drift.)*
 - **A hostname with automatic HTTPS** — `setup` sets `CADDY_SITE_ADDRESS` (Caddy
   auto-TLS), its PowerSync listener, and the public URLs. Enable the `443` mapping in
   `infra/compose/docker-compose.yml` and point DNS at the machine; Caddy also provides
   TLS for PowerSync on port `8090`.
 
 Prefer to edit by hand? The same four vars in `infra/compose/.env` do it:
-`POWERSYNC_PUBLIC_URL` (the sync endpoint clients connect to — the common trap),
-`PUBLIC_BASE_URL` (public origin for calendar/OIDC redirects), and `CADDY_SITE_ADDRESS`
-(hostname for auto-TLS), plus `POWERSYNC_CADDY_ADDRESS` (the sync listener). Run
-`./waffled up` after changing them.
+`PUBLIC_BASE_URL` (public origin for calendar/OIDC redirects), `CADDY_SITE_ADDRESS`
+(hostname for auto-TLS), `POWERSYNC_CADDY_ADDRESS` (the sync listener), and
+`POWERSYNC_PUBLIC_URL` — leave that one **empty** unless PowerSync has its own
+hostname/TLS, since an empty value means "derive it from the address each device used."
+Run `./waffled up` after changing them.
 
 ## Health, backups, and upgrades
 

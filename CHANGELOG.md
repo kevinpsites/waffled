@@ -15,12 +15,245 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
+  hardware run, the packing list, whatever's live this week — right on the Today board,
+  with tap-to-tick-off. Pick which list from the card itself, the same way the Goals
+  card pins a goal; the choice is remembered **per device**, so the kitchen display and
+  your phone can each keep a different list up. The auto-built grocery list keeps its
+  own card and isn't offered here. Web/kiosk and iPhone; add or remove it in Customize.
+- **A People view on the calendar — one column per person.** A new **People** view sits
+  beside Month/Week/Day/Agenda and splits a single day into a column for each family
+  member, so you can see at a glance who is where without reading everyone's events as one
+  jumbled list. An event appears in its owner's column **and** in the column of everyone
+  else on it, so the family dinner shows up in three columns rather than hiding under one
+  name; anything with nobody attached collects in a leading **Everyone** column. The
+  columns work exactly like the days in Week view — same time grid, same all-day row — and
+  they're on the web/kiosk and iPad. (Not on iPhone: a phone screen splits into columns too
+  narrow to read a title in — filter the calendar to one person there instead.)
+- **Recently viewed recipes.** The recipe library now opens with a strip of what you
+  just had open, so getting back to last night's dinner is one tap instead of a search.
+  It's **your own** history by default — two people sharing a kitchen browse for
+  different reasons — with an **Everyone** switch for the household's combined history
+  when the question is "what were we cooking last week?". Deleted recipes drop out of
+  it, and a recipe you open fifty times stays one entry rather than flooding the strip.
+- **Copy any list as a Markdown checklist.** Alongside the existing share, lists now offer
+  **Copy as Markdown** — the same items, written as `- [ ]` tick boxes under `##` section
+  headings, so pasting into Notes, Obsidian, a GitHub issue, or anywhere else that speaks
+  Markdown gives you a working checklist instead of flat text. It carries exactly what the
+  plain share does (unchecked items only, in the board's walking order, with store and
+  assignee notes), and the QR handoff is unchanged. On the web it's a button in the Share
+  list dialog; on iPhone/iPad it's in the list's ⋯ menu, and behind the share icon on the
+  grocery board.
+- **Pick any color for a person, not just the eight presets.** The color row in the member
+  editor (and in My Profile, and the new family color) now ends with a ninth "custom"
+  swatch that opens your device's color picker, so everyone can have exactly the shade
+  they want. The server only accepts full `#RRGGBB` hex values for a new color — a
+  member still holding an older, odder value keeps it, so they can always be saved.
+  editor (and in the new family color) now ends with a ninth "custom" swatch that opens
+  your device's color picker, so everyone can have exactly the shade they want. The server
+  only accepts full `#RRGGBB` hex values. On the web that's the member editor and My
+  Profile; on iPhone/iPad it's the member editor, and **Settings → Households** now lets
+  you pick your own color even if you're not an admin.
+- **A color of your own for whole-family events.** Events that involve every member of the
+  household now paint in a household-level **family color** instead of borrowing whichever
+  person happened to own the event — so the calendar reads at a glance: everyone, some of
+  us, one person, or nobody yet. Set it in **Settings → Family & People → Family color**;
+  it starts as a warm orange. Works on web, iPhone and iPad, on every calendar surface and
+  the Today dashboard.
+- **A watchdog that keeps live sync honest — and a calendar that can no longer go
+  blank.** The web app now supervises its own offline sync engine. If it ever goes quiet
+  — online, signed in, but not actually syncing for three minutes — Waffled restarts it
+  by itself: first a quick reconnect, then a full rebuild, then, as a last resort and only
+  once, wiping this browser's local copy and re-downloading it from the server — never
+  while unsent changes might still be waiting to upload. Retries back off from two minutes
+  up to sixteen, so a server that is down for a while heals on its own without being
+  hammered, and without ever wiping your local copy more than once on the way. An engine
+  that crashes on startup is retried too, instead of staying dead. Crucially, the
+  calendar stops trusting a local copy that is stalled or incomplete and reads straight
+  from the server instead, so a stuck sync engine can never show you an empty day that
+  isn't empty. A quiet strip appears while that is happening, and Settings → System
+  Health gains a **Live Sync (this browser)** card that tells the truth about what the
+  engine is doing — starting up, live, stalled, or failed with the actual error — plus
+  buttons to restart sync or reset the local copy yourself.
+
+### Changed
+
+- **Calendar events are now solid blocks of color.** Event chips across the month, week,
+  day and agenda views fill with the person's color instead of the old pale tint, which
+  reads far better from across the kitchen. **This changes how every existing household's
+  calendar looks after upgrading** — if you preferred the softer look, switch
+  **Settings → Family & People → Event style** back to *Tinted*. Titles on a solid chip
+  are drawn in black or white — whichever stays readable on that person's color — so the
+  lighter colors (gold, teal) and any pale custom hex you pick are legible in both light
+  and dark mode. Tinted is also theme-aware now, so it stays legible in dark mode.
+  **Settings → Family & People → Event style** back to *Tinted*. Tinted is also
+  theme-aware now, so it stays legible in dark mode. The setting belongs to the household,
+  so the web, the wall tablet and everyone's phone all follow it.
+
+### Fixed
+
+- **Fractions in a recipe's quantity column no longer disappear.** Typing an amount the
+  way recipes are actually written — `1/2`, `1 1/2`, `½` — saved the ingredient with **no
+  quantity at all**, silently, on the web recipe editor. Those amounts are now understood
+  and stored, and they come back out the way you wrote them: eighths, fifths and sixths
+  read as `⅛`, `⅕` and `⅙` on the recipe page and the grocery picker instead of rounded
+  decimals like `0.13`, and re-opening the editor shows `⅓` rather than
+  `0.3333333333333333`. So "1½ cups flour" stays "1½ cups flour". Amounts already lost to
+  this will need re-typing once.
+- **A recipe that fails to save or delete now says so.** If a save didn't go through, the
+  button simply came back and nothing else happened — indistinguishable from a successful
+  save, so it was easy to walk away and lose the recipe. A failed delete was the same: the
+  confirmation closed and the recipe looked gone. The editor now shows what went wrong and
+  leaves the recipe on screen so you can try again.
+- **Your personal notes stay yours.** Editing a recipe on the web copied your own notes
+  into the recipe's source notes, so the recipe page ended up showing the same note twice.
+  The editor now has separate **Recipe notes** and **Your notes** boxes, each saved to its
+  own place.
+- **The tablet stops showing "Offline."** Waffled used to hand every device the same
+  fixed sync address, which out of the box was `localhost` — right on the server itself,
+  and wrong on a kiosk tablet or a phone, where "localhost" means *that device*. Sync
+  quietly never connected: no live updates between rooms, no offline cache, a permanent
+  Offline banner. Each device is now told to sync at whatever address it used to reach the
+  server, so it works everywhere at once — and keeps working when your router hands the
+  machine a new IP. If you've set `POWERSYNC_PUBLIC_URL` by hand it is still honoured, for
+  servers that publish sync on their own hostname; on a home network you can now leave it
+  empty. **Existing installs are fixed on the next `./waffled up` or `./waffled upgrade`**,
+  which clears the old pinned address for you — but only when it's the one Waffled itself
+  generated (a plain-HTTP `localhost` or LAN-IP address on the sync port). A sync hostname
+  you chose is left exactly as you set it, and setting `POWERSYNC_PUBLIC_URL=off` now tells
+  Waffled you run the API without PowerSync at all, so devices stay on the plain API
+  instead of retrying a sync server that isn't there.
+- **An event can no longer end before it starts.** A backwards start/end time — from the
+  calendar editor, a quick-add, or an edit made offline — used to be saved as-is and then
+  render as a negative-length block that sorted oddly on the agenda and was rejected on the
+  way out to Google. It's now refused wherever the edit comes from, including when you
+  change only the end time and leave the start alone.
+
+## [0.13.0] - 2026-08-12
+
+### Added
+
+- **Two-way Outlook / Microsoft 365 calendar sync, right beside Google.** Connect an
+  Outlook or Microsoft 365 account in Settings → Calendars — on the web, iPhone or iPad —
+  and it syncs both ways on the
+  same engine and the same schedule as Google — pick which calendars sync, who each one
+  belongs to, and which is the write-target for events Waffled creates. A household can mix
+  Google and Microsoft accounts freely, and each connected account shows which provider it
+  came from. You're only offered the providers your server is actually set up for. Needs a
+  free Azure app registration; see the new
+  [Outlook / Microsoft 365](https://waffled.app/docs/administration/outlook-calendar/) guide.
+- **Subscribe to any published calendar link (ICS feeds).** Paste a school schedule, a
+  sports-team calendar, or a work calendar published from Outlook into Settings → Calendars
+  and its events show up on the family calendar — no sign-in, no OAuth setup, nothing to
+  approve. This is the plan B when a workplace won't approve calendar access. Feeds refresh
+  every 15 minutes (with a per-feed Sync button), can be mapped to a person for colour, and
+  can be marked private — and you can manage all of that from the web, iPhone or iPad. A
+  feed that stops working says so, instead of just going quietly stale. Their events are
+  **read-only everywhere**: a feed mirrors someone else's calendar, so rather than accept an
+  edit and silently undo it at the next refresh, Waffled hides Edit and Delete, tells you
+  where the event came from, and refuses the change however it arrives — including from
+  quick-add or an edit made offline.
+- **Share any list to a phone.** **Share list** turns whatever's still unchecked into a
+  clean text list and hands it over — from the grocery board's top bar, or a custom list's
+  **⋯** menu, on every surface. Items are grouped the way you read them — by aisle in
+  walking order on the grocery board, by section on a custom list, and as a plain list when
+  there are no sections — with quantities, plus the **store** and **who it's for** when
+  you've set them, so a run split across two shops still makes sense.
+  On the web and the kiosk you can also point a phone camera at a **QR code** that encodes
+  the list *itself* rather than a link, so whoever is going shopping needs no app, no
+  account and no sign-in; a list too long to fit in a code a camera can actually read says
+  so and points you at Copy or Share, rather than showing a QR that can't be scanned.
+  On iPhone and iPad it opens the system share sheet instead — the QR is there to get a
+  list onto a phone, and you're already holding one.
+- **Build one meal out of several recipes.** Dinner is rarely a single dish, but the
+  planner only ever let you plan one recipe a night. The new **Meal Builder** lets you
+  put a whole meal together: name it, drag recipes in from your library under Main,
+  Sides and Dessert, set how many it serves, and pick who's cooking each dish. From
+  there you can schedule it to a night — it fills that slot and goes on the calendar as
+  one meal — or just add its shopping to the grocery list without committing to a night.
+  Keep it in your library and it becomes reusable: saved meals sit alongside recipes in
+  the recipe library with their own 🍽️ Meals filter, search finds them by the meal's
+  name *or* any dish in it, and dropping one onto a new plate brings its dishes in.
+  Works on web, iPhone and iPad — on the phone and tablet you tap **＋ Add a side** to
+  pick from the same library, a new meal opens with the keyboard already on its name,
+  and once a dish is on the plate you can press and hold it to drag it under another
+  heading (an empty role shows a slot to aim at). Wherever a planned dinner is shown — the week
+  grid, the month grid, tonight's card, the grocery list — tapping a meal opens the
+  meal, and dragging one to another night takes its dishes with it.
+- **Cook a whole meal, dish by dish.** Cook mode now takes a meal as well as a single
+  recipe: it tabs across every dish on the plate, and timers you start keep running when
+  you move between them, so the rice doesn't quietly overcook while you're reading the
+  chicken steps. Each dish also remembers its own place, so switching back doesn't lose
+  where you were, and a timer that goes off tells you which dish it belongs to. Jumping
+  to a timer's step offers a **"Back to step 6"** pill (iPhone/iPad) that puts you back
+  exactly where it pulled you from — it stays until you use it or dismiss it, because a
+  timer going off is precisely when you get distracted. Open it from the meal itself, or
+  straight from tonight's card. Web, iPhone and iPad.
+- **See *which* ingredients you still need, not just how many.** "7 to buy" was a number
+  you couldn't act on — the recipe screen said it and couldn't tell you what the 7 were.
+  Now it opens into the actual ingredient names, on the recipe screen and on every dish
+  in a meal. With the Pantry module on, these are specifically the ones your pantry
+  *doesn't* already cover. Web, iPhone and iPad.
+- **A meal shops as one thing.** A meal's ingredients group under the meal's name in the
+  grocery list's By-meal view — an unscheduled one is badged as such — with a dot on each
+  row in the meal's colour so you can see at a glance which night an item is for. An item
+  wanted by two meals is still one row with one checkbox. A meal added to the list without
+  being scheduled can be taken back off it again, and anything the week's actual plan
+  still needs stays put. Web, iPhone and iPad.
+
+- **Choose which recipe ingredients go on the grocery list.** "Add to grocery" now opens
+  a picker so you can add everything or just the items you actually need, instead of always
+  dumping the whole recipe onto the list. Everything starts checked — pantry staples are
+  flagged as "likely on hand" so you can uncheck them, rather than being left out on your
+  behalf. Works on web and iOS.
+- **Assign a store to grocery items and shop by store.** Tag an item with where you'll buy
+  it (Costco, Walmart, the corner market) and flip the grocery board to a **By store** view
+  that groups the list by shop. The store box is a quick-select over the stores you've used
+  before, so "Costco" typed once comes back as a tap and never splits into "costco".
+- **Lists now refresh across devices on their own.** When another family member checks
+  something off on their phone, the list you're looking at updates without a manual reload —
+  it refreshes when you return to the app and quietly re-checks every ~20 seconds while a
+  list is open. (It's a poll, not instant push, so give it a few seconds.)
 - **The goal Log sheet now suggests what you actually do.** The "What did you do?"
   chips are no longer a fixed list of six — each goal offers up the notes you've logged
   against it before, most-used first, so a goal you keep marking "family walk" or "lunch
   outside" starts offering those with one tap. Suggestions are per person (the notes where
   that family member took part, not just whoever tapped Log), and until a goal has enough
   history of its own the familiar defaults fill in the rest.
+
+- **Waffled-Bite device: the sound machine actually makes sound.** Picking white noise,
+  ocean, rain, a box fan or a heartbeat now plays it through the device's own speaker,
+  from either the device's Sounds tile or a parent's control panel, with a live volume
+  slider. Sounds fade in and out instead of clicking on, and the amplifier is powered
+  down between them, so there's no pop at lights-out. Every sound is generated on the
+  device from scratch rather than streamed — so it keeps playing through a Wi-Fi drop or
+  an overnight reboot of your home server, and a kid's room never goes suddenly silent.
+  Plug the small speaker that came with your board into the socket marked `SPK`. Forest and
+  lullaby show as "(soon)" and can't be picked yet — they need real recordings.
+
+- **Waffled-Bite device: the sleep timer actually stops the sound.** Picking 15m, 30m, 1h
+  or 2h under the sound machine has been savable for a while without the device ever acting
+  on it — the sound just played until somebody switched it off. Now it fades out when the
+  time is up, and the parent panel updates to match, so the app never reads "On" over a
+  silent speaker. The countdown restarts whenever the sound machine is switched on again,
+  a different sound is picked, or the timer length is changed — so nudging the volume
+  doesn't quietly buy another half hour. It keeps counting while the device is offline,
+  which is the whole point: a bedtime timer has to end even if the Wi-Fi drops.
+
+- **Waffled-Bite device: the morning alarm rings.** The alarm time and tone have been
+  saveable for a while without the device ever making a sound at the appointed hour; now it
+  does. Five of the six tones — sunrise chime, soft harp, gentle bells, ocean tide and
+  twinkle stars — are generated on the device itself, so the alarm still goes off if your
+  home server is down or the Wi-Fi has dropped. The alarm gets **its own volume**, separate
+  from the sound machine's: a wake tone has to be heard through sleep, where a sound machine
+  has to be ignorable. If the sound machine is playing when the alarm fires, it **fades down
+  for the alarm and comes back afterwards** rather than competing with it — an alarm playing
+  over white noise is one nobody wakes up to — and if the room was already quiet, it stays
+  quiet afterwards. When it rings, the device shows a full-screen "Good morning" with a big
+  **Stop** button, so a kid can silence it without hunting through menus; stopping it early
+  brings the sound machine back just the same. It also stops by itself after twenty seconds
+  if nobody taps anything. Birdsong shows as "(soon)": it's the one tone that needs a real
+  recording.
 
 - **Waffled-Bite device: set up WiFi right on the screen.** Connecting a new device to
   your home network no longer requires flashing it with hardcoded credentials — it now
@@ -115,6 +348,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Waffled-Bite control panel keeps itself up to date.** The panel read the device
+  once when you opened it and then never again, so anything your child did on the device
+  — switching the sound machine on, starting a timer — didn't show up until you reloaded,
+  and a device that dropped offline could keep showing as online. It now refreshes on its
+  own every few seconds while you're looking at it, on **web, iPhone and iPad**, and stops
+  while the tab or app is in the background so it costs nothing when you're not watching.
+
+- **The calendar grid now says which month you're looking at.** The app header shows
+  today's date, so paging the grid forward left nothing on the grid itself saying where
+  you'd landed — an empty November under a heading reading "August 11". Month, Week and Day
+  views now carry their own heading above the cells, with a **Back to today** button that
+  appears only once you've navigated away.
+- **"On hand" on a recipe now means your pantry, on iPhone and iPad.** The "4 of 9 on
+  hand" line counted ingredients marked as pantry staples — things you're assumed to
+  keep around — rather than anything actually in your pantry, so a household with a
+  completely empty pantry was still told it had most of the ingredients. It now uses the
+  same real pantry matching the rest of the app does. With the Pantry module switched
+  off it simply doesn't make the claim, instead of guessing.
+
+- **Grocery quantities read like a recipe again.** An ingredient measured in thirds landed on
+  the list as "0.6666666666666666 cup" — the number the computer kept rather than the ⅔ cup
+  you'd actually write down. Quantities now show as fractions (⅔ cup, 1½ lb), including on
+  lists you built before this fix, and adding two half-cups still totals one cup. Editing an
+  item hands you a version you can type — the box reads "1 1/2 lb" — and typing a fraction
+  that way (or as a decimal) saves it back in the tidy form.
+- **The grocery item editor lines up.** Editing an item put its two rows at different widths,
+  and once an item had a store the lower row could spill outside the card at some window
+  sizes. Both rows now fill the card, and the store box wraps instead of squashing the aisle
+  picker and the save button.
+- **Recipe photos now show on iPhone and iPad.** Uploaded recipe images were falling back to
+  the emoji placeholder in the detail hero and the library cards, even though the web showed
+  the picture — the app wasn't resolving the stored image's address. They now render (and are
+  cached for smooth scrolling).
+- **You can remove a recipe's photo when editing.** The recipe editor had no way to clear an
+  image — now there's a trash button next to the photo, and removing it actually deletes the
+  stored photo instead of leaving it in place.
+- **Change a list's emoji from inside the list.** The in-list ⋯ menu only let you rename a
+  list; changing its icon meant backing out to the Lists screen. The menu now opens the full
+  name-and-icon editor in place, listed simply as **Edit list** to match the editor it opens.
+- **A removed recipe photo disappears from the recipe list too (iPhone/iPad).** Deleting or
+  swapping a recipe's photo updated the recipe itself but left the old picture sitting on its
+  card in the library grid until the library reloaded — so the list and the recipe disagreed
+  about what the photo was.
+- **"Add to grocery list" opens full height on iPhone.** The ingredient picker came up as a
+  half sheet showing about three ingredients, so every use started by dragging it up. It now
+  opens full height.
+- **The iPad screensaver no longer drops over the keyboard.** If you were typing when the
+  idle timer fired, the screensaver could cover a lit keyboard. It now waits while a text
+  field is focused, and dismisses the keyboard if it does start.
 - **Recurring event edits now keep the whole series intact.** "This and following" carries
   all-day, countdown, people, goal, and repeat settings into the new series, while changing
   the time for "All events" no longer removes earlier occurrences. Locally synced web events
@@ -214,6 +496,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the Waffled host, with a direct link to the verification guide.
 - **Setup now links to the published troubleshooting guide.** The public-HTTPS
   PowerSync note no longer points at a repository file that does not exist.
+- **The server survives its database connection being dropped.** If Postgres closed a
+  connection the server was holding open but not actively using — a database restart, an
+  operator ending an idle session, a proxy reaping the socket — the API process could exit
+  instead of quietly reconnecting, taking the whole site down until Docker restarted it.
+  A dropped idle connection is now logged and the next request opens a fresh one.
 
 ### Security
 
@@ -231,7 +518,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   indirectly — let a crafted pattern expand without bound until the process ran
   out of memory. Waffled never feeds user input to the affected code path, so this
   was not exploitable in practice, but the patched version is now pinned across
-  the server's dependency tree.
+  the server's dependency tree. A later advisory found the first patch could be
+  bypassed the same way, so the pin has been moved forward again to the release
+  that closes it for good.
 
 ## [0.12.0] - 2026-07-23
 
@@ -1527,6 +1816,22 @@ requires user-facing notes under `[Unreleased]`; and runs the CLI, migration, AP
 (when configured), docs, Docker E2E, and locally available iOS checks. It does not bump versions,
 commit, or tag anything; build tools may refresh ignored local artifacts.
 
+Those checks run in **lanes** rather than one serial column, because a release is cut on your own
+machine and there is no reason to leave its cores idle. **Phase 1 runs the iOS and browser tests
+alone**, then **phase 2 runs the `docker`, `web` and `misc` lanes in parallel**, grouped by the
+resource each contends for. Those two are deliberately not overlapped: on a saturated machine the
+iOS Simulator does not just run slowly, it dies outright (`Failed to launch app … Mach error -308
+(ipc/mig) server died`), and Playwright runs a real browser with retries off — both fail the
+release for reasons unrelated to your code. Each lane buffers its output and prints it whole, so
+lanes appear one after another rather than interleaved; a heartbeat marks elapsed time while they
+run, and every step reports its own wall time. Ctrl-C stops the lanes and their children.
+
+**A run that fails ends with a `Release checks failed:` summary naming each failed step** — checks
+deliberately continue after a failure so one pass surfaces everything, which means the culprit may
+be thousands of lines above. A lane that *dies* (OOM, SIGKILL) is itself reported as a failure, so
+an interrupted run can never be mistaken for a passing one. If you see neither that summary nor
+`All available release project checks passed.`, the run did not finish.
+
 **To cut a release:** run **`./waffled release X.Y.Z`** locally on `main`. It repeats the checks
 before changing anything, then in one commit it:
 1. Reviews the `[Unreleased]` notes with you (**requires at least one entry**), dates the
@@ -1565,7 +1870,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/kevinpsites/waffled/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/kevinpsites/waffled/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/kevinpsites/waffled/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kevinpsites/waffled/compare/v0.9.0...v0.10.0

@@ -6,6 +6,8 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { RECIPE_TEMPLATE, RECIPE_EXAMPLE } from './components/recipe-template'
 import { PhotoImportModal, DescribeImportModal } from './components/RecipeImportModals'
 import { mealsApi, uploadImage, useRecipe, type IngredientInput, type RecipeMetadataSuggestion, type RecipeWriteInput, type StepInput } from '../lib/api'
+import { fmtAmt, parseAmt } from '../lib/amount'
+import { ApiSendError } from '../lib/api/client'
 import '../styles/recipe.css'
 
 // The one unified recipe editor — authoring a brand-new recipe and fully editing an
@@ -49,14 +51,22 @@ const META_FIELDS: { key: keyof RecipeWriteInput; label: string; placeholder: st
   { key: 'collection', label: 'Collection', placeholder: 'Weeknight favorites…' },
 ]
 
+// Save and delete failures used to be swallowed. Surface the server's own reason when it
+// sent one (same shape the import modals read), otherwise a plain "try again".
+function saveErrMessage(e: unknown, action: 'save' | 'delete' = 'save'): string {
+  const detail = e instanceof ApiSendError ? e.body?.message : undefined
+  return `Couldn’t ${action} the recipe — ${detail || 'please try again.'}`
+}
+
 const blankIng = (): EditIng => ({ uid: newUid(), name: '', amount: '', unit: '', prepNote: '', section: '' })
 const blankStep = (): EditStep => ({ uid: newUid(), instruction: '', picks: [], extra: [], timerSeconds: null })
 
 function toIngInput(r: EditIng, i: number): IngredientInput {
-  const amount = r.amount.trim() ? Number(r.amount) : null
   return {
     name: r.name.trim(),
-    amount: amount != null && Number.isFinite(amount) ? amount : null,
+    // Fractions are how recipes are written — parseAmt understands "1/2", "1 1/2" and
+    // "½"; a plain Number() made all of those NaN and dropped the quantity.
+    amount: parseAmt(r.amount),
     unit: r.unit.trim() || null,
     prepNote: r.prepNote.trim() || null,
     section: r.section.trim() || null,
@@ -120,6 +130,10 @@ export function RecipeEditor() {
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
+  // The household's own note on the recipe (user_notes) is a different column from the
+  // recipe's own `notes`: it survives a re-import, and must never be written into the
+  // shared field — editing one recipe used to duplicate it there.
+  const [userNotes, setUserNotes] = useState('')
   const [ings, setIngs] = useState<EditIng[]>([blankIng()])
   const [stps, setStps] = useState<EditStep[]>([blankStep()])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
@@ -137,6 +151,7 @@ export function RecipeEditor() {
   const [parsing, setParsing] = useState(false)
   const [parseErr, setParseErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [prefilled, setPrefilled] = useState(false)
 
@@ -200,10 +215,13 @@ export function RecipeEditor() {
       setImageUrl(recipe.imageUrl ?? '')
     }
     setImagePreview(recipe.imageUrl ?? null)
-    setNotes(recipe.userNotes ?? recipe.notes ?? '')
+    setNotes(recipe.notes ?? '')
+    setUserNotes(recipe.userNotes ?? '')
     const ingRows: EditIng[] = ingredients.length
       ? ingredients.map((i) => ({
-          uid: newUid(), name: i.name, amount: i.amount != null ? String(i.amount) : '', unit: i.unit ?? '',
+          // fmtAmt, not String() — a third of a cup is stored as 0.3333333333333333, and
+          // pasting that into the Qty box is how "⅓" turned into a decimal on every edit.
+          uid: newUid(), name: i.name, amount: i.amount != null ? fmtAmt(i.amount) : '', unit: i.unit ?? '',
           prepNote: i.prepNote ?? '', section: i.section ?? '',
         }))
       : [blankIng()]
@@ -231,7 +249,7 @@ export function RecipeEditor() {
     setNotes(p.recipe.notes ?? '')
     const ingRows: EditIng[] = p.ingredients.length
       ? p.ingredients.map((i) => ({
-          uid: newUid(), name: i.name, amount: i.amount != null ? String(i.amount) : '', unit: i.unit ?? '',
+          uid: newUid(), name: i.name, amount: i.amount != null ? fmtAmt(i.amount) : '', unit: i.unit ?? '',
           prepNote: i.prepNote ?? '', section: i.section ?? '',
         }))
       : [blankIng()]
@@ -299,26 +317,44 @@ export function RecipeEditor() {
   async function save() {
     if (!title.trim() || saving) return
     setSaving(true)
+    setSaveErr(null)
     try {
       const payload = buildPayload()
       // replace: true so the editor page doesn't linger in history — otherwise
       // "‹ Recipes" from the saved recipe would walk back INTO the editor.
       if (isEdit) {
-        await mealsApi.updateRecipe(id!, payload)
+        // Only send userNotes when this editor actually changed it. The API writes the
+        // column whenever it gets a string, so an unconditional send would clobber a
+        // note written since we loaded — the recipe page autosaves it on blur, and iOS
+        // edits it too. Clearing still works: '' differs from the loaded note, and ''
+        // (not null) is what the API takes as "empty this column".
+        const notesPatch = userNotes !== (recipe?.userNotes ?? '') ? { userNotes } : {}
+        await mealsApi.updateRecipe(id!, { ...payload, ...notesPatch })
         navigate(`/meals/recipe/${id}`, { replace: true })
       } else {
         const created = await mealsApi.createRecipe(payload)
         navigate(`/meals/recipe/${created.id}`, { replace: true })
       }
-    } catch {
+    } catch (e) {
+      // Say so — a silently re-enabled button looked exactly like a successful save,
+      // and the recipe was gone.
+      setSaveErr(saveErrMessage(e))
       setSaving(false)
     }
   }
 
   async function remove() {
     if (!isEdit) return
-    await mealsApi.deleteRecipe(id!)
-    navigate('/meals/recipes')
+    setSaveErr(null)
+    try {
+      await mealsApi.deleteRecipe(id!)
+      navigate('/meals/recipes')
+    } catch (e) {
+      // The confirm dialog closes either way, so a delete that failed looked exactly
+      // like one that worked. Close it and say what happened, where it can be seen.
+      setConfirmDelete(false)
+      setSaveErr(saveErrMessage(e, 'delete'))
+    }
   }
 
   // ── ingredient/step row ops ──
@@ -710,9 +746,27 @@ export function RecipeEditor() {
 
       <div className="card re-card">
         <div className="card-h re-section-h">Notes</div>
-        <textarea className="re-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything worth remembering…" rows={3} />
+        {isEdit ? (
+          // Editing an existing recipe: the recipe's own notes and yours are separate
+          // columns, so they get separate boxes.
+          <>
+            <label className="re-f">
+              <span>Recipe notes</span>
+              <textarea className="re-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything worth remembering…" rows={3} />
+            </label>
+            <label className="re-f" style={{ marginTop: 12 }}>
+              <span>Your notes</span>
+              <textarea className="re-notes" value={userNotes} onChange={(e) => setUserNotes(e.target.value)} placeholder="e.g. doubles well · go easy on the salt (kept across re-imports)" rows={3} />
+            </label>
+          </>
+        ) : (
+          <textarea className="re-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything worth remembering…" rows={3} />
+        )}
       </div>
 
+      {saveErr && (
+        <div className="tiny" role="alert" style={{ color: 'var(--danger)', fontWeight: 700, textAlign: 'right', marginTop: 6 }}>{saveErr}</div>
+      )}
       <div className="re-actions">
         {isEdit && <button type="button" className="pill re-delete-btn" onClick={() => setConfirmDelete(true)}>🗑 Delete recipe</button>}
         <div className="re-actions-right">

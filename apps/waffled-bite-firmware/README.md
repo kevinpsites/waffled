@@ -49,8 +49,10 @@ remaining rough edges.
   real touchscreen has no keyboard to trigger this. If clicks stop landing right in the
   simulator, close the window and re-run `pio run -e native -t exec` rather than debugging
   the app.
-- **`esp32-p4`** — the real board. **Unverified** — no board in hand yet (ordered);
-  compiles clean against the real toolchain, that's as far as this has been proven.
+- **`esp32-p4`** — the real board, **in hand and bring-up tested** (WiFi provisioning +
+  dozens of reboot tests — see the status paragraph above). This bullet previously read
+  "no board in hand yet (ordered)"; that was written at the 20 Jul port and went stale
+  three days later.
 
 Both environments build the same `src/main.cpp`; only `src/lgfx_device.h` branches
 (`#if defined(ARDUINO)`) to pick the real DSI-panel/GT911-touch HAL vs. the SDL one.
@@ -115,11 +117,82 @@ needed no changes across the v8→v9 migration — only *how* it's wired in chan
 ## What's not done
 
 > **Status summary:** the app itself is now code-complete — every screen described below
-> is wired to the real API and has been run against the real `./waffled-demo` backend. But
-> all of that verification happened in the `native` desktop simulator; the `esp32-p4`
-> target has never run on the actual board (still not in hand — see "unverified on real
-> silicon" below). Treat everything above the hardware-bring-up entries as **simulator-proven,
-> not hardware-proven**.
+> is wired to the real API and has been run against the real `./waffled-demo` backend.
+> Most of that verification happened in the `native` desktop simulator; the board itself is
+> in hand and has been bring-up tested (WiFi provisioning, reboot reliability), but the
+> individual screens below have not each been re-verified on real silicon. Treat everything
+> above the hardware-bring-up entries as **simulator-proven, not hardware-proven**.
+
+- **Audio works on real hardware — with three gaps.** `src/wb_synth.{h,cpp}` synthesises
+  all five phase-1 sounds (white/ocean/rain/fan/heartbeat) from scratch, with 14 unit tests
+  in `test/test_synth/` (`pio test -e native_test`), and `src/wb_audio_esp32.cpp` carries
+  them to the NS4168 over I2S. **Verified on the board:** the sound machine plays from the
+  device's Sounds tile and from a parent's panel, with a live volume slider and no pops.
+  Still open: the sampled sounds (`forest`/`lullaby`) and the alarm tone.
+
+  **The sleep timer switches the sound off.** `settings.sound.timerMin` (0/15/30/60/120
+  from the parent panel) is enforced by `wb_sleep_timer.{h,cpp}` — pure, like `wb_alarm`,
+  so its bookkeeping is unit-tested in `test/test_sleep_timer/`. Two things about it are
+  worth reading the header for. The expiry is **sticky** for the playback session:
+  `sound.on` is still true after the timer fires (that IS still the parent's setting, and
+  the device never writes it back), so a stop recomputed from the settings alone would be
+  undone by the next reconcile, five seconds later, all night. Only an *edge* re-arms it —
+  the sound machine going off→on, a different sound, or a changed `timerMin`. And the
+  countdown runs off `wb_tick_ms()`, never the server's wall clock, so it survives a
+  timezone change, a missing `now` in a payload, and the tick counter's ~49-day wrap; a
+  sleep timer is a duration, not an appointment. `main.cpp` re-applies the last known sound
+  settings once a second (`WB_SOUND_RECONCILE_MS`) rather than leaning on the 5 s poll, so
+  the timer still fires on time — and fires at all — while the device is offline.
+
+  **Two hardware facts worth not re-deriving.** The vendor's I2S pins are right (LRCLK 21,
+  BCLK 22, DOUT 23) and the P4's clock divider hits 22.05 kHz exactly. And the NS4168
+  enable on GPIO30 is **active LOW** — driving it low turns the amp ON, the opposite of
+  what the pin name suggests. Wired backwards it fails in the most misleading way
+  available: every call returns `ESP_OK`, every write succeeds, and nothing comes out.
+
+  You can also hear the recipes without a board — `tools/audio/render_wav.cpp` renders
+  them to WAV from the real synth:
+
+  ```
+  clang++ -std=c++14 -O2 -Isrc tools/audio/render_wav.cpp src/wb_synth.cpp -o /tmp/wb_render
+  /tmp/wb_render ~/Desktop/waffled-bite-sounds 20
+  ```
+
+  (It writes outside the repo on purpose — phase 1 ships zero audio assets.)
+
+  **The morning alarm rings too.** The device parses `settings.alarm` and fires the tone
+  when the poll's household-local clock reaches it — see `wb_alarm.{h,cpp}` for the timing
+  decision (pure, so the latch that makes it ring once rather than on all dozen polls of
+  that minute is unit-tested) and `wb_tone.{h,cpp}` for the five synthesised tones.
+  Birdsong needs a recording and waits for phase 2 with the sampled sounds.
+
+  Decision D4's sequence — duck the sound machine, ring for 20 s, hand playback back —
+  lives in `wb_audio_seq.{h,cpp}`, a pure phase machine that BOTH backends drive. It's
+  pure for a specific reason: `main.cpp` reconciles playback with `settings.sound` on
+  every poll, so roughly four polls land inside a 20-second alarm, and each would
+  otherwise start the sound machine up underneath the tone. That's unreachable from a
+  test if the sequencing lives inside the I2S task.
+
+  While it rings, `src/ui/alarm_screen.cpp` takes the screen with a **Stop** button —
+  loaded the moment the alarm fires, not on the next poll. Stop calls
+  `wb_audio_alarm_dismiss()`, which cancels only the alarm (the sound machine still fades
+  back in); `wb_audio_stop()` is the one that silences everything, and unpairing uses it.
+
+  **The tones are written for the CPU budget, not just for the ear.** They're a voice pool
+  of coupled-form resonators with one-pole envelopes — multiply-and-add per sample. The
+  first version computed each note analytically (~18 sinf + 12 expf per sample), which
+  measured fine and rendered a clean WAV but was audibly SCRATCHY on the board: this core
+  also draws the screen, and libm is expensive on the P4. If a recipe ever sounds wrong on
+  hardware, render it with `tools/audio/render_wav.cpp` first — clean on a laptop and bad
+  on the device means starvation, not a bad recipe.
+
+  Full plan in
+  [`docs/product/waffled-bites-audio-plan.md`](../../docs/product/waffled-bites-audio-plan.md);
+  phase 2 adds sampled forest/lullaby/birdsong cached in the unused `spiffs` partition.
+  Signed off: 22.05 kHz/16-bit/mono; audio is independent of the quiet-time/bedtime locks
+  (they must not touch `wb_audio`); no reboot persistence; the alarm gets its own
+  `alarm.volume` and **pauses** the sound machine for 20 s rather than playing over it; and
+  the speaker is the one that shipped with the board (2-pin JST PH 2.0 header marked `SPK`).
 
 - **Sounds and Nightlight are done.** Tapping either tile on the Grown-up controls
   screen opens a shared toggle+picker+slider detail screen (`src/ui/control_detail_screen.cpp` —

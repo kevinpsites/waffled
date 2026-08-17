@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiGet, apiSend, apiDelete, localToday } from './client'
 import { tap, useRefetchOn } from './bus'
+import type { OnHandCount } from './mealBuilder'
 
 // ── Recipe authoring (create / edit) ─────────────────────────────────────────
 export interface IngredientInput {
@@ -101,14 +102,34 @@ export interface MealRecipe {
   imageUrl: string | null
 }
 
+// The plate behind a meal-backed slot, trimmed to what a planner cell needs to draw
+// its emoji strip and dish list. The full plate lives in ./mealBuilder.
+export interface WeekEntryMeal {
+  id: string
+  name: string
+  servings: number
+  recipes: Array<{
+    recipeId: string
+    title: string | null
+    emoji: string | null
+    role: string
+    sortOrder: number
+  }>
+}
+
+// A planned slot holds EITHER a single recipe (recipeId set) or a whole Meal Builder
+// plate (mealId set) — never both; the one-entry-per-(date, mealType) unique index is
+// unchanged. A slot that flips type has the opposite column cleared server-side.
 export interface WeekEntry {
   id: string
   date: string
   mealType: string
   title: string | null
   recipeId: string | null
+  mealId: string | null
   cook: MealCook | null
   recipe: MealRecipe | null
+  meal: WeekEntryMeal | null
 }
 
 // Rich frontmatter metadata shared by the list + detail shapes.
@@ -273,7 +294,14 @@ export const mealsApi = {
   // — feeds the editor's section-name suggestions.
   recipeSections: () => apiGet<{ sections: string[] }>('/api/recipes/sections'),
   recipe: (id: string) =>
-    apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[]; steps: RecipeStep[] }>(`/api/recipes/${id}`),
+    apiGet<{
+      recipe: RecipeDetail
+      ingredients: RecipeIngredient[]
+      steps: RecipeStep[]
+      onHand?: OnHandCount | null
+      toBuy?: number
+      toBuyNames?: string[]
+    }>(`/api/recipes/${id}`),
   // Compile a recipe into the blessed Markdown format for sharing (native share sheet /
   // clipboard / .md download). Returns the markdown text + a suggested filename.
   recipeMarkdown: (id: string) =>
@@ -291,6 +319,17 @@ export const mealsApi = {
     patch: RecipeWriteInput & { isFavorite?: boolean; rating?: number; userNotes?: string; overrides?: RecipeOverrides },
   ) => apiSend<{ recipe: RecipeDetail }>('PATCH', `/api/recipes/${id}`, patch).then((r) => r.recipe),
   markCooked: (id: string) => apiSend<{ recipe: RecipeDetail }>('POST', `/api/recipes/${id}/cooked`).then((r) => r.recipe),
+  // Recently-opened recipes — the caller's own, or the whole household's.
+  recentRecipes: (scope: RecentScope, limit?: number) =>
+    apiGet<{ recipes: Recipe[]; scope: RecentScope }>(
+      `/api/recipes/recent?scope=${scope}${limit ? `&limit=${limit}` : ''}`
+    ),
+  // Record that this recipe was opened. Deliberately swallows failures: this is
+  // telemetry for a convenience rail, and it must never surface as an error on the
+  // recipe the user is trying to read.
+  recordRecipeView: (id: string): void => {
+    void apiSend('POST', `/api/recipes/${id}/view`).catch(() => {})
+  },
   createRecipe: (input: RecipeWriteInput & { title: string }) =>
     apiSend<{ recipe: RecipeDetail }>('POST', '/api/recipes', input).then(tap('recipes')).then((r) => r.recipe),
   deleteRecipe: (id: string) => apiDelete(`/api/recipes/${id}`).then(tap('recipes')),
@@ -345,6 +384,70 @@ export interface RecipesState {
   error: boolean
 }
 
+/** Whose history a recently-viewed list reflects. */
+export type RecentScope = 'me' | 'household'
+
+/**
+ * Record that a recipe was opened, for the "Recently viewed" rail.
+ *
+ * Belongs to the recipe *screen*, deliberately NOT to `useRecipe` — that hook is
+ * also what the editor and Cook Mode fetch through, and counting those would fill
+ * the rail with recipes nobody browsed. This mirrors iOS, which records in
+ * `RecipeDetailView.task`.
+ *
+ * Keyed on `id` alone: a refetch after an edit is the same visit.
+ */
+export function useRecordRecipeView(id: string | null): void {
+  useEffect(() => {
+    if (!id) return
+    mealsApi.recordRecipeView(id)
+  }, [id])
+}
+
+export interface RecentRecipesState extends RecipesState {
+  scope: RecentScope
+  setScope: (s: RecentScope) => void
+}
+
+// Recently-opened recipes, newest first. The scope choice is per-device (it's a
+// viewing preference, not household config) and remembered so the rail comes back
+// the way you left it.
+const RECENT_SCOPE_KEY = 'waffled.recentRecipesScope'
+
+export function useRecentRecipes(limit = 12): RecentRecipesState {
+  const [scope, setScopeState] = useState<RecentScope>(() =>
+    (typeof localStorage !== 'undefined' && localStorage.getItem(RECENT_SCOPE_KEY)) === 'household'
+      ? 'household'
+      : 'me'
+  )
+  const [state, setState] = useState<RecipesState>({ recipes: [], loading: true, error: false })
+  const [nonce, setNonce] = useState(0)
+  const refetch = useCallback(() => setNonce((n) => n + 1), [])
+
+  const setScope = useCallback((s: RecentScope) => {
+    setScopeState(s)
+    try {
+      localStorage.setItem(RECENT_SCOPE_KEY, s)
+    } catch {
+      // private mode / storage disabled — the choice just won't persist
+    }
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    mealsApi
+      .recentRecipes(scope, limit)
+      .then((d) => alive && setState({ recipes: d.recipes, loading: false, error: false }))
+      .catch(() => alive && setState({ recipes: [], loading: false, error: true }))
+    return () => {
+      alive = false
+    }
+  }, [scope, limit, nonce])
+  // A newly-opened recipe (or a deleted one) should reorder the rail on return.
+  useRefetchOn(['recipes'], refetch)
+  return { ...state, scope, setScope }
+}
+
 export function useRecipes(): RecipesState {
   const [state, setState] = useState<RecipesState>({ recipes: [], loading: true, error: false })
   const [nonce, setNonce] = useState(0)
@@ -367,6 +470,14 @@ export interface RecipeState {
   recipe: RecipeDetail | null
   ingredients: RecipeIngredient[]
   steps: RecipeStep[]
+  // Real, pantry-derived shopping numbers. `onHand` is null when the pantry module
+  // is off — render no on-hand claim at all rather than a misleading zero.
+  onHand: OnHandCount | null
+  toBuy: number
+  // The ingredients behind `toBuy`. With the pantry ON these are the *unmatched*
+  // subset, which is why they have to come from the server — the ingredient list
+  // alone can't tell you which ones the pantry already covered.
+  toBuyNames: string[]
   loading: boolean
   error: boolean
   refetch: () => void
@@ -377,6 +488,9 @@ export function useRecipe(id: string | null): RecipeState {
     recipe: null,
     ingredients: [],
     steps: [],
+    onHand: null,
+    toBuy: 0,
+    toBuyNames: [],
     loading: true,
     error: false,
   })
@@ -388,8 +502,21 @@ export function useRecipe(id: string | null): RecipeState {
     setState((s) => ({ ...s, loading: true }))
     mealsApi
       .recipe(id)
-      .then((d) => alive && setState({ recipe: d.recipe, ingredients: d.ingredients, steps: d.steps ?? [], loading: false, error: false }))
-      .catch(() => alive && setState({ recipe: null, ingredients: [], steps: [], loading: false, error: true }))
+      .then(
+        (d) =>
+          alive &&
+          setState({
+            recipe: d.recipe,
+            ingredients: d.ingredients,
+            steps: d.steps ?? [],
+            onHand: d.onHand ?? null,
+            toBuy: d.toBuy ?? 0,
+            toBuyNames: d.toBuyNames ?? [],
+            loading: false,
+            error: false,
+          }),
+      )
+      .catch(() => alive && setState({ recipe: null, ingredients: [], steps: [], onHand: null, toBuy: 0, toBuyNames: [], loading: false, error: true }))
     return () => {
       alive = false
     }

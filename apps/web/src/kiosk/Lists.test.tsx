@@ -116,6 +116,9 @@ describe('Lists screen', () => {
     // header: name + "2 items · 1 done" (the count is active/unchecked only) + filter
     await waitFor(() => expect(screen.getByText('2 items · 1 done')).toBeInTheDocument())
     expect(screen.getByText('Everyone')).toBeInTheDocument()
+    // Sharing is real now, but it lives in the ⋯ menu — the header itself stays
+    // uncluttered. (This assertion began life guarding a cosmetic Share pill that
+    // did nothing; it now guards the placement.)
     expect(screen.queryByRole('button', { name: 'Share list' })).not.toBeInTheDocument()
 
     // suggestions
@@ -442,5 +445,42 @@ describe('Lists screen', () => {
     const idx = (name: string) => rows.findIndex((t) => t.includes(name))
     expect(idx('Urgent item')).toBeLessThan(idx('Normal item'))
     expect(idx('Normal item')).toBeLessThan(idx('Low item'))
+  })
+
+  // Share list started as a grocery-only handoff, but "give this list to whoever
+  // is going" is the same job for a packing or hardware list.
+  describe('sharing a custom list', () => {
+    it('shares the unchecked items grouped by their sections', async () => {
+      mockApi({ lists: [grocery, packing], items: packItems })
+      renderScreen()
+      await exitBoard()
+      await screen.findByText('Swimsuits')
+
+      // Share list lives in the header's ⋯ menu, beside Rename and Delete.
+      fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+      fireEvent.click(screen.getByRole('button', { name: /Share list/ }))
+
+      expect(screen.getByText('Share list', { selector: '.modal-card *' })).toBeInTheDocument()
+      const block = document.querySelector('.share-list-text') as HTMLElement
+      // 'PJs & socks' is checked, so it must not travel; sections become headers;
+      // and the swimsuits are Kelly's, so they say so.
+      expect(block.textContent).toBe(
+        ['CLOTHES', '- Swimsuits (×4) [Kelly]', '', 'GEAR', '- Sunscreen'].join('\n')
+      )
+    })
+
+    it('offers nothing to share when the list has no unchecked items', async () => {
+      mockApi({ lists: [grocery, packing], items: [packItems[1]] })
+      renderScreen()
+      await exitBoard()
+      // The one item is checked, so it sits in the collapsed Completed section —
+      // wait on the list header instead, then assert there's nothing to share.
+      // (the name appears in both the sidebar and the list header)
+      expect((await screen.findAllByText('Lake trip packing')).length).toBeGreaterThan(0)
+
+      fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+      expect(screen.getByRole('button', { name: /Rename/ })).toBeInTheDocument() // menu is open
+      expect(screen.queryByRole('button', { name: /Share list/ })).toBeNull()
+    })
   })
 })

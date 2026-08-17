@@ -23,7 +23,9 @@ Then dig into logs for the flagged service: `./waffled logs <svc>` (`postgres`, 
 | DB check down / can't connect | [Postgres unreachable](#postgres-unreachable) |
 | "schema behind" / migrations pending | [Migrations pending](#migrations-pending) |
 | All clients show an **Offline** banner | [PowerSync offline](#powersync-offline-banner) |
-| Calendars stale / sync failing / `push_failed` | [Google Calendar sync](#google-calendar-sync-failing) |
+| One browser shows "Live sync is reconnecting" | [Live sync stalled](#live-sync-stalled-in-one-browser) |
+| Calendars stale / sync failing / `push_failed` | [Calendar sync](#calendar-sync-failing-google-or-outlook) |
+| A subscribed ICS feed shows an error or never updates | [Calendar feeds](#calendar-feed-ics-not-updating) |
 | Photo/recipe uploads fail / storage degraded | [Media uploads failing](#media-uploads-failing) |
 | Backup health degraded / stale | [Backups failing](#backups-failing-or-stale) |
 | Can't reach the app / TLS errors | [Can't reach the app](#cant-reach-the-app--tls) |
@@ -86,11 +88,36 @@ Then restart PowerSync to re-validate:
 ./waffled restart powersync     # unstick waffled-powersync
 ```
 
-**Also check `POWERSYNC_PUBLIC_URL`** — it must be the address clients actually use
-to reach PowerSync (e.g. your LAN IP / hostname, not `localhost`). A mismatch also
-manifests as clients that can't sync.
+**Also check `POWERSYNC_PUBLIC_URL`** — if it's set, it must be the address clients
+actually use to reach PowerSync, and a stale value (an old LAN IP, or `localhost`)
+shows up as clients that can't sync. On a home LAN, **clearing it** is the fix: Waffled
+then derives the sync address from whatever address each device used to reach the
+server. `./waffled up` and `./waffled upgrade` now clear it for you when it's one
+Waffled generated (plain HTTP to `localhost` or a LAN IP on the sync port) — a sync
+hostname you chose yourself is never touched. Keep it set only when PowerSync has its
+own hostname/TLS, or set it to `off` if you run the API without PowerSync at all.
 
-### Google Calendar sync failing
+### Live sync stalled in one browser
+
+**Symptom:** a **⟳ Live sync is reconnecting** strip across the top of the web app, and
+**Settings → System Health → Live Sync (this browser)** reading **stalled**. Usually one
+device, not all of them.
+
+**Diagnose:** the sync engine in *that browser* is online and signed in but hasn't reached
+a synced state for three minutes. Waffled is already restarting it on its own — reconnect,
+then rebuild, then wipe and re-download this browser's local copy — so the usual answer is
+to wait. Meanwhile the calendar reads straight from the server, so **the data on screen is
+current**; only live push updates lag.
+
+**Fix:** if it doesn't clear, use **⟳ Restart sync** on the Live Sync card, then **🧹 Reset
+local copy** (offered while stalled; it's skipped automatically if unsent changes are still
+queued). A reload also works.
+
+If the **watchdog restarts** count keeps climbing, or *every* device is stalled rather than
+one, the problem is the service, not the browser — see
+[PowerSync "Offline" banner](#powersync-offline-banner) above and `./waffled logs powersync`.
+
+### Calendar sync failing (Google or Outlook)
 
 **Symptom:** calendars stale / not updating; health `calendar` degraded; jobs log
 `push_failed` or `invalid_grant`.
@@ -105,6 +132,26 @@ consent flow and stores a fresh token).
 > **"Testing"** on the consent screen, Google **expires refresh tokens after 7
 > days**, so sync will keep breaking weekly. Publish the OAuth consent screen (move
 > it out of Testing) to stop this from recurring.
+
+**Outlook / Microsoft 365** fails the same way but for different reasons: the Azure
+**client secret has an expiry date** and sync stops dead when it lapses, and sign-in
+errors carry an `AADSTS` code. See
+[Outlook troubleshooting](/administration/outlook-calendar/#troubleshooting) for the
+specific codes. Note Waffled rotates Microsoft refresh tokens automatically — there is
+nothing to maintain there.
+
+### Calendar feed (ICS) not updating
+
+**Symptom:** a subscribed feed shows a ⚠ error, or its events never appear.
+
+**Diagnose:** each feed row in **Settings → Calendars → Calendar feeds** shows its
+last-synced time and the last error verbatim (an HTTP status from the publisher, or a
+parse failure). One bad feed never blocks the others.
+
+**Fix:** check the URL still resolves and is *published* (many calendar apps expire or
+rotate a published link). Press the row's **↻** to retry immediately rather than waiting
+for the 15-minute poll. Remember feed events are read-only: to change one, change it at
+the source.
 
 ### Media uploads failing
 

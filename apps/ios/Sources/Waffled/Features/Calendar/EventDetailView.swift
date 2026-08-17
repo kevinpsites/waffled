@@ -32,7 +32,15 @@ struct EventDetailView: View {
     /// A materialized occurrence of a repeating series (the mirror sets `occurrenceStart`
     /// only for those). Drives the this/following delete chooser.
     private var wasRecurring: Bool { event.occurrenceStart != nil }
-    private var tint: Color { Color(hexString: detail?.personColor ?? event.colorHex ?? "") ?? WF.ink3 }
+    /// The header accent. Family-aware, so the detail screen agrees with the chip the
+    /// user tapped; the REST detail's `personColor` is only the fallback for the mirror's
+    /// own color, never a way around the family rule.
+    private var tint: Color {
+        if let family = sync.eventPalette.hex(for: event), sync.eventPalette.isFamilyEvent(event) {
+            return Color(hexString: family) ?? WF.ink3
+        }
+        return Color(hexString: detail?.personColor ?? event.colorHex ?? "") ?? WF.ink3
+    }
     private var title: String { detail?.title ?? event.title }
     private var start: Date? { parseISO(detail?.startsAt) ?? event.startsAt }
     private var end: Date? { parseISO(detail?.endsAt) ?? event.endsAt }
@@ -47,7 +55,11 @@ struct EventDetailView: View {
             .navigationTitle("Event").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
-                ToolbarItem(placement: .primaryAction) { Button("Edit") { editing = true } }
+                // No Edit on a subscribed-feed event — it's someone else's calendar
+                // and there's nowhere to push a change back to.
+                if !isReadOnly {
+                    ToolbarItem(placement: .primaryAction) { Button("Edit") { editing = true } }
+                }
             }
             .task { await load() }
             .sheet(isPresented: $editing, onDismiss: { Task { await load() } }) {
@@ -59,6 +71,15 @@ struct EventDetailView: View {
     }
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
+    /// Events imported from an ICS subscription can be read but never changed. The
+    /// server enforces this (409 on REST, dropped in the PowerSync upload sink), so
+    /// leaving Edit/Delete on screen would let the user make a change that vanishes
+    /// on the next poll. Falls back to the mirror's origin so the gate is right
+    /// before the detail loads and while offline.
+    private var isReadOnly: Bool {
+        EventOrigin.isReadOnly(detailOrigin: detail?.origin, mirrorOrigin: event.origin)
+    }
 
     /// Single column on iPhone; a wider two-column layout on the iPad (hero on top,
     /// then details/notes alongside insight/timeline) so the larger modal reads like
@@ -95,7 +116,18 @@ struct EventDetailView: View {
         }
     }
 
-    private var deleteButton: some View {
+    /// Delete, or — for a subscribed-feed event — an explanation of why there's
+    /// nothing to press. Saying where the event came from is the useful part: the
+    /// fix is to edit it in the calendar that owns it, or unsubscribe in Settings.
+    @ViewBuilder private var deleteButton: some View {
+        if isReadOnly {
+            LockNote.subscribedFeedEvent.padding(.top, 4)
+        } else {
+            deleteControl
+        }
+    }
+
+    private var deleteControl: some View {
         Button {
             // A repeating occurrence asks which occurrences to remove; a single event
             // uses the tap-again confirm.
@@ -280,7 +312,7 @@ struct EventDetailView: View {
                     Text(e.allDay ? "all day" : fmtTime(e.startsAt))
                         .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                         .frame(width: 64, alignment: .leading)
-                    RoundedRectangle(cornerRadius: 2).fill(Color(hexString: e.colorHex ?? "") ?? WF.ink3)
+                    RoundedRectangle(cornerRadius: 2).fill(sync.eventPalette.color(for: e))
                         .frame(width: 4, height: 22)
                     Text(e.title).font(.system(size: 14, weight: e.id == event.id ? .bold : .semibold))
                         .foregroundStyle(e.id == event.id ? WF.ink : WF.ink2).lineLimit(1)

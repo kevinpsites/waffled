@@ -51,6 +51,8 @@ export interface Household {
     pantry?: { locations?: string[]; showOnToday?: boolean }
     chores?: { rewards?: boolean; proofTtlDays?: number }
     familyNight?: { showOnToday?: boolean }
+    // How the calendar paints event chips + the whole-family event color.
+    display?: { eventStyle?: string; familyColorHex?: string }
   } & Record<string, unknown>
 }
 
@@ -95,6 +97,9 @@ export const personsApi = {
   // Enable/disable optional modules (admins): { pantry: true, … }.
   setModules: (patch: Record<string, boolean>) =>
     apiSend<{ modules: Record<string, boolean> }>('PATCH', '/api/household/modules', patch).then((r) => r.modules),
+  // Display preferences (admins): event chip style + the whole-family color.
+  setDisplay: (patch: { eventStyle?: string; familyColorHex?: string }) =>
+    apiSend<{ display: Record<string, string> }>('PATCH', '/api/household/display', patch).then((r) => r.display),
 }
 
 // Notify listeners (e.g. the topbar clock) that household basics changed.

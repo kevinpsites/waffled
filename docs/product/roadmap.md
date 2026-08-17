@@ -17,6 +17,46 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
+- **Per-person calendar columns (web/kiosk + iPad)** — a **People** view beside
+  Month/Week/Day/Agenda that splits one day into a column per family member (the layout the
+  dispencer17 fork had). "Whose column" resolves to **`events.person_id`** — the assignee
+  that already drives the event's color, not `owner_person_id`, which `0074` added for
+  personal-calendar visibility — **plus every participant**, so a shared event shows up for
+  everyone it involves rather than only its owner. Bucketing is column-driven (each person
+  is asked "is this yours?"), which ignores the external participants `0009` allows without
+  inventing a column for them; anything nobody claims lands in a leading **Everyone**
+  column instead of vanishing. Lanes are packed per column, so an event shown in three
+  columns still spans full width where nothing else overlaps it. No schema or API work was
+  needed: participants already ride both the REST payload and the PowerSync replica, so the
+  view works offline like the others. On iOS it's **iPad-only**, as the original sizing
+  predicted — it was briefly on iPhone too, but four members already truncate titles to
+  "Dinn…", so the phone keeps Agenda/Month/Day and its person filter. The iPad reuses the
+  same `CalTimeGrid` the Week view uses, generalised so a column can be a person instead of
+  a date; the person filter chips are hidden in People mode, since the columns already are
+  that split.
+
+- **Calendar color control (web/kiosk + iPhone/iPad)** — a household **Event style** (solid
+  color blocks, the default, or the softer tint), a **family color** for events that involve
+  everyone (instead of borrowing the owner's color), and a ninth **custom** swatch that opens
+  a free hex picker wherever a person's color is chosen. On the web, chips carry their color
+  as a CSS custom property, so solid↔tinted is one root attribute; iOS mirrors the same rules
+  in `EventPalette`/`EventChipPaint`, resolved once per data change on `SyncManager`. Every
+  chip carries the ink (black or white) that keeps its title readable on its own color, in
+  both themes — one shared luminance rule, so web and iOS agree. Every calendar surface
+  follows on both device experiences (month, week, day, agenda, the Today card in *both* the
+  iPhone and iPad trees, and event detail). Server-side `#RRGGBB` validation on every route
+  that writes a color, with a member's pre-existing value kept so it can't block their save;
+  iOS also lets a non-admin set their own color from **Settings → Households**.
+- **Sync watchdog (web)** — the kiosk supervises its own PowerSync engine. A stall (online
+  and signed in, but not connected+synced for 3 min) triggers an escalating self-heal —
+  reconnect, then rebuild the client, then wipe and re-download the local replica — backing
+  off from 2 min to a 16 min ceiling, and never wiping while local writes are still queued.
+  The calendar hooks ask `isReplicaTrusted()` before letting the replica outrank REST, so a
+  wedged engine can no longer render a blank calendar; a stalled-sync strip and a **Live
+  Sync (this browser)** card in System Health (starting · live · stalled · failed-with-error
+  · off, plus manual restart / reset) make the state legible. Ported from the downstream
+  fork, which hit exactly this failure in production. **Web only** — iOS keeps its existing
+  PowerSync status handling.
 - **Dark mode (web/kiosk + iPhone/iPad)** — a warm dark theme alongside light, chosen from
   **Settings → Appearance** (Light / Dark / Match system), saved per device and applied instantly,
   on every surface. Built on a consolidated design-token layer (web: one canonical `:root` + a
@@ -42,8 +82,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Today** — live cards + customizable per-user / family layouts.
 - **Calendar** — native events, Month/Week/Day/Agenda, create/edit/delete, participants,
   **recurring events** (RRULE picker, per-occurrence/this-and-following/all edits),
-  **two-way Google Calendar sync** (recurrences expanded on inbound), offline calendar
-  (PowerSync), AI heads-up + per-event insight.
+  **two-way Google Calendar sync** and **two-way Outlook / Microsoft 365 sync** (recurrences
+  expanded on inbound), **read-only ICS calendar feeds**, offline calendar (PowerSync), AI
+  heads-up + per-event insight.
 - **Chores & stars** — full loop: CRUD, weekly/custom schedules, **one-off + carry-over
   tasks** ("Just once" repeat + due date, unfinished one-offs roll forward with an
   **overdue · since …** badge, per-chore `rollover` toggle), up-for-grabs claim,
@@ -81,10 +122,27 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   [staged plan](../design/healthkit-goals.md); background sync + a rewards tie-in remain — see
   below.)*
 - **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
-  staples, live cross-surface refresh, **item attribution** ("added by …" / from a meal plan
-  or recipe), **add any recipe's ingredients from its page** (no meal-plan entry needed —
-  these survive the weekly rebuild), and **"Unscheduled" sections + week-rail rows** for
-  off-plan recipes in the grocery board's by-meal view.
+  staples, live cross-surface refresh **plus cross-device refresh** (foreground + ~20s poll,
+  since lists aren't on PowerSync), **item attribution** ("added by …" / from a meal plan
+  or recipe), **add any recipe's ingredients from its page** — now with a **pick-specific
+  picker** (add all or just what you need) — (no meal-plan entry needed; these survive the
+  weekly rebuild), **assign a store to an item + a By-store board view** (free-text
+  quick-select over your previously-used stores), **"Unscheduled" sections + week-rail
+  rows** for off-plan recipes in the grocery board's by-meal view, and **Share list** — hand
+  any list to a phone as grouped plain text via copy / share sheet / QR, with the store and
+  assignee noted per item.
+- **Meal Builder** — build one meal out of several recipes and treat it as one
+  thing: name a plate, add recipes under Main / Sides / Dessert, meal-level servings,
+  **a cook per dish**, and an optional "keep in library" that makes it reusable (saved
+  meals are first-class in the recipe library, with a `Meal · N` badge, a 🍽️ Meals filter
+  and search across the plate name *and* its dish titles). Schedule it to a night (one
+  slot, one calendar event, feeds the weekly grocery rebuild) **or** put just its shopping
+  on the list without scheduling — and take that back off again. The grocery board groups
+  a plate's items under the plate; cook mode takes the whole plate, tabbed across its
+  dishes with one shared timer dock, each dish keeping its own step and every timer
+  naming the pan that's beeping (on mobile, a jump leaves a "back to step N" pill).
+  Shipped on web, iPhone and iPad — add a dish by tapping the role's ＋, and drag a dish
+  between roles once it's on the plate.
 - **Meals & recipes** — week/month planners, recipe library, in-app editor (with
   **ingredient sections** + dividers and cross-section drag-drop), paste-markdown
   import **and share-as-markdown export** (a Share action compiles a recipe to the
@@ -164,17 +222,46 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   hardware. Tap-to-complete on the device's own task list handles chores needing a
   parent's OK (shows "Waiting on a parent's approval" rather than silently reverting)
   and photo-required chores (hidden from the device's list entirely — no camera-capture
-  flow yet, so those are completed from a parent's phone/web instead). **Pending:** OTA updates,
-  TLS certificate validation for `https://` server addresses, and on-device photo
-  capture — see `apps/waffled-bite-firmware/README.md` for the full list of open items.
+  flow yet, so those are completed from a parent's phone/web instead). **Pending:** device
+  audio (see below), OTA updates, TLS certificate validation for `https://` server
+  addresses, and on-device photo capture — see `apps/waffled-bite-firmware/README.md` for
+  the full list of open items.
 - **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
-  are REST + live-refresh bus.
+  are REST + live-refresh bus, plus a **cross-device refresh** for lists (foreground + ~20s
+  poll on the open list) so a family member's edit lands without a manual reload. The
+  replica-trust fallback (see the sync watchdog under **Done**) therefore only applies to
+  the calendar hooks today — every domain added to PowerSync later should adopt the same
+  rule.
 - **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend
   blips.
 - **Public ingress** (7.3) — configurable (Caddy auto-TLS / Cloudflare Tunnel), operator's
   choice.
 
 ## Planned 🚧
+
+- **Upkeep — recurring household maintenance as its own module.** Where "air filter every
+  3 months", "toothbrush heads", and "trash out weekly" live. Deliberately *not* chores:
+  no reward, no approval, no photo proof, no assignee — and chores can't express these
+  schedules anyway (`ensureTodayInstances` matches only `FREQ=DAILY` and `FREQ=WEEKLY` +
+  `BYDAY`, by SQL substring; there is no `MONTHLY` and no `INTERVAL`). The decided model is
+  **completion-anchored** — due N months after you *actually last did it*, so being late
+  shifts the next one — which `chore_instances` (one materialized row per `due_on` on a
+  calendar grid) structurally cannot represent. One `upkeep_items` row carrying
+  `every` / `last_completed_at` / `next_due_at`, plus an `upkeep_completions` log so
+  "filter last changed Mar 12" is answerable; items surface on Today/Calendar only inside a
+  lead-time window. Reuses the countdowns presentation for "N days until Y" — whether that
+  aggregator is source-pluggable is the main open question. Full design, schema sketch and
+  sizing: [Upkeep plan](./upkeep-plan.md).
+
+- **Calendar as the all-in-one dated view.** Overlay the dated non-events — `chore_instances.due_on`
+  and (once built) `upkeep_items.next_due_at` — onto the calendar as read-only all-day chips,
+  tapping through to the chore/upkeep rather than the event editor. Deliberately chips, not
+  time-grid blocks: a chore's `due_time` is a soft target, not an appointment. `list_items`
+  stays out — it has no due column and lists shouldn't become a half-built task manager. Two
+  seams to settle first: chores/upkeep have no visibility concept under
+  `0074_calendar_visibility` (simplest rule: treat them as `family`), and on iOS events come
+  from PowerSync while chores are REST-only, so an offline phone renders events and silently
+  drops the overlay. See [Upkeep plan](./upkeep-plan.md#how-this-lands-on-the-calendar-item-3).
 
 - **Smarter goal-note suggestions (Tier 2).** Tier 1 shipped (see **Done**): the Log
   sheet's "What did you do?" chips now suggest the notes actually logged against that
@@ -184,8 +271,52 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   match ("family walk" vs "Family walk after dinner"), and consider surfacing a member's
   cross-goal favourites when a specific goal has little history of its own.
 
-- **List sharing.** Let a household invite specific people to a list, choose whether
-  they can view or edit it, and revoke access later.
+- **Today board v2 — a zone layout instead of a card order.** Today's board is a flat,
+  reorderable list of cards in fixed columns; you choose the order and nothing else. v2
+  replaces that with a **recursive zone tree** — split a zone, drop cards into it, and get
+  a FancyZones-style layout the household actually designs: **live drag and resize with
+  auto-save**, **layout presets** to start from, **density modes**, **hide-empty-cards**,
+  a full-width band, and per-card "quiet" settings (e.g. cap a card at N items so a long
+  list doesn't swallow the screen), with today's flat order migrated in automatically.
+  Two things make this a deliberate decision rather than a straight port: it **changes the
+  `/api/today-layout` contract** every surface reads, and it has **no iOS counterpart** —
+  the iPhone/iPad Today boards use their own layout config, so shipping web-only would
+  widen the mobile gap rather than close it. Prior art in the
+  [dispencer17 fork](fork-evaluation-dispencer17.md) (`zone-layout.ts`, `today-presets.ts`,
+  `today-card-slot.tsx`).
+
+- **Week calendar card on the Today board.** A whole-week view sitting on Today itself,
+  rather than a trip to the Calendar page: a **people filter** to narrow it to one person,
+  an **in-progress pulse** on whatever is happening right now, and a **"Separated days"**
+  option for households that read the week as columns rather than one continuous list.
+  Depends on the zone layout above — a week card wants real width and height, which the
+  current fixed-column board can't give it. Also from the
+  [dispencer17 fork](fork-evaluation-dispencer17.md).
+
+- **List sharing (access, not a handoff).** Let a household invite specific people to a
+  list, choose whether they can view or edit it, and revoke access later. Distinct from the
+  shipped **Share list**, which is a one-way copy of the text to a phone and grants nobody
+  any access.
+
+- **Share list: a link-backed QR for long lists.** *Enhancement to the shipped
+  [Share list](/features/lists/) handoff.* Today the QR encodes the list **text
+  itself**, which is the feature's best property — the phone needs no app, no account,
+  and no round-trip to the server. But a QR's capacity is fixed, so a long list pushes
+  the code to a high version until its modules are too small for a camera to read. A
+  measured 45-item list is 1,137 bytes → version 28, 129×129 modules; drawn at 320px
+  that is 2.5 CSS px per module, under the ~3 a phone needs. The shipped behaviour is
+  therefore honest rather than clever: draw the code as large and as low-density as it
+  can be, and when the list still won't fit, say so and point at Copy / Share (which
+  have no length limit) instead of rendering a code that cannot work.
+  The enhancement: for lists past that threshold, have the QR encode a **short link**
+  to a read-only shared view of the list instead of its text, so the code stays small
+  and scannable at any length. That is a real feature, not a tweak — it needs a share
+  endpoint, an unguessable token, an expiry/revocation policy, and a decision about
+  whether the phone must be on the same LAN as the server (a self-hosted box usually
+  isn't reachable from cellular). Worth pairing with **List sharing** above, since both
+  want the same "a link that shows one list, to someone who isn't signed in" primitive.
+  (Share list itself now covers **every** list, not just groceries — grouping by aisle on
+  the grocery board and by section elsewhere — so the enhancement applies household-wide.)
 
 - **Waffled-Bite DIY hardware setup guide.** A real, consumer-facing walkthrough for
   buying the board yourself ([ELECROW CrowPanel Advanced 7", ESP32-P4](https://www.amazon.com/dp/B0G34WGWJR))
@@ -195,6 +326,24 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   covers the engineering bring-up log; this would be the "buy this, plug in this cable,
   run this command" doc on the docs site, paired with the existing pairing walkthrough
   in [`waffled-bites.md`](../../website/docs/src/content/docs/features/waffled-bites.md).
+
+- **Waffled-Bite audio — finish what the speaker can't do yet.** Phases 1 and 1b have
+  **shipped**: white noise, ocean, rain, box fan and heartbeat play on the device's own
+  speaker, from both the Sounds tile and a parent's panel, with a live volume slider and no
+  pops — and the **morning alarm now rings**, with five synthesised wake tones, its own
+  volume, and a pause/resume that hands the sound machine back afterwards. What's left is
+  the **sampled
+  sounds** (`forest`/`lullaby`/birdsong, shown disabled until real recordings exist). Plan:
+  [`waffled-bites-audio-plan.md`](waffled-bites-audio-plan.md). Everything is **synthesised**
+  on the device itself — no audio files, no streaming, so a kid's room stays
+  quiet-not-silent and the alarm still goes off even if the home server reboots at 2am.
+  Phase 2 adds the sounds that need real recordings, downloaded once from the server and
+  cached on the device.
+
+  **Working on real hardware.** Signed off: 22.05 kHz mono; the sound machine plays
+  straight through quiet time and bedtime; the alarm gets its own volume and **pauses** the
+  sound machine for 20 seconds rather than sounding over it; no playback resume after a
+  reboot; and the hardware is the speaker that shipped with the board.
 
 - **QR-code pairing for Waffled-Bites.** The device has a screen but no camera (the
   ELECROW board has none), so a QR flow only works one direction: the device renders a
@@ -248,16 +397,17 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   cooked. We deliberately confirm rather than subtract exact amounts (units don't reconcile
   cleanly). **Later:** true unit/quantity reconciliation; vegetable-based "mains" + recipe filter.
 
-- **Assign & show a cook per meal (web + iPad + iPhone).** The `meal_plan_entries.cook_person_id`
-  column and the API's `cook` DTO already exist — and the demo seed even populates cooks (Jerry,
-  Kramer) — but **no UI actually assigns it**, so the data is running ahead of the product. Build
-  the real feature on all three surfaces: a **"who's cooking?" picker** when planning/editing a
-  meal (pick a household member, or leave it to the whole family) wired to the existing
-  `planMeal(…, cookPersonId:)` / `/api/meals/plan`, and a consistent **cook badge** (👩‍🍳 +
-  avatar/name) on the planner grid, the Today "meals" card, and the recipe detail. Today the phone
-  only *displays* the cook (`WeekPlannerView`) and web ignores `cook_person_id` entirely; re-planning
-  should preserve the existing cook. Keep it un-gated (collaborative/attribution-style, like list
-  authorship — no capability needed to volunteer or reassign a cook).
+- **Assign & show a cook per *slot* (web + iPad + iPhone).** Half of this shipped with the
+  Meal Builder: a plate assigns **a cook per dish** (`meal_recipes.cook_person_id`) with a
+  cook badge on each dish row, which is the right grain for a multi-dish meal. What's still
+  missing is the single-recipe case — `meal_plan_entries.cook_person_id` and the API's `cook`
+  DTO exist (the demo seed even populates cooks), but **no UI assigns it**, so that data is
+  still running ahead of the product. Left to build: a **"who's cooking?" picker** when
+  planning or editing a plain recipe slot, wired to the existing `planMeal(…, cookPersonId:)`
+  / `/api/meals/plan`, and the same cook badge on the planner grid, the Today "meals" card and
+  the recipe detail. The phone only *displays* that cook today (`WeekPlannerView`) and web
+  ignores it entirely; re-planning should preserve it. Un-gated (collaborative/attribution,
+  like list authorship — no capability needed to volunteer or reassign a cook).
 
 - **Apple Health → goals — remaining follow-ons (iPhone).** Tiers 0–2 shipped (see **Done** —
   the full metric set incl. rings/mindful/mood, the **four distance metrics** (walk + run,

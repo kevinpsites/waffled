@@ -9,8 +9,16 @@
 	# API (chunk 2.2). Path is preserved upstream, so the api sees /api/*.
 	handle /api/* {
 		reverse_proxy api:3000 {
-			# Replace caller-supplied forwarding chains with the address Caddy saw.
+			# Replace caller-supplied forwarding chains with the address Caddy saw. The
+			# api builds the PowerSync endpoint and the OIDC redirect URL out of Host and
+			# Proto, so a caller must not get to dictate them. caddy:2 already overwrites
+			# both (nothing is trusted until trusted_proxies says so) — this pins it to
+			# our config instead of the floating base image's default.
+			# {hostport} keeps the port, matching Caddy's own default: oidc.ts uses the
+			# value verbatim, and {host} would strip it on every non-:80 install.
 			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Host {hostport}
+			header_up X-Forwarded-Proto {scheme}
 		}
 	}
 	# Google's browser callback is intentionally outside /api, but still enters

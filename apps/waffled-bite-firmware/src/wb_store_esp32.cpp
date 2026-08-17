@@ -1,4 +1,4 @@
-// ESP32-S3/Arduino backend for wb_store.h — real persistence via NVS (Arduino's
+// esp32-p4/Arduino backend for wb_store.h — real persistence via NVS (Arduino's
 // Preferences library, part of the arduino-esp32 core, no extra lib_deps entry
 // needed — same tier as WiFi.h). Namespace "wb" holds the two pairing keys
 // (serverUrl, deviceSecret).
@@ -6,9 +6,9 @@
 // Opens/closes Preferences on every call rather than keeping a persistent
 // handle open — these calls only happen at pairing time and once at boot, so
 // there's no hot-path cost to the extra open/close, and it keeps each
-// function self-contained. UNVERIFIED on real hardware — no board in hand
-// yet (see platformio.ini) — but Preferences/NVS is well-trodden
-// arduino-esp32 API, lower risk than the display/touch HAL was.
+// function self-contained. Exercised on real hardware by the WiFi-provisioning
+// bring-up: credentials entered on-device survive a power cycle, confirmed
+// across dozens of reboot tests (see the README's bring-up notes).
 #include "wb_store.h"
 #include <Preferences.h>
 

@@ -21,7 +21,7 @@ import {
   type Tenant,
 } from './modules/households/households'
 import { authenticateApiKey, enforceApiKeyScope, registerApiKeyRoutes } from './modules/api-keys/api-keys'
-import { registerPersonRoutes } from './modules/persons/persons'
+import { registerPersonRoutes, HEX_COLOR } from './modules/persons/persons'
 import { registerListRoutes } from './modules/lists/lists.routes'
 import { registerPantryRoutes } from './modules/pantry/pantry'
 import { registerChoreRoutes } from './modules/chores/chores.routes'
@@ -34,6 +34,7 @@ import { registerFamilyNightRoutes } from './modules/familyNight/familyNight.rou
 import { registerCalendarAiRoutes } from './modules/calendar/calendar-ai'
 import { registerCalendarRoutes } from './modules/calendar/calendars'
 import { registerCalendarSyncRoutes } from './modules/calendar/calendar-sync.routes'
+import { registerIcsFeedRoutes } from './modules/calendar/ics-feeds'
 import { registerGoalRoutes } from './modules/goals/goals.routes'
 import { registerGoalCalendarRoutes } from './modules/goals/goal-calendar'
 import { registerOverviewRoutes } from './modules/overview/overview'
@@ -80,6 +81,9 @@ const PUBLIC_PATHS = new Set([
   '/healthz',
   '/api/auth/keys',
   '/auth/google/calendar/callback',
+  // Microsoft's redirect likewise arrives with no Authorization header; the
+  // one-time OAuth state row authenticates it (see calendars.ts).
+  '/auth/microsoft/calendar/callback',
   // Built-in auth: setup/login/refresh/status run before a session exists.
   '/api/auth/status',
   '/api/auth/setup',
@@ -179,6 +183,10 @@ api.post('/api/households', async (req: Request, res: Response) => {
       .status(400)
       .json({ error: 'BadRequest', message: 'name, timezone, and person.name are required' })
   }
+  // The owner's color reaches the calendar's CSS like any other member color.
+  if (body.person.colorHex != null && !HEX_COLOR.test(String(body.person.colorHex))) {
+    return res.status(400).json({ error: 'BadRequest', message: 'person.colorHex must be a #RRGGBB hex color' })
+  }
 
   // The additional household links to the caller's existing account.
   const ar = await query<{ account_id: string | null }>(
@@ -237,11 +245,15 @@ registerFamilyNightRoutes(api)
 // Calendar AI cards (/api/calendar/heads-up, /api/events/:id/insight)
 registerCalendarAiRoutes(api)
 
-// Google Calendar connect (/api/calendar/google…, /auth/google/calendar/callback)
+// Calendar connect — Google + Outlook (/api/calendar/{google,microsoft}…,
+// /auth/{google,microsoft}/calendar/callback)
 registerCalendarRoutes(api)
 
-// Google Calendar inbound sync (/api/calendar/sync)
+// Calendar inbound sync (/api/calendar/sync)
 registerCalendarSyncRoutes(api)
+
+// ICS feed subscriptions (/api/calendar/feeds…) — read-only URL calendars
+registerIcsFeedRoutes(api)
 
 // Goals (/api/goals…)
 registerGoalRoutes(api)

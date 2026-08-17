@@ -2,7 +2,7 @@ import SwiftUI
 import Observation
 
 /// Grocery board view modes.
-enum GroceryViewMode: Hashable { case aisle, meal }
+enum GroceryViewMode: Hashable { case aisle, store, meal }
 
 /// A run of items under one meal in "By meal" mode. `unscheduled` set = a recipe
 /// on the list but not on this week's plan; both nil = the trailing
@@ -11,7 +11,19 @@ struct MealGroup: Identifiable {
     let meal: WaffledAPI.GroceryBoardDTO.Meal?
     let items: [WaffledAPI.ListItemDTO]
     var unscheduled: WaffledAPI.GroceryBoardDTO.UnscheduledRecipe? = nil
-    var id: String { meal?.id ?? unscheduled.map { "unscheduled|\($0.recipeId)" } ?? "__extras__" }
+    /// A Meal Builder plate whose shopping is on the list but which isn't planned
+    /// this week ("Add plate to list").
+    var unscheduledMeal: WaffledAPI.GroceryBoardDTO.UnscheduledMeal? = nil
+    var id: String {
+        meal?.id
+            ?? unscheduled.map { "unscheduled|\($0.recipeId)" }
+            ?? unscheduledMeal.map { "unscheduledMeal|\($0.mealId)" }
+            ?? "__extras__"
+    }
+    /// A plate that earned a heading but has no rows of its own — everything it wants
+    /// was already claimed by an earlier meal. It says so rather than duplicating the
+    /// rows (one item, one checkbox).
+    var isFullyCovered: Bool { items.isEmpty && (meal?.mealId != nil || unscheduledMeal != nil) }
 }
 
 /// One list's items — works for any list (Grocery included). Tapping the circle
@@ -25,7 +37,30 @@ final class ListDetailModel {
     /// Mutable so converting to/from a template flips the detail into template mode
     /// in place (the returned row carries the new listType).
     private(set) var list: WaffledAPI.ListSummary
-    private(set) var items: [WaffledAPI.ListItemDTO] = []
+    private(set) var items: [WaffledAPI.ListItemDTO] = [] {
+        didSet {
+            shareText = ShareList.format(rows: items)
+            shareMarkdown = ShareList.formatMarkdown(rows: items)
+        }
+    }
+
+    /// The list as shareable plain text, rebuilt whenever the items change.
+    ///
+    /// Derived once per data change rather than in a computed property: the grocery
+    /// board's Share control lives in the toolbar, which re-renders on every keystroke
+    /// in the search field — and formatting is an O(n) group-and-sort over the whole
+    /// list. (Same rule as the pantry's precomputed expiry days.)
+    ///
+    /// Built from `items`, deliberately NOT `activeItems`: that one also applies the
+    /// search filter, and sharing "the list" should hand over the whole list rather
+    /// than whatever the sharer happened to have typed in the search box. `items` is
+    /// already scoped to the week being viewed (the board is fetched per week), and
+    /// the formatter drops checked rows itself.
+    private(set) var shareText: String = ""
+    /// The same list as a Markdown checklist, for pasting into a notes app that
+    /// renders `- [ ]` as a real tick box. Precomputed alongside `shareText` for the
+    /// same reason, and holds exactly the same items (unchecked only).
+    private(set) var shareMarkdown: String = ""
     /// Checked items still shown in place (before they settle into Completed).
     private(set) var settling: Set<String> = []
     private(set) var loading = true
@@ -36,8 +71,13 @@ final class ListDetailModel {
     /// Recipes on the list but not on this week's plan (added straight from a
     /// recipe page) — get their own by-meal sections + dot colors.
     private(set) var unscheduled: [WaffledAPI.GroceryBoardDTO.UnscheduledRecipe] = []
+    /// Meal Builder plates whose shopping is on the list but which aren't planned this
+    /// week ("Add plate to list") — their own by-meal sections + dot colors.
+    private(set) var unscheduledMeals: [WaffledAPI.GroceryBoardDTO.UnscheduledMeal] = []
     /// Pantry staples (assumed in-house, left off the list) — tap to add anyway.
     private(set) var staples: [WaffledAPI.GroceryBoardDTO.Staple] = []
+    /// Previously-used store names (durable quick-select), loaded for grocery lists.
+    private(set) var knownStores: [String] = []
     /// The week the board covers (YYYY-MM-DD) — passed to rebuild.
     private(set) var weekStart = ""
     /// Which week to request (YYYY-MM-DD); nil = the current week (server default). The
@@ -85,46 +125,59 @@ final class ListDetailModel {
     /// "By meal" grouping: each active item under its first matching dinner (by
     /// date), with a trailing "Staples & extras" group for anything meal-less.
     func mealSections() -> [MealGroup] {
-        MealGrouping.sections(items: activeItems, meals: meals, unscheduled: unscheduled)
+        MealGrouping.sections(items: activeItems, meals: meals, unscheduled: unscheduled,
+                              unscheduledMeals: unscheduledMeals)
     }
 
-    /// One meal-color dot per *distinct recipe* the item belongs to (a recipe planned
-    /// in two slots is the same dot, not two). Unscheduled recipes get dots too.
+    /// "By store" grouping: each active item under its assigned store (alphabetical),
+    /// with unassigned items in a trailing "No store" group. Read-only (no drag).
+    func storeSections() -> [ListSectionGroup] { StoreGrouping.sections(items: activeItems) }
+
+    /// One meal-color dot per source that wants this item — see `MealDots.colors`.
     func dotColors(for item: WaffledAPI.ListItemDTO) -> [String] {
-        var seen = Set<String>()
-        var colors: [String] = []
-        for rid in (item.sourceRecipeIds ?? []) where seen.insert(rid).inserted {
-            if let m = meals.first(where: { $0.recipeId == rid }) {
-                colors.append(m.color)
-            } else if let u = unscheduled.first(where: { $0.recipeId == rid }) {
-                colors.append(u.color)
-            }
-        }
-        return colors
+        MealDots.colors(for: item, meals: meals, unscheduledMeals: unscheduledMeals, unscheduled: unscheduled)
     }
 
     /// Settled, checked items — shown in the collapsed Completed section.
     var completed: [WaffledAPI.ListItemDTO] { items.filter { $0.checked && !settling.contains($0.id) && matches($0) } }
 
-    func load() async {
-        loading = true
-        settling = []
+    /// Counts local edits. A silent poll records this before it goes out and drops its
+    /// answer if anything changed while it was in the air — the server composed that
+    /// answer before our edit reached it, so applying it would undo what's on screen
+    /// (a deleted row reappearing, a checked row going back to unchecked) until the
+    /// next poll. An explicit reload isn't guarded: the user asked for server truth.
+    private var edits = 0
+    func noteLocalEdit() { edits += 1 }
+
+    /// `silent` keeps the current items on screen (no spinner) — used by the
+    /// foreground refresh + background poll so another device's edits fold in without
+    /// a visible reload flash.
+    func load(silent: Bool = false) async {
+        if !silent { loading = true; settling = [] }
+        let startedAt = edits
         do {
             if isGrocery {
                 let board = try await api.groceryBoard(weekStart: requestedWeekStart)
-                meals = board.meals
-                unscheduled = board.unscheduled ?? []
-                staples = board.staples
-                weekStart = board.weekStart
-                items = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
+                let rows = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
+                let stores = (try? await api.listStores()) ?? knownStores
+                if !silent || edits == startedAt {
+                    meals = board.meals
+                    unscheduled = board.unscheduled ?? []
+                    unscheduledMeals = board.unscheduledMeals ?? []
+                    staples = board.staples
+                    weekStart = board.weekStart
+                    items = rows
+                    knownStores = stores
+                }
             } else {
-                items = try await api.listItems(listId: list.id)
+                let rows = try await api.listItems(listId: list.id)
+                if !silent || edits == startedAt { items = rows }
             }
             error = false
         } catch {
             self.error = true
         }
-        loading = false
+        if !silent { loading = false }
     }
 
     @discardableResult
@@ -154,6 +207,7 @@ final class ListDetailModel {
     func toggle(_ id: String) async {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let target = !items[idx].checked
+        noteLocalEdit()
         withAnimation { items[idx].checked = target }
         if target {
             settling.insert(id)
@@ -189,9 +243,13 @@ final class ListDetailModel {
         guard !name.isEmpty else { return }
         let qty = rawQty.trimmingCharacters(in: .whitespacesAndNewlines)
         let prev = items[idx]
-        guard name != prev.name || qty != (prev.quantity ?? "") else { return }
+        guard name != prev.name || qty != prev.editableQuantity else { return }
+        noteLocalEdit()
         items[idx].name = name
         items[idx].quantity = qty.isEmpty ? nil : qty
+        // The typed text is the typable form, so it seeds the next edit too — otherwise
+        // reopening the row before the next load would show the pre-edit quantity.
+        items[idx].quantityInput = qty.isEmpty ? nil : qty
         do {
             try await api.patchListItem(id: id, name: name, quantity: qty)
         } catch {
@@ -202,20 +260,24 @@ final class ListDetailModel {
     /// Optimistic full-detail edit (name / quantity / assignee / section); revert on
     /// failure. `member` is the chosen assignee (nil = unassigned).
     func editDetails(_ id: String, name rawName: String, quantity rawQty: String,
-                     member: SyncedMember?, section rawSection: String, priority: Int) async {
+                     member: SyncedMember?, section rawSection: String, store rawStore: String, priority: Int) async {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
         let qty = rawQty.trimmingCharacters(in: .whitespacesAndNewlines)
         let section = rawSection.trimmingCharacters(in: .whitespacesAndNewlines)
+        let store = rawStore.trimmingCharacters(in: .whitespacesAndNewlines)
         let prev = items[idx]
+        noteLocalEdit()
         items[idx].name = name
         items[idx].quantity = qty.isEmpty ? nil : qty
+        items[idx].quantityInput = qty.isEmpty ? nil : qty
         items[idx].section = section.isEmpty ? nil : section
+        items[idx].store = store.isEmpty ? nil : store
         items[idx].priority = priority
         items[idx].assignee = member.map { .init(name: $0.name, avatarEmoji: $0.emoji, colorHex: $0.colorHex) }
         do {
-            try await api.updateItemDetails(id: id, name: name, quantity: qty, assignedTo: member?.id, section: section, priority: priority)
+            try await api.updateItemDetails(id: id, name: name, quantity: qty, assignedTo: member?.id, section: section, store: store, priority: priority)
         } catch {
             if let i = items.firstIndex(where: { $0.id == id }) { items[i] = prev }
         }
@@ -229,6 +291,7 @@ final class ListDetailModel {
         let target = (section?.isEmpty == false) ? section : nil
         guard items[idx].section != target else { return }
         let prev = items[idx]
+        noteLocalEdit()
         withAnimation { items[idx].section = target }
         do {
             try await api.patchListItem(id: id, section: target ?? "")
@@ -263,6 +326,7 @@ final class ListDetailModel {
             let board = try await api.rebuildGrocery(weekStart: weekStart)
             meals = board.meals
             unscheduled = board.unscheduled ?? []
+            unscheduledMeals = board.unscheduledMeals ?? []
             staples = board.staples
             weekStart = board.weekStart
             settling = []
@@ -287,6 +351,7 @@ final class ListDetailModel {
     /// Optimistic removal; restore on failure.
     func remove(_ id: String) async {
         let snapshot = items
+        noteLocalEdit()
         withAnimation { items.removeAll { $0.id == id } }
         do {
             try await api.deleteListItem(id: id)
@@ -299,6 +364,7 @@ final class ListDetailModel {
     /// Optimistic; restores on failure. (Old checked items also auto-clear on load.)
     func clearCompleted() async {
         let snapshot = items
+        noteLocalEdit()
         withAnimation { items.removeAll { $0.checked } }
         settling = []
         do {
@@ -325,6 +391,17 @@ final class ListDetailModel {
     func removeRecipe(_ recipeId: String) async {
         do {
             try await api.removeRecipeFromGrocery(recipeId: recipeId, weekStart: weekStart.isEmpty ? nil : weekStart)
+            await load()
+        } catch { self.error = true }
+    }
+
+    /// Take a whole Meal Builder plate back off the grocery list (undo "Add plate to
+    /// list"). A row only goes when the plate is its *sole* reason for existing —
+    /// anything the week's own plan still needs survives with the plate's credit
+    /// stripped, so this can't delete shopping someone else put there.
+    func removeMeal(_ mealId: String) async {
+        do {
+            try await api.removeMealFromGrocery(id: mealId, weekStart: weekStart.isEmpty ? nil : weekStart)
             await load()
         } catch { self.error = true }
     }
@@ -362,12 +439,13 @@ final class ListDetailModel {
         }
     }
 
-    /// Rename the list (keeps its emoji). Updates the header (`list.name` drives the
-    /// nav title) and rail. Returns true on success.
-    func rename(to name: String) async -> Bool {
-        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Edit the list's name AND emoji (the ⋯ → Edit list sheet). Updates the header
+    /// (`list.name`/`list.emoji` drive the nav title + rail). Returns true on success.
+    func edit(name rawName: String, emoji rawEmoji: String) async -> Bool {
+        let n = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !n.isEmpty else { return false }
-        do { list = try await api.updateList(id: list.id, name: n); return true }
+        let e = rawEmoji.trimmingCharacters(in: .whitespaces)
+        do { list = try await api.updateList(id: list.id, name: n, emoji: e); return true }
         catch { self.error = true; return false }
     }
 
@@ -381,6 +459,9 @@ final class ListDetailModel {
 struct ListDetailView: View {
     @Environment(SyncManager.self) private var sync
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+    /// Drives the cross-device liveness poll while this list is on screen.
+    private let pollTimer = Timer.publish(every: 20, on: .main, in: .common).autoconnect()
     @State private var model: ListDetailModel
     @State private var confirmingDelete = false
     @State private var draftName = ""
@@ -419,8 +500,7 @@ struct ListDetailView: View {
     @State private var stagedPriority: Int? = nil
     @State private var bulkNewSectionPrompt = false
     @State private var bulkNewSectionName = ""
-    @State private var renamePrompt = false
-    @State private var renameText = ""
+    @State private var editingList = false
     @FocusState private var focus: Field?
 
     /// Meal-type ordering for the summary filter (matches the web rail).
@@ -437,10 +517,16 @@ struct ListDetailView: View {
 
     /// Jump to the Meals tab and open a recipe — tapping a meal in the recap.
     var openRecipe: (WaffledAPI.RecipeSummary) -> Void = { _ in }
+    /// The same, for a recap row backed by a Meal Builder plate. Defaulted to a no-op
+    /// so a host that has nowhere to push a plate simply leaves those rows inert.
+    var openMeal: (WaffledAPI.MealDTO) -> Void = { _ in }
 
-    init(list: WaffledAPI.ListSummary, openRecipe: @escaping (WaffledAPI.RecipeSummary) -> Void = { _ in }) {
+    init(list: WaffledAPI.ListSummary,
+         openRecipe: @escaping (WaffledAPI.RecipeSummary) -> Void = { _ in },
+         openMeal: @escaping (WaffledAPI.MealDTO) -> Void = { _ in }) {
         _model = State(initialValue: ListDetailModel(list: list))
         self.openRecipe = openRecipe
+        self.openMeal = openMeal
     }
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
@@ -469,13 +555,14 @@ struct ListDetailView: View {
         // Dropping focus also commits an in-flight inline edit (see onChange(of: focus)).
         .wfKeyboardDoneToolbar { focus = nil }
         .toolbar {
-            // Grocery is auto-built, so it has no template/delete menu. A template gets
+            // Grocery is auto-built, so it has no template/delete menu — but it still
+            // shares, so it gets the bare share icon instead. A template gets
             // Use / Move to Lists / Delete; a normal list gets Save as template / Delete.
             // iPad (kiosk) has no navigation bar — its ⋯ menu lives in the list header
             // (see `kioskListHeader`); iPhone keeps it here in the nav bar.
-            if !model.isGrocery && !isKiosk {
+            if !isKiosk {
                 ToolbarItem(placement: .primaryAction) {
-                    listActionsMenu
+                    if model.isGrocery { shareListIcon } else { listActionsMenu }
                 }
             }
         }
@@ -494,6 +581,18 @@ struct ListDetailView: View {
         .refreshable { await model.load() }
         .onChange(of: sync.groceryRev) { _, _ in if model.isGrocery { Task { await model.load() } } }
         .onChange(of: sync.listsRev) { _, _ in if !model.isGrocery { Task { await model.load() } } }
+        // Cross-device liveness: another family member's check appears without a manual
+        // pull-to-refresh. Refetch when the app returns to the foreground, and poll every
+        // 20s while this list is on screen. Both are silent (no spinner) and skip while
+        // editing / multi-selecting so they can't clobber an in-progress change. The
+        // timer handler reads live view state each tick (an async .task loop would capture
+        // stale scenePhase/editingId).
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, editingId == nil, !selecting { Task { await model.load(silent: true) } }
+        }
+        .onReceive(pollTimer) { _ in
+            if scenePhase == .active, editingId == nil, !selecting { Task { await model.load(silent: true) } }
+        }
         .onChange(of: focus) { _, new in
             // Tapping away from an inline edit commits it.
             if editingId != nil, new != .editName, new != .editQty { commitEdit() }
@@ -508,17 +607,19 @@ struct ListDetailView: View {
             }
         }
         .sheet(item: $detailItem) { item in
-            ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section, priority in
-                Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section, priority: priority) }
+            ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions,
+                             storeSuggestions: storeSuggestions, showStore: model.isGrocery) { name, qty, member, section, store, priority in
+                Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section, store: store, priority: priority) }
             }
         }
         // The "Add item with details" sheet (from the add bar's sliders button): create the
-        // item, then apply assignee/section/priority in one go.
+        // item, then apply assignee/section/store/priority in one go.
         .sheet(isPresented: $showAddDetail) {
-            ItemDetailEditor(newItemName: addDetailName, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section, priority in
+            ItemDetailEditor(newItemName: addDetailName, members: sync.members, suggestions: sectionSuggestions,
+                             storeSuggestions: storeSuggestions, showStore: model.isGrocery) { name, qty, member, section, store, priority in
                 Task {
                     if let created = await model.add(name: name, quantity: qty, section: section) {
-                        await model.editDetails(created.id, name: name, quantity: qty, member: member, section: section, priority: priority)
+                        await model.editDetails(created.id, name: name, quantity: qty, member: member, section: section, store: store, priority: priority)
                     }
                 }
             }
@@ -553,12 +654,11 @@ struct ListDetailView: View {
                 bulkNewSectionName = ""
             }
         } message: { Text("Move the selected items into this new section.") }
-        .alert("Rename list", isPresented: $renamePrompt) {
-            TextField("List name", text: $renameText)
-            Button("Cancel", role: .cancel) { renameText = "" }
-            Button("Save") {
-                let n = renameText; renameText = ""
-                Task { if await model.rename(to: n) { sync.bumpLists() } }
+        .sheet(isPresented: $editingList) {
+            // The same name + emoji editor used from the Lists index, so the list's icon
+            // is editable in place (no more leaving the list to change its emoji).
+            EditListSheet(list: model.list) { name, emoji in
+                Task { if await model.edit(name: name, emoji: emoji) { sync.bumpLists() } }
             }
         }
     }
@@ -566,7 +666,7 @@ struct ListDetailView: View {
     /// iPhone: items with the meals recap + staples inline in the list.
     private var phoneBody: some View {
         List {
-            if model.isGrocery && (!model.meals.isEmpty || !model.unscheduled.isEmpty) && !searchActive {
+            if model.isGrocery && (!model.meals.isEmpty || !model.unscheduled.isEmpty || !model.unscheduledMeals.isEmpty) && !searchActive {
                 summaryPanel
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .listRowSeparator(.hidden).listRowBackground(Color.clear)
@@ -616,14 +716,14 @@ struct ListDetailView: View {
             }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { columnBottom = $0 }
             .frame(maxWidth: .infinity)
-            if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.unscheduled.isEmpty || !model.staples.isEmpty) {
+            if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.unscheduled.isEmpty || !model.unscheduledMeals.isEmpty || !model.staples.isEmpty) {
                 Rectangle().fill(WF.hair).frame(width: 1)
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
                         // Match the phone gate: the summary card also carries the Unscheduled
                         // recap, so show it whenever there are planned OR unscheduled recipes
                         // (a week with only off-plan adds still needs the side panel).
-                        if !model.meals.isEmpty || !model.unscheduled.isEmpty { summaryPanel }
+                        if !model.meals.isEmpty || !model.unscheduled.isEmpty || !model.unscheduledMeals.isEmpty { summaryPanel }
                         if !model.staples.isEmpty { staplesPanel }
                     }
                     .padding(16)
@@ -641,11 +741,30 @@ struct ListDetailView: View {
                 .font(.system(size: 14)).foregroundStyle(WF.ink3)
                 .listRowSeparator(.hidden).listRowBackground(Color.clear)
         }
-        if model.isGrocery && mode == .meal {
+        if model.isGrocery && mode == .store {
+            // Read-only store grouping (no cross-section drag — that writes `section`).
+            ForEach(model.storeSections()) { group in
+                Section {
+                    if !collapsed.contains(group.id) {
+                        ForEach(group.items) { item in itemRow(item) }
+                    }
+                } header: { storeHeader(group) }
+            }
+        } else if model.isGrocery && mode == .meal {
             ForEach(model.mealSections()) { group in
                 Section {
                     if !collapsed.contains(group.id) {
                         ForEach(group.items) { item in itemRow(item) }
+                        // A plate whose shopping is entirely covered by an earlier meal
+                        // keeps its heading — otherwise adding it looks like nothing
+                        // happened — but says where its items went rather than
+                        // duplicating them (one item, one checkbox).
+                        if group.isFullyCovered {
+                            Text("Everything this plate needs is already on the list above.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(WF.ink3)
+                                .padding(.vertical, 4)
+                        }
                     }
                 } header: { mealHeader(group) }
             }
@@ -742,15 +861,65 @@ struct ListDetailView: View {
         }
     }
 
-    /// Menu contents — same options on iPhone and iPad: Select, Rename, template
-    /// actions, Delete.
+    /// Unchecked items only, grouped by aisle/section — empty once everything is
+    /// ticked off, which is when there's nothing worth handing over. Precomputed in
+    /// the model (see `ListDetailModel.shareText`).
+    private var shareText: String { model.shareText }
+
+    /// Hand the list to whoever's doing the run. The system share sheet IS the
+    /// handoff here (Messages, Mail, Notes, AirDrop): the web offers a QR code
+    /// because it needs to get the list *onto* a phone, and on iOS we already are one.
+    @ViewBuilder private var shareListButton: some View {
+        let text = shareText
+        if !text.isEmpty {
+            ShareLink(item: text, subject: Text(model.list.name)) {
+                Label("Share list", systemImage: "square.and.arrow.up")
+            }
+        }
+    }
+
+    /// The handoff actions behind the share icon, for grocery — which has no ⋯ menu
+    /// (it's auto-built, so it has no rename/template/delete actions to put in one).
+    ///
+    /// A menu rather than a bare ShareLink because there are now two ways to hand the
+    /// list over — the share sheet and the Markdown copy — and grocery is the list
+    /// people actually share, so it can't be the one that's missing an option.
+    @ViewBuilder private var shareListIcon: some View {
+        if !shareText.isEmpty {
+            Menu {
+                shareListButton
+                copyMarkdownButton
+            } label: {
+                Image(systemName: "square.and.arrow.up").font(.system(size: 18, weight: .regular))
+            }
+        }
+    }
+
+    /// Copy the list as a Markdown checklist. Sits beside Share rather than replacing
+    /// it: the share sheet hands the list to a person, this hands it to a document.
+    @ViewBuilder private var copyMarkdownButton: some View {
+        if !model.shareMarkdown.isEmpty {
+            Button {
+                UIPasteboard.general.string = model.shareMarkdown
+                showToast("Copied as Markdown")
+            } label: {
+                Label("Copy as Markdown", systemImage: "checklist")
+            }
+        }
+    }
+
+    /// Menu contents — same options on iPhone and iPad: Share, Copy as Markdown,
+    /// Select, Edit list, template actions, Delete.
     @ViewBuilder private var listActionButtons: some View {
+        shareListButton
+        copyMarkdownButton
         // Enter multi-select to bulk-edit section / assignee / priority.
         Button { withAnimation { selecting = true; selectedIDs = []; resetBulkStaging() } } label: {
             Label("Select items to edit", systemImage: "checklist")
         }
-        Button { renameText = model.list.name; renamePrompt = true } label: {
-            Label("Rename", systemImage: "pencil")
+        Button { editingList = true } label: {
+            // Matches the sheet it opens, which is titled "Edit list".
+            Label("Edit list", systemImage: "pencil")
         }
         if model.isTemplate {
             Button {
@@ -788,9 +957,21 @@ struct ListDetailView: View {
     }
 
     /// iPad-only header: the list name + the ⋯ menu (the kiosk layout has no nav bar,
-    /// so the actions would otherwise be unreachable). Grocery has no menu.
+    /// so the actions would otherwise be unreachable). Grocery has no menu, but still
+    /// shares — it gets the share icon alone, right-aligned, so the board below keeps
+    /// its full width and its own title treatment.
     @ViewBuilder private var kioskListHeader: some View {
-        if !model.isGrocery {
+        if model.isGrocery {
+            // Only when there's something to share — otherwise the padding alone would
+            // leave an empty strip that appears and vanishes as the last item is ticked.
+            if !shareText.isEmpty {
+                HStack(spacing: 10) {
+                    Spacer(minLength: 0)
+                    shareListIcon.foregroundStyle(WF.ink2)
+                }
+                .padding(.horizontal, 16).padding(.top, 8)
+            }
+        } else {
             HStack(spacing: 10) {
                 Text(model.list.name)
                     .font(WF.serif(20, .semibold)).foregroundStyle(WF.ink)
@@ -889,6 +1070,16 @@ struct ListDetailView: View {
     private var sectionSuggestions: [String] {
         var result = model.list.listType.lowercased() == "grocery" ? ListDetailModel.groceryAisles : []
         for s in model.items.compactMap(\.section) where !s.isEmpty && !result.contains(s) {
+            result.append(s)
+        }
+        return result
+    }
+
+    /// Store quick-select: the household's previously-used stores (durable, from the
+    /// server) merged with any store already in use on this list, deduped.
+    private var storeSuggestions: [String] {
+        var result = model.knownStores
+        for s in model.items.compactMap(\.store) where !s.isEmpty && !result.contains(s) {
             result.append(s)
         }
         return result
@@ -1108,6 +1299,7 @@ struct ListDetailView: View {
         if model.isGrocery {
             Picker("View", selection: $mode) {
                 Text("By aisle").tag(GroceryViewMode.aisle)
+                Text("By store").tag(GroceryViewMode.store)
                 Text("By meal").tag(GroceryViewMode.meal)
             }
             .pickerStyle(.segmented)
@@ -1136,6 +1328,25 @@ struct ListDetailView: View {
                         .font(.system(size: 11, weight: .heavy)).tracking(0.5)
                         .foregroundStyle(WF.ink3)
                         .lineLimit(1)
+                    // A plate is several dishes under one heading — say how many, so
+                    // the row reads as a meal rather than a mysteriously large recipe.
+                    if let n = meal.recipes?.count, n > 0 {
+                        Text("· \(n) \(n == 1 ? "dish" : "dishes")")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(WF.ink3.opacity(0.7))
+                    }
+                } else if let plate = group.unscheduledMeal {
+                    let color = Color(hexString: plate.color) ?? WF.ink3
+                    Text("PLATE")
+                        .font(.system(size: 9.5, weight: .heavy)).tracking(0.4)
+                        .foregroundStyle(color)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(color.opacity(0.15))
+                        .clipShape(Capsule())
+                    Text(plate.name.uppercased())
+                        .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                        .foregroundStyle(WF.ink3)
+                        .lineLimit(1)
                 } else if let recipe = group.unscheduled {
                     let color = Color(hexString: recipe.color) ?? WF.ink3
                     Text("UNSCHEDULED")
@@ -1158,12 +1369,36 @@ struct ListDetailView: View {
                     .font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             }
         }
-        // Long-press an Unscheduled recipe's header to take it back off the list.
+        // Long-press an Unscheduled recipe's or plate's header to take it back off the
+        // list. Those rows are source='recipe', which the weekly rebuild deliberately
+        // never wipes — so this is the ONLY way they come off.
         .contextMenu {
             if let recipe = group.unscheduled {
                 Button(role: .destructive) {
                     Task { await model.removeRecipe(recipe.recipeId) }
                 } label: { Label("Remove from list", systemImage: "trash") }
+            }
+            if let plate = group.unscheduledMeal {
+                Button(role: .destructive) {
+                    Task { await model.removeMeal(plate.mealId) }
+                } label: { Label("Remove plate from list", systemImage: "trash") }
+            }
+        }
+    }
+
+    /// "By store" section header — a store tag + the store name + item count.
+    @ViewBuilder private func storeHeader(_ group: ListSectionGroup) -> some View {
+        headerChrome {
+            collapseButton(id: group.id) {
+                chevron(for: group.id)
+                Text(group.sectionValue == nil ? "🛒" : "🏬").font(.system(size: 12))
+                Text((group.title ?? "No store").uppercased())
+                    .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                    .foregroundStyle(WF.ink3)
+                    .lineLimit(1)
+                Spacer(minLength: 6)
+                Text("\(group.items.count)")
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             }
         }
     }
@@ -1248,17 +1483,54 @@ struct ListDetailView: View {
             // Off-plan recipes added from their pages — below a divider so the card
             // stays a complete legend for the item dot colors. Unaffected by the
             // meal-type segment (they belong to no slot).
-            if !model.unscheduled.isEmpty {
+            if !model.unscheduled.isEmpty || !model.unscheduledMeals.isEmpty {
                 Rectangle().fill(WF.hair).frame(height: 1)
                 Text("UNSCHEDULED")
                     .font(.system(size: 10, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
                 VStack(spacing: 8) {
+                    // Whole plates put on the list without a night, alongside the
+                    // off-plan recipes. This card is the legend for the item dot
+                    // colours, so a plate missing from it leaves its dots unexplained.
+                    ForEach(model.unscheduledMeals) { plate in unscheduledPlateRecapRow(plate) }
                     ForEach(model.unscheduled) { recipe in unscheduledRecapRow(recipe) }
                 }
             }
         }
         .padding(14)
         .wfField()
+    }
+
+    /// A rail row for a whole plate put on the list without being scheduled. Same shape
+    /// as the unscheduled-recipe row below, but it names the dish count (a plate is
+    /// several recipes) and removing it takes the whole plate off.
+    @ViewBuilder private func unscheduledPlateRecapRow(_ plate: WaffledAPI.GroceryBoardDTO.UnscheduledMeal) -> some View {
+        let color = Color(hexString: plate.color) ?? WF.ink3
+        HStack(spacing: 10) {
+            Circle().fill(color).frame(width: 9, height: 9)
+            Text(plate.name)
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                .lineLimit(1)
+            if !plate.recipes.isEmpty {
+                Text("\(plate.recipes.count) \(plate.recipes.count == 1 ? "dish" : "dishes")")
+                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
+            }
+            Spacer(minLength: 6)
+            Button { Task { await model.removeMeal(plate.mealId) } } label: {
+                Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(WF.ink3)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(plate.name) from list")
+            Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
+            Text("🍽️")
+                .font(.system(size: 14))
+                .frame(width: 28, height: 28)
+                .background(color.opacity(0.12)).clipShape(Circle())
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            openMeal(.placeholder(id: plate.mealId, name: plate.name,
+                                  dishes: plate.recipes.map { ($0.recipeId, $0.title, $0.emoji, $0.role) }))
+        }
     }
 
     /// A rail row for an unscheduled recipe — same shape as the meal rows minus the
@@ -1304,8 +1576,8 @@ struct ListDetailView: View {
                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
                 .lineLimit(1)
             Spacer(minLength: 6)
-            // A chevron hints the row drills into the recipe (only when it links one).
-            if meal.recipeId != nil {
+            // A chevron hints the row drills in (a recipe, or a whole plate).
+            if meal.recipeId != nil || meal.mealId != nil {
                 Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             }
             Text(meal.emoji ?? Self.mealTypeEmoji[meal.mealType ?? ""] ?? "🍽️")
@@ -1313,7 +1585,14 @@ struct ListDetailView: View {
                 .frame(width: 28, height: 28)
                 .background(color.opacity(0.12)).clipShape(Circle())
         }
-        if let rid = meal.recipeId {
+        if let mealId = meal.mealId {
+            // A plate-backed row has no recipeId — it opens the whole plate.
+            Button {
+                openMeal(.placeholder(id: mealId, name: meal.title ?? "Meal",
+                                      dishes: (meal.recipes ?? []).map { ($0.recipeId, $0.title, $0.emoji, $0.role) }))
+            } label: { row }
+                .buttonStyle(.plain)
+        } else if let rid = meal.recipeId {
             Button { openRecipe(recipeSummary(for: meal, recipeId: rid)) } label: { row }
                 .buttonStyle(.plain)
         } else {
@@ -1486,6 +1765,14 @@ struct ListDetailView: View {
                             .foregroundStyle(item.checked ? WF.ink3 : WF.ink)
                         Spacer(minLength: 8)
                         mealDots(for: item)
+                        // Store tag (hidden in the By-store view, where the header already says it).
+                        if mode != .store, let st = item.store, !st.isEmpty {
+                            Text("🏬 \(st)")
+                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
+                                .lineLimit(1)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(WF.panel).clipShape(Capsule())
+                        }
                         if let q = item.quantity, !q.isEmpty {
                             Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
@@ -1607,7 +1894,8 @@ struct ListDetailView: View {
     private func startEdit(_ item: WaffledAPI.ListItemDTO) {
         if editingId != nil, editingId != item.id { commitEdit() }
         editName = item.name
-        editQty = item.quantity ?? ""
+        // the typable form — a ½ in a text field can only be deleted, not amended
+        editQty = item.editableQuantity
         editingId = item.id
         focus = .editName
     }
@@ -1689,25 +1977,35 @@ struct ItemDetailEditor: View {
     let isNew: Bool
     let members: [SyncedMember]
     let suggestions: [String]
-    let onSave: (String, String, SyncedMember?, String, Int) -> Void
+    /// Previously-used stores for the store quick-select (empty on non-grocery lists,
+    /// which hide the store field entirely).
+    let storeSuggestions: [String]
+    let showStore: Bool
+    // (name, quantity, member, section, store, priority)
+    let onSave: (String, String, SyncedMember?, String, String, Int) -> Void
 
     @State private var name: String
     @State private var quantity: String
     @State private var assigneeId: String?
     @State private var section: String
+    @State private var store: String
     @State private var priority: Int
     @FocusState private var nameFocused: Bool
 
     init(item: WaffledAPI.ListItemDTO, members: [SyncedMember], suggestions: [String],
-         onSave: @escaping (String, String, SyncedMember?, String, Int) -> Void) {
+         storeSuggestions: [String] = [], showStore: Bool = false,
+         onSave: @escaping (String, String, SyncedMember?, String, String, Int) -> Void) {
         self.originalName = item.name
         self.isNew = false
         self.members = members
         self.suggestions = suggestions
+        self.storeSuggestions = storeSuggestions
+        self.showStore = showStore
         self.onSave = onSave
         _name = State(initialValue: item.name)
-        _quantity = State(initialValue: item.quantity ?? "")
+        _quantity = State(initialValue: item.editableQuantity)
         _section = State(initialValue: item.section ?? "")
+        _store = State(initialValue: item.store ?? "")
         _priority = State(initialValue: item.priority ?? ListItemPriority.normal)
         // The item's assignee carries no id, so resolve it to a member by name.
         let assigneeName = item.assignee?.name
@@ -1715,17 +2013,21 @@ struct ItemDetailEditor: View {
     }
 
     /// Add mode — a blank "Add item" sheet (optionally seeded with a name already typed in
-    /// the add bar) so you can set assignee / section / priority up front, then add.
+    /// the add bar) so you can set assignee / section / store / priority up front, then add.
     init(newItemName: String, members: [SyncedMember], suggestions: [String],
-         onSave: @escaping (String, String, SyncedMember?, String, Int) -> Void) {
+         storeSuggestions: [String] = [], showStore: Bool = false,
+         onSave: @escaping (String, String, SyncedMember?, String, String, Int) -> Void) {
         self.originalName = ""
         self.isNew = true
         self.members = members
         self.suggestions = suggestions
+        self.storeSuggestions = storeSuggestions
+        self.showStore = showStore
         self.onSave = onSave
         _name = State(initialValue: newItemName)
         _quantity = State(initialValue: "")
         _section = State(initialValue: "")
+        _store = State(initialValue: "")
         _priority = State(initialValue: ListItemPriority.normal)
         _assigneeId = State(initialValue: nil)
     }
@@ -1756,6 +2058,18 @@ struct ItemDetailEditor: View {
                              : "Filed under “\(section.trimmingCharacters(in: .whitespaces))”.")
                             .font(.system(size: 12)).foregroundStyle(WF.ink3)
                     }
+
+                    if showStore {
+                        VStack(alignment: .leading, spacing: 9) {
+                            SectionLabel(text: "Store")
+                            storeChips
+                            inputCard { TextField("e.g. Costco", text: $store).textInputAutocapitalization(.words) }
+                            Text(storeIsNone
+                                 ? "No store — shows in the list as usual."
+                                 : "Shop at “\(store.trimmingCharacters(in: .whitespaces))”.")
+                                .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                        }
+                    }
                 }
                 .padding(20)
             }
@@ -1767,7 +2081,7 @@ struct ItemDetailEditor: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(isNew ? "Add" : "Save") {
-                        onSave(name, quantity, members.first { $0.id == assigneeId }, section, priority)
+                        onSave(name, quantity, members.first { $0.id == assigneeId }, section, store, priority)
                         dismiss()
                     }
                     .fontWeight(.semibold)
@@ -1871,6 +2185,35 @@ struct ItemDetailEditor: View {
                 ForEach(suggestions, id: \.self) { s in
                     let selected = section.caseInsensitiveCompare(s) == .orderedSame
                     Button { section = s } label: {
+                        Text(s).font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(selected ? WF.ink : WF.ink2)
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .wfChip(selected: selected)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 1)
+        }
+    }
+
+    private var storeIsNone: Bool { store.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// "None" (clear the store) followed by each previously-used store. Free-text field
+    /// below lets you type a brand-new one; typing it once makes it a future chip.
+    private var storeChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Button { store = "" } label: {
+                    Text("None").font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(storeIsNone ? WF.ink : WF.ink2)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .wfChip(selected: storeIsNone)
+                }
+                .buttonStyle(.plain)
+                ForEach(storeSuggestions, id: \.self) { s in
+                    let selected = store.caseInsensitiveCompare(s) == .orderedSame
+                    Button { store = s } label: {
                         Text(s).font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(selected ? WF.ink : WF.ink2)
                             .padding(.horizontal, 12).padding(.vertical, 7)

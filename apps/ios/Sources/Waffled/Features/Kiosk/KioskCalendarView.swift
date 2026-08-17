@@ -8,7 +8,7 @@ import SwiftUI
 struct KioskCalendarView: View {
     @Environment(SyncManager.self) private var sync
 
-    enum Mode: String, CaseIterable { case month, week, day, agenda
+    enum Mode: String, CaseIterable { case month, week, day, people, agenda
         var label: String { rawValue.capitalized }
     }
 
@@ -99,20 +99,62 @@ struct KioskCalendarView: View {
             }
         case .week:
             CalTimeGrid(days: weekDays(selectedDay), tz: tz, byDay: byDay,
-                        showDayHeaders: true, selectedDay: selectedDay,
+                        headers: .days, selectedDay: selectedDay,
                         onTapEvent: { detailEvent = $0 }, onAddAt: { editing = .new($0) },
                         onPickDay: { day in withAnimation { selectedDay = day; mode = .day } },
                         countdownsByDay: countdowns.byDate,
                         onTapCountdown: { openCountdown($0) })
         case .day:
             CalTimeGrid(days: [selectedDay], tz: tz, byDay: byDay,
-                        showDayHeaders: false, selectedDay: selectedDay,
+                        headers: .none, selectedDay: selectedDay,
                         onTapEvent: { detailEvent = $0 }, onAddAt: { editing = .new($0) },
                         onPickDay: { _ in },
                         countdownsByDay: countdowns.byDate,
                         onTapCountdown: { openCountdown($0) })
+        case .people:
+            peopleContent
         case .agenda:
             agendaContent(byDay)
+        }
+    }
+
+    /// Hour to open the People grid on: one before the day's first event, else 7 AM.
+    private func peopleScrollHour() -> Int {
+        let starts = (sync.eventsByDay[selectedDay] ?? []).filter { !$0.allDay }.compactMap(\.startsAt)
+        guard let first = starts.min() else { return 7 }
+        return max(0, (Cal.gregorian(tz).dateComponents([.hour], from: first).hour ?? 8) - 1)
+    }
+
+    /// One column per family member for the selected day. Reads the UNFILTERED index
+    /// on purpose: the columns are the per-person split, so applying the person filter
+    /// on top would collapse the view to a single column and defeat the mode.
+    @ViewBuilder private var peopleContent: some View {
+        let members = sync.members.map {
+            PeopleColumns.Member(id: $0.id, name: $0.name, colorHex: $0.colorHex, avatarEmoji: $0.emoji)
+        }
+        if members.isEmpty {
+            Text("Add family members to see per-person columns.")
+                .font(.system(size: 15)).foregroundStyle(WF.ink3)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            // The SAME grid Week uses, with people as the columns instead of days —
+            // so a person's column reads exactly like Mon/Tue/Wed: strict equal-width
+            // columns under a header band, same dividers, same all-day row.
+            let columns = PeopleColumns.build(sync.eventsByDay[selectedDay] ?? [], people: members)
+            CalTimeGrid(days: columns.map(\.id), tz: tz,
+                        byDay: Dictionary(uniqueKeysWithValues: columns.map { ($0.id, $0.events) }),
+                        headers: .people(columns.map {
+                            PeopleColumns.Member(id: $0.id, name: $0.name,
+                                                 colorHex: $0.colorHex, avatarEmoji: $0.avatarEmoji)
+                        }),
+                        selectedDay: selectedDay,
+                        onTapEvent: { detailEvent = $0 },
+                        onAddAt: { editing = .new($0) },
+                        onPickDay: { _ in },
+                        // The column keys are person ids, so the grid's own
+                        // "do the visible days include today" test can never match.
+                        showsNowLine: selectedDay == Agenda.todayKey(tz),
+                        scrollToHour: peopleScrollHour())
         }
     }
 
@@ -121,12 +163,16 @@ struct KioskCalendarView: View {
     private var header: some View {
         VStack(spacing: 12) {
             HStack(spacing: 14) {
+                // Priority over the segmented picker beside it — without this the
+                // five-segment control squeezes the date down to "T…".
                 Text(navTitle).font(WF.serif(34)).foregroundStyle(WF.ink).lineLimit(1)
+                    .layoutPriority(1)
                 if mode != .agenda {
                     Button { step(-1) } label: { chevron("chevron.left") }
                     Button { step(1) } label: { chevron("chevron.right") }
                     Button { withAnimation { monthAnchor = Date(); selectedDay = Agenda.todayKey(tz) } } label: {
                         Text("Today").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
+                            .fixedSize()   // never wrap to "Toda / y" when the row is tight
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(WF.card).clipShape(Capsule())
                             .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
@@ -137,18 +183,25 @@ struct KioskCalendarView: View {
                 Picker("", selection: $mode.animation()) {
                     ForEach(Mode.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
-                .pickerStyle(.segmented).labelsHidden().frame(width: 300)
+                // Wide enough for five segments once People was added.
+                .pickerStyle(.segmented).labelsHidden().frame(width: 320)
                 Button { editing = .new(dayKeyToDate(selectedDay) ?? Date()) } label: {
                     HStack(spacing: 7) {
                         Image(systemName: "plus").font(.system(size: 15, weight: .bold))
                         Text("Add event").font(.system(size: 15, weight: .bold))
                     }
                     .foregroundStyle(.white).padding(.horizontal, 16).padding(.vertical, 11)
+                    // Never let the row's squeeze wrap this label into "Ad d eve nt"
+                    // — the fifth view segment made the header tight enough to try.
+                    .fixedSize(horizontal: true, vertical: false)
                     .background(WF.primary).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
-            personFilter
+            // Hidden in People mode: the columns already ARE the per-person split, so
+            // a "show me one person" filter on top of them is redundant (and People
+            // reads the unfiltered index anyway, so the chips would look inert).
+            if mode != .people { personFilter }
         }
     }
 
@@ -159,7 +212,7 @@ struct KioskCalendarView: View {
             let days = weekDays(selectedDay)
             guard let first = days.first.flatMap(dayKeyToDate), let last = days.last.flatMap(dayKeyToDate) else { return "" }
             return "\(DateFmt.string(first, "MMM d", tz)) – \(DateFmt.string(last, "MMM d", tz))"
-        case .day:
+        case .day, .people:
             guard let d = dayKeyToDate(selectedDay) else { return selectedDay }
             return DateFmt.string(d, "EEEE, MMM d", tz)
         case .agenda:
@@ -173,7 +226,7 @@ struct KioskCalendarView: View {
             let cal = Cal.gregorian(tz)
             if let d = cal.date(byAdding: .month, value: n, to: monthAnchor) { withAnimation { monthAnchor = d } }
         case .week: shiftDay(n * 7)
-        case .day: shiftDay(n)
+        case .day, .people: shiftDay(n)
         case .agenda: break   // no month/week stepping in agenda
         }
     }
@@ -296,14 +349,14 @@ struct KioskCalendarView: View {
     }
 
     private func eventChip(_ ev: SyncedEvent) -> some View {
-        let color = Color(hexString: ev.colorHex) ?? WF.ink3
+        let paint = sync.eventPalette.chip(for: ev)
         return HStack(spacing: 5) {
-            RoundedRectangle(cornerRadius: 99).fill(color).frame(width: 3, height: 13)
-            Text(chipLabel(ev)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+            RoundedRectangle(cornerRadius: 99).fill(paint.color).frame(width: 3, height: 13)
+            Text(chipLabel(ev)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 5).padding(.vertical, 2)
-        .background(color.opacity(0.12)).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .background(paint.background).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
     /// Month-cell chips show the title only — in a narrow cell a leading time pushes the
@@ -515,10 +568,13 @@ struct KioskCalendarView: View {
             .sorted { $0.count > $1.count }
     }
 
+    /// Distinct event colors for the mini-month dots — a whole-family event contributes
+    /// the family color, not each attendee's.
     private func dotColors(_ events: [SyncedEvent]) -> [String] {
         var seen = Set<String>(); var colors: [String] = []
+        let palette = sync.eventPalette
         for e in events {
-            let hex = e.colorHex ?? "#A6A29B"
+            let hex = palette.hex(for: e) ?? "#A6A29B"
             if seen.insert(hex).inserted { colors.append(hex) }
         }
         return colors
@@ -582,16 +638,30 @@ struct KioskCalendarView: View {
     }
 }
 
-/// A web-like time grid: an hour axis with one positioned-event-block column per day.
-/// Used by the Week (7 columns) and Day (1 column) calendar modes.
+/// A web-like time grid: an hour axis with one positioned-event-block column per
+/// column key. Used by the Week (7 day columns), Day (1 day column) and People
+/// (one column per family member) calendar modes — People is deliberately the SAME
+/// grid as Week rather than a lookalike, so a person's column reads exactly like a
+/// day's: strict equal-width columns, the same dividers, the same header band.
 struct CalTimeGrid: View {
+    /// What the column headers show. `.days` = weekday + date (Week); `.none` = no
+    /// header band (Day); `.people` = avatar + name per column, in the same order as
+    /// `days`, for the People mode where a column is a person rather than a date.
+    enum ColumnHeaders: Equatable {
+        case none
+        case days
+        case people([PeopleColumns.Member])
+    }
+
+    /// For the family-aware event color + the household's chip style.
+    @Environment(SyncManager.self) private var sync
     let days: [String]
     let tz: TimeZone
     /// Prebuilt day → ordered events index (`SyncManager.eventsByDay`, possibly
     /// person-filtered) — each column reads only its own day instead of re-scanning
     /// and re-bucketing the full event list per render.
     let byDay: [String: [SyncedEvent]]
-    let showDayHeaders: Bool
+    let headers: ColumnHeaders
     let selectedDay: String
     let onTapEvent: (SyncedEvent) -> Void
     let onAddAt: (Date) -> Void
@@ -600,6 +670,12 @@ struct CalTimeGrid: View {
     /// with the month badge + day panel). Defaulted so non-countdown callers are unaffected.
     var countdownsByDay: [String: [WaffledAPI.Countdown]] = [:]
     var onTapCountdown: (WaffledAPI.Countdown) -> Void = { _ in }
+    /// Whether to draw the red "now" rule. Defaults to "the visible days include
+    /// today"; People mode passes it explicitly because its column keys are person
+    /// ids, not dates, so that test can never match.
+    var showsNowLine: Bool? = nil
+    /// Hour the grid opens on.
+    var scrollToHour: Int = 7
 
     private let hourHeight: CGFloat = 56
     private let gutter: CGFloat = 56
@@ -616,7 +692,7 @@ struct CalTimeGrid: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showDayHeaders { dayHeaders }
+            if headers != .none { columnHeaders }
             if hasAllDay { allDayRow }
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
@@ -655,38 +731,46 @@ struct CalTimeGrid: View {
                         .frame(height: 24 * hourHeight, alignment: .topLeading)
                         // The "now" line — a red rule across the grid at the current time,
                         // shown only when the visible range includes today.
-                        if days.contains(Agenda.todayKey(tz)) { nowLine }
+                        if showsNowLine ?? days.contains(Agenda.todayKey(tz)) { nowLine }
                     }
                     .frame(height: 24 * hourHeight)
                 }
                 .background(WF.card)
                 .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
-                .task { try? await Task.sleep(for: .milliseconds(150)); proxy.scrollTo(7, anchor: .top) }
+                // Deliberately NOT `.task(id:)`. This positions the grid when it first
+                // appears and then leaves it alone: each `mode` is its own branch of
+                // the switch in `content`, so entering People builds a fresh grid and
+                // gets its `scrollToHour`, while paging to the next week or day keeps
+                // the same grid — and whatever offset you had scrolled to. Keying on
+                // `days` would snap you back to the top on every chevron tap, and
+                // keying on `scrollToHour` would let any synced event on the visible
+                // day yank the grid out from under you mid-read.
+                .task {
+                    try? await Task.sleep(for: .milliseconds(150))
+                    proxy.scrollTo(scrollToHour, anchor: .top)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    private var dayHeaders: some View {
-        // spacing 4 + the leading dividers match the time grid below, so the day
-        // numbers sit over their columns and the separators line up top-to-bottom.
+    /// The header band above the columns. spacing 4 + the leading dividers match the
+    /// time grid below, so each header sits over its own column and the separators
+    /// line up top-to-bottom.
+    private var columnHeaders: some View {
         HStack(spacing: 4) {
             Color.clear.frame(width: gutter, height: 1)
             ForEach(Array(days.enumerated()), id: \.element) { idx, key in
-                let isToday = key == Agenda.todayKey(tz)
-                Button { onPickDay(key) } label: {
-                    VStack(spacing: 2) {
-                        Text(weekdayShort(key)).font(.system(size: 12, weight: .heavy)).foregroundStyle(WF.ink3)
-                        Text(dayNumber(key))
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(isToday ? .white : WF.ink)
-                            .frame(width: 30, height: 30)
-                            .background(isToday ? WF.primary : Color.clear).clipShape(Circle())
+                Group {
+                    switch headers {
+                    case .people(let members):
+                        personHeader(members.indices.contains(idx) ? members[idx] : nil)
+                    default:
+                        dayHeader(key)
                     }
-                    .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
                 .overlay(alignment: .leading) {
                     if days.count > 1 && idx > 0 {
                         Rectangle().fill(WF.ink.opacity(0.12)).frame(width: 1, height: 40)
@@ -697,6 +781,41 @@ struct CalTimeGrid: View {
         }
         .frame(height: 48)
         .padding(.bottom, 10)
+    }
+
+    private func dayHeader(_ key: String) -> some View {
+        let isToday = key == Agenda.todayKey(tz)
+        return Button { onPickDay(key) } label: {
+            VStack(spacing: 2) {
+                Text(weekdayShort(key)).font(.system(size: 12, weight: .heavy)).foregroundStyle(WF.ink3)
+                Text(dayNumber(key))
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(isToday ? .white : WF.ink)
+                    .frame(width: 30, height: 30)
+                    .background(isToday ? WF.primary : Color.clear).clipShape(Circle())
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// A person as a column header — the same two-line shape as a day header
+    /// (avatar where the date circle goes, name where the weekday goes).
+    @ViewBuilder private func personHeader(_ member: PeopleColumns.Member?) -> some View {
+        VStack(spacing: 3) {
+            Text(member?.name ?? "Everyone")
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundStyle(WF.ink3)
+                .lineLimit(1)
+            if let member, member.id != PeopleColumns.unassignedId {
+                Avatar(colorHex: member.colorHex, emoji: member.avatarEmoji ?? "🙂", size: 30)
+            } else {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+                    .frame(width: 30, height: 30).background(WF.panel).clipShape(Circle())
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var allDayRow: some View {
@@ -745,12 +864,14 @@ struct CalTimeGrid: View {
         .background(WF.warnT).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
+    /// The all-day pill above the week/day grid — a chip with a background, so the
+    /// household's event style applies.
     private func miniChip(_ ev: SyncedEvent) -> some View {
-        let color = Color(hexString: ev.colorHex) ?? WF.ink3
-        return Text(ev.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+        let paint = sync.eventPalette.chip(for: ev)
+        return Text(ev.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
             .padding(.horizontal, 6).padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(color.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(paint.background).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
     /// Live red current-time indicator: a dot at the gutter edge + a rule across the
@@ -830,22 +951,23 @@ struct CalTimeGrid: View {
             let durMin = ev.endsAt.map { max(30, $0.timeIntervalSince(start) / 60) } ?? 60
             let height = max(26, CGFloat(durMin) / 60 * hourHeight - 3)
             let laneW = colWidth / CGFloat(placed.lanes)
-            let color = Color(hexString: ev.colorHex) ?? WF.ink3
+            let paint = sync.eventPalette.chip(for: ev)
             Button { onTapEvent(ev) } label: {
                 HStack(spacing: 5) {
-                    RoundedRectangle(cornerRadius: 99).fill(color).frame(width: 3)
+                    RoundedRectangle(cornerRadius: 99).fill(paint.color).frame(width: 3)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(ev.title).font(.system(size: placed.lanes > 1 ? 12 : 13, weight: .bold))
-                            .foregroundStyle(WF.ink).lineLimit(placed.lanes > 2 ? 1 : 2)
+                            .foregroundStyle(paint.foreground).lineLimit(placed.lanes > 2 ? 1 : 2)
                         if height > 38, placed.lanes < 3 {
-                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 11, weight: .medium)).foregroundStyle(WF.ink3)
+                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(paint.foreground.opacity(0.75))
                         }
                     }
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 6).padding(.vertical, 4)
                 .frame(width: max(0, laneW - 3), height: height, alignment: .topLeading)
-                .background(color.opacity(0.14))
+                .background(paint.background)
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(WF.card, lineWidth: 1))
             }

@@ -1,5 +1,6 @@
 import { useMemo, type MouseEvent } from 'react'
 import type { AgendaEvent, Countdown } from '../../lib/api'
+import { evVars, useEventColor } from '../../lib/event-color'
 import { DOW, ymd, localDate } from './cal-utils'
 import { MonthDayPanel } from './MonthDayPanel'
 
@@ -39,6 +40,7 @@ export function MonthView({
   onCreateOnDay: (date: string) => void
   onMore: (date: string) => void
 }) {
+  const colorOf = useEventColor()
   const cells = useMemo(() => monthGrid(year, month), [year, month])
   const byDate = useMemo(() => {
     const map: Record<string, AgendaEvent[]> = {}
@@ -82,13 +84,13 @@ export function MonthView({
                 </div>
               )}
               {dayEvents.slice(0, 3).map((e) => {
-                const color = e.personColor ?? '#6B6B70'
+                const color = colorOf(e)
                 const isMeal = e.origin === 'meal_plan'
                 return (
                   <div
                     key={e.id}
-                    className={`ev ${isMeal ? 'ev-meal' : ''}`}
-                    style={{ background: `${color}22`, color, cursor: 'pointer' }}
+                    className={`ev ev-tint ${isMeal ? 'ev-meal' : ''}`}
+                    style={{ ...evVars(color), cursor: 'pointer' }}
                     title={isMeal ? 'Planned meal' : undefined}
                     onClick={(ev) => {
                       ev.stopPropagation()

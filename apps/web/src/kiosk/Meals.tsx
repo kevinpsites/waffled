@@ -7,9 +7,11 @@ import { RecipeBrowser, MEALS, MEAL_LABEL, type MealType } from './components/Re
 import { useTopbarFull } from './topbar-slot'
 import {
   api,
+  mealBuilderApi,
   useMealsWeek,
   useRecipes,
   localToday,
+  type Meal,
   type Recipe,
   type WeekEntry,
 } from '../lib/api'
@@ -82,6 +84,7 @@ function MealPicker({
   recipes,
   loading,
   onPick,
+  onPickMeal,
   onView,
   onEatingOut,
   onLeftovers,
@@ -93,6 +96,9 @@ function MealPicker({
   recipes: Recipe[]
   loading: boolean
   onPick?: (recipe: Recipe) => void
+  // Saved plates only appear when a caller can say WHERE to put one — the target
+  // date lives in the caller's closure, not in the browser.
+  onPickMeal?: (meal: Meal) => void
   onView?: (recipe: Recipe) => void
   onEatingOut?: () => void
   onLeftovers?: () => void
@@ -132,6 +138,7 @@ function MealPicker({
       loading={loading}
       slot={slot}
       onPick={onPick}
+      onPickMeal={onPickMeal}
       onView={onView}
       onEatingOut={onEatingOut}
       onLeftovers={onLeftovers}
@@ -193,6 +200,16 @@ export function Meals() {
   async function pick(recipe: Recipe) {
     if (!picking) return
     await api.planSlot({ date: picking.date, mealType: picking.mealType, recipeId: recipe.id })
+    setPicking(null)
+    refetch()
+  }
+
+  // A saved plate goes on the slot whole — its own endpoint, not planSlot, because
+  // the entry points at the meal rather than a recipe. Scheduling a saved plate
+  // copies it server-side, so editing the library plate later won't rewrite this.
+  async function pickMeal(meal: Meal) {
+    if (!picking) return
+    await mealBuilderApi.schedule(meal.id, { date: picking.date, mealType: picking.mealType })
     setPicking(null)
     refetch()
   }
@@ -393,6 +410,7 @@ export function Meals() {
         recipes={recipes}
         loading={recipesLoading}
         onPick={pick}
+        onPickMeal={pickMeal}
         onEatingOut={eatOut}
         onLeftovers={planLeftovers}
         onTrySomething={planTrySomething}
@@ -457,7 +475,13 @@ export function Meals() {
                 inMonth={inMonth}
                 isToday={isToday}
                 entry={entry}
-                onOpen={() => (entry?.recipeId ? navigate(`/meals/recipe/${entry.recipeId}`) : openPicker(d, 'dinner'))}
+                onOpen={() =>
+                  entry?.mealId
+                    ? navigate(`/meals/build/${entry.mealId}`)
+                    : entry?.recipeId
+                      ? navigate(`/meals/recipe/${entry.recipeId}`)
+                      : openPicker(d, 'dinner')
+                }
                 onAdd={() => openPicker(d, 'dinner')}
                 onRemove={() => clearMeal(dateStr, 'dinner')}
               />
@@ -481,6 +505,7 @@ export function Meals() {
               days={days}
               bySlot={bySlot}
               onOpen={(id) => navigate(`/meals/recipe/${id}`)}
+              onOpenMeal={(id) => navigate(`/meals/build/${id}`)}
               onAdd={(d) => openPicker(d, mealType)}
               onRemove={clearMeal}
             />
@@ -556,6 +581,7 @@ function Row({
   days,
   bySlot,
   onOpen,
+  onOpenMeal,
   onAdd,
   onRemove,
 }: {
@@ -563,6 +589,7 @@ function Row({
   days: Date[]
   bySlot: Map<string, WeekEntry>
   onOpen: (recipeId: string) => void
+  onOpenMeal: (mealId: string) => void
   onAdd: (d: Date) => void
   onRemove: (date: string, mealType: MealType) => void
 }) {
@@ -581,9 +608,9 @@ function Row({
               entry={entry}
               mealType={mealType}
               slotKey={`${dateStr}|${mealType}`}
-              // Recipe → open it; recipe-less ("Fish"/eating-out) → open the slot
-              // picker so you can attach a recipe or change the plan.
-              onOpen={() => (entry.recipeId ? onOpen(entry.recipeId) : onAdd(d))}
+              // A plate → open the plate; a recipe → open it; neither ("Fish" /
+              // eating-out) → the slot picker, so you can attach something.
+              onOpen={() => (entry.mealId ? onOpenMeal(entry.mealId) : entry.recipeId ? onOpen(entry.recipeId) : onAdd(d))}
               onRemove={() => onRemove(dateStr, mealType)}
             />
           )

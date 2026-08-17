@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { personsApi, kioskApi, ALLERGEN_KEYS, ALLERGEN_LABELS, type SettingsMember } from '../../lib/api'
+import type { ApiSendError } from '../../lib/api/client'
 import { SettingCard } from './SettingCard'
+import { ColorPicker, COLOR_SWATCHES } from './ColorPicker'
 
-const SWATCHES = ['#2F7FED', '#EC6049', '#25A368', '#8B5CF6', '#E0A500', '#EC4899', '#14B8A6', '#6B7280']
+const SWATCHES = COLOR_SWATCHES
 const MEMBER_TYPES = [
   { key: 'adult', label: 'Adult' },
   { key: 'teen', label: 'Teen' },
@@ -31,6 +33,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
     allergens: person?.allergens ?? [],
   })
   const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [tab, setTab] = useState<'general' | 'signin'>('general')
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
@@ -148,12 +151,17 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
       showOnKiosk: form.showOnKiosk,
       allergens: form.allergens,
     }
+    setSaveErr(null)
     try {
       if (editing) await personsApi.updatePerson(person!.id, payload)
       else await personsApi.createPerson(payload)
       onSaved()
       onClose()
-    } catch {
+    } catch (err) {
+      // Say why. Swallowing this hid a real dead end: a member holding a color
+      // from before the server validated colors 400'd on every save (the editor
+      // resends colorHex), so nothing about them could be changed, silently.
+      setSaveErr((err as ApiSendError)?.body?.message || 'Couldn’t save — please try again.')
       setSaving(false)
     }
   }
@@ -206,11 +214,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
 
           <div className="field">
             <span>Color</span>
-            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-              {SWATCHES.map((c) => (
-                <button type="button" key={c} aria-label={`color ${c}`} onClick={() => set('colorHex', c)} style={{ width: 30, height: 30, borderRadius: 999, background: c, border: form.colorHex === c ? '3px solid var(--ink)' : '2px solid #fff', boxShadow: '0 0 0 1px var(--hair)', cursor: 'pointer' }} />
-              ))}
-            </div>
+            <ColorPicker value={form.colorHex} onChange={(c) => set('colorHex', c)} />
           </div>
 
           <label className="field">
@@ -255,6 +259,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
             </div>
           </SettingCard>
 
+          {saveErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>{saveErr}</div>}
           <button type="submit" className="btn btn-primary" disabled={!form.name.trim() || saving} style={{ width: '100%', justifyContent: 'center' }}>
             {saving ? 'Saving…' : editing ? 'Save changes' : 'Add person'}
           </button>

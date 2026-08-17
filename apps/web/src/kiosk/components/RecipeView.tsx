@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { groceryApi, mealsApi, pantryApi, useRecipe, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
+import { mealBuilderApi, mealsApi, pantryApi, useRecipe, useRecordRecipeView, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
 import { ScheduleModal } from './ScheduleModal'
+import { RecipeGroceryModal } from './RecipeGroceryModal'
 import { CookConfirm } from './CookConfirm'
 import { useTopbarFull } from '../topbar-slot'
+import { fmtAmt } from '../../lib/amount'
 import '../../styles/recipe.css'
 
 // Favorite / edit / schedule as icon buttons. Rendered in the topbar (full-screen
@@ -49,15 +51,6 @@ function downloadMarkdown(markdown: string, filename: string) {
 // "your notes". Self-contained by id so it renders identically whether it's the
 // full-screen route (RecipeDetail) or a modal preview (RecipeModal).
 
-const FRAC: Record<string, string> = { '0.5': '½', '0.25': '¼', '0.75': '¾', '0.33': '⅓', '0.67': '⅔' }
-function fmtAmt(n: number): string {
-  const whole = Math.floor(n)
-  const frac = +(n - whole).toFixed(2)
-  const fg = FRAC[String(frac)]
-  if (fg) return whole > 0 ? `${whole}${fg}` : fg
-  return `${+n.toFixed(2)}`
-}
-
 function IngredientRow({ ing, ratio, onSub }: { ing: RecipeIngredient; ratio: number; onSub: (val: string) => void }) {
   const [checked, setChecked] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -86,7 +79,7 @@ function IngredientRow({ ing, ratio, onSub }: { ing: RecipeIngredient; ratio: nu
     )
   }
   return (
-    <div className={`ring-row ${checked ? 'on' : ''} ${ing.sub ? 'subbed' : ''}`}>
+    <div className={`ring-row checklist ${checked ? 'on' : ''} ${ing.sub ? 'subbed' : ''}`}>
       <span className="ring-ck" aria-hidden role="button" tabIndex={0} onClick={() => setChecked((v) => !v)}>{checked ? '✓' : ''}</span>
       <span className="ring-amt" onClick={() => setChecked((v) => !v)}>{left}</span>
       <span className="ring-name" onClick={() => setChecked((v) => !v)}>
@@ -146,16 +139,31 @@ function StepRow({ s, onNote }: { s: RecipeStep; onNote: (val: string) => void }
 
 export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: string; onSelect?: () => void; selectLabel?: string; fullScreen?: boolean }) {
   const navigate = useNavigate()
-  const { recipe, ingredients, steps, loading, error, refetch } = useRecipe(id)
+  // onHand/toBuy default here so a caller (or a test) that stubs useRecipe without
+  // them can't turn an absent count into a crash — absent means "no claim", same as null.
+  const { recipe, ingredients, steps, onHand = null, toBuy = 0, toBuyNames = [], loading, error, refetch } = useRecipe(id)
+  // Records the visit for the Recently-viewed rail — on the SCREEN, not in useRecipe
+  // (the editor and Cook Mode fetch through that hook too).
+  useRecordRecipeView(id)
   const [servings, setServings] = useState<number | null>(null)
   const [showAllTags, setShowAllTags] = useState(false)
   const [fav, setFav] = useState(false)
   const [scheduling, setScheduling] = useState(false)
   const [addedNote, setAddedNote] = useState<string | null>(null)
-  const addingGrocery = useRef(false) // in-flight guard for addToGrocery
+  const [pickingGrocery, setPickingGrocery] = useState(false)
   const [cooked, setCooked] = useState(0)
   const [notes, setNotes] = useState('')
   const [usedMatches, setUsedMatches] = useState<RecipeMatch[] | null>(null)
+  const [building, setBuilding] = useState(false)
+  // The to-buy list starts closed: the banner sits directly above Method, so opening
+  // it by default would push the steps down on every recipe you look at.
+  const [showToBuy, setShowToBuy] = useState(false)
+  // Real, pantry-derived shopping numbers for the banner, carried by useRecipe off the
+  // same GET /api/recipes/:id the screen already makes. `onHand` is null whenever we
+  // can't make the claim — the pantry module is off — and the banner then says nothing
+  // about what's on hand. It must never fall back to counting `isStaple` ingredients
+  // (the old bug: an empty pantry still read "4 of 9 on hand") and never render
+  // "0 of N", which is a different untruth.
   // Compiled shareable markdown, prefetched on load. Native navigator.share() needs the
   // click handler to stay inside the user-gesture (transient activation) — awaiting a
   // fetch inside the handler breaks that on Safari — so we prefetch and share the
@@ -257,19 +265,39 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
   const base = recipe.servings || 4
   const current = servings ?? base
   const ratio = current / base
-  const onHand = ingredients.filter((i) => i.isStaple).length
-  const missing = ingredients.filter((i) => !i.isStaple).map((i) => i.name)
+  // `toBuyNames` is server-derived and always agrees with `toBuy` — including with the
+  // pantry ON, where the count is the *unmatched* subset and no client-side guess from
+  // `ingredients` could have been right. Empty ⇒ nothing to open into, so the count
+  // stays plain text rather than becoming a control that expands to nothing.
+  const canExpand = toBuyNames.length > 0
 
-  async function addToGrocery() {
-    if (addingGrocery.current) return // three controls share this handler — no double-fire
-    addingGrocery.current = true
+  // Opens the picker so the shopper can add all or choose specific ingredients
+  // (they may already have some on hand). The actual add happens in the modal.
+  function addToGrocery() {
+    setPickingGrocery(true)
+  }
+  function onGroceryAdded(added: number) {
+    if (added < 0) setAddedNote('Couldn’t reach the grocery list — try again.')
+    else setAddedNote(added > 0 ? `Added ${added} item${added === 1 ? '' : 's'} to this week’s grocery list.` : 'Everything’s already on the list — nothing to add.')
+  }
+
+  // "Build a meal around this" — start a plate seeded from this recipe: named after
+  // it, carrying its servings, and with the recipe already on the plate in its
+  // natural role (a dessert comes in as the dessert, everything else as the main).
+  // The builder doubles as meal detail on web, so we go straight there.
+  async function buildMeal() {
+    if (building) return
+    setBuilding(true)
     try {
-      const { added } = await groceryApi.groceryFromRecipe(recipe!.id)
-      setAddedNote(added > 0 ? `Added ${added} item${added === 1 ? '' : 's'} to this week’s grocery list.` : 'Everything’s already on the list or on hand — nothing to add.')
+      const r = recipe!
+      const cat = (r.category ?? r.mealType ?? '').toLowerCase()
+      const meal = await mealBuilderApi.create({ name: r.title, servings: r.servings || 4 })
+      await mealBuilderApi.addDish(meal.id, { recipeId: r.id, role: cat === 'dessert' ? 'dessert' : 'main' })
+      navigate(`/meals/build/${meal.id}`)
     } catch {
-      setAddedNote('Couldn’t reach the grocery list — try again.')
+      setAddedNote('Couldn’t start a meal from this recipe — try again.')
     } finally {
-      addingGrocery.current = false
+      setBuilding(false)
     }
   }
 
@@ -385,6 +413,20 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
             </button>
           )}
 
+          {/* A recipe is one dish; a meal is the whole plate around it. */}
+          <div style={{ display: 'flex', margin: '12px 0 2px' }}>
+            <button
+              type="button"
+              className="btn btn-primary rd-buildmeal"
+              style={{ fontSize: 13.5, padding: '10px 18px' }}
+              onClick={buildMeal}
+              disabled={building}
+            >
+              <span aria-hidden>🍽️</span>
+              {building ? 'Starting a meal…' : 'Build a meal around this'}
+            </button>
+          </div>
+
           <div className="rd-status-row">
             <span className="st-lbl">{cooked > 0 ? `👨‍🍳 Cooked ${cooked}×` : 'Not cooked yet'}</span>
             <button type="button" className="rd-markbtn" onClick={markCooked}>
@@ -412,16 +454,47 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
 
         {/* right: on-hand banner + method */}
         <div className="rd-right">
-          <div className="rd-ai">
-            <div className="rd-ai-sp"><svg viewBox="0 0 24 24"><path d="M12 2.5l1.7 5.2 5.3 1.6-5.3 1.6L12 16l-1.7-5.1-5.3-1.6 5.3-1.6z" /></svg></div>
-            <div className="rd-ai-tx">
-              <b>{onHand} of {ingredients.length}</b> {onHand === ingredients.length ? 'ingredients on hand' : 'ingredients already on hand'}
-              {missing.length > 0 && ` — need ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? ` +${missing.length - 3} more` : ''}`}
+          {(onHand !== null || toBuy > 0) && (
+            <div className={`rd-ai${showToBuy && canExpand ? ' is-open' : ''}`}>
+              <div className="rd-ai-sp"><svg viewBox="0 0 24 24"><path d="M12 2.5l1.7 5.2 5.3 1.6-5.3 1.6L12 16l-1.7-5.1-5.3-1.6 5.3-1.6z" /></svg></div>
+              <div className="rd-ai-tx">
+                {onHand !== null && (
+                  <>
+                    <b>{onHand.have} of {onHand.total}</b> {onHand.have === onHand.total ? 'ingredients on hand' : 'ingredients already on hand'}
+                    {toBuy > 0 && ' — '}
+                  </>
+                )}
+                {toBuy > 0 &&
+                  (canExpand ? (
+                    // A count you can't act on is just anxiety — open it into the names.
+                    <button
+                      type="button"
+                      className="rd-ai-buy"
+                      aria-expanded={showToBuy}
+                      onClick={() => setShowToBuy((v) => !v)}
+                    >
+                      <b>{toBuy} to buy</b>
+                      <span className="rd-ai-caret">{showToBuy ? '\u25be' : '\u25b8'}</span>
+                    </button>
+                  ) : (
+                    <>
+                      <b>{toBuy} to buy</b>
+                      {onHand === null && ' for this recipe'}
+                    </>
+                  ))}
+                {showToBuy && canExpand && (
+                  <ul className="rd-ai-list">
+                    {toBuyNames.map((n) => (
+                      <li key={n}>{n}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {toBuy > 0 && (
+                <button type="button" className="rd-ai-go" onClick={addToGrocery}>Add to grocery</button>
+              )}
             </div>
-            {missing.length > 0 && (
-              <button type="button" className="rd-ai-go" onClick={addToGrocery}>Add to grocery</button>
-            )}
-          </div>
+          )}
           {addedNote && <div className="rd-added tiny">{addedNote}</div>}
 
           <div className="card rd-method">
@@ -453,6 +526,9 @@ export function RecipeView({ id, onSelect, selectLabel, fullScreen }: { id: stri
 
       {scheduling && (
         <ScheduleModal recipe={recipe} onClose={() => setScheduling(false)} onScheduled={(label) => setAddedNote(`Scheduled for ${label}.`)} />
+      )}
+      {pickingGrocery && (
+        <RecipeGroceryModal recipeId={recipe.id} title={recipe.title} ingredients={ingredients} ratio={ratio} onClose={() => setPickingGrocery(false)} onAdded={onGroceryAdded} />
       )}
       {usedMatches && (
         <CookConfirm

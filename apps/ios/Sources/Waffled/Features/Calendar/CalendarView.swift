@@ -20,10 +20,17 @@ struct CalendarView: View {
     @State private var countdowns = CountdownsModel()
     @State private var editingCountdown: WaffledAPI.Countdown?
 
+    /// No People mode here on purpose — it's iPad-only. A phone splits into columns
+    /// too narrow to read (four members already truncate titles to "Dinn…"), and the
+    /// person filter below covers "just show me one person's day" on a phone.
     enum CalMode: String, CaseIterable { case agenda, month, day
         var label: String { rawValue.capitalized }
         var icon: String {
-            switch self { case .agenda: return "list.bullet"; case .month: return "calendar"; case .day: return "calendar.day.timeline.left" }
+            switch self {
+            case .agenda: return "list.bullet"
+            case .month: return "calendar"
+            case .day: return "calendar.day.timeline.left"
+            }
         }
     }
 
@@ -317,11 +324,13 @@ struct CalendarView: View {
         countdowns.byDate[day] ?? []
     }
 
-    /// Distinct owner colors of events on a day (for the month dots).
+    /// Distinct event colors on a day (for the month dots) — whole-family events
+    /// contribute the family color, so a day everyone is on shows one dot, not three.
     private func dotColors(_ key: String) -> [String] {
         var seen = Set<String>(); var colors: [String] = []
+        let palette = sync.eventPalette
         for e in filtered where Agenda.dayKey(e, tz) == key {
-            let hex = e.colorHex ?? "#A6A29B"
+            let hex = palette.hex(for: e) ?? "#A6A29B"
             if seen.insert(hex).inserted { colors.append(hex) }
         }
         return colors
@@ -391,21 +400,25 @@ struct CalendarView: View {
             let y = (CGFloat(comps.h) + CGFloat(comps.m) / 60) * Self.hourHeight
             let durMin = ev.endsAt.map { max(30, $0.timeIntervalSince(start) / 60) } ?? 60
             let height = max(30, CGFloat(durMin) / 60 * Self.hourHeight - 4)
-            let color = Color(hexString: ev.colorHex) ?? WF.ink3
+            // A chip *with a background*, so the household's event style applies (the
+            // leading rule stays the raw color — in solid it merges into the fill, which
+            // is exactly what the web's matching `border-left` does).
+            let paint = sync.eventPalette.chip(for: ev)
             Button { detailEvent = ev } label: {
                 HStack(spacing: 7) {
-                    RoundedRectangle(cornerRadius: 99).fill(color).frame(width: 3)
+                    RoundedRectangle(cornerRadius: 99).fill(paint.color).frame(width: 3)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                        Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
                         if height > 40 {
-                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 10.5, weight: .medium)).foregroundStyle(WF.ink3)
+                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 10.5, weight: .medium))
+                                .foregroundStyle(paint.foreground.opacity(0.75))
                         }
                     }
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 8).padding(.vertical, 5)
                 .frame(maxWidth: .infinity, alignment: .leading).frame(height: height, alignment: .top)
-                .background(color.opacity(0.13))
+                .background(paint.background)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -513,9 +526,11 @@ struct CalendarView: View {
     }
 }
 
-/// One agenda event as its own rounded card — time, owner color bar, title, owner
-/// avatar — matching the mobile calendar mock.
+/// One agenda event as its own rounded card — time, event color bar, title, owner
+/// avatar — matching the mobile calendar mock. The bar takes the family color on a
+/// whole-family event; the avatar stays the owner's, because that's identity.
 struct EventCard: View {
+    @Environment(SyncManager.self) private var sync
     let event: SyncedEvent
     let tz: TimeZone
     let onTap: () -> Void
@@ -525,7 +540,7 @@ struct EventCard: View {
             HStack(spacing: 12) {
                 Text(timeText).font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
                     .frame(width: 72, alignment: .leading)
-                RoundedRectangle(cornerRadius: 99).fill(Color(hexString: event.colorHex) ?? WF.ink3)
+                RoundedRectangle(cornerRadius: 99).fill(sync.eventPalette.color(for: event))
                     .frame(width: 4, height: 34)
                 Text(event.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 Spacer(minLength: 8)
@@ -875,6 +890,10 @@ struct EventEditSheet: View {
                     bottomBar.padding(.top, 6)
                 }
                 .padding(18)
+                // Read-only: the fields stay legible (this is still how you look at a
+                // feed event's details) but nothing here can be changed. Cancel lives
+                // in the toolbar, outside this, so there's always a way out.
+                .disabled(isReadOnly)
             }
             .background(WF.canvas)
             .navigationTitle(editing ? "Edit event" : "New event")
@@ -917,7 +936,21 @@ struct EventEditSheet: View {
         .modifier(KioskSheetPresentation(kiosk: DeviceExperience.current == .kiosk))
     }
 
-    private var bottomBar: some View {
+    /// A subscribed feed is a one-way read, so this event can't be saved or deleted
+    /// from here. Gating the SHEET (not the screens that present it) means every
+    /// route in is covered — the detail view, `PersonView`'s day list, and anything
+    /// added later. See `EventOrigin.blocksEditing`.
+    private var isReadOnly: Bool { EventOrigin.blocksEditing(event) }
+
+    @ViewBuilder private var bottomBar: some View {
+        if isReadOnly {
+            LockNote.subscribedFeedEvent
+        } else {
+            editControls
+        }
+    }
+
+    private var editControls: some View {
         HStack(spacing: 14) {
             if editing {
                 Button {

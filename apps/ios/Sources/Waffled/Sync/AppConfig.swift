@@ -138,8 +138,21 @@ enum DemoHooks {
     static var kioskCalMode: String? { AppConfig.env("WAFFLED_CAL_MODE") }
     /// Auto-open the first event's detail on the iPad calendar (verification).
     static var kioskOpenEvent: Bool { AppConfig.env("WAFFLED_KIOSK_OPEN_EVENT") == "1" }
+    /// Start Cook Mode for a plate on launch (verification). Cook Mode is otherwise
+    /// only reachable by tapping, and the simulator has no tap API — so without this
+    /// the whole multi-dish cook screen can't be looked at headlessly at all.
+    static var cookPlate: String? { AppConfig.env("WAFFLED_COOK_PLATE") }
+    /// Replay a timer jump inside that session, as `fromStep:dishIndex:step` — put the
+    /// opening dish on `fromStep`, then jump to dish `dishIndex` at `step`, exactly as a
+    /// fired timer would. Used to look at the "back to where I was" offer.
+    static var cookJump: String? { AppConfig.env("WAFFLED_COOK_JUMP") }
     /// Auto-open the first event's editor on the iPad calendar (verification).
     static var kioskOpenEdit: Bool { AppConfig.env("WAFFLED_KIOSK_OPEN_EDIT") == "1" }
+    /// Push straight into a Settings sub-page on launch (verification). Settings is a
+    /// nav stack you can only get into by tapping, and the simulator has no tap API,
+    /// so without this the sub-screens can't be looked at headlessly at all.
+    /// Currently: `calendars`.
+    static var settingsPage: String? { AppConfig.env("WAFFLED_SETTINGS_PAGE") }
     /// Initial Meals section for verification: week | month | recipes.
     static var mealsSection: String? { AppConfig.env("WAFFLED_MEALS_SECTION") }
     /// Auto-open the "Plan my week" sheet (verification).

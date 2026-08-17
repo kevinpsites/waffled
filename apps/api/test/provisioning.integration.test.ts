@@ -88,6 +88,17 @@ describe('P2.6 admin-gated household creation', () => {
     expect((await call('POST', '/api/households', kevinToken, { name: 'C' })).statusCode).toBe(400)
   })
 
+  // The member color reaches the calendar's CSS straight from user input, so
+  // every write path validates it — this one included, not just /api/persons.
+  it('rejects a person color that is not a #RRGGBB hex (400)', async () => {
+    for (const colorHex of ['papayawhip', '#12345', 'F97316']) {
+      const res = await call('POST', '/api/households', kevinToken, {
+        name: 'Bad Color House', timezone: 'UTC', person: { name: 'Kevin', colorHex },
+      })
+      expect(res.statusCode, `colorHex=${colorHex}`).toBe(400)
+    }
+  })
+
   it('lets an admin create an additional household, linked to the same account', async () => {
     const res = await call('POST', '/api/households', kevinToken, {
       name: 'The Lake House',

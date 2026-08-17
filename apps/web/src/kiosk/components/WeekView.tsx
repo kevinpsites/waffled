@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePersons, type AgendaEvent, type Countdown } from '../../lib/api'
+import { evVars, useEventColor } from '../../lib/event-color'
 import { DOW, ymd, addDays, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, eventPeople, packLanes } from './cal-utils'
 import { CountdownChip } from './CountdownChip'
 
@@ -30,6 +31,7 @@ export function WeekView({
   onPickDay?: (d: Date) => void
 }) {
   const { persons = [] } = usePersons()
+  const colorOf = useEventColor()
   // Empty selection = everyone (no filter); toggling a chip narrows to those people.
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
@@ -130,12 +132,12 @@ export function WeekView({
             return (
               <div key={key} className="wk-allday-cell">
                 {allday.map((e) => {
-                  const color = e.personColor ?? '#6B6B70'
+                  const color = colorOf(e)
                   return (
                     <div
                       key={e.id}
-                      className="wk-allday-ev"
-                      style={{ background: `${color}22`, color }}
+                      className="wk-allday-ev ev-tint"
+                      style={evVars(color)}
                       onClick={() => onOpenEvent(e)}
                     >
                       {e.title}
@@ -175,7 +177,7 @@ export function WeekView({
                     const startMin = minutesOfDay(e.startsAt) - DAY_START * 60
                     const top = Math.max(0, (startMin / 60) * HOUR_PX)
                     const height = Math.max(22, (durationMin(e) / 60) * HOUR_PX - 3)
-                    const color = e.personColor ?? '#6B6B70'
+                    const color = colorOf(e)
                     const isMeal = e.origin === 'meal_plan'
                     const lane = lanes.get(e.id) ?? { lane: 0, lanes: 1 }
                     const width = `calc((100% - 6px) / ${lane.lanes})`
@@ -184,8 +186,8 @@ export function WeekView({
                     return (
                       <div
                         key={e.id}
-                        className={`wk-ev ${isMeal ? 'ev-meal' : ''} ${tight ? 'tight' : ''}`}
-                        style={{ top, height, left, width, background: `${color}22`, color, borderLeft: `3px solid ${color}` }}
+                        className={`wk-ev ev-tint ${isMeal ? 'ev-meal' : ''} ${tight ? 'tight' : ''}`}
+                        style={{ top, height, left, width, ...evVars(color), borderLeft: `3px solid ${color}` }}
                         title={isMeal ? `Planned meal · ${e.title}` : `${fmtTime(e)} · ${e.title}`}
                         onClick={(ev) => {
                           ev.stopPropagation()

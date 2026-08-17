@@ -14,12 +14,39 @@ Waffled-Bites is a kid-facing companion device — a small touchscreen that sits
 - 🌙 **Live quiet-time control** — start, pause, add 5 minutes, or end a stay-in-room countdown right from your phone or the web, and watch it count down.
 - 💡 **Night light** — pick a color and brightness.
 - 🌅 **Wake-up light schedule** — set per-day-of-week rules; the light glows yellow a few minutes before wake time, then green when it's okay to get up.
-- ⏰ **Morning alarm** — a time and a gentle tone.
-- 🔊 **Sound machine** — white noise / ocean / rain and friends, with a volume and an auto-off sleep timer.
+- ⏰ **Morning alarm** — a time, a gentle tone, and its own volume separate from the sound machine's. When it rings, the device shows a full-screen "Good morning" with a big **Stop** button; it also stops on its own after twenty seconds. If the sound machine is playing, it fades down for the alarm and comes back afterwards — including when the alarm is stopped early.
+- 🔊 **Sound machine** — white noise, ocean, rain, a box fan or a heartbeat, with a volume slider. Plays through the device's own speaker.
 - 🔆 **Screen & display** — daytime brightness and an auto-dark-at-night option.
 - ⏱️ **Set a timer** — a countdown either a parent or the kid can start, pause, add time to, or end, right on the device.
 - 🛌 **Bedtime preview** — a full-screen glow at the nightlight's real color and brightness, so a kid can see what "lights out" looks like before it locks in for the night.
 - 🧩 **Reuses your existing chores** — the device's routine/task list is just your household's chores, grouped into morning / afternoon / evening windows by their due time (unscheduled chores show under a general bucket); completing one on the device awards stars through the same ledger as everywhere else. Tapping a done task again un-completes it, right on the device. A chore that needs a parent's OK shows "Waiting on a parent's approval" after tapping instead of just checking off; one that needs a photo is hidden from the device's list entirely (no camera yet) — those are completed from a parent's phone or the web.
+
+:::caution[What the speaker does and doesn't play yet]
+**The sound machine and the morning alarm both work.** Pick white noise, ocean, rain, box
+fan or heartbeat and it plays on the device, fading in and out rather than clicking on. The
+alarm rings at the time you set, for about twenty seconds. Plug the small speaker that came
+with your board into the 2-pin socket marked `SPK`.
+
+The **sleep timer** works too: pick 15m, 30m, 1h or 2h and the sound fades out when the
+time is up, whether or not the device can reach your server. The control panel updates to
+match, so it never shows "On" over a silent speaker.
+
+One thing isn't live yet, though it's saved and synced correctly:
+
+- **Forest, lullaby and birdsong show as "(soon)" and can't be picked yet.** Every other
+  sound and tone is generated on the device itself from scratch, which is why they keep
+  working even if your home server reboots overnight. Those three need real recordings,
+  which come later.
+:::
+
+:::note[Why the alarm sounds the way it does]
+The device's speaker is a small one, and small speakers have almost no bass. Every wake
+tone is deliberately pitched bright rather than deep — a warm, low chime measures beautifully
+and then can't be heard at all on this hardware. The alarm also **pauses** the sound machine
+rather than playing over it, because an alarm competing with white noise is an alarm nobody
+wakes up to. If the sound machine was playing, it fades back in when the alarm finishes; if
+the room was already quiet, it stays quiet.
+:::
 
 ## Where it works
 

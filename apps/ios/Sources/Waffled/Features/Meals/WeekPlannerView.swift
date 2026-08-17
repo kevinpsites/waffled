@@ -452,10 +452,16 @@ struct WeekPlannerView: View {
     /// Execute one planned write against the server (upsert, or clear when empty).
     private func perform(_ op: MealPlanSwap.Op) async -> Bool {
         if let e = op.entry {
+            // A slot is backed by a recipe, a plate, or neither (a free-text night like
+            // "eating out"). Only that last case needs a title — sending one alongside a
+            // plate would leave the plate's name frozen in the row, so a later rename of
+            // the plate would stop showing here.
+            let freeText = e.recipeId == nil && !e.isMealBacked
             return await sync.setMealPlan(date: op.date, mealType: op.mealType,
                                           recipeId: e.recipeId,
-                                          title: e.recipeId == nil ? (e.title ?? e.displayTitle) : nil,
-                                          cookPersonId: e.cook?.personId)
+                                          title: freeText ? (e.title ?? e.displayTitle) : nil,
+                                          cookPersonId: e.cook?.personId,
+                                          mealId: e.mealId)
         }
         return await sync.clearMealPlan(date: op.date, mealType: op.mealType)
     }
@@ -472,6 +478,14 @@ struct WeekPlannerView: View {
     // MARK: actions
 
     private func open(_ e: WaffledAPI.WeekEntryDTO) {
+        // Free-text nights ("eating out") link nothing and stay inert.
+        guard e.isOpenable else { return }
+        // A slot holding a Meal Builder plate has no `recipeId` — opening it by recipe
+        // alone made the tap dead on a dinner that was fully planned.
+        if let plate = e.platePlaceholder {
+            path.append(.meal(plate))
+            return
+        }
         guard let rid = e.recipeId else { return }   // free-text meals have no detail
         let seed = recipes.recipes.first { $0.id == rid }
             ?? .placeholder(id: rid, title: e.recipe?.title ?? e.displayTitle, emoji: e.recipe?.emoji,
