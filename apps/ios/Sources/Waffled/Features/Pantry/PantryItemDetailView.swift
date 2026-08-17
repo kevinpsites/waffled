@@ -21,19 +21,26 @@ struct PantryItemDetailView: View {
     private var item: WaffledAPI.PantryItem? { model.items.first { $0.id == itemId } }
     private var isWide: Bool { hSize == .regular }
 
+    /// The phone's tab bar is *drawn over* the content (`AppRoot` stacks it in a
+    /// bottom-aligned `ZStack` rather than as a safe-area inset), so every scrolling
+    /// screen has to reserve room for it by hand — the 110 the rest of the app uses.
+    /// Without it the last row here, the Edit button, sits under the bar and can never
+    /// be tapped. The iPad kiosk shell has no bottom bar, so it needs no clearance.
+    private var tabBarClearance: CGFloat { DeviceExperience.current == .planner ? 110 : 0 }
+
     var body: some View {
         Group {
             if let item {
                 if isWide {
                     HStack(spacing: 0) {
                         photoPanel(item).frame(width: 320)
-                        ScrollView { infoColumn(item).padding(20) }
+                        ScrollView { infoColumn(item).padding(20).padding(.bottom, tabBarClearance) }
                     }
                 } else {
                     ScrollView {
                         VStack(spacing: 0) {
                             photoPanel(item).frame(height: 240)
-                            infoColumn(item).padding(16)
+                            infoColumn(item).padding(16).padding(.bottom, tabBarClearance)
                         }
                     }
                 }
