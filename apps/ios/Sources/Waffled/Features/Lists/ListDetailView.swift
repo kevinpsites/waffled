@@ -1759,10 +1759,21 @@ struct ListDetailView: View {
                                 .font(.system(size: 13))
                                 .accessibilityLabel(ListItemPriority.meta(item.priority).label)
                         }
-                        Text(item.name)
-                            .font(.system(size: 16, weight: .semibold))
-                            .strikethrough(item.checked, color: WF.ink3)
-                            .foregroundStyle(item.checked ? WF.ink3 : WF.ink)
+                        // The pantry badge sits UNDER the name, not among the trailing
+                        // chips. The row is already carrying meal dots, a store tag, a
+                        // quantity and an avatar; on a narrow iPhone a fifth chip
+                        // competing for that width starved the name and wrapped it
+                        // mid-word (the same bug the web version hit). On its own line
+                        // it costs no horizontal room at all.
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.name)
+                                .font(.system(size: 16, weight: .semibold))
+                                .strikethrough(item.checked, color: WF.ink3)
+                                .foregroundStyle(item.checked ? WF.ink3 : WF.ink)
+                            if let hit = item.pantry {
+                                PantryBadgeChip(rowName: item.name, hit: hit, dimmed: item.checked)
+                            }
+                        }
                         Spacer(minLength: 8)
                         mealDots(for: item)
                         // Store tag (hidden in the By-store view, where the header already says it).

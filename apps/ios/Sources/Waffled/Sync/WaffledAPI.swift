@@ -2876,6 +2876,28 @@ struct WaffledAPI: Sendable {
         var sourceRecipeIds: [String]?
         /// The week this row belongs to (meal-derived + off-plan rows); nil = global manual row.
         var weekStart: String?
+        /// The pantry item covering this row, matched at read time by the **grocery
+        /// board** endpoint only — the plain `/api/lists/:id/items` rows never carry it,
+        /// and neither does a server predating the field. Hence optional: a strict
+        /// `Decodable` throwing on a key one endpoint doesn't send has already surfaced
+        /// in this app as a bogus "couldn't reach server", i.e. an optional badge taking
+        /// the whole list offline.
+        ///
+        /// **nil means "we don't know"**, not "you have none" — it's also what a
+        /// household with the pantry module off gets, so never render a zero/empty state
+        /// from it. And the match is presence-only (never a quantity comparison), so the
+        /// row stays on the list and stays checkable: this FLAGS, it never filters.
+        var pantry: PantryHit?
+        struct PantryHit: Decodable, Sendable, Equatable {
+            /// The pantry item's own name — matching is fuzzy, so this can differ from
+            /// the row's ("Peas" matched by "Frozen peas").
+            let name: String
+            /// Free text off the pantry row ("2", "half", "bag") — for display only,
+            /// never arithmetic. The server sends "" rather than null, but older/other
+            /// shapes are tolerated.
+            var amount: String?
+            var unit: String?
+        }
         struct Assignee: Decodable, Sendable {
             let name: String?
             let avatarEmoji: String?
