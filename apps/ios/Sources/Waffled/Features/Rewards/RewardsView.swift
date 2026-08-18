@@ -558,7 +558,7 @@ struct RewardShopView: View {
                     WaffledLoading(top: 60)
                 }
             }
-            .padding(16).padding(.bottom, embedded ? 32 : 110)
+            .padding(16).padding(.bottom, embedded ? 32 : WF.tabBarClearance)
         }
         .scrollBounceBehavior(.always)
         .background(WF.canvas)
