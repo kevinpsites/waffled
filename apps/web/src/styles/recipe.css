@@ -830,6 +830,10 @@
   color: var(--ink-3);
   text-decoration: none;
 }
+/* A REAL pantry match, unlike the muted "likely on hand" staple guess above it — colored
+   to match the grocery board's .gpantry badge and the Pantry screen's own chips, so the
+   same claim looks the same everywhere it's made. */
+.ring-inpantry { color: var(--success); }
 .ring-row.subbed .ring-name { color: var(--ink); font-weight: 600; }
 .ring-sub-btn {
   flex: none;

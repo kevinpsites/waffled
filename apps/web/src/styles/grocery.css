@@ -349,6 +349,35 @@
   white-space: nowrap;
 }
 
+/* "You already have this" — the pantry match on a grocery row. Shaped like .gstore so
+   the row's trailing chips stay one family, but tinted so it reads as a signal rather
+   than more metadata. Deliberately NOT a warning color: the row is still on the list on
+   purpose (we can't tell whether what's on the shelf is enough), so this is a "check the
+   shelf" nudge, not an error. */
+.gpantry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  /* --success-t/--success, the same tint pair the Pantry screen uses for its own
+     "you've got this" chips (.pl-chip.ok, .pl-badge.green) — so the badge reads as the
+     pantry speaking, on a surface that isn't the pantry. */
+  color: var(--success);
+  background: var(--success-t);
+  border-radius: 999px;
+  padding: 2px 9px;
+  flex: none;
+  white-space: nowrap;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A checked-off row has already been dealt with — let its badge recede with the rest. */
+.gitem.done .gpantry {
+  opacity: 0.5;
+}
+
 .grocery-clear {
   cursor: pointer;
 }

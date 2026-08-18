@@ -41,6 +41,31 @@ const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const
 // read as such ("from meal plan"); hand-added items show who added them
 // ("added by {name}").
 // Subtle by design — same visual weight as the quantity metadata.
+// "You already have this" — shown when something in the pantry matches the row.
+//
+// The row stays ON the list. The match is presence-only (it never compares quantities),
+// so this is a nudge to check the shelf, not a verdict that you have enough: having "1
+// bag" of rice says nothing about whether it covers the 2 cups a recipe wants. Which is
+// why the badge shows the pantry item's OWN amount instead of a yes/no — the shopper is
+// the one who can actually judge, and giving them the number is what lets them.
+function PantryBadge({ item }: { item: GroceryBoardItem }) {
+  const hit = item.pantry
+  if (!hit) return null
+  const amount = [hit.amount, hit.unit].map((s) => s?.trim()).filter(Boolean).join(' ')
+  // Name the matched item when it differs from the row — the match is fuzzy ("chicken" ↔
+  // "chicken breast"), so a bare "you have some" leaves you wondering *what* it found.
+  const matched = hit.name.trim().toLowerCase() !== item.name.trim().toLowerCase() ? hit.name : null
+  const detail = [matched, amount].filter(Boolean).join(': ')
+  return (
+    <span
+      className="gpantry"
+      title={`In your pantry${detail ? ` — ${detail}` : ''}. Still on the list: we can't tell whether it's enough.`}
+    >
+      <span aria-hidden>🥫</span> {detail || 'in pantry'}
+    </span>
+  )
+}
+
 function ItemAttribution({ item }: { item: GroceryBoardItem }) {
   const fromMeal = item.source === 'auto' || (item.sourceRecipeIds?.length ?? 0) > 0
   if (fromMeal) {
@@ -201,6 +226,7 @@ function ItemRow({
           <span key={i} className="gdot" style={{ background: c }} />
         ))}
       </span>
+      <PantryBadge item={item} />
       {item.store && <span className="gstore" title={`Store: ${item.store}`}>🏬 {item.store}</span>}
       {item.quantity && <span className="gqty">{item.quantity}</span>}
       <span className="gitem-acts" onClick={(e) => e.stopPropagation()}>
