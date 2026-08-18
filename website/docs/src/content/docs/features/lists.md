@@ -15,6 +15,7 @@ Lists is where "things to buy or do" live — shared custom lists you build by h
 - 🏷️ **Shared aisle classification** — a regex table sorts items into Produce, Dairy & Chilled, Meat & Seafood, Bakery, Frozen, Pantry, or Other; canned and jarred forms file to [Pantry](/features/pantry/).
 - 🏬 **Assign a store** — tag an item with where you'll buy it (Costco, Walmart, …) from its editor and group the board **By store**. The store box is a quick-select over the stores you've used before, so the same shop doesn't split into "Costco" and "costco".
 - 🧂 **Staples stay off the auto-built list** — when your grocery list is built from the week's meal plan, staple detection keeps the salt-and-pepper basics out of your run. Adding a recipe from its own page is different: that picker starts with everything ticked (staples flagged "likely on hand") so you decide what to drop.
+- 🥫 **"You already have this"** — with [Pantry](/features/pantry/) on, any row matching something on your shelves gets a badge showing what it found and how much of it ("Chicken breast: 3"). The row **stays on the list**: we can tell that you have chicken, not whether you have *enough*, so this is a nudge to check the shelf rather than a decision made for you. See [Pantry-aware shopping](#pantry-aware-shopping).
 - 🎯 **Re-aisle an item** — section chips in its editor move it, and an **Auto** chip clears the override.
 - ✅ **Check off / add / delete** — everything persists, with attribution ("added by {name}" or "🍽 from meal plan"), and the grocery build honors recipe substitutions.
 - 🔄 **Stays fresh across devices** — a list you're looking at refreshes on its own (when you return to the app, and every ~20 s while it's open) so a family member's check on another phone shows up without a manual reload.
@@ -59,6 +60,41 @@ is too long and points you at **Copy** or **Share**, which work at any length.
 to get a list *onto* a phone, and you're already holding one. Share list opens the **system share
 sheet** instead, so the list goes straight to Messages, Mail, Notes or AirDrop.
 
+## Pantry-aware shopping
+
+Turn [Pantry](/features/pantry/) on and the grocery list starts telling you what's already
+in the house. Two places:
+
+**On the board.** Any row matching something on your shelves gets a 🥫 badge with the
+matched item and its amount — "Chicken breast: 3", or just "in pantry" when you never
+recorded an amount. The badge names the item because matching is fuzzy: a row reading
+*chicken* matches a pantry item called *chicken breast*, and you'd want to know which one
+it found.
+
+**In the recipe picker.** "Add to grocery" now starts with pantry-matched ingredients
+**unchecked**, and says how many it unchecked so nothing happens behind your back. Tap any
+of them to put it back.
+
+### Why the row stays on the list
+
+Matching is **presence-only** — Waffled compares names, never quantities. It can tell you
+that you own eggs; it can't tell whether your one egg covers the dozen a recipe wants. So a matched
+row is flagged and never removed: the failure mode of an extra item in the cart is a
+shrug, and the failure mode of a missing one is a second trip.
+
+That's also why the badge shows the pantry item's own amount instead of a verdict. "You
+have 1 bag" is something Waffled knows. "1 bag is enough for 2 cups" isn't, and you're
+standing right in front of the shelf.
+
+Bulk goods mostly sidestep the question anyway: rice, pasta, flour and oil are **staples**,
+which never reach the auto-built list in the first place.
+
+### What isn't connected
+
+- The **weekly auto-build doesn't skip** what's in your pantry — by design, per above. Only staples are held back.
+- **Nothing writes back to your list automatically.** Running low on something doesn't add it; from Pantry, an item you mark used up offers a **+ Shopping list** button, and that's a deliberate tap.
+- Badges are **web-only for now**. iPhone and iPad show the grocery list without them.
+
 ## Where it works
 
 | Surface | Support |
@@ -67,7 +103,7 @@ sheet** instead, so the list goes straight to Messages, Mail, Notes or AirDrop.
 | iPhone | ✅ |
 | iPad | ✅ |
 
-Every surface builds, checks, and edits lists; **iPad** uses a master/detail layout with the list rail beside the items.
+Every surface builds, checks, and edits lists; **iPad** uses a master/detail layout with the list rail beside the items. The pantry badge + picker pre-uncheck are **web-only** so far.
 
 ## Settings
 

@@ -18,6 +18,7 @@ Pantry tracks what's actually on your shelves — quantities and locations, barc
 - 📷 **Barcode camera scanner** — iOS uses native AVFoundation (EAN / UPC / Code128, with a "Type instead" fallback); the web uses zxing and needs a secure context (see [Reverse proxy & TLS](/install/reverse-proxy/)).
 - 🍳 **Cook from your pantry** — recipes makeable now, on-hand proteins as "mains", leftovers, a Plan-my-week seeded with soon-to-expire items, and a per-item "Plan it in".
 - 🔻 **Cook → decrement** — marking a recipe cooked opens a "Used from your pantry" confirm sheet (Used some / Used it up / Didn't use; staples skipped) that draws down your stock.
+- 🛒 **"You already have this" on the grocery list** — pantry matches show up as a 🥫 badge on the grocery board, and the recipe "Add to grocery" picker starts them unchecked. Matched rows are flagged, never removed — see [Pantry-aware shopping](/features/lists/#pantry-aware-shopping).
 
 ## Where it works
 
@@ -42,3 +43,6 @@ Pantry is an **optional module** (`pantry`, default **off** — opt-in), toggled
 - 🔒 **Web barcode scanning needs HTTPS** — zxing requires a secure context, so set up [Reverse proxy & TLS](/install/reverse-proxy/) before scanning on the web. iOS has no such constraint.
 - 🖥️ **Per-item running-low override is web-only** — mobile uses the household default and edits location through the item editor.
 - 🧺 **Canned & jarred groceries file here** — items in those forms route to Pantry from the grocery board (see [Lists & groceries](/features/lists/)).
+- 🔤 **Two different "pantries"** — your **items** (this screen: real quantities, locations, expiry) and **pantry staples** (a name list under the grocery board's "Pantry check" of things assumed always in the house). Staples are what keep salt and oil off the auto-built list; your items are what drive the badges and the on-hand counts. Adding rice to your items doesn't make it a staple, and vice versa.
+- 📏 **Matching ignores quantities and plurals** — names are matched on significant words, so "ground beef" finds "beef, ground" and "chicken" finds "chicken breast", but "tomato" does **not** match "tomatoes". Amounts are never compared, which is why on-hand claims tell you what you have rather than whether it's enough.
+- 🛒 **Grocery badges are web-only for now** — the on-hand counts on recipes work everywhere; the grocery-board badge and picker pre-uncheck are web/kiosk only.

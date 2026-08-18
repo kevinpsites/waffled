@@ -395,7 +395,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Used some / Used it up / Didn't use; staples skipped) that decrements or uses-up on-hand
   stock; leftover items get an "Ate it" action; cooking also flips today's planned slot to
   cooked. We deliberately confirm rather than subtract exact amounts (units don't reconcile
-  cleanly). **Later:** true unit/quantity reconciliation; vegetable-based "mains" + recipe filter.
+  cleanly). **The grocery half now landed too:** the board badges any row the pantry covers
+  (🥫 + the matched item and its own amount) and the recipe "Add to grocery" picker starts
+  those ingredients unchecked. It **flags, never filters** — matching is presence-only, so
+  we can say you have chicken but not that you have enough, and an extra item in the cart
+  beats a second trip. Matched at read time rather than stamped during the weekly rebuild,
+  so it can't go stale when you cook or scan. **Later:** iOS parity for the board badge +
+  picker pre-uncheck (web-only today); quantity *comparison* for genuinely countable items
+  (eggs, limes, cans — `lists/quantity.ts` already parses the amounts, and bulk goods like
+  rice/pasta/flour are staples that never reach the list anyway, so this is a smaller job
+  than it looks); vegetable-based "mains" + recipe filter.
 
 - **Assign & show a cook per *slot* (web + iPad + iPhone).** Half of this shipped with the
   Meal Builder: a plate assigns **a cook per dish** (`meal_recipes.cook_person_id`) with a

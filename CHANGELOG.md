@@ -15,6 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Your grocery list now knows what's in your pantry.** Until now the two barely spoke:
+  the shopping list only knew about *pantry staples* — the standing "we always keep salt
+  and oil around" name list — and had no idea what was actually on your shelves. Now any
+  grocery row matching something in your pantry carries a 🥫 badge naming what it found
+  and how much of it ("Chicken breast: 3"), and the recipe **Add to grocery** picker starts
+  those ingredients **unchecked**, telling you how many it unchecked so nothing happens
+  behind your back. Matched rows stay **on** the list on purpose: Waffled matches names,
+  not amounts, so it can tell you own eggs but not whether your one egg covers the dozen a
+  recipe wants — an extra item in the cart beats a second trip. Which is also why the badge
+  shows what's on the shelf instead of a verdict; you're the one standing in front of it.
+  Staples are unchanged and still start checked. Requires the Pantry module; web/kiosk for
+  now, with iPhone and iPad to follow.
 - **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
   hardware run, the packing list, whatever's live this week — right on the Today board,
   with tap-to-tick-off. Pick which list from the card itself, the same way the Goals
