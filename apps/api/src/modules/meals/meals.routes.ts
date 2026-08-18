@@ -75,7 +75,7 @@ import {
 } from './meal-builder.service'
 import { onHandForRecipe } from '../pantry/on-hand'
 import { pantryHitsForNames } from '../pantry/presence'
-import { addMealToGrocery, removeMealFromGrocery, householdWeekStart, presentListItem } from '../lists/lists.service'
+import { addMealToGrocery, removeMealFromGrocery, householdWeekStart, householdWeekStartFor, presentListItem } from '../lists/lists.service'
 import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
@@ -865,6 +865,24 @@ export function registerMealRoutes(api: Api): void {
     return res.status(200).json({ entry: presentEntry(entry), meal: await presentMeal(tenant.householdId, scheduled) })
   }))
 
+  // The grocery week an add/remove-plate call targets: the household week CONTAINING an
+  // explicit ?weekStart=, else the current one. Snapping is not optional — grocery rows
+  // are keyed by week start and the board only ever asks for week starts, so a mid-week
+  // date would orphan the rows on a key nothing queries. Same rule (and same helper) as
+  // /api/lists/grocery/*, deliberately, so the two cannot drift apart.
+  async function groceryWeekFor(householdId: string, req: Request): Promise<string> {
+    const ws = typeof req.query?.weekStart === 'string' ? req.query.weekStart : ''
+    if (DATE_RE.test(ws)) {
+      const d = new Date(`${ws}T00:00:00Z`)
+      // Reject impossible dates ("2026-13-45") that the regex lets through and JS
+      // silently normalizes, rather than casting them at Postgres and 500ing.
+      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ws) {
+        return householdWeekStartFor(householdId, ws)
+      }
+    }
+    return householdWeekStart(householdId)
+  }
+
   // "Add plate to list" — put the whole plate's shopping on the grocery list without
   // scheduling it anywhere. Rows land as source='recipe' (an explicit off-plan add
   // the weekly rebuild must never wipe) and are credited to the plate, so the board
@@ -876,12 +894,7 @@ export function registerMealRoutes(api: Api): void {
     await requireModule(tenant, 'lists')
     const meal = await loadMeal(tenant, req, res)
     if (!meal) return
-    const ws = typeof req.query?.weekStart === 'string' ? req.query.weekStart : ''
-    let weekStart = await householdWeekStart(tenant.householdId)
-    if (DATE_RE.test(ws)) {
-      const d = new Date(`${ws}T00:00:00Z`)
-      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ws) weekStart = ws
-    }
+    const weekStart = await groceryWeekFor(tenant.householdId, req)
     const added = await addMealToGrocery(tenant, meal.id, weekStart)
     if (added === null) return res.status(404).json({ error: 'NotFound', message: 'meal not found' })
     return res.status(201).json({ added: added.length, items: added.map(presentListItem), weekStart })
@@ -892,12 +905,7 @@ export function registerMealRoutes(api: Api): void {
     await requireModule(tenant, 'lists')
     const meal = await loadMeal(tenant, req, res)
     if (!meal) return
-    const ws = typeof req.query?.weekStart === 'string' ? req.query.weekStart : ''
-    let weekStart = await householdWeekStart(tenant.householdId)
-    if (DATE_RE.test(ws)) {
-      const d = new Date(`${ws}T00:00:00Z`)
-      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ws) weekStart = ws
-    }
+    const weekStart = await groceryWeekFor(tenant.householdId, req)
     const removed = await removeMealFromGrocery(tenant, meal.id, weekStart)
     if (removed === null) return res.status(404).json({ error: 'NotFound', message: 'meal not found' })
     return res.status(200).json({ removed, weekStart })
