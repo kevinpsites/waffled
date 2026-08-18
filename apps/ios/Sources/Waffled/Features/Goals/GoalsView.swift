@@ -684,16 +684,7 @@ struct GoalLogSheet: View {
     private var isSplit: Bool { goal.trackingMode == "shared_total" && (goal.participantMode ?? "count_once") == "split" }
     private var whoLabel: String { eachAdds ? "Who took part?" : isSplit ? "Split between" : "Who was there?" }
     private var confirmLabel: String { isHabit ? "Mark done for today" : isTime ? "Log \(durationLabel)" : "Log \(goalFmt(logAmount))\(unitSuffix)" }
-    private var chips: [(label: String, value: Double)] {
-        if isHours {
-            // Short sessions are the ones people log by tapping; a 2-hour block is rare
-            // enough to type, and 20 minutes is the one that kept needing the keypad.
-            // 6dp so the chip highlights against the hours+minutes fields it sets.
-            return [("20m", ((1.0 / 3) * 1e6).rounded() / 1e6), ("30m", 0.5), ("1 hr", 1), ("1.5 hr", 1.5)]
-        }
-        let u = goal.unit.map { " \($0)" } ?? ""
-        return [1, 2, 3, 5].map { (label: "\(Int($0))\(u)", value: Double($0)) }
-    }
+    private var chips: [GoalLogChips.Chip] { GoalLogChips.chips(isHours: isHours, unit: goal.unit) }
 
     init(goal: WaffledAPI.Goal, onChanged: (() -> Void)? = nil, onSave: @escaping (Double, Int?, Int?, [String], String, String?) -> Void) {
         self.goal = goal
@@ -913,7 +904,7 @@ struct GoalLogSheet: View {
     private var timeChipRow: some View {
         HStack(spacing: 8) {
             ForEach(chips, id: \.label) { c in
-                let on = abs((Double(hours) + Double(minutes) / 60) - c.value) < 1e-6
+                let on = GoalLogChips.isSelected(hours: hours, minutes: minutes, chip: c.value)
                 Button { setTimeChip(c.value) } label: {
                     Text(c.label).font(.system(size: 14, weight: .bold))
                         .foregroundStyle(on ? .white : WF.ink2)
@@ -928,8 +919,9 @@ struct GoalLogSheet: View {
     }
 
     private func setTimeChip(_ v: Double) {
-        hoursText = String(Int(v))
-        minutesText = String(Int((v - Double(Int(v))) * 60 + 0.5))
+        let f = GoalLogChips.fields(for: v)
+        hoursText = String(f.hours)
+        minutesText = String(f.minutes)
     }
 
     private func stepButton(_ icon: String, disabled: Bool, _ action: @escaping () -> Void) -> some View {
