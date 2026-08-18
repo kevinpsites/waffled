@@ -104,19 +104,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A recipe's allergen note no longer fools the pantry into thinking you have the
-  ingredient.** Meal-kit recipes name things like "Cream cheese — contains milk", and
-  Waffled was reading that whole phrase as the ingredient's name — so a carton of milk on
-  your shelf counted as cream cheese, a jar of mayo as eggs, and pasta as flour. The
-  "contains …" note describes what's *in* an item rather than what it *is*, so it's now
-  ignored when matching. This corrects every place matching happens at once: the grocery
-  list's 🥫 badges, the "have 3 of 5" count on a recipe, and **Cook from your pantry**,
-  which had been over-counting these recipes as more cookable than they are.
+- **Your pantry stopped claiming you have things you don't.** Two habits of real
+  ingredient names were quietly fooling it. Meal-kit recipes write "Cream cheese —
+  contains milk", and Waffled read that whole phrase as the name, so a carton of milk
+  counted as cream cheese, a jar of mayo as eggs, and pasta as flour — the "contains …"
+  note says what's *in* something, not what it *is*, and is now ignored. Separately, a
+  general name would land on a more specific item that's a different food entirely: one
+  jar of peanut butter satisfied *butter* across roughly fifteen recipes, and evaporated
+  milk passed for milk. Words that change what a food **is** — peanut, almond, coconut,
+  oat, soy, evaporated, condensed and a few more — no longer count as a match, while words
+  that merely narrow it still do, so *frozen peas* still answers *peas* and *chicken
+  breast* still answers *chicken*. All of this lands everywhere matching happens: the
+  grocery list's 🥫 badges, the "have 3 of 5" count on a recipe, and **Cook from your
+  pantry**, which had been rating meal-kit recipes as more cookable than they are.
 - **The pantry badge names the closest thing on your shelf.** When a grocery row matched
   several pantry items, which one got named came down to the order they happened to be
-  stored in — so the same list could credit "Butter" one day and "Peanut butter" the next.
-  The best match now wins: an item with exactly that name first, then the one with the
-  fewest extra words.
+  stored in — so the same list could credit one item today and another tomorrow. The best
+  match now wins: an item with exactly that name first, then the one with the fewest extra
+  words.
 - **Fractions in a recipe's quantity column no longer disappear.** Typing an amount the
   way recipes are actually written — `1/2`, `1 1/2`, `½` — saved the ingredient with **no
   quantity at all**, silently, on the web recipe editor. Those amounts are now understood
