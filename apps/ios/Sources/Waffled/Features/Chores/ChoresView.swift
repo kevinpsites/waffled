@@ -417,7 +417,7 @@ struct ChoresView: View {
                 }
                 ForEach(columns) { col in columnCard(col) }
             }
-            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, WF.tabBarClearance)
         }
         // Bounce even when nothing's scheduled, so pull-to-refresh still triggers.
         .scrollBounceBehavior(.always)

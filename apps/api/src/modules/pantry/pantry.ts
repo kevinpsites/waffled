@@ -16,6 +16,15 @@ type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const DEFAULT_LOCATIONS = ['Freezer', 'Fridge', 'Pantry']
+// A household that has never configured sections has nothing stored, and readLocations
+// hands back DEFAULT_LOCATIONS for it — so an append has to start from those too, or
+// the first section created would be the ONLY one left.
+const STORED_LOCATIONS = `(case when jsonb_typeof(h.settings->'pantry'->'locations') = 'array'
+                                 and jsonb_array_length(h.settings->'pantry'->'locations') > 0
+                            then h.settings->'pantry'->'locations' else $3::jsonb end)`
+// Enough for any real kitchen, garage and deep freeze; a guard against a client loop
+// growing the row without bound.
+const MAX_LOCATIONS = 40
 
 interface PantryRow {
   id: string
@@ -45,6 +54,14 @@ interface PantryRow {
 const RETURNING = `id, name, amount, unit, location, expires_on::text as expires_on, note, used_up_at::text as used_up_at,
   barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, traces, dietary, source, low_at, is_meal,
   added_on::text as added_on, created_at::text as created_at`
+
+// Amounts are free text ("2", "0.5", "a pinch"), so the places that do arithmetic on
+// them — the scan count-up and the cook decrement — go through Number and can pick up
+// binary-float noise (0.1 + 0.2 = 0.30000000000000004). Round to 3 decimals so half a
+// bag stays "0.5" instead of turning into a wall of digits in the UI.
+function amountString(n: number): string {
+  return String(Math.round(n * 1000) / 1000)
+}
 
 function present(r: PantryRow) {
   return {
@@ -298,7 +315,7 @@ export function registerPantryRoutes(api: Api): void {
         sql = keep
           ? `update pantry_items set amount = $3 where household_id = $1 and id = $2 returning ${RETURNING}`
           : `update pantry_items set used_up_at = now() where household_id = $1 and id = $2 returning ${RETURNING}`
-        if (keep) params.push(String(next))
+        if (keep) params.push(amountString(next))
       } else {
         sql = `update pantry_items set used_up_at = now() where household_id = $1 and id = $2 returning ${RETURNING}`
       }
@@ -332,7 +349,18 @@ export function registerPantryRoutes(api: Api): void {
     if (b.expiresOn != null && b.expiresOn !== '' && !DATE_RE.test(String(b.expiresOn))) {
       return res.status(400).json({ error: 'BadRequest', message: 'expiresOn must be YYYY-MM-DD' })
     }
-    const addAmt = Number.isFinite(Number(b.amount)) ? Number(b.amount) : 1
+    // The scan sheet's amount is a free-text field you can clear. Blank parses as 0,
+    // which would report "incremented" while adding nothing — a scan always means at
+    // least one of the thing, so anything not a positive number counts as 1.
+    const raw = String(b.amount ?? '').trim()
+    const typed = Number(raw)
+    const addAmt = Number.isFinite(typed) && typed > 0 ? typed : 1
+    // ...but "half a bag" is a real answer for something you measure by eye, and the
+    // sheet invites it. Keep it verbatim on a FIRST scan; only a blank field (or a
+    // number that isn't a positive count) becomes "1". Nothing can be done for it on
+    // the increment path below — text has no number to add to.
+    const isNumber = raw !== '' && Number.isFinite(typed)
+    const newAmount = raw !== '' && !isNumber ? raw : amountString(addAmt)
     const barcode = typeof b.barcode === 'string' && b.barcode.trim() ? b.barcode.trim() : null
     const match = barcode
       ? await query<PantryRow>(`select ${RETURNING} from pantry_items where household_id=$1 and barcode=$2 and used_up_at is null and deleted_at is null order by created_at limit 1`, [tenant.householdId, barcode])
@@ -343,11 +371,13 @@ export function registerPantryRoutes(api: Api): void {
       const next = (Number.isFinite(cur) ? cur : 0) + addAmt
       const upd = await query<PantryRow>(
         `update pantry_items set amount=$1 where household_id=$2 and id=$3 returning ${RETURNING}`,
-        [String(next), tenant.householdId, ex.id]
+        [amountString(next), tenant.householdId, ex.id]
       )
       return res.status(200).json({ item: present(upd.rows[0]), incremented: true })
     }
-    const row = await insertItem(tenant.householdId, { ...b, name })
+    // Store the resolved amount, so a blank one lands as "1" rather than an empty
+    // amount the next scan would have to guess at.
+    const row = await insertItem(tenant.householdId, { ...b, name, amount: newAmount })
     return res.status(201).json({ item: present(row), incremented: false })
   }))
 
@@ -406,6 +436,52 @@ export function registerPantryRoutes(api: Api): void {
     return res.status(204).send('')
   }))
 
+  // Add ONE section to the location list, without sending the whole array — so the
+  // add/scan sheets can create a section on the fly ("Garage shelf") mid-add instead
+  // of sending the user to Settings. Appends (never reorders or drops), and an
+  // existing name in any casing is a no-op so two devices can't duplicate it.
+  api.post('/api/pantry/locations', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const settings = await requirePantry(tenant)
+    const b = (req.body ?? {}) as { name?: unknown }
+    const name = typeof b.name === 'string' ? b.name.trim().slice(0, 60) : ''
+    if (!name) return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
+    const current = readLocations(settings)
+    if (current.some((l) => l.toLowerCase() === name.toLowerCase())) {
+      return res.status(200).json({ locations: current, added: false })
+    }
+    if (current.length >= MAX_LOCATIONS) {
+      return res.status(400).json({ error: 'BadRequest', message: `at most ${MAX_LOCATIONS} sections` })
+    }
+    // Append in ONE statement, and read the existing list off the row being updated
+    // rather than off `current`. This endpoint is meant to be hit mid-add from
+    // whichever device is in your hand, so two arriving together is ordinary — and a
+    // read-here-write-there would drop one, the second write replacing the whole
+    // array with its own idea of it. Because every reference below is to h.settings,
+    // Postgres re-evaluates both the guard and the new value against the latest row
+    // version when it has to wait on a concurrent write, so the second add appends to
+    // the first one's list instead of clobbering it.
+    const { rows } = await query<{ settings: unknown }>(
+      `update households h
+          set settings = coalesce(h.settings, '{}'::jsonb)
+               || jsonb_build_object('pantry',
+                    coalesce(h.settings->'pantry', '{}'::jsonb)
+                    || jsonb_build_object('locations', ${STORED_LOCATIONS} || to_jsonb($2::text)))
+        where h.id = $1
+          and not exists (
+            select 1 from jsonb_array_elements_text(${STORED_LOCATIONS}) e
+             where lower(e) = lower($2))
+        returning h.settings`,
+      [tenant.householdId, name, JSON.stringify(DEFAULT_LOCATIONS)]
+    )
+    // No row updated → someone else added the same name in the moment between the
+    // check above and this write. Their list is the answer.
+    if (!rows[0]) {
+      const latest = await query<{ settings: unknown }>(`select settings from households where id = $1`, [tenant.householdId])
+      return res.status(200).json({ locations: readLocations(latest.rows[0]?.settings), added: false })
+    }
+    return res.status(201).json({ locations: readLocations(rows[0].settings), added: true })
+  }))
+
   // Update the pantry module's per-household config (any member): the location list
   // and/or whether it shows a Today card. Both live in settings.pantry.
   api.put('/api/pantry/config', tenantRoute(async (tenant, req: Request, res: Response) => {
@@ -438,6 +514,11 @@ export function registerPantryRoutes(api: Api): void {
         if (!s || seen.has(key)) continue
         seen.add(key)
         clean.push(s)
+      }
+      // Same ceiling the add-one endpoint enforces. Without it a household could be
+      // pushed past the cap from Settings and then never use ＋ New again.
+      if (clean.length > MAX_LOCATIONS) {
+        return res.status(400).json({ error: 'BadRequest', message: `at most ${MAX_LOCATIONS} sections` })
       }
       merge.locations = clean.length ? clean : DEFAULT_LOCATIONS
     }

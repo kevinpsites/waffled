@@ -100,7 +100,7 @@ struct StoredProofsSheet: View {
                     LazyVGrid(columns: cols, spacing: 12) {
                         ForEach(model.proofs) { cell($0) }
                     }
-                    .padding(16).padding(.bottom, 110)
+                    .padding(16).padding(.bottom, WF.tabBarClearance)
                 }
             }
             .background(WF.canvas)

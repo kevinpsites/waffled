@@ -76,7 +76,7 @@ struct CalendarView: View {
                         case .day:    dayContent
                         }
                     }
-                    .padding(.horizontal, 18).padding(.bottom, 110)
+                    .padding(.horizontal, 18).padding(.bottom, WF.tabBarClearance)
                 }
                 // When the day grid appears, jump to the morning (or the first event).
                 .task(id: "\(mode.rawValue)-\(selectedDay)") {

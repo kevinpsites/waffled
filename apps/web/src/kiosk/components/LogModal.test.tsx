@@ -103,6 +103,35 @@ describe('LogModal time goals (hours + minutes)', () => {
   })
 })
 
+// Retrofitted after the fact to close a gap: the 20m chip shipped without one.
+// Its value is 1/3 rounded to six decimals *specifically* so it matches what
+// `timeAmount` computes from the hours/minutes fields — change either rounding and
+// the chip silently stops highlighting, or logs 19 minutes. Nothing else pins that.
+describe('LogModal quick-log chips (time goals)', () => {
+  it('offers the short-session chips', () => {
+    mockApi([])
+    render(<LogModal goal={goal} canLogOthers={false} selfPersonId="p1" onClose={vi.fn()} onSaved={vi.fn()} />)
+    const chips = Array.from(document.querySelectorAll('.log-chip')).map((c) => c.textContent)
+    expect(chips).toEqual(['20m', '30m', '1 hr', '1.5 hr'])
+  })
+
+  it('tapping 20m is the same as typing 0h 20m', async () => {
+    const logged: unknown[] = []
+    mockApi(logged)
+    render(<LogModal goal={goal} canLogOthers={false} selfPersonId="p1" onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '20m' }))
+    // Reads back as a round 20 minutes, not 19 or 0.333…
+    expect(screen.getByRole('button', { name: 'Log 20m' })).toBeInTheDocument()
+    // ...and the chip itself registers as the current selection.
+    expect(screen.getByRole('button', { name: '20m' }).className).toContain('on')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Log / }))
+    await waitFor(() => expect(logged).toHaveLength(1))
+    expect(logged[0]).toMatchObject({ hours: 0, minutes: 20, personIds: ['p1'] })
+  })
+})
+
 describe('LogModal shared-count attendance (count_once)', () => {
   const parksGoal = { ...goal, goalType: 'count', unit: 'parks', participantMode: 'count_once', title: 'State parks' }
 

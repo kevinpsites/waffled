@@ -9,6 +9,8 @@ struct PantryItemEditor: View {
     @Environment(\.dismiss) private var dismiss
     let mode: Mode
     let locations: [String]
+    /// Called after a section is created inline, so the caller can refresh its config.
+    var onLocationsChanged: (() async -> Void)?
     let onSave: ([String: JSONValue]) async -> Void
     /// Edit mode only — deletes the item. Nil (and hidden) when adding.
     var onDelete: (() async -> Void)?
@@ -26,10 +28,12 @@ struct PantryItemEditor: View {
     @State private var saving = false
     @State private var confirmingDelete = false
 
-    init(mode: Mode, locations: [String], onSave: @escaping ([String: JSONValue]) async -> Void,
+    init(mode: Mode, locations: [String], onLocationsChanged: (() async -> Void)? = nil,
+         onSave: @escaping ([String: JSONValue]) async -> Void,
          onDelete: (() async -> Void)? = nil) {
         self.mode = mode
         self.locations = locations
+        self.onLocationsChanged = onLocationsChanged
         self.onSave = onSave
         self.onDelete = onDelete
         switch mode {
@@ -60,12 +64,6 @@ struct PantryItemEditor: View {
     }
 
     private var title: String { if case .edit = mode { return "Edit item" }; return "Add to pantry" }
-    /// Locations to offer — the configured set plus the item's own (in case it's a stray).
-    private var locationChoices: [String] {
-        var out = locations.isEmpty ? ["Freezer", "Fridge", "Pantry"] : locations
-        if !out.contains(location) { out.append(location) }
-        return out
-    }
 
     var body: some View {
         NavigationStack {
@@ -76,10 +74,7 @@ struct PantryItemEditor: View {
                         field("Amount") { TextField("1", text: $amount).keyboardType(.decimalPad) }
                         field("Unit") { TextField("bags, lb…", text: $unit).textInputAutocapitalization(.never) }
                     }
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "Where")
-                        locationChips
-                    }
+                    PantryLocationPicker(selection: $location, locations: locations, onLocationsChanged: onLocationsChanged)
                     VStack(alignment: .leading, spacing: 9) {
                         Toggle(isOn: $hasExpiry.animation()) {
                             Text("Best by").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
@@ -147,23 +142,6 @@ struct PantryItemEditor: View {
         .presentationDetents([.large])
     }
 
-    private var locationChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(locationChoices, id: \.self) { loc in
-                    let on = loc.caseInsensitiveCompare(location) == .orderedSame
-                    Button { location = loc } label: {
-                        Text(loc).font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(on ? WF.ink : WF.ink2)
-                            .padding(.horizontal, 12).padding(.vertical, 7)
-                            .wfChip(selected: on)
-                    }.buttonStyle(.plain)
-                }
-            }
-            .padding(.vertical, 1)
-        }
-    }
-
     private func field<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             SectionLabel(text: label)
@@ -179,7 +157,7 @@ struct PantryItemEditor: View {
         saving = true
         let body: [String: JSONValue] = [
             "name": .string(name.trimmingCharacters(in: .whitespaces)),
-            "amount": .string(amount.trimmingCharacters(in: .whitespaces)),
+            "amount": .string(PantryAmount.canonical(amount)),
             "unit": .string(unit.trimmingCharacters(in: .whitespaces)),
             "location": .string(location),
             "note": .string(note.trimmingCharacters(in: .whitespaces)),

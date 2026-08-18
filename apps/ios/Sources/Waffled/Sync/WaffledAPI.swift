@@ -1938,6 +1938,15 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("POST", "/api/pantry", body: body, as: Resp.self).item
     }
 
+    /// Append ONE section to the pantry's location list, so the add/scan sheets can
+    /// create a place on the fly instead of sending you to Settings. Returns the full
+    /// list; an existing name (any casing) is a no-op, not a duplicate.
+    @discardableResult
+    func pantryAddLocation(name: String) async throws -> [String] {
+        struct Resp: Decodable { let locations: [String] }
+        return try await sendReturning("POST", "/api/pantry/locations", body: ["name": .string(name)], as: Resp.self).locations
+    }
+
     /// Scan upsert — increments a matching on-hand item (by barcode, else name) instead
     /// of duplicating it. Returns the item + whether an existing one was incremented.
     func pantryScan(_ body: [String: JSONValue]) async throws -> (item: PantryItem, incremented: Bool) {

@@ -27,13 +27,13 @@ struct PantryItemDetailView: View {
                 if isWide {
                     HStack(spacing: 0) {
                         photoPanel(item).frame(width: 320)
-                        ScrollView { infoColumn(item).padding(20) }
+                        ScrollView { infoColumn(item).padding(20).padding(.bottom, WF.bottomBarClearance) }
                     }
                 } else {
                     ScrollView {
                         VStack(spacing: 0) {
                             photoPanel(item).frame(height: 240)
-                            infoColumn(item).padding(16)
+                            infoColumn(item).padding(16).padding(.bottom, WF.bottomBarClearance)
                         }
                     }
                 }
@@ -45,7 +45,8 @@ struct PantryItemDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $editing) {
             if let item {
-                PantryItemEditor(mode: .edit(item), locations: model.locations) { body in
+                PantryItemEditor(mode: .edit(item), locations: model.locations,
+                                 onLocationsChanged: { await model.load() }) { body in
                     if let updated = try? await WaffledAPI().pantryUpdate(id: item.id, body) { model.replace(updated) }
                 } onDelete: {
                     // Removing the item empties `model.items`, so the detail's `item == nil`

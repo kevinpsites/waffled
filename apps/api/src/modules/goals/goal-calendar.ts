@@ -10,7 +10,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { moduleRoutes } from '../../platform/route-guards'
-import { logProgress } from './goals.service'
+import { localNoonSql, logProgress } from './goals.service'
 import { updateEvent } from '../events/events'
 import { keywordMatch, type MatchGoal } from './goal-match'
 import { loadMemory, loadMemoryGrouped, forgetMemory, clearMemory, memoryMatch, recordMatch, WEIGHT, AUTO_LINK_THRESHOLD } from './goal-match-memory'
@@ -173,9 +173,11 @@ export async function recapQueue(householdId: string, goalId?: string | null) {
 }
 
 // Confirm a recap occurrence → write progress + the idempotency record. Returns
-// 'logged' on a fresh write, 'duplicate' if it was already resolved (the unique
-// key makes a re-confirm a no-op — never a double count), or null if the event/
-// link no longer validates.
+// 'logged' on a fresh write, 'already_logged' when the occurrence resolves but no
+// progress was written (a habit already logged on the event's own day — resolving
+// is right, but the caller shouldn't be told something was recorded), 'duplicate'
+// if it was already resolved (the unique key makes a re-confirm a no-op — never a
+// double count), or null if the event/link no longer validates.
 export async function confirmRecap(
   tenant: Tenant,
   eventId: string,
@@ -183,7 +185,7 @@ export async function confirmRecap(
   amount: number,
   personIds: string[],
   note?: string | null
-): Promise<'logged' | 'duplicate' | null> {
+): Promise<'logged' | 'already_logged' | 'duplicate' | null> {
   const client = await getPool().connect()
   try {
     await client.query('begin')
@@ -231,10 +233,12 @@ export async function confirmRecap(
           [doneBy, stepId, goalId, tenant.householdId]
         )
         if ((upd.rowCount ?? 0) > 0) {
+          // Dated to the OCCURRENCE, not to now — a recap is usually answered days
+          // after the fact, and the tick belongs on the day the event happened.
           await client.query(
-            `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by)
-             values ($1,$2,$3,1,$4,'auto_calendar','goal_step',$5,$6)`,
-            [tenant.householdId, goalId, doneBy, note ?? null, stepId, tenant.personId]
+            `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by, logged_at)
+             values ($1,$2,$3,1,$4,'auto_calendar','goal_step',$5,$6, ${localNoonSql(7)})`,
+            [tenant.householdId, goalId, doneBy, note ?? null, stepId, tenant.personId, occurrenceDate]
           )
         }
       }
@@ -245,14 +249,22 @@ export async function confirmRecap(
     await client.query('commit')
     // Write progress OUTSIDE the claim transaction (logProgress opens its own
     // connection). The claim row already guarantees idempotency.
+    // Backdated to the occurrence: you answer "did this happen?" days after the
+    // event, but the progress belongs on the event's own day — not on today.
     const logIds = await logProgress(tenant, goalId, amount, personIds, note ?? null, {
       source: 'auto_calendar',
       refType: 'event',
       refId: eventId,
+      at: occurrenceDate,
     })
-    if (logIds[0]) {
-      await query(`update event_goal_logs set goal_log_id = $1 where id = $2`, [logIds[0], claim.rows[0].id])
+    if (!logIds[0]) {
+      // Nothing was written: for a habit, backdating means the dedupe now compares
+      // against the event's own day, so a log already made by hand that day wins.
+      // The occurrence still resolves — asking again would only invite a double
+      // count — but say plainly that no new progress came of it.
+      return 'already_logged'
     }
+    await query(`update event_goal_logs set goal_log_id = $1 where id = $2`, [logIds[0], claim.rows[0].id])
     return 'logged'
   } catch (err) {
     await client.query('rollback').catch(() => {})

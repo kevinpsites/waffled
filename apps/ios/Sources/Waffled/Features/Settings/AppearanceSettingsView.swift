@@ -56,7 +56,7 @@ struct AppearanceSettingsView: View {
                     .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
                     .padding(.horizontal, 2).padding(.top, 8)
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(16).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle("Appearance").navigationBarTitleDisplayMode(.inline)

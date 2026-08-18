@@ -9,6 +9,12 @@ import AVFoundation
 struct PantryScanView: View {
     @Environment(\.dismiss) private var dismiss
     let locations: [String]
+    /// Household allergen context, passed straight through to the confirm sheet so a
+    /// scanned product can warn about what it contains and who that affects.
+    var avoid: Set<String> = []
+    var allergenPeople: [String: [String]] = [:]
+    /// Called when a section is created from the confirm sheet (config changed).
+    var onLocationsChanged: (() async -> Void)?
     let onAdded: () async -> Void
 
     enum CamState { case checking, ready, denied, unavailable }
@@ -39,7 +45,8 @@ struct PantryScanView: View {
         }
         .task { await checkCamera() }
         .sheet(item: $result) { r in
-            PantryFoundSheet(result: r, locations: locations) { body, emoji in
+            PantryFoundSheet(result: r, locations: locations, avoid: avoid,
+                             allergenPeople: allergenPeople, onLocationsChanged: onLocationsChanged) { body, emoji in
                 await add(body, emoji: emoji)
             }
         }

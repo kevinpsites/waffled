@@ -223,14 +223,11 @@ final class PantryModel {
     }
     /// Allergens on this item that the household (avoid-list ∪ per-person) flags.
     func flagged(_ item: WaffledAPI.PantryItem) -> [String] {
-        let avoid = Set(avoidAllergens).union(allergenPeople.keys)
-        return (item.allergens ?? []).filter { avoid.contains($0) }
+        PantryAllergen.flagged(item.allergens ?? [], avoid: avoidSet)
     }
     /// People affected by this item's flagged allergens.
     func affects(_ item: WaffledAPI.PantryItem) -> [String] {
-        var names: Set<String> = []
-        for a in flagged(item) { for p in allergenPeople[a] ?? [] { names.insert(p) } }
-        return names.sorted()
+        PantryAllergen.affected(flagged(item), people: allergenPeople)
     }
 
     // MARK: mutations (optimistic, revert on failure)
@@ -294,4 +291,23 @@ struct AgePill: View {
 func formatAmount(_ n: Double) -> String {
     if n == n.rounded() { return String(Int(n)) }
     return String(format: "%g", (n * 100).rounded() / 100)
+}
+
+/// Pantry amounts are free text ("2", "0.5", "a pinch") that the server parses
+/// numerically for the scan count-up and the cook decrement. Anything numeric has to
+/// go out dot-decimal — a comma-decimal keyboard types "0,5", which reads as NaN on
+/// the far side and quietly becomes 1 — while real free text passes through as typed.
+enum PantryAmount {
+    static func canonical(_ text: String, locale: Locale = .current) -> String {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        // Not a number ("a pinch", or nothing typed at all) → leave it exactly as it is.
+        guard let n = AmountEntry.parse(t, locale: locale) else { return t }
+        return formatAmount(n)
+    }
+
+    /// Bump a typed amount by whole units without knocking a fraction off its grid
+    /// (0.5 + 1 = 1.5) or going negative.
+    static func stepped(_ text: String, by delta: Double, locale: Locale = .current) -> String {
+        formatAmount(max(0, AmountEntry.value(of: text, locale: locale) + delta))
+    }
 }

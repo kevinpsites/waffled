@@ -57,18 +57,29 @@ struct PantryView: View {
         .background(WF.canvas)
         .navigationTitle("Pantry").navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openItemId) { id in PantryItemDetailView(itemId: id, model: model) }
-        .task { await model.load() }
+        .task {
+            await model.load()
+            // Headless verification (see DemoHooks.pantryItem): open an item's detail
+            // without a tap. No-op unless WAFFLED_PANTRY_ITEM is set.
+            if let want = DemoHooks.pantryItem, openItemId == nil {
+                openItemId = want == "first" ? model.items.first?.id : want
+            }
+        }
         .refreshable { await model.load() }
         .fullScreenCover(isPresented: $showScan) {
-            PantryScanView(locations: model.locations) { await model.load() }
+            PantryScanView(locations: model.locations, avoid: model.avoidSet,
+                           allergenPeople: model.allergenPeople,
+                           onLocationsChanged: { await model.load() }) { await model.load() }
         }
         .sheet(isPresented: $addManually) {
-            PantryItemEditor(mode: .add, locations: model.locations) { body in
+            PantryItemEditor(mode: .add, locations: model.locations,
+                             onLocationsChanged: { await model.load() }) { body in
                 _ = try? await WaffledAPI().pantryCreate(body); await model.load()
             }
         }
         .sheet(item: $editingItem) { item in
-            PantryItemEditor(mode: .edit(item), locations: model.locations) { body in
+            PantryItemEditor(mode: .edit(item), locations: model.locations,
+                             onLocationsChanged: { await model.load() }) { body in
                 if let updated = try? await WaffledAPI().pantryUpdate(id: item.id, body) { model.replace(updated) }
             } onDelete: {
                 await model.delete(item)
@@ -196,7 +207,7 @@ struct PantryView: View {
                     AllergenKey(avoid: model.avoidSet)
                 }
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(16).padding(.bottom, WF.tabBarClearance)
         }
     }
 
@@ -264,7 +275,7 @@ struct PantryView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .contentMargins(.bottom, 110, for: .scrollContent)
+        .contentMargins(.bottom, WF.tabBarClearance, for: .scrollContent)
     }
 
     // MARK: a card

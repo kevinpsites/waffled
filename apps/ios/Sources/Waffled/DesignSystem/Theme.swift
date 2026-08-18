@@ -75,6 +75,21 @@ enum WF {
     static let rLG: CGFloat = 22
     static let rXL: CGFloat = 30
 
+    // MARK: Bottom-bar clearance
+    /// Room a scrolling screen must leave at the bottom for the phone's tab bar.
+    ///
+    /// `AppRoot` stacks that bar *over* the content — a bottom-aligned layer in a
+    /// ZStack, not a safe-area inset — so SwiftUI reserves nothing for it and every
+    /// scrolling screen has to leave the space by hand. Forget it and the screen's last
+    /// row sits under the bar, unreachable however far you scroll; that is exactly how
+    /// the pantry item's **Edit** button became untappable.
+    static let tabBarClearance: CGFloat = 110
+
+    /// The same clearance, but only on the shell that actually has a bottom bar — the
+    /// iPad kiosk has none, so a screen shared by both should ask for this rather than
+    /// leave 110pt of dead space on the tablet.
+    static var bottomBarClearance: CGFloat { DeviceExperience.current == .planner ? tabBarClearance : 0 }
+
     // MARK: Type — SF for UI, New York (.serif) for headings, matching --sans/--serif.
     static func serif(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
         .system(size: size, weight: weight, design: .serif)

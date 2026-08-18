@@ -133,7 +133,12 @@ struct AppRoot: View {
         }
         // App-wide "a newer Waffled server is available" nudge (admin-only), like web.
         .overlay { ServerUpdateModal() }
-        .onAppear { if DemoHooks.openCapture { showCapture = true } }
+        .onAppear {
+            if DemoHooks.openCapture { showCapture = true }
+            // Headless pantry verification: land on the Family hub already pushed into
+            // the Pantry; `PantryView` opens the item itself once its list has loaded.
+            if DemoHooks.pantryItem != nil { tab = .family; familyPath = [.pantry] }
+        }
         // Local event reminders (6.7-ios): keep the schedule in step with the synced
         // events, the signed-in person, and permission changes.
         .task {

@@ -58,7 +58,7 @@ struct FamilyPeopleSettingsView: View {
                 // hides itself on the 403 a non-admin gets, so it self-gates.
                 PermissionsCard()
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(16).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle("Family & People").navigationBarTitleDisplayMode(.inline)
