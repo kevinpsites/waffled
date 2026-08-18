@@ -300,21 +300,14 @@ func formatAmount(_ n: Double) -> String {
 enum PantryAmount {
     static func canonical(_ text: String, locale: Locale = .current) -> String {
         let t = text.trimmingCharacters(in: .whitespaces)
-        guard !t.isEmpty, isNumeric(t, locale: locale) else { return t }
-        return formatAmount(AmountEntry.value(of: t, locale: locale))
+        // Not a number ("a pinch", or nothing typed at all) → leave it exactly as it is.
+        guard let n = AmountEntry.parse(t, locale: locale) else { return t }
+        return formatAmount(n)
     }
 
     /// Bump a typed amount by whole units without knocking a fraction off its grid
     /// (0.5 + 1 = 1.5) or going negative.
     static func stepped(_ text: String, by delta: Double, locale: Locale = .current) -> String {
         formatAmount(max(0, AmountEntry.value(of: text, locale: locale) + delta))
-    }
-
-    private static func isNumeric(_ t: String, locale: Locale) -> Bool {
-        if Double(t) != nil { return true }
-        if let sep = locale.decimalSeparator, sep != "." {
-            return Double(t.replacingOccurrences(of: sep, with: ".")) != nil
-        }
-        return false
     }
 }
