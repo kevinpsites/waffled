@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { api, usePersons, useRecipes, type PlanCard, type Recipe } from '../../lib/api'
+import { api, useHousehold, usePersons, useRecipes, type PlanCard, type Recipe } from '../../lib/api'
 import { useTopbarFull } from '../topbar-slot'
 import { Icon } from '../icons'
 import { RecipeModal } from './RecipeModal'
@@ -41,6 +41,27 @@ function isoWeekKey(date: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// The distinct household weeks a set of planned dates lands in, in date order.
+//
+// A grocery rebuild covers ONE week (weekStart..weekStart+6), so applying a month —
+// 4–6 weeks — has to rebuild each of them; a single call with the month start left every
+// week but the first unbuilt. And the boundaries have to follow the household's
+// first-day-of-week: grouping a monday household by Sunday would merge two of its weeks
+// into one call and leave the other genuinely uncovered. Deliberately NOT `isoWeekKey`,
+// which is Sunday-only because the review headers only ever need a stable grouping.
+export function weekStartsToRebuild(dates: string[], firstDay: 'sunday' | 'monday'): string[] {
+  const weeks = new Set<string>()
+  for (const date of dates) {
+    const d = new Date(`${date}T00:00:00`)
+    if (Number.isNaN(d.getTime())) continue
+    const dow = d.getDay() // 0=Sun..6=Sat
+    // A monday household's Sunday closes the week that began six days earlier.
+    d.setDate(d.getDate() - (firstDay === 'monday' ? (dow === 0 ? 6 : dow - 1) : dow))
+    weeks.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+  }
+  return [...weeks].sort()
+}
+
 const byDate = (a: { date: string }, b: { date: string }) => (a.date < b.date ? -1 : 1)
 
 // Full-screen "Plan my month": rotation guardrails on the left, the whole month
@@ -50,6 +71,11 @@ const byDate = (a: { date: string }, b: { date: string }) => (a.date < b.date ? 
 export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: string; onClose: () => void; onApplied: () => void }) {
   const { persons } = usePersons()
   const familySize = Math.max(1, persons.length)
+  // Which day starts a week here — the grocery list is keyed by week start, so the
+  // rebuilds below have to be cut on the household's own boundaries. Sunday is the
+  // server default, and the only sane guess before the household has loaded.
+  const { household } = useHousehold()
+  const firstDayOfWeek: 'sunday' | 'monday' = household?.weekStart === 'monday' ? 'monday' : 'sunday'
   const { recipes } = useRecipes()
 
   const [weekdays, setWeekdays] = useState<Set<number>>(() => new Set([1, 2, 3, 4, 5]))
@@ -275,10 +301,20 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
         await api.planSlot(c.recipeId ? { date: c.date, mealType: 'dinner', recipeId: c.recipeId } : { date: c.date, mealType: 'dinner', title: c.title })
       }
       // Clear nights that were planned before but the user skipped.
+      const cleared: string[] = []
       for (const d of removed) {
-        if (plannedDates.has(d)) await api.clearSlot(d, 'dinner').catch(() => {})
+        if (plannedDates.has(d)) {
+          await api.clearSlot(d, 'dinner').catch(() => {})
+          cleared.push(d)
+        }
       }
-      await api.rebuildGrocery(monthStart).catch(() => {})
+      // Rebuild every week this apply touched — one call per week, derived from the
+      // dates actually written (and the ones cleared, whose shopping has to come back
+      // OFF the list). A rebuild that fails must not cost the user their saved month,
+      // and GroceryBoard rebuilds a week on first open anyway, so each is best-effort.
+      for (const week of weekStartsToRebuild([...toApply.map((c) => c.date), ...cleared], firstDayOfWeek)) {
+        await api.rebuildGrocery(week).catch(() => {})
+      }
       onApplied()
       onClose()
     } finally {
