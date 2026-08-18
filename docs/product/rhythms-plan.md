@@ -1,0 +1,361 @@
+# Rhythms — the things that should keep happening
+
+**Status:** planned (design agreed, not built). Decided 2026-08-13, rescoped and renamed
+from "Upkeep" 2026-08-18 after checking the original design against real household cases.
+
+Where "trash out weekly", "air filter every 3 months", "change the car's oil", "book a
+temple visit", "take a self-care day once a quarter", and "family outing on the third
+weekend of the month" live. This is the plan; nothing here ships yet.
+
+## What a rhythm is
+
+A rhythm is a **standing intention with a cadence** — something that should keep happening,
+and a place to go to confirm that it actually will. It is not a task list and not a habit
+tracker. The unit of value is *"is this handled for this period?"*, asked of a whole
+household at once.
+
+The rename from "Upkeep" was not cosmetic. The original design covered exactly two of the
+eight real cases above (air filter, oil change) — the maintenance minority — and "upkeep"
+is the wrong word for booking a temple visit or a self-care day.
+
+## Why this isn't chores
+
+Chores are a kid-facing economy: reward currency and amount, an approval flow, optional
+photo proof, an assignee, and they feed the star/allowance ledger. A rhythm has none of
+that. Nobody earns a star for changing the furnace filter, and burying a quarterly item in
+a daily chore board is noise 89 days out of 90.
+
+More decisively, **chores cannot express these schedules at all today.**
+`ensureTodayInstances` (`apps/api/src/modules/chores/chores.service.ts`) materializes
+instances only for `FREQ=DAILY`, or `FREQ=WEEKLY` where today's weekday appears in the
+rrule's `BYDAY` — matched by SQL substring. There is no `MONTHLY` and no `INTERVAL`. "Every
+3 months" is unschedulable in the current model.
+
+## Why this isn't goals or habits
+
+This is the sharper of the two boundaries, and it's the one that decides the whole model.
+
+**Goals and habits are about follow-through.** You set them because you want to actually do
+the thing, and the value is in the record of whether you did — `goal_logs`, streaks, a
+target you're measured against.
+
+**Rhythms are about the opportunity existing.** The point of a temple visit rhythm is that
+a time gets set aside and shows up on the calendar, so the chance to go is there. Whether
+you went is deliberately *not* tracked. Marking it off would turn it into a goal, and then
+missing one reads as failure rather than as a week that got away.
+
+This is expressible in the existing schema, which is why it's worth being explicit about
+not doing it: `goals` already carries `habit_period`, `habit_target_per_period`,
+`tracking_mode = 'each_tracks'`, and `category = 'spiritual'`, and `0033_event_goal` gives
+events a `goal_id` with an idempotent confirm-after recap (`event_goal_logs`, unique on
+`(event_id, occurrence_date, goal_id)`). "Temple visit, 1×/month, each of us tracks
+separately" is buildable today as a habit goal. **We are choosing not to**, because the
+recap asks "did you go?" and that is precisely the question a rhythm doesn't ask.
+
+If someone *does* want the follow-through record for a given item, the right answer is to
+make it a goal as well — the two can coexist on one event, since `events` can carry both a
+`goal_id` and a `rhythm_id`.
+
+## The load-bearing decision: what satisfies a period
+
+The original plan's single decision was *completion-anchored, not calendar-anchored*, with
+calendar anchoring deliberately deferred out of v1. **Six of the eight real cases are
+calendar-anchored or booking-shaped**, so that deferral is the one thing this rewrite
+reverses. Both anchors ship together, discriminated by a single column: what closes out a
+period.
+
+- **`satisfied_by = 'completion'`** — you did the thing. *Completion-anchored*: the next due
+  date is measured from when you **actually** did it, so doing it two weeks late shifts
+  everything two weeks. Air filter, car oil, toothbrush heads, smoke-detector batteries.
+  These are the items where a calendar grid is actively wrong.
+
+- **`satisfied_by = 'scheduling'`** — a calendar event exists for the period. We never ask
+  whether it happened. Trash night, the third-weekend family outing, the temple visit, the
+  quarterly self-care day.
+
+Within `'scheduling'`, one more bit decides whether a human is needed:
+
+- **`auto_schedule = true`** — the rrule fully determines the datetime, so we create the
+  recurring event once and the rhythm stays satisfied. Trash every Tuesday; family outing on
+  `FREQ=MONTHLY;BYDAY=3SA`. (Both already expressible — the web recurrence UI builds
+  `FREQ=MONTHLY;BYDAY=3SA` today, with tests in `apps/web/src/kiosk/components/recurrence.test.ts`.)
+- **`auto_schedule = false`** — the cadence is known but *when* is an open decision every
+  period. The period surfaces as **needs scheduling** until someone picks a slot. Temple
+  visit, self-care day.
+
+That third state — **needs scheduling** — is what the original design had no way to express.
+Its state machine was two-state (due → done); the real one is three-state:
+**needs scheduling → scheduled → the period rolls over.**
+
+## Why rhythms must generate real events (not calendar chips)
+
+The original plan surfaced items as a *read-only* all-day chip overlaid on the calendar,
+with the entity itself REST-only. That design cannot ever have reminders, on any platform.
+
+iOS reminders come from `apps/ios/Sources/Waffled/Sync/NotificationManager.swift`, which
+schedules local notifications **exclusively off the synced `events` PowerSync mirror**
+(identifiers `waffled.evt.<id>`, a 64-pending cap, reconciled on every events change). There
+is no APNs key, no server-side reminder scheduler, and **no web/kiosk reminder path at all
+today**. A REST-only entity drawn as a chip would sit behind exactly the wall that chore
+reminders are already stuck behind.
+
+An event row inherits that entire path for free. So: a scheduling-shape rhythm **is** an
+`events` row carrying a `rhythm_id` back-reference — which also means it gets real
+recurrence, Google sync, visibility, participants, and the existing editor at no cost.
+
+This is the same seam the goal bridge already uses (`events.goal_id` + `0033_event_goal`),
+so it's a proven shape in this codebase rather than a new one.
+
+## Schema sketch
+
+```sql
+-- Up Migration
+create table rhythms (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references households(id),
+  title text not null,
+  emoji text,
+  notes text,
+
+  -- WHO it's for. Null = the whole household. The original design had no assignee at
+  -- all, and half the real cases need one: "my self-care day" is not "our self-care day",
+  -- and a temple visit gets scheduled per person.
+  person_id uuid references persons(id) on delete set null,
+
+  -- What closes out a period. See "the load-bearing decision" above.
+  satisfied_by text not null check (satisfied_by in ('completion','scheduling')),
+
+  -- Cadence. Exactly one is set, per satisfied_by:
+  --   completion → `every`, an interval measured from last_completed_at. Stored as an
+  --                interval so month-length arithmetic stays Postgres's problem.
+  --   scheduling → `rrule`, RFC5545 — the same vocabulary `events` already speaks, so a
+  --                rhythm's cadence can be handed straight to the event it creates.
+  every  interval,
+  rrule  text,
+
+  -- scheduling only: can we pick the datetime ourselves, or does a human have to?
+  auto_schedule boolean not null default false,
+
+  -- How far ahead a period surfaces. A quarterly item that appears 90 days early is just
+  -- clutter; a booking-shaped one needs more runway than a maintenance one, hence 14d.
+  lead_time interval not null default '14 days',
+
+  -- completion only. Denormalised so the "what's due" query is a plain index scan.
+  last_completed_at timestamptz,
+  next_due_at       timestamptz,
+
+  is_active  boolean not null default true,
+  deleted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint rhythms_cadence_matches_kind check (
+    (satisfied_by = 'completion' and every is not null and next_due_at is not null and rrule is null)
+    or
+    (satisfied_by = 'scheduling' and rrule is not null and every is null)
+  )
+);
+
+-- The back-reference. Mirrors events.goal_id (0033); an event can carry both, so a rhythm
+-- and a goal may share one calendar entry without either owning it.
+alter table events add column rhythm_id uuid references rhythms(id) on delete set null;
+create index ix_events_rhythm on events (rhythm_id) where rhythm_id is not null;
+
+-- The history, for completion-shape rhythms only. "Filter last changed Mar 12" is the
+-- whole point, and chores' completed instances don't give it cleanly.
+create table rhythm_completions (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references households(id),
+  rhythm_id    uuid not null references rhythms(id) on delete cascade,
+  person_id    uuid references persons(id),  -- who did it (nullable: nobody claimed it)
+  completed_at timestamptz not null default now(),
+  notes        text
+);
+
+-- "Skip this quarter" for scheduling-shape rhythms — the only per-period state we store.
+-- Without it, a deliberately-skipped period nags forever.
+create table rhythm_skips (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references households(id),
+  rhythm_id    uuid not null references rhythms(id) on delete cascade,
+  period_start date not null,
+  skipped_by   uuid references persons(id),
+  created_at   timestamptz not null default now(),
+  unique (rhythm_id, period_start)
+);
+```
+
+**Note what is deliberately absent: a per-period satisfaction table.** The goal bridge
+materializes `event_goal_logs` because double-counting a log is a real hazard there. Here the
+question is "does an event with this `rhythm_id` fall inside this period?" — idempotent by
+nature — so satisfaction is **derived from `events`**, not dual-written. That avoids the
+drift that a materialized copy would invite when an event is edited, moved, or deleted.
+
+Completing a `'completion'` rhythm is one transaction: insert a completion row, set
+`last_completed_at`, recompute `next_due_at = completed_at + every`. No materialization
+pass, no nightly job. It is **due** when `now() >= next_due_at - lead_time` and **overdue**
+when `now() >= next_due_at`.
+
+## The one endpoint everything reads
+
+Both surfaces below, plus the weekly planner, ask the same question — *what needs attention
+in this window?* — so it should be one route rather than three near-identical queries:
+
+```
+GET /rhythms/attention?from=<date>&to=<date>[&personId=<id>]
+```
+
+returning a merged, sorted list of:
+
+- `{ kind: 'due',    rhythm, dueAt, overdue }`            — completion-shape, inside lead time
+- `{ kind: 'unscheduled', rhythm, periodStart, periodEnd }` — scheduling-shape, `auto_schedule = false`,
+  no event with this `rhythm_id` in the period, not skipped
+
+Today passes a one-day window, the weekly planner passes a week. Scheduling-shape rhythms
+with `auto_schedule = true` never appear — their event already exists, which *is* the
+satisfied state.
+
+## Feeding the weekly plan module
+
+The stated reason this module exists at all is: *"I want it to come up in a future weekly
+plan module, so this should be scheduled out and I have the opportunity to do it."*
+
+**Assumption flagged:** that module does not exist yet — no roadmap entry, no branch as of
+2026-08-18. So this plan does not design it; it only guarantees the data it will need. The
+contract is the `kind: 'unscheduled'` rows above, over a week-long window: the planner shows
+"3 rhythms need a time this week", and picking a slot creates an ordinary event carrying
+`rhythm_id`. If the weekly planner lands first, this endpoint is the thing to build against.
+
+## Countdown reuse — question resolved
+
+The original plan called this "the single biggest unknown in the estimate". It isn't one.
+
+`apps/api/src/modules/countdowns/countdowns.ts` is a **hardcoded three-source union** —
+`CountdownSource = 'standalone' | 'event' | 'birthday'` — where `listCountdowns` runs a query
+per source and appends into one `out` array before sorting. Adding rhythms is a fourth union
+member plus one query. It is an **addition, not a refactor**; budget the low end.
+
+Note that scheduling-shape rhythms need nothing here at all — they're events, so an
+`is_countdown` flag already works on them. Only completion-shape rhythms ("N days until the
+filter is due") need the new source.
+
+## Module registration
+
+Rhythms is an optional module, off by default. The touch points:
+
+- `ModuleKey` union + the `MODULES` catalog in `apps/api/src/platform/modules.ts`
+  (`status: 'available'`, `defaultOn: false`)
+- the **hand-mirrored** copy in `apps/web/src/lib/modules.ts`
+- `moduleRoutes('rhythms')` for the route guards
+- a Today card gated in `moduleAllows()` on iOS and `cardAvailable` on web, exactly as
+  pantry/goals do — plus both layout card enums (`TODAY_CARDS`, `MOBILE_TODAY_CARDS`), the
+  same checklist the `lists` card went through
+
+One module, not two, despite spanning maintenance and booking. Splitting would double that
+registration path — five hand-edited sites plus two mirrored catalogs — for what is a single
+habit of mind: the place you look to confirm the recurring things are handled.
+
+## Surfaces
+
+- **Today card** — items inside their lead-time window, overdue first, and periods that
+  need scheduling. Tap to complete (maintenance) or to pick a time (booking). Empty most
+  days, so it hides rather than rendering an empty card — same rule as the Lists card.
+- **A management screen** — the full list with "last done" dates, next due, whether this
+  period is handled, and the ability to complete early ("I did the filter today" resets the
+  clock) or skip a period.
+- **Calendar** — mostly free. See below.
+
+## How this lands on the calendar
+
+**This is materially smaller than the original plan assumed.** Because scheduling-shape
+rhythms *are* events, they render natively — real recurrence, Google sync, visibility,
+participants, the existing editor, and local notifications — with no overlay code at all.
+
+That leaves the read-only overlay covering only two sources: `chore_instances.due_on` and
+completion-shape `rhythms.next_due_at`. Rendered as compact all-day chips at the top of a
+day rather than blocks in the time grid — a chore's `due_time` is a soft target, not an
+appointment, and placing it in the grid implies a precision that isn't there. Tapping a chip
+deep-links to the chore/rhythm detail rather than opening the event editor. `list_items` has
+**no due column** and should keep it that way; lists shouldn't become a half-built task
+manager.
+
+Two seams to resolve before building:
+
+1. **Visibility.** `0074_calendar_visibility` filters events as `visibility = 'family' OR
+   owner_person_id = <viewer>`. Chores and completion-shape rhythms have no visibility
+   concept. Simplest coherent rule: treat both as `family`. Note that a *scheduling*-shape
+   rhythm needs no rule — it's an event, so it already has one, and `rhythms.person_id`
+   should seed the event's `owner_person_id` so "my self-care day" can be private.
+2. **Offline asymmetry.** On iOS, events arrive via PowerSync while chores are REST-only
+   (`SyncSchema.swift` syncs households, persons, events, event_participants,
+   event_occurrences — nothing else). A phone with no connection renders events fine and
+   silently drops the chip overlay. Either surface that state in the UI, or add chores to
+   the sync schema — a larger piece of work that also unblocks the chore reminders currently
+   blocked for the same reason. See the PowerSync sizing note below. Again, scheduling-shape
+   rhythms are unaffected; they sync already.
+
+## The one thing that still has no reminder path
+
+A scheduling-shape rhythm gets reminders for free **once it's on the calendar**. The nag
+that matters more — *"the temple visit still isn't booked and the quarter ends Sunday"* — is
+not an event, so it cannot use the local-notification path.
+
+For v1 that lives on the Today card and in the weekly planner, with **no push**. Making it
+push would need the server-side notification work (APNs key + a scheduler, and web push
+separately) that is already the blocker for chore reminders — it should be costed there, as
+one piece of platform work benefiting several modules, rather than smuggled into this one.
+Do not let the plan imply otherwise.
+
+## Rough sizing
+
+Supersedes the original 8–13 day table, which was scoped to the maintenance-only design.
+
+| Piece | Estimate |
+|---|---|
+| Schema + service + `/rhythms/attention` (TDD, testcontainer integration tests) | 3–4 days |
+| Event generation + `events.rhythm_id` round-trip (incl. PowerSync touch points) | 2–3 days |
+| Module registration + Today card (web + iPhone) | 1–2 days |
+| Management screen (web + iOS) | 2–3 days |
+| Countdown integration (a union member + a query) | 0.5 day |
+| Calendar chip overlay, both platforms | 1.5–2 days |
+
+Roughly **10–15 days**. It buys more than the original scope: the booking flow and assignees
+are new, while the calendar overlay and countdown pieces both shrank.
+
+Sequencing note: the event round-trip is the risky piece, not the schema. `events` has
+**three write paths** (REST, PowerSync CRUD, Google sync) and a rhythm-created event must
+behave correctly through all of them — an event losing its `rhythm_id` on a sync round-trip
+would silently un-satisfy a period. Build that second, with integration tests, before any UI.
+
+## Related: PowerSync sizing for chores and lists
+
+Measured against the real household DB (2026-08-13, 15 MB total), since the calendar
+overlay's offline story depends on it:
+
+| table | rows | avg row | client cost |
+|---|---|---|---|
+| `events` (already synced) | 488 | 342 B | ~167 KB |
+| `chore_instances` | 734 | 147 B | ~108 KB |
+| `list_items` | 271 | 185 B | ~50 KB |
+
+Storage is not the constraint — adding chores and lists costs ~160 KB per client, less than
+one recipe photo. Three things that are:
+
+1. **Per-domain plumbing is ~780 hand-written lines**, measured from events:
+   `events-local.ts` (377), `Events.swift` (200), `powersync-crud.ts` (201) — plus a
+   `data:` line in `sync-config.yaml`, a table in both client schemas, and a migration.
+2. **`REPLICA IDENTITY FULL` is mandatory** (see `0027_events_replication.sql`), so every
+   UPDATE logs the entire old row to the WAL. `chore_instances` is updated on every
+   check-off, so that's where the real server cost sits.
+3. **`chore_instances` grows without bound** — those 734 rows accumulated over 66 days from
+   24 active chores (~11/day, ~4,000/year). Sync it with a **window**
+   (`due_on > now() - 90 days`) from day one; retrofitting the window later forces a re-sync.
+
+Rhythms, by design, has none of problem 3: one row per item, not one per day. And it dodges
+problem 1 for its scheduling shape entirely, since those ride the `events` plumbing that
+already exists.
+
+Order if this is pursued: **lists first** (~3–4 days, pure CRUD, highest daily payoff — a
+grocery list in a shop with bad signal), then **chores** (~1–1.5 weeks, mostly reconciling
+the reward/approval/photo side effects, which are server transactions rather than row
+writes). Recipes should stay REST-only; they're read-mostly and a cache fits better.
