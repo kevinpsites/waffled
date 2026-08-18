@@ -578,6 +578,19 @@ struct WaffledAPI: Sendable {
         let isStaple: Bool
         let sortOrder: Int?
         let sub: String?
+        /// Does the household's pantry actually have this? Sent by `GET /api/recipes/:id`
+        /// only — the plate/cook-mode/meal-builder ingredient payloads don't carry it, so
+        /// it is **optional**: a strict decode failing on a missing key surfaces to the
+        /// user as "couldn't reach server".
+        ///
+        /// This is a PANTRY observation and stays strictly separate from `isStaple`,
+        /// which is only an assumption that the household keeps a thing around. The
+        /// grocery picker pre-unchecks `inPantry`; staples stay checked. See
+        /// `RecipeGroceryPick`.
+        ///
+        /// nil = the server didn't say (older build); false = matched nothing, or the
+        /// pantry module is off. Neither is a claim that you don't have it.
+        var inPantry: Bool? = nil
     }
 
     /// One method step. `ingredients` are the raw lines used at this step; `note` is
