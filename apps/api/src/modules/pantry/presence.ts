@@ -85,11 +85,37 @@ export function matchNames(onHand: readonly PantryOnHand[], names: readonly stri
     if (!key) continue
     let hit = seen.get(key)
     if (hit === undefined) {
-      const tok = tokens(name)
-      hit = onHand.find((o) => matches(tok, o.tok))?.hit ?? null
+      hit = bestMatch(onHand, name)
       seen.set(key, hit)
     }
     if (hit) out.set(key, hit)
   }
   return out
+}
+
+// One name can match several pantry rows at once — "Butter" is a token-subset of both
+// "Butter" and "Peanut butter" — and the badge NAMES the row it picked, so the pick is
+// user-visible. Taking the first row that matched made that depend on Postgres's return
+// order, i.e. on insert history: the same pantry could show "Butter" today and "Peanut
+// butter" tomorrow. Rank instead, most-specific-first:
+//   1. the same name (a pantry row literally called "Butter" beats anything else)
+//   2. the fewest extra words ("Chicken" → "Chicken breast", not "Boneless chicken
+//      breast tenderloin")
+//   3. alphabetical, purely so ties are stable rather than arbitrary
+// This changes WHICH row wins, never WHETHER one does — a generic match with no better
+// candidate is still reported, because the badge names it and the cook can judge.
+function bestMatch(onHand: readonly PantryOnHand[], name: string): PantryHit | null {
+  const tok = tokens(name)
+  const key = name.trim().toLowerCase()
+  let best: PantryOnHand | null = null
+  let bestScore = 0
+  for (const o of onHand) {
+    if (!matches(tok, o.tok)) continue
+    const score = o.hit.name.trim().toLowerCase() === key ? -1 : Math.abs(o.tok.size - tok.size)
+    if (!best || score < bestScore || (score === bestScore && o.hit.name.localeCompare(best.hit.name) < 0)) {
+      best = o
+      bestScore = score
+    }
+  }
+  return best?.hit ?? null
 }

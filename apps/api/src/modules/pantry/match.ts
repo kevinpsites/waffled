@@ -7,11 +7,28 @@
 // a pure presence check.
 const STOPWORDS = new Set(['and', 'the', 'with', 'for', 'fresh', 'large', 'small', 'whole', 'ground'])
 
+// A trailing allergen warning, as meal-kit imports write it:
+//   "Cream cheese — contains milk"   "flour — contains gluten/wheat"   "butter (contains milk)"
+// Those words describe what's IN the thing, not what the thing IS, so leaving them in
+// wrecks a subset matcher: "Cream cheese — contains milk" reduces to {cream, cheese,
+// contains, milk}, which a pantry carton of {milk} is a subset of — and the household
+// gets told it already has cream cheese. Stripping only ever REMOVES tokens, so it can
+// only remove matches, and every match it removes was one of these false ones.
+// Must run on the raw name: tokens() flattens punctuation to spaces, so after that step
+// there is no dash left to anchor on.
+const ALLERGEN_NOTE = /\s*[—–\-,(]+\s*(?:may\s+)?contains?\b.*$/i
+
+export function stripAllergenNote(name: string): string {
+  // A name that is *only* the note ("contains milk") keeps its words — matching nothing
+  // at all is a worse answer than matching oddly, and it would be invisible.
+  return name.replace(ALLERGEN_NOTE, '').trim() || name
+}
+
 // Significant tokens of a name (lowercased words, length ≥ 3, minus stopwords).
 // `ground` is a stopword on its own but kept as part of multi-word matches via subset.
 export function tokens(name: string): Set<string> {
   return new Set(
-    name.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length >= 3 && !STOPWORDS.has(w))
+    stripAllergenNote(name).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length >= 3 && !STOPWORDS.has(w))
   )
 }
 
