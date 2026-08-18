@@ -376,6 +376,10 @@ describe('pantry Open Food Facts integration', () => {
 
     const over = await call('POST', '/api/pantry/locations', kevin, { name: 'One too many' })
     expect(over.statusCode).toBe(400)
+    // Settings has to honour the same ceiling, or a household could be pushed past it
+    // there and then never be able to use ＋ New again.
+    const tooMany = await call('PUT', '/api/pantry/config', kevin, { locations: [...full, 'Shelf 41'] })
+    expect(tooMany.statusCode).toBe(400)
     // A name already on the (full) list is still a no-op rather than an error.
     const dup = await call('POST', '/api/pantry/locations', kevin, { name: 'shelf 1' })
     expect(dup.statusCode).toBe(200)

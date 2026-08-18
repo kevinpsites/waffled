@@ -515,6 +515,11 @@ export function registerPantryRoutes(api: Api): void {
         seen.add(key)
         clean.push(s)
       }
+      // Same ceiling the add-one endpoint enforces. Without it a household could be
+      // pushed past the cap from Settings and then never use ＋ New again.
+      if (clean.length > MAX_LOCATIONS) {
+        return res.status(400).json({ error: 'BadRequest', message: `at most ${MAX_LOCATIONS} sections` })
+      }
       merge.locations = clean.length ? clean : DEFAULT_LOCATIONS
     }
     if (typeof b.showOnToday === 'boolean') merge.showOnToday = b.showOnToday
