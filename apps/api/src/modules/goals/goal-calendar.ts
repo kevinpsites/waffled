@@ -10,7 +10,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { moduleRoutes } from '../../platform/route-guards'
-import { logProgress } from './goals.service'
+import { localNoonSql, logProgress } from './goals.service'
 import { updateEvent } from '../events/events'
 import { keywordMatch, type MatchGoal } from './goal-match'
 import { loadMemory, loadMemoryGrouped, forgetMemory, clearMemory, memoryMatch, recordMatch, WEIGHT, AUTO_LINK_THRESHOLD } from './goal-match-memory'
@@ -237,8 +237,7 @@ export async function confirmRecap(
           // after the fact, and the tick belongs on the day the event happened.
           await client.query(
             `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by, logged_at)
-             values ($1,$2,$3,1,$4,'auto_calendar','goal_step',$5,$6,
-                     ($7::date + time '12:00') at time zone (select timezone from households where id = $1))`,
+             values ($1,$2,$3,1,$4,'auto_calendar','goal_step',$5,$6, ${localNoonSql(7)})`,
             [tenant.householdId, goalId, doneBy, note ?? null, stepId, tenant.personId, occurrenceDate]
           )
         }
