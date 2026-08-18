@@ -67,10 +67,15 @@ final class SyncManager {
     /// The household's first-day-of-week (`households.week_start`), read off the synced
     /// row — NOT the device's region setting, which is a different thing and routinely
     /// disagrees. The grocery list is keyed by this, so it's what `GroceryWeeks` must cut
-    /// rebuild calls on. Defaults to `.sunday` (the server default) until the first sync
-    /// tick lands: a plan applied in the very first seconds of a cold launch can miss it,
-    /// and guessing the server default there is better than guessing the device's.
-    private(set) var householdWeekStart: HouseholdWeekStart = .sunday
+    /// rebuild calls on.
+    ///
+    /// The synced row is only readable from the first sync tick onward, so a cold launch
+    /// starts from the value the *last* run persisted (`HouseholdWeekStartStore`) rather
+    /// than re-guessing. That closes the window where a plan applied in the first seconds
+    /// of a launch in a monday household got grouped onto Sundays. `.sunday` (the server
+    /// default) remains the fallback for a never-synced install, which is the only case
+    /// where there is genuinely nothing better to say.
+    private(set) var householdWeekStart: HouseholdWeekStart = HouseholdWeekStartStore.load() ?? .sunday
     private(set) var personCount = 0
     private(set) var eventCount = 0
     private(set) var pendingUploads = 0
@@ -992,6 +997,12 @@ final class SyncManager {
                 if zone.identifier != householdTz.identifier { householdTz = zone }
             }
             let first = HouseholdWeekStart(raw: row.1)
+            // Persisted OUTSIDE the change guard on purpose. The guard is there to avoid
+            // pointless observable churn on a tick that changed nothing; the save is
+            // idempotent, and gating it on a change would mean a Sunday household — where
+            // the synced value matches the launch default — never records that it synced
+            // at all, leaving the next launch guessing again.
+            HouseholdWeekStartStore.save(first)
             if first != householdWeekStart { householdWeekStart = first }
         }
     }

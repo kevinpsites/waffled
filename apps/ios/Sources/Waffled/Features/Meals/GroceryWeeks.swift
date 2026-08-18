@@ -7,8 +7,12 @@ enum HouseholdWeekStart: String, Sendable, Equatable {
     case sunday, monday
 
     /// Lenient: the value arrives as free text off the synced `households` row, and is
-    /// missing entirely until the first sync lands. Sunday is the server's default and
-    /// the only sane guess before then.
+    /// missing entirely until the first sync lands. Sunday is the server's default, so
+    /// that's what unrecognised or absent text reads as.
+    ///
+    /// Note this is the *parser*, not the cold-launch answer: `SyncManager` starts from
+    /// the last value it persisted (`HouseholdWeekStartStore`) and only falls back to
+    /// Sunday on an install that has never synced at all.
     init(raw: String?) {
         self = raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "monday" ? .monday : .sunday
     }
