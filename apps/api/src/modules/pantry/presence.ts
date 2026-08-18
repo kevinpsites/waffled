@@ -93,12 +93,12 @@ export function matchNames(onHand: readonly PantryOnHand[], names: readonly stri
   return out
 }
 
-// One name can match several pantry rows at once — "Butter" is a token-subset of both
-// "Butter" and "Peanut butter" — and the badge NAMES the row it picked, so the pick is
+// One name can match several pantry rows at once — "Chicken" is a token-subset of both
+// "Chicken" and "Chicken breast" — and the badge NAMES the row it picked, so the pick is
 // user-visible. Taking the first row that matched made that depend on Postgres's return
-// order, i.e. on insert history: the same pantry could show "Butter" today and "Peanut
-// butter" tomorrow. Rank instead, most-specific-first:
-//   1. the same name (a pantry row literally called "Butter" beats anything else)
+// order, i.e. on insert history: the same pantry could show "Chicken" today and "Chicken
+// breast" tomorrow. Rank instead, most-specific-first:
+//   1. the same name (a pantry row literally called "Chicken" beats anything else)
 //   2. the fewest extra words ("Chicken" → "Chicken breast", not "Boneless chicken
 //      breast tenderloin")
 //   3. alphabetical, purely so ties are stable rather than arbitrary
