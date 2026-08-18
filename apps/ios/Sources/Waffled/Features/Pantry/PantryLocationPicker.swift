@@ -103,13 +103,8 @@ struct PantryLocationPicker: View {
         failed = false
         Task {
             do {
-                // Select the household's spelling, not the one just typed: the route
-                // matches an existing section case-insensitively, so "garage shelf"
-                // is a no-op against "Garage shelf" and hands back the canonical list.
-                // The item list buckets by an exact string match, so keeping the typed
-                // casing would file this item under "Other".
                 let next = try await api.pantryAddLocation(name: name)
-                let canonical = next.first { $0.caseInsensitiveCompare(name) == .orderedSame } ?? name
+                let canonical = PantrySections.canonical(name, in: next)
                 created.append(canonical)
                 selection = canonical
                 adding = false
