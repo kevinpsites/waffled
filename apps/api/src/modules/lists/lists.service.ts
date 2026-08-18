@@ -8,6 +8,8 @@ import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { getRecipe, listIngredients, getOverrides } from '../meals/meals.service'
 import { aisleFor, isStaple } from './aisles'
+// Read-time only, and deliberately so — see groceryBoard.
+import { pantryHitsForNames } from '../pantry/presence'
 import { formatAmount, normalizeQuantity, parseQuantity, plainQuantity } from './quantity'
 import type { ListRow, ListItemRow, CreateListInput, PatchItemInput } from './lists.types'
 
@@ -1051,11 +1053,25 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
     })
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (MEAL_ORDER[a.mealType] ?? 9) - (MEAL_ORDER[b.mealType] ?? 9)))
 
+  // "You already have this" — matched at READ time, not stamped during the weekly
+  // rebuild. A stamped flag would go stale the moment someone cooks a meal or scans a
+  // new item, while the board is re-read on every visit, so read-time is both simpler
+  // and always current. It FLAGS and never filters: the matcher is presence-only, so
+  // "you have eggs" can be true when you have one egg and the recipe wants twelve —
+  // silently dropping the row would be a worse bug than the badge fixes.
+  // null (module off) ⇒ every row reports `pantry: null` and the client shows nothing.
+  const pantryHits = await pantryHitsForNames(
+    tenant.householdId,
+    itemRows.rows.map((i) => i.name)
+  )
   const items = itemRows.rows.map((i) => ({
     ...presentListItem(i),
     // fall back to name-based classification when a row has no/Other aisle (older
     // items, hand-added items) so the board stays cleanly grouped like the mock.
     aisle: i.category && i.category !== 'Other' ? i.category : aisleFor(i.name, i.quantity),
+    // The pantry item covering this row, with its OWN amount ("1 bag") — a display
+    // claim the data supports, unlike any comparison against the recipe's "1½ lb".
+    pantry: pantryHits?.get(i.name.trim().toLowerCase()) ?? null,
   }))
 
   // Recipes explicitly added from their page that aren't planned this week —

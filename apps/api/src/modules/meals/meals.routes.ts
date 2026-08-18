@@ -74,6 +74,7 @@ import {
   type MealRecipeInput,
 } from './meal-builder.service'
 import { onHandForRecipe } from '../pantry/on-hand'
+import { pantryHitsForNames } from '../pantry/presence'
 import { addMealToGrocery, removeMealFromGrocery, householdWeekStart, presentListItem } from '../lists/lists.service'
 import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 
@@ -147,9 +148,23 @@ export function registerMealRoutes(api: Api): void {
     const ov = getOverrides(recipe)
     const subs = ov.subs ?? {}
     const stepNotes = ov.stepNotes ?? {}
-    const ingredients = (await listIngredients(tenant.householdId, id)).map((i) => ({
+    const rawIngredients = await listIngredients(tenant.householdId, id)
+    // `inPantry` is what lets the "add to grocery" picker pre-uncheck things you already
+    // have. It is a PANTRY signal and stays strictly separate from `isStaple`: a staple is
+    // something the household is assumed to keep around, and the picker deliberately
+    // leaves those checked (an item missing at the shop costs more than an extra one to
+    // uncheck). Conflating them would silently reverse that default.
+    // Every ingredient is matched, staples included — "is it in the pantry" is a question
+    // worth answering for a staple too, even though it doesn't change the default.
+    // false for all when the pantry module is off: nothing is known, so nothing unchecks.
+    const pantryHits = await pantryHitsForNames(
+      tenant.householdId,
+      rawIngredients.map((i) => i.name)
+    )
+    const ingredients = rawIngredients.map((i) => ({
       ...presentIngredient(i),
       sub: subs[i.name.trim().toLowerCase()] ?? null,
+      inPantry: pantryHits?.has(i.name.trim().toLowerCase()) ?? false,
     }))
     const steps = (await listSteps(tenant.householdId, id)).map((s) => ({
       ...s,
