@@ -803,27 +803,53 @@ function isoAddDays(iso: string, n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-// The start (YYYY-MM-DD) of a household's week, honoring BOTH its first-day-of-week
-// preference (sunday|monday) and its timezone — the single server-side source of truth
-// for "which week is it". It backs the grocery board/rebuild default week, the rebuild's
-// legacy-absorb check, and the 0088 backfill (which replicates this exact math in SQL),
-// so a backfilled row lands on precisely the week the board shows. Mirrors the iOS
-// `Cal.weekStart(Date(), householdTz)`. `offsetWeeks` shifts by whole weeks.
-export async function householdWeekStart(householdId: string, offsetWeeks = 0): Promise<string> {
+export type FirstDayOfWeek = 'sunday' | 'monday'
+
+// THE week arithmetic — the one definition of "which week does this date belong to",
+// which the 0088 backfill replicates in SQL and iOS mirrors in `Cal.weekStart`. Pure and
+// timezone-free on purpose: a timezone is only ever needed to decide what "today" is, and
+// once you have a calendar date the snap is plain day counting. Everything that needs a
+// week key goes through here so the board, the rebuild and the backfill cannot drift.
+export function snapToWeekStart(iso: string, firstDay: FirstDayOfWeek): string {
+  const d = new Date(iso + 'T00:00:00Z')
+  const dow = d.getUTCDay() // 0=Sun..6=Sat
+  // A monday household's Sunday closes the week that began six days earlier.
+  const back = firstDay === 'monday' ? (dow === 0 ? 6 : dow - 1) : dow
+  d.setUTCDate(d.getUTCDate() - back)
+  return d.toISOString().slice(0, 10)
+}
+
+async function householdWeekPrefs(householdId: string): Promise<{ firstDay: FirstDayOfWeek; tz: string }> {
   const { rows } = await query<{ week_start: string; timezone: string | null }>(
     `select week_start, timezone from households where id=$1`,
     [householdId]
   )
-  const monday = rows[0]?.week_start === 'monday'
-  const tz = (rows[0]?.timezone ?? '').trim() || 'UTC'
-  // "today" as seen in the household's timezone, then treated as a UTC midnight so the
-  // day arithmetic below is timezone-shift-free.
+  return {
+    firstDay: rows[0]?.week_start === 'monday' ? 'monday' : 'sunday',
+    tz: (rows[0]?.timezone ?? '').trim() || 'UTC',
+  }
+}
+
+// The start (YYYY-MM-DD) of a household's CURRENT week, honoring BOTH its first-day-of-week
+// preference (sunday|monday) and its timezone — the single server-side source of truth
+// for "which week is it". It backs the grocery board/rebuild default week, the rebuild's
+// legacy-absorb check, and the 0088 backfill, so a backfilled row lands on precisely the
+// week the board shows. Mirrors the iOS `Cal.weekStart(Date(), householdTz)`.
+// `offsetWeeks` shifts by whole weeks.
+export async function householdWeekStart(householdId: string, offsetWeeks = 0): Promise<string> {
+  const { firstDay, tz } = await householdWeekPrefs(householdId)
+  // "today" as seen in the household's timezone, then snapped by plain day arithmetic.
   const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
-  const d = new Date(todayLocal + 'T00:00:00Z')
-  const dow = d.getUTCDay() // 0=Sun..6=Sat
-  const back = monday ? (dow === 0 ? 6 : dow - 1) : dow
-  d.setUTCDate(d.getUTCDate() - back + offsetWeeks * 7)
-  return d.toISOString().slice(0, 10)
+  return isoAddDays(snapToWeekStart(todayLocal, firstDay), offsetWeeks * 7)
+}
+
+// The household week containing an ARBITRARY date. Grocery rows are keyed by week start
+// and the board only ever asks for week starts, so a caller that names a mid-week date
+// (a meal's date, the 1st of a month) must be snapped or its rows land on a key nothing
+// will ever read again.
+export async function householdWeekStartFor(householdId: string, iso: string): Promise<string> {
+  const { firstDay } = await householdWeekPrefs(householdId)
+  return snapToWeekStart(iso, firstDay)
 }
 
 // Rebuild the auto portion of the grocery list from a week's planned meals
