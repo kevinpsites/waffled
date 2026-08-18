@@ -18,6 +18,23 @@ import Foundation
 ///
 /// Mirrors the web's `RecipeGroceryModal`.
 enum RecipeGroceryPick {
+    /// Whether the "Add to grocery list" action can do anything yet.
+    ///
+    /// The sheet derives its entire state from `ingredients` at `init`, and the recipe
+    /// detail's toolbar menu is live from the first frame — before `loadDetail()` has
+    /// returned. Tapping it in that gap opened a sheet with no rows and a dead button.
+    /// The action is disabled instead of opening empty: a greyed row says "not yet",
+    /// where an empty sheet says "this recipe has no ingredients", which is a lie.
+    ///
+    /// Deliberately keyed on the ingredients rather than a loading flag — a recipe that
+    /// really has none has nothing to add either, and there the same disabled row is the
+    /// honest answer rather than a temporary one. Note that a pantry covering the whole
+    /// recipe is NOT this case: those rows exist, each says why it opens unchecked, and
+    /// "Select all" is there to overrule us.
+    static func canAdd(_ ingredients: [WaffledAPI.RecipeIngredientDTO]) -> Bool {
+        !ingredients.isEmpty
+    }
+
     /// Which ingredients open checked: everything the pantry did NOT match. `nil`
     /// (a server that never sent the field) means "we don't know", which is not a
     /// reason to leave something off the list — so it stays checked.
