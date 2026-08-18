@@ -64,6 +64,13 @@ final class SyncManager {
         eventsByDay = Agenda.byDay(events, householdTz)
     }
     private(set) var householdTz: TimeZone = .current { didSet { rebuildEventIndex() } }
+    /// The household's first-day-of-week (`households.week_start`), read off the synced
+    /// row — NOT the device's region setting, which is a different thing and routinely
+    /// disagrees. The grocery list is keyed by this, so it's what `GroceryWeeks` must cut
+    /// rebuild calls on. Defaults to `.sunday` (the server default) until the first sync
+    /// tick lands: a plan applied in the very first seconds of a cold launch can miss it,
+    /// and guessing the server default there is better than guessing the device's.
+    private(set) var householdWeekStart: HouseholdWeekStart = .sunday
     private(set) var personCount = 0
     private(set) var eventCount = 0
     private(set) var pendingUploads = 0
@@ -972,14 +979,20 @@ final class SyncManager {
         )) ?? 0
 
         // Bucket the agenda by the household's timezone (synced households row),
-        // falling back to the device zone before the first sync.
-        if let tz = try? await db.getOptional(
-            sql: "SELECT timezone FROM households LIMIT 1", parameters: [],
-            mapper: { try $0.getStringOptional(name: "timezone") }
-        ), let id = tz, let zone = TimeZone(identifier: id) {
-            // Only assign on a real change — this runs on every sync-status tick, and
-            // householdTz's didSet rebuilds the whole event index.
-            if zone.identifier != householdTz.identifier { householdTz = zone }
+        // falling back to the device zone before the first sync. The same read carries
+        // week_start, which the grocery rebuilds are cut on.
+        if let row = try? await db.getOptional(
+            sql: "SELECT timezone, week_start FROM households LIMIT 1", parameters: [],
+            mapper: { (try $0.getStringOptional(name: "timezone"),
+                       try $0.getStringOptional(name: "week_start")) }
+        ) {
+            if let id = row.0, let zone = TimeZone(identifier: id) {
+                // Only assign on a real change — this runs on every sync-status tick, and
+                // householdTz's didSet rebuilds the whole event index.
+                if zone.identifier != householdTz.identifier { householdTz = zone }
+            }
+            let first = HouseholdWeekStart(raw: row.1)
+            if first != householdWeekStart { householdWeekStart = first }
         }
     }
 }
