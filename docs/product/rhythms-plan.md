@@ -60,11 +60,14 @@ make it a goal as well — the two can coexist on one event, since `events` can 
 
 The original plan's single decision was *completion-anchored, not calendar-anchored*, with
 calendar anchoring deliberately deferred out of v1. Of the eight real cases, **two are
-completion-anchored** (air filter, car oil), **five are calendar-anchored or
-booking-shaped** (trash, family outing, two temple visits, self-care day), and one —
-"scheduling family household chores" — is ambiguous and probably belongs to the chores
-module. So that deferral is the one thing this rewrite reverses. Both anchors ship
-together, discriminated by a single column: what closes out a period.
+completion-anchored** (air filter, car oil) and **six are calendar-anchored or
+booking-shaped** (trash, family outing, two temple visits, self-care day, family chore
+day). So that deferral is the one thing this rewrite reverses. Both anchors ship together,
+discriminated by a single column: what closes out a period.
+
+On that last one: "family chore day" is **scheduling a day to do chores together**, not a
+chore. The chores module owns individual assignable tasks with rewards and approval; the
+rhythm owns the recurring decision to set aside an afternoon for them. Settled 2026-08-18.
 
 - **`satisfied_by = 'completion'`** — you did the thing. *Completion-anchored*: the next due
   date is measured from when you **actually** did it, so doing it two weeks late shifts
@@ -151,8 +154,14 @@ create table rhythms (
   -- at all.
   rrule text,
 
-  -- How far ahead a period surfaces. A quarterly item that appears 90 days early is just
-  -- clutter; a booking-shaped one needs more runway than a maintenance one, hence 14d.
+  -- The runway: how much warning you want. One semantic, two readings — for 'completion'
+  -- it's "show it before it's due"; for 'scheduling' it's "start reminding me to book it".
+  -- Both are "surface it this long before the deadline", so the column stays single.
+  --   completion → surfaces when now() >= next_due_at - lead_time
+  --   scheduling → surfaces when now() >= period_end - lead_time, i.e. lead_time is your
+  --                booking runway. NOT measured from period_start: a quarterly item that
+  --                nagged from day one would nag for 90 days, which trains you to ignore
+  --                it. Default 14d gives a fortnight to find a slot.
   lead_time interval not null default '14 days',
 
   -- completion only. Denormalised so the "what's due" query is a plain index scan.
@@ -235,8 +244,14 @@ GET /rhythms/attention?from=<date>&to=<date>[&personId=<id>]
 returning a merged, sorted list of:
 
 - `{ kind: 'due',    rhythm, dueAt, overdue }`            — completion-shape, inside lead time
-- `{ kind: 'unscheduled', rhythm, periodStart, periodEnd }` — scheduling-shape, `auto_schedule = false`,
-  no event with this `rhythm_id` in the period, not skipped
+- `{ kind: 'unscheduled', rhythm, periodStart, periodEnd }` — scheduling-shape, no event with
+  this `rhythm_id` in the period, not skipped, and `now() >= periodEnd - lead_time`
+
+**v1 is REST-only.** The `rhythms` table itself is not added to PowerSync (settled
+2026-08-18). Scheduling-shape rhythms are unaffected offline — they *are* events, which
+already sync — so the only offline gap is a completion-shape Today card going blank, which
+is the same gap chores already have. Revisit alongside the chores-on-PowerSync work rather
+than paying the ~780 lines of per-domain plumbing (see the sizing note) for one card.
 
 Today passes a one-day window, the weekly planner passes a week.
 
@@ -359,6 +374,50 @@ Sequencing note: the event round-trip is the risky piece, not the schema. `event
 **three write paths** (REST, PowerSync CRUD, Google sync) and a rhythm-created event must
 behave correctly through all of them — an event losing its `rhythm_id` on a sync round-trip
 would silently un-satisfy a period. Build that second, with integration tests, before any UI.
+
+## Implementation sequencing
+
+Everything lands on **one branch, one PR, one commit per piece**, per the repo's batch rule.
+
+**Phase 1 — the contract (serial).** Migration `0097_rhythms.sql` (three tables +
+`events.rhythm_id` + partial index; `-- Up Migration` first), failing integration test
+first against the `goals.integration.test.ts` harness — testcontainer Postgres,
+`runMigrations`, real routes. Then the service (create / update / complete / skip /
+advance-period) and `GET /rhythms/attention`.
+
+**Module registration belongs in phase 1, not the fan-out.** `ModuleKey` + `MODULES`, the
+hand-mirrored `apps/web/src/lib/modules.ts`, `moduleRoutes('rhythms')`, and *both* card
+enums (`TODAY_CARDS`, `MOBILE_TODAY_CARDS`) are touched by web-card and iOS-card work
+alike. Two parallel workers each adding `rhythms` to those files conflict on the same
+lines, guaranteed. Land it once, up front.
+
+**Phase 2 — the event round-trip (serial, and the risky part).** `events.rhythm_id`
+surviving all three write paths (REST, PowerSync CRUD, Google sync), plus `auto_schedule`
+event generation and the booking flow. Integration tests per write path, because an event
+silently losing its `rhythm_id` un-satisfies a period with no error anywhere.
+
+**Phase 3 — parallelizable, only once phases 1–2 are pushed.** Disjoint file sets:
+
+| Worker | Scope |
+|---|---|
+| 1 | Web Today card + web management screen |
+| 2 | Countdowns 4th source + web calendar chip overlay |
+| 3 | Docs — `features.md`, roadmap Planned→Done, a how-to page, `CHANGELOG.md` |
+| 4 | iOS Today card + management screen — **both** `TodayView` *and* `KioskDashboard` |
+
+Three constraints that break naive fan-out:
+
+1. **A fresh worktree branches off `origin/main`**, which has no `rhythms` schema. Phase-3
+   workers must re-base onto the pushed implementation branch as their *first* action, or
+   their work neither compiles nor merges.
+2. **iOS builds and Playwright must never overlap** — the Simulator dies under load. Web
+   verification and iOS verification go in different waves regardless of isolation.
+3. **A symlinked `node_modules` uses the main checkout's installed versions**, which drift
+   from the branch lockfile (this hid a React 18-vs-19 bug on PR #147). Install against the
+   branch lockfile rather than symlinking.
+
+Exactly one worker owns each shared file — `CHANGELOG.md` is worker 3's alone — since
+separate trees remove *edit* collisions but not *merge* conflicts.
 
 ## Related: PowerSync sizing for chores and lists
 
