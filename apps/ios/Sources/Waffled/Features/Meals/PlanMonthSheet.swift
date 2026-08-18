@@ -478,14 +478,24 @@ struct PlanMonthSheet: View {
         applying = true
         // Write new drafts + edited existing nights; leave untouched existing nights
         // alone; clear nights that were planned before but the user skipped.
+        var touched: [String] = []
         for card in suggestions where !plannedDates.contains(card.date) || dirty.contains(card.date) {
             _ = await sync.setMealPlan(date: card.date, mealType: card.mealType,
                                        recipeId: card.recipeId, title: card.recipeId == nil ? card.title : nil)
+            touched.append(card.date)
         }
         for d in skipped where plannedDates.contains(d) {
             _ = await sync.clearMealPlan(date: d, mealType: "dinner")
+            touched.append(d)   // cleared: that shopping has to come back OFF the list
         }
-        await sync.rebuildGroceryFromWeek(weekStart: monthStart)
+        // Rebuild every week this apply touched — one call per week. A rebuild covers
+        // exactly one week, so the old single call with `monthStart` left every week of
+        // the month but the first planned and never shopped for. Untouched existing
+        // nights are deliberately absent: their groceries are already on the list.
+        // Cut on the HOUSEHOLD's first-day-of-week, not the device's — see GroceryWeeks.
+        for week in GroceryWeeks.weekStarts(touched, firstDay: sync.householdWeekStart) {
+            await sync.rebuildGroceryFromWeek(weekStart: week)
+        }
         applying = false
         onApplied()
         dismiss()

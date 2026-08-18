@@ -803,10 +803,12 @@ struct RecipeScheduleSheet: View {
 }
 
 /// "Add all, or pick specific ingredients" — the shopper may already have some on hand.
-/// Defaults to EVERY ingredient selected, staples included: guessing what someone has in
-/// the pantry is a guess, and a missed item is worse at the shop than an extra one to
-/// uncheck. Staples still carry a "likely on hand" hint to steer the unchecking. Adds
-/// only the checked subset.
+///
+/// Opens with every ingredient selected EXCEPT the ones the pantry actually matched
+/// (`inPantry`). That exception is the whole point: guessing was the old problem, and
+/// with the pantry module on this is no longer a guess but a real match against the
+/// household's inventory. Staples are a different claim and stay CHECKED — see
+/// `RecipeGroceryPick`, which owns the rule and the copy. Adds only the checked subset.
 struct RecipeGrocerySheet: View {
     @Environment(\.dismiss) private var dismiss
     let title: String
@@ -825,10 +827,11 @@ struct RecipeGrocerySheet: View {
         self.ingredients = ingredients
         self.ratio = ratio
         self.onAdd = onAdd
-        _selected = State(initialValue: Set(ingredients.map(\.id)))
+        _selected = State(initialValue: RecipeGroceryPick.initialSelection(ingredients))
     }
 
     private var allOn: Bool { selected.count == ingredients.count }
+    private var pantryCount: Int { RecipeGroceryPick.pantryCount(ingredients) }
 
     var body: some View {
         NavigationStack {
@@ -836,8 +839,12 @@ struct RecipeGrocerySheet: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Add to grocery list").font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink3).tracking(0.4)
                     Text(title).font(WF.serif(22, .bold)).foregroundStyle(WF.ink).lineLimit(2)
-                    Text("Uncheck anything you already have on hand.")
-                        .font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2)
+                    // Says how many it unchecked — a pre-unchecked box the user never
+                    // touched has to be accounted for, or the short list looks like a bug.
+                    Text(RecipeGroceryPick.intro(pantryCount: pantryCount))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(pantryCount > 0 ? WF.success : WF.ink2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 10)
 
@@ -864,7 +871,7 @@ struct RecipeGrocerySheet: View {
                 .scrollContentBackground(.hidden)
 
                 Button { onAdd(Array(selected)); dismiss() } label: {
-                    Text(selected.isEmpty ? "Choose ingredients" : "Add \(selected.count) item\(selected.count == 1 ? "" : "s")")
+                    Text(RecipeGroceryPick.addLabel(count: selected.count))
                         .font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.onInk)
                         .frame(maxWidth: .infinity).padding(.vertical, 15)
                         .background(WF.ink).clipShape(Capsule())
@@ -900,8 +907,15 @@ struct RecipeGrocerySheet: View {
                 Text(ing.prepNote.map { "\(ing.name), \($0)" } ?? ing.name)
                     .font(.system(size: 15)).foregroundStyle(WF.ink)
                     .fixedSize(horizontal: false, vertical: true)
-                if ing.isStaple {
+                // One hint slot, and the real match wins it — see RecipeGroceryPick.hint.
+                switch RecipeGroceryPick.hint(for: ing) {
+                case .inPantry:
+                    Text("🥫 in your pantry").font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(WF.success)
+                case .staple:
                     Text("pantry staple — likely on hand").font(.system(size: 12)).foregroundStyle(WF.ink3)
+                case nil:
+                    EmptyView()
                 }
             }
             Spacer(minLength: 0)

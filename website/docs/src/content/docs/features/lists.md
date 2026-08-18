@@ -93,7 +93,7 @@ which never reach the auto-built list in the first place.
 
 - The **weekly auto-build doesn't skip** what's in your pantry — by design, per above. Only staples are held back.
 - **Nothing writes back to your list automatically.** Running low on something doesn't add it; from Pantry, an item you mark used up offers a **+ Shopping list** button, and that's a deliberate tap.
-- Badges are **web-only for now**. iPhone and iPad show the grocery list without them.
+- **Nothing is hidden or ticked off for you.** A badged row stays on the list and stays checkable — matching is presence-only, so the badge can't tell you whether what's on the shelf is enough.
 
 ## Where it works
 
@@ -103,7 +103,7 @@ which never reach the auto-built list in the first place.
 | iPhone | ✅ |
 | iPad | ✅ |
 
-Every surface builds, checks, and edits lists; **iPad** uses a master/detail layout with the list rail beside the items. The pantry badge + picker pre-uncheck are **web-only** so far.
+Every surface builds, checks, and edits lists; **iPad** uses a master/detail layout with the list rail beside the items. The pantry badge and the picker's pre-uncheck work on all three.
 
 ## Settings
 

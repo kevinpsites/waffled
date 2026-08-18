@@ -400,8 +400,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   those ingredients unchecked. It **flags, never filters** — matching is presence-only, so
   we can say you have chicken but not that you have enough, and an extra item in the cart
   beats a second trip. Matched at read time rather than stamped during the weekly rebuild,
-  so it can't go stale when you cook or scan. **Later:** iOS parity for the board badge +
-  picker pre-uncheck (web-only today); quantity *comparison* for genuinely countable items
+  so it can't go stale when you cook or scan. **iPhone/iPad have both now too** — the same
+  badge under the item name and the same pre-unchecked picker (which says how many it
+  unchecked). **Later:** quantity *comparison* for genuinely countable items
   (eggs, limes, cans — `lists/quantity.ts` already parses the amounts, and bulk goods like
   rice/pasta/flour are staples that never reach the list anyway, so this is a smaller job
   than it looks); vegetable-based "mains" + recipe filter.

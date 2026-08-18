@@ -492,8 +492,16 @@ struct PlanWeekSheet: View {
                                        recipeId: card.recipeId,
                                        title: card.recipeId == nil ? card.title : nil)
         }
-        // "& build list" — rebuild the grocery list from the newly planned week.
-        await sync.rebuildGroceryFromWeek(weekStart: start)
+        // "& build list" — rebuild from the nights actually written. One week of planning
+        // is usually one grocery week, but not always: `start` comes off the planner grid,
+        // which snaps to the DEVICE's first-day-of-week, while the grocery list is keyed
+        // by the HOUSEHOLD's. On a sunday-locale phone in a monday household the grid's
+        // Sun–Sat straddles two household weeks — and the server, which snaps `weekStart`
+        // to the household boundary, would quietly turn that one call into a rebuild of
+        // the week *before* the plan. Deriving the weeks from the dates covers both.
+        for week in GroceryWeeks.weekStarts(suggestions.map(\.date), firstDay: sync.householdWeekStart) {
+            await sync.rebuildGroceryFromWeek(weekStart: week)
+        }
         applying = false
         onApplied()
         dismiss()
