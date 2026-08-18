@@ -95,4 +95,27 @@ import Testing
         #expect(RecipeGroceryPick.hint(for: ing("a", "Salt", staple: true)) == .staple)
         #expect(RecipeGroceryPick.hint(for: ing("a", "Cod")) == nil)
     }
+
+    // MARK: when the action can run at all
+
+    /// The recipe detail's toolbar menu is live from the first frame, but the sheet
+    /// builds its whole state from `ingredients`, which arrive with `loadDetail()`. Tap
+    /// it early enough and the sheet opens on an empty list with nothing to add.
+    @Test func cannotAddBeforeTheIngredientsLoad() {
+        #expect(RecipeGroceryPick.canAdd([]) == false)
+    }
+
+    @Test func canAddOnceTheIngredientsAreThere() {
+        #expect(RecipeGroceryPick.canAdd([ing("a", "Cod")]) == true)
+    }
+
+    /// A pantry that covers the entire recipe opens the sheet with NOTHING checked —
+    /// but the action is still worth offering. The rows are all there, each one says
+    /// why it's unchecked, and "Select all" is the way to override us. That is a very
+    /// different screen from the empty one, and only the empty one is a bug.
+    @Test func aFullyStockedPantryStillOpensTheSheet() {
+        let all = [ing("a", "Eggs", inPantry: true), ing("b", "Milk", inPantry: true)]
+        #expect(RecipeGroceryPick.initialSelection(all).isEmpty)
+        #expect(RecipeGroceryPick.canAdd(all) == true)
+    }
 }

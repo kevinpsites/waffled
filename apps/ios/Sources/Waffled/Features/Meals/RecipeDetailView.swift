@@ -88,9 +88,15 @@ struct RecipeDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { scheduling = true } label: { Label("Schedule…", systemImage: "calendar") }
+                    // Disabled until the ingredients land: this menu is live from the
+                    // first frame, while the sheet builds its whole state from
+                    // `ingredients` at init, so an early tap opened it empty. The
+                    // banner's copy of this action can't hit the gap — it only renders
+                    // inside `if !ingredients.isEmpty`. See `RecipeGroceryPick.canAdd`.
                     Button { pickingGrocery = true } label: {
                         Label("Add to grocery list", systemImage: "cart.badge.plus")
                     }
+                    .disabled(!RecipeGroceryPick.canAdd(ingredients))
                     // Opens the Meal Builder with this recipe already the main. It is
                     // presented, not pushed: this screen is hosted by four different
                     // navigation stacks and only one of them knows MealsRoute.
