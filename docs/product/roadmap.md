@@ -397,7 +397,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   cooked. We deliberately confirm rather than subtract exact amounts (units don't reconcile
   cleanly). Putting the shopping away also got out of the way of itself: the "Where" picker
   creates a **section on the fly** (`POST /api/pantry/locations`), scanned amounts take
-  **fractions** (½ a bag, with ¼/½/¾ shortcuts), and the iOS scan sheet now shows the same
+  **fractions** (½ a bag; the ¼/½/¾ shortcut chips are iOS), and the iOS scan sheet now shows the same
   **allergen warning** the web one does — badges, "may contain" traces, and who it affects.
   **Later:** true unit/quantity reconciliation; vegetable-based "mains" + recipe filter.
 

@@ -81,11 +81,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the place ("Garage shelf", "Chest freezer") and the item files there straight away. The
   new section joins the household's pantry list, so it shows up in the sidebar and on
   everyone else's devices too — no trip to Settings mid-unpack. Web, iPhone and iPad.
-- **Half a bag is now a real amount when you scan.** The scan sheet's amount is typeable
-  instead of a whole-numbers-only stepper, with one-tap **¼ ½ ¾** shortcuts, so an opened
-  bag of flour or a part-used block of cheese goes in as what it actually is. Amounts add
-  up correctly across re-scans (½ + ¼ = ¾) and no longer come back as a wall of decimal
-  digits.
+- **Half a bag is now a real amount when you scan.** On iPhone and iPad the scan sheet's
+  amount is typeable instead of a whole-numbers-only stepper, with one-tap **¼ ½ ¾**
+  shortcuts, so an opened bag of flour or a part-used block of cheese goes in as what it
+  actually is. Amounts add up correctly across re-scans (½ + ¼ = ¾) and no longer come
+  back as a wall of decimal digits.
 - **A scan now tells you who in the house can't eat it.** When a barcode matches a product
   database, the confirm sheet on iPhone/iPad shows the full allergen list with anything
   your household avoids ringed in red, a "may contain" row for traces, and a plain warning
