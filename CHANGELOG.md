@@ -104,6 +104,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **"Plan my month" now builds the whole month's grocery list, not one week of it.**
+  Applying a month plan asked for a single grocery rebuild, and a rebuild only ever covers
+  one week — so every week after the first was left unbuilt. Worse, the request was keyed
+  to the 1st of the month, which usually isn't the day your week starts, so even the first
+  week's items were filed under a date the grocery board never looks at and the list came
+  back empty. Applying a month now rebuilds each week it touches, including weeks you
+  *cleared* nights from so that shopping comes back off the list, and any date you hand the
+  grocery list is understood as the week containing it. Households that start their week on
+  Monday are handled on their own boundaries rather than Sunday's. If you hit this, nothing
+  was lost — opening a week always rebuilt it — it just never happened up front.
 - **Your pantry stopped claiming you have things you don't.** Two habits of real
   ingredient names were quietly fooling it. Meal-kit recipes write "Cream cheese —
   contains milk", and Waffled read that whole phrase as the name, so a carton of milk
