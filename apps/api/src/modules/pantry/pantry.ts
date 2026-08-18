@@ -16,6 +16,15 @@ type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const DEFAULT_LOCATIONS = ['Freezer', 'Fridge', 'Pantry']
+// A household that has never configured sections has nothing stored, and readLocations
+// hands back DEFAULT_LOCATIONS for it — so an append has to start from those too, or
+// the first section created would be the ONLY one left.
+const STORED_LOCATIONS = `(case when jsonb_typeof(h.settings->'pantry'->'locations') = 'array'
+                                 and jsonb_array_length(h.settings->'pantry'->'locations') > 0
+                            then h.settings->'pantry'->'locations' else $3::jsonb end)`
+// Enough for any real kitchen, garage and deep freeze; a guard against a client loop
+// growing the row without bound.
+const MAX_LOCATIONS = 40
 
 interface PantryRow {
   id: string
@@ -440,15 +449,37 @@ export function registerPantryRoutes(api: Api): void {
     if (current.some((l) => l.toLowerCase() === name.toLowerCase())) {
       return res.status(200).json({ locations: current, added: false })
     }
+    if (current.length >= MAX_LOCATIONS) {
+      return res.status(400).json({ error: 'BadRequest', message: `at most ${MAX_LOCATIONS} sections` })
+    }
+    // Append in ONE statement, and read the existing list off the row being updated
+    // rather than off `current`. This endpoint is meant to be hit mid-add from
+    // whichever device is in your hand, so two arriving together is ordinary — and a
+    // read-here-write-there would drop one, the second write replacing the whole
+    // array with its own idea of it. Because every reference below is to h.settings,
+    // Postgres re-evaluates both the guard and the new value against the latest row
+    // version when it has to wait on a concurrent write, so the second add appends to
+    // the first one's list instead of clobbering it.
     const { rows } = await query<{ settings: unknown }>(
-      `update households
-          set settings = coalesce(settings, '{}'::jsonb)
-               || jsonb_build_object('pantry', coalesce(settings->'pantry', '{}'::jsonb) || $2::jsonb)
-        where id = $1
-        returning settings`,
-      [tenant.householdId, JSON.stringify({ locations: [...current, name] })]
+      `update households h
+          set settings = coalesce(h.settings, '{}'::jsonb)
+               || jsonb_build_object('pantry',
+                    coalesce(h.settings->'pantry', '{}'::jsonb)
+                    || jsonb_build_object('locations', ${STORED_LOCATIONS} || to_jsonb($2::text)))
+        where h.id = $1
+          and not exists (
+            select 1 from jsonb_array_elements_text(${STORED_LOCATIONS}) e
+             where lower(e) = lower($2))
+        returning h.settings`,
+      [tenant.householdId, name, JSON.stringify(DEFAULT_LOCATIONS)]
     )
-    return res.status(201).json({ locations: readLocations(rows[0]?.settings), added: true })
+    // No row updated → someone else added the same name in the moment between the
+    // check above and this write. Their list is the answer.
+    if (!rows[0]) {
+      const latest = await query<{ settings: unknown }>(`select settings from households where id = $1`, [tenant.householdId])
+      return res.status(200).json({ locations: readLocations(latest.rows[0]?.settings), added: false })
+    }
+    return res.status(201).json({ locations: readLocations(rows[0].settings), added: true })
   }))
 
   // Update the pantry module's per-household config (any member): the location list

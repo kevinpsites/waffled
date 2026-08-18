@@ -350,6 +350,40 @@ describe('pantry Open Food Facts integration', () => {
     expect(JSON.parse(again.body).item.amount).toBe('1')
   })
 
+  // This endpoint exists to be hit mid-add from whichever device is in your hand, so
+  // two of them landing together is the ordinary case, not a stress test. A
+  // read-modify-write loses one: both read the same list and the second write wins.
+  it('keeps both sections when two devices add different ones at once', async () => {
+    const [a, b] = await Promise.all([
+      call('POST', '/api/pantry/locations', kevin, { name: 'Beer fridge' }),
+      call('POST', '/api/pantry/locations', kevin, { name: 'Chest freezer' }),
+    ])
+    expect([a.statusCode, b.statusCode]).toEqual([201, 201])
+
+    const after = JSON.parse((await call('GET', '/api/pantry', kevin)).body).locations as string[]
+    expect(after).toContain('Beer fridge')
+    expect(after).toContain('Chest freezer')
+    // ...and neither trampled the sections that were already there.
+    expect(after).toContain('Pantry')
+  })
+
+  // A client looping on this endpoint shouldn't be able to grow the household row
+  // without bound. Saves and restores the real list so the rest of the file is unaffected.
+  it('refuses to add a section past the cap', async () => {
+    const before = JSON.parse((await call('GET', '/api/pantry', kevin)).body).locations as string[]
+    const full = Array.from({ length: 40 }, (_, i) => `Shelf ${i + 1}`)
+    expect((await call('PUT', '/api/pantry/config', kevin, { locations: full })).statusCode).toBe(200)
+
+    const over = await call('POST', '/api/pantry/locations', kevin, { name: 'One too many' })
+    expect(over.statusCode).toBe(400)
+    // A name already on the (full) list is still a no-op rather than an error.
+    const dup = await call('POST', '/api/pantry/locations', kevin, { name: 'shelf 1' })
+    expect(dup.statusCode).toBe(200)
+    expect(JSON.parse(dup.body).added).toBe(false)
+
+    expect((await call('PUT', '/api/pantry/config', kevin, { locations: before })).statusCode).toBe(200)
+  })
+
   it('adds a new section on the fly and files an item under it', async () => {
     const before = JSON.parse((await call('GET', '/api/pantry', kevin)).body).locations as string[]
     expect(before).not.toContain('Garage shelf')
