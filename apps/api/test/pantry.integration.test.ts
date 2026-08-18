@@ -327,6 +327,29 @@ describe('pantry Open Food Facts integration', () => {
     expect(JSON.parse(third.body).item.amount).toBe('3')
   })
 
+  // Both scan sheets offer a free-text amount, so "half a bag" is a legitimate answer
+  // for something you measure by eye. Coercing that to "1" on the way in throws away
+  // what the person actually said; only a blank amount means "one of these".
+  it('keeps a free-text amount on the first scan', async () => {
+    const r = await call('POST', '/api/pantry/scan', kevin, { name: 'Flour', location: 'Pantry', amount: 'half a bag', barcode: '55550005' })
+    expect(r.statusCode).toBe(201)
+    expect(JSON.parse(r.body).item.amount).toBe('half a bag')
+
+    // Blank still means one of the thing...
+    const blank = await call('POST', '/api/pantry/scan', kevin, { name: 'Cornmeal', location: 'Pantry', amount: '', barcode: '55550006' })
+    expect(JSON.parse(blank.body).item.amount).toBe('1')
+    // ...and so does a number that isn't a positive count — you can't scan zero of
+    // something, so that's a cleared field, not an answer.
+    const zero = await call('POST', '/api/pantry/scan', kevin, { name: 'Semolina', location: 'Pantry', amount: '0', barcode: '55550007' })
+    expect(JSON.parse(zero.body).item.amount).toBe('1')
+
+    // The ceiling, written down: text isn't a number, so the next scan of the same
+    // product can only count up from zero. Keeping it buys the first scan, not more.
+    const again = await call('POST', '/api/pantry/scan', kevin, { name: 'Flour', location: 'Pantry', amount: '1', barcode: '55550005' })
+    expect(JSON.parse(again.body)).toMatchObject({ incremented: true })
+    expect(JSON.parse(again.body).item.amount).toBe('1')
+  })
+
   it('adds a new section on the fly and files an item under it', async () => {
     const before = JSON.parse((await call('GET', '/api/pantry', kevin)).body).locations as string[]
     expect(before).not.toContain('Garage shelf')

@@ -111,6 +111,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A new pantry section that already existed under a different capitalisation no longer
+  loses the item.** Typing "garage shelf" when the household already had a "Garage shelf"
+  filed the item under the new spelling, which matched no section and dropped it into the
+  **Other** bucket with nothing to explain why. It now goes to the section you already
+  have.
+
+- **A scan keeps the amount you typed.** Answering the scan sheet's amount with something
+  it can't count — "half a bag" for flour you measure by eye — replaced it with "1". What
+  you wrote is now kept. (A blank amount still means one of the thing, and counting up a
+  free-text amount on a later scan still starts from zero — there's no number to add to.)
+
 - **The Edit button on a pantry item is reachable again on iPhone.** The item's detail
   screen let its last row slide under the bottom tab bar, so no amount of scrolling
   brought **Edit** into reach and an item could only be changed from the web. The screen

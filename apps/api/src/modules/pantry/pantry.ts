@@ -343,8 +343,15 @@ export function registerPantryRoutes(api: Api): void {
     // The scan sheet's amount is a free-text field you can clear. Blank parses as 0,
     // which would report "incremented" while adding nothing — a scan always means at
     // least one of the thing, so anything not a positive number counts as 1.
-    const typed = Number(String(b.amount ?? '').trim())
+    const raw = String(b.amount ?? '').trim()
+    const typed = Number(raw)
     const addAmt = Number.isFinite(typed) && typed > 0 ? typed : 1
+    // ...but "half a bag" is a real answer for something you measure by eye, and the
+    // sheet invites it. Keep it verbatim on a FIRST scan; only a blank field (or a
+    // number that isn't a positive count) becomes "1". Nothing can be done for it on
+    // the increment path below — text has no number to add to.
+    const isNumber = raw !== '' && Number.isFinite(typed)
+    const newAmount = raw !== '' && !isNumber ? raw : amountString(addAmt)
     const barcode = typeof b.barcode === 'string' && b.barcode.trim() ? b.barcode.trim() : null
     const match = barcode
       ? await query<PantryRow>(`select ${RETURNING} from pantry_items where household_id=$1 and barcode=$2 and used_up_at is null and deleted_at is null order by created_at limit 1`, [tenant.householdId, barcode])
@@ -359,9 +366,9 @@ export function registerPantryRoutes(api: Api): void {
       )
       return res.status(200).json({ item: present(upd.rows[0]), incremented: true })
     }
-    // Store the resolved count, so a blank/unparsable amount lands as "1" rather than
-    // an empty amount the next scan would have to guess at.
-    const row = await insertItem(tenant.householdId, { ...b, name, amount: amountString(addAmt) })
+    // Store the resolved amount, so a blank one lands as "1" rather than an empty
+    // amount the next scan would have to guess at.
+    const row = await insertItem(tenant.householdId, { ...b, name, amount: newAmount })
     return res.status(201).json({ item: present(row), incremented: false })
   }))
 
