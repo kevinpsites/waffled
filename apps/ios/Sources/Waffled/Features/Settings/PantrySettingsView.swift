@@ -44,7 +44,7 @@ struct PantrySettingsView: View {
                     WaffledLoading(top: 40)
                 }
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(16).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle("Pantry").navigationBarTitleDisplayMode(.inline)

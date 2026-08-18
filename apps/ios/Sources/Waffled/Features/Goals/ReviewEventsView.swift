@@ -125,7 +125,7 @@ struct ReviewEventsView: View {
                 if !model.recap.isEmpty { recapSection }
                 if !model.suggestions.isEmpty { suggestionSection }
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(16).padding(.bottom, WF.tabBarClearance)
         }
         // Bounce even when there's nothing to review, so pull-to-refresh still triggers.
         .scrollBounceBehavior(.always)

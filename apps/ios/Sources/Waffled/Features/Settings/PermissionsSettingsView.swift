@@ -33,7 +33,7 @@ struct PermissionsSettingsView: View {
                     .font(.system(size: 12)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 110)
+            .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle("Permissions").navigationBarTitleDisplayMode(.inline)

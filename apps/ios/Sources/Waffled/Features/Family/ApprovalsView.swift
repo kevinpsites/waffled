@@ -100,7 +100,7 @@ struct ApprovalsView: View {
                         }
                     }
                 }
-                .padding(16).padding(.bottom, 110)
+                .padding(16).padding(.bottom, WF.tabBarClearance)
                 // Fill the viewport so the ScrollView is genuinely scrollable even when
                 // empty — otherwise iOS won't reveal the pull-to-refresh control.
                 .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)

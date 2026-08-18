@@ -108,7 +108,7 @@ struct SettingsView: View {
                     .padding(.top, 8)
                 signOutFooter
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(16).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
@@ -224,7 +224,7 @@ struct ModulesSettingsView: View {
                     }
                 }
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(16).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle("Modules").navigationBarTitleDisplayMode(.inline)
@@ -379,7 +379,7 @@ struct ChoresRewardsSettingsView: View {
                 // write), so only surface it to admins — no dead-end for everyone else.
                 if isAdmin { groupTray { proofSection } }
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(16).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle("Chores & Rewards").navigationBarTitleDisplayMode(.inline)

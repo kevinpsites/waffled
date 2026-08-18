@@ -207,7 +207,7 @@ struct PantryView: View {
                     AllergenKey(avoid: model.avoidSet)
                 }
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(16).padding(.bottom, WF.tabBarClearance)
         }
     }
 
@@ -275,7 +275,7 @@ struct PantryView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .contentMargins(.bottom, 110, for: .scrollContent)
+        .contentMargins(.bottom, WF.tabBarClearance, for: .scrollContent)
     }
 
     // MARK: a card

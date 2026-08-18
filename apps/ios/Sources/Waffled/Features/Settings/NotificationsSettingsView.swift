@@ -36,7 +36,7 @@ struct NotificationsSettingsView: View {
                     footnote
                 }
             }
-            .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 110)
+            .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle("Notifications").navigationBarTitleDisplayMode(.inline)

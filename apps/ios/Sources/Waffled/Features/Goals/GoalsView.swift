@@ -282,7 +282,7 @@ struct GoalsView: View {
                         message: model.error ? "Pull to refresh to try again." : "Add one with the ＋ button.")
                 }
             }
-            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, WF.tabBarClearance)
         }
         // Bounce even when the list is short/empty, so pull-to-refresh still triggers.
         .scrollBounceBehavior(.always)
@@ -2706,7 +2706,7 @@ struct GoalDetailView: View {
                     deleteButton
                 }
             }
-            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle(goal.title)

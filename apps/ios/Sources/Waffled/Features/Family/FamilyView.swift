@@ -67,7 +67,7 @@ struct FamilyView: View {
                 }
             }
             .padding(.horizontal, 18)
-            .padding(.bottom, 110)
+            .padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .toolbar(.hidden, for: .navigationBar)   // the screen draws its own "Family" header

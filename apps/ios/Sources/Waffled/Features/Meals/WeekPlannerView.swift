@@ -79,7 +79,7 @@ struct WeekPlannerView: View {
                 if hasEmptyNight { planWeekButton }
                 ForEach(days, id: \.self) { day in dayCard(day) }
             }
-            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)
+            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, WF.tabBarClearance)
         }
         .refreshable { if gate.shouldReloadNow() { await load() } }
         // Horizontal flick steps a week (matching the Chores day list and Calendar).
