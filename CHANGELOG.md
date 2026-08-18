@@ -25,8 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not amounts, so it can tell you own eggs but not whether your one egg covers the dozen a
   recipe wants — an extra item in the cart beats a second trip. Which is also why the badge
   shows what's on the shelf instead of a verdict; you're the one standing in front of it.
-  Staples are unchanged and still start checked. Requires the Pantry module; web/kiosk for
-  now, with iPhone and iPad to follow.
+  Staples are unchanged and still start checked. Requires the Pantry module, and works
+  everywhere — web, kiosk, iPhone and iPad.
 - **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
   hardware run, the packing list, whatever's live this week — right on the Today board,
   with tap-to-tick-off. Pick which list from the card itself, the same way the Goals
@@ -111,9 +111,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   week's items were filed under a date the grocery board never looks at and the list came
   back empty. Applying a month now rebuilds each week it touches, including weeks you
   *cleared* nights from so that shopping comes back off the list, and any date you hand the
-  grocery list is understood as the week containing it. Households that start their week on
-  Monday are handled on their own boundaries rather than Sunday's. If you hit this, nothing
-  was lost — opening a week always rebuilt it — it just never happened up front.
+  grocery list is understood as the week containing it. Fixed on the web, on iPhone and on
+  iPad. If you hit this, nothing was lost — opening a week always rebuilt it — it just never
+  happened up front.
+- **"Plan my week & build list" builds the right week on iPhone and iPad.** If your
+  household starts its week on Monday but your phone's region starts it on Sunday, the
+  planner's grid and the grocery list disagreed about which week you were looking at, and
+  the list that got built was the week *before* the one you'd just planned. Both now follow
+  your household's setting, and a plan that straddles two of those weeks builds both.
 - **Your pantry stopped claiming you have things you don't.** Two habits of real
   ingredient names were quietly fooling it. Meal-kit recipes write "Cream cheese —
   contains milk", and Waffled read that whole phrase as the name, so a carton of milk
