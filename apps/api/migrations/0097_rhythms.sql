@@ -30,11 +30,11 @@ create table rhythms (
   -- scheduling only: the anchor that makes "which period are we in?" answerable at all.
   -- Period N is [starts_on + N*every, starts_on + (N+1)*every). An rrule alone cannot
   -- define this (RFC5545 generates occurrences only relative to a DTSTART), and both the
-  -- attention query and rhythm_skips need a well-defined boundary.
+  -- attention query and rhythm_skips need a well-defined boundary. The grid is derived
+  -- from this anchor on read (generate_series stepping by `every`) rather than cached in
+  -- a column — a cached "current period" would need advancing by something, and nothing
+  -- here runs on a timer.
   starts_on date,
-  -- Denormalised current period, advanced lazily once now() passes its end. Keeps the
-  -- attention query an index scan rather than an interval-division expression.
-  current_period_start date,
 
   -- scheduling only: can we pick the datetime ourselves, or must a human?
   auto_schedule boolean not null default false,
@@ -65,11 +65,11 @@ create table rhythms (
   constraint rhythms_shape_is_coherent check (
     (satisfied_by = 'completion'
        and next_due_at is not null
-       and starts_on is null and current_period_start is null
+       and starts_on is null
        and rrule is null and auto_schedule = false)
     or
     (satisfied_by = 'scheduling'
-       and starts_on is not null and current_period_start is not null
+       and starts_on is not null
        and next_due_at is null and last_completed_at is null
        and (auto_schedule = false or rrule is not null))
   )

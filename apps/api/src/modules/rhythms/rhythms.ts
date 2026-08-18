@@ -20,7 +20,6 @@ export interface Rhythm {
   satisfiedBy: SatisfiedBy
   every: string
   startsOn: string | null
-  currentPeriodStart: string | null
   autoSchedule: boolean
   rrule: string | null
   leadTime: string
@@ -38,7 +37,6 @@ interface Row {
   satisfied_by: SatisfiedBy
   every: string
   starts_on: string | null
-  current_period_start: string | null
   auto_schedule: boolean
   rrule: string | null
   lead_time: string
@@ -76,7 +74,6 @@ function toRhythm(r: Row): Rhythm {
     satisfiedBy: r.satisfied_by,
     every: intervalText(r.every),
     startsOn: dateText(r.starts_on),
-    currentPeriodStart: dateText(r.current_period_start),
     autoSchedule: r.auto_schedule,
     rrule: r.rrule,
     leadTime: intervalText(r.lead_time),
@@ -88,7 +85,7 @@ function toRhythm(r: Row): Rhythm {
 
 const SELECT = `
   select id, title, emoji, notes, person_id, satisfied_by, every::text as every,
-         starts_on, current_period_start, auto_schedule, rrule, lead_time::text as lead_time,
+         starts_on, auto_schedule, rrule, lead_time::text as lead_time,
          last_completed_at, next_due_at, is_active
     from rhythms`
 
@@ -148,7 +145,7 @@ export async function createRhythm(householdId: string, input: CreateRhythmInput
       `insert into rhythms (household_id, title, emoji, notes, person_id, satisfied_by, every, lead_time, next_due_at)
        values ($1,$2,$3,$4,$5,'completion',$6::interval,$7::interval,$8::timestamptz)
        returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
-                 starts_on, current_period_start, auto_schedule, rrule, lead_time::text as lead_time,
+                 starts_on, auto_schedule, rrule, lead_time::text as lead_time,
                  last_completed_at, next_due_at, is_active`,
       [householdId, title, str(input.emoji), str(input.notes), personId, every, leadTime, nextDueAt]
     )
@@ -165,10 +162,10 @@ export async function createRhythm(householdId: string, input: CreateRhythmInput
 
   const { rows } = await query<Row>(
     `insert into rhythms (household_id, title, emoji, notes, person_id, satisfied_by, every, lead_time,
-                          starts_on, current_period_start, auto_schedule, rrule)
-     values ($1,$2,$3,$4,$5,'scheduling',$6::interval,$7::interval,$8::date,$8::date,$9,$10)
+                          starts_on, auto_schedule, rrule)
+     values ($1,$2,$3,$4,$5,'scheduling',$6::interval,$7::interval,$8::date,$9,$10)
      returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
-               starts_on, current_period_start, auto_schedule, rrule, lead_time::text as lead_time,
+               starts_on, auto_schedule, rrule, lead_time::text as lead_time,
                last_completed_at, next_due_at, is_active`,
     [householdId, title, str(input.emoji), str(input.notes), personId, every, leadTime, startsOn, autoSchedule, rrule]
   )
@@ -213,7 +210,7 @@ export async function completeRhythm(
             next_due_at = coalesce($3::timestamptz, now()) + every
       where household_id = $1 and id = $2 and deleted_at is null
       returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
-                starts_on, current_period_start, auto_schedule, rrule, lead_time::text as lead_time,
+                starts_on, auto_schedule, rrule, lead_time::text as lead_time,
                 last_completed_at, next_due_at, is_active`,
     [householdId, id, completedAt]
   )
@@ -274,7 +271,13 @@ export type AttentionItem =
 // rhythm_id fall inside the period?" — rather than stored. That question is idempotent by
 // nature, so a materialised copy would buy nothing and drift whenever an event is edited,
 // moved, or deleted.
-export async function listAttention(householdId: string, from: string, to: string): Promise<AttentionItem[]> {
+// Takes only the window's END. The caller validates `from` too, but the question both
+// shapes answer is "will this need attention by <horizon>?", which the far edge decides on
+// its own — a one-day Today window and a week-long planner window differ only in how far
+// out they look. Deliberately no lower bound: an overdue filter should keep surfacing
+// however long it has been overdue, which is the entire point of a maintenance register.
+export async function listAttention(householdId: string, horizon: string): Promise<AttentionItem[]> {
+  const to = horizon
   const out: AttentionItem[] = []
 
   // Completion shape: inside its lead time at any point in the window. An overdue item
@@ -282,7 +285,7 @@ export async function listAttention(householdId: string, from: string, to: strin
   // is no lower bound on next_due_at.
   const due = await query<Row & { due_at: Date; overdue: boolean }>(
     `select id, title, emoji, notes, person_id, satisfied_by, every::text as every,
-            starts_on, current_period_start, auto_schedule, rrule, lead_time::text as lead_time,
+            starts_on, auto_schedule, rrule, lead_time::text as lead_time,
             last_completed_at, next_due_at, is_active,
             next_due_at as due_at, (next_due_at <= $2::date) as overdue
        from rhythms
@@ -315,7 +318,7 @@ export async function listAttention(householdId: string, from: string, to: strin
           and r.starts_on <= $2::date
      )
      select p.id, p.title, p.emoji, p.notes, p.person_id, p.satisfied_by, p.every::text as every,
-            p.starts_on, p.current_period_start, p.auto_schedule, p.rrule, p.lead_time::text as lead_time,
+            p.starts_on, p.auto_schedule, p.rrule, p.lead_time::text as lead_time,
             p.last_completed_at, p.next_due_at, p.is_active,
             p.period_start, (p.period_start + p.every)::date as period_end
        from periods p

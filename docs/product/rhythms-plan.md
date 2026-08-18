@@ -1,11 +1,14 @@
 # Rhythms — the things that should keep happening
 
-**Status:** planned (design agreed, not built). Decided 2026-08-13, rescoped and renamed
-from "Upkeep" 2026-08-18 after checking the original design against real household cases.
+**Status:** in progress. Decided 2026-08-13, rescoped and renamed from "Upkeep" 2026-08-18
+after checking the original design against real household cases. **Phase 1 is built**
+(migration `0097_rhythms.sql`, service, `GET /rhythms/attention`, module registration —
+see *Implementation sequencing*); phases 2–3 are not.
 
 Where "trash out weekly", "air filter every 3 months", "change the car's oil", "book a
 temple visit", "take a self-care day once a quarter", and "family outing on the third
-weekend of the month" live. This is the plan; nothing here ships yet.
+weekend of the month" live. Nothing user-facing ships until the phase-3 surfaces land, so
+there is no `CHANGELOG.md` entry yet — that belongs with the UI.
 
 ## What a rhythm is
 
@@ -139,11 +142,10 @@ create table rhythms (
   -- Period N is [starts_on + N*every, starts_on + (N+1)*every). An rrule alone cannot
   -- define this — RFC5545 generates occurrences only relative to a DTSTART — and both
   -- `/rhythms/attention` and rhythm_skips.period_start need a well-defined boundary.
+  -- The grid is DERIVED from this anchor on read (generate_series stepping by `every`,
+  -- which tiles true calendar periods) rather than cached in a column. A cached "current
+  -- period" would need advancing by something, and nothing here runs on a timer.
   starts_on date,
-  -- Denormalised current period, advanced lazily on read once now() passes its end.
-  -- Keeps the attention query an index scan instead of an interval-division expression,
-  -- and gives rhythm_skips a stable key to point at.
-  current_period_start date,
 
   -- scheduling only: can we pick the datetime ourselves, or does a human have to?
   auto_schedule boolean not null default false,
@@ -176,11 +178,11 @@ create table rhythms (
   constraint rhythms_shape_is_coherent check (
     (satisfied_by = 'completion'
        and next_due_at is not null
-       and starts_on is null and current_period_start is null
+       and starts_on is null
        and rrule is null and auto_schedule = false)
     or
     (satisfied_by = 'scheduling'
-       and starts_on is not null and current_period_start is not null
+       and starts_on is not null
        and next_due_at is null and last_completed_at is null
        and (auto_schedule = false or rrule is not null))
   )
@@ -217,15 +219,13 @@ create table rhythm_skips (
 
 **Note what is deliberately absent: a per-period satisfaction table.** The goal bridge
 materializes `event_goal_logs` because double-counting a log is a real hazard there. Here the
-question is "does an event with this `rhythm_id` fall inside `[current_period_start,
-current_period_start + every)`?" — idempotent by nature — so satisfaction is **derived from
+question is "does an event with this `rhythm_id` fall inside the period?" — idempotent by nature — so satisfaction is **derived from
 `events`**, not dual-written. That avoids the drift that a materialized copy would invite
 when an event is edited, moved, or deleted, and it means an event that gets rescheduled
 *within* its period needs no reconciliation at all.
 
-This is only safe because the period boundary is materialized while the satisfaction is not.
-Deriving both would mean expanding an rrule in SQL on every read; materializing both would
-reintroduce the drift. `every` + `starts_on` own the grid, `events` owns the answer.
+Both the boundary and the satisfaction are derived, and neither needs an rrule expanded in
+SQL: `every` + `starts_on` own the grid via `generate_series`, and `events` owns the answer.
 
 Completing a `'completion'` rhythm is one transaction: insert a completion row, set
 `last_completed_at`, recompute `next_due_at = completed_at + every`. No materialization

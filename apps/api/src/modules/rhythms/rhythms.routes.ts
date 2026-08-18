@@ -37,7 +37,8 @@ export function registerRhythmRoutes(api: Api): void {
       return badRequest(res, 'from and to are required as YYYY-MM-DD')
     }
     if (to < from) return badRequest(res, 'to must not precede from')
-    return { items: await listAttention(tenant.householdId, from, to) }
+    // `from` is validated but not queried on — see listAttention: the horizon decides.
+    return { items: await listAttention(tenant.householdId, to) }
   }))
 
   api.post('/api/rhythms', tenantRoute(async (tenant, req: Request, res: Response) => {

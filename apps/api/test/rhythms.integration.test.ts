@@ -136,8 +136,8 @@ describe('rhythms schema', () => {
     await expect(
       withClient((c) =>
         c.query(
-          `insert into rhythms (household_id, title, satisfied_by, every, starts_on, current_period_start, auto_schedule)
-           values ($1,'Bad trash','scheduling','1 week', current_date, current_date, true)`,
+          `insert into rhythms (household_id, title, satisfied_by, every, starts_on, auto_schedule)
+           values ($1,'Bad trash','scheduling','1 week', current_date, true)`,
           [householdId]
         )
       )
@@ -216,7 +216,7 @@ describe('scheduling-shape rhythms', () => {
     expect(res.statusCode).toBe(201)
     const body = JSON.parse(res.body).rhythm
     templeId = body.id
-    expect(body.currentPeriodStart).toBe('2026-07-01')
+    expect(body.startsOn).toBe('2026-07-01')
     // Never tracked for this shape — asking "did you go?" is what makes it a goal.
     expect(body.lastCompletedAt).toBeNull()
   })
@@ -274,6 +274,22 @@ describe('scheduling-shape rhythms', () => {
 
     const after = await call('GET', '/api/rhythms/attention?from=2026-09-20&to=2026-09-27', kevin)
     expect(JSON.parse(after.body).items.some((i: { rhythm: { id: string } }) => i.rhythm.id === id)).toBe(false)
+  })
+})
+
+// /api/rhythms/attention and /api/rhythms/:id/completions share a prefix, and lambda-api
+// matches in registration order. If a later worker adds GET /api/rhythms/:id ahead of it,
+// the planner endpoint would silently start resolving 'attention' as an id — so pin it.
+describe('route precedence', () => {
+  it('resolves /api/rhythms/attention as the endpoint, not as an :id', async () => {
+    const res = await call('GET', '/api/rhythms/attention?from=2026-09-20&to=2026-09-27', kevin)
+    expect(res.statusCode).toBe(200)
+    expect(Array.isArray(JSON.parse(res.body).items)).toBe(true)
+  })
+
+  it('still rejects a malformed window with 400 rather than falling through', async () => {
+    const res = await call('GET', '/api/rhythms/attention?from=nope&to=2026-09-27', kevin)
+    expect(res.statusCode).toBe(400)
   })
 })
 
