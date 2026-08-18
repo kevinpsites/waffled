@@ -33,8 +33,12 @@ export function LocationField({ value, locations, onChange, onLocationsChanged }
     setBusy(true)
     setErr(null)
     try {
-      await pantryApi.addLocation(name)
-      onChange(name)
+      // Select the household's spelling, not the one that was just typed: an
+      // existing section matches case-insensitively server-side, so "garage shelf"
+      // is a no-op against "Garage shelf". Both list views bucket items by an exact
+      // string match, so keeping the typed casing would file this one under "Other".
+      const { locations: next } = await pantryApi.addLocation(name)
+      onChange(next.find((l) => l.toLowerCase() === name.toLowerCase()) ?? name)
       onLocationsChanged?.()
       setAdding(false)
       setDraft('')

@@ -3,6 +3,9 @@ import { LocationField } from './LocationField'
 
 interface Sent { method: string; url: string; body: unknown }
 
+// Stands in for POST /api/pantry/locations, matching what the route actually does:
+// a name that already exists in ANY casing is a no-op that hands back the list the
+// household already has, so the canonical spelling is the one in the response.
 function mockFetch(sent: Sent[], locations: string[]) {
   globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const u = String(url)
@@ -10,7 +13,11 @@ function mockFetch(sent: Sent[], locations: string[]) {
     const body = init?.body ? JSON.parse(init.body) : undefined
     sent.push({ method, url: u, body })
     if (u.endsWith('/api/pantry/locations') && method === 'POST') {
-      return { ok: true, json: async () => ({ locations: [...locations, (body as { name: string }).name], added: true }) }
+      const name = (body as { name: string }).name
+      const existing = locations.find((l) => l.toLowerCase() === name.toLowerCase())
+      return existing
+        ? { ok: true, json: async () => ({ locations, added: false }) }
+        : { ok: true, json: async () => ({ locations: [...locations, name], added: true }) }
     }
     return { ok: true, json: async () => ({}) }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,6 +55,25 @@ describe('LocationField', () => {
     expect(onLocationsChanged).toHaveBeenCalled()
     // Back to the picker, with the new section chosen.
     await waitFor(() => expect(screen.queryByPlaceholderText('New section name')).toBeNull())
+  })
+
+  // Typing a section that already exists in a different casing has to file the item
+  // under the household's spelling. Both list views bucket by an exact string match,
+  // so selecting the typed casing would strand the item in the "Other" catch-all.
+  it('selects the household spelling when the name only differs in casing', async () => {
+    const sent: Sent[] = []
+    mockFetch(sent, ['Freezer', 'Fridge', 'Garage shelf'])
+    const onChange = vi.fn()
+    render(
+      <LocationField value="Fridge" locations={['Freezer', 'Fridge', 'Garage shelf']} onChange={onChange} />
+    )
+
+    fireEvent.change(screen.getByLabelText('Location'), { target: { value: '__new__' } })
+    fireEvent.change(screen.getByPlaceholderText('New section name'), { target: { value: 'garage shelf' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add section' }))
+
+    await waitFor(() => expect(onChange).toHaveBeenCalled())
+    expect(onChange).toHaveBeenCalledWith('Garage shelf')
   })
 
   it('will not add a blank section, and cancel returns to the picker', async () => {
