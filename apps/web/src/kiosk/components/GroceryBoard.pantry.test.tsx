@@ -80,13 +80,23 @@ describe('GroceryBoard — pantry badge', () => {
     expect(screen.getByText(/1 bag/)).toBeInTheDocument()
   })
 
-  it('names the matched item when the match was fuzzy', async () => {
+  it('leads with the matched item name when the match was fuzzy', async () => {
     // "chicken" ↔ "chicken breast" matches; a bare "in pantry" would leave you guessing
-    // what it actually found.
+    // what it found, and on a crowded row the tail is what gets ellipsized — so the
+    // name (the half that can change your mind) goes first.
     mockBoard([row('Chicken', { pantry: { name: 'Chicken breast', amount: '3', unit: '' } })])
     show()
     await screen.findByText('Chicken')
-    expect(screen.getByText(/Chicken breast: 3/)).toBeInTheDocument()
+    expect(screen.getByText(/Chicken breast · 3/)).toBeInTheDocument()
+  })
+
+  it('shows only the amount when the match is exact — the name adds nothing', async () => {
+    mockBoard([row('Heavy cream', { pantry: { name: 'Heavy cream', amount: '2', unit: 'cups' } })])
+    show()
+    await screen.findByText('Heavy cream')
+    const badge = screen.getByText(/2 cups/)
+    expect(badge).toBeInTheDocument()
+    expect(badge.textContent).not.toMatch(/Heavy cream/)
   })
 
   it('falls back to a bare label when the pantry item has no amount', async () => {

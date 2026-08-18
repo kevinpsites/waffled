@@ -55,7 +55,12 @@ function PantryBadge({ item }: { item: GroceryBoardItem }) {
   // Name the matched item when it differs from the row — the match is fuzzy ("chicken" ↔
   // "chicken breast"), so a bare "you have some" leaves you wondering *what* it found.
   const matched = hit.name.trim().toLowerCase() !== item.name.trim().toLowerCase() ? hit.name : null
-  const detail = [matched, amount].filter(Boolean).join(': ')
+  // Whichever half matters more goes first, because a crowded row (store chip + quantity)
+  // leaves the body column narrow enough to ellipsize the tail.
+  // Fuzzy match → the NAME leads: a row reading "Chicken" matched by "Boneless chicken
+  // breast" is a difference that can change your mind, and "3 pack…" wouldn't tell you.
+  // Exact match → the name is already the row's own, so only the amount adds anything.
+  const detail = matched ? [matched, amount].filter(Boolean).join(' · ') : amount
   return (
     <span
       className="gpantry"
@@ -220,13 +225,18 @@ function ItemRow({
       <span className="gitem-body">
         <span className="gnm">{item.name}</span>
         <ItemAttribution item={item} />
+        {/* Inside the body column, NOT a fourth trailing chip. The row already carries
+            meal dots, a quantity, sometimes a store, and two action buttons, and in the
+            board's two-column layout there is no horizontal room left: as a sibling of
+            those, the badge starved `.gitem-body` (flex:1; min-width:0) and wrapped the
+            item name mid-word. Here it costs no width and wraps on its own line. */}
+        <PantryBadge item={item} />
       </span>
       <span className="gdots">
         {colors.map((c, i) => (
           <span key={i} className="gdot" style={{ background: c }} />
         ))}
       </span>
-      <PantryBadge item={item} />
       {item.store && <span className="gstore" title={`Store: ${item.store}`}>🏬 {item.store}</span>}
       {item.quantity && <span className="gqty">{item.quantity}</span>}
       <span className="gitem-acts" onClick={(e) => e.stopPropagation()}>
