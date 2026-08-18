@@ -26,7 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recipe wants — an extra item in the cart beats a second trip. Which is also why the badge
   shows what's on the shelf instead of a verdict; you're the one standing in front of it.
   Staples are unchanged and still start checked. Requires the Pantry module, and works
-  everywhere — web, kiosk, iPhone and iPad.
+  everywhere — web, kiosk, iPhone and iPad, including the iPad kiosk's Today grocery card,
+  so the shelf you're standing at is the one the wall screen already knows about.
 - **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
   hardware run, the packing list, whatever's live this week — right on the Today board,
   with tap-to-tick-off. Pick which list from the card itself, the same way the Goals
@@ -118,7 +119,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   household starts its week on Monday but your phone's region starts it on Sunday, the
   planner's grid and the grocery list disagreed about which week you were looking at, and
   the list that got built was the week *before* the one you'd just planned. Both now follow
-  your household's setting, and a plan that straddles two of those weeks builds both.
+  your household's setting, and a plan that straddles two of those weeks builds both. The
+  app also remembers which day your week starts on between launches, instead of assuming
+  Sunday until it next hears from the server — planning something in the first seconds
+  after opening the app used to be enough to get the wrong week.
+- **The "Add to grocery list" menu waits for the recipe to load.** Opening a recipe and
+  going straight for that menu item could bring up the picker before the ingredients
+  arrived, leaving you with an empty sheet and nothing to add. It's now greyed until
+  there's something to pick.
 - **Your pantry stopped claiming you have things you don't.** Two habits of real
   ingredient names were quietly fooling it. Meal-kit recipes write "Cream cheese —
   contains milk", and Waffled read that whole phrase as the name, so a carton of milk
