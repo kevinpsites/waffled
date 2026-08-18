@@ -189,16 +189,47 @@ describe('calendar → goal recap', () => {
     expect(items.length).toBe(2)
     expect(items.every((i) => i.suggestedAmount === 1)).toBe(true)
 
+    const statuses: string[] = []
     for (const it of items) {
       const c = await call('POST', '/api/goal-calendar/recap/confirm', kevin, { eventId: it.eventId, occurrenceDate: it.occurrenceDate, amount: 1, personIds: [kevinId] })
-      expect(JSON.parse(c.body).status).toBe('logged') // both resolve...
+      expect(c.statusCode).toBe(201)
+      statuses.push(JSON.parse(c.body).status)
     }
-    // ...but the habit's once-a-day guard means only one progress row exists.
+    // Both resolve, but the habit's once-a-day guard means only one of them wrote
+    // anything — and the caller can tell which, rather than hearing 'logged' twice.
+    expect(statuses).toEqual(['logged', 'already_logged'])
     const rows = await withClient((cl) =>
       cl.query(`select count(*)::int as n from goal_logs where goal_id=$1 and deleted_at is null`, [goalId])
     )
     expect(rows.rows[0].n).toBe(1)
     void e1; void e2
+  })
+
+  // Backdating a recap moved the habit dedupe from "vs today" to "vs the event's own
+  // day" — which makes this the ordinary case, not a corner: you ran on Monday and
+  // logged it yourself on Monday, then answer Thursday's recap for that same run.
+  // The recap must resolve (stop asking) without double-counting, and must not claim
+  // it recorded something it didn't.
+  it('habit already logged by hand on the event day → resolves, says so, writes nothing new', async () => {
+    const goalId = await makeGoal({ title: 'Habit dup', goalType: 'habit', unit: null, habitPeriod: 'day', habitTargetPerPeriod: 1, trackingMode: 'each_tracks' })
+    const eventId = await linkedEvent(goalId, 30, [kevinId])
+    const item = (await recap(goalId))[0]
+    const occ = item.occurrenceDate as string
+
+    // The manual log, dated to the event's own day.
+    const manual = await call('POST', `/api/goals/${goalId}/log`, kevin, { amount: 1, personIds: [kevinId], loggedOn: occ })
+    expect(manual.statusCode).toBe(201)
+
+    const c = await call('POST', '/api/goal-calendar/recap/confirm', kevin, { eventId, occurrenceDate: occ, amount: 1, personIds: [kevinId] })
+    expect(c.statusCode).toBe(201)
+    expect(JSON.parse(c.body).status).toBe('already_logged')
+
+    // Resolved (the recap stops asking) and still exactly one log for that day.
+    expect(await recap(goalId)).toHaveLength(0)
+    const rows = await withClient((cl) =>
+      cl.query(`select count(*)::int as n from goal_logs where goal_id=$1 and deleted_at is null`, [goalId])
+    )
+    expect(rows.rows[0].n).toBe(1)
   })
 
   it('checklist: a linked event ticks its step on confirm (and only its step)', async () => {

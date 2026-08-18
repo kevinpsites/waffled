@@ -173,9 +173,11 @@ export async function recapQueue(householdId: string, goalId?: string | null) {
 }
 
 // Confirm a recap occurrence → write progress + the idempotency record. Returns
-// 'logged' on a fresh write, 'duplicate' if it was already resolved (the unique
-// key makes a re-confirm a no-op — never a double count), or null if the event/
-// link no longer validates.
+// 'logged' on a fresh write, 'already_logged' when the occurrence resolves but no
+// progress was written (a habit already logged on the event's own day — resolving
+// is right, but the caller shouldn't be told something was recorded), 'duplicate'
+// if it was already resolved (the unique key makes a re-confirm a no-op — never a
+// double count), or null if the event/link no longer validates.
 export async function confirmRecap(
   tenant: Tenant,
   eventId: string,
@@ -183,7 +185,7 @@ export async function confirmRecap(
   amount: number,
   personIds: string[],
   note?: string | null
-): Promise<'logged' | 'duplicate' | null> {
+): Promise<'logged' | 'already_logged' | 'duplicate' | null> {
   const client = await getPool().connect()
   try {
     await client.query('begin')
@@ -256,9 +258,14 @@ export async function confirmRecap(
       refId: eventId,
       at: occurrenceDate,
     })
-    if (logIds[0]) {
-      await query(`update event_goal_logs set goal_log_id = $1 where id = $2`, [logIds[0], claim.rows[0].id])
+    if (!logIds[0]) {
+      // Nothing was written: for a habit, backdating means the dedupe now compares
+      // against the event's own day, so a log already made by hand that day wins.
+      // The occurrence still resolves — asking again would only invite a double
+      // count — but say plainly that no new progress came of it.
+      return 'already_logged'
     }
+    await query(`update event_goal_logs set goal_log_id = $1 where id = $2`, [logIds[0], claim.rows[0].id])
     return 'logged'
   } catch (err) {
     await client.query('rollback').catch(() => {})
