@@ -59,10 +59,12 @@ make it a goal as well — the two can coexist on one event, since `events` can 
 ## The load-bearing decision: what satisfies a period
 
 The original plan's single decision was *completion-anchored, not calendar-anchored*, with
-calendar anchoring deliberately deferred out of v1. **Six of the eight real cases are
-calendar-anchored or booking-shaped**, so that deferral is the one thing this rewrite
-reverses. Both anchors ship together, discriminated by a single column: what closes out a
-period.
+calendar anchoring deliberately deferred out of v1. Of the eight real cases, **two are
+completion-anchored** (air filter, car oil), **five are calendar-anchored or
+booking-shaped** (trash, family outing, two temple visits, self-care day), and one —
+"scheduling family household chores" — is ambiguous and probably belongs to the chores
+module. So that deferral is the one thing this rewrite reverses. Both anchors ship
+together, discriminated by a single column: what closes out a period.
 
 - **`satisfied_by = 'completion'`** — you did the thing. *Completion-anchored*: the next due
   date is measured from when you **actually** did it, so doing it two weeks late shifts
@@ -125,16 +127,29 @@ create table rhythms (
   -- What closes out a period. See "the load-bearing decision" above.
   satisfied_by text not null check (satisfied_by in ('completion','scheduling')),
 
-  -- Cadence. Exactly one is set, per satisfied_by:
-  --   completion → `every`, an interval measured from last_completed_at. Stored as an
-  --                interval so month-length arithmetic stays Postgres's problem.
-  --   scheduling → `rrule`, RFC5545 — the same vocabulary `events` already speaks, so a
-  --                rhythm's cadence can be handed straight to the event it creates.
-  every  interval,
-  rrule  text,
+  -- Cadence, for BOTH shapes. Stored as an interval so month-length arithmetic stays
+  -- Postgres's problem. For 'completion' it is measured from last_completed_at; for
+  -- 'scheduling' it is the width of a period.
+  every interval not null,
+
+  -- scheduling only: the anchor that makes "which period are we in?" answerable.
+  -- Period N is [starts_on + N*every, starts_on + (N+1)*every). An rrule alone cannot
+  -- define this — RFC5545 generates occurrences only relative to a DTSTART — and both
+  -- `/rhythms/attention` and rhythm_skips.period_start need a well-defined boundary.
+  starts_on date,
+  -- Denormalised current period, advanced lazily on read once now() passes its end.
+  -- Keeps the attention query an index scan instead of an interval-division expression,
+  -- and gives rhythm_skips a stable key to point at.
+  current_period_start date,
 
   -- scheduling only: can we pick the datetime ourselves, or does a human have to?
   auto_schedule boolean not null default false,
+  -- Required only when auto_schedule = true: the RFC5545 rule handed straight to the
+  -- event we create ('FREQ=MONTHLY;BYDAY=3SA'). Deliberately NOT the source of period
+  -- boundaries — `every` + `starts_on` own that, so period math never needs rrule
+  -- expansion in SQL. A booking-shape rhythm ("once a quarter, time TBD") needs no rrule
+  -- at all.
+  rrule text,
 
   -- How far ahead a period surfaces. A quarterly item that appears 90 days early is just
   -- clutter; a booking-shaped one needs more runway than a maintenance one, hence 14d.
@@ -149,10 +164,16 @@ create table rhythms (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
 
-  constraint rhythms_cadence_matches_kind check (
-    (satisfied_by = 'completion' and every is not null and next_due_at is not null and rrule is null)
+  constraint rhythms_shape_is_coherent check (
+    (satisfied_by = 'completion'
+       and next_due_at is not null
+       and starts_on is null and current_period_start is null
+       and rrule is null and auto_schedule = false)
     or
-    (satisfied_by = 'scheduling' and rrule is not null and every is null)
+    (satisfied_by = 'scheduling'
+       and starts_on is not null and current_period_start is not null
+       and next_due_at is null and last_completed_at is null
+       and (auto_schedule = false or rrule is not null))
   )
 );
 
@@ -187,9 +208,15 @@ create table rhythm_skips (
 
 **Note what is deliberately absent: a per-period satisfaction table.** The goal bridge
 materializes `event_goal_logs` because double-counting a log is a real hazard there. Here the
-question is "does an event with this `rhythm_id` fall inside this period?" — idempotent by
-nature — so satisfaction is **derived from `events`**, not dual-written. That avoids the
-drift that a materialized copy would invite when an event is edited, moved, or deleted.
+question is "does an event with this `rhythm_id` fall inside `[current_period_start,
+current_period_start + every)`?" — idempotent by nature — so satisfaction is **derived from
+`events`**, not dual-written. That avoids the drift that a materialized copy would invite
+when an event is edited, moved, or deleted, and it means an event that gets rescheduled
+*within* its period needs no reconciliation at all.
+
+This is only safe because the period boundary is materialized while the satisfaction is not.
+Deriving both would mean expanding an rrule in SQL on every read; materializing both would
+reintroduce the drift. `every` + `starts_on` own the grid, `events` owns the answer.
 
 Completing a `'completion'` rhythm is one transaction: insert a completion row, set
 `last_completed_at`, recompute `next_due_at = completed_at + every`. No materialization
@@ -211,9 +238,15 @@ returning a merged, sorted list of:
 - `{ kind: 'unscheduled', rhythm, periodStart, periodEnd }` — scheduling-shape, `auto_schedule = false`,
   no event with this `rhythm_id` in the period, not skipped
 
-Today passes a one-day window, the weekly planner passes a week. Scheduling-shape rhythms
-with `auto_schedule = true` never appear — their event already exists, which *is* the
-satisfied state.
+Today passes a one-day window, the weekly planner passes a week.
+
+An `auto_schedule = true` rhythm is normally absent — its recurring event already exists,
+which *is* the satisfied state. But it must be checked, not assumed: if someone deletes the
+generated event (or its recurrence runs out), the rhythm is silently unsatisfied. Since
+satisfaction is derived, the same period query catches this for free and the rhythm
+resurfaces as `kind: 'unscheduled'` — with the offer to regenerate the event rather than
+pick a time by hand. Do not shortcut this by trusting a "generated" flag on the row; the
+whole reason the register exists is to notice when the calendar and the intention disagree.
 
 ## Feeding the weekly plan module
 
