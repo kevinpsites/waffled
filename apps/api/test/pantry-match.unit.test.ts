@@ -87,19 +87,22 @@ describe('matches — the documented behavior stays put', () => {
   })
 })
 
-// A name can match several pantry rows at once ("Butter" is a token-subset of both
-// "Butter" and "Peanut butter"). Which one the badge NAMES is user-visible, so it must
+// A name can match several pantry rows at once ("Chicken" is a token-subset of both
+// "Chicken" and "Chicken breast"). Which one the badge NAMES is user-visible, so it must
 // be the best candidate — not whichever row Postgres happened to return first.
+// (These used to be posed as Butter / Peanut butter. That pair now yields exactly ONE
+// candidate — see the modifier rule above — so it would have gone green while testing
+// nothing. Chicken/Chicken breast is the same shape with two live candidates.)
 describe('matchNames — picks the best pantry row, not the first', () => {
   const onHand = (...names: string[]): PantryOnHand[] =>
     names.map((name) => ({ hit: { name, amount: '1', unit: '' }, tok: tokens(name) }))
 
   it('prefers the exact name over a more specific one', () => {
-    expect(matchNames(onHand('Peanut butter', 'Butter'), ['Butter']).get('butter')?.name).toBe('Butter')
+    expect(matchNames(onHand('Chicken breast', 'Chicken'), ['Chicken']).get('chicken')?.name).toBe('Chicken')
   })
 
   it('prefers the exact name regardless of pantry row order', () => {
-    expect(matchNames(onHand('Butter', 'Peanut butter'), ['Butter']).get('butter')?.name).toBe('Butter')
+    expect(matchNames(onHand('Chicken', 'Chicken breast'), ['Chicken']).get('chicken')?.name).toBe('Chicken')
   })
 
   it('prefers the closest match when none is exact', () => {
@@ -110,13 +113,64 @@ describe('matchNames — picks the best pantry row, not the first', () => {
   })
 
   it('still reports the only match it has, however loose', () => {
-    // We are NOT dropping generic matches — a lone "Peanut butter" is still surfaced,
-    // because the badge names it and the cook can judge. Ranking changes which row
-    // wins, never whether there is one.
-    expect(matchNames(onHand('Peanut butter'), ['Butter']).get('butter')?.name).toBe('Peanut butter')
+    // We are NOT dropping generic matches — a lone "Chicken breast" still answers
+    // "Chicken", because the badge names it and the cook can judge. Ranking changes
+    // which row wins, never whether there is one. Only the MODIFIERS list drops
+    // candidates outright, and it does that in matches(), not here.
+    expect(matchNames(onHand('Chicken breast'), ['Chicken']).get('chicken')?.name).toBe('Chicken breast')
   })
 
   it('leaves an unmatched name out of the map entirely', () => {
     expect(matchNames(onHand('Butter'), ['Leeks']).has('leeks')).toBe(false)
+  })
+})
+
+// The subset rule's worst failure mode: a GENERAL name landing on a pantry item that is
+// a different food entirely. "butter" ⊂ "peanut butter" and "milk" ⊂ "evaporated milk"
+// are structurally identical to "chicken" ⊂ "chicken breast" — the token shapes cannot
+// tell them apart, so nothing here can be a token-level rule. It has to be a list.
+describe('matches — type-changing modifiers are not narrowing words', () => {
+  it('does not claim peanut butter is butter', () => {
+    // The single most common false positive in the live data: butter is in most recipes,
+    // so one jar of peanut butter used to light up ~15 of them at once.
+    expect(m('butter', 'Peanut butter')).toBe(false)
+    expect(m('Peanut butter', 'butter')).toBe(false)
+  })
+
+  it('does not claim milk is evaporated milk, whichever side is longer', () => {
+    // "Whole milk" reduces to {milk} — `whole` is a stopword — so here the INGREDIENT is
+    // the longer side. The rule is about where the modifier sits, not which argument.
+    expect(m('evaporated milk', 'Whole milk')).toBe(false)
+    expect(m('Whole milk', 'evaporated milk')).toBe(false)
+    expect(m('sweetened condensed milk', 'milk')).toBe(false)
+  })
+
+  it('covers the other milks that are not milk', () => {
+    for (const impostor of ['Almond milk', 'Cashew milk', 'Coconut milk', 'Soy milk', 'Oat milk', 'Hemp milk', 'Vegan milk']) {
+      expect(m('milk', impostor), impostor).toBe(false)
+    }
+  })
+
+  it('still matches when the modifier is on BOTH sides', () => {
+    // A listed word is only disqualifying when it is the DIFFERENCE between the names.
+    expect(m('Peanut butter', 'Peanut butter')).toBe(true)
+    expect(m('Soy sauce', 'Soy sauce')).toBe(true)
+    expect(m('soy sauce', 'Sauce, soy')).toBe(true)
+    expect(m('Coconut milk', 'coconut milk')).toBe(true)
+  })
+
+  it('leaves genuine narrowing words alone', () => {
+    // These are the same shape as butter/peanut butter and MUST keep matching — which is
+    // exactly why the fix is a curated list and not "a short name can't match a long one".
+    expect(m('Peas', 'Frozen peas')).toBe(true)
+    expect(m('Chicken', 'Chicken breast')).toBe(true)
+    expect(m('flour', 'All-purpose flour')).toBe(true)
+  })
+
+  it('does not accidentally match two different modified foods', () => {
+    // Neither is a subset of the other, so this never reached the new rule — asserted so
+    // a future "smarter" matcher cannot quietly start claiming it.
+    expect(m('Soy sauce', 'Soy milk')).toBe(false)
+    expect(m('Almond milk', 'Coconut milk')).toBe(false)
   })
 })
