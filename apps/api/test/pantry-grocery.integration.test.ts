@@ -34,8 +34,15 @@ function call(method: string, path: string, token?: string, body?: unknown) {
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
+  // lambda-api does NOT parse a query string out of `path` — it reads
+  // `queryStringParameters`. Passing `{}` (as the older list tests do) makes every
+  // `?weekStart=` silently vanish, so the route falls back to the household's CURRENT
+  // week. That reads as passing whenever the test's week IS the current week, which is
+  // how a month-scoped rebuild bug went unnoticed. Split and hand it over properly.
+  const [bare, qs] = path.split('?')
+  const queryStringParameters = Object.fromEntries(new URLSearchParams(qs ?? '').entries())
   return app.run(
-    { httpMethod: method, path, headers, queryStringParameters: {}, body: body !== undefined ? JSON.stringify(body) : null, isBase64Encoded: false },
+    { httpMethod: method, path: bare, headers, queryStringParameters, body: body !== undefined ? JSON.stringify(body) : null, isBase64Encoded: false },
     {}
   ) as Promise<{ statusCode: number; body: string }>
 }
