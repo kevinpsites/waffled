@@ -133,7 +133,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *cleared* nights from so that shopping comes back off the list, and any date you hand the
   grocery list is understood as the week containing it. Fixed on the web, on iPhone and on
   iPad. If you hit this, nothing was lost — opening a week always rebuilt it — it just never
-  happened up front.
+  happened up front. And if part of an apply doesn't land — a night that won't save, or a
+  week whose list won't rebuild — the planner now says so and stays open instead of closing
+  as though everything worked; the rest of the month still goes through.
 - **"Plan my week & build list" builds the right week on iPhone and iPad.** If your
   household starts its week on Monday but your phone's region starts it on Sunday, the
   planner's grid and the grocery list disagreed about which week you were looking at, and
@@ -141,7 +143,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   your household's setting, and a plan that straddles two of those weeks builds both. The
   app also remembers which day your week starts on between launches, instead of assuming
   Sunday until it next hears from the server — planning something in the first seconds
-  after opening the app used to be enough to get the wrong week.
+  after opening the app used to be enough to get the wrong week, and until the setting has
+  actually arrived Waffled now covers both possibilities rather than guessing one.
+- **The grocery list's week arrows land on the right week on iPhone and iPad.** In a
+  household whose week starts on Monday, viewed on a phone whose region starts it on
+  Sunday, tapping **›** showed the week you were already on and **‹** skipped back two —
+  leaving one week you simply couldn't reach. The arrows now step from the week the server
+  actually returned, and the heading names that same week.
 - **The "Add to grocery list" menu waits for the recipe to load.** Opening a recipe and
   going straight for that menu item could bring up the picker before the ingredients
   arrived, leaving you with an empty sheet and nothing to add. It's now greyed until
@@ -156,9 +164,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   milk passed for milk. Words that change what a food **is** — peanut, almond, coconut,
   oat, soy, evaporated, condensed and a few more — no longer count as a match, while words
   that merely narrow it still do, so *frozen peas* still answers *peas* and *chicken
-  breast* still answers *chicken*. All of this lands everywhere matching happens: the
-  grocery list's 🥫 badges, the "have 3 of 5" count on a recipe, and **Cook from your
-  pantry**, which had been rating meal-kit recipes as more cookable than they are.
+  breast* still answers *chicken*. And a shelf item named for one of those words alone no
+  longer stands in for the thing made from it — a bag of *coconut* is not *coconut milk*,
+  and *soy* is not *soy sauce* — which matters most in the **Add to grocery** picker, where
+  a wrong match doesn't just show the wrong badge, it quietly leaves the ingredient off
+  your list. All of this lands everywhere matching happens: the grocery list's 🥫 badges,
+  the "have 3 of 5" count on a recipe, and **Cook from your pantry**, which had been rating
+  meal-kit recipes as more cookable than they are.
+- **The pantry badge introduces itself to a screen reader.** The 🥫 is decoration, so when
+  the badge showed only an amount it arrived as a bare "2 cups" right next to the row's own
+  quantity — two numbers with nothing saying which one was the shelf. It now reads "In
+  pantry: 2 cups".
 - **The pantry badge names the closest thing on your shelf.** When a grocery row matched
   several pantry items, which one got named came down to the order they happened to be
   stored in — so the same list could credit one item today and another tomorrow. The best
