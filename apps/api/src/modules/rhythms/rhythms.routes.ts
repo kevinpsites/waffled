@@ -9,7 +9,9 @@ import {
   listCompletions,
   skipPeriod,
   listAttention,
+  scheduleRhythm,
 } from './rhythms'
+import { presentEvent } from '../events/events'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -59,6 +61,19 @@ export function registerRhythmRoutes(api: Api): void {
       const rhythm = await completeRhythm(tenant.householdId, req.params.id!, tenant.personId ?? null, completedAt, notes)
       if (!rhythm) return res.status(404).json({ error: 'NotFound', message: 'rhythm not found' })
       return { rhythm }
+    } catch (e) {
+      if (e instanceof InvalidReferenceError) return badRequest(res, e.message)
+      throw e
+    }
+  }))
+
+  // Book a period — the rhythm puts a real event on the calendar itself. See
+  // scheduleRhythm for why this is an event and not a rhythm-shaped calendar chip.
+  api.post('/api/rhythms/:id/schedule', tenantRoute(async (tenant, req: Request, res: Response) => {
+    try {
+      const event = await scheduleRhythm(tenant, req.params.id!, (req.body ?? {}) as Record<string, unknown>)
+      if (!event) return res.status(404).json({ error: 'NotFound', message: 'rhythm not found' })
+      return res.status(201).json({ event: presentEvent(event) })
     } catch (e) {
       if (e instanceof InvalidReferenceError) return badRequest(res, e.message)
       throw e

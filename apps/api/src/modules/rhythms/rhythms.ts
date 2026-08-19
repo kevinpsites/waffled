@@ -8,6 +8,8 @@
 //                  That last sentence is the whole line between a rhythm and a goal.
 import { query } from '../../platform/db'
 import { InvalidReferenceError } from '../../platform/household-refs'
+import { createEvent, type EventRow } from '../events/events'
+import { type Tenant } from '../households/households'
 
 export type SatisfiedBy = 'completion' | 'scheduling'
 
@@ -333,12 +335,27 @@ export async function listAttention(householdId: string, horizon: string): Promi
           select 1 from rhythm_skips s
            where s.rhythm_id = p.id and s.period_start = p.period_start
         )
+        -- Satisfied by a booking landing in the period — either a one-off event, or one
+        -- of the occurrences a recurring booking generates. The second half is what makes
+        -- auto_schedule work at all: a series is a single master row with one starts_at,
+        -- so matching on events alone would satisfy the month the outing was booked in and
+        -- let every later month resurface as "needs scheduling" while the outing sits
+        -- right there on the calendar.
         and not exists (
           select 1 from events e
            where e.rhythm_id = p.id
              and e.deleted_at is null
              and e.starts_at >= p.period_start::timestamptz
              and e.starts_at < (p.period_start + p.every)::timestamptz
+        )
+        and not exists (
+          select 1 from event_occurrences o
+           join events m on m.id = o.event_id
+           where m.rhythm_id = p.id
+             and m.deleted_at is null
+             and o.deleted_at is null
+             and o.starts_at >= p.period_start::timestamptz
+             and o.starts_at < (p.period_start + p.every)::timestamptz
         )`,
     [householdId, to]
   )
@@ -352,4 +369,56 @@ export async function listAttention(householdId: string, horizon: string): Promi
   }
 
   return out
+}
+
+export interface ScheduleRhythmInput {
+  startsAt?: unknown
+  endsAt?: unknown
+  allDay?: unknown
+  title?: unknown
+}
+
+// Book a period: turn "this should happen" into an actual dated event.
+//
+// This is why rhythms generate real events rather than their own kind of calendar chip.
+// A chip would have to reinvent reminders, notifications, the PowerSync mirror, Google
+// push and every surface that already renders events — and on iOS, where local
+// notifications are scheduled off the events mirror and nothing else, a chip could not be
+// reminded about at all.
+//
+// Title and assignee default from the rhythm so booking is one tap: the whole complaint
+// the scheduling shape answers is that these things never get onto the calendar, and
+// making you retype the title is exactly the friction that keeps them off it.
+export async function scheduleRhythm(
+  tenant: Tenant,
+  rhythmId: string,
+  input: ScheduleRhythmInput
+): Promise<EventRow | null> {
+  const rhythm = await readOne(tenant.householdId, rhythmId)
+  if (!rhythm) return null
+  if (rhythm.satisfiedBy !== 'scheduling') {
+    // A completion rhythm has no slot to book — an event here would satisfy nothing,
+    // since its period closes on "I did it", not on "it's on the calendar".
+    throw new InvalidReferenceError('only a scheduling rhythm can be booked')
+  }
+
+  const startsAt = typeof input.startsAt === 'string' ? input.startsAt : ''
+  if (!startsAt || Number.isNaN(Date.parse(startsAt))) {
+    throw new InvalidReferenceError('startsAt must be a valid timestamp')
+  }
+  const endsAt = typeof input.endsAt === 'string' && input.endsAt ? input.endsAt : null
+  const title = typeof input.title === 'string' && input.title.trim() ? input.title.trim() : rhythm.title
+
+  return createEvent(tenant, {
+    title,
+    startsAt,
+    endsAt,
+    allDay: input.allDay === true,
+    personId: rhythm.personId,
+    rhythmId: rhythm.id,
+    // An auto_schedule rhythm books its whole series at once — the rule already says when
+    // it recurs, so asking the caller to restate it would just be a chance to disagree
+    // with the rhythm. A booking-shape rhythm has no rule and books one slot.
+    rrule: rhythm.autoSchedule ? rhythm.rrule : null,
+  })
 }

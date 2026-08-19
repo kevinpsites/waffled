@@ -263,3 +263,105 @@ describe('the effect on what needs attention', () => {
     expect(await idsNow()).toContain(outingId)
   })
 })
+
+// Booking is the whole point of the scheduling shape: the rhythm's job is to make sure
+// the opportunity lands on the calendar, so it has to be able to put it there itself
+// rather than telling you to go and do it somewhere else.
+describe('booking a period from the rhythm', () => {
+  let templeId = ''
+
+  beforeAll(async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Temple visit',
+      emoji: '🕊️',
+      satisfiedBy: 'scheduling',
+      every: '3 months',
+      startsOn: '2026-07-01',
+      personId: kevinId,
+    })
+    expect(made.statusCode).toBe(201)
+    templeId = JSON.parse(made.body).rhythm.id
+  })
+
+  it('creates a real event, not a chip, so it can carry reminders', async () => {
+    const res = await call('POST', `/api/rhythms/${templeId}/schedule`, kevin, {
+      startsAt: '2026-10-10T14:00:00Z',
+      endsAt: '2026-10-10T16:00:00Z',
+    })
+    expect(res.statusCode).toBe(201)
+    const ev = JSON.parse(res.body).event
+    expect(ev.rhythmId).toBe(templeId)
+    // Titled and assigned from the rhythm, so booking takes one tap and no typing.
+    expect(ev.title).toBe('Temple visit')
+    expect(ev.personId).toBe(kevinId)
+    expect(await rhythmIdOf(ev.id)).toBe(templeId)
+  })
+
+  it('silences the period it booked', async () => {
+    const res = await call('GET', '/api/rhythms/attention?from=2026-10-01&to=2026-10-31', kevin)
+    const ids = JSON.parse(res.body).items.map((i: { rhythm: { id: string } }) => i.rhythm.id)
+    expect(ids).not.toContain(templeId)
+  })
+
+  it('refuses to book a completion-shape rhythm', async () => {
+    // "I did the thing" has no slot to book — offering one would just create an event
+    // that satisfies nothing.
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Air filter', satisfiedBy: 'completion', every: '3 months', nextDueAt: '2026-10-01T00:00:00Z',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+    expect((await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: '2026-10-10T14:00:00Z', endsAt: '2026-10-10T16:00:00Z',
+    })).statusCode).toBe(400)
+  })
+
+  it('404s for a rhythm belonging to somebody else', async () => {
+    expect((await call('POST', `/api/rhythms/${outsiderRhythmId}/schedule`, kevin, {
+      startsAt: '2026-10-10T14:00:00Z', endsAt: '2026-10-10T16:00:00Z',
+    })).statusCode).toBe(404)
+  })
+})
+
+// An auto_schedule rhythm books ONE recurring event and is then satisfied forever after —
+// which only works if satisfaction can see the occurrences the rule generates. Checking
+// only `events.starts_at` sees the master row alone, so the series would satisfy the month
+// it was created in and every later month would resurface as "needs scheduling" while the
+// outing sat right there on the calendar.
+describe('a recurring booking satisfies every period it covers', () => {
+  let seriesRhythmId = ''
+
+  beforeAll(async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Third-weekend outing',
+      satisfiedBy: 'scheduling',
+      every: '1 month',
+      startsOn: '2026-09-01',
+      autoSchedule: true,
+      rrule: 'FREQ=MONTHLY;BYDAY=3SA',
+    })
+    expect(made.statusCode).toBe(201)
+    seriesRhythmId = JSON.parse(made.body).rhythm.id
+  })
+
+  it('books the whole series in one go', async () => {
+    const res = await call('POST', `/api/rhythms/${seriesRhythmId}/schedule`, kevin, {
+      startsAt: '2026-09-19T15:00:00Z',
+      endsAt: '2026-09-19T18:00:00Z',
+    })
+    expect(res.statusCode).toBe(201)
+    // The rhythm's own rule, so the caller never restates the recurrence.
+    expect(JSON.parse(res.body).event.rrule).toBe('FREQ=MONTHLY;BYDAY=3SA')
+  })
+
+  it('is satisfied in the month it was created', async () => {
+    const res = await call('GET', '/api/rhythms/attention?from=2026-09-01&to=2026-09-30', kevin)
+    const ids = JSON.parse(res.body).items.map((i: { rhythm: { id: string } }) => i.rhythm.id)
+    expect(ids).not.toContain(seriesRhythmId)
+  })
+
+  it('is still satisfied three months later, off the generated occurrences', async () => {
+    const res = await call('GET', '/api/rhythms/attention?from=2026-12-01&to=2026-12-31', kevin)
+    const ids = JSON.parse(res.body).items.map((i: { rhythm: { id: string } }) => i.rhythm.id)
+    expect(ids).not.toContain(seriesRhythmId)
+  })
+})
