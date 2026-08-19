@@ -21,6 +21,34 @@ import Testing
         #expect(HouseholdWeekStartStore.load(defaults: d) == nil)
     }
 
+    /// Reading the synced value and remembering it are ONE operation, not two steps a
+    /// caller has to remember to pair. They were separate, and the review found that the
+    /// persist could be dropped from the call site without a single test noticing —
+    /// re-opening the cold-launch window this store exists to close. `adopt` makes the
+    /// correct thing the only convenient thing.
+    @Test func adoptingASyncedValueAlsoRemembersIt() {
+        let d = freshDefaults("test.weekstart.adopt")
+        #expect(HouseholdWeekStartStore.adopt("monday", defaults: d) == .monday)
+        #expect(HouseholdWeekStartStore.load(defaults: d) == .monday)
+    }
+
+    /// The case that used to slip through: a sunday household's synced value equals the
+    /// old launch default, so nothing looked like it changed — and the fact that we HAD
+    /// synced went unrecorded, leaving the next launch guessing all over again.
+    @Test func adoptingSundayIsStillRecordedAsSynced() {
+        let d = freshDefaults("test.weekstart.adopt.sunday")
+        #expect(HouseholdWeekStartStore.adopt("sunday", defaults: d) == .sunday)
+        #expect(HouseholdWeekStartStore.load(defaults: d) == .sunday)
+    }
+
+    /// An unset/garbage column still means "we synced, and it's the server default" —
+    /// which is different from never having synced at all.
+    @Test func adoptingAnUnknownValueRecordsTheServerDefault() {
+        let d = freshDefaults("test.weekstart.adopt.unknown")
+        #expect(HouseholdWeekStartStore.adopt(nil, defaults: d) == .sunday)
+        #expect(HouseholdWeekStartStore.load(defaults: d) == .sunday)
+    }
+
     @Test func roundTripsMonday() {
         let d = freshDefaults("test.weekstart.monday")
         HouseholdWeekStartStore.save(.monday, defaults: d)

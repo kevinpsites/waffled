@@ -35,4 +35,18 @@ enum HouseholdWeekStartStore {
     static func save(_ value: HouseholdWeekStart, defaults: UserDefaults = .standard) {
         defaults.set(value.rawValue, forKey: key)
     }
+
+    /// Take the value a sync tick reported, remember it, and hand back what to use.
+    ///
+    /// Reading and remembering are deliberately ONE call. As two steps, dropping the save
+    /// from the call site compiled, ran, and passed every test — silently re-opening the
+    /// cold-launch window this type exists to close. The save is unconditional on purpose:
+    /// gating it on "did the value change" means a sunday household, whose synced value
+    /// matches the fallback, never records that it synced at all.
+    @discardableResult
+    static func adopt(_ raw: String?, defaults: UserDefaults = .standard) -> HouseholdWeekStart {
+        let value = HouseholdWeekStart(raw: raw)
+        save(value, defaults: defaults)
+        return value
+    }
 }

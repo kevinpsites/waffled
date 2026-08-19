@@ -72,10 +72,15 @@ final class SyncManager {
     /// The synced row is only readable from the first sync tick onward, so a cold launch
     /// starts from the value the *last* run persisted (`HouseholdWeekStartStore`) rather
     /// than re-guessing. That closes the window where a plan applied in the first seconds
-    /// of a launch in a monday household got grouped onto Sundays. `.sunday` (the server
-    /// default) remains the fallback for a never-synced install, which is the only case
-    /// where there is genuinely nothing better to say.
-    private(set) var householdWeekStart: HouseholdWeekStart = HouseholdWeekStartStore.load() ?? .sunday
+    /// of a launch in a monday household got grouped onto Sundays.
+    ///
+    /// nil means genuinely unknown — a never-synced install. It is deliberately NOT
+    /// collapsed to `.sunday`: callers that group dates into grocery weeks need to be able
+    /// to tell "the household starts on Sunday" from "we have no idea yet", because
+    /// guessing sunday for a monday household leaves one of its weeks unbuilt. The window
+    /// is normally a single sync tick, but it is unbounded while PowerSync is disconnected
+    /// and REST still works — and planning goes over REST.
+    private(set) var householdWeekStart: HouseholdWeekStart? = HouseholdWeekStartStore.load()
     private(set) var personCount = 0
     private(set) var eventCount = 0
     private(set) var pendingUploads = 0
@@ -996,13 +1001,12 @@ final class SyncManager {
                 // householdTz's didSet rebuilds the whole event index.
                 if zone.identifier != householdTz.identifier { householdTz = zone }
             }
-            let first = HouseholdWeekStart(raw: row.1)
-            // Persisted OUTSIDE the change guard on purpose. The guard is there to avoid
-            // pointless observable churn on a tick that changed nothing; the save is
-            // idempotent, and gating it on a change would mean a Sunday household — where
-            // the synced value matches the launch default — never records that it synced
-            // at all, leaving the next launch guessing again.
-            HouseholdWeekStartStore.save(first)
+            // adopt() reads AND remembers in one call — see HouseholdWeekStartStore. As
+            // two steps the persist could be dropped here without any test noticing.
+            // The assignment stays guarded to avoid observable churn on a tick that
+            // changed nothing; the remembering must NOT be, or a sunday household never
+            // records that it synced.
+            let first = HouseholdWeekStartStore.adopt(row.1)
             if first != householdWeekStart { householdWeekStart = first }
         }
     }
