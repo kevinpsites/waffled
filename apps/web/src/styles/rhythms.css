@@ -1,0 +1,73 @@
+/* Rhythms — the Today card and the management screen. Built from the shared
+   vocabulary (.card, .btn, .field, .modal-*, .pill); everything here is layout
+   for this module's own rows, matching pantry.css in shape and spacing. */
+
+/* ── Today card ─────────────────────────────────────────────────────────────── */
+.rhy-card { padding: 18px 20px 14px; display: flex; flex-direction: column; }
+.rhy-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.rhy-h { font-size: 17px; text-decoration: none; color: inherit; }
+.rhy-all { margin-left: auto; text-decoration: none; color: var(--ink-2); }
+
+.rhy-list { display: flex; flex-direction: column; gap: 8px; }
+.rhy-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: var(--panel);
+}
+.rhy-row.overdue { border-color: color-mix(in srgb, var(--danger) 45%, var(--hair)); }
+.rhy-emoji { font-size: 19px; flex: none; line-height: 1; }
+.rhy-main { min-width: 0; flex: 1; }
+.rhy-title {
+  font-weight: 700; font-size: 15px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rhy-sub { margin-top: 1px; }
+.rhy-late { color: var(--danger); font-weight: 700; }
+
+.rhy-acts { display: flex; align-items: center; gap: 6px; flex: none; }
+.rhy-act { flex: none; padding: 6px 12px; font-size: 13px; }
+.rhy-skip {
+  background: none; border: 0; padding: 6px 4px; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 700; color: var(--ink-3);
+}
+.rhy-skip:hover { color: var(--ink); }
+.rhy-skip:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Management screen ──────────────────────────────────────────────────────── */
+.rhy-screen { padding: 24px 30px 40px; }
+.rhy-screen-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.rhy-screen-title { font-size: 28px; font-weight: 600; }
+.rhy-screen-sub { font-size: 13px; font-weight: 600; color: var(--ink-3); margin-top: 2px; max-width: 62ch; }
+.rhy-empty { color: var(--ink-3); font-weight: 600; padding: 24px 2px; }
+
+.rhy-groups { display: flex; flex-direction: column; gap: 24px; }
+.rhy-group-h {
+  font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-3); margin-bottom: 4px;
+}
+.rhy-group-sub { font-size: 13px; font-weight: 600; color: var(--ink-3); margin-bottom: 10px; max-width: 62ch; }
+.rhy-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+
+.rhy-item { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.rhy-item-head { display: flex; align-items: flex-start; gap: 10px; }
+.rhy-item-name { font-weight: 700; font-size: 16px; color: var(--ink); min-width: 0; }
+.rhy-item-meta { font-size: 13px; font-weight: 600; color: var(--ink-3); }
+.rhy-item-notes { font-size: 13px; color: var(--ink-2); }
+.rhy-item-acts { display: flex; align-items: center; gap: 8px; margin-top: 2px; flex-wrap: wrap; }
+.rhy-badge {
+  flex: none; margin-left: auto; padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary);
+}
+.rhy-badge.attention { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.rhy-badge.off { background: var(--overlay-hover); color: var(--ink-3); }
+
+.rhy-shape-pick { display: flex; gap: 10px; margin-bottom: 12px; }
+.rhy-shape {
+  flex: 1; text-align: left; cursor: pointer;
+  padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--hair);
+  background: var(--panel); font: inherit; color: var(--ink);
+}
+.rhy-shape.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.rhy-shape-t { font-weight: 700; font-size: 14px; }
+.rhy-shape-d { font-size: 12px; font-weight: 600; color: var(--ink-3); margin-top: 2px; }

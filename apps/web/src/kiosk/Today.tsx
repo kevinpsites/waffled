@@ -7,6 +7,7 @@ import { ListCard } from './components/ListCard'
 import { CountdownsCard } from './components/CountdownsCard'
 import { FamilyNightCard } from './components/FamilyNightCard'
 import { GoalSpotlightCard } from './components/GoalSpotlightCard'
+import { RhythmsCard } from './components/RhythmsCard'
 import { GoalRecapBar } from './components/GoalRecap'
 import { ApprovalsBar } from './components/Approvals'
 import { CaptureBar } from './components/CaptureBar'
@@ -33,6 +34,9 @@ const CARDS: Record<string, { label: string; node: ReactNode; fill?: boolean }> 
   familyNight: { label: 'Family Night', node: <FamilyNightCard /> },
   goals: { label: 'Goals', node: <GoalSpotlightCard /> },
   pantry: { label: 'Pantry', node: <PantryCard /> },
+  // Renders nothing on a quiet day (like Tonight with no dinner planned) — the
+  // label still lists it in Customize so it can be hidden/brought back.
+  rhythms: { label: 'Rhythms', node: <RhythmsCard /> },
 }
 
 // Layout helpers (pure). A card lives in exactly one column.
@@ -105,6 +109,7 @@ export function Today() {
   const showGrocery = moduleEnabled(household, 'lists')
   const showFamilyNight = moduleEnabled(household, 'familyNight') && household?.settings?.familyNight?.showOnToday !== false
   const showGoals = moduleEnabled(household, 'goals')
+  const showRhythms = moduleEnabled(household, 'rhythms')
   // Whether each card is available to show at all (its module is on). Cards with
   // no module gate are always available. Drives which hidden cards can be brought
   // back from the tray — showing one whose module is off would just get stripped.
@@ -118,8 +123,9 @@ export function Today() {
       week: showMeals,
       grocery: showGrocery,
       lists: showGrocery, // same module — the Lists card pins a custom list
+      rhythms: showRhythms,
     }),
-    [showPantry, showFamilyNight, showGoals, showChores, showMeals, showGrocery]
+    [showPantry, showFamilyNight, showGoals, showChores, showMeals, showGrocery, showRhythms]
   )
   const isAvailable = (card: string) => cardAvailable[card] ?? true
   const effectiveResolved = useMemo<StoredLayout>(() => {
@@ -134,8 +140,10 @@ export function Today() {
     // Not in the default layout (it's new, and an existing household shouldn't have
     // its board rearranged under it) — so inject like pantry rather than only strip.
     cols = applyModuleCard(cols, 'lists', showGrocery, hidden, 2)
+    // Default-off module, so it can never be in a saved layout — inject like pantry.
+    cols = applyModuleCard(cols, 'rhythms', showRhythms, hidden, 0)
     return { cols, hidden }
-  }, [resolved, showPantry, showFamilyNight, showGoals, showChores, showMeals, showGrocery])
+  }, [resolved, showPantry, showFamilyNight, showGoals, showChores, showMeals, showGrocery, showRhythms])
   const [editing, setEditing] = useState(false)
   const [layout, setLayout] = useState<string[][]>(effectiveResolved.cols)
   const [hidden, setHidden] = useState<string[]>(effectiveResolved.hidden)
