@@ -487,20 +487,12 @@ struct PlanWeekSheet: View {
 
     private func apply() async {
         applying = true
-        for card in suggestions {
-            _ = await sync.setMealPlan(date: card.date, mealType: card.mealType,
-                                       recipeId: card.recipeId,
-                                       title: card.recipeId == nil ? card.title : nil)
-        }
-        // "& build list" — rebuild from the nights actually written. One week of planning
-        // is usually one grocery week, but not always: `start` comes off the planner grid,
-        // which snaps to the DEVICE's first-day-of-week, while the grocery list is keyed
-        // by the HOUSEHOLD's. On a sunday-locale phone in a monday household the grid's
-        // Sun–Sat straddles two household weeks — and the server, which snaps `weekStart`
-        // to the household boundary, would quietly turn that one call into a rebuild of
-        // the week *before* the plan. Deriving the weeks from the dates covers both.
-        for week in GroceryWeeks.weekStarts(suggestions.map(\.date), firstDay: sync.householdWeekStart) {
-            await sync.rebuildGroceryFromWeek(weekStart: week)
+        // Decided and tested in MealPlanApply — including the case that bit us: a week off
+        // the planner grid is cut on the DEVICE's first day while the grocery list is keyed
+        // by the HOUSEHOLD's, so a Sun–Sat grid can straddle two household weeks and both
+        // have to be built. This is just the executor.
+        for op in MealPlanApply.week(suggestions: suggestions, firstDay: sync.householdWeekStart) {
+            await sync.perform(op)
         }
         applying = false
         onApplied()

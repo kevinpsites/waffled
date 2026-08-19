@@ -621,6 +621,20 @@ final class SyncManager {
         return ok
     }
 
+    /// Execute one step of a planner apply. The planner sheets hand over a
+    /// `MealPlanApply` plan and this runs it, so which nights get written and which weeks
+    /// get rebuilt is decided (and tested) in one place instead of inline in two sheets.
+    func perform(_ op: MealPlanApply.Op) async {
+        switch op {
+        case let .set(date, mealType, recipeId, title):
+            _ = await setMealPlan(date: date, mealType: mealType, recipeId: recipeId, title: title)
+        case let .clear(date, mealType):
+            _ = await clearMealPlan(date: date, mealType: mealType)
+        case let .rebuild(weekStart):
+            await rebuildGroceryFromWeek(weekStart: weekStart)
+        }
+    }
+
     // MARK: rewards
 
     /// Give a reward to a person from this (parent) phone: request the redemption and
