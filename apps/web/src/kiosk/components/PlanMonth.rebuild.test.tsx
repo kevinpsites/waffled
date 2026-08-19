@@ -212,6 +212,17 @@ describe('weekStartsToRebuild', () => {
     expect(weekStartsToRebuild(['2026-09-06', '2026-09-07'], 'sunday')).toEqual(['2026-09-06'])
   })
 
+  it('covers both boundaries when the household preference is unknown', () => {
+    // Guessing "sunday" when we don't actually know is not a neutral default: for a monday
+    // household it MERGES two real weeks into one key, and the server — which snaps to the
+    // household's own boundary — then rebuilds only one of them. The other is never built.
+    // Not knowing is a real state (a failed /api/household fetch is never retried), so it
+    // gets its own answer: cover both, and let the redundant call be idempotent.
+    expect(weekStartsToRebuild(['2026-09-06', '2026-09-07'], null)).toEqual(['2026-08-31', '2026-09-06', '2026-09-07'])
+    // Where the two conventions agree there is nothing extra to do.
+    expect(weekStartsToRebuild(['2026-09-09'], null)).toEqual(['2026-09-06', '2026-09-07'])
+  })
+
   it('returns weeks in date order, with no duplicates, and tolerates an empty plan', () => {
     expect(weekStartsToRebuild(['2026-09-23', '2026-09-02', '2026-09-09', '2026-09-02'], 'sunday')).toEqual([
       '2026-08-30',

@@ -49,15 +49,25 @@ function isoWeekKey(date: string): string {
 // first-day-of-week: grouping a monday household by Sunday would merge two of its weeks
 // into one call and leave the other genuinely uncovered. Deliberately NOT `isoWeekKey`,
 // which is Sunday-only because the review headers only ever need a stable grouping.
-export function weekStartsToRebuild(dates: string[], firstDay: 'sunday' | 'monday'): string[] {
+//
+// `firstDay` may be null, meaning we genuinely do not know yet — the household fetch can
+// fail and is never retried. That is NOT the same as "sunday", and defaulting to it is the
+// one guess with a silent failure mode: for a monday household it merges two real weeks
+// into a single key, the server snaps that key to its own boundary, and the other week is
+// never built at all. So when we don't know, we cover both. The extra rebuild is idempotent
+// — far cheaper than a week of shopping that quietly never appears.
+export function weekStartsToRebuild(dates: string[], firstDay: 'sunday' | 'monday' | null): string[] {
   const weeks = new Set<string>()
+  const cuts: Array<'sunday' | 'monday'> = firstDay === null ? ['sunday', 'monday'] : [firstDay]
   for (const date of dates) {
-    const d = new Date(`${date}T00:00:00`)
-    if (Number.isNaN(d.getTime())) continue
-    const dow = d.getDay() // 0=Sun..6=Sat
-    // A monday household's Sunday closes the week that began six days earlier.
-    d.setDate(d.getDate() - (firstDay === 'monday' ? (dow === 0 ? 6 : dow - 1) : dow))
-    weeks.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+    for (const cut of cuts) {
+      const d = new Date(`${date}T00:00:00`)
+      if (Number.isNaN(d.getTime())) continue
+      const dow = d.getDay() // 0=Sun..6=Sat
+      // A monday household's Sunday closes the week that began six days earlier.
+      d.setDate(d.getDate() - (cut === 'monday' ? (dow === 0 ? 6 : dow - 1) : dow))
+      weeks.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+    }
   }
   return [...weeks].sort()
 }
@@ -72,10 +82,13 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
   const { persons } = usePersons()
   const familySize = Math.max(1, persons.length)
   // Which day starts a week here — the grocery list is keyed by week start, so the
-  // rebuilds below have to be cut on the household's own boundaries. Sunday is the
-  // server default, and the only sane guess before the household has loaded.
+  // rebuilds below have to be cut on the household's own boundaries.
   const { household } = useHousehold()
-  const firstDayOfWeek: 'sunday' | 'monday' = household?.weekStart === 'monday' ? 'monday' : 'sunday'
+  // null while the household is genuinely unknown — see weekStartsToRebuild. Guessing here
+  // is what leaves a monday household with an unbuilt week.
+  const firstDayOfWeek: 'sunday' | 'monday' | null = household
+    ? household.weekStart === 'monday' ? 'monday' : 'sunday'
+    : null
   const { recipes } = useRecipes()
 
   const [weekdays, setWeekdays] = useState<Set<number>>(() => new Set([1, 2, 3, 4, 5]))
