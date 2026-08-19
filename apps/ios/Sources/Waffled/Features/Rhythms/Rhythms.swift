@@ -146,6 +146,13 @@ enum RhythmFormat {
         DateFmt.string(date, "yyyy-MM-dd", calendar.timeZone)
     }
 
+    /// "every 3 months" → "Every 3 months". Only the first character; the rest of the line
+    /// keeps its own casing.
+    static func sentence(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        return String(first).uppercased() + text.dropFirst()
+    }
+
     /// One shared ISO8601 formatter — `ISO8601DateFormatter` is expensive to build, and an
     /// explicit instant is what every write here sends (never a local wall-clock string).
     private static let iso = ISO8601DateFormatter()
