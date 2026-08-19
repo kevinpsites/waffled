@@ -3,6 +3,7 @@ import { type AgendaEvent } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
 import { ymd, localDate, fmtHour, fmtTime, minutesOfDay, durationMin } from './cal-utils'
 import { peopleColumns, UNASSIGNED_COLUMN, type ColumnPerson } from './cal-people'
+import { RhythmMark } from './RhythmMark'
 
 const DAY_START = 0
 const DAY_END = 23
@@ -110,6 +111,7 @@ export function PeopleView({
                     style={evVars(colorOf(e))}
                     onClick={() => onOpenEvent(e)}
                   >
+                    <RhythmMark event={e} />
                     {e.title}
                   </div>
                 ))}
@@ -156,7 +158,7 @@ export function PeopleView({
                       >
                         <div className="wk-ev-t">{fmtTime(e)}</div>
                         <div className="wk-ev-title">
-                          {e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}{e.title}
+                          {e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}<RhythmMark event={e} />{e.title}
                         </div>
                       </div>
                     )

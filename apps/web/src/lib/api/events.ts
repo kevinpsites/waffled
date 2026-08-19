@@ -23,6 +23,9 @@ export interface AgendaEvent {
   personId: string | null
   goalId?: string | null
   goalStepId?: string | null
+  // A scheduling-shape rhythm books an ordinary event and points it back at itself.
+  // Present on both the REST payload and the local PowerSync read; null = not a rhythm.
+  rhythmId?: string | null
   personName: string | null
   personColor: string | null
   personEmoji: string | null

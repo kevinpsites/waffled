@@ -3,6 +3,7 @@ import type { AgendaEvent, Countdown } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
 import { DOW, ymd, localDate } from './cal-utils'
 import { MonthDayPanel } from './MonthDayPanel'
+import { RhythmMark } from './RhythmMark'
 
 // The visible 6-week (42-cell) grid for a month, including leading/trailing days.
 function monthGrid(year: number, month: number): Date[] {
@@ -98,6 +99,7 @@ export function MonthView({
                     }}
                   >
                     {e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}
+                    <RhythmMark event={e} />
                     {e.title}
                   </div>
                 )

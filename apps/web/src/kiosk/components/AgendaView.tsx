@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { usePersons, eventsApi, type AgendaEvent } from '../../lib/api'
 import { useEventColor } from '../../lib/event-color'
 import { Icon } from '../icons'
+import { RhythmMark } from './RhythmMark'
 import {
   MONTHS, ymd, addDays, startOfWeek, localDate, fmtTime, eventPeople,
 } from './cal-utils'
@@ -34,7 +35,7 @@ export function AgendaRow({ event, past = false, color: colorProp, onClick }: { 
       <div className="ag-time">{event.allDay ? 'all day' : fmtTime(event)}</div>
       <div className="ag-bar" style={{ background: color }} />
       <div className="ag-main">
-        <div className="ag-title">{event.title}</div>
+        <div className="ag-title"><RhythmMark event={event} />{event.title}</div>
         {event.location && <div className="tiny muted">📍 {event.location}</div>}
       </div>
       {lead && (
