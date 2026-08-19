@@ -72,5 +72,15 @@ export function matches(a: Set<string>, b: Set<string>): boolean {
   // listed word only disqualifies when it is the DIFFERENCE between the two names —
   // "Peanut butter" ↔ "Peanut butter" has `peanut` on both sides and still matches.
   for (const t of big) if (!small.has(t) && MODIFIERS.has(t)) return false
+  // …but that leaves a hole when the short name is NOTHING BUT modifier words. Then the
+  // modifier sits on both sides, so it is never "the difference" above, and the word that
+  // actually is the difference (oil, milk, sauce) isn't itself listed — so "Coconut" used
+  // to answer for "Coconut milk". A name that is only a modifier names the modifier, not
+  // the food built from it. Guarded on size so the honest case still matches: identical
+  // token sets never reach here, which keeps "Coconut" ↔ "coconut" true.
+  if (big.size > small.size) {
+    for (const t of small) if (!MODIFIERS.has(t)) return true
+    return false
+  }
   return true
 }

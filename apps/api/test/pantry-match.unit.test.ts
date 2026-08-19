@@ -167,6 +167,41 @@ describe('matches — type-changing modifiers are not narrowing words', () => {
     expect(m('flour', 'All-purpose flour')).toBe(true)
   })
 
+  it('does not let a bare modifier word stand in for the food it modifies', () => {
+    // The hole the "both sides" rule left open: when the SHORT name is nothing but the
+    // modifier, the modifier is on both sides, so it is never "the difference" and the
+    // guard above never fires — while the word that IS the difference (oil, milk, sauce)
+    // is not itself listed. A bag of shredded coconut then answers for coconut milk.
+    // Worse than a wrong badge: this feeds the picker's pre-uncheck, so the ingredient
+    // silently never reaches the list and the shopper comes home without it.
+    expect(m('Coconut', 'Coconut milk')).toBe(false)
+    expect(m('Coconut', 'Coconut oil')).toBe(false)
+    expect(m('Almond', 'Almond milk')).toBe(false)
+    expect(m('Soy', 'Soy sauce')).toBe(false)
+    expect(m('Oat', 'Oat milk')).toBe(false)
+    expect(m('Peanut', 'Peanut butter')).toBe(false)
+    // Symmetric — the rule is about set size, not argument order.
+    expect(m('Coconut milk', 'Coconut')).toBe(false)
+  })
+
+  it('still rejects an unshared modifier when the short name has several words', () => {
+    // Guards the ORDER of the two rules. The bare-modifier rule returns early on the
+    // first ordinary word in the short name, which would skip the unshared-modifier
+    // check if it ever ran first. It doesn't today — the loop above returns false before
+    // control gets there — and this pins that, so reordering the guards fails loudly
+    // instead of quietly re-opening the butter/peanut-butter hole.
+    expect(m('butter cups', 'Peanut butter cups')).toBe(false)
+    expect(m('cream cheese', 'Vegan cream cheese')).toBe(false)
+    expect(m('condensed milk', 'Sweetened condensed milk')).toBe(false)
+  })
+
+  it('still matches a bare modifier against itself', () => {
+    // The above must not cost the honest case: coconut IS coconut. Only a name that adds
+    // a food word on one side is rejected, so equal token sets always survive.
+    expect(m('Coconut', 'coconut')).toBe(true)
+    expect(m('Soy', 'soy')).toBe(true)
+  })
+
   it('does not accidentally match two different modified foods', () => {
     // Neither is a subset of the other, so this never reached the new rule — asserted so
     // a future "smarter" matcher cannot quietly start claiming it.
