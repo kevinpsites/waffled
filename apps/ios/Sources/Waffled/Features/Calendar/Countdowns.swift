@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// Calendar countdowns — "N days until X" from three sources (a flagged event, a
-/// standalone item, or a member's next birthday), merged + sorted server-side by
-/// `GET /api/countdowns`. A core Calendar feature (never gated). Surfaced as a Today
-/// card, month-grid badges, and an "is countdown" toggle in the event editor. Only
-/// standalone items are editable from here; events/birthdays are managed at their source.
+/// Calendar countdowns — "N days until X" from four sources (a flagged event, a
+/// standalone item, a member's next birthday, or a completion-shape rhythm counting
+/// down to when it's next due), merged + sorted server-side by `GET /api/countdowns`.
+/// A core Calendar feature (never gated). Surfaced as a Today card, month-grid badges,
+/// and an "is countdown" toggle in the event editor. Only standalone items are editable
+/// from here; the other three are managed at their source — `source` is decoded as a
+/// plain String precisely so a new kind can't break decoding for the whole list.
 
 // MARK: - Formatting
 

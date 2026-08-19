@@ -391,6 +391,7 @@ struct PersonView: View {
             HStack(spacing: 12) {
                 Text(eventTime(ev)).font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink3)
                     .frame(width: 60, alignment: .leading)
+                RhythmEventMark(event: ev, size: 12)
                 Text(ev.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 Spacer(minLength: 8)
                 Image(systemName: "calendar").font(.system(size: 14)).foregroundStyle(WF.ink3)

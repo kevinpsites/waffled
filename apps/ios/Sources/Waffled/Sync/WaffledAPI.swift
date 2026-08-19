@@ -3726,7 +3726,9 @@ struct WaffledAPI: Sendable {
         let title: String
         let date: String            // YYYY-MM-DD
         let daysLeft: Int
-        let source: String          // standalone | event | birthday
+        // Deliberately a String, not an enum: a strict Decodable enum would fail the
+        // WHOLE list the moment the server grows a new kind (as it did with 'rhythm').
+        let source: String          // standalone | event | birthday | rhythm
         let emoji: String?
         let color: String?
         let personId: String?

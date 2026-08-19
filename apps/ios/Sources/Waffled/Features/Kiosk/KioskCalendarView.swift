@@ -352,6 +352,7 @@ struct KioskCalendarView: View {
         let paint = sync.eventPalette.chip(for: ev)
         return HStack(spacing: 5) {
             RoundedRectangle(cornerRadius: 99).fill(paint.color).frame(width: 3, height: 13)
+            RhythmEventMark(event: ev, size: 10)
             Text(chipLabel(ev)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
             Spacer(minLength: 0)
         }
@@ -868,7 +869,12 @@ struct CalTimeGrid: View {
     /// household's event style applies.
     private func miniChip(_ ev: SyncedEvent) -> some View {
         let paint = sync.eventPalette.chip(for: ev)
-        return Text(ev.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
+        // The glyph goes in the STRING here, not into an HStack: the padding and
+        // background below are chained onto this `Text`, so wrapping it would move where
+        // the chip's fill lands.
+        return Text(RhythmMark.prefixed(ev.title, isRhythm: ev.isRhythm))
+            .font(.system(size: 11, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
+            .accessibilityLabel(RhythmMark.accessibilityLabel(ev.title, isRhythm: ev.isRhythm))
             .padding(.horizontal, 6).padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(paint.background).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -956,8 +962,11 @@ struct CalTimeGrid: View {
                 HStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 99).fill(paint.color).frame(width: 3)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(ev.title).font(.system(size: placed.lanes > 1 ? 12 : 13, weight: .bold))
-                            .foregroundStyle(paint.foreground).lineLimit(placed.lanes > 2 ? 1 : 2)
+                        HStack(spacing: 3) {
+                            RhythmEventMark(event: ev, size: placed.lanes > 1 ? 10 : 11)
+                            Text(ev.title).font(.system(size: placed.lanes > 1 ? 12 : 13, weight: .bold))
+                                .foregroundStyle(paint.foreground).lineLimit(placed.lanes > 2 ? 1 : 2)
+                        }
                         if height > 38, placed.lanes < 3 {
                             Text(EventTime.timeLabel(start, tz)).font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(paint.foreground.opacity(0.75))

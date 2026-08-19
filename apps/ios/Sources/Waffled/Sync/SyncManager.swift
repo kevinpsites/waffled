@@ -880,36 +880,10 @@ final class SyncManager {
     private func watchEvents() {
         eventsTask = Task { [db] in
             do {
-                // UNION of single/Google events (rrule IS NULL — recurring masters are
-                // filtered out, their occurrences render instead) and materialized
-                // occurrences joined to their master. Mirrors the web's AGENDA_SQL
-                // (apps/web/src/lib/powersync/events-local.ts). The watch derives its
-                // tracked tables from this SQL, so `event_occurrences` is picked up too.
+                // The query lives in `EventQuery.agenda` (Sync/Events.swift) so a test
+                // can read it — see RhythmMarkTests.
                 let stream = try db.watch(
-                    sql: """
-                    SELECT e.id AS id, e.id AS series_id, NULL AS occurrence_start,
-                           e.title, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.location, e.person_id,
-                           e.visibility, e.owner_person_id, e.origin,
-                           p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
-                           (SELECT group_concat(ep.person_id) FROM event_participants ep
-                             WHERE ep.event_id = e.id) AS participant_ids
-                      FROM events e
-                      LEFT JOIN persons p ON p.id = e.person_id
-                     WHERE e.rrule IS NULL
-                    UNION ALL
-                    SELECT o.id AS id, m.id AS series_id, o.original_start AS occurrence_start,
-                           coalesce(o.title, m.title) AS title, o.starts_at, o.ends_at, o.all_day, m.is_countdown,
-                           coalesce(o.location, m.location) AS location, o.person_id,
-                           o.visibility, o.owner_person_id,
-                           -- an occurrence is as read-only as the series it belongs to
-                           m.origin AS origin,
-                           p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
-                           (SELECT group_concat(ep.person_id) FROM event_participants ep
-                             WHERE ep.event_id = m.id) AS participant_ids
-                      FROM event_occurrences o
-                      JOIN events m ON m.id = o.event_id
-                      LEFT JOIN persons p ON p.id = o.person_id
-                    """,
+                    sql: EventQuery.agenda,
                     parameters: [],
                     mapper: { cursor in
                         let raw = try cursor.getStringOptional(name: "starts_at")
@@ -934,7 +908,8 @@ final class SyncManager {
                             seriesId: (try cursor.getStringOptional(name: "series_id")) ?? id,
                             occurrenceStart: try cursor.getStringOptional(name: "occurrence_start"),
                             visibility: (try cursor.getStringOptional(name: "visibility")) ?? "family",
-                            ownerPersonId: try cursor.getStringOptional(name: "owner_person_id")
+                            ownerPersonId: try cursor.getStringOptional(name: "owner_person_id"),
+                            rhythmId: try cursor.getStringOptional(name: "rhythm_id")
                         )
                     }
                 )

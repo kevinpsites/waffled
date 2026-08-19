@@ -17,9 +17,12 @@ struct EventRow: View {
                 .fill(sync.eventPalette.color(for: event))
                 .frame(width: 4, height: 30)
             VStack(alignment: .leading, spacing: 1) {
-                Text(event.title)
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    RhythmEventMark(event: event, size: 12)
+                    Text(event.title)
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                        .lineLimit(1)
+                }
                 Text(timeText).font(.system(size: 12)).foregroundStyle(WF.ink3)
             }
             Spacer(minLength: 8)

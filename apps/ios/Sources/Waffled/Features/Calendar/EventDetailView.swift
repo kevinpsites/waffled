@@ -314,6 +314,7 @@ struct EventDetailView: View {
                         .frame(width: 64, alignment: .leading)
                     RoundedRectangle(cornerRadius: 2).fill(sync.eventPalette.color(for: e))
                         .frame(width: 4, height: 22)
+                    RhythmEventMark(event: e, size: 11)
                     Text(e.title).font(.system(size: 14, weight: e.id == event.id ? .bold : .semibold))
                         .foregroundStyle(e.id == event.id ? WF.ink : WF.ink2).lineLimit(1)
                     Spacer(minLength: 6)
