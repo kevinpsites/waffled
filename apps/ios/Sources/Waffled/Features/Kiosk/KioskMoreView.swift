@@ -77,6 +77,7 @@ struct KioskMoreView: View {
         case .goals:   return ("🎯", "Goals", "What the family's working toward", WF.successT)
         case .lists:   return ("📋", "Lists", "Groceries, packing & to-dos", FamilyColor.person1.tint)
         case .pantry:  return ("🥫", "Pantry", "What's on hand", WF.warnT)
+        case .rhythms: return ("🔁", "Rhythms", "What should keep happening", WF.infoT)
         case .photos:  return ("📷", "Photos", "The family album", WF.successT)
         case .meals:   return ("🍽️", "Meals", "This week's plan & recipes", WF.primaryT)
         case .family:  return ("👪", "Family", "People, spotlights & more", FamilyColor.person4.tint)

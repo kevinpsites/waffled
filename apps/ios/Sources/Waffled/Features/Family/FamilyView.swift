@@ -62,6 +62,7 @@ struct FamilyView: View {
                     if sync.rewardsOn { tile("⭐", "Rewards", hub.rewardsSubtitle, WF.warnT, .rewards, badge: rewardApprovals) }
                     if sync.module(.lists) { tile("📋", "Lists", hub.listsSubtitle, FamilyColor.person1.tint, .lists) }
                     if sync.module(.pantry) { tile("🥫", "Pantry", "What’s on hand", WF.warnT, .pantry) }
+                    if sync.module(.rhythms) { tile("🔁", "Rhythms", "What should keep happening", WF.infoT, .rhythms) }
                     tile("📷", "Photos", hub.photosSubtitle, WF.successT, .photos)
                     tile("⚙️", "Settings", "People, calendars, AI", WF.panel, .settings)
                 }

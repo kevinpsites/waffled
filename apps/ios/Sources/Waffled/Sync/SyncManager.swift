@@ -991,7 +991,7 @@ final class SyncManager {
 enum WaffledModule: String, CaseIterable, Identifiable {
     // Declaration order drives the Settings → Modules list; keep it in step with the
     // Settings → Family feature rows so the two screens read the same.
-    case chores, goals, meals, lists, pantry, familyNight, waffledBites, quotes
+    case chores, goals, meals, lists, pantry, rhythms, familyNight, waffledBites, quotes
     var id: String { rawValue }
 
     var isAvailable: Bool {
@@ -1000,12 +1000,14 @@ enum WaffledModule: String, CaseIterable, Identifiable {
         default: return true
         }
     }
-    /// Opt-in modules default off (pantry, familyNight, waffledBites); the rest default on.
-    var defaultOn: Bool { self != .pantry && self != .familyNight && self != .waffledBites }
+    /// Opt-in modules default off (pantry, rhythms, familyNight, waffledBites); the rest
+    /// default on.
+    var defaultOn: Bool { self != .pantry && self != .rhythms && self != .familyNight && self != .waffledBites }
 
     var name: String {
         switch self {
         case .pantry: return "Pantry"
+        case .rhythms: return "Rhythms"
         case .chores: return "Chores & Tasks"
         case .goals: return "Goals"
         case .meals: return "Meals & Recipes"
@@ -1018,6 +1020,7 @@ enum WaffledModule: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .pantry: return "🥫"
+        case .rhythms: return "🔁"
         case .chores: return "✅"
         case .goals: return "🎯"
         case .meals: return "🍽️"
@@ -1030,6 +1033,7 @@ enum WaffledModule: String, CaseIterable, Identifiable {
     var summary: String {
         switch self {
         case .pantry: return "Track what's on hand (freezer/fridge/pantry) and feed meal planning."
+        case .rhythms: return "The things that should keep happening — the air filter, trash night, a quarterly self-care day — with a place to confirm each one is actually handled."
         case .chores: return "The Tasks board — assignable chores, photo proof, approvals, and stars."
         case .goals: return "Personal and family goals with progress, streaks, and checklists."
         case .meals: return "Recipe library, weekly meal planning, and meals on the calendar."

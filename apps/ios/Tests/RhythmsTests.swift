@@ -504,3 +504,28 @@ struct RhythmEditorTests {
         #expect(form.isValid)
     }
 }
+
+// MARK: - module registration
+
+/// The module is `defaultOn: false` server-side (apps/api/src/platform/modules.ts). If this
+/// hand-mirrored catalog disagreed, every household would get a Rhythms card and a rail
+/// tile for a feature they never turned on — the same class of bug the mirrored catalogs
+/// exist to make visible.
+@Suite("Rhythms module registration")
+struct RhythmsModuleTests {
+    @Test("Rhythms is available but opt-in")
+    func optIn() {
+        #expect(WaffledModule.rhythms.isAvailable)
+        #expect(!WaffledModule.rhythms.defaultOn)
+        // …and the modules that were already opt-in stay that way.
+        #expect(!WaffledModule.pantry.defaultOn)
+        #expect(WaffledModule.chores.defaultOn)
+    }
+
+    @Test("The iPad rail can pin it, and More lights up while it's unpinned")
+    func reachableOnTheWallDisplay() {
+        #expect(KioskRail.choosable.contains(.rhythms))
+        #expect(KioskRail.parse("rhythms") == [.rhythms])
+        #expect(KioskRail.isHighlighted(.more, selection: .rhythms, pinned: [.meals, .family]))
+    }
+}
