@@ -84,6 +84,86 @@ describe('PlanMonth — the grocery rebuild covers the whole month', () => {
   })
 })
 
+// A failed rebuild used to be swallowed outright, justified by "GroceryBoard rebuilds a
+// week on first open anyway". That safety net does not exist for the case that matters:
+// the board's self-rebuild is gated on the week having NO auto rows, so a week being
+// RE-planned — which already has them — never heals itself. The month saves, the sheet
+// closes, and the list quietly goes on showing shopping for dinners that were replaced.
+//
+// The plan really is saved, so the fix is not to fail the apply; it is to stop pretending
+// it fully succeeded.
+describe('PlanMonth — a failed rebuild is not silent', () => {
+  function mockApiWithFailingRebuild(failOn: (week: string | null) => boolean) {
+    const sent: Sent[] = []
+    globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+      const u = String(url)
+      const method = init?.method ?? 'GET'
+      sent.push({ method, url: u })
+      if (u.includes('/api/meals/plan-month')) {
+        return ok({
+          start: '2026-09-01',
+          mealType: 'dinner',
+          via: 'test',
+          existing: [],
+          suggestions: NIGHTS.map((date, i) => ({ date, title: `Dish ${i + 1}`, recipeId: null, emoji: null, minutes: 30, note: '' })),
+        })
+      }
+      if (u.includes('/api/household')) {
+        return ok({ provisioned: true, household: { id: 'h', name: 'Sites', timezone: 'America/Chicago', weekStart: 'sunday' }, person: null, memberships: [], pendingInvites: [] })
+      }
+      if (u.includes('/api/lists/grocery/rebuild')) {
+        const week = new URL(u, 'http://x').searchParams.get('weekStart')
+        if (failOn(week)) return { ok: false, status: 500, json: async () => ({ error: 'ServerError' }) }
+        return ok({ rebuilt: 1, board: { items: [] } })
+      }
+      return ok({ persons: [], recipes: [], entries: [] })
+    }) as unknown as typeof fetch
+    return sent
+  }
+
+  async function planAndApplyWith(onApplied: () => void, onClose: () => void): Promise<void> {
+    render(
+      <TopbarSlotProvider>
+        <PlanMonth monthStart="2026-09-01" onClose={onClose} onApplied={onApplied} />
+      </TopbarSlotProvider>
+    )
+    fireEvent.click(await screen.findByRole('button', { name: /plan my month/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /save month & build list/i }))
+  }
+
+  it('tells the user when a week did not rebuild, instead of closing as if it had', async () => {
+    mockApiWithFailingRebuild((w) => w === '2026-09-13')
+    const onApplied = vi.fn()
+    const onClose = vi.fn()
+    await planAndApplyWith(onApplied, onClose)
+    // The month IS written, so the plan must still be surfaced...
+    await waitFor(() => expect(onApplied).toHaveBeenCalled())
+    // ...but the sheet must stay open carrying the bad news, not vanish silently.
+    await screen.findByText(/your month is saved, but the grocery list/i)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('still tries every remaining week after one fails', async () => {
+    // One bad week must not abort the rest — the other three weeks' shopping is
+    // independent, and losing it too would turn a small failure into a big one.
+    const sent = mockApiWithFailingRebuild((w) => w === '2026-08-30')
+    const onApplied = vi.fn()
+    await planAndApplyWith(onApplied, vi.fn())
+    await waitFor(() => expect(onApplied).toHaveBeenCalled())
+    expect(rebuildWeeks(sent)).toEqual(['2026-08-30', '2026-09-06', '2026-09-13', '2026-09-20'])
+  })
+
+  it('closes normally when every rebuild succeeds', async () => {
+    // The guard against over-correcting: a good apply must not start nagging.
+    mockApiWithFailingRebuild(() => false)
+    const onApplied = vi.fn()
+    const onClose = vi.fn()
+    await planAndApplyWith(onApplied, onClose)
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(onApplied).toHaveBeenCalled()
+  })
+})
+
 // The week derivation itself, where the sunday/monday matrix is cheap to pin down.
 describe('weekStartsToRebuild', () => {
   it('collapses a week of dates to its one start (sunday)', () => {

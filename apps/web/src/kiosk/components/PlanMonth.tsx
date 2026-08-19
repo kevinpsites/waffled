@@ -101,6 +101,11 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
   const [loading, setLoading] = useState(false)
   const [via, setVia] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Kept separate from `error`: that one means "drafting failed, nothing exists yet" and
+  // renders a "Try again" that re-drafts the month. This one means the opposite — the
+  // month IS saved and only its shopping is behind — so re-drafting would be exactly the
+  // wrong offer. Retrying is the apply button the user already has.
+  const [applyWarning, setApplyWarning] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
 
   // Drag-to-swap state (pointer events → works with mouse and touch).
@@ -296,6 +301,7 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
 
   async function applyAll() {
     setApplying(true)
+    setApplyWarning(null) // a retry starts clean, so a stale warning can't outlive its cause
     try {
       for (const c of toApply) {
         await api.planSlot(c.recipeId ? { date: c.date, mealType: 'dinner', recipeId: c.recipeId } : { date: c.date, mealType: 'dinner', title: c.title })
@@ -310,12 +316,27 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
       }
       // Rebuild every week this apply touched — one call per week, derived from the
       // dates actually written (and the ones cleared, whose shopping has to come back
-      // OFF the list). A rebuild that fails must not cost the user their saved month,
-      // and GroceryBoard rebuilds a week on first open anyway, so each is best-effort.
+      // OFF the list).
+      //
+      // One failure must not abort the others: the remaining weeks' shopping is
+      // independent, and dropping it too turns a small failure into a big one. But it
+      // must not be silent either. There is no safety net below this: GroceryBoard only
+      // self-rebuilds a week that has NO auto rows, so a week being RE-planned — which by
+      // definition already has them — never heals itself, and the list would go on showing
+      // shopping for dinners the user just replaced.
+      const failed: string[] = []
       for (const week of weekStartsToRebuild([...toApply.map((c) => c.date), ...cleared], firstDayOfWeek)) {
-        await api.rebuildGrocery(week).catch(() => {})
+        await api.rebuildGrocery(week).catch(() => failed.push(week))
       }
+      // The month itself IS written, so surface it either way — the plan is not lost.
       onApplied()
+      if (failed.length > 0) {
+        // Stay open. Closing on a half-done job is what made this invisible before.
+        setApplyWarning(
+          `Your month is saved, but the grocery list for ${failed.length === 1 ? 'one week' : `${failed.length} weeks`} didn’t rebuild. Tap “Save month & build list” again, or open the list and hit Refresh.`
+        )
+        return
+      }
       onClose()
     } finally {
       setApplying(false)
@@ -498,6 +519,12 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
             <span className="spinner lg" />
             <div className="tiny muted" style={{ marginTop: 14 }}>Drafting your month…</div>
           </div>
+        )}
+
+        {applyWarning && (
+          // role="alert" so it is announced — this appears after the user has already
+          // committed and looked away from the button they pressed.
+          <div className="plan-lib-hint tiny" role="alert">⚠️ {applyWarning}</div>
         )}
 
         {error && (
