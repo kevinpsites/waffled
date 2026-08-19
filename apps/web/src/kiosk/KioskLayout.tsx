@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 import { Rail } from './components/Rail'
+import { ScreenBoundary } from './components/ScreenBoundary'
 import { Topbar } from './components/Topbar'
 import { OfflineBanner } from './components/OfflineBanner'
 import { SyncHealthBanner } from './components/SyncHealthBanner'
@@ -71,9 +72,11 @@ export function KioskLayout() {
               <KioskRoutes> would blank the rail and topbar on every navigation. The
               fallback is empty on purpose: over LAN the chunk arrives within a frame or
               two, and a spinner that flashes that briefly reads as a glitch. */}
-          <Suspense fallback={null}>
-            <Outlet />
-          </Suspense>
+          <ScreenBoundary key={location.pathname}>
+            <Suspense fallback={null}>
+              <Outlet />
+            </Suspense>
+          </ScreenBoundary>
         </div>
         <UpdateModal />
       </div>

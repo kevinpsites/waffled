@@ -61,9 +61,12 @@ describe('kiosk navigation', () => {
       const { unmount } = renderAt(path)
       // the layout + a main region always render; no thrown route
       expect(document.querySelector('.kiosk-main, .wf-kiosk')).toBeTruthy()
-      // Let the screen's chunk resolve before tearing down, so a lazy import
-      // settling into an unmounted tree can't warn (or leak) into the next case.
+      // Let the screen's chunk resolve — .kiosk-main is the eager layout, so on its
+      // own it would pass even if every screen behind it were broken.
       await act(async () => {})
+      // The screen rendered rather than throwing into the boundary. This is the half
+      // of "no dead routes" that is actually about the routes.
+      expect(screen.queryByText(/couldn’t load/i)).toBeNull()
       unmount()
     }
   })
