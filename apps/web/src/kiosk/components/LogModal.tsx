@@ -34,11 +34,13 @@ function mergeActs(suggested: string[]): Array<{ label: string; note: string }> 
 
 function quickChips(unit: string | null): Array<{ label: string; value: number }> {
   if (unit && HOURS.has(unit.toLowerCase())) {
+    // Short sessions are the ones people log by tapping; a 2-hour block is rare
+    // enough to type, and 20 minutes is the one that kept needing the keypad.
     return [
+      { label: '20m', value: Math.round((1 / 3) * 1e6) / 1e6 }, // 6dp, so it matches `timeAmount` exactly
       { label: '30m', value: 0.5 },
       { label: '1 hr', value: 1 },
       { label: '1.5 hr', value: 1.5 },
-      { label: '2 hr', value: 2 },
     ]
   }
   const u = unit ? ` ${unit}` : ''

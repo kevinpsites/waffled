@@ -153,6 +153,12 @@ enum DemoHooks {
     /// so without this the sub-screens can't be looked at headlessly at all.
     /// Currently: `calendars`.
     static var settingsPage: String? { AppConfig.env("WAFFLED_SETTINGS_PAGE") }
+    /// Push straight into the Pantry and open an item's detail on launch
+    /// (verification). On iPhone the pantry sits behind the Family hub and its detail
+    /// behind a row tap, and the simulator has no tap API — so without this the item
+    /// screen (and whether its Edit button clears the tab bar) can't be looked at
+    /// headlessly at all. Value: an item id, or `first` for the first item listed.
+    static var pantryItem: String? { AppConfig.env("WAFFLED_PANTRY_ITEM") }
     /// Initial Meals section for verification: week | month | recipes.
     static var mealsSection: String? { AppConfig.env("WAFFLED_MEALS_SECTION") }
     /// Auto-open the "Plan my week" sheet (verification).

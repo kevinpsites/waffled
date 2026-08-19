@@ -46,7 +46,7 @@ struct WaffledBitesView: View {
                     DismissibleErrorBanner(message: msg) { }
                 }
             }
-            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle("Waffled-Bite")

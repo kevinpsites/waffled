@@ -77,7 +77,7 @@ struct TodayView: View {
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 6)
-                .padding(.bottom, 110)   // clear the floating tab bar
+                .padding(.bottom, WF.tabBarClearance)
             }
             // Track whether content has scrolled off the top, so the header only
             // lifts (gets a shadow) once cards start tucking under it.

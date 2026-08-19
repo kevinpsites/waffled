@@ -110,7 +110,7 @@ struct HubPlaceholder: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 24)
-            .padding(.bottom, 110)
+            .padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle(title)

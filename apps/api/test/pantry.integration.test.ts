@@ -294,6 +294,125 @@ describe('pantry Open Food Facts integration', () => {
     expect(JSON.parse(dup.body).item.amount).toBe('5')
   })
 
+  // Half a bag, a quarter of a block — pantry amounts aren't always whole.
+  it('scan counts up in fractions without float noise', async () => {
+    const half = await call('POST', '/api/pantry/scan', kevin, { name: 'Rice', location: 'Pantry', unit: 'bag', amount: '0.5', barcode: '55550002' })
+    expect(JSON.parse(half.body).item.amount).toBe('0.5')
+
+    // A leading-dot amount is what people actually type.
+    const quarter = await call('POST', '/api/pantry/scan', kevin, { name: 'Rice', location: 'Pantry', amount: '.25', barcode: '55550002' })
+    expect(JSON.parse(quarter.body)).toMatchObject({ incremented: true })
+    expect(JSON.parse(quarter.body).item.amount).toBe('0.75')
+
+    const rest = await call('POST', '/api/pantry/scan', kevin, { name: 'Rice', location: 'Pantry', amount: '0.25', barcode: '55550002' })
+    expect(JSON.parse(rest.body).item.amount).toBe('1')
+
+    // 0.1 + 0.2 must not surface as 0.30000000000000004.
+    await call('POST', '/api/pantry/scan', kevin, { name: 'Yeast', location: 'Pantry', amount: '0.1', barcode: '55550003' })
+    const noisy = await call('POST', '/api/pantry/scan', kevin, { name: 'Yeast', location: 'Pantry', amount: '0.2', barcode: '55550003' })
+    expect(JSON.parse(noisy.body).item.amount).toBe('0.3')
+  })
+
+  // The amount field is clearable on both clients, and a blank one used to parse as 0 —
+  // so a re-scan reported "incremented" while moving nothing.
+  it('treats a blank or junk scan amount as one', async () => {
+    const first = await call('POST', '/api/pantry/scan', kevin, { name: 'Olive oil', location: 'Pantry', amount: '', barcode: '55550004' })
+    expect(JSON.parse(first.body).item.amount).toBe('1')
+
+    const second = await call('POST', '/api/pantry/scan', kevin, { name: 'Olive oil', location: 'Pantry', amount: '   ', barcode: '55550004' })
+    expect(JSON.parse(second.body)).toMatchObject({ incremented: true })
+    expect(JSON.parse(second.body).item.amount).toBe('2')
+
+    const third = await call('POST', '/api/pantry/scan', kevin, { name: 'Olive oil', location: 'Pantry', amount: 'a splash', barcode: '55550004' })
+    expect(JSON.parse(third.body).item.amount).toBe('3')
+  })
+
+  // Both scan sheets offer a free-text amount, so "half a bag" is a legitimate answer
+  // for something you measure by eye. Coercing that to "1" on the way in throws away
+  // what the person actually said; only a blank amount means "one of these".
+  it('keeps a free-text amount on the first scan', async () => {
+    const r = await call('POST', '/api/pantry/scan', kevin, { name: 'Flour', location: 'Pantry', amount: 'half a bag', barcode: '55550005' })
+    expect(r.statusCode).toBe(201)
+    expect(JSON.parse(r.body).item.amount).toBe('half a bag')
+
+    // Blank still means one of the thing...
+    const blank = await call('POST', '/api/pantry/scan', kevin, { name: 'Cornmeal', location: 'Pantry', amount: '', barcode: '55550006' })
+    expect(JSON.parse(blank.body).item.amount).toBe('1')
+    // ...and so does a number that isn't a positive count — you can't scan zero of
+    // something, so that's a cleared field, not an answer.
+    const zero = await call('POST', '/api/pantry/scan', kevin, { name: 'Semolina', location: 'Pantry', amount: '0', barcode: '55550007' })
+    expect(JSON.parse(zero.body).item.amount).toBe('1')
+
+    // The ceiling, written down: text isn't a number, so the next scan of the same
+    // product can only count up from zero. Keeping it buys the first scan, not more.
+    const again = await call('POST', '/api/pantry/scan', kevin, { name: 'Flour', location: 'Pantry', amount: '1', barcode: '55550005' })
+    expect(JSON.parse(again.body)).toMatchObject({ incremented: true })
+    expect(JSON.parse(again.body).item.amount).toBe('1')
+  })
+
+  // This endpoint exists to be hit mid-add from whichever device is in your hand, so
+  // two of them landing together is the ordinary case, not a stress test. A
+  // read-modify-write loses one: both read the same list and the second write wins.
+  it('keeps both sections when two devices add different ones at once', async () => {
+    const [a, b] = await Promise.all([
+      call('POST', '/api/pantry/locations', kevin, { name: 'Beer fridge' }),
+      call('POST', '/api/pantry/locations', kevin, { name: 'Chest freezer' }),
+    ])
+    expect([a.statusCode, b.statusCode]).toEqual([201, 201])
+
+    const after = JSON.parse((await call('GET', '/api/pantry', kevin)).body).locations as string[]
+    expect(after).toContain('Beer fridge')
+    expect(after).toContain('Chest freezer')
+    // ...and neither trampled the sections that were already there.
+    expect(after).toContain('Pantry')
+  })
+
+  // A client looping on this endpoint shouldn't be able to grow the household row
+  // without bound. Saves and restores the real list so the rest of the file is unaffected.
+  it('refuses to add a section past the cap', async () => {
+    const before = JSON.parse((await call('GET', '/api/pantry', kevin)).body).locations as string[]
+    const full = Array.from({ length: 40 }, (_, i) => `Shelf ${i + 1}`)
+    expect((await call('PUT', '/api/pantry/config', kevin, { locations: full })).statusCode).toBe(200)
+
+    const over = await call('POST', '/api/pantry/locations', kevin, { name: 'One too many' })
+    expect(over.statusCode).toBe(400)
+    // Settings has to honour the same ceiling, or a household could be pushed past it
+    // there and then never be able to use ＋ New again.
+    const tooMany = await call('PUT', '/api/pantry/config', kevin, { locations: [...full, 'Shelf 41'] })
+    expect(tooMany.statusCode).toBe(400)
+    // A name already on the (full) list is still a no-op rather than an error.
+    const dup = await call('POST', '/api/pantry/locations', kevin, { name: 'shelf 1' })
+    expect(dup.statusCode).toBe(200)
+    expect(JSON.parse(dup.body).added).toBe(false)
+
+    expect((await call('PUT', '/api/pantry/config', kevin, { locations: before })).statusCode).toBe(200)
+  })
+
+  it('adds a new section on the fly and files an item under it', async () => {
+    const before = JSON.parse((await call('GET', '/api/pantry', kevin)).body).locations as string[]
+    expect(before).not.toContain('Garage shelf')
+
+    const add = await call('POST', '/api/pantry/locations', kevin, { name: '  Garage shelf ' })
+    expect(add.statusCode).toBe(201)
+    const locations = JSON.parse(add.body).locations as string[]
+    expect(locations).toContain('Garage shelf')
+    expect(locations.slice(0, before.length)).toEqual(before) // appended, nothing clobbered
+
+    // Adding it again (any casing) is a no-op, not a duplicate.
+    const again = await call('POST', '/api/pantry/locations', kevin, { name: 'garage shelf' })
+    expect(again.statusCode).toBe(200)
+    expect((JSON.parse(again.body).locations as string[]).filter((l) => l.toLowerCase() === 'garage shelf')).toHaveLength(1)
+
+    expect((await call('POST', '/api/pantry/locations', kevin, { name: '   ' })).statusCode).toBe(400)
+
+    // An item filed there lands in the new section (not the "Other" catch-all).
+    const item = JSON.parse((await call('POST', '/api/pantry', kevin, { name: 'Paper towels', location: 'Garage shelf' })).body).item
+    expect(item.location).toBe('Garage shelf')
+    const list = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
+    expect(list.locations).toContain('Garage shelf')
+    expect((list.items as Array<{ name: string; location: string }>).find((i) => i.name === 'Paper towels')?.location).toBe('Garage shelf')
+  })
+
   it("rolls a member's allergens into allergenPeople (known keys only)", async () => {
     const me = JSON.parse((await call('GET', '/api/persons', kevin)).body).persons[0]
     const upd = await call('PATCH', `/api/persons/${me.id}`, kevin, { allergens: ['gluten', 'bogus'] })

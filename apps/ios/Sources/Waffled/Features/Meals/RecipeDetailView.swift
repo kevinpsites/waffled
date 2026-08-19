@@ -73,7 +73,7 @@ struct RecipeDetailView: View {
 
     var body: some View {
         ScrollView {
-            detailContent.padding(16).padding(.bottom, 110)   // clear the floating tab bar
+            detailContent.padding(16).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle(r.title)

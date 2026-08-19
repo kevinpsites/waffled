@@ -282,7 +282,7 @@ struct GoalsView: View {
                         message: model.error ? "Pull to refresh to try again." : "Add one with the ＋ button.")
                 }
             }
-            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, WF.tabBarClearance)
         }
         // Bounce even when the list is short/empty, so pull-to-refresh still triggers.
         .scrollBounceBehavior(.always)
@@ -684,13 +684,7 @@ struct GoalLogSheet: View {
     private var isSplit: Bool { goal.trackingMode == "shared_total" && (goal.participantMode ?? "count_once") == "split" }
     private var whoLabel: String { eachAdds ? "Who took part?" : isSplit ? "Split between" : "Who was there?" }
     private var confirmLabel: String { isHabit ? "Mark done for today" : isTime ? "Log \(durationLabel)" : "Log \(goalFmt(logAmount))\(unitSuffix)" }
-    private var chips: [(label: String, value: Double)] {
-        if isHours {
-            return [("30m", 0.5), ("1 hr", 1), ("1.5 hr", 1.5), ("2 hr", 2)]
-        }
-        let u = goal.unit.map { " \($0)" } ?? ""
-        return [1, 2, 3, 5].map { (label: "\(Int($0))\(u)", value: Double($0)) }
-    }
+    private var chips: [GoalLogChips.Chip] { GoalLogChips.chips(isHours: isHours, unit: goal.unit) }
 
     init(goal: WaffledAPI.Goal, onChanged: (() -> Void)? = nil, onSave: @escaping (Double, Int?, Int?, [String], String, String?) -> Void) {
         self.goal = goal
@@ -910,7 +904,7 @@ struct GoalLogSheet: View {
     private var timeChipRow: some View {
         HStack(spacing: 8) {
             ForEach(chips, id: \.label) { c in
-                let on = abs((Double(hours) + Double(minutes) / 60) - c.value) < 1e-6
+                let on = GoalLogChips.isSelected(hours: hours, minutes: minutes, chip: c.value)
                 Button { setTimeChip(c.value) } label: {
                     Text(c.label).font(.system(size: 14, weight: .bold))
                         .foregroundStyle(on ? .white : WF.ink2)
@@ -925,8 +919,9 @@ struct GoalLogSheet: View {
     }
 
     private func setTimeChip(_ v: Double) {
-        hoursText = String(Int(v))
-        minutesText = String(Int((v - Double(Int(v))) * 60 + 0.5))
+        let f = GoalLogChips.fields(for: v)
+        hoursText = String(f.hours)
+        minutesText = String(f.minutes)
     }
 
     private func stepButton(_ icon: String, disabled: Bool, _ action: @escaping () -> Void) -> some View {
@@ -2711,7 +2706,7 @@ struct GoalDetailView: View {
                     deleteButton
                 }
             }
-            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle(goal.title)

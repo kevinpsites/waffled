@@ -919,6 +919,21 @@ export function planLogRows(
   return { rows: targets.map((t) => ({ personId: t, amount, countsTotal: true })), batchId: null }
 }
 
+/**
+ * SQL for a backdated `logged_at`: noon on the given day, in the household's own
+ * timezone. Noon rather than midnight because every read bucket the day back out
+ * with `(logged_at at time zone h.timezone)::date` — anchoring at an edge lets a
+ * row drift a day under a DST shift, and the day is what the goal calendar, the
+ * activity feed and streaks are all built on.
+ *
+ * `dateParam` is the placeholder number holding a YYYY-MM-DD date; `householdParam`
+ * the one holding the household id. Four call sites need this and the trick is easy
+ * to mis-copy, so it lives in one place.
+ */
+export function localNoonSql(dateParam: number, householdParam = 1): string {
+  return `($${dateParam}::date + time '12:00') at time zone (select timezone from households where id = $${householdParam})`
+}
+
 // Log progress toward a goal. Resolves the goal's counting rules, plans the rows via
 // planLogRows, then inserts them (batched siblings share a batch_id so the audit log
 // collapses them into one line with participant avatars).
@@ -970,7 +985,7 @@ export async function logProgress(
     }
     const ins = await query<{ id: string }>(
       `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by, batch_id, counts_total${at ? ', logged_at' : ''})
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11${at ? `, ($12::date + time '12:00') at time zone (select timezone from households where id = $1)` : ''}) returning id`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11${at ? `, ${localNoonSql(12)}` : ''}) returning id`,
       at
         ? [tenant.householdId, goalId, row.personId, row.amount, note ?? null, source, refType, refId, tenant.personId, batchId, row.countsTotal, at]
         : [tenant.householdId, goalId, row.personId, row.amount, note ?? null, source, refType, refId, tenant.personId, batchId, row.countsTotal]
@@ -1046,8 +1061,7 @@ export async function syncHealthProgress(
       // so it falls on `day` in every timezone), then record the idempotency mapping.
       const ins = await client.query<{ id: string }>(
         `insert into goal_logs (household_id, goal_id, person_id, amount, source, ref_type, ref_id, created_by, logged_at)
-         values ($1,$2,$3,$4,'auto_healthkit','hk_day',null,$3,
-                 ($5::date + time '12:00') at time zone (select timezone from households where id=$1))
+         values ($1,$2,$3,$4,'auto_healthkit','hk_day',null,$3, ${localNoonSql(5)})
          returning id`,
         [tenant.householdId, goalId, tenant.personId, amount, day]
       )
@@ -1293,7 +1307,7 @@ export async function editGoalLog(
     for (const row of plan) {
       await client.query(
         `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, created_by, batch_id, counts_total, logged_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9, ($10::date + time '12:00') at time zone (select timezone from households where id=$1))`,
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9, ${localNoonSql(10)})`,
         [tenant.householdId, goalId, row.personId, row.amount, newNote, source, tenant.personId, batchId, row.countsTotal, newDay]
       )
     }

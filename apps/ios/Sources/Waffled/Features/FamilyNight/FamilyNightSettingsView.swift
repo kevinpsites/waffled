@@ -33,7 +33,7 @@ struct FamilyNightSettingsView: View {
                     agendaCard
                 }
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(16).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle("Family Night").navigationBarTitleDisplayMode(.inline)

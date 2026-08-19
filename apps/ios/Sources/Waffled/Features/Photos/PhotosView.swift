@@ -115,7 +115,7 @@ struct PhotosView: View {
                      tileHeight: 150)
                     .padding(.horizontal, 16)
             }
-            .padding(.top, 12).padding(.bottom, 110)
+            .padding(.top, 12).padding(.bottom, WF.tabBarClearance)
         }
         .scrollBounceBehavior(.always)
         .refreshable { await model.load() }

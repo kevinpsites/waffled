@@ -32,4 +32,19 @@ import Testing
         #expect(AmountEntry.value(of: "  ", locale: Locale(identifier: "de_DE")) == 0)
         #expect(AmountEntry.value(of: "abc", locale: Locale(identifier: "en_US")) == 0)
     }
+
+    // `value` flattens "not a number" and "actually zero" into the same 0, which suits
+    // the goal fields (either way the button is disabled) but not the pantry, where
+    // "a pinch" is an amount worth keeping and "0" isn't. `parse` is the one rule both
+    // build on, and it keeps the two apart.
+    @Test func parseTellsNotANumberApartFromZero() {
+        #expect(AmountEntry.parse("a pinch", locale: Locale(identifier: "en_US")) == nil)
+        #expect(AmountEntry.parse("", locale: Locale(identifier: "en_US")) == nil)
+        #expect(AmountEntry.parse("  ", locale: Locale(identifier: "de_DE")) == nil)
+        #expect(AmountEntry.parse("0", locale: Locale(identifier: "en_US")) == 0)
+        #expect(AmountEntry.parse(".5", locale: Locale(identifier: "en_US")) == 0.5)
+        #expect(AmountEntry.parse("0,5", locale: Locale(identifier: "de_DE")) == 0.5)
+        // A dot still parses on a comma locale (hardware keyboard, pasted text).
+        #expect(AmountEntry.parse("2.5", locale: Locale(identifier: "de_DE")) == 2.5)
+    }
 }

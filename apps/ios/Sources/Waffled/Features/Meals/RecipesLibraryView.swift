@@ -204,7 +204,7 @@ struct RecipesLibraryView: View {
             LazyVGrid(columns: cols, spacing: 14) {
                 ForEach(list) { entry in card(entry) }
             }
-            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)
+            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, WF.tabBarClearance)
         }
     }
 

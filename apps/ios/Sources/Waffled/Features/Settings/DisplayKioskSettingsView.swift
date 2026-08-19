@@ -90,7 +90,7 @@ struct DisplayKioskSettingsView: View {
                     }
                 }
             }
-            .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 110)
+            .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, WF.tabBarClearance)
             .disabled(!sync.isParent)
         }
         .background(WF.canvas)

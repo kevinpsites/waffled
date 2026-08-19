@@ -5,6 +5,7 @@ import {
   type PantryItem, type PantryItemInput, type OffProduct, type ItemRecipe,
 } from '../lib/api'
 import { ScanModal } from './components/ScanModal'
+import { LocationField } from './components/LocationField'
 import { CookFromPantry } from './components/CookFromPantry'
 import { AllergenBadges, AllergenBadge, AllergenKey } from './components/Allergens'
 import '../styles/pantry.css'
@@ -277,7 +278,7 @@ export function Pantry() {
       </div>
 
       {scanning && (
-        <ScanModal locations={locations} avoidAllergens={avoidAllergens} allergenPeople={allergenPeople} onClose={() => setScanning(false)} onAdded={refetch} />
+        <ScanModal locations={locations} avoidAllergens={avoidAllergens} allergenPeople={allergenPeople} onClose={() => setScanning(false)} onAdded={refetch} onLocationsChanged={refetch} />
       )}
 
       {detail && (
@@ -295,6 +296,7 @@ export function Pantry() {
         <ItemModal
           item={editing === 'new' ? null : editing}
           locations={locations}
+          onLocationsChanged={refetch}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); refetch() }}
         />
@@ -451,9 +453,10 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
   )
 }
 
-function ItemModal({ item, locations, onClose, onSaved }: {
+function ItemModal({ item, locations, onLocationsChanged, onClose, onSaved }: {
   item: PantryItem | null
   locations: string[]
+  onLocationsChanged: () => void
   onClose: () => void
   onSaved: () => void
 }) {
@@ -546,10 +549,7 @@ function ItemModal({ item, locations, onClose, onSaved }: {
         </div>
         <div className="pantry-field-row">
           <label className="pantry-field"><span>Location</span>
-            <select value={location} onChange={(e) => setLocation(e.target.value)}>
-              {locations.map((l) => <option key={l} value={l}>{l}</option>)}
-              {!locations.includes(location) && <option value={location}>{location}</option>}
-            </select>
+            <LocationField value={location} locations={locations} onChange={setLocation} onLocationsChanged={onLocationsChanged} />
           </label>
           <label className="pantry-field"><span>Expires (optional)</span>
             <input type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} />

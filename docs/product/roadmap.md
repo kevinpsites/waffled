@@ -395,14 +395,18 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Used some / Used it up / Didn't use; staples skipped) that decrements or uses-up on-hand
   stock; leftover items get an "Ate it" action; cooking also flips today's planned slot to
   cooked. We deliberately confirm rather than subtract exact amounts (units don't reconcile
-  cleanly). **The grocery half now landed too:** the board badges any row the pantry covers
+  cleanly). Putting the shopping away also got out of the way of itself: the "Where" picker
+  creates a **section on the fly** (`POST /api/pantry/locations`), scanned amounts take
+  **fractions** (½ a bag; the ¼/½/¾ shortcut chips are iOS), and the iOS scan sheet now shows the same
+  **allergen warning** the web one does — badges, "may contain" traces, and who it affects.
+  **The grocery half now landed too:** the board badges any row the pantry covers
   (🥫 + the matched item and its own amount) and the recipe "Add to grocery" picker starts
   those ingredients unchecked. It **flags, never filters** — matching is presence-only, so
   we can say you have chicken but not that you have enough, and an extra item in the cart
   beats a second trip. Matched at read time rather than stamped during the weekly rebuild,
   so it can't go stale when you cook or scan. **iPhone/iPad have both now too** — the same
   badge under the item name and the same pre-unchecked picker (which says how many it
-  unchecked). **Later:** quantity *comparison* for genuinely countable items
+  unchecked). **Later:** true unit/quantity *comparison* for genuinely countable items
   (eggs, limes, cans — `lists/quantity.ts` already parses the amounts, and bulk goods like
   rice/pasta/flour are staples that never reach the list anyway, so this is a smaller job
   than it looks); vegetable-based "mains" + recipe filter.

@@ -37,7 +37,7 @@ struct AccountSettingsView: View {
                 householdCard
                 if let overview { householdSwitcher(overview); pendingInvitesSection(overview) }
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(16).padding(.bottom, WF.tabBarClearance)
         }
         .background(WF.canvas)
         .navigationTitle("Households").navigationBarTitleDisplayMode(.inline)
