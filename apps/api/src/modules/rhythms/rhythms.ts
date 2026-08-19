@@ -135,6 +135,12 @@ export async function createRhythm(householdId: string, input: CreateRhythmInput
   const personId = typeof input.personId === 'string' ? input.personId : null
   if (personId) await assertPersonInHousehold(householdId, personId)
 
+  // The runway is clamped to half the cycle at insert time (`least(lead_time, every/2)`,
+  // below) — a 14-day default on a 7-day cadence would put `next_due_at - lead_time`
+  // permanently in the past, so weekly trash would never leave the attention list. Half a
+  // period is the guarantee: every rhythm gets a stretch where it is genuinely quiet.
+  // Stored rather than applied on read so the API echoes back what will actually happen;
+  // an update path that changes `every` has to re-apply this.
   const leadTime = typeof input.leadTime === 'string' && input.leadTime.trim() ? input.leadTime.trim() : '14 days'
 
   if (satisfiedBy === 'completion') {
@@ -143,7 +149,7 @@ export async function createRhythm(householdId: string, input: CreateRhythmInput
     if (!nextDueAt) throw new InvalidReferenceError('nextDueAt is required for a completion rhythm')
     const { rows } = await query<Row>(
       `insert into rhythms (household_id, title, emoji, notes, person_id, satisfied_by, every, lead_time, next_due_at)
-       values ($1,$2,$3,$4,$5,'completion',$6::interval,$7::interval,$8::timestamptz)
+       values ($1,$2,$3,$4,$5,'completion',$6::interval,least($7::interval, $6::interval / 2),$8::timestamptz)
        returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
                  starts_on, auto_schedule, rrule, lead_time::text as lead_time,
                  last_completed_at, next_due_at, is_active`,
@@ -163,7 +169,7 @@ export async function createRhythm(householdId: string, input: CreateRhythmInput
   const { rows } = await query<Row>(
     `insert into rhythms (household_id, title, emoji, notes, person_id, satisfied_by, every, lead_time,
                           starts_on, auto_schedule, rrule)
-     values ($1,$2,$3,$4,$5,'scheduling',$6::interval,$7::interval,$8::date,$9,$10)
+     values ($1,$2,$3,$4,$5,'scheduling',$6::interval,least($7::interval, $6::interval / 2),$8::date,$9,$10)
      returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
                starts_on, auto_schedule, rrule, lead_time::text as lead_time,
                last_completed_at, next_due_at, is_active`,

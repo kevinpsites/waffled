@@ -47,7 +47,9 @@ create table rhythms (
   --   completion → surfaces when now() >= next_due_at - lead_time
   --   scheduling → surfaces when now() >= period_end - lead_time (the booking runway).
   -- Measured from the period END, not its start: a quarterly item nagging from day one
-  -- would nag for 90 days, which just trains you to ignore it.
+  -- would nag for 90 days, which just trains you to ignore it. For the same reason the
+  -- writer clamps this to least(lead_time, every/2) — the 14-day default on a weekly
+  -- cadence would leave the runway permanently open, so trash would never go quiet.
   lead_time interval not null default '14 days',
 
   -- completion only. Denormalised so "what's due" is a plain index scan.

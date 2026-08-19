@@ -201,6 +201,57 @@ describe('completion-shape rhythms', () => {
   })
 })
 
+// Weekly trash is the shortest real cadence we have, and it's where a fixed lead time
+// falls apart: a 14-day runway on a 7-day cycle means `next_due_at - lead_time` is always
+// in the past, so the item never goes quiet — it just sits on Today forever, thirty
+// seconds after you took the trash out included. A rhythm that is always shouting is
+// indistinguishable from one you've stopped reading.
+describe('a short cadence does not out-run its lead time', () => {
+  let trashId = ''
+
+  it('clamps the runway to half the cycle so a weekly item can go quiet', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Take the trash out',
+      emoji: '🗑️',
+      satisfiedBy: 'completion',
+      every: '7 days',
+      nextDueAt: '2026-09-04T00:00:00Z',
+      // no leadTime given — the 14-day default is longer than the whole cycle
+    })
+    expect(res.statusCode).toBe(201)
+    const body = JSON.parse(res.body).rhythm
+    trashId = body.id
+    // Echoed back as what will actually happen, not as the unusable default.
+    expect(body.leadTime).toBe('3 days 12:00:00')
+  })
+
+  it('stays off the list in the first half of the week', async () => {
+    // Due the 4th, so the runway opens midday on Aug 31. Ask on the 29th.
+    const res = await call('GET', '/api/rhythms/attention?from=2026-08-29&to=2026-08-29', kevin)
+    expect(res.statusCode).toBe(200)
+    const items = JSON.parse(res.body).items
+    expect(items.map((i: { rhythm: { id: string } }) => i.rhythm.id)).not.toContain(trashId)
+  })
+
+  it('appears once the runway opens', async () => {
+    const res = await call('GET', '/api/rhythms/attention?from=2026-09-02&to=2026-09-02', kevin)
+    expect(res.statusCode).toBe(200)
+    const items = JSON.parse(res.body).items
+    expect(items.map((i: { rhythm: { id: string } }) => i.rhythm.id)).toContain(trashId)
+  })
+
+  it('leaves a long cadence its full requested runway', async () => {
+    // The clamp is a ceiling, not a rewrite: 14 days is well under half of 3 months.
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Oil change',
+      satisfiedBy: 'completion',
+      every: '6 months',
+      nextDueAt: '2027-01-01T00:00:00Z',
+    })
+    expect(JSON.parse(res.body).rhythm.leadTime).toBe('14 days')
+  })
+})
+
 describe('scheduling-shape rhythms', () => {
   let templeId = ''
 
