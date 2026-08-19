@@ -55,6 +55,16 @@ describe('dueLabel', () => {
     expect(dueLabel('2026-08-19T09:00:00Z', false, today)).toBe('due tomorrow')
     expect(dueLabel('2026-08-25T09:00:00Z', false, today)).toBe('due in 7 days')
   })
+
+  // "Today" is the day on the viewer's wall clock. Counting UTC days instead reads
+  // correct all afternoon and then goes wrong every evening west of UTC (and every
+  // small hour east of it), which is exactly when a kitchen kiosk is being looked at.
+  it('counts calendar days on the local clock, not in UTC', () => {
+    const lateEvening = new Date(2026, 7, 18, 23, 0, 0)
+    expect(dueLabel(new Date(2026, 7, 19, 9, 0, 0).toISOString(), false, lateEvening)).toBe('due tomorrow')
+    const smallHours = new Date(2026, 7, 19, 0, 30, 0)
+    expect(dueLabel(new Date(2026, 7, 19, 9, 0, 0).toISOString(), false, smallHours)).toBe('due today')
+  })
 })
 
 describe('periodLabel', () => {
@@ -66,5 +76,12 @@ describe('periodLabel', () => {
     expect(periodLabel('2026-08-19', today)).toBe('1 day left to book it')
     expect(periodLabel('2026-08-18', today)).toBe('this period ends today')
     expect(periodLabel('2026-08-17', today)).toBe('this period has ended')
+  })
+
+  it('reads the period boundary as a calendar date on the local clock', () => {
+    // periodEnd is a date, not an instant — it must not drift by a day at either
+    // end of the evening.
+    expect(periodLabel('2026-08-19', new Date(2026, 7, 18, 23, 0, 0))).toBe('1 day left to book it')
+    expect(periodLabel('2026-08-19', new Date(2026, 7, 19, 0, 30, 0))).toBe('this period ends today')
   })
 })

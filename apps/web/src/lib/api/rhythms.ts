@@ -160,9 +160,13 @@ export function cadenceLabel(every: string): string {
   return one ? `every ${one[1]}` : `every ${text}`
 }
 
+// Whole calendar days between two moments, counted on the VIEWER's clock. Doing
+// this in UTC reads correct all afternoon and then slips a day every evening west
+// of UTC (and every small hour east of it) — which is when a kitchen kiosk is
+// actually being looked at. Matches localToday().
 function dayDiff(target: Date, now: Date): number {
-  const a = Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate())
-  const b = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  const a = Date.UTC(target.getFullYear(), target.getMonth(), target.getDate())
+  const b = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
   return Math.round((a - b) / 86400000)
 }
 
@@ -187,7 +191,8 @@ export function dueLabel(dueAt: string, overdue: boolean, now: Date = new Date()
  * does not ask.
  */
 export function periodLabel(periodEnd: string, now: Date = new Date()): string {
-  const days = dayDiff(new Date(`${periodEnd}T00:00:00Z`), now)
+  // periodEnd is a calendar DATE, not an instant, so it is read as local midnight.
+  const days = dayDiff(new Date(`${periodEnd}T00:00:00`), now)
   if (days < 0) return 'this period has ended'
   if (days === 0) return 'this period ends today'
   return `${plural(days, 'day')} left to book it`
