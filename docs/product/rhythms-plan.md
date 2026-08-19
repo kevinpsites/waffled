@@ -8,8 +8,9 @@ through all three event write paths (see *Implementation sequencing*). **Phase 3
 too**: Today card, register, booking, skipping, editing, pausing and retiring on web/kiosk
 **and** iPhone/iPad, plus the countdown source and the docs. User-facing docs live at
 `website/docs/src/content/docs/features/rhythms.md` and the `CHANGELOG.md` entry is
-written. **The one piece still open is the 🔁 event marker on iOS** — web/kiosk has it.
-Per-surface status is the [feature matrix](../../website/docs/src/content/docs/reference/features.md).
+written. **The 🔁 event marker now ships on iOS too**, so every part of the feature is on
+every surface. Per-surface status is the
+[feature matrix](../../website/docs/src/content/docs/reference/features.md).
 
 Where "trash out weekly", "air filter every 3 months", "change the car's oil", "book a
 temple visit", "take a self-care day once a quarter", and "family outing on the third
@@ -361,11 +362,15 @@ habit of mind: the place you look to confirm the recurring things are handled.
 **This is materially smaller than the original plan assumed.** Because scheduling-shape
 rhythms *are* events, they render natively — real recurrence, Google sync, visibility,
 participants, the existing editor, and local notifications — with no *placement* code at
-all. **Built on web:** they carry a small `🔁` marker beside the title in every calendar
-view and on Today's agenda, plus a pill in the event detail. That much overlay is
-deliberate: without it a booked rhythm is indistinguishable from any other event, and the
-whole point of the register is being able to see that the calendar and the intention agree.
-Still open on iOS.
+all. **Built:** they carry a small `🔁` marker beside the title in every calendar view and
+on Today's agenda, plus a pill in the event detail — on web, kiosk, iPhone and iPad. That
+much overlay is deliberate: without it a booked rhythm is indistinguishable from any other
+event, and the whole point of the register is being able to see that the calendar and the
+intention agree.
+
+On iOS the marker needed the link replicated first: `events.rhythm_id` had to join the
+PowerSync client schema and both branches of the agenda UNION — an occurrence inherits the
+link from its master, and an auto-scheduled rhythm renders *only* as occurrences.
 
 That leaves the read-only overlay covering only two sources: `chore_instances.due_on` and
 completion-shape `rhythms.next_due_at`. **The rhythms half is already done** — a
