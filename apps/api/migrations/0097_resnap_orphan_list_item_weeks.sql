@@ -25,6 +25,19 @@
 -- orphaned and are never touched. The `week_start is not null` guards below are what keep
 -- them out — without one, every global row looks "unaligned".
 --
+-- Blast radius is wider than "households that used Plan the month", and deliberately so.
+-- A household that ever CHANGED its week-start setting (sunday <-> monday) has every
+-- existing weekly row sitting on the old boundary, which this file's test reads as
+-- unaligned. Those rows are not month-plan residue — they were written correctly under the
+-- previous setting — but the switch already stranded them: `weekStartFor` snaps to the
+-- CURRENT preference and every query below matches `week_start = $n` exactly, so nothing
+-- reaches them either. They get the same treatment for the same reason, and it repairs them
+-- rather than breaking them.
+--
+-- The safety property that makes all of this cheap: a row this file touches is, by
+-- definition, one no board can render. An unaligned key matches no query, so no row a user
+-- can currently SEE is ever moved or deleted here — only rows that are already lost.
+--
 -- Soft delete, not DELETE: every query in this app filters `deleted_at is null`, and since
 -- the down migration cannot restore the original keys, a tombstone is the only recovery
 -- path this change will ever have. (`list_items` is not in the PowerSync sync rules, so no
