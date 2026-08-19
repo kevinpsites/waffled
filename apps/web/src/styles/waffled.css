@@ -283,6 +283,20 @@
 .card-h { font-size: 19px; font-weight: 700; }
 .muted { color: var(--ink-2); }
 .tiny { font-size: 12.5px; }
+/* Available to assistive tech, invisible on screen. For labels an icon already carries
+   visually — an emoji is aria-hidden, and `title` is not announced on an element that
+   already has text, so without this the text beside it arrives with no name attached. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* ===== AI bar =================================================== */
 .ai-bar { display: flex; align-items: center; gap: 12px; background: var(--card);

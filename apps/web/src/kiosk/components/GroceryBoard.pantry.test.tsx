@@ -99,6 +99,20 @@ describe('GroceryBoard — pantry badge', () => {
     expect(badge.textContent).not.toMatch(/Heavy cream/)
   })
 
+  it('says what the amount IS to a screen reader, not just a bare number', async () => {
+    // Visually the 🥫 carries the meaning, but it is aria-hidden and `title` is not
+    // announced on a span that already has text. So an exact match used to reach a screen
+    // reader as a naked "2 cups" sitting right beside the row's OWN quantity — two
+    // unlabeled numbers, no cue which belongs to the shelf. The badge has to name itself.
+    mockBoard([row('Heavy cream', { quantity: '1 cup', pantry: { name: 'Heavy cream', amount: '2', unit: 'cups' } })])
+    show()
+    await screen.findByText('Heavy cream')
+    const badge = document.querySelector('.gpantry')
+    expect(badge).not.toBeNull()
+    expect(badge!.textContent).toMatch(/in pantry/i)
+    expect(badge!.textContent).toMatch(/2 cups/)
+  })
+
   it('falls back to a bare label when the pantry item has no amount', async () => {
     mockBoard([row('Leeks', { pantry: { name: 'Leeks', amount: '', unit: '' } })])
     show()

@@ -66,7 +66,10 @@ function PantryBadge({ item }: { item: GroceryBoardItem }) {
       className="gpantry"
       title={`In your pantry${detail ? ` — ${detail}` : ''}. Still on the list: we can't tell whether it's enough.`}
     >
-      <span aria-hidden>🥫</span> {detail || 'in pantry'}
+      {/* The 🥫 is decoration, so the badge has to name itself in text — otherwise an
+          exact match reaches a screen reader as a naked "2 cups" right next to the row's
+          own quantity, two unlabeled numbers with nothing saying which is the shelf. */}
+      <span aria-hidden>🥫</span> {detail ? <><span className="sr-only">In pantry: </span>{detail}</> : 'in pantry'}
     </span>
   )
 }
