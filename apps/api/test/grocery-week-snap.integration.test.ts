@@ -199,6 +199,59 @@ describe('grocery rebuild — the snap honors a monday household', () => {
   })
 })
 
+// When a client doesn't yet know whether the household cuts weeks on Sunday or Monday, it
+// now covers BOTH — which means it can rebuild a week the user never touched. That is only
+// an acceptable trade if rebuilding a bystander week is genuinely harmless, and "probably,
+// because rebuild only wipes source='auto'" is reasoning, not a guarantee. Pinned here:
+// the two things a shopper would actually lose are their ticks and their off-plan adds.
+describe('grocery rebuild — rebuilding an untouched week costs that week nothing', () => {
+  beforeAll(async () => {
+    await setWeekPref('sunday')
+  })
+
+  it('keeps the checks and the off-plan rows on a week it had no reason to touch', async () => {
+    await plan('2026-11-11', 'Bystander Ingredient') // Wed → week of Sun Nov 8
+    expect((await rebuild('2026-11-08')).statusCode).toBe(200)
+
+    // An explicit off-plan add: source='recipe', which no rebuild may ever wipe.
+    const offPlanRecipe = (
+      await withClient((c) =>
+        c.query<{ id: string }>(
+          `insert into recipes (household_id, title, category, servings) values ($1,'Off-plan dish','dinner',4) returning id`,
+          [householdId]
+        )
+      )
+    ).rows[0].id
+    await withClient((c) =>
+      c.query(
+        `insert into recipe_ingredients (household_id, recipe_id, name, amount, unit, aisle, is_staple)
+           values ($1,$2,'Off Plan Ingredient',1,null,'Produce',false)`,
+        [householdId, offPlanRecipe]
+      )
+    )
+    expect(
+      (await call('POST', `/api/lists/grocery/from-recipe/${offPlanRecipe}?weekStart=2026-11-08`, kevin)).statusCode
+    ).toBe(201)
+
+    // Tick the auto row, the way a shopper halfway round the shop would have.
+    const before = await board('2026-11-08')
+    const autoRow = (before.items as Array<{ id: string; name: string }>).find((i) => i.name === 'Bystander Ingredient')
+    expect(autoRow).toBeDefined()
+    expect((await call('PATCH', `/api/list-items/${autoRow!.id}`, kevin, { checked: true })).statusCode).toBeLessThan(300)
+
+    // Now the redundant rebuild a both-boundaries client would fire at this week.
+    expect((await rebuild('2026-11-08')).statusCode).toBe(200)
+
+    const after = await board('2026-11-08')
+    const names = (after.items as Array<{ name: string }>).map((i) => i.name)
+    expect(names).toContain('Off Plan Ingredient') // the off-plan add survives
+    expect(names).toContain('Bystander Ingredient')
+    const checkedAfter = (after.items as Array<{ name: string; checked?: boolean }>)
+      .find((i) => i.name === 'Bystander Ingredient')?.checked
+    expect(checkedAfter, 'a redundant rebuild must not un-tick what is already in the trolley').toBe(true)
+  })
+})
+
 // A well-formed date can still be an absurd one. The validation gate only asks "is this a
 // real calendar date that round-trips?", which year 1 passes — and then the snap subtracts
 // up to six days straight out of the supported range: 0001-01-01 becomes "0000-12-31", a
