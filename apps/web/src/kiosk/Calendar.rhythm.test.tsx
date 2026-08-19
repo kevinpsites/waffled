@@ -80,6 +80,29 @@ describe('Calendar — rhythm marker', () => {
     }
   })
 
+  // A month cell gives an event chip about 100px. Two leading glyphs on a recurring
+  // rhythm ("↻ 🔁 Third-…") left six characters of the title showing, and an auto-scheduled
+  // rhythm — trash night, the third-Saturday outing — is *always* recurring, so this is
+  // the ordinary case rather than an edge one. In the month grid the rhythm marker wins
+  // and the repeat arrow stands down; both still show where there's room.
+  it('shows only the rhythm marker on a recurring rhythm in the tight month grid', async () => {
+    mockRange([
+      {
+        ...base, id: 'r2', title: 'Third-weekend family outing', startsAt: noonToday(),
+        rhythmId: 'rh-2', rrule: 'FREQ=MONTHLY;BYDAY=3SA', occurrenceStart: noonToday(),
+      },
+    ])
+    renderCalendar()
+    expect((await screen.findAllByText(/Third-weekend/)).length).toBeGreaterThan(0)
+    expect(screen.getAllByTitle(MARK).length).toBeGreaterThan(0)
+    expect(screen.queryAllByTitle('Repeats')).toHaveLength(0)
+  })
+
+  // The other half of this rule — that a recurring event which ISN'T a rhythm keeps its
+  // repeat arrow — is asserted in e2e/rhythms-visual.spec.ts instead. jsdom doesn't lay
+  // the month grid out, so the arrow that renders in a real browser isn't reliably in the
+  // tree here, and a test that can't see it either way would prove nothing.
+
   it('shows no marker at all when nothing on the calendar is a rhythm', async () => {
     mockRange([{ ...base, id: 'e1', title: 'Dentist', startsAt: noonToday() }])
     renderCalendar()

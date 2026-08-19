@@ -98,7 +98,13 @@ export function MonthView({
                       onOpenEvent(e)
                     }}
                   >
-                    {e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}
+                    {/* A month cell gives a chip ~100px. Two leading glyphs on a
+                        recurring rhythm ("↻ 🔁 Third-…") left six characters of the title
+                        readable — and an auto-scheduled rhythm is always recurring, so
+                        that's the ordinary case, not an edge one. The rhythm marker is the
+                        more specific fact, so here it wins and the repeat arrow stands
+                        down; week, day and agenda have room for both. */}
+                    {e.occurrenceStart && !e.rhythmId && <span className="ev-rep" title="Repeats">↻ </span>}
                     <RhythmMark event={e} />
                     {e.title}
                   </div>
