@@ -178,6 +178,16 @@ struct EventDetailView: View {
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(.white.opacity(0.22)).clipShape(Capsule())
             }
+            // Booking-shaped on purpose: a rhythm is satisfied by this slot existing,
+            // so there is nothing here to mark done and no streak to keep.
+            if event.isRhythm {
+                HStack(spacing: 6) {
+                    Text(RhythmMark.glyph).font(.system(size: 13))
+                    Text(RhythmMark.detailLine).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(.white.opacity(0.22)).clipShape(Capsule())
+            }
             Text(title).font(WF.serif(28)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
             Text(timeLine).font(.system(size: 22, weight: .heavy)).foregroundStyle(.white)
             Text(dateLine).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.9))

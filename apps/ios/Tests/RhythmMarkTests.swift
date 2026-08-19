@@ -94,4 +94,21 @@ private func event(_ id: String, rhythmId: String? = nil) -> SyncedEvent {
                 == "Temple visit, part of a rhythm")
         #expect(RhythmMark.accessibilityLabel("Dentist", isRhythm: false) == "Dentist")
     }
+
+    /// Word-for-word what the web's event detail says, so the two platforms describe the
+    /// same event the same way.
+    @Test func matchesTheWebsEventDetailLine() {
+        #expect(RhythmMark.detailLine == "This slot keeps a rhythm")
+    }
+
+    /// The copy rule the whole feature hangs on: a rhythm is satisfied by the slot
+    /// EXISTING, so there is nothing to mark done and no streak to keep. Any of these
+    /// words appearing here would quietly turn a rhythm back into a goal.
+    @Test func neverUsesFollowThroughLanguage() {
+        let followThrough = ["done", "complete", "streak", "on track", "missed", "kept up"]
+        for word in followThrough {
+            #expect(!RhythmMark.detailLine.lowercased().contains(word))
+            #expect(!RhythmMark.meaning.lowercased().contains(word))
+        }
+    }
 }

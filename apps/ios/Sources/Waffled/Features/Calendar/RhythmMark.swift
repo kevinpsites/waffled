@@ -21,6 +21,10 @@ enum RhythmMark {
     /// surface that shows the glyph passes a label through instead.
     static let meaning = "part of a rhythm"
 
+    /// The event detail's line, word-for-word the web's. Booking-shaped on purpose:
+    /// "keeps a rhythm", never "kept up" or "done" — the slot existing IS the outcome.
+    static let detailLine = "This slot keeps a rhythm"
+
     /// A title with the glyph in front of it.
     ///
     /// Two of the kiosk's chips are a bare `Text` with padding and a background chained
