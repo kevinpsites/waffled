@@ -349,10 +349,18 @@ habit of mind: the place you look to confirm the recurring things are handled.
 
 **This is materially smaller than the original plan assumed.** Because scheduling-shape
 rhythms *are* events, they render natively — real recurrence, Google sync, visibility,
-participants, the existing editor, and local notifications — with no overlay code at all.
+participants, the existing editor, and local notifications — with no *placement* code at
+all. **Built on web:** they carry a small `🔁` marker beside the title in every calendar
+view and on Today's agenda, plus a pill in the event detail. That much overlay is
+deliberate: without it a booked rhythm is indistinguishable from any other event, and the
+whole point of the register is being able to see that the calendar and the intention agree.
+Still open on iOS.
 
 That leaves the read-only overlay covering only two sources: `chore_instances.due_on` and
-completion-shape `rhythms.next_due_at`. Rendered as compact all-day chips at the top of a
+completion-shape `rhythms.next_due_at`. **The rhythms half is already done** — a
+completion-shape rhythm's due date flows in as a `source: 'rhythm'` countdown, so it renders
+as a month-grid badge and a week/day chip for free. Only `chore_instances.due_on` is left of
+this item; don't build the rhythm side twice. Rendered as compact all-day chips at the top of a
 day rather than blocks in the time grid — a chore's `due_time` is a soft target, not an
 appointment, and placing it in the grid implies a precision that isn't there. Tapping a chip
 deep-links to the chore/rhythm detail rather than opening the event editor. `list_items` has
@@ -390,14 +398,14 @@ Do not let the plan imply otherwise.
 
 Supersedes the original 8–13 day table, which was scoped to the maintenance-only design.
 
-| Piece | Estimate |
-|---|---|
-| Schema + service + `/rhythms/attention` (TDD, testcontainer integration tests) | 3–4 days |
-| Event generation + `events.rhythm_id` round-trip (incl. PowerSync touch points) | 2–3 days |
-| Module registration + Today card (web + iPhone) | 1–2 days |
-| Management screen (web + iOS) | 2–3 days |
-| Countdown integration (a union member + a query) | 0.5 day |
-| Calendar chip overlay, both platforms | 1.5–2 days |
+| Piece | Estimate | Status |
+|---|---|---|
+| Schema + service + `/rhythms/attention` (TDD, testcontainer integration tests) | 3–4 days | done |
+| Event generation + `events.rhythm_id` round-trip (incl. PowerSync touch points) | 2–3 days | done |
+| Module registration + Today card (web + iPhone) | 1–2 days | registration done |
+| Management screen (web + iOS) | 2–3 days | |
+| Countdown integration (a union member + a query) | 0.5 day | done |
+| Calendar chip overlay, both platforms | 1.5–2 days | web done, iOS open |
 
 Roughly **10–15 days**. It buys more than the original scope: the booking flow and assignees
 are new, while the calendar overlay and countdown pieces both shrank.
