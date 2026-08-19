@@ -1,4 +1,4 @@
-import { formatInterval, cadenceLabel, dueLabel, periodLabel } from './rhythms'
+import { formatInterval, cadenceLabel, dueLabel, periodLabel, splitCadence, intervalDays } from './rhythms'
 
 // Postgres hands `interval::text` back in its own shorthand — `3 mons`, `1 mon`,
 // `3 days 12:00:00` — which is exactly the string a careless card would print at a
@@ -83,5 +83,30 @@ describe('periodLabel', () => {
     // end of the evening.
     expect(periodLabel('2026-08-19', new Date(2026, 7, 18, 23, 0, 0))).toBe('1 day left to book it')
     expect(periodLabel('2026-08-19', new Date(2026, 7, 19, 0, 30, 0))).toBe('this period ends today')
+  })
+})
+
+// Editing a rhythm means putting its stored cadence back INTO a number + unit
+// picker, so the Postgres shorthand has to survive the round trip.
+describe('splitCadence', () => {
+  it('reads Postgres shorthand back into picker state', () => {
+    expect(splitCadence('3 mons')).toEqual({ count: 3, unit: 'months' })
+    expect(splitCadence('1 mon')).toEqual({ count: 1, unit: 'months' })
+    expect(splitCadence('7 days')).toEqual({ count: 1, unit: 'weeks' })
+    expect(splitCadence('10 days')).toEqual({ count: 10, unit: 'days' })
+    expect(splitCadence('1 year')).toEqual({ count: 1, unit: 'years' })
+  })
+
+  it('falls back to a week rather than to zero on something it cannot read', () => {
+    expect(splitCadence('')).toEqual({ count: 1, unit: 'weeks' })
+  })
+})
+
+describe('intervalDays', () => {
+  it('turns a runway into whole days for the form', () => {
+    expect(intervalDays('14 days')).toBe(14)
+    // The clamp's half-week runway rounds rather than truncating to 3.
+    expect(intervalDays('3 days 12:00:00')).toBe(4)
+    expect(intervalDays('')).toBe(0)
   })
 })

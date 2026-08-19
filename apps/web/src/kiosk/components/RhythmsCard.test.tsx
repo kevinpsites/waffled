@@ -71,13 +71,14 @@ describe('RhythmsCard', () => {
     await waitFor(() => expect(container.querySelector('.card')).toBeNull())
   })
 
-  it('asks for a one-day window — a wider `to` would answer about a later period', async () => {
+  it('asks no further ahead than today — a later horizon answers about a later period', async () => {
     mockAttention([])
     render()
     await waitFor(() => expect(calls.some((c) => c.url.includes('/api/rhythms/attention'))).toBe(true))
     const url = calls.find((c) => c.url.includes('/api/rhythms/attention'))!.url
-    expect(url).toContain('from=2026-08-18')
-    expect(url).toContain('to=2026-08-18')
+    // Exact, not `toContain`: a leftover `from=` would survive a substring check,
+    // and a second date implies a window this endpoint doesn't have.
+    expect(url).toBe('/api/rhythms/attention?to=2026-08-18')
   })
 
   it('shows a completion rhythm as overdue and marks it done', async () => {
