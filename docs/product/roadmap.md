@@ -202,7 +202,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Reward **categories** are settable on iOS (editor chip-picker), and the **Countdown tweaks**
   `birthdayHorizonDays` control shipped in Settings → Calendars — so the July-batch iOS parity is
   now **complete**. Per-surface (iPhone / iPad)
-  status — and the remaining mobile gaps — live in the [feature matrix](./features.md).
+  status — and the remaining mobile gaps — live in the [feature matrix](../../website/docs/src/content/docs/reference/features.md).
 
 - **Rhythms — the things that should keep happening.** A new optional module (`rhythms`,
   default **off**) for the standing intentions with a cadence: "trash out weekly", "air
@@ -222,16 +222,18 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Booking a period creates a **real `events` row** carrying `rhythm_id` (mirroring
   `events.goal_id` from `0033_event_goal`) rather than a read-only chip, so it inherits
   recurrence, Google/Outlook sync, visibility, participants, the existing editor and local
-  reminders for free; those events wear a 🔁 marker in every calendar view, on Today's agenda
-  card and on the event detail. A **Today card** (silent on quiet days) and a **register
-  screen** cover completing, booking and skipping a period, and completion-shape rhythms join
+  reminders for free; on web/kiosk those events wear a 🔁 marker in every calendar view, on
+  Today's agenda card and on the event detail (the iOS marker is the one piece still open).
+  A **Today card** (silent on quiet days) and a **register
+  screen** cover completing, booking, skipping, editing, pausing and retiring — on all three
+  surfaces — and completion-shape rhythms join
   countdowns as a fourth source ("18 days until the air filter"). `leadTime` is clamped
   to half the cadence so a runway can never outlive its cycle, and the shape/anchor fields
   are immutable after creation because re-anchoring would re-interpret existing skips. REST-only
   by design (the booked events sync; the register doesn't). Design and schema:
   [Rhythms plan](./rhythms-plan.md); how to use it:
   [docs → Rhythms](https://docs.waffled.app/features/rhythms/). Per-surface status lives in
-  the [feature matrix](./features.md).
+  the [feature matrix](../../website/docs/src/content/docs/reference/features.md).
 
 ## Partial / in progress 🟡
 

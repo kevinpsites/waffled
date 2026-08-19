@@ -4,11 +4,12 @@
 after checking the original design against real household cases. **Phases 1 and 2 are
 built** — migration `0097_rhythms.sql`, the service, `GET /rhythms/attention`, module and
 Today-card registration, `POST /rhythms/:id/schedule`, and the `rhythm_id` link pinned
-through all three event write paths (see *Implementation sequencing*). **Phase 3 is
-landing**: the web surfaces (Today card, register, booking, skipping, the calendar 🔁
-marker, the countdown source) and the docs are done — user-facing docs live at
+through all three event write paths (see *Implementation sequencing*). **Phase 3 is built
+too**: Today card, register, booking, skipping, editing, pausing and retiring on web/kiosk
+**and** iPhone/iPad, plus the countdown source and the docs. User-facing docs live at
 `website/docs/src/content/docs/features/rhythms.md` and the `CHANGELOG.md` entry is
-written. Per-surface status is the [feature matrix](../../website/docs/src/content/docs/reference/features.md).
+written. **The one piece still open is the 🔁 event marker on iOS** — web/kiosk has it.
+Per-surface status is the [feature matrix](../../website/docs/src/content/docs/reference/features.md).
 
 Where "trash out weekly", "air filter every 3 months", "change the car's oil", "book a
 temple visit", "take a self-care day once a quarter", and "family outing on the third
@@ -412,8 +413,8 @@ Supersedes the original 8–13 day table, which was scoped to the maintenance-on
 |---|---|---|
 | Schema + service + `/rhythms/attention` (TDD, testcontainer integration tests) | 3–4 days | done |
 | Event generation + `events.rhythm_id` round-trip (incl. PowerSync touch points) | 2–3 days | done |
-| Module registration + Today card (web + iPhone) | 1–2 days | registration done |
-| Management screen (web + iOS) | 2–3 days | |
+| Module registration + Today card (web + iPhone) | 1–2 days | done |
+| Management screen (web + iOS) | 2–3 days | done |
 | Countdown integration (a union member + a query) | 0.5 day | done |
 | Calendar chip overlay, both platforms | 1.5–2 days | web done, iOS open |
 

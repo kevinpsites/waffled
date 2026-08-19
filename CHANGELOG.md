@@ -31,7 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entry for something that isn't happening. A **Today card** shows only what needs
   attention and stays invisible on the many quiet days, and the things you do yourself turn
   into countdowns ("18 days until the air filter"). Off by default — turn **Rhythms** on in
-  Settings → Modules. On the web and kiosk today.
+  Settings → Modules. Web, kiosk, iPhone and iPad; the small 🔁 on a booked event is
+  web/kiosk only for now.
 - **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
   hardware run, the packing list, whatever's live this week — right on the Today board,
   with tap-to-tick-off. Pick which list from the card itself, the same way the Goals

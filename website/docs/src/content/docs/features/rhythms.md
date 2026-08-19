@@ -154,8 +154,11 @@ register exists.
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone | 🚧 |
-| iPad | 🚧 |
+| iPhone | ✅ |
+| iPad | ✅ |
+
+The one piece that's web-only so far is the small 🔁 marker on a booked event; on iPhone and
+iPad those events look like any other calendar entry for now.
 
 The events a scheduled rhythm books are ordinary calendar events, so they show up
 **everywhere** — including on your phone, and including offline — the moment they're booked.
