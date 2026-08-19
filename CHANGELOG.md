@@ -124,6 +124,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Shopping that went missing from an old "Plan the month" comes back.** The month-plan
+  bug above didn't just fail to build your list — it filed rows under a date that isn't the
+  start of any week, and once the list learned to read only real weeks those rows became
+  unreachable: invisible on every week, and untouched by every refresh. Anything you'd
+  explicitly added from a recipe is now moved onto the week it actually belongs to, so it
+  reappears where you'd expect it. If that week already had the same item, the two are
+  merged into the one you can see rather than left as a confusing double entry (its
+  quantity is kept as-is — we'd rather show you a number you can check than invent one).
+  The leftover meal-plan rows are simply cleared out: those are rebuilt from your plan
+  every time a week is refreshed, so there was nothing in them to keep. Nothing you could
+  see is changed, and one-time — it runs itself on upgrade.
 - **"Plan my month" now builds the whole month's grocery list, not one week of it.**
   Applying a month plan asked for a single grocery rebuild, and a rebuild only ever covers
   one week — so every week after the first was left unbuilt. Worse, the request was keyed
