@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.13.1] - 2026-08-19
+
+### Added
+
 - **Your grocery list now knows what's in your pantry.** Until now the two barely spoke:
   the shopping list only knew about *pantry staples* — the standing "we always keep salt
   and oil around" name list — and had no idea what was actually on your shelves. Now any
@@ -1991,7 +1999,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/kevinpsites/waffled/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/kevinpsites/waffled/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/kevinpsites/waffled/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/kevinpsites/waffled/compare/v0.10.0...v0.11.0
