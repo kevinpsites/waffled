@@ -123,13 +123,13 @@ export function RhythmModal({ onClose, onCreated }: { onClose: () => void; onCre
             </label>
             <label className="field" style={{ flex: 1 }}>
               <span>Unit</span>
-              <select className="sel" value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>
+              <select value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>
                 {UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
               </select>
             </label>
             <label className="field" style={{ flex: 2 }}>
               <span>Who</span>
-              <select className="sel" value={personId} onChange={(e) => setPersonId(e.target.value)}>
+              <select value={personId} onChange={(e) => setPersonId(e.target.value)}>
                 <option value="">Whole household</option>
                 {persons.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -169,7 +169,7 @@ export function RhythmModal({ onClose, onCreated }: { onClose: () => void; onCre
                   {unit === 'months' && (
                     <label className="field">
                       <span>Which day of the month</span>
-                      <select className="sel" value={monthlyMode} onChange={(e) => setMonthlyMode(e.target.value as MonthlyMode)}>
+                      <select value={monthlyMode} onChange={(e) => setMonthlyMode(e.target.value as MonthlyMode)}>
                         <option value="day">The same date</option>
                         <option value="weekday">The same weekday (e.g. the third Saturday)</option>
                         <option value="lastWeekday">The last of that weekday</option>
