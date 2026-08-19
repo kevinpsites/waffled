@@ -63,6 +63,43 @@ import Testing
         #expect(GroceryWeeks.weekStarts([], firstDay: .sunday).isEmpty)
     }
 
+    /// "We haven't synced the household's preference yet" is a real state, and it is NOT
+    /// the same as "sunday". Assuming sunday for a monday household merges two of its real
+    /// weeks into one key; the server snaps that key to its own boundary and rebuilds one
+    /// week, so the other never gets built at all. The window is normally one sync tick —
+    /// but it is unbounded whenever PowerSync is offline while REST still works, and
+    /// planning is REST, so a plan can be applied against a preference that never arrived.
+    @Test func coversBothCutsWhenTheHouseholdPreferenceIsUnknown() {
+        // Sun + Mon land in ONE sunday week but TWO monday weeks. Not knowing which, both.
+        #expect(GroceryWeeks.weekStarts(["2026-09-06", "2026-09-07"], firstDay: nil)
+                == ["2026-08-31", "2026-09-06", "2026-09-07"])
+        // A midweek date: the two conventions disagree, so both keys are covered.
+        #expect(GroceryWeeks.weekStarts(["2026-09-09"], firstDay: nil)
+                == ["2026-09-06", "2026-09-07"])
+        // And a known preference still produces exactly one key per week — no extra calls
+        // once we actually know the answer.
+        #expect(GroceryWeeks.weekStarts(["2026-09-09"], firstDay: .monday) == ["2026-09-07"])
+    }
+
+    /// Stepping the grocery week has to move from the week the SERVER last returned, not
+    /// from a week computed on the device. `Cal.weekStart` honors the DEVICE region's
+    /// first-day-of-week while the server snaps to the HOUSEHOLD's, so on a Sunday-locale
+    /// phone in a monday household a locally-computed "next week" snapped straight back to
+    /// the week already on screen — and "last week" skipped one, leaving it unreachable.
+    @Test func stepsAWeekFromTheServersOwnAnswer() {
+        #expect(GroceryWeeks.step(from: "2026-08-17", weeks: 1) == "2026-08-24")
+        #expect(GroceryWeeks.step(from: "2026-08-17", weeks: -1) == "2026-08-10")
+        // Across a month boundary, and a year one.
+        #expect(GroceryWeeks.step(from: "2026-09-28", weeks: 1) == "2026-10-05")
+        #expect(GroceryWeeks.step(from: "2027-01-04", weeks: -1) == "2026-12-28")
+        // Whatever the server said is carried forward verbatim — a monday key steps to a
+        // monday key, a sunday key to a sunday key. The helper never re-decides the cut.
+        #expect(GroceryWeeks.step(from: "2026-08-16", weeks: 1) == "2026-08-23")
+        // Nothing to step from yet (board not loaded) is not a step to nowhere.
+        #expect(GroceryWeeks.step(from: "", weeks: 1) == nil)
+        #expect(GroceryWeeks.step(from: "not-a-date", weeks: 1) == nil)
+    }
+
     /// The household preference arrives as free text off the synced `households` row.
     @Test func readsThePreferenceLeniently() {
         #expect(HouseholdWeekStart(raw: "monday") == .monday)

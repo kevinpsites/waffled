@@ -39,18 +39,46 @@ enum GroceryWeeks {
     /// All arithmetic is done in UTC, matching `DateFmt.utc`'s contract for date-only
     /// day keys: parsing in one zone and formatting in another is exactly how these come
     /// out an off-by-one week.
-    static func weekStarts(_ dates: [String], firstDay: HouseholdWeekStart) -> [String] {
+    /// `firstDay` is nil when the household's preference genuinely hasn't reached this
+    /// device yet. That is NOT the same as sunday, and treating it as sunday has a silent
+    /// failure mode: for a monday household a sunday cut merges two real weeks into one
+    /// key, the server snaps that key to its own boundary, and the week left over is never
+    /// built. So when it is unknown, cover both cuts — the extra rebuild is idempotent and
+    /// far cheaper than a week of shopping that quietly never appears.
+    static func weekStarts(_ dates: [String], firstDay: HouseholdWeekStart?) -> [String] {
         let cal = Cal.gregorian(DateFmt.utc)
+        let cuts: [HouseholdWeekStart] = firstDay.map { [$0] } ?? [.sunday, .monday]
         var keys = Set<String>()
         for date in dates {
             guard let d = DateFmt.date(date, "yyyy-MM-dd", DateFmt.utc) else { continue }
             let dow = cal.component(.weekday, from: d)   // 1 = Sunday … 7 = Saturday
-            // A monday household's Sunday CLOSES the week that began six days earlier;
-            // it does not open a new one.
-            let back = firstDay == .monday ? (dow == 1 ? 6 : dow - 2) : dow - 1
-            guard let start = cal.date(byAdding: .day, value: -back, to: d) else { continue }
-            keys.insert(DateFmt.string(start, "yyyy-MM-dd", DateFmt.utc))
+            for cut in cuts {
+                // A monday household's Sunday CLOSES the week that began six days earlier;
+                // it does not open a new one.
+                let back = cut == .monday ? (dow == 1 ? 6 : dow - 2) : dow - 1
+                guard let start = cal.date(byAdding: .day, value: -back, to: d) else { continue }
+                keys.insert(DateFmt.string(start, "yyyy-MM-dd", DateFmt.utc))
+            }
         }
         return keys.sorted()
+    }
+
+    /// Step the grocery week forward or back from the week the SERVER last returned.
+    ///
+    /// It must be the server's own answer, never a week computed here. `Cal.weekStart`
+    /// honors the DEVICE region's first-day-of-week, while the server snaps every
+    /// `?weekStart=` onto the HOUSEHOLD's. On a Sunday-locale phone in a monday household
+    /// those disagree by a day, which is enough for a locally-derived "next week" to snap
+    /// straight back to the week already on screen — and for "last week" to jump two,
+    /// leaving the week between them impossible to reach.
+    ///
+    /// Whatever cut the server used is carried forward untouched: this only adds days.
+    /// Returns nil when there is nothing to step from, so a not-yet-loaded board can't
+    /// turn a tap into a request for a nonsense week.
+    static func step(from shownWeekStart: String, weeks: Int) -> String? {
+        let cal = Cal.gregorian(DateFmt.utc)
+        guard let d = DateFmt.date(shownWeekStart, "yyyy-MM-dd", DateFmt.utc),
+              let stepped = cal.date(byAdding: .day, value: weeks * 7, to: d) else { return nil }
+        return DateFmt.string(stepped, "yyyy-MM-dd", DateFmt.utc)
     }
 }
