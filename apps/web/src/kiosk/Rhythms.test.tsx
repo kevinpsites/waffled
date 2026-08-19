@@ -21,6 +21,9 @@ const filter = {
   lastCompletedAt: '2026-05-16T09:00:00.000Z',
   nextDueAt: '2026-08-16T09:00:00.000Z',
   isActive: true,
+  currentPeriodStart: null,
+  currentPeriodEnd: null,
+  satisfied: false,
 }
 
 const temple = {
@@ -38,6 +41,9 @@ const temple = {
   lastCompletedAt: null,
   nextDueAt: null,
   isActive: true,
+  currentPeriodStart: '2026-07-01',
+  currentPeriodEnd: '2026-10-01',
+  satisfied: false,
 }
 
 const calls: { url: string; method: string; body: Record<string, unknown> | null }[] = []
@@ -84,14 +90,13 @@ describe('Rhythms screen', () => {
     expect(screen.queryByText(/streak|on track/i)).toBeNull()
   })
 
-  it('reads its period state from a one-day window, never a wider one', async () => {
+  it('asks attention no further ahead than today, never a wider horizon', async () => {
     // `to` is both the horizon AND the date that picks which period a scheduling
-    // rhythm reports on — widening it silently answers about a later period.
+    // rhythm reports on — asking further out silently answers about a later period.
     mockApi([temple])
     renderScreen()
     await waitFor(() => expect(calls.some((c) => c.url.includes('/api/rhythms/attention'))).toBe(true))
     const url = calls.find((c) => c.url.includes('/api/rhythms/attention'))!.url
-    expect(url).toContain('from=2026-08-18')
     expect(url).toContain('to=2026-08-18')
   })
 
