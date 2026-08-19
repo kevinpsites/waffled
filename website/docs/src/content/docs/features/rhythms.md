@@ -133,6 +133,14 @@ Sometimes a period genuinely isn't happening — you're away, the quarter got ea
 sends that period quiet without inventing a calendar entry for something that isn't going to
 take place. Only that one period is skipped; the next one comes round as normal.
 
+### Pausing vs retiring
+
+**Pause** a rhythm when it's genuinely on hold — a summer-only outing, a car you're not
+driving. It stops appearing on the Today card and stops nudging, keeps everything else, and
+comes back untouched when you un-pause it. **Retire** removes it for good; its completion
+history survives, so *"when did we last change the filter?"* is still answerable. Pausing is
+the reversible one — reach for it first.
+
 ### When the calendar and the intention disagree
 
 An automatic rhythm normally never appears on the Today card — its recurring event *is* the
@@ -177,9 +185,11 @@ Rhythms is an **optional module** (`rhythms`, default **OFF** — opt-in), toggl
   calendar it gets the normal event reminders; the earlier nag — *"the temple visit still
   isn't booked and the quarter ends Sunday"* — lives on the Today card and in the register
   only, because it isn't an event yet.
-- 🚧 **You can't edit, pause or retire a rhythm on screen yet.** The server supports all
-  three, but no app has the control, so it's worth getting the cadence and the shape right
-  when you create one.
+- ✏️ **The shape and the anchor can't be changed after you create a rhythm.** Everything
+  else is editable, but switching between the two shapes — or moving the date the periods
+  are counted from — would re-interpret the periods you've already skipped and point
+  bookings at periods that no longer exist. The editor says so and points you at retiring
+  it and making a new one, which is the honest fix.
 - 🌐 **Rhythms themselves need a connection.** The register and the Today card are
   online-only, like chores. The events a rhythm books are fully offline, like every other
   calendar event.
