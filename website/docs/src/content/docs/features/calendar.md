@@ -43,6 +43,9 @@ gated off**.
 - ✨ **AI "Heads up this week"** digest plus a per-event insight.
 - 🎯 **"Counts toward a goal"** tag on an event — feeds goal auto-counting (see
   [Goals](/features/goals/)).
+- 🔁 **Rhythm marker** — an event booked to keep a [rhythm](/features/rhythms/) wears a
+  small 🔁 before its title in every view, and its detail page says *"This slot keeps a
+  rhythm"*. It's an ordinary event in every other respect.
 
 ## Where it works
 | Surface | Support |

@@ -20,6 +20,7 @@ gated**.
 | Meals | ON | Recipes & planning |
 | Lists | ON | Lists & groceries |
 | Family Night | OFF | Recurring gathering |
+| Rhythms | **OFF** | The things that should keep happening — [details](/features/rhythms/) |
 | Waffled-Bites | **OFF** | Kid companion device pairing + control panel — 🚧 pending hardware bring-up, [details](/features/waffled-bites/) |
 | Quotes | 🚧 planned | Not togglable yet |
 
