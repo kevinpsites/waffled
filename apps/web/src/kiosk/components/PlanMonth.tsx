@@ -303,8 +303,15 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
     setApplying(true)
     setApplyWarning(null) // a retry starts clean, so a stale warning can't outlive its cause
     try {
+      // A night that won't save must not take the rest of the apply down with it. Left
+      // unguarded, one rejection exits applyAll before the rebuild loop below, so a
+      // half-written month gets NO grocery rebuild at all and `finally` re-enables the
+      // button without a word — the user sees a no-op and tries again.
+      const unsaved: string[] = []
       for (const c of toApply) {
-        await api.planSlot(c.recipeId ? { date: c.date, mealType: 'dinner', recipeId: c.recipeId } : { date: c.date, mealType: 'dinner', title: c.title })
+        await api
+          .planSlot(c.recipeId ? { date: c.date, mealType: 'dinner', recipeId: c.recipeId } : { date: c.date, mealType: 'dinner', title: c.title })
+          .catch(() => unsaved.push(c.date))
       }
       // Clear nights that were planned before but the user skipped.
       const cleared: string[] = []
@@ -328,12 +335,19 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
       for (const week of weekStartsToRebuild([...toApply.map((c) => c.date), ...cleared], firstDayOfWeek)) {
         await api.rebuildGrocery(week).catch(() => failed.push(week))
       }
-      // The month itself IS written, so surface it either way — the plan is not lost.
+      // Whatever did save IS written, so surface it either way — nothing is lost by
+      // showing the plan, and the nights that landed should appear.
       onApplied()
-      if (failed.length > 0) {
+      if (unsaved.length > 0 || failed.length > 0) {
         // Stay open. Closing on a half-done job is what made this invisible before.
+        const nights = unsaved.length === 1 ? 'One night' : `${unsaved.length} nights`
+        const weeks = failed.length === 1 ? 'one week' : `${failed.length} weeks`
         setApplyWarning(
-          `Your month is saved, but the grocery list for ${failed.length === 1 ? 'one week' : `${failed.length} weeks`} didn’t rebuild. Tap “Save month & build list” again, or open the list and hit Refresh.`
+          unsaved.length > 0 && failed.length > 0
+            ? `${nights} couldn’t be saved, and the grocery list for ${weeks} didn’t rebuild. Tap “Save month & build list” to try again.`
+            : unsaved.length > 0
+              ? `${nights} couldn’t be saved. Tap “Save month & build list” to try again.`
+              : `Your month is saved, but the grocery list for ${weeks} didn’t rebuild. Tap “Save month & build list” again, or open the list and hit Refresh.`
         )
         return
       }

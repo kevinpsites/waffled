@@ -153,6 +153,41 @@ describe('PlanMonth — a failed rebuild is not silent', () => {
     expect(rebuildWeeks(sent)).toEqual(['2026-08-30', '2026-09-06', '2026-09-13', '2026-09-20'])
   })
 
+  it('a night that fails to save does not silently cancel the whole grocery rebuild', async () => {
+    // Pre-existing, but this branch made it worse: an unguarded planSlot throw exits
+    // applyAll before the rebuild loop, so a partly-written month gets ZERO rebuilds and
+    // the `finally` clears `applying` without a word — the button just re-enables.
+    const sent: Sent[] = []
+    globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+      const u = String(url)
+      sent.push({ method: init?.method ?? 'GET', url: u })
+      if (u.includes('/api/meals/plan-month')) {
+        return ok({
+          start: '2026-09-01', mealType: 'dinner', via: 'test', existing: [],
+          suggestions: NIGHTS.map((date, i) => ({ date, title: `Dish ${i + 1}`, recipeId: null, emoji: null, minutes: 30, note: '' })),
+        })
+      }
+      if (u.includes('/api/household')) {
+        return ok({ provisioned: true, household: { id: 'h', name: 'Sites', timezone: 'America/Chicago', weekStart: 'sunday' }, person: null, memberships: [], pendingInvites: [] })
+      }
+      // The third night refuses to save.
+      if (u.includes('/api/meals/plan') && String(init?.body ?? '').includes('2026-09-16')) {
+        return { ok: false, status: 500, json: async () => ({ error: 'ServerError' }) }
+      }
+      if (u.includes('/api/lists/grocery/rebuild')) return ok({ rebuilt: 1, board: { items: [] } })
+      return ok({ persons: [], recipes: [], entries: [] })
+    }) as unknown as typeof fetch
+
+    const onApplied = vi.fn()
+    const onClose = vi.fn()
+    await planAndApplyWith(onApplied, onClose)
+    // The nights that DID save still get their shopping built...
+    await waitFor(() => expect(rebuildWeeks(sent).length).toBeGreaterThan(0))
+    // ...and the user is told a night didn't make it, rather than the sheet going quiet.
+    await screen.findByText(/couldn.t be saved|didn.t save|not saved/i)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('closes normally when every rebuild succeeds', async () => {
     // The guard against over-correcting: a good apply must not start nagging.
     mockApiWithFailingRebuild(() => false)
