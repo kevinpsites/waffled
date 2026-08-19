@@ -19,6 +19,7 @@ import {
   assertGoalInHousehold,
   assertGoalStepInHousehold,
   assertPersonsInHousehold,
+  assertRhythmInHousehold,
 } from '../../platform/household-refs'
 import { registerEventCaptureTarget } from './events-capture'
 
@@ -211,6 +212,10 @@ export async function assertEventReferences(
   if (input.calendarId != null) {
     if (typeof input.calendarId !== 'string') throw new InvalidReferenceError('invalid calendar id')
     await assertCalendarInHousehold(householdId, input.calendarId)
+  }
+  if (input.rhythmId != null) {
+    if (typeof input.rhythmId !== 'string') throw new InvalidReferenceError('invalid rhythm id')
+    await assertRhythmInHousehold(householdId, input.rhythmId)
   }
 }
 
