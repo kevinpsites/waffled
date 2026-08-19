@@ -1,9 +1,11 @@
 # Rhythms — the things that should keep happening
 
 **Status:** in progress. Decided 2026-08-13, rescoped and renamed from "Upkeep" 2026-08-18
-after checking the original design against real household cases. **Phase 1 is built**
-(migration `0097_rhythms.sql`, service, `GET /rhythms/attention`, module registration —
-see *Implementation sequencing*); phases 2–3 are not.
+after checking the original design against real household cases. **Phases 1 and 2 are
+built** — migration `0097_rhythms.sql`, the service, `GET /rhythms/attention`, module and
+Today-card registration, `POST /rhythms/:id/schedule`, and the `rhythm_id` link pinned
+through all three event write paths (see *Implementation sequencing*). Phase 3 — the web,
+iOS and docs surfaces — is not.
 
 Where "trash out weekly", "air filter every 3 months", "change the car's oil", "book a
 temple visit", "take a self-care day once a quarter", and "family outing on the third
@@ -262,6 +264,36 @@ satisfaction is derived, the same period query catches this for free and the rhy
 resurfaces as `kind: 'unscheduled'` — with the offer to regenerate the event rather than
 pick a time by hand. Do not shortcut this by trusting a "generated" flag on the row; the
 whole reason the register exists is to notice when the calendar and the intention disagree.
+
+### The built contract (what phase-3 surfaces code against)
+
+Written down verbatim because four workers building against it in parallel is exactly
+where a guessed field name turns into a merge conflict. All routes are gated by the
+`rhythms` module and 403 while it is off; a reference to another household's rhythm
+answers 404, matching every other household-scoped reference here.
+
+```
+GET  /api/rhythms                     → { rhythms: Rhythm[] }
+GET  /api/rhythms/attention?from&to   → { items: AttentionItem[] }   both dates required, YYYY-MM-DD
+POST /api/rhythms                     → 201 { rhythm }
+POST /api/rhythms/:id/schedule        → 201 { event }    books a period; body { startsAt, endsAt?, allDay?, title? }
+POST /api/rhythms/:id/complete        → { rhythm }       body { completedAt?, notes? }
+GET  /api/rhythms/:id/completions     → { completions: [{ id, personId, completedAt, notes }] }
+POST /api/rhythms/:id/skip            → { ok: true }     body { periodStart }  (YYYY-MM-DD)
+
+Rhythm        { id, title, emoji, notes, personId, satisfiedBy: 'completion'|'scheduling',
+                every, startsOn, autoSchedule, rrule, leadTime, lastCompletedAt,
+                nextDueAt, isActive }
+AttentionItem { kind: 'due',         rhythm, dueAt, overdue }
+              | { kind: 'unscheduled', rhythm, periodStart, periodEnd }
+```
+
+Two behaviours worth knowing before designing against them. `leadTime` comes back clamped
+to at most half of `every` — ask for 14 days on a weekly rhythm and you get `3 days
+12:00:00`, because a runway longer than the cycle never closes and the item would never
+leave the list. And `/schedule` fills title and assignee from the rhythm, so a booking
+UI needs a time picker and nothing else; the friction this shape exists to remove is
+retyping.
 
 ## Feeding the weekly plan module
 
