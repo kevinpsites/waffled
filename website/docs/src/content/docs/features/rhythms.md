@@ -177,6 +177,9 @@ Rhythms is an **optional module** (`rhythms`, default **OFF** — opt-in), toggl
   calendar it gets the normal event reminders; the earlier nag — *"the temple visit still
   isn't booked and the quarter ends Sunday"* — lives on the Today card and in the register
   only, because it isn't an event yet.
+- 🚧 **You can't edit, pause or retire a rhythm on screen yet.** The server supports all
+  three, but no app has the control, so it's worth getting the cadence and the shape right
+  when you create one.
 - 🌐 **Rhythms themselves need a connection.** The register and the Today card are
   online-only, like chores. The events a rhythm books are fully offline, like every other
   calendar event.
