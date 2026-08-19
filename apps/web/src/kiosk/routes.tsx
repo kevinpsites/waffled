@@ -20,6 +20,7 @@ import { RecipesLibrary } from './RecipesLibrary'
 import { MealBuilder } from './MealBuilder'
 import { Lists } from './Lists'
 import { Pantry } from './Pantry'
+import { Rhythms } from './Rhythms'
 import { Photos } from './Photos'
 import { Settings } from './Settings'
 
@@ -82,6 +83,9 @@ export function KioskRoutes() {
         </Route>
         <Route element={<ModuleGate module="pantry" />}>
           <Route path="pantry" element={<Pantry />} />
+        </Route>
+        <Route element={<ModuleGate module="rhythms" />}>
+          <Route path="rhythms" element={<Rhythms />} />
         </Route>
         <Route path="photos" element={<Photos />} />
         <Route path="settings" element={<Settings />} />

@@ -1,0 +1,87 @@
+import { formatInterval, cadenceLabel, dueLabel, periodLabel } from './rhythms'
+
+// Postgres hands `interval::text` back in its own shorthand — `3 mons`, `1 mon`,
+// `3 days 12:00:00` — which is exactly the string a careless card would print at a
+// user ("every 3 mons"). These helpers are the one place that shorthand is turned
+// into English, so they're pinned here rather than exercised through a render.
+describe('formatInterval', () => {
+  it('spells out Postgres month shorthand', () => {
+    expect(formatInterval('3 mons')).toBe('3 months')
+    expect(formatInterval('1 mon')).toBe('1 month')
+  })
+
+  it('collapses whole weeks', () => {
+    expect(formatInterval('7 days')).toBe('1 week')
+    expect(formatInterval('14 days')).toBe('2 weeks')
+    expect(formatInterval('10 days')).toBe('10 days')
+    expect(formatInterval('1 day')).toBe('1 day')
+  })
+
+  it('keeps the clock tail the lead-time clamp produces', () => {
+    // `least(lead_time, every/2)` on a weekly rhythm yields exactly this.
+    expect(formatInterval('3 days 12:00:00')).toBe('3 days 12 hours')
+    expect(formatInterval('12:00:00')).toBe('12 hours')
+  })
+
+  it('handles mixed and empty values', () => {
+    expect(formatInterval('1 mon 15 days')).toBe('1 month 15 days')
+    expect(formatInterval('1 year')).toBe('1 year')
+    expect(formatInterval('')).toBe('')
+  })
+})
+
+describe('cadenceLabel', () => {
+  it('drops the "1" so a single unit reads naturally', () => {
+    expect(cadenceLabel('7 days')).toBe('every week')
+    expect(cadenceLabel('1 mon')).toBe('every month')
+  })
+
+  it('keeps the count when there is more than one', () => {
+    expect(cadenceLabel('3 mons')).toBe('every 3 months')
+    expect(cadenceLabel('14 days')).toBe('every 2 weeks')
+  })
+})
+
+describe('dueLabel', () => {
+  const today = new Date('2026-08-18T09:00:00Z')
+
+  it('names an overdue item as overdue, never as a missed streak', () => {
+    expect(dueLabel('2026-08-11T09:00:00Z', true, today)).toBe('7 days overdue')
+    expect(dueLabel('2026-08-17T09:00:00Z', true, today)).toBe('1 day overdue')
+  })
+
+  it('counts down to a due date that has not arrived', () => {
+    expect(dueLabel('2026-08-18T09:00:00Z', false, today)).toBe('due today')
+    expect(dueLabel('2026-08-19T09:00:00Z', false, today)).toBe('due tomorrow')
+    expect(dueLabel('2026-08-25T09:00:00Z', false, today)).toBe('due in 7 days')
+  })
+
+  // "Today" is the day on the viewer's wall clock. Counting UTC days instead reads
+  // correct all afternoon and then goes wrong every evening west of UTC (and every
+  // small hour east of it), which is exactly when a kitchen kiosk is being looked at.
+  it('counts calendar days on the local clock, not in UTC', () => {
+    const lateEvening = new Date(2026, 7, 18, 23, 0, 0)
+    expect(dueLabel(new Date(2026, 7, 19, 9, 0, 0).toISOString(), false, lateEvening)).toBe('due tomorrow')
+    const smallHours = new Date(2026, 7, 19, 0, 30, 0)
+    expect(dueLabel(new Date(2026, 7, 19, 9, 0, 0).toISOString(), false, smallHours)).toBe('due today')
+  })
+})
+
+describe('periodLabel', () => {
+  // The scheduling shape asks "did this get on the calendar?", so the label is
+  // about the window closing — never about following through.
+  it('says how long is left to get it booked', () => {
+    const today = new Date('2026-08-18T09:00:00Z')
+    expect(periodLabel('2026-08-25', today)).toBe('7 days left to book it')
+    expect(periodLabel('2026-08-19', today)).toBe('1 day left to book it')
+    expect(periodLabel('2026-08-18', today)).toBe('this period ends today')
+    expect(periodLabel('2026-08-17', today)).toBe('this period has ended')
+  })
+
+  it('reads the period boundary as a calendar date on the local clock', () => {
+    // periodEnd is a date, not an instant — it must not drift by a day at either
+    // end of the evening.
+    expect(periodLabel('2026-08-19', new Date(2026, 7, 18, 23, 0, 0))).toBe('1 day left to book it')
+    expect(periodLabel('2026-08-19', new Date(2026, 7, 19, 0, 30, 0))).toBe('this period ends today')
+  })
+})
