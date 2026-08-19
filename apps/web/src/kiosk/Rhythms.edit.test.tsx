@@ -141,6 +141,14 @@ describe('Rhythms — where each one stands', () => {
 })
 
 describe('Rhythms — pausing', () => {
+  it('makes no claim about nudging something that is switched off', async () => {
+    // listAttention filters `and is_active`, so a paused rhythm nudges nobody.
+    mockApi([paused])
+    renderScreen()
+    await screen.findByText('Gutter check')
+    expect(screen.queryByText(/nudging/i)).toBeNull()
+  })
+
   it('shows a paused rhythm as paused and stops offering to act on its period', async () => {
     mockApi([paused])
     renderScreen()
@@ -166,6 +174,18 @@ describe('Rhythms — pausing', () => {
     fireEvent.click(await screen.findByRole('button', { name: /pause temple visit/i }))
     await waitFor(() => expect(patches().length).toBe(1))
     expect(patches()[0].body).toEqual({ isActive: false })
+  })
+})
+
+describe('Rhythms — an overdue maintenance rhythm', () => {
+  it('still says it is overdue when attention has not been fetched', async () => {
+    // `satisfied` is `next_due_at > now()`, so an overdue rhythm is genuinely
+    // unsatisfied. The row must not go silent just because the attention call is
+    // in flight or failed.
+    mockApi([{ ...filter, nextDueAt: '2026-08-16T09:00:00.000Z', satisfied: false }])
+    renderScreen()
+    await screen.findByText('Air filter')
+    expect(screen.getByText(/2 days overdue/i)).toBeInTheDocument()
   })
 })
 

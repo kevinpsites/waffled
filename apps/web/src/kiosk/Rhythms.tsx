@@ -114,6 +114,12 @@ function RhythmItem({
           <>
             Last done {rhythm.lastCompletedAt ? shortDate(rhythm.lastCompletedAt) : 'never'} · Next due {shortDate(rhythm.nextDueAt)}
             {due && <> · <span className={due.overdue ? 'rhy-late' : ''}>{dueLabel(due.dueAt, due.overdue)}</span></>}
+            {/* `satisfied` is next_due_at > now(), so an unsatisfied one is past due.
+                Attention normally carries it, but the row must not go silent while
+                that call is in flight or has failed. */}
+            {!due && !paused && !rhythm.satisfied && rhythm.nextDueAt && (
+              <> · <span className="rhy-late">{dueLabel(rhythm.nextDueAt, false)}</span></>
+            )}
           </>
         )}
       </div>
@@ -155,9 +161,13 @@ function RhythmItem({
         <button type="button" className="rhy-skip" aria-label={`Edit ${rhythm.title}`} onClick={onEdit}>
           Edit
         </button>
-        <span className="tiny muted" style={{ marginLeft: 'auto' }}>
-          {scheduling ? 'starts nudging' : 'nudges'} {formatInterval(rhythm.leadTime)} ahead
-        </span>
+        {/* Nothing nudges about a paused rhythm — listAttention filters on is_active —
+            so saying it would be the same dead-control smell as the badge above. */}
+        {!paused && (
+          <span className="tiny muted" style={{ marginLeft: 'auto' }}>
+            {scheduling ? 'starts nudging' : 'nudges'} {formatInterval(rhythm.leadTime)} ahead
+          </span>
+        )}
       </div>
     </div>
   )
