@@ -271,6 +271,9 @@ struct KioskDashboard: View {
             // Pantry (shared card; it hides itself when the household's "show on Today"
             // toggle is off, matching web).
             if sync.module(.pantry) { PantryTodayCard(kiosk: true) { navigate(.pantry) } }
+            // Rhythms (shared card; it renders nothing when the register is quiet, which is
+            // most days — same rule as the web card).
+            if sync.module(.rhythms) { RhythmsTodayCard(kiosk: true) { navigate(.rhythms) } }
         }
     }
 

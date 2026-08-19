@@ -408,7 +408,7 @@ struct TodayView: View {
     static let cardLabels = [
         "agenda": "Agenda", "countdowns": "Countdowns", "tonight": "Tonight's dinner",
         "chores": "Chores", "grocery": "Grocery", "lists": "Lists", "goals": "Goals",
-        "pantry": "Pantry", "familyNight": "Family Night",
+        "pantry": "Pantry", "familyNight": "Family Night", "rhythms": "Rhythms",
     ]
     private static let smallCards: Set<String> = ["chores", "grocery"]
 
@@ -431,6 +431,7 @@ struct TodayView: View {
         case "lists": return sync.module(.lists)
         case "goals": return sync.module(.goals)
         case "pantry": return sync.module(.pantry)
+        case "rhythms": return sync.module(.rhythms)
         case "familyNight": return sync.module(.familyNight)
         default: return true
         }
@@ -460,6 +461,7 @@ struct TodayView: View {
         case "grocery": Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
         case "lists": TodayListCard { path.append(.list($0)) }
         case "pantry": PantryTodayCard { path.append(.pantry) }
+        case "rhythms": RhythmsTodayCard { path.append(.rhythms) }
         case "familyNight": FamilyNightCard()
         case "goals": goalsCard
         default: EmptyView()
@@ -483,6 +485,11 @@ struct TodayView: View {
         // Same fallback for Family Night (a server predating the mobile card omits it).
         if !order.contains("familyNight"), !resp.resolved.hidden.contains("familyNight") {
             order.append("familyNight")
+        }
+        // …and for Rhythms. It hides itself when nothing needs attention, so appending it
+        // costs a quiet card at worst.
+        if !order.contains("rhythms"), !resp.resolved.hidden.contains("rhythms") {
+            order.append("rhythms")
         }
         cardOrder = order
         hiddenCards = Set(resp.resolved.hidden)

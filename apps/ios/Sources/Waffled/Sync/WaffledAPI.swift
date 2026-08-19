@@ -3925,6 +3925,124 @@ struct WaffledAPI: Sendable {
         try check(resp, data)
     }
 
+    // MARK: - Rhythms (the things that should keep happening)
+    //
+    // A rhythm is a standing intention with a cadence — trash weekly, the air filter every
+    // three months, a temple visit each quarter. Two shapes, and the difference is what
+    // closes out a period:
+    //
+    //   .completion — you did the thing. Surfaces as `kind: .due`.
+    //   .scheduling — a calendar event exists for the period. Surfaces as
+    //                 `kind: .unscheduled`. We never ask whether it happened; getting the
+    //                 opportunity onto the calendar IS the outcome.
+    //
+    // That second sentence is the whole line between a rhythm and a goal, and it is a copy
+    // rule as much as a data one — see `RhythmFormat`. REST-only in v1 (the table is
+    // deliberately not on PowerSync); the events a booking creates sync as usual.
+    // Mirrors apps/web/src/lib/api/rhythms.ts 1:1.
+
+    enum RhythmShape: String, Codable, Sendable { case completion, scheduling }
+
+    struct Rhythm: Codable, Identifiable, Hashable, Sendable {
+        let id: String
+        let title: String
+        let emoji: String?
+        let notes: String?
+        let personId: String?
+        let satisfiedBy: RhythmShape
+        /// Postgres interval text — "7 days", "3 mons". Render via `RhythmFormat`.
+        let every: String
+        /// scheduling only: the anchor the period grid is measured from (YYYY-MM-DD).
+        let startsOn: String?
+        let autoSchedule: Bool
+        let rrule: String?
+        /// Postgres interval text, clamped server-side to at most half of `every`.
+        let leadTime: String
+        let lastCompletedAt: String?
+        let nextDueAt: String?
+        let isActive: Bool
+        // Only `GET /api/rhythms` carries current-period state (the server's
+        // `RhythmWithPeriod`); every single-row read omits it. Optional rather than a
+        // second near-identical type — and decoding must tolerate their absence, which is
+        // exactly the asymmetry the kiosk-claim decode bug shipped on.
+        let currentPeriodStart: String?
+        let currentPeriodEnd: String?
+        let satisfied: Bool?
+    }
+
+    enum RhythmAttentionKind: String, Codable, Sendable { case due, unscheduled }
+
+    /// One row of `GET /api/rhythms/attention` — the single question every surface asks.
+    /// The fields are per-kind: `dueAt`/`overdue` for `.due`, `periodStart`/`periodEnd`
+    /// for `.unscheduled`.
+    struct RhythmAttentionItem: Codable, Identifiable, Sendable {
+        let kind: RhythmAttentionKind
+        let rhythm: Rhythm
+        let dueAt: String?
+        let overdue: Bool?
+        let periodStart: String?
+        let periodEnd: String?
+        var id: String { rhythm.id }
+    }
+
+    /// The whole register, each row with its current-period state.
+    func rhythms() async throws -> [Rhythm] {
+        struct Resp: Decodable { let rhythms: [Rhythm] }
+        return try await getJSON("/api/rhythms", as: Resp.self).rhythms
+    }
+
+    /// What needs attention by `to`. Both surfaces pass a one-day window on purpose: `to`
+    /// is the horizon AND the date that decides WHICH period a scheduling rhythm reports
+    /// on, so widening it silently answers about a later period.
+    func rhythmAttention(from: String, to: String) async throws -> [RhythmAttentionItem] {
+        struct Resp: Decodable { let items: [RhythmAttentionItem] }
+        return try await getJSON("/api/rhythms/attention?from=\(from)&to=\(to)", as: Resp.self).items
+    }
+
+    @discardableResult
+    func createRhythm(_ body: [String: JSONValue]) async throws -> Rhythm {
+        struct Resp: Decodable { let rhythm: Rhythm }
+        return try await sendReturning("POST", "/api/rhythms", body: body, as: Resp.self).rhythm
+    }
+
+    /// Edit. The server accepts only title/emoji/notes/personId/every/leadTime/isActive —
+    /// re-anchoring a live rhythm would re-interpret its skips and bookings.
+    @discardableResult
+    func updateRhythm(id: String, _ body: [String: JSONValue]) async throws -> Rhythm {
+        struct Resp: Decodable { let rhythm: Rhythm }
+        return try await sendReturning("PATCH", "/api/rhythms/\(id)", body: body, as: Resp.self).rhythm
+    }
+
+    /// Retire one for good (soft server-side, so its completion history survives).
+    func deleteRhythm(id: String) async throws {
+        try await delete("/api/rhythms/\(id)")
+    }
+
+    /// "I did the filter today" — logs it and re-anchors the clock to when it was actually
+    /// done. Only a completion rhythm can be completed.
+    @discardableResult
+    func completeRhythm(id: String) async throws -> Rhythm {
+        struct Resp: Decodable { let rhythm: Rhythm }
+        return try await sendReturning("POST", "/api/rhythms/\(id)/complete", body: [:], as: Resp.self).rhythm
+    }
+
+    /// Book a period into a REAL calendar event. Title and assignee come from the rhythm,
+    /// so a booking UI needs a time picker and nothing else — retyping the title is
+    /// precisely the friction that keeps these things off the calendar.
+    @discardableResult
+    func scheduleRhythm(id: String, startsAt: String, allDay: Bool) async throws -> String {
+        struct Resp: Decodable { let event: Ev; struct Ev: Decodable { let id: String } }
+        return try await sendReturning("POST", "/api/rhythms/\(id)/schedule",
+                                       body: ["startsAt": .string(startsAt), "allDay": .bool(allDay)],
+                                       as: Resp.self).event.id
+    }
+
+    /// How a period goes quiet without inventing a calendar entry for something that
+    /// genuinely isn't happening this time round.
+    func skipRhythmPeriod(id: String, periodStart: String) async throws {
+        try await send("POST", "/api/rhythms/\(id)/skip", body: ["periodStart": .string(periodStart)])
+    }
+
     // MARK: Photos (the family photo wall)
 
     /// Who uploaded a photo (display info for the "added by" row).
