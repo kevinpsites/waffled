@@ -273,9 +273,11 @@ where a guessed field name turns into a merge conflict. All routes are gated by 
 answers 404, matching every other household-scoped reference here.
 
 ```
-GET  /api/rhythms                     → { rhythms: Rhythm[] }
-GET  /api/rhythms/attention?from&to   → { items: AttentionItem[] }   both dates required, YYYY-MM-DD
+GET  /api/rhythms                     → { rhythms: RhythmWithPeriod[] }
+GET  /api/rhythms/attention?to[&from] → { items: AttentionItem[] }   `to` required, YYYY-MM-DD; `from` optional
 POST /api/rhythms                     → 201 { rhythm }
+PATCH  /api/rhythms/:id               → { rhythm }     title/emoji/notes/personId/every/leadTime/isActive
+DELETE /api/rhythms/:id               → 204            soft, so completion history survives
 POST /api/rhythms/:id/schedule        → 201 { event }    books a period; body { startsAt, endsAt?, allDay?, title? }
 POST /api/rhythms/:id/complete        → { rhythm }       body { completedAt?, notes? }
 GET  /api/rhythms/:id/completions     → { completions: [{ id, personId, completedAt, notes }] }
@@ -284,16 +286,22 @@ POST /api/rhythms/:id/skip            → { ok: true }     body { periodStart } 
 Rhythm        { id, title, emoji, notes, personId, satisfiedBy: 'completion'|'scheduling',
                 every, startsOn, autoSchedule, rrule, leadTime, lastCompletedAt,
                 nextDueAt, isActive }
+RhythmWithPeriod
+              = Rhythm & { currentPeriodStart, currentPeriodEnd, satisfied }
+                (period bounds are null for the completion shape — it has no grid)
 AttentionItem { kind: 'due',         rhythm, dueAt, overdue }
               | { kind: 'unscheduled', rhythm, periodStart, periodEnd }
 ```
 
-Two behaviours worth knowing before designing against them. `leadTime` comes back clamped
+Three behaviours worth knowing before designing against them. `leadTime` comes back clamped
 to at most half of `every` — ask for 14 days on a weekly rhythm and you get `3 days
 12:00:00`, because a runway longer than the cycle never closes and the item would never
-leave the list. And `/schedule` fills title and assignee from the rhythm, so a booking
-UI needs a time picker and nothing else; the friction this shape exists to remove is
-retyping.
+leave the list; `PATCH` re-clamps against the *new* cadence for the same reason. `/schedule`
+fills title and assignee from the rhythm, so a booking UI needs a time picker and nothing
+else; the friction this shape exists to remove is retyping. And `PATCH` deliberately can't
+change `satisfiedBy`, `startsOn`, `autoSchedule` or `rrule` — re-anchoring a live rhythm
+would silently re-interpret its existing skips (keyed on `period_start`) and point its
+bookings at periods that no longer exist. Retire it and make a new one.
 
 ## Feeding the weekly plan module
 

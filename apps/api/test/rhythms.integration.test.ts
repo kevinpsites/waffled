@@ -342,6 +342,15 @@ describe('route precedence', () => {
     const res = await call('GET', '/api/rhythms/attention?from=nope&to=2026-09-27', kevin)
     expect(res.statusCode).toBe(400)
   })
+
+  // The horizon is the only bound the query actually uses, so demanding `from` as well
+  // was requiring a value we then threw away. Still validated when sent, so a caller
+  // passing a window gets told when it's malformed rather than silently ignored.
+  it('accepts the horizon on its own', async () => {
+    const res = await call('GET', '/api/rhythms/attention?to=2026-09-27', kevin)
+    expect(res.statusCode).toBe(200)
+    expect(Array.isArray(JSON.parse(res.body).items)).toBe(true)
+  })
 })
 
 describe('tenant isolation', () => {
@@ -359,5 +368,117 @@ describe('tenant isolation', () => {
     const res = await call('GET', '/api/rhythms', kevin)
     const titles = JSON.parse(res.body).rhythms.map((r: { title: string }) => r.title)
     expect(titles).not.toContain('Foreign filter')
+  })
+})
+
+// A register you can only add to isn't a register. Without these, a typo in a title is
+// permanent and an unwanted rhythm nags forever — and the management screen was already
+// rendering a "Paused" badge that nothing could ever set, which is the dead-control smell
+// this repo has been caught by before.
+describe('editing and retiring a rhythm', () => {
+  let id = ''
+
+  beforeAll(async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Waterr filter', satisfiedBy: 'completion', every: '6 months',
+      nextDueAt: '2026-12-01T00:00:00Z',
+    })
+    id = JSON.parse(made.body).rhythm.id
+  })
+
+  it('edits the plain descriptive fields', async () => {
+    const res = await call('PATCH', `/api/rhythms/${id}`, kevin, {
+      title: 'Water filter', emoji: '💧', notes: 'under the sink',
+    })
+    expect(res.statusCode).toBe(200)
+    const r = JSON.parse(res.body).rhythm
+    expect(r.title).toBe('Water filter')
+    expect(r.emoji).toBe('💧')
+    expect(r.notes).toBe('under the sink')
+  })
+
+  it('leaves untouched fields alone', async () => {
+    const res = await call('PATCH', `/api/rhythms/${id}`, kevin, { notes: 'in the garage' })
+    const r = JSON.parse(res.body).rhythm
+    expect(r.title).toBe('Water filter')
+    expect(r.every).toBe('6 mons')
+  })
+
+  it('re-clamps the lead time when the cadence shortens under it', async () => {
+    // The clamp is applied on write, so a rhythm edited from six months down to weekly
+    // would otherwise keep a 14-day runway it can never close and start nagging forever.
+    const res = await call('PATCH', `/api/rhythms/${id}`, kevin, { every: '7 days' })
+    expect(JSON.parse(res.body).rhythm.leadTime).toBe('3 days 12:00:00')
+  })
+
+  it('pauses a rhythm so it stops asking without losing its history', async () => {
+    expect((await call('PATCH', `/api/rhythms/${id}`, kevin, { isActive: false })).statusCode).toBe(200)
+    const res = await call('GET', '/api/rhythms/attention?from=2027-01-01&to=2027-12-31', kevin)
+    const ids = JSON.parse(res.body).items.map((i: { rhythm: { id: string } }) => i.rhythm.id)
+    expect(ids).not.toContain(id)
+    // Still listed, so it can be switched back on.
+    const listed = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+    expect(listed.find((r: { id: string }) => r.id === id)?.isActive).toBe(false)
+  })
+
+  it('deletes a rhythm out of the register entirely', async () => {
+    expect((await call('DELETE', `/api/rhythms/${id}`, kevin)).statusCode).toBe(204)
+    const listed = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+    expect(listed.map((r: { id: string }) => r.id)).not.toContain(id)
+  })
+
+  it('404s on a rhythm belonging to somebody else', async () => {
+    const foreign = await withClient(async (c) => {
+      const h = await c.query<{ id: string }>(`insert into households (name, timezone) values ('Other edit','UTC') returning id`)
+      const r = await c.query<{ id: string }>(
+        `insert into rhythms (household_id, title, satisfied_by, every, next_due_at)
+         values ($1,'Theirs','completion','3 months', now()) returning id`,
+        [h.rows[0].id]
+      )
+      return r.rows[0].id
+    })
+    expect((await call('PATCH', `/api/rhythms/${foreign}`, kevin, { title: 'Mine now' })).statusCode).toBe(404)
+    expect((await call('DELETE', `/api/rhythms/${foreign}`, kevin)).statusCode).toBe(404)
+  })
+})
+
+// The management screen lists every rhythm, including ones months away from their runway.
+// /attention deliberately answers only "what needs attention by <horizon>", so without
+// period state on the list the screen can't say whether a quarterly rhythm 60 days out is
+// handled — and the client can't work it out either, since stepping true calendar months
+// from an interval like "3 mons" is exactly the arithmetic the server already owns.
+describe('the list carries current-period state', () => {
+  it('reports the period a scheduling rhythm is in, and whether it is handled', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Self-care day', satisfiedBy: 'scheduling', every: '3 months', startsOn: '2026-07-01',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+
+    const before = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+      .find((r: { id: string }) => r.id === id)
+    expect(before.currentPeriodStart).toBe('2026-07-01')
+    expect(before.currentPeriodEnd).toBe('2026-10-01')
+    expect(before.satisfied).toBe(false)
+
+    await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: '2026-09-12T18:00:00Z', endsAt: '2026-09-12T21:00:00Z',
+    })
+    const after = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+      .find((r: { id: string }) => r.id === id)
+    expect(after.satisfied).toBe(true)
+  })
+
+  it('reports a completion rhythm as handled until it comes due', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Smoke alarms', satisfiedBy: 'completion', every: '1 year',
+      nextDueAt: '2027-06-01T00:00:00Z',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+    const listed = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+      .find((r: { id: string }) => r.id === id)
+    expect(listed.satisfied).toBe(true)
+    // A period grid is meaningless for the completion shape — its clock restarts from
+    // whenever you actually did it, so there are no fixed boundaries to report.
+    expect(listed.currentPeriodStart).toBeNull()
   })
 })

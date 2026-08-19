@@ -30,6 +30,15 @@ export interface Rhythm {
   isActive: boolean
 }
 
+// A rhythm plus where it stands right now. Only the list returns this; the single-row
+// reads stay lean.
+export interface RhythmWithPeriod extends Rhythm {
+  // Null for the completion shape, which has no fixed period boundaries by design.
+  currentPeriodStart: string | null
+  currentPeriodEnd: string | null
+  satisfied: boolean
+}
+
 interface Row {
   id: string
   title: string
@@ -91,12 +100,61 @@ const SELECT = `
          last_completed_at, next_due_at, is_active
     from rhythms`
 
-export async function listRhythms(householdId: string): Promise<Rhythm[]> {
-  const { rows } = await query<Row>(
-    `${SELECT} where household_id = $1 and deleted_at is null order by title`,
+// The list the management screen reads. It carries current-period state as well as the
+// row, because /rhythms/attention deliberately answers a narrower question ("what needs
+// attention by <horizon>?") and a screen listing everything still has to say whether a
+// quarterly rhythm two months from its runway is handled. The client can't work that out
+// on its own either: stepping true calendar months from an interval like '3 mons' is the
+// arithmetic this query already does.
+export async function listRhythms(householdId: string): Promise<RhythmWithPeriod[]> {
+  const { rows } = await query<Row & { period_start: string | null; period_end: string | null; satisfied: boolean }>(
+    `with base as (
+       select r.*,
+              case when r.satisfied_by = 'scheduling' then
+                (select max(gs)::date
+                   from generate_series(r.starts_on::timestamp, now()::timestamp, r.every) gs)
+              end as period_start
+         from rhythms r
+        where r.household_id = $1 and r.deleted_at is null
+     )
+     select b.id, b.title, b.emoji, b.notes, b.person_id, b.satisfied_by, b.every::text as every,
+            b.starts_on, b.auto_schedule, b.rrule, b.lead_time::text as lead_time,
+            b.last_completed_at, b.next_due_at, b.is_active,
+            b.period_start,
+            case when b.period_start is not null then (b.period_start + b.every)::date end as period_end,
+            case
+              -- Completion shape has no period grid at all: its clock restarts from
+              -- whenever you actually did it, so "handled" just means not yet due.
+              when b.satisfied_by = 'completion' then b.next_due_at > now()
+              when b.period_start is null then false
+              else exists (
+                     select 1 from rhythm_skips s
+                      where s.rhythm_id = b.id and s.period_start = b.period_start
+                   )
+                or exists (
+                     select 1 from events e
+                      where e.rhythm_id = b.id and e.deleted_at is null
+                        and e.starts_at >= b.period_start::timestamptz
+                        and e.starts_at < (b.period_start + b.every)::timestamptz
+                   )
+                or exists (
+                     select 1 from event_occurrences o
+                      join events m on m.id = o.event_id
+                      where m.rhythm_id = b.id and m.deleted_at is null and o.deleted_at is null
+                        and o.starts_at >= b.period_start::timestamptz
+                        and o.starts_at < (b.period_start + b.every)::timestamptz
+                   )
+            end as satisfied
+       from base b
+      order by b.title`,
     [householdId]
   )
-  return rows.map(toRhythm)
+  return rows.map((r) => ({
+    ...toRhythm(r),
+    currentPeriodStart: dateText(r.period_start),
+    currentPeriodEnd: dateText(r.period_end),
+    satisfied: r.satisfied ?? false,
+  }))
 }
 
 async function readOne(householdId: string, id: string): Promise<Rhythm | null> {
@@ -369,6 +427,85 @@ export async function listAttention(householdId: string, horizon: string): Promi
   }
 
   return out
+}
+
+export interface UpdateRhythmInput {
+  title?: unknown
+  emoji?: unknown
+  notes?: unknown
+  personId?: unknown
+  every?: unknown
+  leadTime?: unknown
+  isActive?: unknown
+}
+
+// Edit a rhythm. Deliberately covers only the fields that are safe to change in place:
+// title/emoji/notes/assignee, the cadence, the runway, and active. `satisfiedBy`,
+// `startsOn`, `autoSchedule` and `rrule` are not editable here — changing the shape or the
+// period anchor of a live rhythm would silently re-interpret its existing skips (keyed on
+// period_start) and re-point its bookings at periods that no longer exist. Retire it and
+// make a new one instead.
+export async function updateRhythm(
+  householdId: string,
+  id: string,
+  input: UpdateRhythmInput
+): Promise<Rhythm | null> {
+  const existing = await readOne(householdId, id)
+  if (!existing) return null
+
+  if (input.title !== undefined) {
+    if (typeof input.title !== 'string' || !input.title.trim()) {
+      throw new InvalidReferenceError('title cannot be blank')
+    }
+  }
+  const personId = input.personId === undefined ? undefined : (typeof input.personId === 'string' ? input.personId : null)
+  if (personId) await assertPersonInHousehold(householdId, personId)
+
+  const { rows } = await query<Row>(
+    `update rhythms set
+       title      = coalesce($3, title),
+       emoji      = case when $4::boolean then $5 else emoji end,
+       notes      = case when $6::boolean then $7 else notes end,
+       person_id  = case when $8::boolean then $9::uuid else person_id end,
+       every      = coalesce($10::interval, every),
+       -- Re-clamped on every write, against the cadence as it will be AFTER this update.
+       -- Shortening a six-month rhythm to weekly would otherwise leave it a 14-day runway
+       -- it can never close, and it would nag from then on.
+       lead_time  = least(
+                      coalesce($11::interval, lead_time),
+                      coalesce($10::interval, every) / 2
+                    ),
+       is_active  = coalesce($12::boolean, is_active),
+       updated_at = now()
+     where household_id = $1 and id = $2 and deleted_at is null
+     returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
+               starts_on, auto_schedule, rrule, lead_time::text as lead_time,
+               last_completed_at, next_due_at, is_active`,
+    [
+      householdId,
+      id,
+      typeof input.title === 'string' ? input.title.trim() : null,
+      input.emoji !== undefined, str(input.emoji),
+      input.notes !== undefined, str(input.notes),
+      personId !== undefined, personId ?? null,
+      typeof input.every === 'string' && input.every.trim() ? input.every.trim() : null,
+      typeof input.leadTime === 'string' && input.leadTime.trim() ? input.leadTime.trim() : null,
+      typeof input.isActive === 'boolean' ? input.isActive : null,
+    ]
+  )
+  return rows[0] ? toRhythm(rows[0]) : null
+}
+
+// Soft delete, so the completion history a rhythm accumulated ("filter last changed Mar
+// 12") survives being retired. Pausing via isActive is the reversible option; this one is
+// for rhythms that were a mistake.
+export async function deleteRhythm(householdId: string, id: string): Promise<boolean> {
+  const { rowCount } = await query(
+    `update rhythms set deleted_at = now(), updated_at = now()
+      where household_id = $1 and id = $2 and deleted_at is null`,
+    [householdId, id]
+  )
+  return !!rowCount
 }
 
 export interface ScheduleRhythmInput {

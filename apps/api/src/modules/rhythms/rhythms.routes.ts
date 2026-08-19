@@ -10,6 +10,8 @@ import {
   skipPeriod,
   listAttention,
   scheduleRhythm,
+  updateRhythm,
+  deleteRhythm,
 } from './rhythms'
 import { presentEvent } from '../events/events'
 
@@ -35,11 +37,14 @@ export function registerRhythmRoutes(api: Api): void {
   api.get('/api/rhythms/attention', tenantRoute(async (tenant, req: Request, res: Response) => {
     const from = String(req.query?.from ?? '')
     const to = String(req.query?.to ?? '')
-    if (!DATE_RE.test(from) || !DATE_RE.test(to)) {
-      return badRequest(res, 'from and to are required as YYYY-MM-DD')
+    if (!DATE_RE.test(to)) return badRequest(res, 'to is required as YYYY-MM-DD')
+    // `from` is optional: the horizon is the only bound listAttention uses, so requiring
+    // it would mean demanding a value we then discard. Still checked when supplied, so a
+    // caller sending a window learns it's malformed instead of being quietly ignored.
+    if (from) {
+      if (!DATE_RE.test(from)) return badRequest(res, 'from must be YYYY-MM-DD')
+      if (to < from) return badRequest(res, 'to must not precede from')
     }
-    if (to < from) return badRequest(res, 'to must not precede from')
-    // `from` is validated but not queried on — see listAttention: the horizon decides.
     return { items: await listAttention(tenant.householdId, to) }
   }))
 
@@ -65,6 +70,26 @@ export function registerRhythmRoutes(api: Api): void {
       if (e instanceof InvalidReferenceError) return badRequest(res, e.message)
       throw e
     }
+  }))
+
+  // Edit. Covers the safe-to-change fields only — see updateRhythm for why the shape and
+  // the period anchor are not among them.
+  api.patch('/api/rhythms/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
+    try {
+      const rhythm = await updateRhythm(tenant.householdId, req.params.id!, (req.body ?? {}) as Record<string, unknown>)
+      if (!rhythm) return res.status(404).json({ error: 'NotFound', message: 'rhythm not found' })
+      return { rhythm }
+    } catch (e) {
+      if (e instanceof InvalidReferenceError) return badRequest(res, e.message)
+      throw e
+    }
+  }))
+
+  // Retire one for good. Soft, so its completion history survives.
+  api.delete('/api/rhythms/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const ok = await deleteRhythm(tenant.householdId, req.params.id!)
+    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'rhythm not found' })
+    return res.status(204).send('')
   }))
 
   // Book a period — the rhythm puts a real event on the calendar itself. See
