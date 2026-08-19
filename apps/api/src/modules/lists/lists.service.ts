@@ -819,6 +819,29 @@ export function snapToWeekStart(iso: string, firstDay: FirstDayOfWeek): string {
   return d.toISOString().slice(0, 10)
 }
 
+// A caller-supplied `?weekStart=`, or null when there is nothing usable in it and the
+// route should fall back to the household's current week. THE one gate in front of the
+// snap: /api/lists/grocery/* and /api/meals/:id/add-to-list both used to carry their own
+// copy of this, under a comment claiming they shared it — so a floor added to one would
+// silently not exist on the other.
+//
+// Three things have to be true, and the regex alone only gets the first:
+//   1. it looks like a date;
+//   2. it IS one — "2026-13-45" passes the regex, and JS silently normalizes it rather
+//      than rejecting, so it has to round-trip back to the same string;
+//   3. the SNAP can still represent it. This is the one that isn't obvious: the snap
+//      subtracts up to six days, so "0001-01-01" walks out of the supported range and
+//      becomes "0000-12-31" — a year Postgres has no representation for, so the date
+//      cast 500s. A floor costs nothing real; grocery weeks are not historical data.
+export function parseWeekStartParam(raw: unknown): string | null {
+  const ws = typeof raw === 'string' ? raw : ''
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ws)) return null
+  const d = new Date(`${ws}T00:00:00Z`)
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== ws) return null
+  if (ws < '1970-01-01') return null
+  return ws
+}
+
 async function householdWeekPrefs(householdId: string): Promise<{ firstDay: FirstDayOfWeek; tz: string }> {
   const { rows } = await query<{ week_start: string; timezone: string | null }>(
     `select week_start, timezone from households where id=$1`,

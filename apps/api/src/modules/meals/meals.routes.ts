@@ -75,7 +75,7 @@ import {
 } from './meal-builder.service'
 import { onHandForRecipe } from '../pantry/on-hand'
 import { pantryHitsForNames } from '../pantry/presence'
-import { addMealToGrocery, removeMealFromGrocery, householdWeekStart, householdWeekStartFor, presentListItem } from '../lists/lists.service'
+import { addMealToGrocery, removeMealFromGrocery, householdWeekStart, householdWeekStartFor, parseWeekStartParam, presentListItem } from '../lists/lists.service'
 import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
@@ -871,16 +871,8 @@ export function registerMealRoutes(api: Api): void {
   // date would orphan the rows on a key nothing queries. Same rule (and same helper) as
   // /api/lists/grocery/*, deliberately, so the two cannot drift apart.
   async function groceryWeekFor(householdId: string, req: Request): Promise<string> {
-    const ws = typeof req.query?.weekStart === 'string' ? req.query.weekStart : ''
-    if (DATE_RE.test(ws)) {
-      const d = new Date(`${ws}T00:00:00Z`)
-      // Reject impossible dates ("2026-13-45") that the regex lets through and JS
-      // silently normalizes, rather than casting them at Postgres and 500ing.
-      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ws) {
-        return householdWeekStartFor(householdId, ws)
-      }
-    }
-    return householdWeekStart(householdId)
+    const ws = parseWeekStartParam(req.query?.weekStart)
+    return ws === null ? householdWeekStart(householdId) : householdWeekStartFor(householdId, ws)
   }
 
   // "Add plate to list" — put the whole plate's shopping on the grocery list without

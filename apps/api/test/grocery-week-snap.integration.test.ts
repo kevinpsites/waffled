@@ -198,3 +198,27 @@ describe('grocery rebuild — the snap honors a monday household', () => {
     expect(await weekKeys()).not.toContain('2026-10-18')
   })
 })
+
+// A well-formed date can still be an absurd one. The validation gate only asks "is this a
+// real calendar date that round-trips?", which year 1 passes — and then the snap subtracts
+// up to six days straight out of the supported range: 0001-01-01 becomes "0000-12-31", a
+// year Postgres has no representation for, so the date cast 500s. Before the snap the route
+// passed such a value through verbatim and Postgres accepted it, so this is a crash the
+// snap introduced. Nobody types this, but a 500 on a public route is a 500.
+describe('grocery board — a date the snap cannot represent falls back instead of crashing', () => {
+  it('does not 500 on a date that would underflow the calendar', async () => {
+    for (const absurd of ['0001-01-01', '0001-01-03', '0000-01-01']) {
+      const res = await call('GET', `/api/lists/grocery/board?weekStart=${absurd}`, kevin)
+      expect(res.statusCode, absurd).toBe(200)
+      // Falling back to the household's current week is the graceful answer — never a
+      // zero or negative year echoed back as the board's key.
+      const { weekStart } = JSON.parse(res.body) as Board
+      expect(weekStart, absurd).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(Number(weekStart.slice(0, 4)), absurd).toBeGreaterThan(1000)
+    }
+  })
+
+  it('is 500-free on the rebuild route too, which snaps the same way', async () => {
+    expect((await rebuild('0001-01-01')).statusCode).toBe(200)
+  })
+})
