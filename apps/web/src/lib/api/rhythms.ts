@@ -11,7 +11,7 @@
 // copy rule as much as a data one: nothing here says "streak", "completed" or
 // "on track" for a scheduling rhythm. The question is "did this get scheduled?".
 import { useCallback, useEffect, useState } from 'react'
-import { apiGet, apiSend, localToday } from './client'
+import { apiGet, apiSend, apiDelete, localToday } from './client'
 import { useRefetchOn, emit } from './bus'
 
 export type SatisfiedBy = 'completion' | 'scheduling'
@@ -34,6 +34,25 @@ export interface Rhythm {
   lastCompletedAt: string | null
   nextDueAt: string | null
   isActive: boolean
+}
+
+// A rhythm plus where it stands right now, as `GET /api/rhythms` returns it. The
+// period bounds are null for the completion shape, which has no grid by design —
+// its clock restarts from whenever you actually did it — and for that shape
+// `satisfied` just means "not yet due".
+export interface RhythmWithPeriod extends Rhythm {
+  currentPeriodStart: string | null
+  currentPeriodEnd: string | null
+  satisfied: boolean
+}
+
+// One period of one rhythm — enough to book or skip it. An unscheduled attention
+// item is one of these; so is a row from the list once its period bounds are known,
+// which is what lets a rhythm be booked before its runway has even opened.
+export interface RhythmPeriod {
+  rhythm: Rhythm
+  periodStart: string
+  periodEnd: string
 }
 
 export type AttentionItem =
@@ -64,6 +83,21 @@ export interface CreateRhythmInput {
   rrule?: string | null
 }
 
+// Only the fields that are safe to change in place. `satisfiedBy`, `startsOn`,
+// `autoSchedule` and `rrule` are absent on purpose, and the server refuses them:
+// re-anchoring a live rhythm would silently re-interpret the periods it has already
+// skipped (they're keyed on period_start) and point its bookings at periods that no
+// longer exist. Changing the shape or the anchor means retiring it and making a new one.
+export interface UpdateRhythmInput {
+  title?: string
+  emoji?: string | null
+  notes?: string | null
+  personId?: string | null
+  every?: string
+  leadTime?: string
+  isActive?: boolean
+}
+
 export interface ScheduleRhythmInput {
   startsAt: string
   endsAt?: string | null
@@ -71,15 +105,20 @@ export interface ScheduleRhythmInput {
 }
 
 export const rhythmsApi = {
-  list: () => apiGet<{ rhythms: Rhythm[] }>('/api/rhythms'),
-  // Both dates are required server-side, and `to` is load-bearing twice over: it is
-  // the horizon AND the date that picks which period a scheduling rhythm reports on.
-  // Widening it to "see further ahead" silently answers about a LATER period, so
-  // every caller here passes today.
-  attention: (from: string, to: string) =>
-    apiGet<{ items: AttentionItem[] }>(`/api/rhythms/attention?from=${from}&to=${to}`),
+  list: () => apiGet<{ rhythms: RhythmWithPeriod[] }>('/api/rhythms'),
+  // Takes the horizon and nothing else — there is no window. `to` is load-bearing
+  // twice over: it is how far ahead we look AND the date that picks which period a
+  // scheduling rhythm reports on, so asking further out silently answers about a
+  // LATER period. Every caller here passes today.
+  attention: (to: string) => apiGet<{ items: AttentionItem[] }>(`/api/rhythms/attention?to=${to}`),
   create: (input: CreateRhythmInput) =>
     apiSend<{ rhythm: Rhythm }>('POST', '/api/rhythms', input).then((r) => { emit('rhythms'); return r }),
+  // Edit in place. See UpdateRhythmInput for what is deliberately not here.
+  update: (id: string, patch: UpdateRhythmInput) =>
+    apiSend<{ rhythm: Rhythm }>('PATCH', `/api/rhythms/${id}`, patch).then((r) => { emit('rhythms'); return r }),
+  // Retire one for good. Soft server-side, so the completion history survives;
+  // pausing (isActive) stays the reversible option.
+  remove: (id: string) => apiDelete(`/api/rhythms/${id}`).then((r) => { emit('rhythms'); return r }),
   complete: (id: string, body: { completedAt?: string; notes?: string } = {}) =>
     apiSend<{ rhythm: Rhythm }>('POST', `/api/rhythms/${id}/complete`, body).then((r) => { emit('rhythms'); return r }),
   // Books a period into a REAL calendar event. Title and assignee come from the
@@ -151,6 +190,31 @@ export function formatInterval(text: string): string {
   return out.join(' ')
 }
 
+export type CadenceUnit = 'days' | 'weeks' | 'months' | 'years'
+
+/**
+ * The inverse of what the create form builds: put a stored cadence back into a
+ * number + unit picker so it survives an edit. Whole weeks collapse, matching how
+ * formatInterval reads them out.
+ */
+export function splitCadence(every: string): { count: number; unit: CadenceUnit } {
+  const p = parseInterval(every ?? '')
+  if (p.year) return { count: p.year, unit: 'years' }
+  if (p.mon) return { count: p.mon, unit: 'months' }
+  const days = p.day + p.week * 7
+  if (days) return days % 7 === 0 ? { count: days / 7, unit: 'weeks' } : { count: days, unit: 'days' }
+  // Nothing legible — a week is a far safer default than a zero-length cadence,
+  // which Postgres would reject and which could never close a period.
+  return { count: 1, unit: 'weeks' }
+}
+
+/** A runway in whole days, for the form's number input. Rounds the clamp's half-days up. */
+export function intervalDays(leadTime: string): number {
+  const p = parseInterval(leadTime ?? '')
+  const days = p.year * 365 + p.mon * 30 + p.week * 7 + p.day + p.hour / 24 + p.min / 1440
+  return Math.round(days)
+}
+
 /** '7 days' → 'every week'; '3 mons' → 'every 3 months'. */
 export function cadenceLabel(every: string): string {
   const text = formatInterval(every)
@@ -201,7 +265,7 @@ export function periodLabel(periodEnd: string, now: Date = new Date()): string {
 // ── Hooks ───────────────────────────────────────────────────────────────────────
 
 export function useRhythms() {
-  const [rhythms, setRhythms] = useState<Rhythm[]>([])
+  const [rhythms, setRhythms] = useState<RhythmWithPeriod[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [nonce, setNonce] = useState(0)
@@ -218,9 +282,9 @@ export function useRhythms() {
 }
 
 /**
- * What needs attention today. The window is deliberately one day on every surface:
+ * What needs attention today. The horizon is deliberately today on every surface:
  * `to` doubles as the date that decides WHICH period a scheduling rhythm reports
- * on, so a wider window would answer about a later period.
+ * on, so looking further ahead would answer about a later period.
  */
 export function useRhythmAttention() {
   const [items, setItems] = useState<AttentionItem[]>([])
@@ -231,8 +295,7 @@ export function useRhythmAttention() {
   useRefetchOn(['rhythms'], refetch)
   useEffect(() => {
     let alive = true
-    const today = localToday()
-    rhythmsApi.attention(today, today)
+    rhythmsApi.attention(localToday())
       .then((d) => { if (alive) { setItems(d.items ?? []); setError(false); setLoading(false) } })
       .catch(() => { if (alive) { setError(true); setLoading(false) } })
     return () => { alive = false }

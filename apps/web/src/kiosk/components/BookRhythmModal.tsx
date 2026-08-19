@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { rhythmsApi, cadenceLabel, type AttentionItem } from '../../lib/api'
+import { rhythmsApi, cadenceLabel, type RhythmPeriod } from '../../lib/api'
 
 // Book a period: turn "this should happen" into an actual dated event.
 //
@@ -25,7 +25,9 @@ export function BookRhythmModal({
   onClose,
   onBooked,
 }: {
-  item: Extract<AttentionItem, { kind: 'unscheduled' }>
+  // Any period of any scheduling rhythm — an unscheduled attention item is one,
+  // and so is a row from the register whose runway hasn't opened yet.
+  item: RhythmPeriod
   onClose: () => void
   onBooked?: () => void
 }) {
