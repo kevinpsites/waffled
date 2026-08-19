@@ -55,6 +55,7 @@ export default defineConfig({
 						{ label: 'Pantry', slug: 'features/pantry' },
 						{ label: 'Photos & screensaver', slug: 'features/photos' },
 						{ label: 'Family Night', slug: 'features/family-night' },
+						{ label: 'Rhythms', slug: 'features/rhythms' },
 						{ label: 'AI capture bar', slug: 'features/capture' },
 						{ label: 'Kiosk & display', slug: 'features/kiosk' },
 						{ label: 'Waffled-Bites', slug: 'features/waffled-bites' },
