@@ -1,16 +1,18 @@
 # Rhythms — the things that should keep happening
 
-**Status:** in progress. Decided 2026-08-13, rescoped and renamed from "Upkeep" 2026-08-18
+**Status:** shipping. Decided 2026-08-13, rescoped and renamed from "Upkeep" 2026-08-18
 after checking the original design against real household cases. **Phases 1 and 2 are
 built** — migration `0097_rhythms.sql`, the service, `GET /rhythms/attention`, module and
 Today-card registration, `POST /rhythms/:id/schedule`, and the `rhythm_id` link pinned
-through all three event write paths (see *Implementation sequencing*). Phase 3 — the web,
-iOS and docs surfaces — is not.
+through all three event write paths (see *Implementation sequencing*). **Phase 3 is
+landing**: the web surfaces (Today card, register, booking, skipping, the calendar 🔁
+marker, the countdown source) and the docs are done — user-facing docs live at
+`website/docs/src/content/docs/features/rhythms.md` and the `CHANGELOG.md` entry is
+written. Per-surface status is the [feature matrix](../../website/docs/src/content/docs/reference/features.md).
 
 Where "trash out weekly", "air filter every 3 months", "change the car's oil", "book a
 temple visit", "take a self-care day once a quarter", and "family outing on the third
-weekend of the month" live. Nothing user-facing ships until the phase-3 surfaces land, so
-there is no `CHANGELOG.md` entry yet — that belongs with the UI.
+weekend of the month" live.
 
 ## What a rhythm is
 
