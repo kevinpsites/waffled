@@ -136,6 +136,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A kiosk's offline copy now follows the version you upgraded to.** The wall display
+  keeps its own copy of the app so a dropped connection doesn't blank the screen, but it
+  only ever refreshed that copy when Waffled's offline component itself changed — which
+  a release didn't do. Upgrade the server and the display would keep hoarding the files
+  from whatever version it first saw, so anything it hadn't already opened could be
+  missing next time the wifi went down. Each build now carries its own stamp (the release
+  version plus a fingerprint of the files in it), so a display notices an upgrade, fetches
+  the new copy, and clears out the old one instead of piling up a copy of every version
+  it has ever run.
+
 - **Shopping that went missing from an old "Plan the month" comes back.** The month-plan
   bug above didn't just fail to build your list — it filed rows under a date that isn't the
   start of any week, and once the list learned to read only real weeks those rows became

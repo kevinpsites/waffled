@@ -1,7 +1,41 @@
 /// <reference types="vitest/config" />
-import { defineConfig, type ProxyOptions } from 'vite'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { defineConfig, type Plugin, type ProxyOptions } from 'vite'
 import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import { buildId, stampServiceWorker } from './sw-stamp'
+
+// Stamp the built sw.js with this build's identity. sw.js lives in public/ and is
+// copied verbatim, so the rewrite happens on the emitted copy — the source stays a
+// plain, readable, directly-testable file rather than a template.
+//
+// closeBundle rather than writeBundle: the public directory is copied during the
+// write phase, and closeBundle is the hook that is guaranteed to run after it.
+function stampServiceWorkerPlugin(): Plugin {
+  let outDir = 'dist'
+  let assetFilenames: string[] = []
+  return {
+    name: 'waffled:stamp-service-worker',
+    apply: 'build',
+    configResolved(config) {
+      outDir = config.build.outDir
+    },
+    writeBundle(_options, bundle) {
+      assetFilenames = Object.keys(bundle)
+    },
+    closeBundle() {
+      const version = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8')).version
+      const swPath = resolve(__dirname, outDir, 'sw.js')
+      const id = buildId(version, assetFilenames)
+      // stampServiceWorker throws if it can't find what it's replacing, which fails
+      // the build. That is the point: silently shipping an unstamped worker would
+      // turn offline updates off with no signal anywhere.
+      writeFileSync(swPath, stampServiceWorker(readFileSync(swPath, 'utf8'), id))
+      this.info(`service worker stamped ${id} from ${assetFilenames.length} files`)
+    },
+  }
+}
 
 // Proxy /api to the local api container so the SPA and api share an origin (no
 // CORS), exactly like Caddy does in the stack. We forward the browser's host +
@@ -31,7 +65,7 @@ const apiProxy: Record<string, ProxyOptions> = {
 }
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), stampServiceWorkerPlugin()],
   // @powersync/web ships its own SQLite WASM + worker; pre-bundling breaks them,
   // so exclude it from Vite's dep optimizer (PowerSync's documented Vite setup).
   optimizeDeps: { exclude: ['@powersync/web'] },

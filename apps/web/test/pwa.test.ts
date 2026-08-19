@@ -26,7 +26,15 @@ async function loadWorker(served: Served = {}) {
   }
   const cacheStorage = {
     open: vi.fn(async (name: string) => cacheFor(name)),
-    keys: vi.fn(async () => ['waffled-v1-shell', 'waffled-v1-assets', 'waffled-v1-api']),
+    // The dev-value cache names, plus leftovers from an older worker: the API cache
+    // that a previous version of this file used to write, and a previous build's
+    // assets (the version stamp scopes cache names per build).
+    keys: vi.fn(async () => [
+      'waffled-dev-shell',
+      'waffled-dev-assets',
+      'waffled-dev-api',
+      'waffled-0.12.0-abc12345-assets',
+    ]),
     delete: vi.fn(async () => true),
     match: vi.fn(async () => undefined),
   }
@@ -95,7 +103,26 @@ describe('service worker request privacy', () => {
     })
     await activation
 
-    expect(cacheStorage.delete).toHaveBeenCalledWith('waffled-v1-api')
+    expect(cacheStorage.delete).toHaveBeenCalledWith('waffled-dev-api')
+    // ...without taking this build's own caches down with it.
+    expect(cacheStorage.delete).not.toHaveBeenCalledWith('waffled-dev-shell')
+    expect(cacheStorage.delete).not.toHaveBeenCalledWith('waffled-dev-assets')
+  })
+
+  it(`drops the previous build's cached assets`, async () => {
+    // Cache names carry the build stamp, so without this every release a display
+    // survives would leave its files behind forever.
+    const { listeners, cacheStorage } = await loadWorker()
+    let activation: Promise<unknown> | undefined
+
+    listeners.get('activate')?.({
+      waitUntil: (promise: Promise<unknown>) => {
+        activation = promise
+      },
+    })
+    await activation
+
+    expect(cacheStorage.delete).toHaveBeenCalledWith('waffled-0.12.0-abc12345-assets')
   })
 })
 
@@ -119,7 +146,7 @@ describe('service worker offline precache', () => {
     })
     await install(listeners)
 
-    const cached = cacheFor('waffled-v1-assets').add.mock.calls.map(([url]) => url)
+    const cached = cacheFor('waffled-dev-assets').add.mock.calls.map(([url]) => url)
     // The entry is in the HTML; these two are reachable only through the manifest.
     expect(cached).toContain('/assets/index-abc.js')
     expect(cached).toContain('/assets/Meals-def.js')
@@ -135,7 +162,7 @@ describe('service worker offline precache', () => {
     const { listeners, cacheFor } = await loadWorker({ '/index.html': SHELL_HTML })
     await install(listeners)
 
-    const cached = cacheFor('waffled-v1-assets').add.mock.calls.map(([url]) => url)
+    const cached = cacheFor('waffled-dev-assets').add.mock.calls.map(([url]) => url)
     expect(cached).toContain('/assets/index-abc.js')
   })
 
@@ -146,7 +173,7 @@ describe('service worker offline precache', () => {
       '/index.html': SHELL_HTML,
       '/asset-manifest.json': MANIFEST,
     })
-    const assets = cacheFor('waffled-v1-assets')
+    const assets = cacheFor('waffled-dev-assets')
     assets.add.mockImplementation(async (url: string) => {
       if (url === '/assets/Meals-def.js') throw new Error('404')
     })

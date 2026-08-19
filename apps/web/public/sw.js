@@ -11,7 +11,14 @@
 // API requests are never cached because their responses contain household data
 // scoped by authorization headers, while Cache Storage keys requests by URL.
 
-const VERSION = 'waffled-v1'
+// Replaced at build time with `waffled-<release version>-<hash of the built files>`
+// (see sw-stamp.ts). That is what makes the browser notice a new deploy at all: it
+// re-runs install — and so the precache below — only when sw.js's own bytes change,
+// and nothing else in this file moves from one release to the next. It also scopes
+// the cache names per build, so activate drops the previous build's copies instead
+// of hoarding every version ever shipped. The literal below is the dev value; there
+// is no service worker in dev, so it only ever shows up in tests.
+const VERSION = 'waffled-dev'
 const SHELL = `${VERSION}-shell`
 const ASSETS = `${VERSION}-assets`
 const SHELL_URL = '/index.html'
