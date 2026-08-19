@@ -107,6 +107,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The web app opens roughly four times faster on a cold load.** Waffled used to hand
+  your browser the entire app up front — every screen, the barcode scanner, the sync
+  engine — before it could paint anything, about 520 KB of compressed code even if all
+  you wanted was the Today board. Now each screen is fetched the moment you first open
+  it, and the two heavyweights load only when they're genuinely needed: the barcode
+  scanner when you tap **Scan** in the pantry, and the live-sync engine in the background
+  once the app is already on screen. A first load is down to about 140 KB. Nothing about
+  how the app behaves changes — screens you've visited stay instant, and the kiosk still
+  caches everything for offline use, now including the screens nobody has opened yet.
 - **Quick "log time" buttons now start at 20 minutes.** The goal time chips are **20m ·
   30m · 1 hr · 1.5 hr** — the 2-hour button is gone, since a block that long is easier to
   type than a twenty-minute session was to tap out. Web, iPhone and iPad.

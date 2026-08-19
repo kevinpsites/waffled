@@ -36,6 +36,13 @@ export default defineConfig({
   // so exclude it from Vite's dep optimizer (PowerSync's documented Vite setup).
   optimizeDeps: { exclude: ['@powersync/web'] },
   worker: { format: 'es' },
+  build: {
+    // Emit the chunk manifest so the service worker can precache every code-split
+    // screen, not just what index.html happens to link. Written to the outDir root
+    // (not Vite's default .vite/ subdirectory) because dotted paths are exactly the
+    // sort of thing a static host declines to serve.
+    manifest: 'asset-manifest.json',
+  },
   server: {
     port: 5175,
     proxy: apiProxy,

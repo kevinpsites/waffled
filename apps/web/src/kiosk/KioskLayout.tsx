@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 import { Rail } from './components/Rail'
 import { Topbar } from './components/Topbar'
@@ -66,7 +66,14 @@ export function KioskLayout() {
           <OfflineBanner />
           <SyncHealthBanner />
           <Topbar />
-          <Outlet />
+          {/* Screens are code-split (see ./routes), so navigating can suspend while the
+              chunk loads. Keep the boundary here, inside the chrome — a boundary around
+              <KioskRoutes> would blank the rail and topbar on every navigation. The
+              fallback is empty on purpose: over LAN the chunk arrives within a frame or
+              two, and a spinner that flashes that briefly reads as a glitch. */}
+          <Suspense fallback={null}>
+            <Outlet />
+          </Suspense>
         </div>
         <UpdateModal />
       </div>

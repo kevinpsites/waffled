@@ -4,7 +4,8 @@
 //
 // Strategy:
 //   • navigations      → network-first, fall back to the cached app shell
-//   • hashed assets     → cache-first (Vite fingerprints them, so they're immutable)
+//   • hashed assets     → cache-first (Vite fingerprints them, so they're immutable),
+//                        all of them precached from the build's asset manifest
 //   • GET /api/*        → straight to network (never persisted by this worker)
 //   • everything else   → straight to network
 // API requests are never cached because their responses contain household data
@@ -15,24 +16,56 @@ const SHELL = `${VERSION}-shell`
 const ASSETS = `${VERSION}-assets`
 const SHELL_URL = '/index.html'
 
-// Precache the shell AND its hashed assets at install time. We don't have a
-// build manifest (no PWA plugin), so we fetch index.html and parse out the
-// /assets/* URLs ourselves — otherwise an offline reload would get the cached
-// shell but fail to load the (never-cached) JS/CSS the first load fetched
-// before the SW took control.
+// Precache the shell AND every hashed asset at install time — otherwise an offline
+// reload would get the cached shell but fail to load the (never-cached) JS/CSS the
+// first load fetched before the SW took control.
+//
+// Two sources, because index.html alone is no longer enough. The screens are
+// code-split, so a screen's chunk is referenced only by the JS that imports it and
+// never appears in the HTML — parsing index.html would precache the entry and leave
+// a kiosk that went offline before anyone opened Meals unable to open Meals at all.
+// The build writes /asset-manifest.json listing every chunk, so read that and fall
+// back to scraping the HTML if it is missing (an older build, or a host that won't
+// serve it). Both paths are best-effort: a failed precache leaves a working online
+// app, which is the same trade the rest of this worker makes.
+async function manifestAssets() {
+  try {
+    const res = await fetch('/asset-manifest.json', { cache: 'no-cache' })
+    if (!res.ok) return []
+    const manifest = await res.json()
+    const urls = new Set()
+    for (const entry of Object.values(manifest)) {
+      if (entry && typeof entry.file === 'string') urls.add(`/${entry.file}`)
+      for (const css of entry?.css ?? []) urls.add(`/${css}`)
+    }
+    return [...urls]
+  } catch {
+    return []
+  }
+}
+
+function htmlAssets(html) {
+  const urls = new Set()
+  const re = /(?:href|src)="(\/[^"]+\.(?:js|css|woff2?|svg|png|webp))"/g
+  let m
+  while ((m = re.exec(html))) urls.add(m[1])
+  return [...urls]
+}
+
 async function precache() {
   const shellCache = await caches.open(SHELL)
   const res = await fetch('/index.html', { cache: 'no-cache' })
   await shellCache.put(SHELL_URL, res.clone())
   await shellCache.put('/', res.clone())
   const html = await res.text()
-  const urls = new Set()
-  const re = /(?:href|src)="(\/[^"]+\.(?:js|css|woff2?|svg|png|webp))"/g
-  let m
-  while ((m = re.exec(html))) urls.add(m[1])
+  const urls = new Set([...htmlAssets(html), ...(await manifestAssets())])
   if (urls.size) {
     const assetCache = await caches.open(ASSETS)
-    await assetCache.addAll([...urls]).catch(() => {})
+    // addAll is all-or-nothing; one 404 among ~30 chunks would discard the lot, so
+    // cache them individually and keep whatever succeeds.
+    await Promise.all(
+      [...urls].map((url) => assetCache.add(url).catch(() => {}))
+    )
   }
 }
 
