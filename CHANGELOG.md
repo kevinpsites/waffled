@@ -15,6 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Rhythms — the things that should keep happening.** A new optional module for the
+  standing intentions with a cadence: trash out weekly, the air filter every three months,
+  a temple visit each quarter, a self-care day every other month, a family outing on the
+  third weekend. It is deliberately neither a chore list (no stars, no approval, nobody
+  earns anything for changing the furnace filter) nor a goal: with a goal you want to
+  **follow through**, while a rhythm is about the **opportunity existing**. Each one is
+  either something **you do** — where the clock restarts from when you *actually* did it,
+  so being late shifts the next one instead of stacking up missed ones — or something that
+  **gets scheduled**, where a calendar event existing for the period is the whole outcome
+  and Waffled never asks whether it happened. Booking one puts a **real event** on the
+  calendar (with its title and the right person already filled in), so it gets recurrence,
+  colors, reminders and Google/Outlook sync like anything else, and wears a small 🔁 so you
+  can tell it apart; a period you can't make can simply be **skipped** without inventing an
+  entry for something that isn't happening. A **Today card** shows only what needs
+  attention and stays invisible on the many quiet days, and the things you do yourself turn
+  into countdowns ("18 days until the air filter"). Off by default — turn **Rhythms** on in
+  Settings → Modules. On the web and kiosk today.
 - **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
   hardware run, the packing list, whatever's live this week — right on the Today board,
   with tap-to-tick-off. Pick which list from the card itself, the same way the Goals
