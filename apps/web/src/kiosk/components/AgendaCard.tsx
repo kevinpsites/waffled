@@ -3,6 +3,7 @@ import { Icon } from '../icons'
 import { EventModal } from './EventModal'
 import { eventPeople } from './cal-utils'
 import { isPastEvent } from './AgendaView'
+import { RhythmMark } from './RhythmMark'
 import { useEventsToday, usePersons, type AgendaEvent } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
 
@@ -32,7 +33,7 @@ function AgendaRow({ event, past = false, color: colorProp, onClick }: { event: 
       </div>
       <div style={{ width: 4, height: 34, borderRadius: 99, background: color }} />
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 16, fontWeight: 600 }}>{event.title}</div>
+        <div style={{ fontSize: 16, fontWeight: 600 }}><RhythmMark event={event} />{event.title}</div>
         {event.location && <div className="tiny muted">{event.location}</div>}
       </div>
       <Avatars event={event} />
@@ -47,7 +48,7 @@ function AgendaBigCard({ event, past = false, color: colorProp, onClick }: { eve
   return (
     <div className={`agenda-bigcard${past ? ' past' : ''}`} onClick={onClick} role="button" tabIndex={0} style={{ borderTop: `3px solid ${color}`, ...evVars(color) }}>
       <div className="ab-time ev-ink">{formatTime(event)}</div>
-      <div className="ab-title">{event.title}</div>
+      <div className="ab-title"><RhythmMark event={event} />{event.title}</div>
       {event.location && <div className="tiny muted ab-loc">📍 {event.location}</div>}
       <div className="ab-foot">
         <Avatars event={event} />
