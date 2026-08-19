@@ -74,7 +74,8 @@ import {
   type MealRecipeInput,
 } from './meal-builder.service'
 import { onHandForRecipe } from '../pantry/on-hand'
-import { addMealToGrocery, removeMealFromGrocery, householdWeekStart, presentListItem } from '../lists/lists.service'
+import { pantryHitsForNames } from '../pantry/presence'
+import { addMealToGrocery, removeMealFromGrocery, householdWeekStart, householdWeekStartFor, parseWeekStartParam, presentListItem } from '../lists/lists.service'
 import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
@@ -147,9 +148,23 @@ export function registerMealRoutes(api: Api): void {
     const ov = getOverrides(recipe)
     const subs = ov.subs ?? {}
     const stepNotes = ov.stepNotes ?? {}
-    const ingredients = (await listIngredients(tenant.householdId, id)).map((i) => ({
+    const rawIngredients = await listIngredients(tenant.householdId, id)
+    // `inPantry` is what lets the "add to grocery" picker pre-uncheck things you already
+    // have. It is a PANTRY signal and stays strictly separate from `isStaple`: a staple is
+    // something the household is assumed to keep around, and the picker deliberately
+    // leaves those checked (an item missing at the shop costs more than an extra one to
+    // uncheck). Conflating them would silently reverse that default.
+    // Every ingredient is matched, staples included — "is it in the pantry" is a question
+    // worth answering for a staple too, even though it doesn't change the default.
+    // false for all when the pantry module is off: nothing is known, so nothing unchecks.
+    const pantryHits = await pantryHitsForNames(
+      tenant.householdId,
+      rawIngredients.map((i) => i.name)
+    )
+    const ingredients = rawIngredients.map((i) => ({
       ...presentIngredient(i),
       sub: subs[i.name.trim().toLowerCase()] ?? null,
+      inPantry: pantryHits?.has(i.name.trim().toLowerCase()) ?? false,
     }))
     const steps = (await listSteps(tenant.householdId, id)).map((s) => ({
       ...s,
@@ -850,6 +865,16 @@ export function registerMealRoutes(api: Api): void {
     return res.status(200).json({ entry: presentEntry(entry), meal: await presentMeal(tenant.householdId, scheduled) })
   }))
 
+  // The grocery week an add/remove-plate call targets: the household week CONTAINING an
+  // explicit ?weekStart=, else the current one. Snapping is not optional — grocery rows
+  // are keyed by week start and the board only ever asks for week starts, so a mid-week
+  // date would orphan the rows on a key nothing queries. Same rule (and same helper) as
+  // /api/lists/grocery/*, deliberately, so the two cannot drift apart.
+  async function groceryWeekFor(householdId: string, req: Request): Promise<string> {
+    const ws = parseWeekStartParam(req.query?.weekStart)
+    return ws === null ? householdWeekStart(householdId) : householdWeekStartFor(householdId, ws)
+  }
+
   // "Add plate to list" — put the whole plate's shopping on the grocery list without
   // scheduling it anywhere. Rows land as source='recipe' (an explicit off-plan add
   // the weekly rebuild must never wipe) and are credited to the plate, so the board
@@ -861,12 +886,7 @@ export function registerMealRoutes(api: Api): void {
     await requireModule(tenant, 'lists')
     const meal = await loadMeal(tenant, req, res)
     if (!meal) return
-    const ws = typeof req.query?.weekStart === 'string' ? req.query.weekStart : ''
-    let weekStart = await householdWeekStart(tenant.householdId)
-    if (DATE_RE.test(ws)) {
-      const d = new Date(`${ws}T00:00:00Z`)
-      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ws) weekStart = ws
-    }
+    const weekStart = await groceryWeekFor(tenant.householdId, req)
     const added = await addMealToGrocery(tenant, meal.id, weekStart)
     if (added === null) return res.status(404).json({ error: 'NotFound', message: 'meal not found' })
     return res.status(201).json({ added: added.length, items: added.map(presentListItem), weekStart })
@@ -877,12 +897,7 @@ export function registerMealRoutes(api: Api): void {
     await requireModule(tenant, 'lists')
     const meal = await loadMeal(tenant, req, res)
     if (!meal) return
-    const ws = typeof req.query?.weekStart === 'string' ? req.query.weekStart : ''
-    let weekStart = await householdWeekStart(tenant.householdId)
-    if (DATE_RE.test(ws)) {
-      const d = new Date(`${ws}T00:00:00Z`)
-      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ws) weekStart = ws
-    }
+    const weekStart = await groceryWeekFor(tenant.householdId, req)
     const removed = await removeMealFromGrocery(tenant, meal.id, weekStart)
     if (removed === null) return res.status(404).json({ error: 'NotFound', message: 'meal not found' })
     return res.status(200).json({ removed, weekStart })

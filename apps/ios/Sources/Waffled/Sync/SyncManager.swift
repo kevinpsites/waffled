@@ -64,6 +64,23 @@ final class SyncManager {
         eventsByDay = Agenda.byDay(events, householdTz)
     }
     private(set) var householdTz: TimeZone = .current { didSet { rebuildEventIndex() } }
+    /// The household's first-day-of-week (`households.week_start`), read off the synced
+    /// row — NOT the device's region setting, which is a different thing and routinely
+    /// disagrees. The grocery list is keyed by this, so it's what `GroceryWeeks` must cut
+    /// rebuild calls on.
+    ///
+    /// The synced row is only readable from the first sync tick onward, so a cold launch
+    /// starts from the value the *last* run persisted (`HouseholdWeekStartStore`) rather
+    /// than re-guessing. That closes the window where a plan applied in the first seconds
+    /// of a launch in a monday household got grouped onto Sundays.
+    ///
+    /// nil means genuinely unknown — a never-synced install. It is deliberately NOT
+    /// collapsed to `.sunday`: callers that group dates into grocery weeks need to be able
+    /// to tell "the household starts on Sunday" from "we have no idea yet", because
+    /// guessing sunday for a monday household leaves one of its weeks unbuilt. The window
+    /// is normally a single sync tick, but it is unbounded while PowerSync is disconnected
+    /// and REST still works — and planning goes over REST.
+    private(set) var householdWeekStart: HouseholdWeekStart? = HouseholdWeekStartStore.load()
     private(set) var personCount = 0
     private(set) var eventCount = 0
     private(set) var pendingUploads = 0
@@ -604,6 +621,20 @@ final class SyncManager {
         return ok
     }
 
+    /// Execute one step of a planner apply. The planner sheets hand over a
+    /// `MealPlanApply` plan and this runs it, so which nights get written and which weeks
+    /// get rebuilt is decided (and tested) in one place instead of inline in two sheets.
+    func perform(_ op: MealPlanApply.Op) async {
+        switch op {
+        case let .set(date, mealType, recipeId, title):
+            _ = await setMealPlan(date: date, mealType: mealType, recipeId: recipeId, title: title)
+        case let .clear(date, mealType):
+            _ = await clearMealPlan(date: date, mealType: mealType)
+        case let .rebuild(weekStart):
+            await rebuildGroceryFromWeek(weekStart: weekStart)
+        }
+    }
+
     // MARK: rewards
 
     /// Give a reward to a person from this (parent) phone: request the redemption and
@@ -972,14 +1003,25 @@ final class SyncManager {
         )) ?? 0
 
         // Bucket the agenda by the household's timezone (synced households row),
-        // falling back to the device zone before the first sync.
-        if let tz = try? await db.getOptional(
-            sql: "SELECT timezone FROM households LIMIT 1", parameters: [],
-            mapper: { try $0.getStringOptional(name: "timezone") }
-        ), let id = tz, let zone = TimeZone(identifier: id) {
-            // Only assign on a real change — this runs on every sync-status tick, and
-            // householdTz's didSet rebuilds the whole event index.
-            if zone.identifier != householdTz.identifier { householdTz = zone }
+        // falling back to the device zone before the first sync. The same read carries
+        // week_start, which the grocery rebuilds are cut on.
+        if let row = try? await db.getOptional(
+            sql: "SELECT timezone, week_start FROM households LIMIT 1", parameters: [],
+            mapper: { (try $0.getStringOptional(name: "timezone"),
+                       try $0.getStringOptional(name: "week_start")) }
+        ) {
+            if let id = row.0, let zone = TimeZone(identifier: id) {
+                // Only assign on a real change — this runs on every sync-status tick, and
+                // householdTz's didSet rebuilds the whole event index.
+                if zone.identifier != householdTz.identifier { householdTz = zone }
+            }
+            // adopt() reads AND remembers in one call — see HouseholdWeekStartStore. As
+            // two steps the persist could be dropped here without any test noticing.
+            // The assignment stays guarded to avoid observable churn on a tick that
+            // changed nothing; the remembering must NOT be, or a sunday household never
+            // records that it synced.
+            let first = HouseholdWeekStartStore.adopt(row.1)
+            if first != householdWeekStart { householdWeekStart = first }
         }
     }
 }

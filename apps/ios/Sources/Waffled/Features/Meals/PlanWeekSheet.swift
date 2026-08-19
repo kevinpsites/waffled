@@ -487,13 +487,13 @@ struct PlanWeekSheet: View {
 
     private func apply() async {
         applying = true
-        for card in suggestions {
-            _ = await sync.setMealPlan(date: card.date, mealType: card.mealType,
-                                       recipeId: card.recipeId,
-                                       title: card.recipeId == nil ? card.title : nil)
+        // Decided and tested in MealPlanApply — including the case that bit us: a week off
+        // the planner grid is cut on the DEVICE's first day while the grocery list is keyed
+        // by the HOUSEHOLD's, so a Sun–Sat grid can straddle two household weeks and both
+        // have to be built. This is just the executor.
+        for op in MealPlanApply.week(suggestions: suggestions, firstDay: sync.householdWeekStart) {
+            await sync.perform(op)
         }
-        // "& build list" — rebuild the grocery list from the newly planned week.
-        await sync.rebuildGroceryFromWeek(weekStart: start)
         applying = false
         onApplied()
         dismiss()

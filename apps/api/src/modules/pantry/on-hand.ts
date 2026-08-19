@@ -16,9 +16,13 @@
 //
 // Matching is presence-only (see ./match) — quantities and units are never compared.
 import { query } from '../../platform/db'
-import { moduleEnabled } from '../../platform/modules'
 import { listPantryStaples } from '../lists/lists.service'
 import { tokens, matches } from './match'
+// The pantry read itself lives in ./presence — shared with groceryBoard's per-row badge,
+// so both surfaces agree about which items count (used-up, soft-deleted, is_meal).
+import { pantryModuleEnabled, queryPantryOnHand } from './presence'
+
+export { pantryModuleEnabled }
 
 export interface OnHandCount {
   have: number
@@ -61,11 +65,6 @@ const EMPTY = (pantryEnabled: boolean): OnHandResult => ({
   total: { onHand: pantryEnabled ? { have: 0, total: 0 } : null, toBuy: 0, toBuyNames: [] },
 })
 
-export async function pantryModuleEnabled(householdId: string): Promise<boolean> {
-  const { rows } = await query<{ settings: unknown }>(`select settings from households where id = $1`, [householdId])
-  return moduleEnabled(rows[0]?.settings, 'pantry')
-}
-
 // One settings read, one staples read, one ingredients read, one pantry read —
 // for however many recipes you name.
 export async function loadOnHandContext(householdId: string, recipeIds: readonly string[]): Promise<OnHandContext> {
@@ -89,16 +88,9 @@ export async function loadOnHandContext(householdId: string, recipeIds: readonly
     ctx.required.get(i.recipe_id)?.push(i.name)
   }
 
-  // is_meal items are finished meals (leftovers, a frozen pot pie) — not cooking
-  // ingredients — so they never count toward having an ingredient.
-  if (pantryEnabled) {
-    const { rows } = await query<{ name: string }>(
-      `select name from pantry_items
-        where household_id = $1 and used_up_at is null and deleted_at is null and is_meal = false`,
-      [householdId]
-    )
-    ctx.onHandTokens = rows.map((r) => tokens(r.name))
-  }
+  // Gated above, so this takes the ungated read directly. Which items count (used up,
+  // soft-deleted, is_meal) is ./presence's call, shared with the grocery badge.
+  if (pantryEnabled) ctx.onHandTokens = (await queryPantryOnHand(householdId)).map((o) => o.tok)
   return ctx
 }
 

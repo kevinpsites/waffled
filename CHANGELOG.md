@@ -15,6 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Your grocery list now knows what's in your pantry.** Until now the two barely spoke:
+  the shopping list only knew about *pantry staples* — the standing "we always keep salt
+  and oil around" name list — and had no idea what was actually on your shelves. Now any
+  grocery row matching something in your pantry carries a 🥫 badge naming what it found
+  and how much of it ("Chicken breast: 3"), and the recipe **Add to grocery** picker starts
+  those ingredients **unchecked**, telling you how many it unchecked so nothing happens
+  behind your back. Matched rows stay **on** the list on purpose: Waffled matches names,
+  not amounts, so it can tell you own eggs but not whether your one egg covers the dozen a
+  recipe wants — an extra item in the cart beats a second trip. Which is also why the badge
+  shows what's on the shelf instead of a verdict; you're the one standing in front of it.
+  Staples are unchanged and still start checked. Requires the Pantry module, and works
+  everywhere — web, kiosk, iPhone and iPad, including the iPad kiosk's Today grocery card,
+  so the shelf you're standing at is the one the wall screen already knows about.
 - **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
   hardware run, the packing list, whatever's live this week — right on the Today board,
   with tap-to-tick-off. Pick which list from the card itself, the same way the Goals
@@ -111,6 +124,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **"Plan my month" now builds the whole month's grocery list, not one week of it.**
+  Applying a month plan asked for a single grocery rebuild, and a rebuild only ever covers
+  one week — so every week after the first was left unbuilt. Worse, the request was keyed
+  to the 1st of the month, which usually isn't the day your week starts, so even the first
+  week's items were filed under a date the grocery board never looks at and the list came
+  back empty. Applying a month now rebuilds each week it touches, including weeks you
+  *cleared* nights from so that shopping comes back off the list, and any date you hand the
+  grocery list is understood as the week containing it. Fixed on the web, on iPhone and on
+  iPad. If you hit this, nothing was lost — opening a week always rebuilt it — it just never
+  happened up front. And if part of an apply doesn't land — a night that won't save, or a
+  week whose list won't rebuild — the planner now says so and stays open instead of closing
+  as though everything worked; the rest of the month still goes through.
+- **"Plan my week & build list" builds the right week on iPhone and iPad.** If your
+  household starts its week on Monday but your phone's region starts it on Sunday, the
+  planner's grid and the grocery list disagreed about which week you were looking at, and
+  the list that got built was the week *before* the one you'd just planned. Both now follow
+  your household's setting, and a plan that straddles two of those weeks builds both. The
+  app also remembers which day your week starts on between launches, instead of assuming
+  Sunday until it next hears from the server — planning something in the first seconds
+  after opening the app used to be enough to get the wrong week, and until the setting has
+  actually arrived Waffled now covers both possibilities rather than guessing one.
+- **The grocery list's week arrows land on the right week on iPhone and iPad.** In a
+  household whose week starts on Monday, viewed on a phone whose region starts it on
+  Sunday, tapping **›** showed the week you were already on and **‹** skipped back two —
+  leaving one week you simply couldn't reach. The arrows now step from the week the server
+  actually returned, and the heading names that same week.
+- **The "Add to grocery list" menu waits for the recipe to load.** Opening a recipe and
+  going straight for that menu item could bring up the picker before the ingredients
+  arrived, leaving you with an empty sheet and nothing to add. It's now greyed until
+  there's something to pick.
+- **Your pantry stopped claiming you have things you don't.** Two habits of real
+  ingredient names were quietly fooling it. Meal-kit recipes write "Cream cheese —
+  contains milk", and Waffled read that whole phrase as the name, so a carton of milk
+  counted as cream cheese, a jar of mayo as eggs, and pasta as flour — the "contains …"
+  note says what's *in* something, not what it *is*, and is now ignored. Separately, a
+  general name would land on a more specific item that's a different food entirely: one
+  jar of peanut butter satisfied *butter* across roughly fifteen recipes, and evaporated
+  milk passed for milk. Words that change what a food **is** — peanut, almond, coconut,
+  oat, soy, evaporated, condensed and a few more — no longer count as a match, while words
+  that merely narrow it still do, so *frozen peas* still answers *peas* and *chicken
+  breast* still answers *chicken*. And a shelf item named for one of those words alone no
+  longer stands in for the thing made from it — a bag of *coconut* is not *coconut milk*,
+  and *soy* is not *soy sauce* — which matters most in the **Add to grocery** picker, where
+  a wrong match doesn't just show the wrong badge, it quietly leaves the ingredient off
+  your list. All of this lands everywhere matching happens: the grocery list's 🥫 badges,
+  the "have 3 of 5" count on a recipe, and **Cook from your pantry**, which had been rating
+  meal-kit recipes as more cookable than they are.
+- **The pantry badge introduces itself to a screen reader.** The 🥫 is decoration, so when
+  the badge showed only an amount it arrived as a bare "2 cups" right next to the row's own
+  quantity — two numbers with nothing saying which one was the shelf. It now reads "In
+  pantry: 2 cups".
+- **The pantry badge names the closest thing on your shelf.** When a grocery row matched
+  several pantry items, which one got named came down to the order they happened to be
+  stored in — so the same list could credit one item today and another tomorrow. The best
+  match now wins: an item with exactly that name first, then the one with the fewest extra
+  words.
 - **A new pantry section that already existed under a different capitalisation no longer
   loses the item.** Typing "garage shelf" when the household already had a "Garage shelf"
   filed the item under the new spelling, which matched no section and dropped it into the

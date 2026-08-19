@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { api, usePersons, useRecipes, type PlanCard, type Recipe } from '../../lib/api'
+import { api, useHousehold, usePersons, useRecipes, type PlanCard, type Recipe } from '../../lib/api'
 import { useTopbarFull } from '../topbar-slot'
 import { Icon } from '../icons'
 import { RecipeModal } from './RecipeModal'
@@ -41,6 +41,37 @@ function isoWeekKey(date: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// The distinct household weeks a set of planned dates lands in, in date order.
+//
+// A grocery rebuild covers ONE week (weekStart..weekStart+6), so applying a month —
+// 4–6 weeks — has to rebuild each of them; a single call with the month start left every
+// week but the first unbuilt. And the boundaries have to follow the household's
+// first-day-of-week: grouping a monday household by Sunday would merge two of its weeks
+// into one call and leave the other genuinely uncovered. Deliberately NOT `isoWeekKey`,
+// which is Sunday-only because the review headers only ever need a stable grouping.
+//
+// `firstDay` may be null, meaning we genuinely do not know yet — the household fetch can
+// fail and is never retried. That is NOT the same as "sunday", and defaulting to it is the
+// one guess with a silent failure mode: for a monday household it merges two real weeks
+// into a single key, the server snaps that key to its own boundary, and the other week is
+// never built at all. So when we don't know, we cover both. The extra rebuild is idempotent
+// — far cheaper than a week of shopping that quietly never appears.
+export function weekStartsToRebuild(dates: string[], firstDay: 'sunday' | 'monday' | null): string[] {
+  const weeks = new Set<string>()
+  const cuts: Array<'sunday' | 'monday'> = firstDay === null ? ['sunday', 'monday'] : [firstDay]
+  for (const date of dates) {
+    for (const cut of cuts) {
+      const d = new Date(`${date}T00:00:00`)
+      if (Number.isNaN(d.getTime())) continue
+      const dow = d.getDay() // 0=Sun..6=Sat
+      // A monday household's Sunday closes the week that began six days earlier.
+      d.setDate(d.getDate() - (cut === 'monday' ? (dow === 0 ? 6 : dow - 1) : dow))
+      weeks.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+    }
+  }
+  return [...weeks].sort()
+}
+
 const byDate = (a: { date: string }, b: { date: string }) => (a.date < b.date ? -1 : 1)
 
 // Full-screen "Plan my month": rotation guardrails on the left, the whole month
@@ -50,6 +81,14 @@ const byDate = (a: { date: string }, b: { date: string }) => (a.date < b.date ? 
 export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: string; onClose: () => void; onApplied: () => void }) {
   const { persons } = usePersons()
   const familySize = Math.max(1, persons.length)
+  // Which day starts a week here — the grocery list is keyed by week start, so the
+  // rebuilds below have to be cut on the household's own boundaries.
+  const { household } = useHousehold()
+  // null while the household is genuinely unknown — see weekStartsToRebuild. Guessing here
+  // is what leaves a monday household with an unbuilt week.
+  const firstDayOfWeek: 'sunday' | 'monday' | null = household
+    ? household.weekStart === 'monday' ? 'monday' : 'sunday'
+    : null
   const { recipes } = useRecipes()
 
   const [weekdays, setWeekdays] = useState<Set<number>>(() => new Set([1, 2, 3, 4, 5]))
@@ -75,6 +114,11 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
   const [loading, setLoading] = useState(false)
   const [via, setVia] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Kept separate from `error`: that one means "drafting failed, nothing exists yet" and
+  // renders a "Try again" that re-drafts the month. This one means the opposite — the
+  // month IS saved and only its shopping is behind — so re-drafting would be exactly the
+  // wrong offer. Retrying is the apply button the user already has.
+  const [applyWarning, setApplyWarning] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
 
   // Drag-to-swap state (pointer events → works with mouse and touch).
@@ -270,16 +314,56 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
 
   async function applyAll() {
     setApplying(true)
+    setApplyWarning(null) // a retry starts clean, so a stale warning can't outlive its cause
     try {
+      // A night that won't save must not take the rest of the apply down with it. Left
+      // unguarded, one rejection exits applyAll before the rebuild loop below, so a
+      // half-written month gets NO grocery rebuild at all and `finally` re-enables the
+      // button without a word — the user sees a no-op and tries again.
+      const unsaved: string[] = []
       for (const c of toApply) {
-        await api.planSlot(c.recipeId ? { date: c.date, mealType: 'dinner', recipeId: c.recipeId } : { date: c.date, mealType: 'dinner', title: c.title })
+        await api
+          .planSlot(c.recipeId ? { date: c.date, mealType: 'dinner', recipeId: c.recipeId } : { date: c.date, mealType: 'dinner', title: c.title })
+          .catch(() => unsaved.push(c.date))
       }
       // Clear nights that were planned before but the user skipped.
+      const cleared: string[] = []
       for (const d of removed) {
-        if (plannedDates.has(d)) await api.clearSlot(d, 'dinner').catch(() => {})
+        if (plannedDates.has(d)) {
+          await api.clearSlot(d, 'dinner').catch(() => {})
+          cleared.push(d)
+        }
       }
-      await api.rebuildGrocery(monthStart).catch(() => {})
+      // Rebuild every week this apply touched — one call per week, derived from the
+      // dates actually written (and the ones cleared, whose shopping has to come back
+      // OFF the list).
+      //
+      // One failure must not abort the others: the remaining weeks' shopping is
+      // independent, and dropping it too turns a small failure into a big one. But it
+      // must not be silent either. There is no safety net below this: GroceryBoard only
+      // self-rebuilds a week that has NO auto rows, so a week being RE-planned — which by
+      // definition already has them — never heals itself, and the list would go on showing
+      // shopping for dinners the user just replaced.
+      const failed: string[] = []
+      for (const week of weekStartsToRebuild([...toApply.map((c) => c.date), ...cleared], firstDayOfWeek)) {
+        await api.rebuildGrocery(week).catch(() => failed.push(week))
+      }
+      // Whatever did save IS written, so surface it either way — nothing is lost by
+      // showing the plan, and the nights that landed should appear.
       onApplied()
+      if (unsaved.length > 0 || failed.length > 0) {
+        // Stay open. Closing on a half-done job is what made this invisible before.
+        const nights = unsaved.length === 1 ? 'One night' : `${unsaved.length} nights`
+        const weeks = failed.length === 1 ? 'one week' : `${failed.length} weeks`
+        setApplyWarning(
+          unsaved.length > 0 && failed.length > 0
+            ? `${nights} couldn’t be saved, and the grocery list for ${weeks} didn’t rebuild. Tap “Save month & build list” to try again.`
+            : unsaved.length > 0
+              ? `${nights} couldn’t be saved. Tap “Save month & build list” to try again.`
+              : `Your month is saved, but the grocery list for ${weeks} didn’t rebuild. Tap “Save month & build list” again, or open the list and hit Refresh.`
+        )
+        return
+      }
       onClose()
     } finally {
       setApplying(false)
@@ -462,6 +546,12 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
             <span className="spinner lg" />
             <div className="tiny muted" style={{ marginTop: 14 }}>Drafting your month…</div>
           </div>
+        )}
+
+        {applyWarning && (
+          // role="alert" so it is announced — this appears after the user has already
+          // committed and looked away from the button they pressed.
+          <div className="plan-lib-hint tiny" role="alert">⚠️ {applyWarning}</div>
         )}
 
         {error && (

@@ -219,12 +219,25 @@ export interface GroceryUnscheduledMeal {
   color: string
   recipes: GroceryMealDish[]
 }
+// The pantry item covering a grocery row — "you already have this". `amount`/`unit` are
+// the PANTRY item's own free text ("1" + "bag"), never a comparison against the row's
+// quantity: the match is presence-only, so the honest move is to show what's in the house
+// and let the shopper judge whether a bag of rice covers the two cups they need.
+export interface PantryHit {
+  name: string
+  amount: string
+  unit: string
+}
 export interface GroceryBoardItem extends ListItem {
   aisle: string
   source: string
   sourceRecipeIds: string[]
   // The week this row belongs to (meal-derived + off-plan rows); null = global manual row.
   weekStart: string | null
+  // Non-null ⇒ something on hand matches this row. null ⇒ either nothing matches or the
+  // pantry module is off — the client can't tell them apart and doesn't need to: both
+  // mean "make no on-hand claim". Optional so a server predating it doesn't break.
+  pantry?: PantryHit | null
 }
 export interface GroceryBoard {
   list: ListSummary

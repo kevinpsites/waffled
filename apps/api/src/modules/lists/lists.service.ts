@@ -8,6 +8,8 @@ import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { getRecipe, listIngredients, getOverrides } from '../meals/meals.service'
 import { aisleFor, isStaple } from './aisles'
+// Read-time only, and deliberately so — see groceryBoard.
+import { pantryHitsForNames } from '../pantry/presence'
 import { formatAmount, normalizeQuantity, parseQuantity, plainQuantity } from './quantity'
 import type { ListRow, ListItemRow, CreateListInput, PatchItemInput } from './lists.types'
 
@@ -801,27 +803,76 @@ function isoAddDays(iso: string, n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-// The start (YYYY-MM-DD) of a household's week, honoring BOTH its first-day-of-week
-// preference (sunday|monday) and its timezone — the single server-side source of truth
-// for "which week is it". It backs the grocery board/rebuild default week, the rebuild's
-// legacy-absorb check, and the 0088 backfill (which replicates this exact math in SQL),
-// so a backfilled row lands on precisely the week the board shows. Mirrors the iOS
-// `Cal.weekStart(Date(), householdTz)`. `offsetWeeks` shifts by whole weeks.
-export async function householdWeekStart(householdId: string, offsetWeeks = 0): Promise<string> {
+export type FirstDayOfWeek = 'sunday' | 'monday'
+
+// THE week arithmetic — the one definition of "which week does this date belong to",
+// which the 0088 backfill replicates in SQL and iOS mirrors in `Cal.weekStart`. Pure and
+// timezone-free on purpose: a timezone is only ever needed to decide what "today" is, and
+// once you have a calendar date the snap is plain day counting. Everything that needs a
+// week key goes through here so the board, the rebuild and the backfill cannot drift.
+export function snapToWeekStart(iso: string, firstDay: FirstDayOfWeek): string {
+  const d = new Date(iso + 'T00:00:00Z')
+  const dow = d.getUTCDay() // 0=Sun..6=Sat
+  // A monday household's Sunday closes the week that began six days earlier.
+  const back = firstDay === 'monday' ? (dow === 0 ? 6 : dow - 1) : dow
+  d.setUTCDate(d.getUTCDate() - back)
+  return d.toISOString().slice(0, 10)
+}
+
+// A caller-supplied `?weekStart=`, or null when there is nothing usable in it and the
+// route should fall back to the household's current week. THE one gate in front of the
+// snap: /api/lists/grocery/* and /api/meals/:id/add-to-list both used to carry their own
+// copy of this, under a comment claiming they shared it — so a floor added to one would
+// silently not exist on the other.
+//
+// Three things have to be true, and the regex alone only gets the first:
+//   1. it looks like a date;
+//   2. it IS one — "2026-13-45" passes the regex, and JS silently normalizes it rather
+//      than rejecting, so it has to round-trip back to the same string;
+//   3. the SNAP can still represent it. This is the one that isn't obvious: the snap
+//      subtracts up to six days, so "0001-01-01" walks out of the supported range and
+//      becomes "0000-12-31" — a year Postgres has no representation for, so the date
+//      cast 500s. A floor costs nothing real; grocery weeks are not historical data.
+export function parseWeekStartParam(raw: unknown): string | null {
+  const ws = typeof raw === 'string' ? raw : ''
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ws)) return null
+  const d = new Date(`${ws}T00:00:00Z`)
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== ws) return null
+  if (ws < '1970-01-01') return null
+  return ws
+}
+
+async function householdWeekPrefs(householdId: string): Promise<{ firstDay: FirstDayOfWeek; tz: string }> {
   const { rows } = await query<{ week_start: string; timezone: string | null }>(
     `select week_start, timezone from households where id=$1`,
     [householdId]
   )
-  const monday = rows[0]?.week_start === 'monday'
-  const tz = (rows[0]?.timezone ?? '').trim() || 'UTC'
-  // "today" as seen in the household's timezone, then treated as a UTC midnight so the
-  // day arithmetic below is timezone-shift-free.
+  return {
+    firstDay: rows[0]?.week_start === 'monday' ? 'monday' : 'sunday',
+    tz: (rows[0]?.timezone ?? '').trim() || 'UTC',
+  }
+}
+
+// The start (YYYY-MM-DD) of a household's CURRENT week, honoring BOTH its first-day-of-week
+// preference (sunday|monday) and its timezone — the single server-side source of truth
+// for "which week is it". It backs the grocery board/rebuild default week, the rebuild's
+// legacy-absorb check, and the 0088 backfill, so a backfilled row lands on precisely the
+// week the board shows. Mirrors the iOS `Cal.weekStart(Date(), householdTz)`.
+// `offsetWeeks` shifts by whole weeks.
+export async function householdWeekStart(householdId: string, offsetWeeks = 0): Promise<string> {
+  const { firstDay, tz } = await householdWeekPrefs(householdId)
+  // "today" as seen in the household's timezone, then snapped by plain day arithmetic.
   const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
-  const d = new Date(todayLocal + 'T00:00:00Z')
-  const dow = d.getUTCDay() // 0=Sun..6=Sat
-  const back = monday ? (dow === 0 ? 6 : dow - 1) : dow
-  d.setUTCDate(d.getUTCDate() - back + offsetWeeks * 7)
-  return d.toISOString().slice(0, 10)
+  return isoAddDays(snapToWeekStart(todayLocal, firstDay), offsetWeeks * 7)
+}
+
+// The household week containing an ARBITRARY date. Grocery rows are keyed by week start
+// and the board only ever asks for week starts, so a caller that names a mid-week date
+// (a meal's date, the 1st of a month) must be snapped or its rows land on a key nothing
+// will ever read again.
+export async function householdWeekStartFor(householdId: string, iso: string): Promise<string> {
+  const { firstDay } = await householdWeekPrefs(householdId)
+  return snapToWeekStart(iso, firstDay)
 }
 
 // Rebuild the auto portion of the grocery list from a week's planned meals
@@ -1051,11 +1102,25 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
     })
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (MEAL_ORDER[a.mealType] ?? 9) - (MEAL_ORDER[b.mealType] ?? 9)))
 
+  // "You already have this" — matched at READ time, not stamped during the weekly
+  // rebuild. A stamped flag would go stale the moment someone cooks a meal or scans a
+  // new item, while the board is re-read on every visit, so read-time is both simpler
+  // and always current. It FLAGS and never filters: the matcher is presence-only, so
+  // "you have eggs" can be true when you have one egg and the recipe wants twelve —
+  // silently dropping the row would be a worse bug than the badge fixes.
+  // null (module off) ⇒ every row reports `pantry: null` and the client shows nothing.
+  const pantryHits = await pantryHitsForNames(
+    tenant.householdId,
+    itemRows.rows.map((i) => i.name)
+  )
   const items = itemRows.rows.map((i) => ({
     ...presentListItem(i),
     // fall back to name-based classification when a row has no/Other aisle (older
     // items, hand-added items) so the board stays cleanly grouped like the mock.
     aisle: i.category && i.category !== 'Other' ? i.category : aisleFor(i.name, i.quantity),
+    // The pantry item covering this row, with its OWN amount ("1 bag") — a display
+    // claim the data supports, unlike any comparison against the recipe's "1½ lb".
+    pantry: pantryHits?.get(i.name.trim().toLowerCase()) ?? null,
   }))
 
   // Recipes explicitly added from their page that aren't planned this week —
