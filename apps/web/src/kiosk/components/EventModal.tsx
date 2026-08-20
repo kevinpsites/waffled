@@ -4,7 +4,8 @@ import { api, usePersons, useGoals, goalsApi, goalCalendarApi, calendarsApi, mea
 import { suggestGoalForEvent } from '../../lib/goal-match'
 import { Icon } from '../icons'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
-import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, WEEKDAYS, type RepeatFreq, type CustomUnit, type MonthlyMode } from './recurrence'
+import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, type RepeatFreq, type CustomUnit, type MonthlyMode } from './recurrence'
+import { WeekdayChips } from './WeekdayChips'
 
 // Scope of an edit/delete to a recurring event, surfaced via a small chooser.
 type EditScope = 'this' | 'following' | 'all'
@@ -16,48 +17,9 @@ const REPEAT_OPTIONS: Array<{ value: RepeatFreq; label: string }> = [
   { value: 'monthly', label: 'Monthly' },
   { value: 'custom', label: 'Custom…' },
 ]
-const WEEKDAY_LABELS: Record<string, string> = { SU: 'S', MO: 'M', TU: 'T', WE: 'W', TH: 'T', FR: 'F', SA: 'S' }
 const FULL_WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const ORDINAL_LABEL = ['', 'first', 'second', 'third', 'fourth', 'fifth']
 const clampInterval = (v: string) => Math.max(1, Math.min(99, Math.round(Number(v) || 1)))
-
-// The day-of-week toggle row, shared by the "Weekly" preset and the custom
-// "every N weeks" builder. Empty selection falls back to the event's own weekday.
-function WeekdayChips({ value, weekday, onChange }: { value: string[]; weekday: string; onChange: (next: string[]) => void }) {
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-      {WEEKDAYS.map((d) => {
-        const on = value.length ? value.includes(d) : d === weekday
-        return (
-          <button
-            type="button"
-            key={d}
-            aria-pressed={on}
-            aria-label={d}
-            onClick={() => {
-              const base = value.length ? value : [weekday]
-              onChange(base.includes(d) ? base.filter((x) => x !== d) : [...base, d])
-            }}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              border: `1.5px solid ${on ? 'var(--primary)' : 'transparent'}`,
-              background: on ? 'var(--primary)' : 'var(--card-2)',
-              color: on ? 'var(--on-accent)' : 'var(--ink)',
-              font: 'inherit',
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            {WEEKDAY_LABELS[d]}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
 function isWritable(c: CalendarLink): boolean {

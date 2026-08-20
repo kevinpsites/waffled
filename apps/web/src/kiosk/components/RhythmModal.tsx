@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { rhythmsApi, usePersons, splitCadence, intervalDays, cadenceLabel, nudgeExplainer, type SatisfiedBy, type Rhythm } from '../../lib/api'
 import { ConfirmDialog } from './ConfirmDialog'
-import { buildRrule, describeRrule, NO_REPEAT, type CustomUnit, type MonthlyMode } from './recurrence'
+import { buildRrule, describeRrule, weekdayCode, NO_REPEAT, type CustomUnit, type MonthlyMode } from './recurrence'
+import { WeekdayChips } from './WeekdayChips'
 
 // Create a rhythm. The first thing this asks is the only thing that really matters:
 // what closes out a period?
@@ -70,6 +71,9 @@ export function RhythmModal({
   const [autoSchedule, setAutoSchedule] = useState(false)
   const [monthlyMode, setMonthlyMode] = useState<MonthlyMode>('day')
   const [customRule, setCustomRule] = useState('')
+  // Which weekday inside a weekly cadence. Empty means "whatever day the anchor
+  // falls on", which is what buildRrule already assumes.
+  const [byday, setByday] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
 
@@ -78,7 +82,7 @@ export function RhythmModal({
   // disagrees with `every` would put the generated event outside the period it is
   // supposed to satisfy. The raw field is the escape hatch, not the normal path.
   const rrule = buildRrule(
-    { ...NO_REPEAT, freq: 'custom', interval: n, unit: CUSTOM_UNIT[unit], monthlyMode, custom: customRule },
+    { ...NO_REPEAT, freq: 'custom', interval: n, unit: CUSTOM_UNIT[unit], monthlyMode, custom: customRule, byday },
     new Date(`${startsOn}T00:00:00`)
   )
 
@@ -238,6 +242,23 @@ export function RhythmModal({
                   <div className="tiny muted" style={{ marginBottom: 10 }}>
                     {describeRrule(rrule, new Date(`${startsOn}T00:00:00`))} — booked once, then it just stays there.
                   </div>
+                  {/* Which day WITHIN the cadence — the only part of the rule that's an
+                      open question. How OFTEN it repeats is derived from "every N units"
+                      above and deliberately not asked again here: a rule that disagreed
+                      with the cadence would put the event outside the period it exists to
+                      satisfy. Same control the calendar uses, in single-select: "every
+                      week" plus BYDAY=MO,WE would fire twice a period. */}
+                  {unit === 'weeks' && (
+                    <div className="field">
+                      <span>On this day</span>
+                      <WeekdayChips
+                        value={byday}
+                        weekday={weekdayCode(new Date(`${startsOn}T00:00:00`))}
+                        onChange={setByday}
+                        single
+                      />
+                    </div>
+                  )}
                   {unit === 'months' && (
                     <label className="field">
                       <span>Which day of the month</span>
@@ -248,10 +269,19 @@ export function RhythmModal({
                       </select>
                     </label>
                   )}
-                  <label className="field">
-                    <span>Advanced repeat rule</span>
-                    <input value={customRule} onChange={(e) => setCustomRule(e.target.value)} placeholder="FREQ=MONTHLY;BYDAY=3SA" />
-                  </label>
+                  {/* Kept for imported rules and cadences the builder can't express, but
+                      behind a disclosure and named exactly as it is on the calendar —
+                      an RRULE text box is not a reasonable first thing to ask anyone. */}
+                  <details style={{ marginBottom: 10 }}>
+                    <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--ink-2)' }}>Advanced (raw RRULE)</summary>
+                    <input
+                      style={{ marginTop: 8 }}
+                      value={customRule}
+                      onChange={(e) => setCustomRule(e.target.value)}
+                      placeholder="FREQ=MONTHLY;BYDAY=3SA"
+                      aria-label="Custom RRULE"
+                    />
+                  </details>
                 </>
               ) : (
                 <div className="tiny muted" style={{ marginBottom: 10 }}>

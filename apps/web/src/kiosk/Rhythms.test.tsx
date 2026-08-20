@@ -168,6 +168,65 @@ describe('Rhythms screen', () => {
     expect(String(body.rrule)).toMatch(/^FREQ=/)
   })
 
+  // The editor asked for an RRULE in a bare text field ("FREQ=MONTHLY;BYDAY=3SA") while
+  // the calendar, two screens away, has a perfectly good day picker for the same question.
+  // Reuse the calendar's control rather than growing a second, worse one.
+  it('picks the weekday with the calendar\'s chips, not a raw rule', async () => {
+    mockApi([])
+    renderScreen()
+    fireEvent.click(await screen.findByRole('button', { name: /new rhythm/i }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /it gets scheduled/i }))
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Trash night' } })
+    fireEvent.change(within(dialog).getByLabelText(/periods start/i), { target: { value: '2026-09-01' } })
+    fireEvent.click(within(dialog).getByLabelText(/put it on the calendar automatically/i))
+
+    // Wednesday, chosen the same way it's chosen on the calendar.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'WE' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /^create rhythm$/i }))
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))).toBe(true))
+    const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))!.body!
+    expect(String(body.rrule)).toContain('BYDAY=WE')
+  })
+
+  it('keeps the raw rule as an escape hatch rather than the main control', async () => {
+    mockApi([])
+    renderScreen()
+    fireEvent.click(await screen.findByRole('button', { name: /new rhythm/i }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /it gets scheduled/i }))
+    fireEvent.click(within(dialog).getByLabelText(/put it on the calendar automatically/i))
+
+    // Still reachable — imported rules and odd cadences need it — but no longer the
+    // first thing asked, and named the same as on the calendar.
+    expect(within(dialog).getByText(/advanced \(raw rrule\)/i)).toBeInTheDocument()
+    expect(within(dialog).queryByLabelText(/^advanced repeat rule$/i)).toBeNull()
+  })
+
+  it('only ever picks one weekday, so the rule cannot outpace the cadence', async () => {
+    mockApi([])
+    renderScreen()
+    fireEvent.click(await screen.findByRole('button', { name: /new rhythm/i }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /it gets scheduled/i }))
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Trash night' } })
+    fireEvent.change(within(dialog).getByLabelText(/periods start/i), { target: { value: '2026-09-01' } })
+    fireEvent.click(within(dialog).getByLabelText(/put it on the calendar automatically/i))
+
+    // A rhythm's rule is DERIVED from its cadence — "every week" plus BYDAY=MO,WE would
+    // fire twice per period and mean something the cadence never said. Picking a second
+    // day replaces the first rather than adding to it.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'MO' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'WE' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /^create rhythm$/i }))
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))).toBe(true))
+    const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))!.body!
+    expect(String(body.rrule)).toContain('BYDAY=WE')
+    expect(String(body.rrule)).not.toContain('MO')
+  })
+
   it('explains itself when the household has no rhythms yet', async () => {
     mockApi([])
     renderScreen()
