@@ -497,6 +497,18 @@ struct RhythmEditorTests {
         #expect(form.leadDays == 3)
     }
 
+    @Test("An hours-only runway seeds as whole days, not zero")
+    func seedsHoursOnlyRunway() {
+        // Two definitions of "interval -> whole days" lived in this file and only one
+        // carried the HH:MM:SS tail into days. Nothing the server writes today puts 24h+
+        // in that tail, so they agreed by luck rather than by rule. Pin the boundary so a
+        // clamp that does emit one can't silently seed a 0-day runway.
+        let form = RhythmForm(editing: rhythm(id: "a", title: "Trash", satisfiedBy: .scheduling,
+                                              every: "7 days", startsOn: "2026-01-01",
+                                              leadTime: "36:00:00"))
+        #expect(form.leadDays == 1)
+    }
+
     @Test("A blank title can't be submitted")
     func requiresTitle() {
         var form = RhythmForm()

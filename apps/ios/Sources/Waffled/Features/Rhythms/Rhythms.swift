@@ -184,7 +184,11 @@ enum RhythmFormat {
         return line + "."
     }
 
-    /// Whole days in a Postgres interval — the cadence's length, for the clamp above.
+    /// Whole days in a Postgres interval — the cadence's length for the clamp above, and
+    /// the runway the editor seeds its day field from. One definition on purpose: there
+    /// were two, and only this one carried the `HH:MM:SS` tail into days, so a 24h+ tail
+    /// seeded a 0-day runway. They agreed on everything the server writes today, which is
+    /// the kind of agreement that stops being true quietly.
     static func days(fromInterval text: String) -> Int {
         let p = parts(text)
         return p.year * 365 + p.month * 30 + p.week * 7 + p.day + p.hour / 24
@@ -512,7 +516,10 @@ struct RhythmForm {
         notes = r.notes ?? ""
         personId = r.personId
         (count, unit) = Self.cadence(from: r.every)
-        leadDays = Self.days(from: r.leadTime)
+        // Whole days: a clamped "3 days 12:00:00" reads as 3 rather than "3.5" — the field
+        // is a day count and the server re-clamps on every write. Shared with the nudge
+        // copy's cap rather than defined twice; the two spellings differed on a 24h+ tail.
+        leadDays = RhythmFormat.days(fromInterval: r.leadTime)
         autoSchedule = r.autoSchedule
         customRule = r.rrule ?? ""
         if let due = r.nextDueAt, let d = EventTime.parse(due) { nextDue = d }
@@ -579,12 +586,5 @@ struct RhythmForm {
         if p.week > 0 { return (p.week, .weeks) }
         if p.day > 0 { return p.day % 7 == 0 ? (p.day / 7, .weeks) : (p.day, .days) }
         return (1, .weeks)
-    }
-
-    /// The runway in whole days. A clamped "3 days 12:00:00" reads as 3 rather than "3.5" —
-    /// the field is a day count, and the server re-clamps on every write anyway.
-    static func days(from interval: String) -> Int {
-        let p = RhythmFormat.parts(interval)
-        return p.year * 365 + p.month * 30 + p.week * 7 + p.day
     }
 }
