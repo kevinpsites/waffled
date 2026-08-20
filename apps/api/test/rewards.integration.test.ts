@@ -38,6 +38,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 const kevin = mint('dev|kevin')
 let householdId = ''
 let kevinId = ''
+let foreignPersonId = ''
 
 async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: url })
@@ -72,6 +73,16 @@ beforeAll(async () => {
       [householdId, kevinId]
     )
   )
+  foreignPersonId = await withClient(async (c) => {
+    const household = await c.query<{ id: string }>(
+      `insert into households (name, timezone) values ('Other rewards','UTC') returning id`
+    )
+    const person = await c.query<{ id: string }>(
+      `insert into persons (household_id, name, member_type) values ($1,'Outsider','adult') returning id`,
+      [household.rows[0].id]
+    )
+    return person.rows[0].id
+  })
 }, 60_000)
 
 afterAll(async () => {
@@ -183,6 +194,40 @@ describe('rewards api', () => {
 })
 
 describe('reward approval — per-reward flag + household default', () => {
+  it.each([true, false])('rejects a foreign-household redemption subject (approval=%s)', async (requiresApproval) => {
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: `Tenant boundary ${requiresApproval}`,
+      cost: 1,
+      requiresApproval,
+    })).body).reward
+
+    const res = await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, {
+      personId: foreignPersonId,
+    })
+
+    expect(res.statusCode).toBe(404)
+    const writes = await withClient(async (c) => c.query(
+      `select 1 from reward_redemptions where reward_id=$1 or person_id=$2`,
+      [reward.id, foreignPersonId]
+    ))
+    expect(writes.rowCount).toBe(0)
+  })
+
+  it('rejects reward creation with a currency outside the active household catalog', async () => {
+    const res = await call('POST', '/api/rewards', kevin, {
+      title: 'Unknown currency reward',
+      cost: 1,
+      currency: 'other-household-coins',
+    })
+
+    expect(res.statusCode).toBe(404)
+    const writes = await withClient((c) => c.query(
+      `select 1 from rewards where household_id=$1 and title='Unknown currency reward'`,
+      [householdId]
+    ))
+    expect(writes.rowCount).toBe(0)
+  })
+
   it('new rewards inherit the household default (default true)', async () => {
     expect(JSON.parse((await call('GET', '/api/rewards/settings', kevin)).body).requireApproval).toBe(true)
     const r = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Default reward', cost: 1 })).body).reward
@@ -281,6 +326,18 @@ describe('reward capability gating (non-admin members)', () => {
     expect((await call('POST', '/api/rewards', adultToken, { title: 'Adult reward', cost: 1 })).statusCode).toBe(201)
   })
 
+  it('a member may redeem for self but needs reward.manage to redeem for someone else', async () => {
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Actor-scoped reward',
+      cost: 1,
+      requiresApproval: true,
+    })).body).reward
+
+    expect((await call('POST', `/api/rewards/${reward.id}/redeem`, kidToken, { personId: kidId })).statusCode).toBe(201)
+    expect((await call('POST', `/api/rewards/${reward.id}/redeem`, kidToken, { personId: adultId })).statusCode).toBe(403)
+    expect((await call('POST', `/api/rewards/${reward.id}/redeem`, adultToken, { personId: kidId })).statusCode).toBe(201)
+  })
+
   it('exposes capabilities on /api/household', async () => {
     const kid = JSON.parse((await call('GET', '/api/household', kidToken)).body).person
     expect(kid.capabilities).toEqual([])
@@ -318,6 +375,16 @@ describe('spot-award stars', () => {
   it('a kid or teen (no reward.grant) is blocked (403)', async () => {
     expect((await call('POST', `/api/persons/${kidId}/award`, kidToken, { amount: 2 })).statusCode).toBe(403)
     expect((await call('POST', `/api/persons/${kidId}/award`, teenToken, { amount: 2 })).statusCode).toBe(403)
+  })
+
+  it('cannot award a person from another household', async () => {
+    const res = await call('POST', `/api/persons/${foreignPersonId}/award`, kevin, { amount: 2 })
+    expect(res.statusCode).toBe(404)
+    const writes = await withClient((c) => c.query(
+      `select 1 from ledger_entries where household_id=$1 and person_id=$2`,
+      [householdId, foreignPersonId]
+    ))
+    expect(writes.rowCount).toBe(0)
   })
 
   it('stores the note on the ledger entry', async () => {
