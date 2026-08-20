@@ -482,3 +482,88 @@ describe('the list carries current-period state', () => {
     expect(listed.currentPeriodStart).toBeNull()
   })
 })
+
+// "Put it on the calendar automatically" has to actually put it on the calendar.
+//
+// Creation used to insert the rhythm row and stop there, so the very first thing an
+// auto-scheduled rhythm did was turn up in the register offering "Put it back on the
+// calendar" — for something that had never been on it. The toggle promised a booking,
+// nothing booked, and the only way to honour it was to press a button whose label denied
+// the rhythm was new.
+describe('an auto-scheduled rhythm lands on the calendar at creation', () => {
+  let autoId = ''
+
+  // Enabled here rather than leaning on the gating block above, so this suite still runs
+  // when someone filters down to it with -t.
+  beforeAll(async () => {
+    await call('PATCH', '/api/household/modules', kevin, { rhythms: true })
+  })
+
+  it('books the series as part of creating it', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Trash night',
+      satisfiedBy: 'scheduling',
+      every: '1 week',
+      startsOn: '2027-03-01',
+      autoSchedule: true,
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+    })
+    expect(res.statusCode).toBe(201)
+    autoId = JSON.parse(res.body).rhythm.id
+
+    const events = await withClient((c) =>
+      c.query<{ rrule: string }>(
+        `select rrule from events where rhythm_id = $1 and deleted_at is null`,
+        [autoId]
+      )
+    )
+    expect(events.rowCount).toBe(1)
+    // The rhythm's own rule — never a restatement that could disagree with the cadence.
+    expect(events.rows[0].rrule).toBe('FREQ=WEEKLY;BYDAY=MO')
+  })
+
+  it('starts the series on the anchor date in the household timezone', async () => {
+    // The household is America/Chicago. Deriving the instant anywhere but the server is
+    // how a booking lands in the wrong period, so Postgres owns the conversion.
+    const events = await withClient((c) =>
+      c.query<{ local: string }>(
+        `select to_char(starts_at at time zone 'America/Chicago', 'YYYY-MM-DD HH24:MI') as local
+           from events where rhythm_id = $1 and deleted_at is null`,
+        [autoId]
+      )
+    )
+    expect(events.rows[0].local).toBe('2027-03-01 18:00')
+  })
+
+  // `satisfied` is deliberately NOT asserted here. It comes from listRhythms, which tiles
+  // the period grid from starts_on to now() — so for an anchor this far out there is no
+  // current period at all and the flag is false whatever the calendar holds. That is a
+  // separate question about how a not-yet-started rhythm reports itself; the guard that
+  // this fix worked is /attention, which is horizon-driven and therefore deterministic.
+  it('never asks to be put "back" on the calendar it was just put on', async () => {
+    // Deliberately INSIDE the nudge runway. A weekly cadence clamps the lead time to half
+    // a cycle, so the period 2027-03-01 → 03-08 only starts nudging on the 4th; asking on
+    // the 3rd would come back quiet whether or not the booking existed, and prove nothing.
+    const res = await call('GET', '/api/rhythms/attention?from=2027-03-01&to=2027-03-07', kevin)
+    const ids = JSON.parse(res.body).items.map((i: { rhythm: { id: string } }) => i.rhythm.id)
+    expect(ids).not.toContain(autoId)
+  })
+
+  // The other half of the toggle: OFF means *when* is an open decision every period, so
+  // booking one is the user's call and creation must not make it for them.
+  it('books nothing when the rhythm is not auto-scheduled', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Temple visit',
+      satisfiedBy: 'scheduling',
+      every: '3 months',
+      startsOn: '2027-03-01',
+      autoSchedule: false,
+    })
+    expect(res.statusCode).toBe(201)
+    const manualId = JSON.parse(res.body).rhythm.id
+    const events = await withClient((c) =>
+      c.query(`select 1 from events where rhythm_id = $1 and deleted_at is null`, [manualId])
+    )
+    expect(events.rowCount).toBe(0)
+  })
+})

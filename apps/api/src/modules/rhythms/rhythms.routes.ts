@@ -50,7 +50,7 @@ export function registerRhythmRoutes(api: Api): void {
 
   api.post('/api/rhythms', tenantRoute(async (tenant, req: Request, res: Response) => {
     try {
-      const rhythm = await createRhythm(tenant.householdId, (req.body ?? {}) as Record<string, unknown>)
+      const rhythm = await createRhythm(tenant, (req.body ?? {}) as Record<string, unknown>)
       return res.status(201).json({ rhythm })
     } catch (e) {
       if (e instanceof InvalidReferenceError) return badRequest(res, e.message)

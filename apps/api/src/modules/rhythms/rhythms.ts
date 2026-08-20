@@ -7,6 +7,7 @@
 //                  happened; getting the opportunity on the calendar IS the outcome.
 //                  That last sentence is the whole line between a rhythm and a goal.
 import { query } from '../../platform/db'
+import { log } from '../../platform/logger'
 import { InvalidReferenceError } from '../../platform/household-refs'
 import { createEvent, type EventRow } from '../events/events'
 import { type Tenant } from '../households/households'
@@ -179,9 +180,29 @@ export interface CreateRhythmInput {
   nextDueAt?: unknown
 }
 
+// The hour an auto-scheduled series starts on its anchor date. The booking sheet on both
+// clients already defaults to 6pm, so a rhythm the user never picked a time for lands
+// where they'd have put it anyway.
+const AUTO_SCHEDULE_HOUR = 18
+
+// The first instant of an auto-scheduled series: the anchor date at `AUTO_SCHEDULE_HOUR`
+// in the HOUSEHOLD's timezone. Resolved in Postgres against the households row rather
+// than in JS, for the same reason the grocery week boundary is: a client (or a server
+// running in another zone) computing a local wall-clock instant is exactly how a booking
+// lands one day out and satisfies the wrong period.
+async function anchorInstant(householdId: string, startsOn: string): Promise<string> {
+  const { rows } = await query<{ at: Date }>(
+    `select (($2::date + make_interval(hours => $3))
+             at time zone (select timezone from households where id = $1)) as at`,
+    [householdId, startsOn, AUTO_SCHEDULE_HOUR]
+  )
+  return rows[0].at.toISOString()
+}
+
 // Validation lives here rather than in the route so the shape rules sit next to the
 // schema constraint they mirror — a mismatch between the two would surface as a 500.
-export async function createRhythm(householdId: string, input: CreateRhythmInput): Promise<Rhythm> {
+export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Promise<Rhythm> {
+  const householdId = tenant.householdId
   const title = typeof input.title === 'string' ? input.title.trim() : ''
   if (!title) throw new InvalidReferenceError('title is required')
 
@@ -235,7 +256,31 @@ export async function createRhythm(householdId: string, input: CreateRhythmInput
                last_completed_at, next_due_at, is_active`,
     [householdId, title, str(input.emoji), str(input.notes), personId, every, leadTime, startsOn, autoSchedule, rrule]
   )
-  return toRhythm(rows[0])
+  const rhythm = toRhythm(rows[0])
+
+  // "Put it on the calendar automatically" has to actually put it there. Without this the
+  // toggle inserted a row and stopped, so a brand-new rhythm's first act was to appear in
+  // the register offering "Put it back on the calendar" — a button that both denies the
+  // rhythm is new and is the only way to honour the promise the toggle just made.
+  //
+  // Routed through scheduleRhythm rather than a second createEvent call: the events write
+  // path can blank `rhythm_id` (see the PowerSync sink), and a parallel booking path is
+  // precisely how the two drift apart.
+  if (autoSchedule) {
+    try {
+      await scheduleRhythm(tenant, rhythm.id, { startsAt: await anchorInstant(householdId, startsOn) })
+    } catch (e) {
+      // The rhythm itself is saved and valid, so a failed booking must not 500 the
+      // creation and strand the row. Degrading to "not on the calendar yet" is a state
+      // the register already knows how to explain and offer a fix for — which is exactly
+      // what that branch is for.
+      log.warn('auto-scheduled rhythm created but its series could not be booked', {
+        rhythmId: rhythm.id,
+        err: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+  return rhythm
 }
 
 function str(v: unknown): string | null {
