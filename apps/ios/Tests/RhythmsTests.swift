@@ -593,6 +593,38 @@ struct RhythmRegisterFailureTests {
     }
 }
 
+/// A paused rhythm must not be offered period actions.
+///
+/// The server filters paused rhythms out of /attention, so normally there is nothing to
+/// offer. But the register holds the last attention list it fetched, and pausing is a local
+/// action — so between the pause and the refetch the row could still find its old item and
+/// draw "Book a time" on something deliberately switched off. The server would accept that
+/// booking quite happily, which is exactly why the control must not be there. The web
+/// register already guards this; iOS looked the rhythm up without checking.
+@MainActor
+@Suite("Paused rhythms offer no period actions")
+struct RhythmPausedActionTests {
+    @Test("An active rhythm still finds its attention item")
+    func activeKeepsIt() async {
+        let r = rhythm(id: "a", satisfiedBy: .scheduling)
+        let feed = RhythmFeed(attention: [unscheduled(r, start: "2026-08-01", end: "2026-09-01")], all: [r])
+        let model = feed.model()
+        await model.loadAttention()
+        #expect(model.attentionItem(for: r) != nil)
+    }
+
+    @Test("A paused one does not, even while the stale item is still in hand")
+    func pausedDropsIt() async {
+        let active = rhythm(id: "a", satisfiedBy: .scheduling)
+        let feed = RhythmFeed(attention: [unscheduled(active, start: "2026-08-01", end: "2026-09-01")], all: [active])
+        let model = feed.model()
+        await model.loadAttention()
+        // Same rhythm, now paused — precisely the window between pausing and refetching.
+        let paused = rhythm(id: "a", satisfiedBy: .scheduling, isActive: false)
+        #expect(model.attentionItem(for: paused) == nil)
+    }
+}
+
 /// A completion tap has to be visible on the row it happened on.
 ///
 /// The register's detail line is "Last done <date> · Next due <date>". Complete a rhythm

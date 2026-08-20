@@ -144,7 +144,7 @@ struct RhythmsView: View {
     }
 
     @ViewBuilder private func row(_ r: WaffledAPI.Rhythm) -> some View {
-        let item = model.attentionItem(for: r.id)
+        let item = model.attentionItem(for: r)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 RhythmGlyph(r)
@@ -194,6 +194,7 @@ struct RhythmsView: View {
                         .foregroundStyle(WF.ink3)
                         .disabled(busyId == r.id)
                 }
+                rowMenu(r)
                 Spacer(minLength: 0)
                 Text("\(r.satisfiedBy == .completion ? "nudges" : "starts nudging") \(RhythmFormat.formatInterval(r.leadTime)) ahead")
                     .font(.system(size: 11)).foregroundStyle(WF.ink3)
@@ -213,6 +214,36 @@ struct RhythmsView: View {
             }
             .tint(WF.warn)
         }
+    }
+
+    /// Edit / pause / retire, as a visible control.
+    ///
+    /// These existed only as swipe actions, which is why they were reported as not existing
+    /// at all: a swipe is invisible until you try it, and the web register draws the same
+    /// three as ordinary buttons. The swipes stay — they're the faster path once you know
+    /// they're there — but they're no longer the only path.
+    ///
+    /// Retire sits behind the same confirmation the swipe uses, and says which of the two
+    /// is reversible: pausing is, retiring isn't.
+    @ViewBuilder private func rowMenu(_ r: WaffledAPI.Rhythm) -> some View {
+        Menu {
+            Button { editing = r } label: { Label("Edit", systemImage: "pencil") }
+            Button {
+                run(r.id) { try await model.setActive(id: r.id, isActive: !r.isActive) }
+            } label: {
+                Label(r.isActive ? "Pause" : "Resume",
+                      systemImage: r.isActive ? "pause.circle" : "play.circle")
+            }
+            Button(role: .destructive) { confirmingDelete = r } label: {
+                Label("Retire", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(WF.ink3)
+        }
+        .accessibilityLabel("More options for \(r.title)")
+        .disabled(busyId == r.id)
     }
 
     private func run(_ id: String, _ work: @escaping () async throws -> Void) {

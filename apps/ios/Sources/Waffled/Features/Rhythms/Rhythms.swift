@@ -317,8 +317,16 @@ final class RhythmsModel {
 
     /// The attention row for a rhythm, when it has one — lets the register show the same
     /// "book it / skip it" affordances the Today card does.
-    func attentionItem(for id: String) -> WaffledAPI.RhythmAttentionItem? {
-        attention.first { $0.rhythm.id == id }
+    ///
+    /// Takes the rhythm rather than its id so it can check `isActive`. A paused rhythm is
+    /// already absent from /attention, but pausing happens locally and the register keeps
+    /// the last list it fetched — so in the window before the refetch, a paused row could
+    /// still find its old item and offer to book it. The server would accept that booking,
+    /// which is exactly why the control must not be there. The web register guards the
+    /// same way.
+    func attentionItem(for rhythm: WaffledAPI.Rhythm) -> WaffledAPI.RhythmAttentionItem? {
+        guard rhythm.isActive else { return nil }
+        return attention.first { $0.rhythm.id == rhythm.id }
     }
 
     // MARK: mutations (each throws so the caller can surface a failure in place)
