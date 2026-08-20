@@ -204,7 +204,9 @@ export function useEventsToday(): AgendaState & { refetch: () => void } {
   )
   // Planning a meal now creates a calendar event — refresh the agenda when meals
   // change (covers the REST path; PowerSync streams it live on its own).
-  useRefetchOn(['meals'], feed.refetch)
+  // …and booking a rhythm creates one the same way, so it gets the same treatment:
+  // without it a rhythm booked from the register wasn't on the calendar until a reload.
+  useRefetchOn(['meals', 'rhythms'], feed.refetch)
   return feed
 }
 
@@ -217,7 +219,9 @@ export function useEventsRange(from: string, to: string): AgendaState & { refetc
   )
   // Planning a meal now creates a calendar event — refresh when meals change
   // (covers the REST path; PowerSync streams it live on its own).
-  useRefetchOn(['meals'], feed.refetch)
+  // …and booking a rhythm creates one the same way, so it gets the same treatment:
+  // without it a rhythm booked from the register wasn't on the calendar until a reload.
+  useRefetchOn(['meals', 'rhythms'], feed.refetch)
   return feed
 }
 

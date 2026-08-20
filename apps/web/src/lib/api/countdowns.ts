@@ -55,7 +55,11 @@ export function useCountdowns() {
   const [loading, setLoading] = useState(true)
   const [nonce, setNonce] = useState(0)
   const refetch = () => setNonce((n) => n + 1)
-  useRefetchOn(['countdowns'], refetch)
+  // 'rhythms' too: a completion rhythm's next due date is a countdown source ("18 days
+  // until the air filter"), so marking one done supersedes a countdown that is on screen
+  // right beside it. Without this the register updated and the countdown kept counting to
+  // the old date until the page was reloaded by hand.
+  useRefetchOn(['countdowns', 'rhythms'], refetch)
   useEffect(() => {
     let alive = true
     countdownsApi.list().then((d) => {
