@@ -233,6 +233,8 @@ private final class RhythmFeed {
     var attentionLoads = 0
     var listLoads = 0
     var completed: [String] = []
+    /// nil = "now, server-stamped"; a string = a backdated completion.
+    var completedAt: [String?] = []
     var skipped: [(id: String, periodStart: String)] = []
     var booked: [(id: String, startsAt: String, allDay: Bool)] = []
     var deleted: [String] = []
@@ -255,9 +257,10 @@ private final class RhythmFeed {
                 if self.attentionFails { throw RhythmFeedError.rejected }
                 return self.all
             },
-            complete: { id in
+            complete: { id, completedAt in
                 if self.mutationFails { throw RhythmFeedError.rejected }
                 self.completed.append(id)
+                self.completedAt.append(completedAt)
             },
             skip: { id, periodStart in
                 if self.mutationFails { throw RhythmFeedError.rejected }
@@ -590,6 +593,38 @@ struct RhythmRegisterFailureTests {
         await model.loadAll()
         #expect(!model.listFailed)
         #expect(model.rhythms.map(\.id) == ["a"])
+    }
+}
+
+/// Being late has to be sayable.
+///
+/// The completion shape re-anchors its clock to when the thing was ACTUALLY done — that's
+/// what makes running late shift the next one instead of stacking misses. But every control
+/// meant "now", so logging Tuesday's filter change on Friday silently moved the next three
+/// months to Friday, and the register's one useful fact — "the filter last changed on…" —
+/// became a guess. The server already accepted a date; nothing sent one.
+@MainActor
+@Suite("Backdating a completion")
+struct RhythmBackdateTests {
+    @Test("Marking done now sends no date, leaving the stamp to the server")
+    func nowSendsNothing() async {
+        let feed = RhythmFeed(all: [rhythm(id: "a")])
+        let model = feed.model()
+        try? await model.markDone("a")
+        #expect(feed.completedAt == [nil])
+    }
+
+    @Test("Marking done for an earlier day sends that day")
+    func backdatedSendsTheDate() async {
+        let feed = RhythmFeed(all: [rhythm(id: "a")])
+        let model = feed.model()
+        try? await model.markDone("a", on: at("2026-08-14T12:00:00"))
+
+        #expect(feed.completed == ["a"])
+        #expect(feed.completedAt.count == 1)
+        // An explicit instant, not a wall-clock date — leaving the timezone to the server
+        // is how a completion lands on the wrong day.
+        #expect((feed.completedAt.first ?? nil)?.contains("2026-08-14") == true)
     }
 }
 

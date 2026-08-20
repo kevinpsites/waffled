@@ -29,6 +29,10 @@
 /* Already done today. Settled rather than merely disabled — a greyed-out button reads as
    "you can't", and the point here is "you already did". */
 .rhy-act.rhy-done { background: var(--success-t); color: var(--success); border-color: transparent; opacity: 1; cursor: default; }
+/* Backdating a completion — an inline row rather than a modal: it's one date, and the
+   row it belongs to is the context. */
+.rhy-backdate { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.rhy-backdate-f { flex: 1; min-width: 150px; margin: 0; }
 .rhy-skip {
   background: none; border: 0; padding: 6px 4px; cursor: pointer;
   font: inherit; font-size: 12px; font-weight: 700; color: var(--ink-3);

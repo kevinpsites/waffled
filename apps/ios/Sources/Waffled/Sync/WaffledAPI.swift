@@ -4023,9 +4023,13 @@ struct WaffledAPI: Sendable {
     /// "I did the filter today" — logs it and re-anchors the clock to when it was actually
     /// done. Only a completion rhythm can be completed.
     @discardableResult
-    func completeRhythm(id: String) async throws -> Rhythm {
+    /// `completedAt` nil means "now" and lets the server stamp it. An explicit instant
+    /// backdates the completion — the completion shape re-anchors its clock to when the
+    /// thing was ACTUALLY done, so logging it late has to be able to say when.
+    func completeRhythm(id: String, completedAt: String? = nil) async throws -> Rhythm {
         struct Resp: Decodable { let rhythm: Rhythm }
-        return try await sendReturning("POST", "/api/rhythms/\(id)/complete", body: [:], as: Resp.self).rhythm
+        let body: [String: JSONValue] = completedAt.map { ["completedAt": .string($0)] } ?? [:]
+        return try await sendReturning("POST", "/api/rhythms/\(id)/complete", body: body, as: Resp.self).rhythm
     }
 
     /// Book a period into a REAL calendar event. Title and assignee come from the rhythm,

@@ -45,6 +45,13 @@ function shortDate(iso: string | null): string {
 // without this the button was indistinguishable from a dead one — and got pressed again,
 // and again. Same idea (and near enough the same words) as a habit goal's
 // "Done for today ✓".
+/** Today as YYYY-MM-DD on the viewer's clock — the `max` a completion may carry. */
+function todayKey(): string {
+  const d = new Date()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function completedToday(iso: string | null): boolean {
   if (!iso) return false
   const done = new Date(iso)
@@ -71,6 +78,10 @@ function RhythmItem({
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState(false)
+  // The backdating row, opened from "Log it for another day". Closed by default: the
+  // common case is "I just did it", and putting a date picker in front of that every time
+  // would be friction on the path people actually take.
+  const [backdate, setBackdate] = useState<string | null>(null)
   const paused = !rhythm.isActive
   // A paused rhythm is absent from /attention already, but the list still computes
   // its period — so state and actions are suppressed here rather than half-shown.
@@ -144,6 +155,40 @@ function RhythmItem({
 
       {rhythm.notes && <div className="rhy-item-notes">{rhythm.notes}</div>}
 
+      {/* Backdating. The completion shape's whole premise is that the clock restarts from
+          when you ACTUALLY did it, so "I changed the filter last Tuesday" has to be
+          sayable — otherwise being late silently re-anchors everything to today and the
+          register's one useful fact ("the filter last changed on…") becomes a guess. */}
+      {backdate !== null && (
+        <div className="rhy-backdate">
+          <label className="field rhy-backdate-f">
+            <span>When did you do it?</span>
+            <input
+              type="date"
+              value={backdate}
+              max={todayKey()}
+              onChange={(e) => setBackdate(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn btn-primary rhy-act"
+            disabled={busy || !backdate || backdate > todayKey()}
+            onClick={() => {
+              // Midday, not midnight: a date-only value read as local midnight can land
+              // on the previous day once it's an instant in a western timezone, which
+              // would file the completion under the wrong date.
+              const at = new Date(`${backdate}T12:00:00`).toISOString()
+              run(() => rhythmsApi.complete(rhythm.id, { completedAt: at }))
+              setBackdate(null)
+            }}
+          >
+            Log it
+          </button>
+          <button type="button" className="rhy-skip" onClick={() => setBackdate(null)}>Cancel</button>
+        </div>
+      )}
+
       <div className="rhy-item-acts">
         {!scheduling && !paused && (
           <button
@@ -157,6 +202,16 @@ function RhythmItem({
                 the same action again: the meta line above cannot show the difference, so
                 this is the only place the tap can be seen to have landed. */}
             {doneToday ? 'Done today ✓' : due ? 'Mark done' : 'I did this today'}
+          </button>
+        )}
+        {!scheduling && !paused && backdate === null && (
+          <button
+            type="button"
+            className="rhy-skip"
+            aria-label={`Log it for another day for ${rhythm.title}`}
+            onClick={() => setBackdate(todayKey())}
+          >
+            Log it for another day
           </button>
         )}
         {needsBooking && period && (

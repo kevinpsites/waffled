@@ -14,6 +14,7 @@ struct RhythmsView: View {
     @State private var editing: WaffledAPI.Rhythm?
     @State private var booking: WaffledAPI.RhythmAttentionItem?
     @State private var confirmingDelete: WaffledAPI.Rhythm?
+    @State private var backdating: WaffledAPI.Rhythm?
     @State private var busyId: String?
     @State private var errorMessage: String?
 
@@ -43,6 +44,7 @@ struct RhythmsView: View {
         .sheet(isPresented: $creating) { RhythmEditorSheet(model: model) }
         .sheet(item: $editing) { r in RhythmEditorSheet(model: model, editing: r) }
         .sheet(item: $booking) { item in BookRhythmSheet(item: item, model: model) }
+        .sheet(item: $backdating) { r in BackdateCompletionSheet(rhythm: r, model: model) }
         .confirmationDialog("Delete this rhythm?", isPresented: deletePresented, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 if let r = confirmingDelete { run(r.id) { try await model.delete(id: r.id) } }
@@ -227,6 +229,11 @@ struct RhythmsView: View {
     /// is reversible: pausing is, retiring isn't.
     @ViewBuilder private func rowMenu(_ r: WaffledAPI.Rhythm) -> some View {
         Menu {
+            if r.satisfiedBy == .completion {
+                Button { backdating = r } label: {
+                    Label("Log it for another day", systemImage: "calendar.badge.clock")
+                }
+            }
             Button { editing = r } label: { Label("Edit", systemImage: "pencil") }
             Button {
                 run(r.id) { try await model.setActive(id: r.id, isActive: !r.isActive) }

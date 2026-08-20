@@ -199,6 +199,36 @@ describe('Rhythms screen', () => {
     expect(calls.some((c) => c.url.includes('/complete'))).toBe(false)
   })
 
+  // "How can I mark something done as late?" — you couldn't. The button always meant
+  // "now", so the one shape whose whole premise is that the clock restarts from when you
+  // ACTUALLY did it had no way to say when that was. The server already accepted a date.
+  it('lets a completion be logged for the day it really happened', async () => {
+    mockApi([filter])
+    renderScreen()
+    await screen.findByText('Air filter')
+
+    fireEvent.click(screen.getByRole('button', { name: /log it for another day/i }))
+    fireEvent.change(screen.getByLabelText(/when did you do it/i), { target: { value: '2026-08-14' } })
+    fireEvent.click(screen.getByRole('button', { name: /^log it$/i }))
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/complete'))).toBe(true))
+    const body = calls.find((c) => c.url.includes('/complete'))!.body!
+    expect(String(body.completedAt)).toContain('2026-08-14')
+  })
+
+  it('refuses a completion dated in the future', async () => {
+    mockApi([filter])
+    renderScreen()
+    await screen.findByText('Air filter')
+
+    fireEvent.click(screen.getByRole('button', { name: /log it for another day/i }))
+    // System time in these tests is 2026-08-18.
+    fireEvent.change(screen.getByLabelText(/when did you do it/i), { target: { value: '2026-12-25' } })
+    // A rhythm records what happened, so "I did this next Christmas" is not a claim it
+    // can accept — the clock would restart from a date that hasn't arrived.
+    expect(screen.getByRole('button', { name: /^log it$/i })).toBeDisabled()
+  })
+
   it('still offers the button to a rhythm last done on some other day', async () => {
     mockApi([filter])
     renderScreen()

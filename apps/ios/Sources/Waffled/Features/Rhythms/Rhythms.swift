@@ -249,7 +249,9 @@ enum RhythmAttention {
 final class RhythmsModel {
     typealias FetchAttention = (_ from: String, _ to: String) async throws -> [WaffledAPI.RhythmAttentionItem]
     typealias FetchRhythms = () async throws -> [WaffledAPI.Rhythm]
-    typealias Complete = (_ id: String) async throws -> Void
+    /// `completedAt` is nil for "now" — the server stamps it — and an explicit instant
+    /// when a completion is being logged for a day that has already passed.
+    typealias Complete = (_ id: String, _ completedAt: String?) async throws -> Void
     typealias Skip = (_ id: String, _ periodStart: String) async throws -> Void
     typealias Book = (_ id: String, _ startsAt: String, _ allDay: Bool) async throws -> Void
     /// Create when `id` is nil, otherwise PATCH.
@@ -282,7 +284,9 @@ final class RhythmsModel {
             try await WaffledAPI().rhythmAttention(from: from, to: to)
         },
         fetchRhythms: @escaping FetchRhythms = { try await WaffledAPI().rhythms() },
-        complete: @escaping Complete = { id in _ = try await WaffledAPI().completeRhythm(id: id) },
+        complete: @escaping Complete = { id, completedAt in
+            _ = try await WaffledAPI().completeRhythm(id: id, completedAt: completedAt)
+        },
         skip: @escaping Skip = { id, periodStart in
             try await WaffledAPI().skipRhythmPeriod(id: id, periodStart: periodStart)
         },
@@ -369,8 +373,12 @@ final class RhythmsModel {
 
     // MARK: mutations (each throws so the caller can surface a failure in place)
 
-    func markDone(_ id: String) async throws {
-        try await complete(id)
+    /// Mark it done. `on` backdates the completion — the completion shape's clock restarts
+    /// from when you ACTUALLY did it, so "I changed the filter last Tuesday" has to be
+    /// sayable or being late silently re-anchors everything to today and the register's
+    /// one useful fact ("last changed on…") becomes a guess.
+    func markDone(_ id: String, on date: Date? = nil) async throws {
+        try await complete(id, date.map(RhythmFormat.isoInstant))
         await refresh()
     }
 
