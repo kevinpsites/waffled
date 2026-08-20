@@ -56,10 +56,18 @@ quarter, a self-care day every other month, the third-weekend family outing, tra
 You then choose whether Waffled can pick the time itself:
 
 - **Put it on the calendar automatically** *(on)* — the cadence fully determines when, so
-  the recurring event is created once and the rhythm just stays satisfied. Trash every
-  Tuesday; a family outing on the third Saturday of the month. Monthly rhythms get a
-  "which day of the month" choice (the same date · the same weekday · the last of that
-  weekday), and there's an advanced repeat-rule field as an escape hatch.
+  the recurring event is created **the moment you save the rhythm** and it just stays
+  satisfied from there. Trash every Tuesday; a family outing on the third Saturday of the
+  month. You pick the day it lands on with the same weekday chips the
+  [calendar](/features/calendar/) uses; monthly rhythms get a "which day of the month"
+  choice instead (the same date · the same weekday · the last of that weekday). How
+  *often* it repeats isn't asked twice — it comes from the cadence you already set, because
+  a repeat rule that disagreed with the cadence would drop the event outside the period
+  it's meant to satisfy. **Advanced (raw RRULE)** is there for imported rules and anything
+  the picker can't say.
+
+  The first event goes in at **6pm on the start date**, which you can move like any other
+  event — dragging it doesn't unlink it from the rhythm.
 - **Off** — the cadence is known but *when* is an open decision every period. Waffled will
   ask you to pick a time as each period's deadline approaches.
 
@@ -86,11 +94,16 @@ smoke-detector batteries. These are exactly the items a calendar grid gets wrong
   scheduled rhythm this is what makes "which period are we in?" answerable: period *N* runs
   from the start date plus *N* cadences.
 - **The nudge runway** — how many days of warning you want. For a you-do-it rhythm that's
-  "warn me this many days ahead of the due date"; for a scheduled one it's "start nudging me
-  this many days before the period ends", which is your booking runway. It defaults to **14
-  days** and is **capped at half the cadence** — a runway longer than the cycle never closes,
-  so the item would nag forever and you'd learn to ignore it. Ask for 14 days on a weekly
-  rhythm and you'll get three and a half.
+  "warn me this many days before it's due"; for a scheduled one it's "how many days'
+  warning before the **booking window** closes". The booking window is simply one cadence:
+  a weekly rhythm opens a fresh one every week, and the runway is the tail of it.
+
+  It defaults to **14 days** and is **capped at half the cadence** — a runway longer than
+  the cycle never closes, so the item would nag forever and you'd learn to ignore it. Ask
+  for 14 days on a weekly rhythm and you'll get three. The form spells out what you'll
+  actually get, in days, so a number that got trimmed doesn't quietly become a mystery
+  later. This is also why a weekly rhythm set to one day's warning shows nothing on Today
+  for most of the week: that's the runway working, not a fault.
 - **Notes** — the bit you'll want later: *"Furnace, 20x25x1"*.
 
 ## Living with them
@@ -123,9 +136,16 @@ a rhythm"** — so a booked rhythm doesn't look identical to every other event.
 ### Marking a completion done
 
 A you-do-it rhythm can be completed from the Today card or the register, **whether or not
-it's due yet** — "I did this today" resets the clock from today. The register shows **Last
-done** and **Next due** for every one of them, which is the whole point of keeping the
-register: *"the filter last changed March 12"* stops being a guess.
+it's due yet** — "I did this today" resets the clock from today. Once it's done the button
+says **Done today ✓** rather than offering itself again, so you can tell the tap landed;
+pressing it twice in a day doesn't record two of anything.
+
+Did it on Tuesday and only got round to logging it on Friday? **Log it for another day**
+(on the row, or in the ⋯ menu on iPhone) records the date it actually happened, which is
+the date the clock restarts from. It won't accept a date in the future.
+
+The register shows **Last done** and **Next due** for every one of them, which is the whole
+point of keeping the register: *"the filter last changed March 12"* stops being a guess.
 
 ### Skipping a period
 

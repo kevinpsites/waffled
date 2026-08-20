@@ -93,6 +93,15 @@ Within `'scheduling'`, one more bit decides whether a human is needed:
   recurring event once and the rhythm stays satisfied. Trash every Tuesday; family outing on
   `FREQ=MONTHLY;BYDAY=3SA`. (Both already expressible — the web recurrence UI builds
   `FREQ=MONTHLY;BYDAY=3SA` today, with tests in `apps/web/src/kiosk/components/recurrence.test.ts`.)
+
+  **`createRhythm` books that series itself**, at 6pm on `starts_on` resolved against the
+  household timezone in Postgres. This was missed first time round, and the gap was not
+  subtle: the toggle inserted a row and booked nothing, so a brand-new rhythm's opening
+  move was to appear in the register offering *"Put it back on the calendar"* — for
+  something never on it. It routes through `scheduleRhythm` rather than calling
+  `createEvent` again, because the events write path can blank `rhythm_id` and a second
+  booking path is how the two drift apart. A failed booking warns instead of 500ing: the
+  rhythm is valid, and "not on the calendar yet" is a state the register already explains.
 - **`auto_schedule = false`** — the cadence is known but *when* is an open decision every
   period. The period surfaces as **needs scheduling** until someone picks a slot. Temple
   visit, self-care day.
@@ -306,6 +315,16 @@ else; the friction this shape exists to remove is retyping. And `PATCH` delibera
 change `satisfiedBy`, `startsOn`, `autoSchedule` or `rrule` — re-anchoring a live rhythm
 would silently re-interpret its existing skips (keyed on `period_start`) and point its
 bookings at periods that no longer exist. Retire it and make a new one.
+
+`/complete` is **idempotent per day**, judged on the household's clock. A repeat on the
+same date updates the existing completion instead of appending another. This was not a
+theory: the demo database ended up holding four rows for one air-filter change, three of
+them inside 1.5 seconds, because the row's detail line ("Last done X · Next due Y")
+recomputes to the *byte-identical* string when you complete the same rhythm twice in a day
+— so the button looked dead and got pressed again. Both clients now settle to
+"Done today ✓", and the server no longer takes the extra presses at face value.
+`completedAt` backdates a completion, which the clients use for "Log it for another day";
+the clock re-anchors to that instant, so a future date is refused client-side.
 
 ## Feeding the weekly plan module
 

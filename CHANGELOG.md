@@ -30,8 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   can tell it apart; a period you can't make can simply be **skipped** without inventing an
   entry for something that isn't happening. A **Today card** shows only what needs
   attention and stays invisible on the many quiet days, and the things you do yourself turn
-  into countdowns ("18 days until the air filter"). Off by default — turn **Rhythms** on in
-  Settings → Modules. Everything ships on web, kiosk, iPhone and iPad.
+  into countdowns ("18 days until the air filter"). Turning on **Put it on the calendar
+  automatically** books the series there and then, so the thing is on the calendar from the
+  moment you create it; the day it lands on is picked with the same weekday control the
+  calendar uses, rather than by typing a repeat rule. Something you did but forgot to log
+  can be recorded for **the day it actually happened**, which matters for the shapes whose
+  clock restarts from that date. Off by default — turn **Rhythms** on in Settings →
+  Modules. Everything ships on web, kiosk, iPhone and iPad.
 - **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
   hardware run, the packing list, whatever's live this week — right on the Today board,
   with tap-to-tick-off. Pick which list from the card itself, the same way the Goals
@@ -124,6 +129,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so the web, the wall tablet and everyone's phone all follow it.
 
 ### Fixed
+
+- **The month view can add an event again.** On a day that already had something on it,
+  there was no way to create a second one: the grid's cells only select a day, and the
+  "＋" in the day panel beside them had been invisible since 0.13.1 — the tap-to-add empty
+  state it fell back to only appears on a day with nothing on it. Both routes are back.
 
 - **A new pantry section that already existed under a different capitalisation no longer
   loses the item.** Typing "garage shelf" when the household already had a "Garage shelf"
