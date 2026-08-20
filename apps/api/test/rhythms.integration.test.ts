@@ -597,6 +597,35 @@ describe('an auto-scheduled rhythm lands on the calendar at creation', () => {
     expect(ids).not.toContain(autoId)
   })
 
+  // The anchor date and the repeat rule are separate answers to separate questions, and
+  // nothing made them agree: the series was booked at `starts_on` whatever the rule said.
+  // Anchor a weekly rhythm on a Wednesday, pick Monday with the day chips, and the first
+  // event landed on the Wednesday — contradicting the day the editor had just been used
+  // to choose. (The original test for this missed it by accident: 2027-03-01 happens to
+  // BE a Monday, so anchor and rule agreed for the wrong reason.)
+  it('starts the series on the first day the rule actually allows', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Bins out',
+      satisfiedBy: 'scheduling',
+      every: '1 week',
+      startsOn: '2027-03-03',            // a Wednesday
+      autoSchedule: true,
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',     // …but Mondays
+    })
+    expect(res.statusCode).toBe(201)
+    const id = JSON.parse(res.body).rhythm.id
+
+    const events = await withClient((c) =>
+      c.query<{ local: string }>(
+        `select to_char(starts_at at time zone 'America/Chicago', 'YYYY-MM-DD HH24:MI') as local
+           from events where rhythm_id = $1 and deleted_at is null`,
+        [id]
+      )
+    )
+    // The following Monday, not the Wednesday it was anchored on.
+    expect(events.rows[0].local).toBe('2027-03-08 18:00')
+  })
+
   // The other half of the toggle: OFF means *when* is an open decision every period, so
   // booking one is the user's call and creation must not make it for them.
   it('books nothing when the rhythm is not auto-scheduled', async () => {

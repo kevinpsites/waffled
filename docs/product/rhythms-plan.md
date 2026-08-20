@@ -94,8 +94,12 @@ Within `'scheduling'`, one more bit decides whether a human is needed:
   `FREQ=MONTHLY;BYDAY=3SA`. (Both already expressible — the web recurrence UI builds
   `FREQ=MONTHLY;BYDAY=3SA` today, with tests in `apps/web/src/kiosk/components/recurrence.test.ts`.)
 
-  **`createRhythm` books that series itself**, at 6pm on `starts_on` resolved against the
-  household timezone in Postgres. This was missed first time round, and the gap was not
+  **`createRhythm` books that series itself**, at 6pm resolved against the household
+  timezone in Postgres, on the first slot the rule allows at or after `starts_on`
+  (`firstSlotOnOrAfter`). The anchor and the rule are separate answers to separate
+  questions and nothing makes them agree, so a Wednesday anchor under `BYDAY=MO` would
+  otherwise start the master on a day its own rule excludes — which reads as the day
+  picker having been ignored. This was missed first time round, and the gap was not
   subtle: the toggle inserted a row and booked nothing, so a brand-new rhythm's opening
   move was to appear in the register offering *"Put it back on the calendar"* — for
   something never on it. It routes through `scheduleRhythm` rather than calling

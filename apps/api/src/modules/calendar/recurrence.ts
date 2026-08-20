@@ -151,4 +151,31 @@ export function isValidRrule(rrule: string): boolean {
   }
 }
 
+/**
+ * The first slot a rule allows at or after `from`, in the given timezone.
+ *
+ * For picking where a generated series should actually start. An anchor date and a repeat
+ * rule are separate answers to separate questions, so nothing stops them disagreeing —
+ * anchor a weekly series on a Wednesday under `BYDAY=MO` and the master starts on a day
+ * its own rule excludes, which reads as the day picker having been ignored.
+ *
+ * Walks in the floating domain like `expand`, so a DST boundary between `from` and the
+ * slot doesn't shift the wall-clock time.
+ *
+ * Returns null if the rule can't be parsed or yields nothing — callers should fall back to
+ * `from` rather than refusing to book at all.
+ */
+export function firstSlotOnOrAfter(from: Date, rrule: string, tz: string): Date | null {
+  try {
+    const opts = RRule.parseString(rrule.replace(/^RRULE:/i, '').trim())
+    if (opts.freq === undefined || opts.freq === null) return null
+    const floatFrom = toFloating(from, tz)
+    opts.dtstart = floatFrom
+    const slot = new RRule(opts).after(floatFrom, true) // inclusive: `from` itself may qualify
+    return slot ? fromFloating(slot, tz) : null
+  } catch {
+    return null
+  }
+}
+
 export { toFloating, fromFloating, localDayKey }

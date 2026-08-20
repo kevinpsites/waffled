@@ -10,6 +10,7 @@ import { query } from '../../platform/db'
 import { log } from '../../platform/logger'
 import { InvalidReferenceError } from '../../platform/household-refs'
 import { createEvent, type EventRow } from '../events/events'
+import { firstSlotOnOrAfter } from '../calendar/recurrence'
 import { type Tenant } from '../households/households'
 
 export type SatisfiedBy = 'completion' | 'scheduling'
@@ -190,13 +191,21 @@ const AUTO_SCHEDULE_HOUR = 18
 // than in JS, for the same reason the grocery week boundary is: a client (or a server
 // running in another zone) computing a local wall-clock instant is exactly how a booking
 // lands one day out and satisfies the wrong period.
-async function anchorInstant(householdId: string, startsOn: string): Promise<string> {
-  const { rows } = await query<{ at: Date }>(
+async function anchorInstant(householdId: string, startsOn: string, rrule: string | null): Promise<string> {
+  const { rows } = await query<{ at: Date; tz: string }>(
     `select (($2::date + make_interval(hours => $3))
-             at time zone (select timezone from households where id = $1)) as at`,
+             at time zone h.timezone) as at,
+            h.timezone as tz
+       from households h where h.id = $1`,
     [householdId, startsOn, AUTO_SCHEDULE_HOUR]
   )
-  return rows[0].at.toISOString()
+  const anchor = rows[0].at
+  if (!rrule) return anchor.toISOString()
+  // The anchor date and the repeat rule answer different questions, and nothing made
+  // them agree: anchor a weekly rhythm on a Wednesday but pick Monday in the editor, and
+  // the master landed on the Wednesday — contradicting the day the chips had just been
+  // used to choose. Advance to the first slot the rule actually allows.
+  return (firstSlotOnOrAfter(anchor, rrule, rows[0].tz) ?? anchor).toISOString()
 }
 
 // Validation lives here rather than in the route so the shape rules sit next to the
@@ -268,7 +277,7 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
   // precisely how the two drift apart.
   if (autoSchedule) {
     try {
-      await scheduleRhythm(tenant, rhythm.id, { startsAt: await anchorInstant(householdId, startsOn) })
+      await scheduleRhythm(tenant, rhythm.id, { startsAt: await anchorInstant(householdId, startsOn, rrule) })
     } catch (e) {
       // The rhythm itself is saved and valid, so a failed booking must not 500 the
       // creation and strand the row. Degrading to "not on the calendar yet" is a state

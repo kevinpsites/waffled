@@ -343,6 +343,17 @@ describe('a recurring booking satisfies every period it covers', () => {
     seriesRhythmId = JSON.parse(made.body).rhythm.id
   })
 
+  // Creating an auto-scheduled rhythm books its series, so by this point one already
+  // exists. Asserted explicitly because satisfaction can't see the difference: it only
+  // asks whether SOME occurrence falls in the period, so a second overlapping series
+  // would leave every assertion below green while quietly double-booking the calendar.
+  it('is already on the calendar exactly once, before anyone books it', async () => {
+    const events = await withClient((c) =>
+      c.query(`select 1 from events where rhythm_id = $1 and deleted_at is null`, [seriesRhythmId])
+    )
+    expect(events.rowCount).toBe(1)
+  })
+
   it('books the whole series in one go', async () => {
     const res = await call('POST', `/api/rhythms/${seriesRhythmId}/schedule`, kevin, {
       startsAt: '2026-09-19T15:00:00Z',

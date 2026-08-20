@@ -66,8 +66,10 @@ You then choose whether Waffled can pick the time itself:
   it's meant to satisfy. **Advanced (raw RRULE)** is there for imported rules and anything
   the picker can't say.
 
-  The first event goes in at **6pm on the start date**, which you can move like any other
-  event — dragging it doesn't unlink it from the rhythm.
+  The first event goes in at **6pm on the first day the rule allows, on or after the start
+  date** — anchor a weekly rhythm on a Wednesday but choose Monday, and it starts the
+  following Monday rather than landing on a day its own rule excludes. Move it like any
+  other event; dragging it doesn't unlink it from the rhythm.
 - **Off** — the cadence is known but *when* is an open decision every period. Waffled will
   ask you to pick a time as each period's deadline approaches.
 
