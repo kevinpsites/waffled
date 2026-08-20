@@ -483,6 +483,54 @@ describe('the list carries current-period state', () => {
   })
 })
 
+// Tapping "I did this today" twice in one day is one event, not two.
+//
+// Found in the demo database: four completion rows for a single air-filter change, three
+// of them inside 1.5 seconds. Every tap reached the server and succeeded — the button just
+// had no way to say so, because "Last done Aug 19 · Next due Nov 19" recomputes to the
+// byte-identical string when you complete the same rhythm again on the same day. So it
+// read as broken and got tapped again, and the register quietly filled with history that
+// never happened. The clients now acknowledge the tap; this is the other half.
+describe('completing the same rhythm twice in a day', () => {
+  let brushId = ''
+
+  beforeAll(async () => {
+    await call('PATCH', '/api/household/modules', kevin, { rhythms: true })
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Toothbrush heads', satisfiedBy: 'completion', every: '3 months',
+      nextDueAt: '2026-09-01T00:00:00Z',
+    })
+    brushId = JSON.parse(made.body).rhythm.id
+  })
+
+  it('records one completion, not one per tap', async () => {
+    for (let i = 0; i < 3; i++) {
+      expect((await call('POST', `/api/rhythms/${brushId}/complete`, kevin, {})).statusCode).toBe(200)
+    }
+    const res = await call('GET', `/api/rhythms/${brushId}/completions`, kevin)
+    expect(JSON.parse(res.body).completions).toHaveLength(1)
+  })
+
+  it('still re-anchors the clock, so a repeat tap is not an error either', async () => {
+    const res = await call('GET', '/api/rhythms', kevin)
+    const mine = JSON.parse(res.body).rhythms.find((r: { id: string }) => r.id === brushId)
+    // Anchored to the completion, not stacked: three taps must not push it nine months out.
+    const months = (new Date(mine.nextDueAt).getTime() - new Date(mine.lastCompletedAt).getTime()) / 86400000
+    expect(months).toBeGreaterThan(85)
+    expect(months).toBeLessThan(95)
+  })
+
+  // The dedupe is per DAY, not "collapse everything" — a genuinely separate completion
+  // that happened on another date is real history and has to survive.
+  it('keeps a completion logged for a different day', async () => {
+    expect((await call('POST', `/api/rhythms/${brushId}/complete`, kevin, {
+      completedAt: '2026-05-04T15:00:00Z',
+    })).statusCode).toBe(200)
+    const res = await call('GET', `/api/rhythms/${brushId}/completions`, kevin)
+    expect(JSON.parse(res.body).completions).toHaveLength(2)
+  })
+})
+
 // "Put it on the calendar automatically" has to actually put it on the calendar.
 //
 // Creation used to insert the rhythm row and stop there, so the very first thing an

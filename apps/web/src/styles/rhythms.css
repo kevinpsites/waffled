@@ -26,6 +26,9 @@
 
 .rhy-acts { display: flex; align-items: center; gap: 6px; flex: none; }
 .rhy-act { flex: none; padding: 6px 12px; font-size: 13px; }
+/* Already done today. Settled rather than merely disabled — a greyed-out button reads as
+   "you can't", and the point here is "you already did". */
+.rhy-act.rhy-done { background: var(--success-t); color: var(--success); border-color: transparent; opacity: 1; cursor: default; }
 .rhy-skip {
   background: none; border: 0; padding: 6px 4px; cursor: pointer;
   font: inherit; font-size: 12px; font-weight: 700; color: var(--ink-3);

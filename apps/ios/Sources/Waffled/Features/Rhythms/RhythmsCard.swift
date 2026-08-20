@@ -182,21 +182,28 @@ struct RhythmActionButton: View {
     let label: String
     var kiosk = false
     var tint: Color = WF.primary
+    /// Overridden only for the settled "Done today ✓" capsule, which is a tinted wash
+    /// rather than a saturated fill and so needs ink, not white.
+    var labelColor: Color = .white
     var busy = false
+    /// A settled state, not a blocked one — the row still shows the capsule, it just has
+    /// nothing left to do. Kept apart from `busy` so a disabled button doesn't spin.
+    var disabled = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                if busy { ProgressView().controlSize(.small).tint(.white) }
+                if busy { ProgressView().controlSize(.small).tint(labelColor) }
                 Text(label).font(.system(size: kiosk ? 14 : 12, weight: .bold))
-                    // A colored fill stays saturated in both themes, so .white is correct here.
-                    .foregroundStyle(.white)
+                    // A colored fill stays saturated in both themes, so .white is right
+                    // for the default; a wash passes its own ink in.
+                    .foregroundStyle(labelColor)
             }
             .padding(.horizontal, kiosk ? 12 : 10).padding(.vertical, kiosk ? 7 : 5)
             .background(tint).clipShape(Capsule())
         }
         .buttonStyle(.plain)
-        .disabled(busy)
+        .disabled(busy || disabled)
     }
 }

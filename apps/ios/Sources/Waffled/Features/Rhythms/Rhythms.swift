@@ -132,6 +132,26 @@ enum RhythmFormat {
         return DateFmt.string(last, "yyyy-MM-dd", calendar.timeZone)
     }
 
+    /// Whether a completion rhythm was already done today, on the VIEWER's clock.
+    ///
+    /// This is what lets a row acknowledge a tap. Completing something already completed
+    /// today recomputes "Last done <date> · Next due <date>" to the byte-identical string,
+    /// so without this the button is indistinguishable from a dead one — which is exactly
+    /// how it was read, and how one air-filter change came to be logged four times.
+    static func wasCompletedToday(_ iso: String?, now: Date = Date(),
+                                  calendar: Calendar = Cal.current) -> Bool {
+        guard let iso, let done = EventTime.parse(iso) else { return false }
+        return calendar.isDate(done, inSameDayAs: now)
+    }
+
+    /// The completion row's action label. Three states, three labels — sharing one is what
+    /// made the tap invisible. Note there is still no scoreboard language here: "done
+    /// today" is a statement about this row right now, not a record being kept.
+    static func completionAction(doneToday: Bool, due: Bool) -> String {
+        if doneToday { return "Done today ✓" }
+        return due ? "Mark done" : "I did this today"
+    }
+
     /// A friendly "May 20, 2026" for a stored instant or date, "—" when there isn't one.
     static func shortDate(_ iso: String?, calendar: Calendar = Cal.current) -> String {
         guard let iso, !iso.isEmpty else { return "—" }

@@ -529,3 +529,51 @@ struct RhythmsModuleTests {
         #expect(KioskRail.isHighlighted(.more, selection: .rhythms, pinned: [.meals, .family]))
     }
 }
+
+/// A completion tap has to be visible on the row it happened on.
+///
+/// The register's detail line is "Last done <date> · Next due <date>". Complete a rhythm
+/// that was already completed today and both halves recompute to the SAME string — so the
+/// row is byte-identical before and after, the button reads as dead, and it gets pressed
+/// again. The demo database ended up with four rows for one air-filter change that way.
+/// The label is the only thing that can carry the acknowledgement, so it has to change.
+@Suite("Completion acknowledgement")
+struct RhythmCompletionAckTests {
+    private let now = at("2026-08-19T15:00:00")
+
+    @Test("A rhythm completed earlier today counts as done today")
+    func doneToday() {
+        #expect(RhythmFormat.wasCompletedToday("2026-08-19T09:00:00Z", now: now, calendar: utcCal))
+    }
+
+    @Test("Yesterday's completion does not")
+    func notYesterday() {
+        #expect(!RhythmFormat.wasCompletedToday("2026-08-18T23:30:00Z", now: now, calendar: utcCal))
+    }
+
+    @Test("Never completed does not")
+    func neverCompleted() {
+        #expect(!RhythmFormat.wasCompletedToday(nil, now: now, calendar: utcCal))
+    }
+
+    /// The whole point: the three states must not share a label, or the tap is invisible.
+    @Test("The label states which of the three states the row is in")
+    func labelsDiffer() {
+        let fresh = RhythmFormat.completionAction(doneToday: false, due: false)
+        let nagged = RhythmFormat.completionAction(doneToday: false, due: true)
+        let settled = RhythmFormat.completionAction(doneToday: true, due: false)
+        #expect(fresh == "I did this today")
+        #expect(nagged == "Mark done")
+        #expect(settled == "Done today ✓")
+        #expect(Set([fresh, nagged, settled]).count == 3)
+    }
+
+    /// Rhythms never keep score, so the acknowledgement must not smuggle in goal language.
+    @Test("Acknowledging never turns the register into a scorecard")
+    func staysOffTheScorecard() {
+        let settled = RhythmFormat.completionAction(doneToday: true, due: false).lowercased()
+        for word in ["streak", "on track", "missed", "kept up", "complete rate"] {
+            #expect(!settled.contains(word))
+        }
+    }
+}

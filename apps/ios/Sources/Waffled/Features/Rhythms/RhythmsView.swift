@@ -137,9 +137,17 @@ struct RhythmsView: View {
 
             HStack(spacing: 8) {
                 if r.satisfiedBy == .completion {
-                    // Available whether or not it's due — "I did the filter today" resets the clock.
-                    RhythmActionButton(label: item != nil ? "Mark done" : "I did this today",
-                                       busy: busyId == r.id) {
+                    // Available whether or not it's due — "I did the filter today" resets
+                    // the clock. Once it IS done today the button says so instead of
+                    // offering the same action again: the detail line above recomputes to
+                    // the identical string, so this label is the only place the tap can be
+                    // seen to have landed.
+                    let doneToday = RhythmFormat.wasCompletedToday(r.lastCompletedAt)
+                    RhythmActionButton(label: RhythmFormat.completionAction(doneToday: doneToday, due: item != nil),
+                                       tint: doneToday ? WF.successT : WF.primary,
+                                       labelColor: doneToday ? WF.success : .white,
+                                       busy: busyId == r.id,
+                                       disabled: doneToday) {
                         run(r.id) { try await model.markDone(r.id) }
                     }
                 }

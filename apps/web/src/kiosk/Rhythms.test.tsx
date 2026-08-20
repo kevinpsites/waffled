@@ -173,4 +173,36 @@ describe('Rhythms screen', () => {
     renderScreen()
     expect(await screen.findByText(/nothing here yet/i)).toBeInTheDocument()
   })
+
+  // Completing something already done today changed NOTHING on screen: the row reads
+  // "Last done <date> · Next due <date>", and re-completing on the same day recomputes
+  // both to the identical string. So the button looked dead and got tapped again — the
+  // demo database ended up with four rows for one air-filter change. The row has to say
+  // it landed, which is the same thing a habit goal already does ("Done for today ✓").
+  it('says a rhythm done today is done, rather than offering the same button again', async () => {
+    const doneToday = { ...filter, lastCompletedAt: '2026-08-18T09:00:00.000Z', nextDueAt: '2026-11-18T09:00:00.000Z' }
+    mockApi([doneToday])
+    renderScreen()
+    await screen.findByText('Air filter')
+    expect(screen.getByRole('button', { name: /done today/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^i did this today$/i })).toBeNull()
+  })
+
+  it('refuses to log a second completion for a day already logged', async () => {
+    const doneToday = { ...filter, lastCompletedAt: '2026-08-18T09:00:00.000Z', nextDueAt: '2026-11-18T09:00:00.000Z' }
+    mockApi([doneToday])
+    renderScreen()
+    await screen.findByText('Air filter')
+    fireEvent.click(screen.getByRole('button', { name: /done today/i }))
+    // Give any in-flight request a chance to appear before asserting it didn't.
+    await waitFor(() => expect(screen.getByText('Air filter')).toBeInTheDocument())
+    expect(calls.some((c) => c.url.includes('/complete'))).toBe(false)
+  })
+
+  it('still offers the button to a rhythm last done on some other day', async () => {
+    mockApi([filter])
+    renderScreen()
+    await screen.findByText('Air filter')
+    expect(screen.getByRole('button', { name: /^i did this today$/i })).toBeInTheDocument()
+  })
 })

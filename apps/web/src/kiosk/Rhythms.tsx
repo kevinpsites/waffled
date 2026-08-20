@@ -38,6 +38,23 @@ function shortDate(iso: string | null): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+// Whether a completion rhythm was already done today, on the VIEWER's clock.
+//
+// This is what lets the row acknowledge a tap. Completing something already completed
+// today recomputes "Last done <date> · Next due <date>" to the byte-identical string, so
+// without this the button was indistinguishable from a dead one — and got pressed again,
+// and again. Same idea (and near enough the same words) as a habit goal's
+// "Done for today ✓".
+function completedToday(iso: string | null): boolean {
+  if (!iso) return false
+  const done = new Date(iso)
+  if (Number.isNaN(done.getTime())) return false
+  const now = new Date()
+  return done.getFullYear() === now.getFullYear()
+    && done.getMonth() === now.getMonth()
+    && done.getDate() === now.getDate()
+}
+
 function RhythmItem({
   rhythm,
   attention,
@@ -62,6 +79,7 @@ function RhythmItem({
   const att = paused ? undefined : attention
   const due = att?.kind === 'due' ? att : null
   const scheduling = rhythm.satisfiedBy === 'scheduling'
+  const doneToday = !scheduling && completedToday(rhythm.lastCompletedAt)
   const needsBooking = !paused && scheduling && !rhythm.satisfied
   const period: RhythmPeriod | null =
     rhythm.currentPeriodStart && rhythm.currentPeriodEnd
@@ -128,9 +146,17 @@ function RhythmItem({
 
       <div className="rhy-item-acts">
         {!scheduling && !paused && (
-          <button type="button" className="btn btn-ghost rhy-act" disabled={busy} onClick={() => run(() => rhythmsApi.complete(rhythm.id))}>
-            {/* Available whether or not it's due — "I did the filter today" resets the clock. */}
-            {due ? 'Mark done' : 'I did this today'}
+          <button
+            type="button"
+            className={`btn rhy-act ${doneToday ? 'btn-ghost rhy-done' : 'btn-ghost'}`}
+            disabled={busy || doneToday}
+            onClick={() => { if (!doneToday) run(() => rhythmsApi.complete(rhythm.id)) }}
+          >
+            {/* Available whether or not it's due — "I did the filter today" resets the
+                clock. Once it IS done today the button states that instead of offering
+                the same action again: the meta line above cannot show the difference, so
+                this is the only place the tap can be seen to have landed. */}
+            {doneToday ? 'Done today ✓' : due ? 'Mark done' : 'I did this today'}
           </button>
         )}
         {needsBooking && period && (

@@ -310,9 +310,31 @@ export async function completeRhythm(
     throw new InvalidReferenceError('only a completion rhythm can be completed — a scheduling rhythm is satisfied by an event existing')
   }
 
+  // One completion per DAY, not one per tap. Completing something already completed today
+  // is a person pressing a button that looked like it did nothing — not a second time they
+  // changed the air filter — and the demo database had four rows for one filter change to
+  // prove it. Folding the repeat into the existing row keeps the history answerable
+  // ("when did we last change it?") instead of filling it with events that never happened.
+  //
+  // Same-day is judged on the HOUSEHOLD's clock: near midnight, UTC and local disagree
+  // about which day it is, and the register is read in local terms.
   await query(
-    `insert into rhythm_completions (household_id, rhythm_id, person_id, completed_at, notes)
-     values ($1,$2,$3, coalesce($4::timestamptz, now()), $5)`,
+    `with stamp as (select coalesce($4::timestamptz, now()) as at),
+          zone as (select timezone from households where id = $1),
+          upd as (
+            update rhythm_completions c
+               set completed_at = stamp.at,
+                   person_id = $3,
+                   notes = coalesce($5, c.notes)
+              from stamp, zone
+             where c.household_id = $1 and c.rhythm_id = $2
+               and (c.completed_at at time zone zone.timezone)::date
+                   = (stamp.at at time zone zone.timezone)::date
+            returning c.id
+          )
+     insert into rhythm_completions (household_id, rhythm_id, person_id, completed_at, notes)
+     select $1, $2, $3, stamp.at, $5 from stamp
+      where not exists (select 1 from upd)`,
     [householdId, id, personId, completedAt, notes]
   )
   const { rows } = await query<Row>(
