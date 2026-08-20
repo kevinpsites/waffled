@@ -8,6 +8,7 @@ import SwiftUI
 /// A `List` (not a hand-rolled stack) so edit / pause / delete ride native `.swipeActions`
 /// and `.refreshable`, per the reuse rule in apps/ios/CLAUDE.md.
 struct RhythmsView: View {
+    @Environment(SyncManager.self) private var sync
     @State private var model = RhythmsModel()
     @State private var creating = false
     @State private var editing: WaffledAPI.Rhythm?
@@ -40,7 +41,7 @@ struct RhythmsView: View {
                     .accessibilityLabel("New rhythm")
             }
         }
-        .task {
+        .task(id: sync.refreshRev) {
             await model.loadAll()
             await model.loadAttention()
         }
@@ -93,6 +94,12 @@ struct RhythmsView: View {
         .scrollContentBackground(.hidden)
         .background(WF.canvas)
         .refreshable {
+            // The module flags too, so a register left open after someone turned Rhythms
+            // off elsewhere finds out on the next pull rather than only when its requests
+            // start coming back 403. `reloadModules` rather than `refreshRestSurfaces`:
+            // this screen reloads itself on the next two lines, and bumping the shared
+            // signal here would make its own `.task(id:)` fire a second, identical load.
+            await sync.reloadModules()
             await model.loadAll()
             await model.loadAttention()
         }

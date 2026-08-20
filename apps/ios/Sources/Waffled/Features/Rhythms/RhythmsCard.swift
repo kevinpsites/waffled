@@ -18,6 +18,7 @@ import SwiftUI
 /// module is off by default.
 struct RhythmsTodayCard: View {
     var kiosk = false
+    @Environment(SyncManager.self) private var sync
     @State private var model = RhythmsModel()
     @State private var booking: WaffledAPI.RhythmAttentionItem?
     @State private var busyId: String?
@@ -38,7 +39,10 @@ struct RhythmsTodayCard: View {
                 WaffledCard(padding: 15) { cardBody }
             }
         }
-        .task { await model.loadAttention() }
+        // Keyed on the refresh signal, not a bare `.task`: SwiftUI runs a bare one once per
+        // appearance, so this card sat on launch-time data through every pull-to-refresh —
+        // a rhythm completed on the web never showed up here. See SyncManager.refreshRev.
+        .task(id: sync.refreshRev) { await model.loadAttention() }
         .sheet(item: $booking) { item in
             BookRhythmSheet(item: item, model: model)
         }

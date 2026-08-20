@@ -108,6 +108,33 @@ final class SyncManager {
     /// Bumped after a module toggle so nav rails / Today re-evaluate live.
     private(set) var modulesRev = 0
 
+    /// Bumped when the person explicitly asks for fresh data — a pull-to-refresh, or a
+    /// return to the foreground.
+    ///
+    /// Several Today cards own their own REST fetch (countdowns, pantry, rhythms, family
+    /// night, the list card) because none of those tables are on PowerSync. Each loaded
+    /// itself with a bare `.task { … }`, which SwiftUI runs once when the view appears and
+    /// never again — so pulling down on Today refreshed the two things the screen fetched
+    /// directly and silently left every one of those cards on whatever it read at launch.
+    /// A rhythm completed on the web, a countdown that moved, a module switched off: none
+    /// of it arrived until the tab was left and re-entered, which is exactly what "I'm not
+    /// sure pull-to-refresh does anything" looks like from the outside.
+    ///
+    /// Cards key their load on this (`.task(id: sync.refreshRev)`) so one signal wakes all
+    /// of them, instead of Today having to know each card's model.
+    private(set) var refreshRev = 0
+
+    /// Everything a deliberate refresh has to cover that isn't a synced table: the module
+    /// flags (so a module toggled off elsewhere actually disappears) and every self-loading
+    /// REST card. Awaited, so a pull-to-refresh spinner is held by a real round-trip rather
+    /// than snapping back before anything has arrived.
+    func refreshRestSurfaces() async {
+        // Bump first: the cards start their reloads while the module read is in flight,
+        // rather than after it.
+        refreshRev &+= 1
+        await reloadModules()
+    }
+
     /// Whether an optional module is enabled for this household — mirrors the server's
     /// `moduleEnabled()`: available modules read `settings.modules[key]` with the catalog
     /// default; planned (not-yet-built) modules are always off.

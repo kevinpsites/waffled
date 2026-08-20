@@ -116,6 +116,7 @@ final class CountdownsModel {
 /// screens get add / rename-move (tap a standalone row) / remove without re-wiring.
 struct CountdownsCard: View {
     var kiosk = false
+    @Environment(SyncManager.self) private var sync
     @State private var model = CountdownsModel()
     @State private var adding = false
     @State private var editing: WaffledAPI.Countdown?
@@ -126,7 +127,10 @@ struct CountdownsCard: View {
         Group {
             if kiosk { KioskCard { inner } } else { WaffledCard(padding: 15) { inner } }
         }
-        .task { await model.load() }
+        // Keyed on the refresh signal, not a bare `.task`: SwiftUI runs a bare one
+        // once per appearance, so this card sat on launch-time data through every
+        // pull-to-refresh. See SyncManager.refreshRev.
+        .task(id: sync.refreshRev) { await model.load() }
         .sheet(isPresented: $adding) {
             AddCountdownSheet { title, date, emoji in
                 try await model.add(title: title, date: date, emoji: emoji)

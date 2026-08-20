@@ -95,9 +95,18 @@ struct TodayView: View {
             }
             .refreshable {
                 // Independent endpoint batches — fetch them concurrently.
+                //
+                // `refreshRestSurfaces` is what makes the gesture mean what it looks like
+                // it means: the cards that own their own REST fetch (countdowns, pantry,
+                // rhythms, family night, lists) load once on appear and never again, so
+                // without it a pull-down refreshed only the two batches below and left
+                // every one of those cards — and the module flags — on launch-time data.
+                async let r: () = sync.refreshRestSurfaces()
                 async let d: () = dash.load(todayKey: Agenda.todayKey(sync.householdTz))
                 async let g: () = dash.loadGoals()
-                _ = await (d, g)
+                _ = await (r, d, g)
+                // The card set itself can change when a module is toggled elsewhere.
+                await loadLayout()
             }
             // Reload when the tz is known and whenever a capture commit bumps a domain.
             .task(id: "\(sync.householdTz.identifier)|\(sync.choresRev)|\(sync.groceryRev)|\(sync.mealsRev)") {
@@ -123,9 +132,13 @@ struct TodayView: View {
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 Task {
+                    // Same reasoning as the pull-to-refresh above, and the same reach:
+                    // someone turns a module off on the web, picks the phone back up, and
+                    // the card for it has to be gone.
+                    async let r: () = sync.refreshRestSurfaces()
                     async let d: () = dash.load(todayKey: Agenda.todayKey(sync.householdTz))
                     async let g: () = dash.loadGoals()
-                    _ = await (d, g)
+                    _ = await (r, d, g)
                 }
             }
             // Day rollover while the screen stays open: at (household-tz) midnight
