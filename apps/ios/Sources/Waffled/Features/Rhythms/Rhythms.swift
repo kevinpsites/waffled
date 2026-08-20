@@ -152,6 +152,44 @@ enum RhythmFormat {
         return due ? "Mark done" : "I did this today"
     }
 
+    /// What the nudge runway will ACTUALLY be, once the server has had it.
+    ///
+    /// It is stored as `least(leadTime, every / 2)` — a warning window longer than the
+    /// cycle never closes, so the item would nag forever and get learned as noise. The
+    /// form showed the number that was typed, so a weekly rhythm asked for 14 days'
+    /// notice, quietly got 3, and nothing on screen explained the difference.
+    static func nudgePlan(every: String, leadDays: Int) -> (effectiveDays: Int, capped: Bool) {
+        let asked = max(0, leadDays)
+        let half = days(fromInterval: every) / 2
+        // An unreadable cadence gives no cap to apply — echoing the request beats
+        // inventing a clamp out of a number we couldn't parse.
+        guard half > 0 else { return (asked, false) }
+        return (min(asked, half), asked > half)
+    }
+
+    /// The runway in a sentence, naming the window it counts back from. "…before the
+    /// period ends" assumed you knew what the period was, which was fairly answered with
+    /// "what period? I'm scheduling it every week". For a scheduling rhythm the period IS
+    /// one cadence: each is a fresh window to get it booked, and the runway is its tail.
+    static func nudgeExplainer(every: String, leadDays: Int) -> String {
+        let plan = nudgePlan(every: every, leadDays: leadDays)
+        let window = cadenceLabel(every).isEmpty ? "every period" : cadenceLabel(every)
+        let tail = plan.effectiveDays <= 0
+            ? "on its last day"
+            : "for the last \(plural(plan.effectiveDays, "day")) of it"
+        var line = "A fresh window to book it opens \(window). You’ll be nudged \(tail), and only while nothing’s on the calendar for it"
+        if plan.capped {
+            line += " (\(plural(max(0, leadDays), "day")) won’t fit in \(window.replacingOccurrences(of: "every ", with: "a ")), so it’s trimmed to half the cycle — a runway longer than the cycle never goes quiet)"
+        }
+        return line + "."
+    }
+
+    /// Whole days in a Postgres interval — the cadence's length, for the clamp above.
+    static func days(fromInterval text: String) -> Int {
+        let p = parts(text)
+        return p.year * 365 + p.month * 30 + p.week * 7 + p.day + p.hour / 24
+    }
+
     /// A friendly "May 20, 2026" for a stored instant or date, "—" when there isn't one.
     static func shortDate(_ iso: String?, calendar: Calendar = Cal.current) -> String {
         guard let iso, !iso.isEmpty else { return "—" }

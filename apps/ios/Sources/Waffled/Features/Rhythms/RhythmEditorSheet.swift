@@ -33,7 +33,9 @@ struct RhythmEditorSheet: View {
 
                     WaffledFieldCard(title: "What") {
                         HStack(spacing: 10) {
-                            TextField("Temple visit", text: $form.title)
+                            // The first example anyone reads should be the most ordinary
+                            // rhythm there is, not the most exotic one.
+                            TextField("Take the trash out", text: $form.title)
                                 .font(.system(size: 15))
                                 .padding(.horizontal, 12).padding(.vertical, 11)
                                 .wfField(radius: WF.rSM, fill: WF.panel)
@@ -74,12 +76,18 @@ struct RhythmEditorSheet: View {
                     if form.shape == .completion { completionFields } else { schedulingFields }
 
                     WaffledFieldCard(title: form.shape == .completion
-                                     ? "Warn me this many days ahead"
-                                     : "Start nudging me this many days before the period ends") {
+                                     ? "Warn me this many days before it’s due"
+                                     : "How many days’ warning before the booking window closes") {
                         VStack(alignment: .leading, spacing: 6) {
                             Stepper("\(form.leadDays) days", value: $form.leadDays, in: 0...365)
                                 .font(.system(size: 15, weight: .semibold))
-                            Text("Capped at half the cadence — a runway longer than the cycle never closes, so it would never go quiet.")
+                            // Spelled out against THIS rhythm's cadence rather than left as
+                            // "the period", and stating the clamp's effect in days — the
+                            // server stores least(leadTime, every/2), so a weekly rhythm
+                            // asking for 14 days' notice quietly gets 3.
+                            Text(form.shape == .completion
+                                 ? "Capped at half the cadence — a runway longer than the cycle never closes, so it would never go quiet."
+                                 : RhythmFormat.nudgeExplainer(every: form.every, leadDays: form.leadDays))
                                 .font(.system(size: 12)).foregroundStyle(WF.ink3)
                                 .fixedSize(horizontal: false, vertical: true)
                         }

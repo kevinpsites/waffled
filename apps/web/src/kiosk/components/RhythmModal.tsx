@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { rhythmsApi, usePersons, splitCadence, intervalDays, cadenceLabel, type SatisfiedBy, type Rhythm } from '../../lib/api'
+import { rhythmsApi, usePersons, splitCadence, intervalDays, cadenceLabel, nudgeExplainer, type SatisfiedBy, type Rhythm } from '../../lib/api'
 import { ConfirmDialog } from './ConfirmDialog'
 import { buildRrule, describeRrule, NO_REPEAT, type CustomUnit, type MonthlyMode } from './recurrence'
 
@@ -177,7 +177,9 @@ export function RhythmModal({
           <div className="field-row">
             <label className="field" style={{ flex: 3 }}>
               <span>What</span>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Temple visit" autoFocus />
+              {/* The placeholder is the first example anyone reads, so it should be the
+                  most ordinary rhythm there is, not the most exotic one. */}
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Take the trash out" autoFocus />
             </label>
             <label className="field" style={{ flex: 1 }}>
               <span>Emoji</span>
@@ -261,12 +263,23 @@ export function RhythmModal({
 
           <div className="field-row">
             <label className="field" style={{ flex: 1 }}>
-              <span>{shape === 'completion' ? 'Warn me this many days ahead' : 'Start nudging me this many days before the period ends'}</span>
+              <span>
+                {shape === 'completion'
+                  ? 'Warn me this many days before it’s due'
+                  : 'How many days’ warning before the booking window closes'}
+              </span>
               <input type="number" min={0} value={leadDays} onChange={(e) => setLeadDays(e.target.value)} />
             </label>
           </div>
+          {/* Spelled out against THIS rhythm's cadence rather than left as "the period",
+              which was reasonably read as "what period? I'm scheduling it every week".
+              It also states the clamp's effect in days — the server stores
+              least(leadTime, every/2), so a weekly rhythm that asks for 14 days' notice
+              quietly gets 3, and nothing said so. */}
           <div className="tiny muted" style={{ marginTop: -6, marginBottom: 10 }}>
-            Capped at half the cadence — a runway longer than the cycle never closes, so it would never go quiet.
+            {shape === 'completion'
+              ? 'Capped at half the cadence — a runway longer than the cycle never closes, so it would never go quiet.'
+              : nudgeExplainer(`${n} ${unit}`, Number(leadDays) || 0)}
           </div>
 
           <label className="field">

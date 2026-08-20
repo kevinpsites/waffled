@@ -215,6 +215,44 @@ export function intervalDays(leadTime: string): number {
   return Math.round(days)
 }
 
+/**
+ * What the nudge runway will ACTUALLY be, once the server has had it.
+ *
+ * The runway is stored as `least(leadTime, every / 2)`: a warning window longer than the
+ * cycle never closes, so the item would nag forever and be learned as noise. The form,
+ * though, showed the number that was typed — so a weekly rhythm asked for 14 days' notice,
+ * was quietly given 3, and the person who set it had no way to know why nothing appeared
+ * when they expected it.
+ */
+export function nudgePlan(every: string, leadDays: number): { effectiveDays: number; capped: boolean } {
+  const asked = Math.max(0, Math.round(leadDays || 0))
+  const half = Math.floor(intervalDays(every) / 2)
+  // An unreadable cadence gives no cap to apply — better to echo the request than to
+  // invent a clamp from a number we couldn't parse.
+  if (half <= 0) return { effectiveDays: asked, capped: false }
+  return { effectiveDays: Math.min(asked, half), capped: asked > half }
+}
+
+/**
+ * The runway in a sentence, naming the window it counts back from.
+ *
+ * "Start nudging me this many days before the period ends" assumed you knew what "the
+ * period" was — reasonably answered with "what period? I'm scheduling it every week". For
+ * a scheduling rhythm the period IS one cadence: each one is a fresh window to get the
+ * thing booked, and the runway is its tail.
+ */
+export function nudgeExplainer(every: string, leadDays: number): string {
+  const { effectiveDays, capped } = nudgePlan(every, leadDays)
+  const window = cadenceLabel(every) || 'every period'
+  const tail = effectiveDays <= 0
+    ? 'on its last day'
+    : `for the last ${plural(effectiveDays, 'day')} of it`
+  const clamp = capped
+    ? ` (${plural(Math.max(0, Math.round(leadDays || 0)), 'day')} won't fit in ${window.replace(/^every /, 'a ')}, so it's trimmed to half the cycle — a runway longer than the cycle never goes quiet)`
+    : ''
+  return `A fresh window to book it opens ${window}. You'll be nudged ${tail}, and only while nothing's on the calendar for it${clamp}.`
+}
+
 /** '7 days' → 'every week'; '3 mons' → 'every 3 months'. */
 export function cadenceLabel(every: string): string {
   const text = formatInterval(every)

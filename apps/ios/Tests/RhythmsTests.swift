@@ -593,6 +593,55 @@ struct RhythmRegisterFailureTests {
     }
 }
 
+/// The nudge runway has to name the window it counts back from, and admit the clamp.
+///
+/// "Start nudging me this many days before the period ends" was fairly answered with "what
+/// period? I'm scheduling it to happen every week". And because the server stores
+/// `least(leadTime, every/2)`, a weekly rhythm asking for 14 days' notice silently gets 3 —
+/// so "I set 1 day and nothing appeared on Today" looked like a bug when it was the design.
+@Suite("Nudge runway copy")
+struct RhythmNudgeCopyTests {
+    @Test("The runway stands when the cadence has room for it")
+    func uncapped() {
+        let plan = RhythmFormat.nudgePlan(every: "3 mons", leadDays: 14)
+        #expect(plan.effectiveDays == 14)
+        #expect(!plan.capped)
+    }
+
+    @Test("A runway longer than half the cycle is reported clamped, not as typed")
+    func capped() {
+        let plan = RhythmFormat.nudgePlan(every: "7 days", leadDays: 14)
+        #expect(plan.effectiveDays == 3)
+        #expect(plan.capped)
+    }
+
+    @Test("It names the cadence rather than 'the period'")
+    func namesTheWindow() {
+        let text = RhythmFormat.nudgeExplainer(every: "7 days", leadDays: 1)
+        #expect(text.contains("every week"))
+        #expect(!text.contains("the period ends"))
+    }
+
+    @Test("It states what the clamp actually did")
+    func statesTheClamp() {
+        #expect(RhythmFormat.nudgeExplainer(every: "7 days", leadDays: 14).contains("last 3 days"))
+    }
+
+    @Test("A zero runway nudges only on the final day")
+    func zeroRunway() {
+        #expect(RhythmFormat.nudgeExplainer(every: "7 days", leadDays: 0).contains("last day"))
+    }
+
+    /// Same wording rule as everywhere else in rhythms: no scoreboard language.
+    @Test("The explanation never turns into follow-through talk")
+    func staysOffTheScorecard() {
+        let text = RhythmFormat.nudgeExplainer(every: "3 mons", leadDays: 14).lowercased()
+        for word in ["streak", "on track", "missed", "completed"] {
+            #expect(!text.contains(word))
+        }
+    }
+}
+
 /// A paused rhythm must not be offered period actions.
 ///
 /// The server filters paused rhythms out of /attention, so normally there is nothing to

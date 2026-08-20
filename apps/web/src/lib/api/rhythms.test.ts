@@ -1,4 +1,7 @@
-import { formatInterval, cadenceLabel, dueLabel, periodLabel, splitCadence, intervalDays } from './rhythms'
+import {
+  formatInterval, cadenceLabel, dueLabel, periodLabel, splitCadence, intervalDays,
+  nudgePlan, nudgeExplainer,
+} from './rhythms'
 
 // Postgres hands `interval::text` back in its own shorthand — `3 mons`, `1 mon`,
 // `3 days 12:00:00` — which is exactly the string a careless card would print at a
@@ -108,5 +111,50 @@ describe('intervalDays', () => {
     // The clamp's half-week runway rounds rather than truncating to 3.
     expect(intervalDays('3 days 12:00:00')).toBe(4)
     expect(intervalDays('')).toBe(0)
+  })
+})
+
+// "Start nudging me this many days before the period ends" was reported, fairly, as
+// meaningless: "what period? I am scheduling it to happen every week?" A scheduling
+// rhythm's period IS one cadence and the runway is the tail of it, but the label named
+// neither. Worse, the server clamps the runway to half the cadence — so a weekly rhythm
+// asking for 14 days silently gets 3, and "I set 1 day and saw nothing on Today" looks
+// like a bug when it is the feature working exactly as designed.
+describe('nudgePlan', () => {
+  it('reports the runway you asked for when the cadence has room', () => {
+    expect(nudgePlan('3 mons', 14)).toEqual({ effectiveDays: 14, capped: false })
+  })
+
+  it('reports the clamped runway, not the one that was typed', () => {
+    // Half of 7 days is 3.5, and the field is whole days.
+    expect(nudgePlan('7 days', 14)).toEqual({ effectiveDays: 3, capped: true })
+  })
+
+  it('treats a runway of exactly half the cadence as uncapped', () => {
+    expect(nudgePlan('14 days', 7)).toEqual({ effectiveDays: 7, capped: false })
+  })
+
+  it('survives a cadence it cannot read', () => {
+    expect(nudgePlan('', 14).effectiveDays).toBeGreaterThanOrEqual(0)
+  })
+})
+
+describe('nudgeExplainer', () => {
+  it('names the window instead of saying "the period"', () => {
+    const text = nudgeExplainer('7 days', 1)
+    expect(text).toMatch(/every week/i)
+    expect(text).not.toMatch(/the period ends/i)
+  })
+
+  it('states what the clamp actually did, in days', () => {
+    expect(nudgeExplainer('7 days', 14)).toMatch(/last 3 days/i)
+  })
+
+  it('says a zero runway nudges only on the final day', () => {
+    expect(nudgeExplainer('7 days', 0)).toMatch(/last day/i)
+  })
+
+  it('makes clear a booked window goes quiet', () => {
+    expect(nudgeExplainer('3 mons', 14)).toMatch(/nothing/i)
   })
 })
