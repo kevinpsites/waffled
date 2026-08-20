@@ -18,8 +18,16 @@ import SwiftUI
 /// module is off by default.
 struct RhythmsTodayCard: View {
     var kiosk = false
-    @Environment(SyncManager.self) private var sync
-    @State private var model = RhythmsModel()
+    /// Owned and loaded by the parent (`TodayView` / `KioskDashboard`), deliberately.
+    ///
+    /// This card renders nothing when the register is quiet — and quiet is its *initial*
+    /// state. SwiftUI does not install lifecycle modifiers on a view that resolves to
+    /// `EmptyView`, so while the card loaded itself, the `.task` that would have fetched
+    /// the attention list never ran: empty → `EmptyView` → no fetch → still empty, on
+    /// every launch, forever. Measured against a live server, the app made *zero*
+    /// `/api/rhythms/attention` requests from Today while the loader lived here, and one
+    /// the moment the empty branch became a real view.
+    var model: RhythmsModel
     @State private var booking: WaffledAPI.RhythmAttentionItem?
     @State private var busyId: String?
     @State private var errorMessage: String?
@@ -39,10 +47,6 @@ struct RhythmsTodayCard: View {
                 WaffledCard(padding: 15) { cardBody }
             }
         }
-        // Keyed on the refresh signal, not a bare `.task`: SwiftUI runs a bare one once per
-        // appearance, so this card sat on launch-time data through every pull-to-refresh —
-        // a rhythm completed on the web never showed up here. See SyncManager.refreshRev.
-        .task(id: sync.refreshRev) { await model.loadAttention() }
         .sheet(item: $booking) { item in
             BookRhythmSheet(item: item, model: model)
         }

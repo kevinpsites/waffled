@@ -8,6 +8,10 @@ struct TodayView: View {
     @Environment(CookSessionStore.self) private var cook
     @Environment(\.scenePhase) private var scenePhase
     @State private var dash = DashboardModel()
+    /// The Rhythms card's data lives here rather than inside the card — see the note on
+    /// `RhythmsTodayCard.model`. A card that renders nothing when it has nothing can't be
+    /// trusted to fetch its own contents.
+    @State private var rhythms = RhythmsModel()
     @State private var recipes = RecipesModel()   // backs a recipe pushed from tonight's card
     @State private var detailEvent: SyncedEvent?
     @State private var showCapture = false
@@ -113,6 +117,13 @@ struct TodayView: View {
                 await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
             }
             .task { weather = try? await WaffledAPI().weather() }
+            // Lives on the page, which always renders, rather than on the card, which
+            // does not — the card is `EmptyView` until it has something to show, and a
+            // `.task` on `EmptyView` never runs.
+            .task(id: "\(sync.refreshRev)|\(sync.modulesRev)") {
+                guard sync.module(.rhythms) else { return }
+                await rhythms.loadAttention()
+            }
             .task { await sync.loadIdentity() }
             .task { await loadLayout() }
             // Goals card + the goal-calendar review queues (refresh whenever a
@@ -474,7 +485,7 @@ struct TodayView: View {
         case "grocery": Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
         case "lists": TodayListCard { path.append(.list($0)) }
         case "pantry": PantryTodayCard { path.append(.pantry) }
-        case "rhythms": RhythmsTodayCard { path.append(.rhythms) }
+        case "rhythms": RhythmsTodayCard(model: rhythms) { path.append(.rhythms) }
         case "familyNight": FamilyNightCard()
         case "goals": goalsCard
         default: EmptyView()

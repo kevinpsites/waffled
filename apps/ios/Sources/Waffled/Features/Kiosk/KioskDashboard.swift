@@ -22,6 +22,10 @@ struct KioskDashboard: View {
     var openGoal: (WaffledAPI.Goal) -> Void = { _ in }
 
     @State private var model = KioskTodayModel()
+    /// The Rhythms card's data lives here rather than inside the card — see the note on
+    /// `RhythmsTodayCard.model`. A card that renders nothing when it has nothing can't be
+    /// trusted to fetch its own contents.
+    @State private var rhythms = RhythmsModel()
     @State private var recipes = RecipesModel()
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
@@ -98,6 +102,11 @@ struct KioskDashboard: View {
         .task(id: "\(tz.identifier)|\(sync.mealsRev)") { await model.loadMeals(todayKey: todayKey) }
         .task(id: "\(tz.identifier)|\(sync.groceryRev)") { await model.loadGrocery() }
         .task(id: tz.identifier) { await model.loadWeather() }
+        // Lives on the page, which always renders, rather than on the card, which does not.
+        .task(id: "\(sync.refreshRev)|\(sync.modulesRev)") {
+            guard sync.module(.rhythms) else { return }
+            await rhythms.loadAttention()
+        }
         .task(id: sync.goalsRev) {
             await model.loadGoals()
             // Headless check of the card-tap wiring: launched onto Today with
@@ -296,7 +305,7 @@ struct KioskDashboard: View {
             if sync.module(.pantry) { PantryTodayCard(kiosk: true) { navigate(.pantry) } }
             // Rhythms (shared card; it renders nothing when the register is quiet, which is
             // most days — same rule as the web card).
-            if sync.module(.rhythms) { RhythmsTodayCard(kiosk: true) { navigate(.rhythms) } }
+            if sync.module(.rhythms) { RhythmsTodayCard(kiosk: true, model: rhythms) { navigate(.rhythms) } }
         }
     }
 
