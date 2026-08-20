@@ -174,6 +174,48 @@ test('the paused rhythm reads as paused and offers no period actions', async ({ 
   await expect(row.getByRole('button', { name: /^Resume / })).toBeVisible()
 })
 
+test('the backdate row fits the register at the narrow grid minimum', async ({ page }) => {
+  // The completion row's action strip gained a fifth control ("Log it for another day")
+  // and can now open a date field beneath it. Both are the sort of thing that lays out
+  // fine at desktop width and falls apart at the 300px grid minimum.
+  await signIn(page)
+  await page.setViewportSize({ width: 380, height: 900 })
+  await page.goto('/rhythms')
+  const row = page.locator('.rhy-item', { hasText: 'Air filter' })
+  await expect(row).toBeVisible()
+  await row.getByRole('button', { name: /log it for another day/i }).click()
+
+  await expect(row.locator('.rhy-backdate')).toBeVisible()
+  await expect(row.getByRole('button', { name: /^Log it$/ })).toBeVisible()
+  await page.screenshot({ path: 'test-results/rhythms-backdate-narrow.png', fullPage: true })
+
+  const overflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth
+  )
+  expect(overflow).toBeLessThanOrEqual(0)
+})
+
+test('the editor picks a repeat day with chips rather than an RRULE box', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/rhythms')
+  await page.getByRole('button', { name: 'New rhythm' }).click()
+  const card = page.locator('.modal-card')
+  await card.getByRole('button', { name: /it gets scheduled/i }).click()
+  await card.getByLabel('Put it on the calendar automatically').click()
+
+  // Seven day chips, rendered — not a text field asking for FREQ=…
+  // `exact` matters: Playwright's accessible-name match is a substring by default, and
+  // "WE" is inside "It gets scheduled Done when…" on the shape picker above.
+  await expect(card.getByRole('button', { name: 'WE', exact: true })).toBeVisible()
+  await page.screenshot({ path: 'test-results/rhythms-editor-repeat.png', fullPage: false })
+
+  // The raw rule is still reachable, just not the first thing asked.
+  await expect(card.getByText(/advanced \(raw rrule\)/i)).toBeVisible()
+
+  const overflow = await card.evaluate((el) => el.scrollWidth - el.clientWidth)
+  expect(overflow).toBeLessThanOrEqual(0)
+})
+
 test('the editor explains the anchor instead of offering to move it', async ({ page }) => {
   await signIn(page)
   await page.goto('/rhythms')
