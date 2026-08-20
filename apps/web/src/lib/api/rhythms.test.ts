@@ -108,8 +108,14 @@ describe('splitCadence', () => {
 describe('intervalDays', () => {
   it('turns a runway into whole days for the form', () => {
     expect(intervalDays('14 days')).toBe(14)
-    // The clamp's half-week runway rounds rather than truncating to 3.
-    expect(intervalDays('3 days 12:00:00')).toBe(4)
+    // The clamp's half-week runway truncates. Rounding it up to 4 put the field above
+    // the cap the same helper computes (floor(7/2) = 3), so opening an untouched weekly
+    // rhythm showed "4" over a sentence reading "you'll be nudged for the last 3 days …
+    // (4 days won't fit in a week)" — a trim warning about a number the user never typed.
+    expect(intervalDays('3 days 12:00:00')).toBe(3)
+    // A minute tail can't push it over either; iOS drops minutes entirely and both land
+    // on the same whole day.
+    expect(intervalDays('3 days 12:30:00')).toBe(3)
     expect(intervalDays('')).toBe(0)
   })
 })

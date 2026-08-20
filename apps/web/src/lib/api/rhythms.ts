@@ -208,11 +208,19 @@ export function splitCadence(every: string): { count: number; unit: CadenceUnit 
   return { count: 1, unit: 'weeks' }
 }
 
-/** A runway in whole days, for the form's number input. Rounds the clamp's half-days up. */
+/**
+ * A runway in whole days, for the form's number input — and for the cap below.
+ *
+ * Truncates, deliberately. Serving both callers is what forces it: the cap is
+ * `floor(intervalDays(every) / 2)`, so rounding a half-day up could put the field above a
+ * ceiling derived from this very helper. A weekly rhythm stored at the clamped `3 days
+ * 12:00:00` then opened showing "4" above a sentence reading "the last 3 days … (4 days
+ * won't fit in a week)" — the form warning that it had trimmed a number nobody typed.
+ */
 export function intervalDays(leadTime: string): number {
   const p = parseInterval(leadTime ?? '')
   const days = p.year * 365 + p.mon * 30 + p.week * 7 + p.day + p.hour / 24 + p.min / 1440
-  return Math.round(days)
+  return Math.trunc(days)
 }
 
 /**
