@@ -18,21 +18,16 @@ struct RhythmsView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        Group {
-            if !model.listLoaded {
-                WaffledLoading()
-            } else if model.rhythms.isEmpty {
-                WaffledEmptyState(
-                    emoji: "🔁",
-                    title: model.listFailed ? "Couldn’t load your rhythms" : "Nothing here yet",
-                    message: model.listFailed
-                        ? "Check your connection and pull to refresh."
-                        : "A rhythm is a standing intention with a cadence — trash weekly, the air filter every three months, a temple visit each quarter.")
-            } else {
-                list
-            }
-        }
-        .background(WF.canvas)
+        // Every state lives inside the one List rather than swapping the List out for a
+        // bare view. Two things were wrong with swapping:
+        //
+        //  • The empty state sized itself to its own content, so `.background(WF.canvas)`
+        //    painted a beige band across the middle of an otherwise white screen instead
+        //    of the page.
+        //  • `.refreshable` was attached to the list, so the state whose message read
+        //    "pull to refresh" was the one state that had no pull-to-refresh.
+        list
+            .background(WF.canvas)
         .navigationTitle("Rhythms")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -73,6 +68,27 @@ struct RhythmsView: View {
 
     private var list: some View {
         List {
+            if !model.listLoaded {
+                WaffledLoading().plainRow()
+            } else if model.rhythms.isEmpty {
+                // A failed load and an empty household are NOT the same statement, so they
+                // don't share a message. "Nothing here yet" is a claim about the household;
+                // a request that didn't come back is no evidence for it.
+                WaffledEmptyState(
+                    emoji: model.listFailed ? "😕" : "🔁",
+                    title: model.listFailed ? "Couldn’t load your rhythms" : "Nothing here yet",
+                    message: model.listFailed
+                        ? "Check your connection and pull to refresh. If Rhythms was just switched off in Settings → Modules, that would do it too."
+                        : "A rhythm is a standing intention with a cadence — trash weekly, the air filter every three months, a temple visit each quarter.")
+                    .plainRow()
+            } else if model.listFailed {
+                // Rows we already had, plus an honest note that they may now be stale —
+                // rather than silently presenting old data as current.
+                Text("Showing what loaded last — the latest fetch didn’t come back.")
+                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                    .padding(.horizontal, 20).padding(.vertical, 6)
+                    .plainRow()
+            }
             if !model.scheduling.isEmpty {
                 Section {
                     ForEach(model.scheduling) { row($0) }
@@ -89,10 +105,22 @@ struct RhythmsView: View {
                            "The clock restarts from when you actually did it, so being late shifts the next one instead of stacking misses.")
                 }
             }
+            // AppRoot stacks the tab bar OVER the content, so SwiftUI reserves nothing for
+            // it and the last row sits underneath, unreachable however far you scroll —
+            // which is what made the bottom of this register impossible to get to. The
+            // same trap that once left the pantry item's Edit button untappable.
+            // `bottomBarClearance`, not `tabBarClearance`: the iPad kiosk has no bottom bar
+            // and shouldn't get 110pt of dead space.
+            Color.clear
+                .frame(height: WF.bottomBarClearance)
+                .plainRow()
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(WF.canvas)
+        // Bounce even when the list is short or empty, so pull-to-refresh still triggers —
+        // otherwise the failed state can't reach the gesture its own message asks for.
+        .scrollBounceBehavior(.always)
         .refreshable {
             // The module flags too, so a register left open after someone turned Rhythms
             // off elsewhere finds out on the next pull rather than only when its requests

@@ -530,6 +530,69 @@ struct RhythmsModuleTests {
     }
 }
 
+/// "Nothing here yet" is a CLAIM, and a failed request is not evidence for it.
+///
+/// `loadAll` only ever set `listFailed` on the very first load, so any failure after one
+/// success was indistinguishable from an empty register — which is what turned "the
+/// Rhythms module was switched off, so these requests now 403" into the confident and
+/// wrong "A rhythm is a standing intention with a cadence…" onboarding copy. The same
+/// principle the attention loader already follows: keep what was on screen, but never
+/// invent a fact about the household from a dropped connection.
+@MainActor
+@Suite("Register load failures")
+struct RhythmRegisterFailureTests {
+    @Test("A failure after a good load is still reported as a failure")
+    func failureAfterSuccessIsReported() async {
+        let feed = RhythmFeed(all: [rhythm(id: "a")])
+        let model = feed.model()
+        await model.loadAll()
+        #expect(!model.listFailed)
+
+        feed.attentionFails = true
+        await model.loadAll()
+        #expect(model.listFailed)
+    }
+
+    @Test("…and the rows that were already on screen stay there")
+    func failureKeepsTheRows() async {
+        let feed = RhythmFeed(all: [rhythm(id: "a")])
+        let model = feed.model()
+        await model.loadAll()
+        feed.attentionFails = true
+        await model.loadAll()
+
+        #expect(model.rhythms.map(\.id) == ["a"])
+    }
+
+    /// A rhythm anchored in the future has no current period yet, because the server tiles
+    /// the grid from `startsOn` up to now. The row used to fall through to "Not on the
+    /// calendar yet" — which, once creating an auto-scheduled rhythm books its series
+    /// immediately, is a statement the calendar flatly contradicts.
+    @Test("A rhythm whose periods haven't started says so, rather than 'not on the calendar'")
+    func notYetStarted() {
+        let future = rhythm(id: "f", satisfiedBy: .scheduling, startsOn: "2027-03-01",
+                            autoSchedule: true, rrule: "FREQ=WEEKLY;BYDAY=MO",
+                            currentPeriodStart: nil, currentPeriodEnd: nil, satisfied: false)
+        let lines = RhythmsModel.detailLines(for: [future], now: at("2026-08-19T12:00:00"), calendar: utcCal)
+        #expect(lines["f"] == "Periods start Mar 1, 2027")
+        #expect(!(lines["f"] ?? "").contains("Not on the calendar"))
+    }
+
+    @Test("A recovered load clears the failure")
+    func recoveryClearsIt() async {
+        let feed = RhythmFeed(all: [rhythm(id: "a")])
+        let model = feed.model()
+        feed.attentionFails = true
+        await model.loadAll()
+        #expect(model.listFailed)
+
+        feed.attentionFails = false
+        await model.loadAll()
+        #expect(!model.listFailed)
+        #expect(model.rhythms.map(\.id) == ["a"])
+    }
+}
+
 /// A completion tap has to be visible on the row it happened on.
 ///
 /// The register's detail line is "Last done <date> · Next due <date>". Complete a rhythm

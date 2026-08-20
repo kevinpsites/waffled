@@ -282,12 +282,22 @@ final class RhythmsModel {
         loaded = true
     }
 
+    /// Reload the register. A failure keeps whatever was already on screen — a dropped
+    /// connection is not a reason to blank rows that are still true — but it is ALWAYS
+    /// reported, including after an earlier success.
+    ///
+    /// It used to only be reported on the very first load, which made every later failure
+    /// indistinguishable from an empty household: switch the Rhythms module off and the
+    /// next fetch 403s, so a register full of rhythms redrew itself as the "Nothing here
+    /// yet" onboarding copy. "You have no rhythms" is a claim about the household, and a
+    /// failed request is no evidence for it.
     func loadAll() async {
-        if let all = try? await fetchRhythms() {
+        do {
+            let all = try await fetchRhythms()
             rhythms = all
             detailLines = Self.detailLines(for: all, now: now())
             listFailed = false
-        } else if !listLoaded {
+        } catch {
             listFailed = true
         }
         listLoaded = true
@@ -376,6 +386,16 @@ final class RhythmsModel {
             case .scheduling:
                 // Never "last done" — whether it happened is deliberately not tracked. The
                 // only question is whether this period has something on the calendar.
+                //
+                // No current period means the grid hasn't started: the server tiles periods
+                // from `startsOn` up to now, so a rhythm anchored in the future has none
+                // yet. Saying "Not on the calendar yet" there was flatly wrong for an
+                // auto-scheduled rhythm whose series was booked the moment it was created —
+                // the calendar has it, the period just hasn't come round. Say that instead.
+                if r.currentPeriodStart == nil, let start = r.startsOn {
+                    out[r.id] = "Periods start \(RhythmFormat.shortDate(start, calendar: calendar))"
+                    continue
+                }
                 var line = (r.satisfied ?? false) ? "On the calendar for this period" : "Not on the calendar yet"
                 if let end = r.currentPeriodEnd, !(r.satisfied ?? false) {
                     let window = RhythmFormat.periodLabel(end, now: now, calendar: calendar)
