@@ -8,6 +8,7 @@ import SwiftUI
 /// open as sheets. See `apps/ios/IPAD_ROADMAP.md`.
 struct KioskDashboard: View {
     @Environment(SyncManager.self) private var sync
+    @Environment(\.scenePhase) private var scenePhase
     /// Cook Mode is presented app-level (from `RootView`) off this store. Because this
     /// page opens the recipe as a `.fullScreenCover`, that root cover would otherwise
     /// queue behind it — so we dismiss the recipe cover the moment a cook starts.
@@ -114,6 +115,14 @@ struct KioskDashboard: View {
         // Day rollover on the always-on display: sleep to just past each
         // household-tz midnight, then refetch the day-scoped domains so the wall
         // iPad doesn't keep showing yesterday's dinner and chores.
+        //
+        // This is the wall's *only* unattended refresh, so it has to cover everything a
+        // pull-to-refresh covers on the phone — hence `refreshRestSurfaces`. The page has
+        // no pull gesture and can't have one: it's three side-by-side columns, each
+        // owning its own scroll, so there's no single container for `.refreshable` to
+        // hang off. Without this the self-loading REST cards (countdowns, pantry,
+        // rhythms, family night) held launch-time data until someone restarted the app —
+        // a rhythm completed on a phone in the morning still read as due that evening.
         .task(id: tz.identifier) {
             while !Task.isCancelled {
                 let wait = Agenda.secondsUntilNextDay(after: Date(), tz: tz)
@@ -121,7 +130,21 @@ struct KioskDashboard: View {
                 guard !Task.isCancelled else { return }
                 async let c: () = model.loadChores()
                 async let m: () = model.loadMeals(todayKey: todayKey)
-                _ = await (c, m)
+                async let r: () = sync.refreshRestSurfaces()
+                _ = await (c, m, r)
+            }
+        }
+        // A wall iPad does get woken — the screen locks, someone taps it, the app comes
+        // back to active. That's the closest thing to a deliberate refresh anyone can
+        // perform here, so treat it like the phone's: reload the REST cards and the
+        // module flags, not just the day-scoped domains.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task {
+                async let c: () = model.loadChores()
+                async let m: () = model.loadMeals(todayKey: todayKey)
+                async let r: () = sync.refreshRestSurfaces()
+                _ = await (c, m, r)
             }
         }
         // Pinned-banner queues: approvals refresh on chore/reward actions; the review
