@@ -36,9 +36,11 @@ export function buildId(version: string, assetFilenames: string[]): string {
     throw new Error('sw-stamp: no built files to derive a build id from')
   }
   const hash = createHash('sha256')
-    // Sorted because Rollup's emission order carries no meaning, and an unstable id
-    // would purge a perfectly good cache on every rebuild.
-    .update([...assetFilenames].sort().join('\n'))
+    // Sorted because Rollup's emission order carries no meaning, and deduplicated
+    // because the plugin accumulates across outputs and can be handed the same name
+    // twice. Either would otherwise purge a perfectly good cache on a rebuild that
+    // changed nothing.
+    .update([...new Set(assetFilenames)].sort().join('\n'))
     .digest('hex')
     .slice(0, 8)
   return `waffled-${version}-${hash}`

@@ -25,10 +25,16 @@ function stampServiceWorkerPlugin(): Plugin {
       root = config.root
       outDir = config.build.outDir
     },
+    buildStart() {
+      // Reset per build, because the array accumulates and one plugin instance can
+      // see more than one build (vite build --watch). Carrying the previous build's
+      // filenames over would stamp output that no longer exists.
+      assetFilenames.length = 0
+    },
     writeBundle(_options, bundle) {
-      // Accumulate: a second Rollup output (a worker build, say) would otherwise
-      // replace the app's file list wholesale and the stamp would quietly stop
-      // tracking the app.
+      // Accumulate within a build: a second Rollup output (a worker build, say)
+      // would otherwise replace the app's file list wholesale and the stamp would
+      // quietly stop tracking the app.
       assetFilenames.push(...Object.keys(bundle))
     },
     closeBundle() {

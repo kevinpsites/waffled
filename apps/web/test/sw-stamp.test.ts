@@ -38,6 +38,16 @@ describe('service worker build stamp', () => {
     expect(reordered).toEqual(a)
   })
 
+  it('is unmoved by the same file being listed twice', () => {
+    // The plugin accumulates filenames across Rollup outputs, so a flow where one
+    // plugin instance sees two builds (vite build --watch) hands the same names in
+    // again. Counting them twice would move the stamp for byte-identical output and
+    // purge every display's cache on a rebuild that changed nothing — the opposite
+    // of what the hash is for.
+    const files = ['assets/index-aaa.js', 'assets/Today-bbb.js']
+    expect(buildId('0.13.0', [...files, ...files])).toEqual(buildId('0.13.0', files))
+  })
+
   it('carries the release version so a kiosk can be identified from its cache names', () => {
     // The version alone can't be the whole id — it stays 0.13.0 across every rebuild
     // between releases, including `docker compose up --build` off main — but it is
