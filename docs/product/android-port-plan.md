@@ -30,6 +30,28 @@ contradict the obvious defaults. Bake them into Phase 0.
 **Package / app id:** `app.waffled` on iOS. Android must use a dotted id — a bare
 segment fails manifest merging.
 
+### 0.1 ⚠️ Reaching the server — solve this once, centrally
+
+**`localhost:8080` from an Android emulator is the emulator itself.** This is the single
+most likely way to burn a whole parallel wave, so it is closed in Phase 0, not discovered
+eighteen times.
+
+- **The host Caddy origin is `http://10.0.2.2:8080` from the emulator**, and the Mac's
+  **LAN IP** from a physical phone. So the Android `AppConfig` debug default **must not be
+  `http://localhost:8080`** (the iOS default) — use `10.0.2.2:8080`.
+- **PowerSync fails independently of REST.** `fetchCredentials` returns a `powerSyncUrl`
+  *issued by the server*; if the stack advertises a `localhost` `POWERSYNC_PUBLIC_URL`,
+  REST will work and sync will silently sit at "Offline". `POWERSYNC_PUBLIC_URL` must
+  resolve from the device. This is the same trap already recorded for iPad-on-LAN.
+- **Cleartext**: the server address is user-editable at runtime, so we cannot enumerate
+  domains in `network_security_config.xml`. See the decision in §7.5.
+- **The stack itself**: `./waffled up` must be run from `~/dev/nook`, **never from a
+  worktree** — compose bind mounts bake the working directory into the running stack, and
+  deleting the worktree later breaks it.
+
+> **Phase 0 exit criterion:** the reference feature loads real data from the running stack
+> on the emulator, **and** PowerSync reports `connected`. Not "it compiles".
+
 ---
 
 ## 1. What we are porting
@@ -315,6 +337,9 @@ export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
 export PATH="$ANDROID_HOME/platform-tools:$PATH"
 ```
 
+And, if the agent needs a live stack: **run `./waffled up` from `~/dev/nook`, never from
+the worktree** (§0.1). Point the app at `http://10.0.2.2:8080`, not `localhost`.
+
 **Do not** put feature agents in one shared worktree — parallel Gradle invocations fight
 over `.gradle/` locks and `build/`.
 
@@ -429,6 +454,10 @@ Both were learned the hard way on iOS and are written into `apps/ios/CLAUDE.md`:
 Nothing fans out until this is committed and pushed to `android-port`. It must contain
 **everything two agents would otherwise both write**.
 
+0. Create the **`android-port`** integration branch off `main` and land this plan doc on
+   it (see §3.2). Add the Android `.gitignore` entries — `build/`, `.gradle/`,
+   `local.properties`, `*.apk` — **before** any agent runs, or every one of them commits
+   build output.
 1. Gradle scaffold, version catalog, wrapper pinned to 9.6.1, module skeleton,
    `local.properties` bootstrap documented.
 2. **Design system ported and frozen** — every token in §2.2, all 17 components, the
@@ -448,17 +477,28 @@ Nothing fans out until this is committed and pushed to `android-port`. It must c
 7. **Module + capability gates** (§2.3).
 8. **The phone shell** — the 5-slot bar with the flex module slot and centred FAB, five
    nav stacks, the `HubRoute` destination renderer (~32 cases), the approvals badge.
-9. **Server-address setting + cleartext traffic.** Waffled is self-hosted; the server URL
-   is user-editable at runtime (default `http://localhost:8080`). iOS uses
-   `NSAllowsLocalNetworking`; Android needs a matching network-security config or LAN
-   stacks won't connect.
+9. **Server-address setting + reachability** (§0.1) — user-editable server URL, debug
+   default `http://10.0.2.2:8080`, cleartext policy per §7.5, and a verified
+   `POWERSYNC_PUBLIC_URL` that resolves from the device.
 10. **One reference feature, complete** — recommend **Photos (991 LOC)**: small, and it
     exercises REST + `RestDomain` + grid + detail + upload + Coil caching. It becomes the
     pattern every agent copies.
 
-### Phase 1 — Wave A (5 agents, parallel) 🚧
+> **Exit criteria — both, not just the first:** everything builds and tests pass; **and**
+> Photos renders real data from the running stack on the emulator with PowerSync reporting
+> `connected`.
+
+### Phase 1 — Wave A (1 pilot agent, then 4 parallel) 🚧
 
 Smaller features that pin down the patterns, plus the only offline one.
+
+**Pilot first.** Phase 0 validates the *code* pattern, but I build it myself — so the
+delegation contract in §3.3/§3.4 is completely untested until an agent runs it. Launch
+**one** agent (`android/today`, 948 LOC) alone and inspect what comes back: did it stay
+inside its module, did it touch `libs.versions.toml`, did it hit the SDK-path trap, did it
+stop-and-report on a missing token or invent one. Fix the prompt, *then* fan out the
+remaining four. This is the one failure mode the architecture doesn't already defend
+against.
 
 | Agent | Scope | LOC |
 |---|---|---:|
@@ -567,6 +607,19 @@ so it can be dropped from the PR without disturbing anything earlier if you want
 the phone app sooner.
 
 ---
+
+### 7.5 Cleartext HTTP in release builds
+
+Waffled is self-hosted and the server address is typed by the user at runtime — very often
+a raw LAN IP over plain HTTP. We therefore cannot enumerate domains in
+`network_security_config.xml` the way a normal app would, and iOS sidesteps this with
+`NSAllowsLocalNetworking`.
+
+**Recommendation: `cleartextTrafficPermitted="true"` in debug; for release, permit
+cleartext only for private address ranges** (RFC1918 + `.local`) and require HTTPS
+otherwise. That keeps LAN self-hosting working without silently downgrading a public
+`demo.waffled.app`-style deployment. Flagging it here because it is a security-relevant
+default, not a detail to settle in Phase 5.
 
 ## 8. Effort shape
 
