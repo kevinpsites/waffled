@@ -1,0 +1,89 @@
+package app.waffled.core.sync
+
+import app.waffled.core.model.WaffledDates
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+
+/**
+ * One row from the synced `events` (or `event_occurrences`) table.
+ *
+ * Values are stored loosely in SQLite — text and integers — so booleans arrive as 0/1
+ * and every timestamp is a string.
+ */
+data class SyncedEvent(
+    val id: String,
+    val householdId: String,
+    val title: String,
+    val startsAt: String?,
+    val endsAt: String? = null,
+    val allDay: Boolean = false,
+    val isCountdown: Boolean = false,
+    val location: String? = null,
+    val description: String? = null,
+    val personId: String? = null,
+    val calendarId: String? = null,
+    val goalId: String? = null,
+    val goalStepId: String? = null,
+    /** null / `waffled` / `google` / `microsoft` / `ics` — the last is READ-ONLY. */
+    val origin: String? = null,
+    val originRefId: String? = null,
+    /** Non-null marks a recurring master; its occurrences render instead. */
+    val rrule: String? = null,
+    /** `family` (shared) | `personal` (only [ownerPersonId] sees it). */
+    val visibility: String? = null,
+    val ownerPersonId: String? = null,
+    val timezone: String? = null,
+    val status: String? = null,
+    val updatedAt: String? = null,
+) {
+    /** An event from a subscribed feed cannot be edited here. */
+    val isReadOnly: Boolean get() = origin == "ics"
+}
+
+/**
+ * Per-viewer visibility.
+ *
+ * PowerSync streams the whole household to every device — the server does not filter per
+ * viewer — so the CLIENT must, or a personal event appears on the shared kitchen tablet.
+ */
+object EventVisibility {
+
+    private const val PERSONAL = "personal"
+
+    fun isVisible(event: SyncedEvent, viewerPersonId: String?): Boolean {
+        // Anything not explicitly personal is family — older rows predate the column, and
+        // defaulting those to hidden would make real events silently vanish.
+        if (!event.visibility.equals(PERSONAL, ignoreCase = true)) return true
+
+        // Marked personal but unowned: malformed. Hide rather than leak.
+        val owner = event.ownerPersonId ?: return false
+        return viewerPersonId != null && owner == viewerPersonId
+    }
+
+    fun visible(events: List<SyncedEvent>, viewerPersonId: String?): List<SyncedEvent> =
+        events.filter { isVisible(it, viewerPersonId) }
+}
+
+/**
+ * Day bucketing.
+ *
+ * ⚠️ Buckets in the HOUSEHOLD's timezone, never UTC — an evening event would otherwise
+ * land on tomorrow.
+ *
+ * This is deliberately an eager, precomputed map rather than something recomputed while
+ * rendering: date math in a sort/filter hot path is one of the two documented jank
+ * sources carried over from iOS.
+ */
+object EventBucketing {
+
+    fun byDay(events: List<SyncedEvent>, zone: ZoneId): Map<LocalDate, List<SyncedEvent>> {
+        val withInstant = events.mapNotNull { e ->
+            val at: Instant = WaffledDates.parseInstant(e.startsAt, zone) ?: return@mapNotNull null
+            at to e
+        }
+        return withInstant
+            .sortedBy { it.first }
+            .groupBy({ WaffledDates.localDay(it.first, zone) }, { it.second })
+    }
+}
