@@ -58,6 +58,10 @@ fun FeatureHost(
             modifier = modifier.then(bottom),
         )
 
+        // TEMPORARY: composes the goal charts before the Goals feature lands, so the
+        // drawing can be looked at. Removed once Goals owns this route.
+        WaffledModule.Meals.key -> GoalChartPreview(modifier = modifier.then(bottom))
+
         "rewards" -> RewardsScreen(
             model = container.rewardsModel,
             me = viewer,

@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -59,8 +60,10 @@ fun WaffledTextField(
         Box(
             Modifier
                 .fillMaxWidth()
+                .heightIn(min = minHeight)
                 .wfField()
                 .padding(horizontal = 12.dp, vertical = 10.dp),
+            contentAlignment = androidx.compose.ui.Alignment.CenterStart,
         ) {
             BasicTextField(
                 value = value,

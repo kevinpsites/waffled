@@ -23,7 +23,7 @@ android {
             applicationIdSuffix = ".debug"
             // The emulator reaches the host Caddy at 10.0.2.2 — "localhost" from
             // an emulator is the emulator itself.
-            buildConfigField("String", "DEFAULT_SERVER_URL", "\"http://10.0.2.2:8080\"")
+            buildConfigField("String", "DEFAULT_SERVER_URL", "\"http://10.0.2.2:8081\"")
         }
         release {
             isMinifyEnabled = true
@@ -60,6 +60,7 @@ dependencies {
     implementation(project(":feature:today"))
     implementation(project(":feature:calendar"))
     implementation(project(":feature:lists"))
+    implementation(project(":feature:goalcharts"))
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)

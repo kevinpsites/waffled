@@ -86,8 +86,10 @@ Every one of these exists because a feature would otherwise hand-roll it N times
 | Telling screens to re-fetch after a write | `RefreshBus.bump(domain)` |
 | Server error text | `ApiErrorText.from(body, status)` — relay the server, don't guess |
 | HTTP client / auth | `WaffledHttp.client(tokens, server)`, `WaffledAuth` (implements `TokenProvider`) |
-| Dates | `WaffledDates` — `parseInstant`, `localDay(zone)`, cached `formatter`, `noonIso` |
-| API tests | `ApiTestHarness` in `core:testing` — MockWebServer + token/server fakes |
+| Dates | `WaffledDates` (in **`core:model`**) — `parseInstant`, `localDay(zone)`, cached `formatter`, `noonIso` |
+| API tests | `ApiTestHarness` in `core:testing` — MockWebServer + token/server fakes; `enqueueNoContent()` for 204s |
+| Segmented control | `SegmentedRow` |
+| Household week start | `SyncManager.householdWeekStart` — the SERVER owns this; never compute one |
 
 **`refreshAccessToken(failedToken)` takes the token the failed request actually sent.**
 Pass it. That is what stops a staggered 401 from burning a second rotation of a

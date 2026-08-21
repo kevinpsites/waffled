@@ -124,15 +124,24 @@ class SyncManager(
      */
     private fun watchHousehold(db: PowerSyncDatabase) {
         scope.launch {
-            // The mapper must return a non-null row type, so absent reads as "".
-            db.watch<String>("SELECT timezone FROM households LIMIT 1") { cursor ->
-                cursor.columnNames["timezone"]?.let { cursor.getString(it) }.orEmpty()
+            // Read BOTH household settings the clients need. week_start was missing
+            // here even though it is in the synced schema, which forced the meals
+            // planner to take it as a screen parameter.
+            db.watch<Pair<String, String>>(
+                "SELECT timezone, week_start FROM households LIMIT 1",
+            ) { cursor ->
+                val cols = cursor.columnNames
+                val tz = cols["timezone"]?.let { cursor.getString(it) }.orEmpty()
+                val ws = cols["week_start"]?.let { cursor.getString(it) }.orEmpty()
+                tz to ws
             }
                 .catch { }
                 .collect { rows ->
-                    val tz = rows.firstOrNull().orEmpty()
-                    if (tz.isEmpty()) return@collect
-                    runCatching { ZoneId.of(tz) }.getOrNull()?.let { setHouseholdZone(it) }
+                    val (tz, weekStart) = rows.firstOrNull() ?: return@collect
+                    if (tz.isNotEmpty()) {
+                        runCatching { ZoneId.of(tz) }.getOrNull()?.let { setHouseholdZone(it) }
+                    }
+                    if (weekStart.isNotEmpty()) _householdWeekStart.value = weekStart
                 }
         }
     }
@@ -171,6 +180,21 @@ class SyncManager(
         _currentPersonId.value = personId
         derived.setViewer(personId)
     }
+
+    private val _householdWeekStart = MutableStateFlow<String?>(null)
+
+    /**
+     * The household's first day of week, straight from the synced `households` row.
+     *
+     * ⚠️ The **server owns this boundary** — a client-computed week start caused the
+     * PlanMonth grocery-rebuild bug, where the rebuild covered only week 1 and silently
+     * stranded rows. Never derive one locally.
+     *
+     * `null` means "not known yet", which callers must treat as *unknown*, not as a
+     * default: guessing Sunday for a Monday household leaves a week of shopping unbuilt,
+     * whereas handling unknown explicitly stays correct.
+     */
+    val householdWeekStart: StateFlow<String?> = _householdWeekStart.asStateFlow()
 
     private val _householdZone = MutableStateFlow(ZoneId.systemDefault())
 

@@ -1,6 +1,7 @@
 package app.waffled.core.design
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -228,8 +229,11 @@ fun WaffledTheme(
     content: @Composable () -> Unit,
 ) {
     val colors = if (darkTheme) DarkColors else LightColors
-    CompositionLocalProvider(
-        LocalWaffledColors provides colors,
-        content = content,
-    )
+    CompositionLocalProvider(LocalWaffledColors provides colors) {
+        // Material3 components draw their OWN container from MaterialTheme.colorScheme —
+        // menus, sheets, dialogs, pickers. Left at the default, a menu opened over a dark
+        // screen with a near-white surface and unreadable text. Bridging our tokens into
+        // the M3 scheme fixes every such component at once; see MaterialBridge.
+        MaterialTheme(colorScheme = colors.toMaterialScheme(), content = content)
+    }
 }
