@@ -451,7 +451,41 @@ Both were learned the hard way on iOS and are written into `apps/ios/CLAUDE.md`:
 
 ## 6. Phases
 
-### Phase 0 — foundation (serial, no agents) 🚧
+### Phase 0 — foundation (serial, no agents) 🟡 in progress
+
+**Done and on `android-port` (72 tests green, app runs on the emulator):**
+
+| ✅ | Item |
+|---|---|
+| ✅ | Gradle scaffold, 8 modules, version catalog, wrapper pinned, `.gitignore` |
+| ✅ | **Design system ported and FROZEN** — every token, 17 components, chrome modifiers, `WaffledIcons`, DayNight; locked by `ThemeTokensTest` |
+| ✅ | `core:model` — `Person`, `Household`, module catalog, capabilities |
+| ✅ | `ServerUrl` + the §7.5 cleartext policy, enforced in Kotlin and tested |
+| ✅ | `RestDomain`, `ApiErrorText`, `RefreshBus` (the `*Rev` replacement) |
+| ✅ | Ktor client + `TokenProvider` seam + 401-retry unwrap |
+| ✅ | `TokenRefresher` — single-flight, proven with 20 concurrent callers |
+| ✅ | PowerSync schema + `SyncSchemaParityTest`; `WaffledConnector` against the real 1.14.1 API |
+| ✅ | Module + capability gates |
+| ✅ | Phone shell — flex-slot tab bar with the raised FAB, `FlexSlot` logic |
+| ✅ | `apps/android/CLAUDE.md` |
+| ✅ | **Server reachability proven end-to-end** on the emulator (`10.0.2.2:8080` → HTTP 401) |
+
+**Still outstanding before the fan-out starts:**
+
+| 🚧 | Item | Why it matters |
+|---|---|---|
+| 🚧 | **Encrypt the token store** | `AppContainer` currently uses plain SharedPreferences — marked loudly in code. Keystore AES-GCM. |
+| 🚧 | Login + OIDC via Custom Tabs, `Session` state machine | Nothing can load real data without it |
+| 🚧 | `SyncManager` — open the PowerSync DB, connect, expose members/events/status | Calendar (Wave A) depends on it |
+| 🚧 | The first `…Api.kt` slice + `core:testing` MockWebServer harness | The pattern every agent copies |
+| 🚧 | Reference feature (Photos) | The worked example |
+| 🚧 | Splash / launcher icon | Cosmetic |
+
+> **Exit criterion restated:** not "it compiles" — Photos must render real data from the
+> running stack with PowerSync reporting `connected`. Reachability is proven; the data
+> path is not yet.
+
+#### Original checklist
 
 Nothing fans out until this is committed and pushed to `android-port`. It must contain
 **everything two agents would otherwise both write**.

@@ -67,7 +67,7 @@ class MainActivity : ComponentActivity() {
                 darkTheme = forcedDark
                     ?: androidx.compose.foundation.isSystemInDarkTheme(),
             ) {
-                AppRoot()
+                AppRoot(container)
             }
         }
     }
@@ -80,10 +80,16 @@ class MainActivity : ComponentActivity() {
  * feature content still to come. Each Wave A agent replaces one tab's body.
  */
 @Composable
-private fun AppRoot() {
+private fun AppRoot(container: AppContainer) {
     // Before the household's module flags arrive, catalog defaults apply so the bar
     // doesn't flash empty.
     val gate = remember { ModuleGate(loaded = false) }
+
+    // Phase 0 exit criterion: prove the app can actually reach the configured server.
+    var probe by remember { mutableStateOf<ServerProbe.Result?>(null) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        probe = ServerProbe(container.serverAddress, AnonymousTokens).check()
+    }
     val tabs = remember(gate) { FlexSlot.tabs(gate) }
     var selected by remember { mutableStateOf(tabs.first()) }
 
@@ -113,6 +119,35 @@ private fun AppRoot() {
             )
 
             AICaptureBar()
+
+            SectionLabel("Server")
+
+            WaffledCard {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = container.serverAddress.baseUrl(),
+                        style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                        color = WF.colors.ink,
+                    )
+                    when (val p = probe) {
+                        null -> Text(
+                            text = "Checking…",
+                            style = TextStyle(fontSize = 13.sp),
+                            color = WF.colors.ink3,
+                        )
+                        is ServerProbe.Result.Reached -> Text(
+                            text = "HTTP ${p.status} — ${p.note}",
+                            style = TextStyle(fontSize = 13.sp),
+                            color = WF.colors.success,
+                        )
+                        is ServerProbe.Result.Unreachable -> Text(
+                            text = "Unreachable — ${p.error}",
+                            style = TextStyle(fontSize = 13.sp),
+                            color = WF.colors.danger,
+                        )
+                    }
+                }
+            }
 
             SectionLabel("Design system")
 
