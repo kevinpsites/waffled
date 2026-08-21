@@ -42,7 +42,7 @@ class TokenRefresherTest {
         val refresher = TokenRefresher(store(TokenPair("access-1", "refresh-1")), backend)
 
         // Twenty screens all get a 401 at once.
-        val results = (1..20).map { async { refresher.refresh() } }.awaitAll()
+        val results = (1..20).map { async { refresher.refresh("access-1") } }.awaitAll()
 
         assertEquals(1, backend.calls.get(), "refresh must be single-flight")
         assertTrue(results.all { it?.accessToken == "access-2" })
@@ -53,7 +53,7 @@ class TokenRefresherTest {
         val tokens = store(TokenPair("access-1", "refresh-1"))
         val refresher = TokenRefresher(tokens, FakeBackend({ TokenPair("access-2", "refresh-2") }))
 
-        refresher.refresh()
+        refresher.refresh("access-1")
 
         assertEquals("access-2", tokens.load()?.accessToken)
         assertEquals("refresh-2", tokens.load()?.refreshToken)
@@ -67,7 +67,7 @@ class TokenRefresherTest {
         var expired = false
         refresher.onAuthExpired = { expired = true }
 
-        assertNull(refresher.refresh())
+        assertNull(refresher.refresh("access-1"))
         assertNull(tokens.load(), "a dead refresh token must not be left on disk")
         assertTrue(expired)
     }
@@ -77,20 +77,49 @@ class TokenRefresherTest {
         val backend = FakeBackend({ TokenPair("nope", "nope") })
         val refresher = TokenRefresher(store(null), backend)
 
-        assertNull(refresher.refresh())
+        assertNull(refresher.refresh("access-1"))
         assertEquals(0, backend.calls.get())
     }
 
     @Test
     fun aLaterBurstRefreshesAgainRatherThanReusingTheFirstFlight() = runTest {
         val backend = FakeBackend({ n -> TokenPair("access-$n", "refresh-$n") })
-        val refresher = TokenRefresher(store(TokenPair("a0", "r0")), backend)
+        val tokens = store(TokenPair("a0", "r0"))
+        val refresher = TokenRefresher(tokens, backend)
 
-        refresher.refresh()
-        refresher.refresh()
+        // Each caller reports the access token that actually failed for it.
+        refresher.refresh(failedAccessToken = "a0")
+        refresher.refresh(failedAccessToken = tokens.load()!!.accessToken)
 
         // Single-flight collapses CONCURRENT callers; it must not cache forever.
         assertEquals(2, backend.calls.get())
+    }
+
+    @Test
+    fun aStaggered401DoesNotTriggerARedundantRefresh() = runTest {
+        // The common production shape, and the one a burst test does NOT cover: caller A
+        // refreshes and finishes; caller B — still holding the OLD access token — gets
+        // its 401 only afterwards. B must be handed the already-refreshed token, not
+        // spend another round-trip (and another rotation) getting an equivalent one.
+        val backend = FakeBackend({ n -> TokenPair("access-$n", "refresh-$n") })
+        val tokens = store(TokenPair("access-0", "refresh-0"))
+        val refresher = TokenRefresher(tokens, backend)
+
+        refresher.refresh(failedAccessToken = "access-0")   // caller A
+        val b = refresher.refresh(failedAccessToken = "access-0") // caller B, stale token
+
+        assertEquals(1, backend.calls.get(), "B's token was already refreshed by A")
+        assertEquals("access-1", b?.accessToken)
+    }
+
+    @Test
+    fun callersThatDoNotKnowWhichTokenFailedStillRefresh() = runTest {
+        // e.g. the PowerSync connector, which has no access token of its own to compare.
+        val backend = FakeBackend({ TokenPair("access-9", "refresh-9") })
+        val refresher = TokenRefresher(store(TokenPair("a0", "r0")), backend)
+
+        assertEquals("access-9", refresher.refresh(failedAccessToken = null)?.accessToken)
+        assertEquals(1, backend.calls.get())
     }
 }
 

@@ -44,22 +44,39 @@ object ServerUrl {
 
         val host = hostOf(withScheme) ?: return null
         if (host.isEmpty() || host.any { it.isWhitespace() }) return null
-        // A host must look like a hostname or an IP — letters, digits, dots, dashes.
-        if (!host.all { it.isLetterOrDigit() || it == '.' || it == '-' }) return null
+
+        val allowed: (Char) -> Boolean = if (host.startsWith("[")) {
+            // IPv6 literal — hex groups, colons, and the enclosing brackets.
+            { c -> c.isLetterOrDigit() || c == ':' || c == '[' || c == ']' }
+        } else {
+            { c -> c.isLetterOrDigit() || c == '.' || c == '-' }
+        }
+        if (!host.all(allowed)) return null
 
         return withScheme
     }
 
-    /** The host portion of a normalised URL, lowercased and without port. */
+    /**
+     * The host portion of a normalised URL, lowercased and without the port.
+     *
+     * IPv6 literals are bracketed and full of colons, so the port cannot simply be split
+     * at the first `:` — that would reduce `[::1]:8080` to `[`, which then reads as a
+     * public host and gets its cleartext refused. Brackets are KEPT, so the returned
+     * value round-trips into a URL.
+     */
     fun hostOf(url: String): String? {
         val afterScheme = url.substringAfter("://", missingDelimiterValue = "")
         if (afterScheme.isEmpty()) return null
-        return afterScheme
-            .substringBefore('/')
-            .substringBefore('?')
-            .substringBefore(':')
-            .lowercase()
-            .ifEmpty { null }
+
+        val authority = afterScheme.substringBefore('/').substringBefore('?')
+
+        if (authority.startsWith("[")) {
+            val close = authority.indexOf(']')
+            if (close < 0) return null // unterminated literal
+            return authority.substring(0, close + 1).lowercase()
+        }
+
+        return authority.substringBefore(':').lowercase().ifEmpty { null }
     }
 
     /**
@@ -73,6 +90,18 @@ object ServerUrl {
         val h = host.trim().lowercase()
         if (h == "localhost" || h.endsWith(".localhost")) return true
         if (h == "local" || h.endsWith(".local")) return true
+
+        if (h.startsWith("[") && h.endsWith("]")) {
+            val v6 = h.substring(1, h.length - 1)
+            if (v6 == "::1") return true                    // loopback
+            // fc00::/7 (unique local) — first byte 0xFC or 0xFD.
+            if (v6.startsWith("fc") || v6.startsWith("fd")) return true
+            // fe80::/10 (link-local).
+            if (v6.startsWith("fe8") || v6.startsWith("fe9") ||
+                v6.startsWith("fea") || v6.startsWith("feb")
+            ) return true
+            return false
+        }
 
         val octets = h.split('.')
         if (octets.size == 4 && octets.all { it.toIntOrNull() in 0..255 }) {

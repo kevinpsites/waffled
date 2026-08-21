@@ -56,32 +56,36 @@ class TokenRefresher(
     /**
      * Returns the fresh pair, or null if the session is finished.
      *
-     * Callers that arrive while a refresh is in flight wait for it and get its result,
-     * rather than starting their own.
+     * Pass [failedAccessToken] — the token that actually got the 401. Inside the lock we
+     * compare it against what is stored: if they differ, somebody already refreshed and
+     * the caller is simply behind, so hand back the stored pair instead of spending
+     * another round-trip and another rotation.
+     *
+     * Comparing against the caller's *own* failed token (rather than a value read before
+     * the lock) is what makes this correct for **staggered** 401s, not just a
+     * simultaneous burst: a caller whose request was in flight during someone else's
+     * refresh still recognises that its token is the stale one.
+     *
+     * Pass null when the caller has no access token to compare — e.g. the PowerSync
+     * connector — and a refresh always happens.
      */
-    suspend fun refresh(): TokenPair? {
-        val before = store.load()
+    suspend fun refresh(failedAccessToken: String?): TokenPair? = mutex.withLock {
+        val current = store.load() ?: return@withLock null
 
-        return mutex.withLock {
-            val current = store.load()
-
-            // Someone else refreshed while we waited for the lock — take their result.
-            if (current != null && before != null && current.accessToken != before.accessToken) {
-                return@withLock current
-            }
-
-            val refreshToken = current?.refreshToken ?: return@withLock null
-
-            val rotated = backend.refresh(refreshToken)
-            if (rotated == null) {
-                // The refresh token is dead. Don't leave it on disk to be retried.
-                store.clear()
-                onAuthExpired?.invoke()
-                return@withLock null
-            }
-
-            store.save(rotated)
-            rotated
+        // Somebody already replaced the token this caller was using.
+        if (failedAccessToken != null && current.accessToken != failedAccessToken) {
+            return@withLock current
         }
+
+        val rotated = backend.refresh(current.refreshToken)
+        if (rotated == null) {
+            // The refresh token is dead. Don't leave it on disk to be retried.
+            store.clear()
+            onAuthExpired?.invoke()
+            return@withLock null
+        }
+
+        store.save(rotated)
+        rotated
     }
 }

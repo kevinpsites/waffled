@@ -101,4 +101,33 @@ class ServerUrlTest {
     fun unparseableInputIsRejected() {
         assertTrue(ServerUrl.validate("¯\\_(ツ)_/¯") is ServerUrlVerdict.Invalid)
     }
+
+    // ---- IPv6 ----
+
+    @Test
+    fun bracketedIpv6HostsAreParsedNotMangled() {
+        // Naive `substringBefore(':')` would reduce "[::1]:8080" to "[" and then treat
+        // the result as a public host, silently refusing a loopback address.
+        assertEquals("[::1]", ServerUrl.hostOf("http://[::1]:8080"))
+        assertEquals("[fd00::1]", ServerUrl.hostOf("http://[fd00::1]:8080"))
+    }
+
+    @Test
+    fun ipv6LoopbackAndUniqueLocalAllowCleartext() {
+        assertTrue(ServerUrl.cleartextAllowed("[::1]"))
+        // fc00::/7 — the IPv6 equivalent of RFC1918.
+        assertTrue(ServerUrl.cleartextAllowed("[fd00::1]"))
+        assertTrue(ServerUrl.cleartextAllowed("[fe80::1]")) // link-local
+    }
+
+    @Test
+    fun publicIpv6StillRequiresHttps() {
+        assertFalse(ServerUrl.cleartextAllowed("[2606:4700::1111]"))
+        assertTrue(ServerUrl.validate("http://[2606:4700::1111]:8080") is ServerUrlVerdict.InsecurePublic)
+    }
+
+    @Test
+    fun ipv6RoundTripsThroughNormalize() {
+        assertEquals("http://[fd00::1]:8080", ServerUrl.normalize("[fd00::1]:8080"))
+    }
 }
