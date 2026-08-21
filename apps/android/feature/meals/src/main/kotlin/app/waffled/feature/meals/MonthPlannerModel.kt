@@ -140,6 +140,10 @@ class MonthPlannerModel(
         val plan = MealPlanSwap.writes(current, srcDate, "dinner", dstDate, "dinner") ?: return
 
         val snapshot = current
+        // The month on screen when the move started. Paging away mid-flight and then
+        // failing would otherwise write the PREVIOUS month's dinners back into `_entries`,
+        // drawing last month's meals under this month's dates.
+        val month = monthStart
         _entries.value = swapped
         _moveError.value = null
         gate.begin()
@@ -157,7 +161,11 @@ class MonthPlannerModel(
 
         if (failed) {
             _moveError.value = "Couldn't move that dinner. Check your connection and try again."
-            if (gate.mayApplyResult) _entries.value = snapshot else gate.requestSettleReload()
+            if (gate.mayApplyResult && monthStart == month) {
+                _entries.value = snapshot
+            } else {
+                gate.requestSettleReload()
+            }
         }
         if (gate.finish()) load()
     }

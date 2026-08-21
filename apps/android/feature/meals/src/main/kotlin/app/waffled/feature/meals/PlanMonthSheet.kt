@@ -257,7 +257,6 @@ private fun MonthConfig(model: PlanMonthModel, monthLabel: String, onSuggest: ()
         }
         PlanApplyBar(
             isBusy = false,
-            isInactive = weekdays.isEmpty(),
             isDisabled = weekdays.isEmpty(),
             label = "✨ Plan $monthLabel",
             onClick = onSuggest,
@@ -379,7 +378,6 @@ private fun MonthReview(
         }
         PlanApplyBar(
             isBusy = applying,
-            isInactive = suggestions.isEmpty(),
             isDisabled = suggestions.isEmpty() || applying || redrafting,
             label = if (applying) "Saving…" else "Save month & build list",
             onClick = onApply,

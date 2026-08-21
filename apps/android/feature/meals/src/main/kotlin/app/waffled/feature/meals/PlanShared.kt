@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.waffled.core.design.WF
 import app.waffled.core.design.WaffledCard
+import app.waffled.core.design.WaffledPrimaryCTA
+import app.waffled.core.design.WaffledSecondaryCTA
 import app.waffled.core.design.WaffledTextField
 
 /**
@@ -198,15 +200,11 @@ fun PlanMessageView(
             modifier = Modifier.padding(horizontal = 40.dp),
         )
         if (onRetry != null) {
-            Spacer(Modifier.size(10.dp))
-            Text(
-                "Try again",
-                style = WF.type.label,
-                color = WF.colors.ai,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .clickable(onClick = onRetry)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            Spacer(Modifier.size(14.dp))
+            WaffledSecondaryCTA(
+                label = "Try again",
+                onClick = onRetry,
+                modifier = Modifier.padding(horizontal = 40.dp),
             )
         }
     }
@@ -428,13 +426,14 @@ fun MealPlanReviewCard(
 /**
  * The bottom divider + full-width primary action shared by both plan sheets.
  *
- * [isInactive] drives the grey vs AI tint; [isDisabled] is the broader gate. They differ
- * on purpose: a busy bar with suggestions still shows the AI tint while disabled.
+ * The button itself is [WaffledPrimaryCTA]; only the bar around it is ours. iOS keeps a
+ * separate "inactive" tint so a BUSY bar with suggestions still reads blue while disabled —
+ * the shared CTA folds that into `isDisabled` and greys both, which costs a moment of
+ * colour during an apply and buys one definition of what a primary button looks like.
  */
 @Composable
 fun PlanApplyBar(
     isBusy: Boolean,
-    isInactive: Boolean,
     isDisabled: Boolean,
     label: String,
     onClick: () -> Unit,
@@ -442,33 +441,14 @@ fun PlanApplyBar(
 ) {
     Column(modifier.fillMaxWidth().background(WF.colors.canvas)) {
         HorizontalDivider(color = WF.colors.hair)
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .clip(RoundedCornerShape(WF.radius.md))
-                .background(if (isInactive) WF.colors.ink3 else WF.colors.ai)
-                .clickable(enabled = !isDisabled, onClick = onClick)
-                .padding(vertical = 14.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (isBusy) {
-                // White on a saturated AI fill is correct here — `onInk` is only for the
-                // neutral `ink` fill, which flips to warm off-white in dark.
-                CircularProgressIndicator(
-                    color = androidx.compose.ui.graphics.Color.White,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-            }
-            Text(
-                label,
-                style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold),
-                color = androidx.compose.ui.graphics.Color.White,
-            )
-        }
+        WaffledPrimaryCTA(
+            label = label,
+            onClick = onClick,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            tint = WF.colors.ai,
+            isBusy = isBusy,
+            isDisabled = isDisabled,
+        )
     }
 }
 

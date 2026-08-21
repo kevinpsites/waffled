@@ -237,7 +237,6 @@ private fun WeekConfig(model: PlanWeekModel, onSuggest: () -> Unit) {
         }
         PlanApplyBar(
             isBusy = false,
-            isInactive = selectedDays.isEmpty(),
             isDisabled = selectedDays.isEmpty(),
             label = "✨ Plan my week",
             onClick = onSuggest,
@@ -319,7 +318,6 @@ private fun WeekReview(
         }
         PlanApplyBar(
             isBusy = applying,
-            isInactive = suggestions.isEmpty(),
             isDisabled = suggestions.isEmpty() || applying || redrafting,
             label = if (applying) "Adding…" else "Add ${suggestions.size} & build list",
             onClick = onApply,

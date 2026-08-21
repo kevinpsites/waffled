@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.waffled.core.design.WF
+import app.waffled.core.design.WaffledPrimaryCTA
 
 /**
  * Small pieces the two planners share.
@@ -80,7 +81,12 @@ fun MealRowMenu(expanded: Boolean, onDismiss: () -> Unit, items: List<MenuAction
     }
 }
 
-/** A circular chevron used by both planners' period steppers. */
+/**
+ * A circular chevron used by both planners' period steppers.
+ *
+ * Hand-rolled: `core:design` has no icon-button, and M3's `IconButton` would render its
+ * ripple and container from the baseline colour scheme the app never installs.
+ */
 @Composable
 fun PeriodChevron(forward: Boolean, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
@@ -101,7 +107,13 @@ fun PeriodChevron(forward: Boolean, contentDescription: String, onClick: () -> U
     }
 }
 
-/** The chevron · title · chevron header both planners use, with an optional "jump" link. */
+/**
+ * The chevron · title · chevron header both planners use, with an optional "jump" link.
+ *
+ * Hand-rolled: it is a meals-specific composition of [PeriodChevron] and two labels, with
+ * no `core:design` equivalent. If Calendar and Chores grow the same stepper it should move
+ * there rather than being copied a third time.
+ */
 @Composable
 fun PeriodHeader(
     title: String,
@@ -134,27 +146,19 @@ fun PeriodHeader(
     }
 }
 
-/** The full-width ✨ CTA that opens a plan sheet. */
+/** The full-width ✨ CTA that opens a plan sheet — the shared primary button, AI-tinted. */
 @Composable
 fun PlanCta(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(WF.radius.md))
-            .background(WF.colors.ai)
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("✨", style = TextStyle(fontSize = 15.sp))
-        Spacer(Modifier.size(7.dp))
-        // White on the saturated AI fill — `onInk` is only for the neutral `ink` fill.
-        Text(label, style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Bold), color = Color.White)
-    }
+    WaffledPrimaryCTA(label = "✨ $label", onClick = onClick, modifier = modifier, tint = WF.colors.ai)
 }
 
-/** The dashed "Plan Dinner" placeholder for an empty slot. */
+/**
+ * The dashed "Plan Dinner" placeholder for an empty slot.
+ *
+ * Hand-rolled: `core:design` has no dashed-outline add affordance, and neither CTA fits —
+ * this reads as an empty slot inviting a tap, not as a call to action competing with the
+ * ✨ plan button directly above it.
+ */
 @Composable
 fun PlanSlotButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(WF.radius.md)
