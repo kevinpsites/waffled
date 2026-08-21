@@ -1,6 +1,21 @@
-/* Rhythms — the Today card and the management screen. Built from the shared
-   vocabulary (.card, .btn, .field, .modal-*, .pill); everything here is layout
-   for this module's own rows, matching pantry.css in shape and spacing. */
+/* Rhythms — the Today card and the register. Built from the shared vocabulary
+   (.card, .btn, .field, .modal-*, .pill); everything here is layout for this
+   module's own rows, matching pantry.css in shape and spacing.
+
+   TWO VOCABULARIES LIVE IN THIS FILE. Keep them disjoint:
+     Today card (RhythmsCard.tsx) — .rhy-card .rhy-head .rhy-h .rhy-all .rhy-list
+                                    .rhy-row .rhy-emoji .rhy-main .rhy-title
+                                    .rhy-sub .rhy-late .rhy-acts .rhy-act
+     Register  (Rhythms.tsx)      — .rhy-screen* .rhy-band .rhy-regs .rhy-reg
+                                    .rhy-reg-main .rhy-tile .rhy-name .rhy-dot
+                                    .rhy-tick .rhy-meta .rhy-track .rhy-cd
+                                    .rhy-actcell .rhy-more .rhy-menu .rhy-done
+                                    .rhy-backdate* .rhy-paused-*
+     Editor    (RhythmModal.tsx)  — .rhy-anchor .rhy-shape*
+     Genuinely shared             — .rhy-skip, and nothing else.
+   The register originally reused .rhy-row and .rhy-main. Its rules load second, so
+   `display: grid` won and every row of the Today card silently became a grid — with
+   no test failure, because those tests assert text and roles, not layout. */
 
 /* ── Today card ─────────────────────────────────────────────────────────────── */
 .rhy-card { padding: 18px 20px 14px; display: flex; flex-direction: column; }
@@ -156,11 +171,14 @@
    its own line rather than squeezing the name to nothing. */
 @media (max-width: 860px) {
   .rhy-screen { padding: 20px 16px 32px; }
-  .rhy-reg { grid-template-columns: 40px minmax(0, 1fr) 96px; column-gap: 12px; padding: 14px 16px; }
+  /* The right padding is a gutter for the ⋯ button, which leaves the grid here. Without
+     it the countdown — right-aligned against the content edge — renders straight under
+     the button: "Booked" with a ⋯ through the 'd'. */
+  .rhy-reg { grid-template-columns: 40px minmax(0, 1fr) 96px; column-gap: 12px; padding: 14px 52px 14px 16px; }
   .rhy-tile { width: 40px; height: 40px; font-size: 20px; }
   .rhy-actcell { grid-column: 2 / -1; width: auto; justify-self: start; margin-top: 10px; }
   .rhy-actcell .btn { width: auto; padding: 9px 18px; }
-  .rhy-more { position: absolute; top: 12px; right: 10px; }
+  .rhy-more { position: absolute; top: 14px; right: 14px; }
   .rhy-band .hint { display: none; }
 }
 
