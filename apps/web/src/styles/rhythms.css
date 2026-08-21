@@ -62,24 +62,24 @@
    positioned inside a row, and clipping it to the card would cut it in half on the
    last row of every band. The corners are rounded on the end rows instead, which
    keeps the "needs you now" tint inside the radius. */
-.rhy-rows { background: var(--card); border-radius: var(--r-xl); box-shadow: var(--sh-2); }
+.rhy-regs { background: var(--card); border-radius: var(--r-xl); box-shadow: var(--sh-2); }
 
-.rhy-row {
+.rhy-reg {
   display: grid; grid-template-columns: 46px minmax(0, 1fr) 118px 132px 30px;
   align-items: center; column-gap: 18px;
   padding: 16px 22px 16px 18px; border-top: 1px solid var(--hair-2); position: relative;
 }
-.rhy-row:first-child { border-top: 0; border-radius: var(--r-xl) var(--r-xl) 0 0; }
-.rhy-row:last-child { border-radius: 0 0 var(--r-xl) var(--r-xl); }
-.rhy-row:only-child { border-radius: var(--r-xl); }
-.rhy-row.now { background: linear-gradient(90deg, var(--danger-t), transparent 58%); }
-.rhy-row.off .rhy-tile, .rhy-row.off .rhy-main { opacity: 0.5; }
+.rhy-reg:first-child { border-top: 0; border-radius: var(--r-xl) var(--r-xl) 0 0; }
+.rhy-reg:last-child { border-radius: 0 0 var(--r-xl) var(--r-xl); }
+.rhy-reg:only-child { border-radius: var(--r-xl); }
+.rhy-reg.now { background: linear-gradient(90deg, var(--danger-t), transparent 58%); }
+.rhy-reg.off .rhy-tile, .rhy-reg.off .rhy-reg-main { opacity: 0.5; }
 
 .rhy-tile {
   width: 46px; height: 46px; border-radius: 14px; font-size: 23px;
   background: var(--card-2); border: 1px solid var(--hair-2); display: grid; place-items: center;
 }
-.rhy-main { min-width: 0; }
+.rhy-reg-main { min-width: 0; }
 .rhy-name { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: var(--ink); }
 .rhy-dot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
 .rhy-tick {
@@ -96,7 +96,7 @@
    if it ever stops. */
 .rhy-track { height: 3px; border-radius: 999px; background: var(--hair); margin-top: 10px; max-width: 420px; overflow: hidden; }
 .rhy-track > div { height: 100%; border-radius: 999px; background: var(--ink-3); }
-.rhy-row.now .rhy-track > div { background: var(--danger); }
+.rhy-reg.now .rhy-track > div { background: var(--danger); }
 
 /* The countdown — the anchor. Serif and large, because it is the one thing on the
    row worth reading from across the kitchen. */
@@ -141,7 +141,7 @@
    out which, every single time. */
 /* The backdate row is a grid child of the row it belongs to, so it has to be told to
    span — otherwise it lands in the emoji column, 46px wide. */
-.rhy-row .rhy-backdate { grid-column: 1 / -1; }
+.rhy-reg .rhy-backdate { grid-column: 1 / -1; }
 
 .rhy-paused-card { margin-top: 26px; }
 .rhy-paused-toggle {
@@ -156,7 +156,7 @@
    its own line rather than squeezing the name to nothing. */
 @media (max-width: 860px) {
   .rhy-screen { padding: 20px 16px 32px; }
-  .rhy-row { grid-template-columns: 40px minmax(0, 1fr) 96px; column-gap: 12px; padding: 14px 16px; }
+  .rhy-reg { grid-template-columns: 40px minmax(0, 1fr) 96px; column-gap: 12px; padding: 14px 16px; }
   .rhy-tile { width: 40px; height: 40px; font-size: 20px; }
   .rhy-actcell { grid-column: 2 / -1; width: auto; justify-self: start; margin-top: 10px; }
   .rhy-actcell .btn { width: auto; padding: 9px 18px; }

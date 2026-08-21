@@ -153,10 +153,10 @@ function RhythmRow({
   }
 
   return (
-    <div className={`rhy-row${urgency === 'now' ? ' now' : ''}${paused ? ' off' : ''}`} ref={rowRef}>
+    <div className={`rhy-reg${urgency === 'now' ? ' now' : ''}${paused ? ' off' : ''}`} ref={rowRef}>
       <div className="rhy-tile" aria-hidden>{rhythm.emoji ?? (scheduling ? '🗓️' : '🔁')}</div>
 
-      <div className="rhy-main">
+      <div className="rhy-reg-main">
         <div className="rhy-name">
           {rhythm.title}
           {/* A booked period is settled. The tick says so without a badge saying
@@ -409,13 +409,13 @@ export function Rhythms() {
               <span className="n">{rows.length}</span>
               <span className="hint">{band.hint}</span>
             </div>
-            <div className="rhy-rows">{rows.map((r) => row(r, band.key))}</div>
+            <div className="rhy-regs">{rows.map((r) => row(r, band.key))}</div>
           </section>
         )
       })}
 
       {paused.length > 0 && (
-        <div className="rhy-rows rhy-paused-card">
+        <div className="rhy-regs rhy-paused-card">
           <button type="button" className="rhy-paused-toggle" onClick={() => setShowPaused((s) => !s)}>
             {/* Named rather than counted — "2 paused" makes you open it to find out
                 which, every single time. */}
