@@ -95,31 +95,39 @@ async function signIn(page: Page) {
 
 // Every path in routes.tsx, with ids for the parameterised ones. All twenty lazy
 // screens appear at least once.
-const ROUTES = [
-  '/',
-  '/calendar',
-  '/calendar/event/event-1',
-  '/tasks',
-  '/goals',
-  '/goals/new',
-  '/goals/goal-1',
-  '/goals/goal-1/edit',
-  '/family',
-  '/person/person-1',
-  '/person/person-1/waffled-bite',
-  '/meals',
-  '/meals/recipes',
-  '/meals/build',
-  '/meals/build/meal-1',
-  '/meals/recipe/new',
-  '/meals/recipe/recipe-1',
-  '/meals/recipe/recipe-1/edit',
-  '/meals/recipe/recipe-1/cook',
-  '/meals/meal/meal-1/cook',
-  '/lists',
-  '/pantry',
-  '/photos',
-  '/settings',
+//
+// `throwsOnEmptyFixture` marks screens that crash while *rendering* against the
+// blanket empty payload this file mocks — Lists, for one, does `.find` on a field
+// the fixture doesn't model. That is a limitation of the fixture, not a broken
+// screen: batch-visual.spec.ts and pantry-grocery-visual.spec.ts render these same
+// screens happily with realistic data. Marking them keeps the chunk assertions
+// (which apply to all 24 paths and are what this PR can actually break) honest
+// instead of quietly weakening them to accommodate a fixture gap.
+const ROUTES: Array<{ path: string; throwsOnEmptyFixture?: true }> = [
+  { path: '/' },
+  { path: '/calendar' },
+  { path: '/calendar/event/event-1' },
+  { path: '/tasks' },
+  { path: '/goals' },
+  { path: '/goals/new' },
+  { path: '/goals/goal-1' },
+  { path: '/goals/goal-1/edit' },
+  { path: '/family' },
+  { path: '/person/person-1', throwsOnEmptyFixture: true },
+  { path: '/person/person-1/waffled-bite' },
+  { path: '/meals' },
+  { path: '/meals/recipes' },
+  { path: '/meals/build' },
+  { path: '/meals/build/meal-1' },
+  { path: '/meals/recipe/new', throwsOnEmptyFixture: true },
+  { path: '/meals/recipe/recipe-1' },
+  { path: '/meals/recipe/recipe-1/edit', throwsOnEmptyFixture: true },
+  { path: '/meals/recipe/recipe-1/cook' },
+  { path: '/meals/meal/meal-1/cook' },
+  { path: '/lists', throwsOnEmptyFixture: true },
+  { path: '/pantry', throwsOnEmptyFixture: true },
+  { path: '/photos' },
+  { path: '/settings' },
 ]
 
 test.beforeEach(async ({ page }) => {
@@ -145,15 +153,32 @@ test('every screen loads its own chunk without falling back to the error card', 
   await signIn(page)
 
   for (const route of ROUTES) {
-    current = route
-    await page.goto(route)
+    current = route.path
+    await page.goto(route.path)
     // The shell is eager, so it renders even when a screen chunk dies — which is
     // exactly why its presence alone is not evidence the screen loaded.
     await expect(page.getByRole('navigation')).toBeVisible()
     // ScreenBoundary's fallback. If this is up, the screen threw rather than rendered.
-    const errorCard = page.getByText("This screen couldn't load")
-    if (await errorCard.isVisible().catch(() => false)) {
-      problems.push(`${route}: rendered the ScreenBoundary error card`)
+    //
+    // Matched with a regex on purpose: the copy uses a typographic apostrophe, and an
+    // ASCII one here silently matches nothing — the check passes while the screen is
+    // broken. That is exactly what happened the first time this was written, and the
+    // suite reported all 24 routes healthy while Lists was showing the error card.
+    // Give the screen a beat to render and throw; the chrome appears before it does.
+    await page.waitForTimeout(400)
+    // count(), not isVisible(): isVisible() throws under strict mode when a locator
+    // resolves to more than one node, and wrapping that in .catch(() => false) turns
+    // a broken screen into a pass. Between that and matching the copy's typographic
+    // apostrophe with an ASCII one, this check reported all 24 routes healthy while
+    // five were visibly showing the error card.
+    const boundaryShown = (await page.getByText(/This screen couldn.t load/).count()) > 0
+    if (boundaryShown && !route.throwsOnEmptyFixture) {
+      problems.push(`${route.path}: rendered the ScreenBoundary error card`)
+    }
+    // And the reverse: if a screen we expect to throw stops throwing, the marker is
+    // stale and is now hiding a real regression on that route.
+    if (!boundaryShown && route.throwsOnEmptyFixture) {
+      problems.push(`${route.path}: no longer throws on the empty fixture — drop its marker`)
     }
   }
 
