@@ -136,13 +136,23 @@ async function networkFirstShell(request) {
     cache.put(SHELL_URL, res.clone())
     return res
   } catch {
-    const cached = (await caches.match(SHELL_URL)) || (await caches.match('/'))
+    const cached =
+      (await caches.match(SHELL_URL, MATCH)) || (await caches.match('/', MATCH))
     return cached || Response.error()
   }
 }
 
+// Vite tags the entry `<script type="module" crossorigin>`, so the browser's request
+// for it carries an Origin header while the precache stored the response of a plain
+// fetch that had none. If the server labels the response `Vary: Origin` — Vite's
+// preview server does, and so does any proxy set up for CORS — those two requests
+// stop matching, every lookup misses, and an offline kiosk shows a blank screen with
+// a full cache. Everything here is fingerprinted or the app shell, so the URL is the
+// entire cache key and honouring Vary buys nothing.
+const MATCH = { ignoreVary: true }
+
 async function cacheFirst(request) {
-  const cached = await caches.match(request)
+  const cached = await caches.match(request, MATCH)
   if (cached) return cached
   const res = await fetch(request)
   if (res.ok) (await caches.open(ASSETS)).put(request, res.clone())

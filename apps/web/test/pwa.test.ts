@@ -265,6 +265,54 @@ describe('service worker offline precache', () => {
 // build's shell and assets. Install broken, activate anyway, and the display is left
 // with empty caches and its working copy deleted — no offline app at all, which is
 // strictly worse than the build it was running a moment ago.
+// Found by driving a real browser offline against the production build: every
+// screen's JS and CSS failed to load even though all 65 files were sitting in the
+// cache and `caches.match(url)` found them.
+//
+// Vite tags its entry with `<script type="module" crossorigin>`, so the browser's
+// real request carries an `Origin` header. The precache stores the response from a
+// plain `fetch(url)`, which has none. When the origin server labels the response
+// `Vary: Origin` — Vite's preview server does; so does any proxy configured for
+// CORS — those two requests no longer match, `cacheFirst` falls through to the
+// network, and offline that throws. The kiosk shows a blank screen with a full
+// cache. Fingerprinted assets can't legitimately vary: the URL is the whole key.
+describe('service worker cache matching', () => {
+  async function assetFetch(listeners: Map<string, (event: unknown) => void>, url: string) {
+    let responded: Promise<unknown> | undefined
+    listeners.get('fetch')?.({
+      request: { method: 'GET', mode: 'cors', url, headers: {} },
+      respondWith: (promise: Promise<unknown>) => {
+        responded = promise
+      },
+    })
+    await responded?.catch(() => undefined)
+  }
+
+  it('ignores Vary when looking an asset up in the cache', async () => {
+    const { listeners, cacheStorage } = await loadWorker()
+
+    await assetFetch(listeners, 'https://waffled.test/assets/index-abc.js')
+
+    expect(cacheStorage.match).toHaveBeenCalledWith(expect.anything(), { ignoreVary: true })
+  })
+
+  it('ignores Vary when falling back to the cached shell', async () => {
+    // Same failure, worse outcome: the shell is what stands between a dropped
+    // network and a blank display.
+    const { listeners, cacheStorage } = await loadWorker({}, { networkDown: true })
+    let responded: Promise<unknown> | undefined
+    listeners.get('fetch')?.({
+      request: { method: 'GET', mode: 'navigate', url: 'https://waffled.test/', headers: {} },
+      respondWith: (promise: Promise<unknown>) => {
+        responded = promise
+      },
+    })
+    await responded?.catch(() => undefined)
+
+    expect(cacheStorage.match).toHaveBeenCalledWith('/index.html', { ignoreVary: true })
+  })
+})
+
 describe('service worker install safety', () => {
   const SHELL_HTML = '<html><head><script type="module" src="/assets/index-abc.js"></script></head></html>'
 
