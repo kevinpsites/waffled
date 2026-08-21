@@ -17,7 +17,15 @@ import app.waffled.core.network.ServerAddressProvider
 import app.waffled.core.network.ServerUrl
 import app.waffled.core.network.ServerUrlVerdict
 import app.waffled.core.network.WaffledHttp
+import app.waffled.core.sync.KtorSyncBackend
+import app.waffled.core.sync.SyncManager
+import app.waffled.core.sync.WaffledConnector
+import app.waffled.feature.photos.PhotosApi
+import app.waffled.feature.photos.PhotosModel
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * Hand-rolled dependency container.
@@ -74,6 +82,30 @@ class AppContainer(context: Context) {
 
     /** The authenticated client every feature API slice should use. */
     val httpClient: HttpClient by lazy { WaffledHttp.client(auth, serverAddress) }
+
+    /**
+     * PowerSync — the five synced tables (Calendar + People). Started once the user is
+     * signed in; everything else in the app is REST.
+     */
+    val syncManager: SyncManager by lazy {
+        SyncManager(
+            context = context.applicationContext,
+            connector = WaffledConnector(KtorSyncBackend(httpClient, auth)),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        )
+    }
+
+    /**
+     * Photos — the reference feature. One line per feature is the intended shape: build
+     * the API slice from the shared client, hand it the base URL and the refresh bus.
+     */
+    val photosModel: PhotosModel by lazy {
+        PhotosModel(
+            api = PhotosApi(httpClient, auth),
+            baseUrl = serverAddress.baseUrl(),
+            refreshBus = refreshBus,
+        )
+    }
 }
 
 private class SharedPrefsKeyValueStore(

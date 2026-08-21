@@ -470,9 +470,13 @@ Both were learned the hard way on iOS and are written into `apps/ios/CLAUDE.md`:
 
 ## 6. Phases
 
-### Phase 0 — foundation (serial, no agents) 🟡 in progress
+### Phase 0 — foundation (serial, no agents) ✅ complete
 
-**Done and on `android-port` (72 tests green, app runs on the emulator):**
+> **Exit criterion met**, verified on the emulator against the demo stack: sign in →
+> Photos renders **real seeded data** from the running household, and PowerSync reports
+> **Connected**. 176 tests green from a clean build.
+
+**Done and on `android-port`:**
 
 | ✅ | Item |
 |---|---|
@@ -489,20 +493,34 @@ Both were learned the hard way on iOS and are written into `apps/ios/CLAUDE.md`:
 | ✅ | `apps/android/CLAUDE.md` |
 | ✅ | **Server reachability proven end-to-end** on the emulator (`10.0.2.2:8080` → HTTP 401) |
 
-**Still outstanding before the fan-out starts:**
+Also done: Keystore-encrypted token store · password login + the auth gate ·
+`WaffledAuth` (the `TokenProvider` adapter) · `SyncManager` + `KtorSyncBackend` ·
+`MediaImageEncoder` · `ApiTestHarness` · `WaffledDates` · **Photos, built by the pilot
+agent** and merged.
 
-| 🚧 | Item | Why it matters |
-|---|---|---|
-| 🚧 | **Encrypt the token store** | `AppContainer` currently uses plain SharedPreferences — marked loudly in code. Keystore AES-GCM. |
-| 🚧 | Login + OIDC via Custom Tabs, `Session` state machine | Nothing can load real data without it |
-| 🚧 | `SyncManager` — open the PowerSync DB, connect, expose members/events/status | Calendar (Wave A) depends on it |
-| 🚧 | The first `…Api.kt` slice + `core:testing` MockWebServer harness | The pattern every agent copies |
-| 🚧 | Reference feature (Photos) | The worked example |
-| 🚧 | Splash / launcher icon | Cosmetic |
+**Deferred out of Phase 0, deliberately:**
 
-> **Exit criterion restated:** not "it compiles" — Photos must render real data from the
-> running stack with PowerSync reporting `connected`. Reachability is proven; the data
-> path is not yet.
+| Item | Why |
+|---|---|
+| OIDC via Custom Tabs | The button renders from server status; the browser round-trip is Wave A work |
+| Splash / launcher icon | Cosmetic |
+| Settings screen for the server address | The plumbing (`MutableServerAddress`, `ServerUrl.validate`) exists; the UI belongs with Settings in Wave C |
+
+#### Bugs the exit criterion caught that no unit test would have
+
+Worth recording, because they argue for keeping "run it against a real server" as a
+gate rather than trusting a green suite:
+
+1. **`/api/powersync/token` is a `GET`, not a `POST`.** Ported as POST; the server
+   answered "Method not allowed", and the only symptom was sync sitting at Offline while
+   REST worked fine.
+2. **The shared HTTP client never attached the bearer token.** Each API slice authorises
+   per request — necessary, because the 401 retry must know *which* token failed — but
+   nothing said so, so `KtorSyncBackend` silently sent anonymous requests and PowerSync
+   logged "Not logged in" forever. Now there is one `WaffledHttp.authorized` helper and a
+   test asserting the header on both calls.
+
+Both failed *quietly*: REST kept working, and the UI just said "Offline".
 
 #### Original checklist
 

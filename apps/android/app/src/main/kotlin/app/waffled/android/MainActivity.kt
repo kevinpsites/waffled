@@ -42,7 +42,9 @@ import app.waffled.core.design.WaffledEmptyState
 import app.waffled.core.design.WaffledPrimaryCTA
 import app.waffled.core.design.WaffledStatusBadge
 import app.waffled.core.design.WaffledTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.waffled.core.sync.ModuleGate
+import app.waffled.feature.photos.PhotosScreen
 
 class WaffledApp : Application(), coil3.SingletonImageLoader.Factory {
     lateinit var container: AppContainer
@@ -94,6 +96,11 @@ private fun AppRoot(container: AppContainer) {
     // doesn't flash empty.
     val gate = remember { ModuleGate(loaded = false) }
 
+    // Only the five synced tables (Calendar + People) go through PowerSync; the rest of
+    // the app is REST. Start it once, after sign-in.
+    val syncState by container.syncManager.state.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(Unit) { container.syncManager.start() }
+
     // Phase 0 exit criterion: prove the app can actually reach the configured server.
     var probe by remember { mutableStateOf<ServerProbe.Result?>(null) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -107,6 +114,23 @@ private fun AppRoot(container: AppContainer) {
             .fillMaxSize()
             .background(WF.colors.canvas),
     ) {
+        // The Family tab renders the real Photos feature — the Phase 0 exit criterion is
+        // that this loads actual data from the running stack, not that it compiles.
+        if (selected.id == "family") {
+            PhotosScreen(
+                model = container.photosModel,
+                modifier = Modifier.padding(bottom = WF.spacing.tabBarClearance),
+            )
+            WaffledTabBar(
+                tabs = tabs,
+                selected = selected,
+                onSelect = { selected = it },
+                onCapture = {},
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+            return@Box
+        }
+
         Column(
             Modifier
                 .fillMaxSize()
@@ -155,6 +179,15 @@ private fun AppRoot(container: AppContainer) {
                             color = WF.colors.danger,
                         )
                     }
+                    Text(
+                        text = "PowerSync: $syncState",
+                        style = TextStyle(fontSize = 13.sp),
+                        color = if (syncState == app.waffled.core.sync.SyncState.Connected) {
+                            WF.colors.success
+                        } else {
+                            WF.colors.ink3
+                        },
+                    )
                 }
             }
 

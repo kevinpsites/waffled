@@ -5,10 +5,13 @@ import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
+import io.ktor.client.request.request
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
@@ -80,6 +83,40 @@ object WaffledHttp {
             url(server.baseUrl().trimEnd('/') + "/")
             header(HttpHeaders.Accept, "application/json")
         }
+    }
+
+    /**
+     * Issue an authorised request, refreshing once on a 401 and replaying it.
+     *
+     * **Use this rather than calling [HttpClient] directly.** The bearer header is NOT
+     * attached by the shared client — it is attached per request, because the 401 retry
+     * needs to know which token the failed request carried (see [TokenProvider]). Getting
+     * that wrong fails in the least helpful way possible: REST keeps working while
+     * PowerSync loops on "Not logged in" and the UI just reports Offline.
+     */
+    suspend fun <T> authorized(
+        client: HttpClient,
+        tokens: TokenProvider,
+        method: HttpMethod,
+        path: String,
+        configure: HttpRequestBuilder.() -> Unit = {},
+        parse: suspend (HttpResponse) -> T,
+    ): T {
+        val sentToken = tokens.accessToken()
+
+        suspend fun attempt(token: String?): HttpResponse = client.request(path) {
+            this.method = method
+            if (token != null) header(HttpHeaders.Authorization, "Bearer $token")
+            configure()
+        }
+
+        return unwrap(
+            response = attempt(sentToken),
+            tokens = tokens,
+            sentToken = sentToken,
+            retry = { fresh -> attempt(fresh) },
+            parse = parse,
+        )
     }
 
     /**
