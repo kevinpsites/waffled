@@ -21,7 +21,9 @@ contradict the obvious defaults. Bake them into Phase 0.
 | `ANDROID_HOME` | **`/opt/homebrew/share/android-commandlinetools`** | ✅ **Non-standard.** There is no `~/Library/Android/sdk`. Every worktree needs `local.properties` written before Gradle runs (see §3.3). |
 | AGP | **9.3.1** (latest stable) | ✅ AGP **9 has built-in Kotlin** — adding `org.jetbrains.kotlin.android` is now a **hard error**. |
 | Gradle | **9.6.1** | ✅ AGP **8.x is incompatible with Gradle ≥ 9.6** (`InternalProblems` was removed). Pin the wrapper; do not rely on system Gradle drifting. |
-| Compose compiler | plugin `org.jetbrains.kotlin.plugin.compose` **2.2.20**, explicit | ✅ Required since Kotlin 2.0; `buildFeatures { compose = true }` alone fails. |
+| Kotlin | **2.4.10** (latest stable) | ✅ AGP 9 owns the Kotlin toolchain, but setting the Compose plugin to 2.4.10 pulls `kotlin-stdlib` **2.4.10** through the whole graph — verified via `dependencies --configuration debugCompileClasspath`. |
+| Compose | BOM **2026.08.00** (latest stable) | ✅ Dated BOMs are stable releases. |
+| Compose compiler | plugin `org.jetbrains.kotlin.plugin.compose` **2.4.10**, explicit | ✅ Required since Kotlin 2.0; `buildFeatures { compose = true }` alone fails. Must match the Kotlin version. |
 | Toolchain | `jvmToolchain(21)` | ✅ `jvmToolchain(17)` **fails** — Gradle can't auto-detect the keg-only Homebrew 17. |
 | SDK | `compileSdk 36`, `targetSdk 36`, `minSdk 26` | ✅ `platforms/android-36`, build-tools 35.0.0 + 36.0.0 installed. |
 | PowerSync | **`com.powersync:core:1.14.1`** | ✅ Resolves and compiles in a **plain (non-KMP) Android module** — `core-android`, `compose-android`, `core-jvm` all publish to Maven Central. Matches the iOS Swift SDK's 1.14.x line, so no protocol skew. |
@@ -568,30 +570,38 @@ LOC — 56% of all feature code.**
 
 ---
 
-## 7. Decisions needed ⚠️
+## 7. Decisions — all settled ✅
 
-I have made a recommendation on each so work is not blocked; say the word to change any.
+Resolved 2026-08-21. Recorded here so the fan-out doesn't relitigate them.
 
-### 7.1 `CaptureHeuristic` becomes a **third** implementation
+### 7.1 `CaptureHeuristic` becomes a **third** implementation — accepted, with a debt note
 
 `Sync/CaptureHeuristic.swift` (980) + `CaptureHeuristicTests.swift` (703) carry an
 explicit **"⚠️ KEEP IN SYNC"** header bound to `apps/web/src/lib/capture/parse.ts` and
 its `parse.test.ts` — they must stay behaviourally identical. Porting adds a third copy
 of a natural-language parser, 1,683 LOC to duplicate and keep in lockstep forever.
 
-**Recommendation: port it, driven by translating the 703-LOC test file first.** The tests
-are an exact spec, so this is cheap *and* it is textbook TDD. Moving it server-side is the
-better long-term answer but is a separate refactor touching web + iOS, and shouldn't
-block the port.
+**Decided: port it as a third copy**, driven by translating the 703-LOC test file first —
+the tests are an exact spec, so this is cheap *and* textbook TDD.
 
-### 7.2 HealthKit → Health Connect
+> 📌 **Consolidation debt — deliberately taken on, to be paid down later.** Three
+> independent implementations of one natural-language parser is not a stable end state:
+> every future capture change costs 3× and can silently diverge on any platform whose
+> test file wasn't updated. **The intended fix is to move parsing server-side** behind a
+> `POST /api/capture/parse` endpoint so all three clients call one implementation.
+> That refactor touches web + iOS and so is out of scope for the port PR, but it should
+> be scheduled soon after. Track it on the roadmap; do not let the third copy quietly
+> become permanent.
+
+### 7.2 HealthKit → Health Connect — **paused**
 
 Different permission model *and* different metric taxonomy — a rewrite, not a port, for a
-feature that only pre-fills a goal log.
+feature that only pre-fills a goal log, in an area we don't yet know well.
 
-**Recommendation: ship Android without it in this PR**, with the goal-logging UI intact
-and the auto-fill affordance hidden behind the same availability guard iOS uses
-(`isHealthDataAvailable()`). Health Connect lands as its own follow-up.
+**Decided: not in this port.** Ship the goal-logging UI intact, with the auto-fill
+affordance hidden behind the same availability guard iOS uses
+(`isHealthDataAvailable()`) so nothing looks broken. Health Connect is its own future
+effort, scoped separately once we've had a proper look at it.
 
 ### 7.3 Four other "KEEP IN SYNC" contracts gain a third party
 
@@ -608,18 +618,28 @@ the phone app sooner.
 
 ---
 
-### 7.5 Cleartext HTTP in release builds
+### 7.5 Cleartext HTTP — allow on home networks only
 
-Waffled is self-hosted and the server address is typed by the user at runtime — very often
-a raw LAN IP over plain HTTP. We therefore cannot enumerate domains in
-`network_security_config.xml` the way a normal app would, and iOS sidesteps this with
-`NSAllowsLocalNetworking`.
+**What "cleartext" means here:** plain `http://` rather than `https://`. Android blocks it
+by default. That matters because Waffled is self-hosted — people run it at
+`http://192.168.1.50:8080` on their home network with no TLS certificate. Block plain HTTP
+and those users can't connect at all; allow it everywhere and someone who types a *public*
+address would send their password over the open internet unencrypted. iOS sidesteps this
+with `NSAllowsLocalNetworking`.
 
-**Recommendation: `cleartextTrafficPermitted="true"` in debug; for release, permit
-cleartext only for private address ranges** (RFC1918 + `.local`) and require HTTPS
-otherwise. That keeps LAN self-hosting working without silently downgrading a public
-`demo.waffled.app`-style deployment. Flagging it here because it is a security-relevant
-default, not a detail to settle in Phase 5.
+Because the server address is typed at runtime, we can't enumerate domains in
+`network_security_config.xml` the way a normal app would.
+
+**Decided: permit cleartext only for private/local addresses, require HTTPS everywhere
+else.**
+
+- Debug: `cleartextTrafficPermitted="true"` (needs `10.0.2.2` for the emulator).
+- Release: cleartext permitted for RFC1918 ranges (`10/8`, `172.16/12`, `192.168/16`),
+  loopback and `.local`; HTTPS enforced for anything public.
+
+Home self-hosting keeps working; a public deployment can't be silently downgraded. The app
+should also **warn in the server-address setting** when a user enters a public host over
+plain HTTP, rather than failing opaquely.
 
 ## 8. Effort shape
 
