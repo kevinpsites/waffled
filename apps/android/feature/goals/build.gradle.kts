@@ -20,7 +20,7 @@ android {
 }
 
 dependencies {
-    implementation(project(":core:model"))
+    api(project(":core:model"))
     implementation(project(":core:design"))
     implementation(project(":core:network"))
     implementation(project(":core:sync"))
