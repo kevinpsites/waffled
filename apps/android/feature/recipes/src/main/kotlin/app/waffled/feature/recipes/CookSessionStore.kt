@@ -112,8 +112,19 @@ class InMemoryCookStateStore(private var state: CookPersistedState? = null) : Co
  */
 class CookSessionStore(
     private val api: CookApi,
-    private val alarm: CookAlarm = NoCookAlarm,
-    private val persistence: CookStateStore = InMemoryCookStateStore(),
+    /**
+     * Required, with no default on purpose. A default [NoCookAlarm] would hand an
+     * integrator a Cook Mode whose timers never reach them once the app is backgrounded —
+     * silently, and that is the behaviour this whole feature exists for. Pass
+     * `CookTimerAlarm(context)` in the app; [NoCookAlarm] only in a test.
+     */
+    private val alarm: CookAlarm,
+    /**
+     * Required for the same reason: `SharedPrefsCookStateStore(context)` in the app,
+     * [InMemoryCookStateStore] only in a test. An in-memory default would silently drop
+     * the process-death survival that makes a wall-clock timer worth having.
+     */
+    private val persistence: CookStateStore,
     private val now: () -> Long = System::currentTimeMillis,
     /** Timer ids are opaque; injectable so a test gets deterministic ones. */
     private val newTimerId: () -> String = { "waffled.cook." + java.util.UUID.randomUUID() },

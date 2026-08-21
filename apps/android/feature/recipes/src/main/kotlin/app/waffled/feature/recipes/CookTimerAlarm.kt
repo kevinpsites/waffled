@@ -63,8 +63,11 @@ class CookTimerAlarm(private val context: Context) : CookAlarm {
     }
 
     override fun stop() {
-        // Anything still showing belongs to a session that is over.
-        notificationManager(context)?.cancelAll()
+        // Deliberately nothing. `CookSessionStore.end()` already cancels every timer by
+        // tag, so nothing of ours is left — and `cancelAll()` is APP-wide: it would take
+        // the calendar's event reminders down with it every time someone left Cook Mode.
+        // The hook exists because iOS also stops a looping in-app chime here; this port
+        // has no chime (the IMPORTANCE_HIGH channel carries the sound).
     }
 
     companion object {

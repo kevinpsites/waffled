@@ -109,6 +109,14 @@ fun RecipeDetailScreen(
     var tagsExpanded by remember { mutableStateOf(false) }
     var sharePreparing by remember { mutableStateOf(false) }
     var notesDraft by remember(r.id) { mutableStateOf(r.userNotes.orEmpty()) }
+    // Seed the notes draft from the LOADED recipe, not the summary this screen opened
+    // with. A caller can hand us a `RecipeSummary.placeholder` (the Today card, the
+    // planner), whose `userNotes` is empty — which leaves the draft empty while the real
+    // recipe has notes, makes "Save notes" appear, and PATCHes them away on a tap.
+    // Guarded on the draft still being untouched, so it never overwrites typing.
+    LaunchedEffect(state.loading) {
+        if (!state.loading && notesDraft.isEmpty()) notesDraft = r.userNotes.orEmpty()
+    }
 
     LaunchedEffect(model.id) {
         model.load()

@@ -1,7 +1,8 @@
 package app.waffled.feature.recipes
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -83,7 +84,11 @@ fun RecipePickerSheet(
             style = WF.type.title,
             color = WF.colors.ink,
         )
-        Box(Modifier.fillMaxSize()) {
+        // Bounded, never `fillMaxSize()`: the library is a LazyVerticalGrid and a
+        // ModalBottomSheet's column wraps its content, so an unbounded lazy child measures
+        // at zero height (or blows up on an infinite constraint) and the picker comes up
+        // empty. This is the first thing to check on a device.
+        Box(Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
             RecipePicker(
                 model = model,
                 onPickRecipe = { onPickRecipe(it); onDismiss() },
