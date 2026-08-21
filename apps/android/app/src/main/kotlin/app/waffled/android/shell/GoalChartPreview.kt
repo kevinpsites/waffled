@@ -41,7 +41,7 @@ fun GoalChartPreview(modifier: Modifier = Modifier) {
             cadence = GoalCadence.Daily,
             rangeStart = today.minusDays(89),
             rangeEnd = today,
-            unit = "pages",
+            unit = "hours",
             personColors = mapOf("alice" to "#2F7FED", "bob" to "#E0548B"),
         )
     }

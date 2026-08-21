@@ -91,3 +91,40 @@ data class RecipeRef(
     val emoji: String? = null,
     val imagePath: String? = null,
 )
+
+/**
+ * A "plate" — a multi-recipe meal — as other features refer to it.
+ *
+ * The symmetric half of [RecipeRef], and it must exist separately rather than being
+ * folded into it: **a planned dinner slot holds EITHER a recipe or a plate**, and the
+ * server distinguishes them explicitly (`WeekEntryDTO.isMealBacked` exists precisely
+ * because deciding on `recipeId != null` broke four web surfaces at once). Collapsing
+ * the two would reintroduce that bug on Android.
+ */
+data class MealRef(
+    val id: String,
+    val name: String,
+    /** One emoji per dish on the plate, in serving order. */
+    val emojis: List<String> = emptyList(),
+    val dishCount: Int = 0,
+)
+
+/**
+ * What occupies one planned meal slot. A slot is never both, and never ambiguous.
+ */
+sealed interface PlannedDish {
+    val displayName: String
+
+    data class FromRecipe(val recipe: RecipeRef) : PlannedDish {
+        override val displayName: String get() = recipe.title
+    }
+
+    data class FromPlate(val meal: MealRef) : PlannedDish {
+        override val displayName: String get() = meal.name
+    }
+
+    /** Free text the cook typed, with no recipe or plate behind it. */
+    data class FreeText(val text: String) : PlannedDish {
+        override val displayName: String get() = text
+    }
+}
