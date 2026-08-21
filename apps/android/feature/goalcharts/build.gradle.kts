@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -19,18 +18,16 @@ android {
     buildFeatures { compose = true }
 }
 
+// This module is PURE PRESENTATION: it draws a `GoalSeries` and nothing else. It
+// deliberately has no core:network / core:sync / navigation / serialization dependency —
+// there is no fetching here to need one, and the absent dependency is the cheapest
+// possible proof of that.
+//
+// core:model and core:design are api() because both appear in this module's public
+// composable signatures (GoalSeries in, Modifier and the WF tokens through).
 dependencies {
-    implementation(project(":core:model"))
-    implementation(project(":core:design"))
-    implementation(project(":core:network"))
-    implementation(project(":core:sync"))
-
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.navigation.compose)
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.kotlinx.serialization.json)
+    api(project(":core:model"))
+    api(project(":core:design"))
 
     testImplementation(project(":core:testing"))
 }
