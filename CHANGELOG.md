@@ -17,7 +17,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Opening the web app downloads about a quarter of what it used to.** Waffled handed
+  your browser the entire app up front — every screen, the barcode scanner, the sync
+  engine — before it could paint anything: roughly 520 KB of compressed code even if all
+  you wanted was the Today board, which is felt most on a phone joining over patchy wifi
+  or a hub reached from outside the house. Now each screen is fetched the moment you
+  first open it, and the two heavyweights load only when they're genuinely needed — the
+  barcode scanner when you tap **Scan** in the pantry, the live-sync engine in the
+  background once the app is already on screen. A first load is down to about 140 KB.
+  Nothing about how the app behaves changes: screens you've visited stay instant, the
+  kiosk still caches everything for offline use (now including screens nobody has opened
+  yet), and a screen that can't be fetched says so and leaves the rest of the app usable
+  instead of blanking the display.
+
 ### Fixed
+
+- **A kiosk's offline copy now follows the version you upgraded to.** The wall display
+  keeps its own copy of the app so a dropped connection doesn't blank the screen, but it
+  only ever refreshed that copy when Waffled's offline component itself changed — which
+  a release didn't do. Upgrade the server and the display would keep hoarding the files
+  from whatever version it first saw, so anything it hadn't already opened could be
+  missing next time the wifi went down. Each build now carries its own stamp (the release
+  version plus a fingerprint of the files in it), so a display notices an upgrade, fetches
+  the new copy, and clears out the old one instead of piling up a copy of every version
+  it has ever run.
 
 ## [0.13.1] - 2026-08-19
 
@@ -115,18 +138,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Opening the web app downloads about a quarter of what it used to.** Waffled handed
-  your browser the entire app up front — every screen, the barcode scanner, the sync
-  engine — before it could paint anything: roughly 520 KB of compressed code even if all
-  you wanted was the Today board, which is felt most on a phone joining over patchy wifi
-  or a hub reached from outside the house. Now each screen is fetched the moment you
-  first open it, and the two heavyweights load only when they're genuinely needed — the
-  barcode scanner when you tap **Scan** in the pantry, the live-sync engine in the
-  background once the app is already on screen. A first load is down to about 140 KB.
-  Nothing about how the app behaves changes: screens you've visited stay instant, the
-  kiosk still caches everything for offline use (now including screens nobody has opened
-  yet), and a screen that can't be fetched says so and leaves the rest of the app usable
-  instead of blanking the display.
 - **Quick "log time" buttons now start at 20 minutes.** The goal time chips are **20m ·
   30m · 1 hr · 1.5 hr** — the 2-hour button is gone, since a block that long is easier to
   type than a twenty-minute session was to tap out. Web, iPhone and iPad.
@@ -143,16 +154,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so the web, the wall tablet and everyone's phone all follow it.
 
 ### Fixed
-
-- **A kiosk's offline copy now follows the version you upgraded to.** The wall display
-  keeps its own copy of the app so a dropped connection doesn't blank the screen, but it
-  only ever refreshed that copy when Waffled's offline component itself changed — which
-  a release didn't do. Upgrade the server and the display would keep hoarding the files
-  from whatever version it first saw, so anything it hadn't already opened could be
-  missing next time the wifi went down. Each build now carries its own stamp (the release
-  version plus a fingerprint of the files in it), so a display notices an upgrade, fetches
-  the new copy, and clears out the old one instead of piling up a copy of every version
-  it has ever run.
 
 - **Shopping that went missing from an old "Plan the month" comes back.** The month-plan
   bug above didn't just fail to build your list — it filed rows under a date that isn't the
