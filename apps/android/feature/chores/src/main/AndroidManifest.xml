@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      A camera app can only hand back a full-resolution photo by writing into a URI we
+      own, so chore proof capture needs a FileProvider. The authority is namespaced to
+      this feature so it cannot collide with another module's provider, and the files live
+      in the cache directory: they exist only long enough to be encoded and uploaded.
+
+      No CAMERA permission is declared on purpose — `TakePicture` hands off to the user's
+      own camera app, and declaring the permission would make the OS demand it at runtime.
+    -->
+    <application>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.choreproof"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/chore_proof_paths" />
+        </provider>
+    </application>
+</manifest>

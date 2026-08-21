@@ -26,6 +26,9 @@ dependencies {
     implementation(project(":core:sync"))
 
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    // The system Photo Picker + TakePicture contracts (`rememberLauncherForActivityResult`)
+    // — the Android twin of iOS's PHPicker / UIImagePickerController.
+    implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.kotlinx.coroutines.android)
