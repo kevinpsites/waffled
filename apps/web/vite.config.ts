@@ -76,6 +76,20 @@ export default defineConfig({
     // (not Vite's default .vite/ subdirectory) because dotted paths are exactly the
     // sort of thing a static host declines to serve.
     manifest: 'asset-manifest.json',
+    // Keep all CSS in one stylesheet even though the JS is split per screen.
+    //
+    // Splitting the screens splits their stylesheets too, and a stylesheet only
+    // loads with the chunk importing it — but this codebase has 53 classes defined
+    // in one screen's CSS and used from another (CookConfirm's 13 `cc-*` live in
+    // pantry.css; Settings uses 10 pantry-*/pl-*; CookMode uses 7 re-timer-* from
+    // recipe.css; `.cal-search` loads on none of its users at all). Each renders as
+    // an unstyled browser default until the owning screen is opened first.
+    //
+    // One stylesheet costs ~28 kB gzipped on first load out of a ~373 kB saving, and
+    // ends the entire class of bug — including for classes not yet written. The
+    // per-screen split also wins least where it matters most: a kiosk runs for weeks
+    // and opens every screen eventually, so it fetches all 12 sheets regardless.
+    cssCodeSplit: false,
   },
   server: {
     port: 5175,
