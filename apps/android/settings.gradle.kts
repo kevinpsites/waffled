@@ -1,0 +1,25 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "waffled-android"
+
+include(":app")
+include(":core:model")
+include(":core:design")
+include(":core:network")
+include(":core:auth")
+include(":core:sync")
+include(":core:testing")
+include(":feature:photos")
