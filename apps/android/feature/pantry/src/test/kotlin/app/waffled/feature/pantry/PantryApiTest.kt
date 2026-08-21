@@ -352,6 +352,27 @@ class PantryApiTest {
         assertContains(sent, "\"i2\"")
     }
 
+    // ---- household config ----------------------------------------------------------------
+
+    @Test
+    fun `updateConfig PUTs a partial merge and returns the merged config`() = runTest {
+        harness.enqueueJson(
+            """{"locations":["Freezer","Fridge"],"showOnToday":false,"avoidAllergens":["peanut"],
+                "lowThreshold":2.0,"locationIcons":{"Fridge":"🧊"},"staleMonths":9.0}""",
+        )
+
+        val config = api.updateConfig(buildJsonObject { put("showOnToday", JsonPrimitive(false)) })
+
+        val request = harness.takeRequest()
+        assertEquals("PUT", request.method)
+        assertEquals("/api/pantry/config", request.path)
+        // A partial merge: only the field being changed goes out.
+        assertEquals("""{"showOnToday":false}""", request.body.readUtf8())
+        assertFalse(config.showOnToday)
+        assertEquals(listOf("peanut"), config.avoidAllergens)
+        assertEquals(9.0, config.staleMonths)
+    }
+
     // ---- auth --------------------------------------------------------------------------------
 
     @Test

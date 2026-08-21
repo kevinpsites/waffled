@@ -278,6 +278,21 @@ class PantryApi(
         }
     }
 
+    /**
+     * Patch the household's pantry config: the sections, the allergen avoid-list, the
+     * running-low threshold, the per-section icons, the "been a while" threshold and the
+     * Today-card toggle.
+     *
+     * A **partial merge** — send only what is changing — and it returns the merged
+     * result. The server clamps: `lowThreshold` at or above zero, `staleMonths` an
+     * integer from 1 to 60, and unknown allergen keys dropped.
+     *
+     * Not driven by any screen in this module (Settings owns that surface), but it is a
+     * pantry route, so it belongs in the pantry slice rather than being reinvented there.
+     */
+    suspend fun updateConfig(body: JsonObject): ListResponse =
+        send(HttpMethod.Put, "api/pantry/config") { jsonBody(body) }
+
     /** Recipes makeable now, plus on-hand proteins as "mains". */
     suspend fun cookable(): Cookable = send(HttpMethod.Get, "api/pantry/cookable")
 

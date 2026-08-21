@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.waffled.core.design.WF
 import app.waffled.core.design.WaffledStatusBadge
 import kotlinx.coroutines.launch
@@ -79,6 +80,12 @@ fun CookFromPantryCard(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
+    // Collected, not read off the model: `onHand` is a plain getter, so reading it
+    // directly registers no state read and this card would never recompose when the
+    // pantry finished loading — it would decide it was empty and stay hidden.
+    val snapshot by model.state.collectAsStateWithLifecycle()
+    val rows = snapshot.value.orEmpty()
+
     var cookable by remember { mutableStateOf(PantryApi.Cookable()) }
     var loaded by remember { mutableStateOf(false) }
     var open by remember { mutableStateOf(false) }
@@ -88,8 +95,8 @@ fun CookFromPantryCard(
         loaded = true
     }
 
-    val meals = model.onHand.filter { it.isMeal }
-    val useSoon = model.onHand.filter { it.isSoon }
+    val meals = remember(rows) { model.onHand.filter { it.isMeal } }
+    val useSoon = remember(rows) { model.onHand.filter { it.isSoon } }
     val empty = cookable.ready.isEmpty() && cookable.mains.isEmpty() &&
         meals.isEmpty() && useSoon.isEmpty()
     if (loaded && empty) return
@@ -169,13 +176,20 @@ fun CookFromPantrySheet(
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    // Same reason as the card: collect the snapshot so marking a leftover eaten, which
+    // reloads the model, actually redraws these buckets.
+    val snapshot by model.state.collectAsStateWithLifecycle()
+    val rows = snapshot.value.orEmpty()
+
     var eaten by remember { mutableStateOf(emptySet<String>()) }
     var addedTo by remember { mutableStateOf(emptySet<String>()) }
 
     val mainNames = remember(cookable) { cookable.mains.mapNotNull { it.item?.name }.toSet() }
-    val leftovers = model.onHand.filter { it.isMeal && it.id !in eaten }
-    val loose = model.onHand.filter { !it.isMeal && it.isSoon && it.name !in mainNames }
-    val useSoonNames = model.onHand.filter { it.isSoon }.map { it.name }
+    val leftovers = remember(rows, eaten) { model.onHand.filter { it.isMeal && it.id !in eaten } }
+    val loose = remember(rows, mainNames) {
+        model.onHand.filter { !it.isMeal && it.isSoon && it.name !in mainNames }
+    }
+    val useSoonNames = remember(rows) { model.onHand.filter { it.isSoon }.map { it.name } }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,

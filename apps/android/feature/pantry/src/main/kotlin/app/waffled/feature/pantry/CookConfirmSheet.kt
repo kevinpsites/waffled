@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.waffled.core.design.WF
 import app.waffled.core.design.WaffledPrimaryCTA
+import app.waffled.core.network.RefreshBus
+import app.waffled.core.network.RefreshDomain
 import kotlinx.coroutines.launch
 
 /**
@@ -49,6 +51,10 @@ import kotlinx.coroutines.launch
  * Exported for the **Recipes** module to present after a cook: the matches come from
  * [PantryApi.forRecipe], which is a pantry route, so the pair lives here rather than
  * being reimplemented over there.
+ *
+ * Because it writes without going through [PantryModel], pass the app's [RefreshBus] —
+ * consuming changes the pantry, and an open Pantry screen or Today card has no reactive
+ * query to notice. Omitting it is a silent stale-data bug, not a missing nicety.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,6 +63,7 @@ fun CookConfirmSheet(
     matches: List<PantryApi.RecipeMatch>,
     api: PantryApi,
     onDismiss: () -> Unit,
+    refreshBus: RefreshBus? = null,
     onApplied: (Int) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
@@ -102,7 +109,10 @@ fun CookConfirmSheet(
                         // here — reporting "3 updated" when one was a skip is a lie the
                         // caller would then show to the user.
                         val applied = picked.count { it.second != PantryApi.MODE_SKIP }
-                        if (applied > 0) runCatching { api.consume(picked) }
+                        if (applied > 0) {
+                            runCatching { api.consume(picked) }
+                                .onSuccess { refreshBus?.bump(RefreshDomain.Pantry) }
+                        }
                         busy = false
                         onApplied(applied)
                         onDismiss()

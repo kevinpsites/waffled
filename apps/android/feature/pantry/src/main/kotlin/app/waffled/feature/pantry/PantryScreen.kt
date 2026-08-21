@@ -122,6 +122,9 @@ fun PantryScreen(
     val usedUp = remember(rows, query) { model.usedUp(query) }
     val counts = remember(rows) { model.counts() }
     val avoid = remember(config) { model.avoidSet }
+    // Memoized like the rest: it walks every item (and calls `counts()` again), so left
+    // unwrapped it would rerun on every search keystroke.
+    val sections = remember(rows) { model.sectionsInUse() }
 
     // --- the scan flow and the item detail are full-screen states of this screen ---
 
@@ -164,7 +167,7 @@ fun PantryScreen(
 
         FilterChips(
             counts = counts,
-            sections = model.sectionsInUse(),
+            sections = sections,
             icons = config.locationIcons.orEmpty(),
             selected = filter,
             onSelect = { filter = it },
