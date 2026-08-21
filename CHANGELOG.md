@@ -42,6 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the new copy, and clears out the old one instead of piling up a copy of every version
   it has ever run.
 
+- **A kiosk behind a CORS-configured reverse proxy can actually use its offline copy.**
+  The display saved every file it needed, then declined to use any of them: it filed
+  them under a slightly different label than the browser asked for, so a wall tablet
+  that lost its network showed a blank screen while holding a complete copy of the app.
+  Whether it happened at all came down to a header your reverse proxy may or may not
+  send, so the same Waffled could work offline on one setup and not another. The
+  display now looks its files up by address alone.
+
 ## [0.13.1] - 2026-08-19
 
 ### Added
