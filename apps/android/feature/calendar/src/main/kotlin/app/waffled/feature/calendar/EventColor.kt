@@ -56,6 +56,8 @@ data class EventPeople(
     val ownerPersonId: String? = null,
     /** That person's `persons.color_hex`, denormalised at load time. */
     val ownerColorHex: String? = null,
+    /** That person's avatar emoji — the agenda card's identity glyph. */
+    val ownerAvatarEmoji: String? = null,
     val participantIds: Set<String> = emptySet(),
 ) {
     /** Owner ∪ participants — who this event is "for". */

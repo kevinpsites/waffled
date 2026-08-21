@@ -75,6 +75,7 @@ data class EventRow(
     val allDay: Boolean get() = event.allDay
     val isReadOnly: Boolean get() = event.isReadOnly
     val location: String? get() = event.location
+    val ownerEmoji: String? get() = people.ownerAvatarEmoji
 }
 
 /** One day's worth of rows, in agenda order. */

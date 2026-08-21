@@ -21,6 +21,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import java.net.URI
+import java.time.ZoneId
 
 /**
  * The calendar slice of the API — the Kotlin port of the `events` / `countdowns` /
@@ -157,6 +158,12 @@ class CalendarApi(
         val updated: Int = 0,
         val deleted: Int = 0,
         val error: String? = null,
+    )
+
+    /** The household context every calendar surface needs before it can lay anything out. */
+    data class HouseholdSettings(
+        val zone: ZoneId,
+        val members: List<Person>,
     )
 
     /** `settings.display` — how the calendar paints chips, and the whole-family colour. */
@@ -335,15 +342,24 @@ class CalendarApi(
     }
 
     /**
-     * The household members the person filter and the per-person columns need.
+     * The household members and timezone the calendar needs.
      *
-     * ⚠️ This is REST because `SyncManager.members` is declared but never populated — see
-     * the port report. `persons` IS a synced table, so this call is a stopgap, not the
-     * intended long-term source.
+     * ⚠️ Both are REST because neither is reachable from a feature module today:
+     * `SyncManager.members` is declared but never populated, and the household ZONE — which
+     * `SyncManager` already knows, since it buckets days with it — is held privately inside
+     * `DerivedEventState`. `persons` and `households` are both SYNCED tables, so this call
+     * is a stopgap rather than the intended long-term source. See the port report.
      */
-    suspend fun members(): List<Person> =
-        send<HouseholdSettingsEnvelope>(HttpMethod.Get, "api/household/settings")
-            .members.map { it.toPerson() }
+    suspend fun householdSettings(): HouseholdSettings {
+        val envelope = send<HouseholdSettingsEnvelope>(HttpMethod.Get, "api/household/settings")
+        return HouseholdSettings(
+            // An unrecognised zone must degrade to the device's, never throw: the whole
+            // calendar would otherwise fail to load over one bad settings row.
+            zone = runCatching { ZoneId.of(envelope.household?.timezone.orEmpty()) }
+                .getOrElse { ZoneId.systemDefault() },
+            members = envelope.members.map { it.toPerson() },
+        )
+    }
 
     // ---- ICS feeds -------------------------------------------------------------
 
@@ -408,7 +424,13 @@ class CalendarApi(
      * every avatar would render grey with no error anywhere. Hence a wire DTO that maps.
      */
     @Serializable
-    private data class HouseholdSettingsEnvelope(val members: List<MemberDto> = emptyList())
+    private data class HouseholdSettingsEnvelope(
+        val household: HouseholdDto? = null,
+        val members: List<MemberDto> = emptyList(),
+    )
+
+    @Serializable
+    private data class HouseholdDto(val id: String = "", val name: String = "", val timezone: String? = null)
 
     @Serializable
     private data class MemberDto(

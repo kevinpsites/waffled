@@ -12,6 +12,7 @@ import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import java.time.ZoneId
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -280,11 +281,28 @@ class CalendarApiTest {
             """.trimIndent(),
         )
 
-        val members = api.members()
+        val settings = api.householdSettings()
 
-        assertEquals(listOf("Jerry", "Elaine"), members.map { it.name })
-        assertEquals("#2F7FED", members.first().colorHex)
+        assertEquals(listOf("Jerry", "Elaine"), settings.members.map { it.name })
+        assertEquals("#2F7FED", settings.members.first().colorHex)
         assertEquals("/api/household/settings", harness.takeRequest().path)
+    }
+
+    @Test
+    fun readsTheHouseholdTimezoneTheCalendarFormatsIn() = runTest {
+        // ⚠️ REST, not sync: `SyncManager` derives day buckets in the household zone but
+        // never exposes the zone itself, and the synced `households` row is not readable
+        // from a feature module. The calendar needs it to label days and lay out a month.
+        harness.enqueueJson(
+            """{"household":{"id":"h1","name":"Seinfeld","timezone":"America/Denver","weekStart":"sunday"},"members":[]}""",
+        )
+        assertEquals(ZoneId.of("America/Denver"), api.householdSettings().zone)
+    }
+
+    @Test
+    fun anUnknownTimezoneFallsBackToTheDeviceRatherThanThrowing() = runTest {
+        harness.enqueueJson("""{"household":{"id":"h1","name":"X","timezone":"Mars/Olympus"},"members":[]}""")
+        assertEquals(ZoneId.systemDefault(), api.householdSettings().zone)
     }
 
     // ---- ICS feeds -------------------------------------------------------------
