@@ -12,6 +12,18 @@ written. **The 🔁 event marker now ships on iOS too**, so every part of the fe
 every surface. Per-surface status is the
 [feature matrix](../../website/docs/src/content/docs/reference/features.md).
 
+**Phase 4 — the redesign — is in progress.** The register no longer groups by shape. It
+groups by urgency (Needs you now / Coming up / Steady, paused named at the bottom), each row
+anchored by a countdown over a progress hairline, one verb per row and the rest behind a ⋯
+menu. The shapes survive as a first-class choice where you make one, and as the language of
+each row, but they are no longer headings. **Shipped on web/kiosk; iPhone and iPad still
+group by shape.** Still to come: the creation form as an editable sentence with a
+consequence line, the Today card as a countdown block, and the iPad list+detail split with
+completion history. Three things the design asks for have no server behind them yet — "push
+out a week" (there is no endpoint; `nextDueAt` is not in `UpdateRhythmInput`), the booked
+time on a settled row (the list returns `satisfied` as a boolean, no event time), and the
+"real average" interval in the history panel.
+
 Where "trash out weekly", "air filter every 3 months", "change the car's oil", "book a
 temple visit", "take a self-care day once a quarter", and "family outing on the third
 weekend of the month" live.

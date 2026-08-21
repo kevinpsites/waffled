@@ -110,6 +110,29 @@ smoke-detector batteries. These are exactly the items a calendar grid gets wrong
 
 ## Living with them
 
+### The register
+
+The Rhythms page is **sorted by when, not by kind**. Three groups, top to bottom:
+
+- **Needs you now** — late, or the booking window is closing. This is exactly what the
+  Today card is nudging you about, so the two can never disagree about the same rhythm.
+- **Coming up** — due in the next fortnight, but not shouting yet.
+- **Steady** — nothing to do. On a healthy register this is most of them.
+
+Paused rhythms sit in a single line at the bottom that **names** them, rather than a count
+you'd have to open to make sense of.
+
+Every row is anchored by a **countdown** on the right — *6 days late*, *5 days*, *3 months*,
+or **Booked** in green once a scheduled period has an event. Under the name, a hairline
+shows how much of the current cycle is already spent. Rows are ordered soonest-first inside
+each group, so the top of the page is always the thing most worth your attention.
+
+You won't see the two shapes named anywhere on this page, and that's deliberate — the
+difference shows up where it changes what you'd do. A you-do-it rhythm reads *"last done
+Aug 19"* and offers **I did it**; a scheduled one reads *"not on the calendar yet"* and
+offers **Book a time**. Steady rows offer no button at all; everything else — backdating,
+skipping, editing, pausing — lives in the row's **⋯** menu.
+
 ### The Today card
 
 The Rhythms card shows **only what needs attention today**, and **renders nothing at all**
@@ -142,12 +165,13 @@ it's due yet** — "I did this today" resets the clock from today. Once it's don
 says **Done today ✓** rather than offering itself again, so you can tell the tap landed;
 pressing it twice in a day doesn't record two of anything.
 
-Did it on Tuesday and only got round to logging it on Friday? **Log it for another day**
-(on the row, or in the ⋯ menu on iPhone) records the date it actually happened, which is
-the date the clock restarts from. It won't accept a date in the future.
+Did it on Tuesday and only got round to logging it on Friday? **Mark done on another day**
+(in the row's ⋯ menu) records the date it actually happened, which is the date the clock
+restarts from. It won't accept a date in the future.
 
-The register shows **Last done** and **Next due** for every one of them, which is the whole
-point of keeping the register: *"the filter last changed March 12"* stops being a guess.
+The register shows **last done** on every one of them alongside its countdown, which is the
+whole point of keeping the register: *"the filter last changed March 12"* stops being a
+guess.
 
 ### Skipping a period
 
@@ -180,6 +204,10 @@ register exists.
 | iPad | ✅ |
 
 Every part of Rhythms works on every surface, including the 🔁 marker on a booked event.
+
+The **regrouped register** described above — Needs you now / Coming up / Steady — is on
+web and kiosk today. iPhone and iPad still group the list by shape; they lose nothing by
+it, and they're next.
 
 The events a scheduled rhythm books are ordinary calendar events, so they show up
 **everywhere** — including on your phone, and including offline — the moment they're booked.
