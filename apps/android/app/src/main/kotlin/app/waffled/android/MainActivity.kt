@@ -73,7 +73,8 @@ class MainActivity : ComponentActivity() {
         val container = (application as WaffledApp).container
 
         setContent {
-            val forcedDark = container.themeStore.pref.forcedDark
+            val themePref by container.themeStore.prefFlow.collectAsStateWithLifecycle()
+            val forcedDark = themePref.forcedDark
             WaffledTheme(
                 darkTheme = forcedDark
                     ?: androidx.compose.foundation.isSystemInDarkTheme(),
@@ -114,8 +115,10 @@ private fun AppRoot(container: AppContainer) {
             .fillMaxSize()
             .background(WF.colors.canvas),
     ) {
-        // The Family tab renders the real Photos feature — the Phase 0 exit criterion is
-        // that this loads actual data from the running stack, not that it compiles.
+        // ⚠️ TEMPORARY: the Family tab hosts Photos so Phase 0 had something real to
+        // verify end to end. Family is its own 1,705-LOC feature (hub, person spotlight,
+        // approvals queue) — the `android/family` agent should reclaim this tab, and
+        // Photos should move behind its own route.
         if (selected.id == "family") {
             PhotosScreen(
                 model = container.photosModel,

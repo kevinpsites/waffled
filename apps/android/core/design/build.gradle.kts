@@ -30,6 +30,7 @@ dependencies {
     api(libs.compose.ui.tooling.preview)
     // Coil is api() here on purpose: the shared image loader is configured in this
     // module (see WaffledImages) because no feature module owns :app.
+    api(libs.kotlinx.coroutines.android)
     api(libs.coil.compose)
     api(libs.coil.network.okhttp)
 

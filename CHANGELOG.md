@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Waffled on Android.** A native Android app has started, built with Kotlin and Jetpack
+  Compose and aimed at matching the iPhone app feature for feature and pixel for pixel.
+  This first drop is the foundation: the Waffled look — colours, type, cards, buttons and
+  dark mode — signing in to your household, the shared photo wall, and the offline sync
+  engine that keeps your calendar and family list available with no connection. As with
+  the other apps you point it at your own server, and it will happily talk to a plain
+  `http://` address on your home network while insisting on HTTPS for anything on the
+  public internet. More screens land in the releases that follow.
+
 ### Changed
 
 ### Fixed
