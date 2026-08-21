@@ -26,8 +26,14 @@ interface TokenProvider {
     /**
      * Called once after a 401. Returns the new access token, or null if the session is
      * over. Implementations MUST be single-flight — see `TokenRefresher`.
+     *
+     * [failedToken] is the access token the 401'd request actually carried. Passing it
+     * is what makes a **staggered** 401 cheap: if the stored token has already moved on,
+     * the caller is simply behind and gets the current one instead of triggering a
+     * second refresh (and a second rotation of a single-use refresh token). Pass null
+     * when the caller has no token to name.
      */
-    suspend fun refreshAccessToken(): String?
+    suspend fun refreshAccessToken(failedToken: String?): String?
 }
 
 /** Where the server lives. User-editable at runtime — Waffled is self-hosted. */
@@ -84,13 +90,15 @@ object WaffledHttp {
     suspend fun <T> unwrap(
         response: HttpResponse,
         tokens: TokenProvider,
+        /** The access token this request carried — needed to make a staggered 401 cheap. */
+        sentToken: String? = null,
         retry: (suspend (String) -> HttpResponse)? = null,
         parse: suspend (HttpResponse) -> T,
     ): T {
         var current = response
 
         if (current.status.value == 401 && retry != null) {
-            val fresh = tokens.refreshAccessToken()
+            val fresh = tokens.refreshAccessToken(failedToken = sentToken)
             if (fresh != null) current = retry(fresh)
         }
 

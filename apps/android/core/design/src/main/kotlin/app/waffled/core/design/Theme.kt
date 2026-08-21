@@ -62,6 +62,19 @@ data class WaffledColors(
     val dangerT: Color,
     val warnT: Color,
     val infoT: Color,
+    /**
+     * Text/icons drawn on top of a photo or video, under [scrim].
+     *
+     * The `onInk` rule permits a literal white only on a *saturated coloured* fill, and a
+     * photo is neither `ink` nor saturated — so media captions had no legal answer. This
+     * is that answer: **fixed white in both themes**, because it sits on a darkened
+     * scrim, not on a theme surface. Photo tiles, recipe cards and the screensaver all
+     * use it. Never substitute `onInk` here (it is warm off-white in dark and near-black
+     * in light, so it would vanish on a dark scrim).
+     */
+    val onMedia: Color,
+    /** The darkening gradient placed under [onMedia]. Fixed across themes. */
+    val scrim: Color,
     val isDark: Boolean,
 )
 
@@ -99,6 +112,8 @@ internal val LightColors = WaffledColors(
     dangerT = hex(0xFBE3E1),
     warnT = hex(0xFDF2DD),
     infoT = hex(0xE7F0FE),
+    onMedia = Color.White,
+    scrim = hex(0x000000, 0.42f),
     isDark = false,
 )
 
@@ -131,6 +146,9 @@ internal val DarkColors = WaffledColors(
     dangerT = hex(0xE15B4C, 0.18f),
     warnT = hex(0xE8A13E, 0.18f),
     infoT = hex(0x4C9BFF, 0.20f),
+    // Fixed across themes on purpose — these sit on a photo, not on a theme surface.
+    onMedia = Color.White,
+    scrim = hex(0x000000, 0.42f),
     isDark = true,
 )
 
@@ -194,6 +212,7 @@ object WF {
         @Composable @ReadOnlyComposable get() = LocalWaffledColors.current
     val radius = WaffledRadius
     val spacing = WaffledSpacing
+    val type = WaffledType
 }
 
 @Composable

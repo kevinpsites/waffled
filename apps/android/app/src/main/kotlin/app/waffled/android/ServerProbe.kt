@@ -52,5 +52,5 @@ class ServerProbe(
 /** Signed-out token provider — Phase 0 has no login yet. */
 object AnonymousTokens : TokenProvider {
     override suspend fun accessToken(): String? = null
-    override suspend fun refreshAccessToken(): String? = null
+    override suspend fun refreshAccessToken(failedToken: String?): String? = null
 }

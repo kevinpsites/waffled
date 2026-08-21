@@ -43,7 +43,7 @@ import app.waffled.core.design.WaffledStatusBadge
 import app.waffled.core.design.WaffledTheme
 import app.waffled.core.sync.ModuleGate
 
-class WaffledApp : Application() {
+class WaffledApp : Application(), coil3.SingletonImageLoader.Factory {
     lateinit var container: AppContainer
         private set
 
@@ -51,6 +51,14 @@ class WaffledApp : Application() {
         super.onCreate()
         container = AppContainer(this)
     }
+
+    /**
+     * Install the shared image loader. Configured in `core:design` (see [WaffledImages])
+     * because every image-bearing feature depends on it and no feature module owns `app`.
+     * Features just call `AsyncImage` and get the memory cache for free.
+     */
+    override fun newImageLoader(context: coil3.PlatformContext): coil3.ImageLoader =
+        app.waffled.core.design.WaffledImages.loader(this)
 }
 
 class MainActivity : ComponentActivity() {
