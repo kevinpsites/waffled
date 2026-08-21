@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Cook Mode's timers have to reach you when the app is not on screen, which needs two
+      things Android gates separately.
+
+      SCHEDULE_EXACT_ALARM: an alarm that survives Doze at the minute a pan needs turning.
+      On API 31/32 this is granted at install; on 33+ it is a USER grant, revocable at any
+      time — so `CookTimerAlarm` checks `canScheduleExactAlarms()` on every schedule and
+      falls back to an inexact alarm rather than throwing. Deliberately NOT USE_EXACT_ALARM:
+      that one is install-granted but restricted to apps whose primary purpose is an alarm
+      clock or timer, and Waffled's is not. A cooking timer is arguably within the letter of
+      it — that is an app-level call for whoever ships the store listing, not a feature
+      module's to make.
+
+      POST_NOTIFICATIONS: also declared by `app/`, and repeated here so this module is
+      self-contained. It is a runtime request on 33+; Cook Mode asks for it when a timer is
+      first started, and works (silently) without it.
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <!--
+          Posts the "Timer's up" notification when a scheduled cook alarm comes due. Not
+          exported: nothing outside the app has any business firing a cook timer.
+        -->
+        <receiver
+            android:name=".CookTimerReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.waffled.feature.recipes.COOK_TIMER" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
