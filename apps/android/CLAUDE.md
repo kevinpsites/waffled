@@ -192,9 +192,15 @@ into "leave it alone". When a PATCH must clear a field, build the body as a `Jso
 with an explicit `JsonNull` and assert the null is on the wire. This affects Lists, Goals
 and Meals identically.
 
-**Kotlin nests block comments.** Writing `` `core/**` `` or `` `/api/auth/*` `` inside a
-KDoc opens a nested comment and yields a baffling "Unclosed comment" at end of file.
-Reword rather than escape.
+**Kotlin nests block comments.** Any `/*` inside a KDoc opens a nested comment and
+yields a baffling "Unclosed comment" at *end of file*, far from the real line. The
+offenders are ordinary-looking paths and globs:
+
+- `` `core/**` ``, `` `app/**` ``, `` `feature/<name>/**` ``  ← the `/*` in `/**`
+- `` `/api/auth/*` ``
+
+Reword rather than escape — "the `app` module", "everything under `core`". This has cost
+three agents a build each.
 
 ## KEEP IN SYNC contracts Android now joins
 
