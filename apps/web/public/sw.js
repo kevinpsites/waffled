@@ -31,10 +31,15 @@ const SHELL_URL = '/index.html'
 // code-split, so a screen's chunk is referenced only by the JS that imports it and
 // never appears in the HTML — parsing index.html would precache the entry and leave
 // a kiosk that went offline before anyone opened Meals unable to open Meals at all.
-// The build writes /asset-manifest.json listing every chunk, so read that and fall
-// back to scraping the HTML if it is missing (an older build, or a host that won't
-// serve it). Both paths are best-effort: a failed precache leaves a working online
-// app, which is the same trade the rest of this worker makes.
+// The build writes /asset-manifest.json listing the JS and CSS chunks, so read that
+// and fall back to scraping the HTML if it is missing (an older build, or a host that
+// won't serve it).
+//
+// The .wasm files are deliberately skipped. The manifest lists four wa-sqlite builds —
+// sync/async paired with two threading models, ~7 MB together — and a browser loads
+// exactly one pairing, so precaching all four would have every display download ~7 MB
+// it will never ask for, on every single deploy. They are still cached the first time
+// the engine loads one, because /assets/* goes through cacheFirst below.
 async function manifestAssets() {
   try {
     const res = await fetch('/asset-manifest.json', { cache: 'no-cache' })
@@ -42,7 +47,9 @@ async function manifestAssets() {
     const manifest = await res.json()
     const urls = new Set()
     for (const entry of Object.values(manifest)) {
-      if (entry && typeof entry.file === 'string') urls.add(`/${entry.file}`)
+      if (entry && typeof entry.file === 'string' && !entry.file.endsWith('.wasm')) {
+        urls.add(`/${entry.file}`)
+      }
       for (const css of entry?.css ?? []) urls.add(`/${css}`)
     }
     return [...urls]
@@ -62,6 +69,11 @@ function htmlAssets(html) {
 async function precache() {
   const shellCache = await caches.open(SHELL)
   const res = await fetch('/index.html', { cache: 'no-cache' })
+  // A reverse proxy mid-restart answers 502 with a *Response*, not a rejection. Cached
+  // as the shell, that error page becomes indistinguishable from the app to every later
+  // offline navigation — the kiosk would serve "502 Bad Gateway" out of its own cache
+  // from then on, with the server long since healthy.
+  if (!res.ok) throw new Error(`sw: refusing to cache a ${res.status} as the app shell`)
   await shellCache.put(SHELL_URL, res.clone())
   await shellCache.put('/', res.clone())
   const html = await res.text()
@@ -76,8 +88,15 @@ async function precache() {
   }
 }
 
+// Let a failed precache fail the install, rather than swallowing it. Cache names carry
+// the build stamp, so `activate` deletes the *previous* build's shell and assets — if a
+// worker were allowed to install with nothing cached and then claim control, it would
+// delete the only working offline copy the display had and replace it with an empty
+// one. Rejecting means the browser discards the half-built worker, leaves the old one
+// serving, and retries on the next navigation. The individual asset fetches inside
+// precache() stay best-effort; it is losing the *shell* that is unrecoverable.
 self.addEventListener('install', (event) => {
-  event.waitUntil(precache().catch(() => {}).then(() => self.skipWaiting()))
+  event.waitUntil(precache().then(() => self.skipWaiting()))
 })
 
 self.addEventListener('activate', (event) => {

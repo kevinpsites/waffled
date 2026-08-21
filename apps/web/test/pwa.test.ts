@@ -10,7 +10,13 @@ const workerPath = resolve(dirname(fileURLToPath(import.meta.url)), '../public/s
 // build it is installing against: the shell HTML plus the chunk manifest Vite emits.
 type Served = Record<string, string | undefined>
 
-async function loadWorker(served: Served = {}) {
+// `networkDown` makes every fetch reject, the way a dropped wifi link does.
+// `shellStatus` serves the shell with a non-OK status — a rolling restart of the
+// reverse proxy answering 502 while the container comes back, which is a *response*
+// and not a rejection, so it slips past a plain try/catch.
+type WorkerOptions = { networkDown?: boolean; shellStatus?: number }
+
+async function loadWorker(served: Served = {}, options: WorkerOptions = {}) {
   const source = await readFile(workerPath, 'utf8')
   const listeners = new Map<string, (event: unknown) => void>()
   // One cache object per name, so a test can assert what landed in the assets cache
@@ -47,9 +53,13 @@ async function loadWorker(served: Served = {}) {
     },
   }
   const fetchMock = vi.fn(async (input: string) => {
+    if (options.networkDown) throw new TypeError('Failed to fetch')
     const path = typeof input === 'string' ? input : String(input)
     const body = served[path]
     if (body === undefined) return new Response('{}', { status: 404 })
+    if (path === '/index.html' && options.shellStatus) {
+      return new Response(body, { status: options.shellStatus })
+    }
     return new Response(body, { status: 200 })
   })
   runInNewContext(source, {
@@ -60,7 +70,7 @@ async function loadWorker(served: Served = {}) {
     Response,
     Set,
   })
-  return { listeners, cacheStorage, cacheFor, fetchMock }
+  return { listeners, cacheStorage, cacheFor, fetchMock, self }
 }
 
 // Drive the install handler to completion, the way the browser does.
@@ -181,5 +191,68 @@ describe('service worker offline precache', () => {
 
     const cached = assets.add.mock.calls.map(([url]) => url)
     expect(cached).toContain('/assets/Settings-ghi.js')
+  })
+
+  it('leaves the alternative SQLite wasm builds out of the precache', async () => {
+    // The manifest lists four wa-sqlite builds — sync/async × two threading models,
+    // about 7 MB in total — and any given browser loads exactly one pairing. They
+    // are in the manifest only because they have a `file` key, and precaching all
+    // four means every display downloads ~7 MB it will never ask for on every
+    // deploy. They still land in the cache the first time the engine actually loads
+    // one, because /assets/* goes through cacheFirst.
+    const { listeners, cacheFor } = await loadWorker({
+      '/index.html': SHELL_HTML,
+      '/asset-manifest.json': JSON.stringify({
+        'src/main.tsx': { file: 'assets/index-abc.js' },
+        'wa-sqlite.wasm': { file: 'assets/wa-sqlite-xyz.wasm' },
+        'wa-sqlite-async.wasm': { file: 'assets/wa-sqlite-async-xyz.wasm' },
+      }),
+    })
+    await install(listeners)
+
+    const cached = cacheFor('waffled-dev-assets').add.mock.calls.map(([url]) => url)
+    expect(cached).toContain('/assets/index-abc.js')
+    expect(cached).not.toContain('/assets/wa-sqlite-xyz.wasm')
+    expect(cached).not.toContain('/assets/wa-sqlite-async-xyz.wasm')
+  })
+})
+
+// A worker that installs despite a failed precache is worse than no new worker at
+// all: cache names carry the build stamp, so `activate` deletes the *previous*
+// build's shell and assets. Install broken, activate anyway, and the display is left
+// with empty caches and its working copy deleted — no offline app at all, which is
+// strictly worse than the build it was running a moment ago.
+describe('service worker install safety', () => {
+  const SHELL_HTML = '<html><head><script type="module" src="/assets/index-abc.js"></script></head></html>'
+
+  it('refuses to install when the shell cannot be fetched', async () => {
+    // Rejecting is the point: the browser discards the half-built worker, keeps the
+    // old one serving, and retries on the next navigation.
+    const { listeners } = await loadWorker({}, { networkDown: true })
+
+    await expect(install(listeners)).rejects.toThrow()
+  })
+
+  it('does not take over from a working worker when its precache failed', async () => {
+    const { listeners, self } = await loadWorker({}, { networkDown: true })
+
+    await expect(install(listeners)).rejects.toThrow()
+    // skipWaiting is what hands control — and therefore the activate sweep — to a
+    // worker with nothing cached.
+    expect(self.skipWaiting).not.toHaveBeenCalled()
+  })
+
+  it('refuses to cache a proxy error page as the app shell', async () => {
+    // A 502 from a reverse proxy mid-restart is a Response, not a rejection. Cached
+    // as the shell it would be indistinguishable from the app to every later offline
+    // navigation: the kiosk would serve "502 Bad Gateway" from its own cache, from
+    // then on, with the server perfectly healthy.
+    const { listeners, cacheFor } = await loadWorker(
+      { '/index.html': '<html><body>502 Bad Gateway</body></html>' },
+      { shellStatus: 502 }
+    )
+
+    await expect(install(listeners)).rejects.toThrow()
+    expect(cacheFor('waffled-dev-shell').put).not.toHaveBeenCalled()
   })
 })
