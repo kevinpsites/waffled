@@ -100,6 +100,45 @@ class EventRowMapperTest {
     }
 
     @Test
+    fun anOccurrenceCarriesTheSeriesItBelongsTo() {
+        // `event_occurrences` rows have no `rrule` — the master they belong to does, and
+        // the master is excluded from the events query. So without `event_id` reaching
+        // the model, EVERY recurring event on Android is indistinguishable from a plain
+        // one AND has no id the API will accept: GET /api/events/:id 404s on an
+        // occurrence id and wants the series. That made all recurring editing impossible.
+        val occurrence = EventRowMapper.map(
+            FakeCursor(
+                mapOf(
+                    "id" to "occ1",
+                    "household_id" to "h1",
+                    "title" to "Swimming",
+                    "event_id" to "series1",
+                    "original_start" to "2026-08-21T18:00:00Z",
+                    "override_id" to "ovr1",
+                    "starts_on" to "2026-08-21",
+                ),
+            ),
+        )
+
+        assertEquals("series1", occurrence.seriesId)
+        assertEquals("2026-08-21T18:00:00Z", occurrence.originalStart)
+        assertEquals("ovr1", occurrence.overrideId)
+        assertTrue(occurrence.isOccurrence)
+        // The id the API will actually accept for an edit.
+        assertEquals("series1", occurrence.editableId)
+    }
+
+    @Test
+    fun aPlainEventIsItsOwnEditTarget() {
+        val plain = EventRowMapper.map(
+            FakeCursor(mapOf("id" to "e1", "household_id" to "h1", "title" to "Dinner")),
+        )
+        assertNull(plain.seriesId)
+        assertFalse(plain.isOccurrence)
+        assertEquals("e1", plain.editableId)
+    }
+
+    @Test
     fun aRecurringMasterIsRecognisedByItsRrule() {
         val master = EventRowMapper.map(
             FakeCursor(mapOf("id" to "e1", "household_id" to "h1", "title" to "t", "rrule" to "FREQ=WEEKLY")),

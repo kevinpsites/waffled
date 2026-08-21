@@ -95,6 +95,7 @@ class SyncManager(
 
         watchEvents(db)
         watchHousehold(db)
+        watchMembers(db)
     }
 
     /**
@@ -133,6 +134,20 @@ class SyncManager(
                     if (tz.isEmpty()) return@collect
                     runCatching { ZoneId.of(tz) }.getOrNull()?.let { setHouseholdZone(it) }
                 }
+        }
+    }
+
+    /**
+     * The household roster, straight from the synced `persons` table.
+     *
+     * `members` was previously declared and never populated, which forced features to
+     * fetch the roster over REST even though it is one of the five synced tables.
+     */
+    private fun watchMembers(db: PowerSyncDatabase) {
+        scope.launch {
+            db.watch(PersonRowMapper.PERSONS_SQL, mapper = PersonRowMapper::map)
+                .catch { }
+                .collect { people -> _members.value = people }
         }
     }
 

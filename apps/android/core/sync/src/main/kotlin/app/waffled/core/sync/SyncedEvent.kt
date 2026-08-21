@@ -36,9 +36,31 @@ data class SyncedEvent(
     val timezone: String? = null,
     val status: String? = null,
     val updatedAt: String? = null,
+    /**
+     * For a row from `event_occurrences`: the recurring master it belongs to.
+     *
+     * Essential, not decorative. Occurrence rows carry no `rrule` (the master does, and
+     * the master is excluded from the query), so without this an occurrence is
+     * indistinguishable from a plain event — and `GET /api/events/:id` 404s on an
+     * occurrence id, because the API wants the series. Null for a plain event.
+     */
+    val seriesId: String? = null,
+    /** The occurrence's slot in the series, used to scope an edit to this instance. */
+    val originalStart: String? = null,
+    /** Set when this occurrence already has a per-instance override row. */
+    val overrideId: String? = null,
 ) {
     /** An event from a subscribed feed cannot be edited here. */
     val isReadOnly: Boolean get() = origin == "ics"
+
+    /** True when this row came from `event_occurrences` rather than `events`. */
+    val isOccurrence: Boolean get() = seriesId != null
+
+    /**
+     * The id the API will accept for an edit: the series for an occurrence, otherwise the
+     * event itself. Pair it with [originalStart] to scope a change to one instance.
+     */
+    val editableId: String get() = seriesId ?: id
 }
 
 /**

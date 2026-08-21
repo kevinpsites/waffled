@@ -1,7 +1,9 @@
 package app.waffled.core.model
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNames
 
 /**
  * Cross-feature domain types. These live in `core:model` precisely so eighteen parallel
@@ -11,16 +13,26 @@ import kotlinx.serialization.Serializable
  * rather than adding a parallel type in a feature module.
  */
 
+/**
+ * ⚠️ A person arrives in TWO shapes and must decode both:
+ *  - PowerSync rows carry the database's snake_case columns (`color_hex`),
+ *  - the REST API emits camelCase (`colorHex`) — `persons.ts:23` maps between them.
+ *
+ * Hence [JsonNames] on every multi-word field. Supporting only one shape fails
+ * SILENTLY: the field decodes to null, every avatar goes grey, and nothing anywhere
+ * reports a problem. Locked by `PersonWireFormatTest`.
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class Person(
     val id: String,
-    @SerialName("household_id") val householdId: String? = null,
+    @SerialName("household_id") @JsonNames("householdId") val householdId: String? = null,
     val name: String,
-    @SerialName("color_hex") val colorHex: String? = null,
-    @SerialName("avatar_emoji") val avatarEmoji: String? = null,
-    @SerialName("member_type") val memberType: String? = null,
-    @SerialName("sort_order") val sortOrder: Int? = null,
-    @SerialName("is_admin") val isAdmin: Boolean = false,
+    @SerialName("color_hex") @JsonNames("colorHex") val colorHex: String? = null,
+    @SerialName("avatar_emoji") @JsonNames("avatarEmoji") val avatarEmoji: String? = null,
+    @SerialName("member_type") @JsonNames("memberType") val memberType: String? = null,
+    @SerialName("sort_order") @JsonNames("sortOrder") val sortOrder: Int? = null,
+    @SerialName("is_admin") @JsonNames("isAdmin") val isAdmin: Boolean = false,
     val capabilities: List<String> = emptyList(),
 ) {
     /** `isAdmin || capabilities.contains(c)` — the iOS `can(_:)` rule, per person. */
@@ -32,6 +44,7 @@ data class Person(
             ?: name.trim().take(1).uppercase().ifEmpty { "?" }
 }
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class Household(
     val id: String,
@@ -42,5 +55,5 @@ data class Household(
      * never compute their own week start (a client-computed one caused the PlanMonth
      * grocery-rebuild bug).
      */
-    @SerialName("week_start") val weekStart: String? = null,
+    @SerialName("week_start") @JsonNames("weekStart") val weekStart: String? = null,
 )

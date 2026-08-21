@@ -44,6 +44,10 @@ object EventRowMapper {
             timezone = str("timezone"),
             status = str("status"),
             updatedAt = str("updated_at"),
+            // Present only on `event_occurrences` rows — see SyncedEvent.seriesId.
+            seriesId = str("event_id"),
+            originalStart = str("original_start"),
+            overrideId = str("override_id"),
         )
     }
 
@@ -58,4 +62,33 @@ object EventRowMapper {
 
     /** Materialised occurrences of the recurring masters excluded above. */
     const val OCCURRENCES_SQL: String = "SELECT * FROM event_occurrences"
+}
+
+/**
+ * Turn a synced `persons` row into a [app.waffled.core.model.Person].
+ *
+ * Mapped by column name for the same reason as events. Note that `capabilities` and
+ * `is_admin` are NOT synced columns — they come from the REST session — so a person read
+ * from sync has an empty capability set and gates to false. Merge with the REST roster
+ * before using [app.waffled.core.model.Person.can].
+ */
+object PersonRowMapper {
+
+    const val PERSONS_SQL: String = "SELECT * FROM persons ORDER BY sort_order"
+
+    fun map(cursor: SqlCursor): app.waffled.core.model.Person {
+        val columns = cursor.columnNames
+        fun str(name: String): String? =
+            columns[name]?.let { cursor.getString(it) }?.takeIf { it.isNotEmpty() }
+
+        return app.waffled.core.model.Person(
+            id = str("id").orEmpty(),
+            householdId = str("household_id"),
+            name = str("name").orEmpty(),
+            colorHex = str("color_hex"),
+            avatarEmoji = str("avatar_emoji"),
+            memberType = str("member_type"),
+            sortOrder = columns["sort_order"]?.let { cursor.getLong(it) }?.toInt(),
+        )
+    }
 }
