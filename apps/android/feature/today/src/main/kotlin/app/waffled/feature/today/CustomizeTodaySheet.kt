@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -117,7 +118,11 @@ fun CustomizeTodaySheet(
             SectionLabel("Reorder · toggle to show or hide")
 
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                // A bounded max height rather than `weight`: this Column sits in the sheet's
+                // content slot, and if that slot ever hands down an unbounded height a
+                // weighted child measures from minHeight — i.e. to nothing, leaving the
+                // sheet with a Save button and no cards to arrange.
+                modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
                 contentPadding = PaddingValues(vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {

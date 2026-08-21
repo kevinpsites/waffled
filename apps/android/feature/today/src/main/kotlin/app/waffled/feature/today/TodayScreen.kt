@@ -5,8 +5,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,6 +35,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.waffled.core.design.AICaptureBar
 import app.waffled.core.design.Avatar
@@ -40,10 +46,12 @@ import app.waffled.core.design.AvatarFromHex
 import app.waffled.core.design.FamilyColor
 import app.waffled.core.design.WF
 import app.waffled.core.model.Person
+import app.waffled.core.model.WaffledModule
 import app.waffled.core.network.RefreshBus
 import app.waffled.core.sync.ModuleGate
 import app.waffled.core.sync.SyncedEvent
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -65,6 +73,7 @@ import java.time.ZonedDateTime
  *
  * Scope: phone only. The tablet `KioskDashboard` is a separate view tree.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodayScreen(
     dash: DashboardModel,
@@ -108,10 +117,26 @@ fun TodayScreen(
     // rolls over — never inside a render pass.
     var today by remember(zone) { mutableStateOf(LocalDate.now(zone)) }
 
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+
+    suspend fun reload() {
+        dash.load(today.toString())
+        dash.loadGoals()
+    }
+
     LaunchedEffect(zone) { layout.load() }
     LaunchedEffect(zone) { dash.loadWeather() }
-    LaunchedEffect(zone, today) { dash.load(today.toString()) }
-    LaunchedEffect(zone) { dash.loadGoals() }
+
+    // The cards refetch on every return to the foreground, not just on first composition.
+    // They are REST-backed, so a chore ticked on the web or another phone while this was
+    // backgrounded arrives silently — nothing would ever tell us. `LifecycleResumeEffect`
+    // also fires on the first RESUMED transition, so this IS the initial load; adding a
+    // separate LaunchedEffect alongside it would just double-fetch on entry.
+    LifecycleResumeEffect(zone, today) {
+        val job = scope.launch { reload() }
+        onPauseOrDispose { job.cancel() }
+    }
 
     // Day rollover while the screen stays open: at (household-tz) midnight "today" changes,
     // so the dinner and chores on screen are suddenly yesterday's. Sleep to just past each
@@ -158,6 +183,16 @@ fun TodayScreen(
 
     val todaysEvents = TodayFormat.eventsOn(eventsByDay, today)
 
+    val actions = remember(
+        onOpenCalendar, onOpenEvent, onOpenChores, onOpenGrocery,
+        onOpenRecipe, onCookRecipe, onOpenMeal, onCookMeal,
+    ) {
+        TodayActions(
+            onOpenCalendar, onOpenEvent, onOpenChores, onOpenGrocery,
+            onOpenRecipe, onCookRecipe, onOpenMeal, onCookMeal,
+        )
+    }
+
     Column(modifier.fillMaxSize().background(WF.colors.canvas)) {
         StickyHeader(
             member = greetingMember,
@@ -169,89 +204,78 @@ fun TodayScreen(
             onOpenPerson = onOpenPerson,
         )
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                start = 18.dp,
-                end = 18.dp,
-                top = 6.dp,
-                // Cards scroll UNDER the tab bar.
-                bottom = WF.spacing.tabBarClearance,
-            ),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            // Parent-only "Needs your OK" — gated with chores, since nothing can be in the
-            // chore/reward approval queues without it.
-            if (approvalsBanner != null && modules.isOn(app.waffled.core.model.WaffledModule.Chores)) {
-                item(key = "approvals") { approvalsBanner() }
-            }
-
-            // The goal-recap review banner (the calendar↔goal bridge) — gated with goals so
-            // it can't surface for a disabled feature.
-            val recapRows = recap.value.orEmpty()
-            val suggestionRows = suggestions.value.orEmpty()
-            if (modules.isOn(app.waffled.core.model.WaffledModule.Goals) &&
-                (recapRows.isNotEmpty() || suggestionRows.isNotEmpty())
-            ) {
-                item(key = "review") {
-                    ReviewEventsBanner(
-                        recapTitles = recapRows.map { it.title },
-                        suggestionTitles = suggestionRows.map { it.title },
-                        onOpen = onOpenReviewEvents,
-                    )
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = {
+                refreshing = true
+                scope.launch {
+                    reload()
+                    refreshing = false
                 }
-            }
+            },
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 18.dp,
+                    end = 18.dp,
+                    top = 6.dp,
+                    // Cards scroll UNDER the tab bar.
+                    bottom = WF.spacing.tabBarClearance,
+                ),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                // Parent-only "Needs your OK" — gated with chores, since nothing can be in
+                // the chore/reward approval queues without it.
+                if (approvalsBanner != null && modules.isOn(WaffledModule.Chores)) {
+                    item(key = "approvals") { approvalsBanner() }
+                }
 
-            items(rows, key = { it.id }) { row ->
-                when (row) {
-                    is TodayCards.CardRow.Single -> CardView(
-                        key = row.key,
-                        dash = dash,
-                        tonightLoaded = tonight.loaded,
+                // The goal-recap review banner (the calendar-goal bridge) — gated with
+                // goals so it can't surface for a disabled feature.
+                val recapRows = recap.value.orEmpty()
+                val suggestionRows = suggestions.value.orEmpty()
+                if (modules.isOn(WaffledModule.Goals) &&
+                    (recapRows.isNotEmpty() || suggestionRows.isNotEmpty())
+                ) {
+                    item(key = "review") {
+                        ReviewEventsBanner(
+                            recapTitles = recapRows.map { it.title },
+                            suggestionTitles = suggestionRows.map { it.title },
+                            onOpen = onOpenReviewEvents,
+                        )
+                    }
+                }
+
+                items(rows, key = { it.id }) { row ->
+                    val cards = CardData(
                         tonightMeal = tonight.value?.firstOrNull(),
+                        tonightLoaded = tonight.loaded,
                         chores = chores.value.orEmpty(),
                         choresLoaded = chores.loaded,
                         groceryRemaining = grocery.value ?: 0,
                         groceryLoaded = grocery.loaded,
                         events = todaysEvents,
-                        zone = zone,
-                        cardContent = cardContent,
-                        onOpenCalendar = onOpenCalendar,
-                        onOpenEvent = onOpenEvent,
-                        onOpenChores = onOpenChores,
-                        onOpenGrocery = onOpenGrocery,
-                        onOpenRecipe = onOpenRecipe,
-                        onCookRecipe = onCookRecipe,
-                        onOpenMeal = onOpenMeal,
-                        onCookMeal = onCookMeal,
                     )
+                    when (row) {
+                        is TodayCards.CardRow.Single ->
+                            CardView(row.key, cards, zone, cardContent, actions)
 
-                    is TodayCards.CardRow.Pair -> Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min),
-                    ) {
-                        listOf(row.first, row.second).forEach { key ->
-                            Box(Modifier.weight(1f).fillMaxWidth()) {
+                        is TodayCards.CardRow.Pair -> Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            // Intrinsic height on the row plus fillMaxHeight on each card,
+                            // so the shorter of the pair stretches instead of leaving the
+                            // ragged edge iOS doesn't have.
+                            modifier = Modifier.height(IntrinsicSize.Min),
+                        ) {
+                            listOf(row.first, row.second).forEach { key ->
                                 CardView(
                                     key = key,
-                                    dash = dash,
-                                    tonightLoaded = tonight.loaded,
-                                    tonightMeal = tonight.value?.firstOrNull(),
-                                    chores = chores.value.orEmpty(),
-                                    choresLoaded = chores.loaded,
-                                    groceryRemaining = grocery.value ?: 0,
-                                    groceryLoaded = grocery.loaded,
-                                    events = todaysEvents,
+                                    cards = cards,
                                     zone = zone,
                                     cardContent = cardContent,
-                                    onOpenCalendar = onOpenCalendar,
-                                    onOpenEvent = onOpenEvent,
-                                    onOpenChores = onOpenChores,
-                                    onOpenGrocery = onOpenGrocery,
-                                    onOpenRecipe = onOpenRecipe,
-                                    onCookRecipe = onCookRecipe,
-                                    onOpenMeal = onOpenMeal,
-                                    onCookMeal = onCookMeal,
+                                    actions = actions,
+                                    modifier = Modifier.weight(1f).fillMaxHeight(),
                                 )
                             }
                         }
@@ -273,52 +297,80 @@ fun TodayScreen(
     }
 }
 
-/** Dispatch one card key to its content. An unknown/unwired key renders nothing. */
+/** Everything the four locally-owned cards render, gathered once per row. */
+private data class CardData(
+    val tonightMeal: TonightMeal?,
+    val tonightLoaded: Boolean,
+    val chores: List<TodayApi.PersonChores>,
+    val choresLoaded: Boolean,
+    val groceryRemaining: Int,
+    val groceryLoaded: Boolean,
+    val events: List<SyncedEvent>,
+)
+
+/** Every tap a card can make. Bundled so the dispatcher isn't a fifteen-argument function. */
+class TodayActions(
+    val onOpenCalendar: () -> Unit = {},
+    val onOpenEvent: (SyncedEvent) -> Unit = {},
+    val onOpenChores: () -> Unit = {},
+    val onOpenGrocery: () -> Unit = {},
+    val onOpenRecipe: (TonightRecipe) -> Unit = {},
+    val onCookRecipe: (TonightRecipe) -> Unit = {},
+    val onOpenMeal: (TonightMeal) -> Unit = {},
+    val onCookMeal: (TonightMeal) -> Unit = {},
+)
+
+/** Dispatch one card key to its content. An unknown or unwired key renders nothing. */
 @Composable
 private fun CardView(
     key: String,
-    dash: DashboardModel,
-    tonightLoaded: Boolean,
-    tonightMeal: TonightMeal?,
-    chores: List<TodayApi.PersonChores>,
-    choresLoaded: Boolean,
-    groceryRemaining: Int,
-    groceryLoaded: Boolean,
-    events: List<SyncedEvent>,
+    cards: CardData,
     zone: ZoneId,
     cardContent: Map<String, @Composable () -> Unit>,
-    onOpenCalendar: () -> Unit,
-    onOpenEvent: (SyncedEvent) -> Unit,
-    onOpenChores: () -> Unit,
-    onOpenGrocery: () -> Unit,
-    onOpenRecipe: (TonightRecipe) -> Unit,
-    onCookRecipe: (TonightRecipe) -> Unit,
-    onOpenMeal: (TonightMeal) -> Unit,
-    onCookMeal: (TonightMeal) -> Unit,
+    actions: TodayActions,
+    modifier: Modifier = Modifier,
 ) {
     when (key) {
-        TodayCards.AGENDA -> AgendaCard(events, zone, onOpenCalendar, onOpenEvent)
+        TodayCards.AGENDA -> AgendaCard(
+            events = cards.events,
+            zone = zone,
+            onOpenCalendar = actions.onOpenCalendar,
+            onOpenEvent = actions.onOpenEvent,
+            modifier = modifier,
+        )
+
         TodayCards.TONIGHT -> TonightCard(
-            meal = tonightMeal,
-            loaded = tonightLoaded,
-            onOpenRecipe = onOpenRecipe,
-            onCookRecipe = onCookRecipe,
-            onOpenMeal = onOpenMeal,
-            onCookMeal = onCookMeal,
+            meal = cards.tonightMeal,
+            loaded = cards.tonightLoaded,
+            onOpenRecipe = actions.onOpenRecipe,
+            onCookRecipe = actions.onCookRecipe,
+            onOpenMeal = actions.onOpenMeal,
+            onCookMeal = actions.onCookMeal,
+            modifier = modifier,
         )
 
+        // The tallies are derived from the same list the avatars come from, so one snapshot
+        // read drives the whole card — reading them off the model would recompose only by
+        // luck of a sibling parameter changing.
         TodayCards.CHORES -> ChoresCard(
-            people = chores,
-            done = dash.choreDone,
-            total = dash.choreTotal,
-            stars = dash.choreStars,
-            loaded = choresLoaded,
-            onOpen = onOpenChores,
+            people = cards.chores,
+            done = cards.chores.sumOf { it.done },
+            total = cards.chores.sumOf { it.total },
+            stars = cards.chores.sumOf { it.stars },
+            loaded = cards.choresLoaded,
+            onOpen = actions.onOpenChores,
+            modifier = modifier,
         )
 
-        TodayCards.GROCERY -> GroceryCard(groceryRemaining, groceryLoaded, onOpenGrocery)
-        // Countdowns, lists, pantry, Family Night and the goals hero belong to other
-        // feature modules; the host supplies them.
+        TodayCards.GROCERY -> GroceryCard(
+            remaining = cards.groceryRemaining,
+            loaded = cards.groceryLoaded,
+            onOpen = actions.onOpenGrocery,
+            modifier = modifier,
+        )
+
+        // Countdowns, lists, pantry, Family Night and the goals hero belong to other feature
+        // modules; the host supplies them through `cardContent`.
         else -> cardContent[key]?.invoke()
     }
 }
@@ -410,7 +462,6 @@ private fun StickyHeader(
         AICaptureBar(onTap = onCapture, onMic = onDictate)
     }
 
-    Spacer(Modifier.height(0.dp))
 }
 
 /** Milliseconds until just past the next local midnight. */
