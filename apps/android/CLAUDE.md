@@ -52,6 +52,11 @@ adb shell cmd uimode night yes                # check dark mode too
 ```
 The emulator has **no `curl`** — probe the server through the app, not the shell.
 
+**Two shell gotchas that waste time:** the `rtk` shim can mangle `grep` output (printing
+`N matches in 0 files` with no content) — use `Read`, `sed -n` or `awk` instead, or
+`rtk proxy grep`. And the worktree guard rejects compound one-liners it can't verify
+(`cd X && grep …`), so split them into separate commands.
+
 ## Reaching the server
 
 **`localhost` from an emulator is the emulator.** The host Caddy is **`10.0.2.2:8080`**
@@ -64,6 +69,29 @@ Two more, both of which have bitten this repo before:
   (`POWERSYNC_PUBLIC_URL`); if it advertises a `localhost`, the device can't reach it and
   sync sits silently at "Offline". It currently advertises the LAN IP, which is correct —
   watch for DHCP drift.
+
+## What Phase 0 gives you — use it, don't reinvent it
+
+Every one of these exists because a feature would otherwise hand-roll it N times.
+
+| Need | Use |
+|---|---|
+| Colours, radii, spacing, type | `WF.colors` / `WF.radius` / `WF.spacing` / `WF.type` |
+| Serif heading | `WF.type.hero/title/sectionTitle`, or `WF.type.serif(size)` |
+| Caption over a **photo** | `WF.colors.onMedia` on a `WF.colors.scrim` gradient — *not* white, *not* `onInk` |
+| Cards, empty/loading states, CTAs, chips, avatars, badges | the components in `core:design` |
+| Images | `AsyncImage` — the shared loader is installed by `app`; build requests with `WaffledImages.request(ctx, url, cacheKey)` |
+| Media path → URL | `MediaUrl.resolve(path, baseUrl)`; cache key via `MediaUrl.cacheKey(path)` |
+| REST load state | `RestDomain` — `apply(null)` = fetch FAILED (keep prior value, mark loaded); `apply(emptyList())` = genuinely empty |
+| Telling screens to re-fetch after a write | `RefreshBus.bump(domain)` |
+| Server error text | `ApiErrorText.from(body, status)` — relay the server, don't guess |
+| HTTP client / auth | `WaffledHttp.client(tokens, server)`, `WaffledAuth` (implements `TokenProvider`) |
+| Dates | `WaffledDates` — `parseInstant`, `localDay(zone)`, cached `formatter`, `noonIso` |
+| API tests | `ApiTestHarness` in `core:testing` — MockWebServer + token/server fakes |
+
+**`refreshAccessToken(failedToken)` takes the token the failed request actually sent.**
+Pass it. That is what stops a staggered 401 from burning a second rotation of a
+single-use refresh token.
 
 ## The frozen surface — do not edit these in a feature branch
 

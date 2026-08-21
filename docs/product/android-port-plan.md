@@ -322,8 +322,27 @@ including follow-ups added later in the same effort. Feature branches merge into
 
 ### 3.3 Agent bootstrap (mandatory preamble for every feature agent)
 
-Create the worktree **explicitly from the integration branch** — do not use the tool's
-default isolation:
+> ⚠️ **Learned the hard way, on the pilot.** Creating the worktree yourself and merely
+> *telling* the agent to work there **does not work**: a subagent inherits the launching
+> session's worktree isolation root, and every Bash call into a different worktree is
+> refused. `EnterWorktree(path=…)` changes the agent's cwd but *not* its isolation root,
+> which then wedges Bash entirely — cwd is resolved before the command runs, so even
+> `cd back && …` is refused, and `ExitWorktree` is unavailable to a cwd-pinned subagent.
+> The pilot burned its whole run on this and built nothing.
+>
+> **Launch feature agents with `isolation: "worktree"`** so the agent gets its own
+> isolation root. That default branches from `origin/main`, which has no Android code, so
+> the agent's **first action must be** to rebase onto the integration branch:
+>
+> ```bash
+> git reset --hard android-port      # local ref; worktrees share the repo
+> ```
+>
+> Verify with `ls apps/android/core/design/` before doing anything else — if that
+> directory is empty, the reset didn't take and nothing else will work.
+
+Historic note — creating the worktree explicitly from the integration branch is the right
+*shape*, but only works for a worktree the launching session will use itself:
 
 ```bash
 git worktree add .claude/worktrees/android-<feature> -b android/<feature> android-port
