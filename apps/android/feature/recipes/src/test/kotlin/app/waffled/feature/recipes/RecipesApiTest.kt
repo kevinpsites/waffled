@@ -306,6 +306,22 @@ class RecipesApiTest {
         assertEquals("/api/pantry/for-recipe/r1", harness.takeRequest().path)
     }
 
+    // ---- planning one recipe ---------------------------------------------------
+
+    /** The recipe detail's "Schedule…" — one recipe into one night's slot. */
+    @Test
+    fun plansOneRecipeIntoASlot() = runTest {
+        harness.enqueueNoContent()
+        api.planRecipe("2026-08-16", "dinner", recipeId = "r1")
+        val req = harness.takeRequest()
+        assertEquals("/api/meals/plan", req.path)
+        val body = req.body.readUtf8()
+        assertTrue(body.contains("\"recipeId\":\"r1\""), body)
+        assertTrue(body.contains("\"mealType\":\"dinner\""), body)
+        // A free-text night sends no recipe at all, so the key must be absent, not null.
+        assertFalse(body.contains("title"), body)
+    }
+
     // ---- plates ----------------------------------------------------------------
 
     @Test

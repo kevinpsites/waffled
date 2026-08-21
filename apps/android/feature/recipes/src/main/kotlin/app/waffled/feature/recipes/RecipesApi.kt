@@ -289,6 +289,36 @@ class RecipesApi(
     suspend fun pantryForRecipe(recipeId: String): List<RecipeMatch> =
         send<MatchesEnvelope>(HttpMethod.Get, "api/pantry/for-recipe/$recipeId").matches
 
+    // ---- planning one recipe into a slot ---------------------------------------
+
+    /**
+     * Plan a single recipe onto a day + meal slot.
+     *
+     * This is the one planner endpoint this module owns, because it is how a *recipe* is
+     * scheduled from its own detail screen — the week and month grids that also call it
+     * belong to `feature:meals`. `(date, mealType)` REPLACES rather than duplicates
+     * server-side, so re-scheduling the same night is idempotent.
+     */
+    suspend fun planRecipe(
+        date: String,
+        mealType: String,
+        recipeId: String? = null,
+        title: String? = null,
+        cookPersonId: String? = null,
+    ) {
+        sendUnit(HttpMethod.Post, "api/meals/plan") {
+            jsonBody(
+                buildJsonObject {
+                    put("date", date)
+                    put("mealType", mealType)
+                    if (recipeId != null) put("recipeId", recipeId)
+                    if (title != null) put("title", title)
+                    if (cookPersonId != null) put("cookPersonId", cookPersonId)
+                },
+            )
+        }
+    }
+
     // ---- plates ----------------------------------------------------------------
 
     /** Create a plate. Returns it so the caller can adopt the server's id immediately. */
