@@ -58,6 +58,8 @@ dependencies {
     implementation(project(":feature:chores"))
     implementation(project(":feature:rewards"))
     implementation(project(":feature:today"))
+    implementation(project(":feature:calendar"))
+    implementation(project(":feature:lists"))
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)

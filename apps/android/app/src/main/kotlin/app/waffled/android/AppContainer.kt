@@ -20,8 +20,13 @@ import app.waffled.core.network.WaffledHttp
 import app.waffled.core.sync.KtorSyncBackend
 import app.waffled.core.sync.SyncManager
 import app.waffled.core.sync.WaffledConnector
+import app.waffled.feature.calendar.CalendarApi
+import app.waffled.feature.calendar.CalendarModel
+import app.waffled.feature.calendar.CountdownsModel
 import app.waffled.feature.chores.ChoresApi
 import app.waffled.feature.chores.ChoresModel
+import app.waffled.feature.lists.ListsApi
+import app.waffled.feature.lists.ListsIndexModel
 import app.waffled.feature.photos.PhotosApi
 import app.waffled.feature.photos.PhotosModel
 import app.waffled.feature.rewards.RewardsApi
@@ -103,6 +108,21 @@ class AppContainer(context: Context) {
      * Photos — the reference feature. One line per feature is the intended shape: build
      * the API slice from the shared client, hand it the base URL and the refresh bus.
      */
+    val calendarApi: CalendarApi by lazy { CalendarApi(httpClient, auth) }
+
+    val calendarModel: CalendarModel by lazy {
+        CalendarModel(
+            eventsByDay = syncManager.eventsByDay,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        )
+    }
+
+    val countdownsModel: CountdownsModel by lazy { CountdownsModel.backedBy(calendarApi) }
+
+    val listsModel: ListsIndexModel by lazy {
+        ListsIndexModel(api = ListsApi(httpClient, auth), refreshBus = refreshBus)
+    }
+
     val choresModel: ChoresModel by lazy {
         ChoresModel(
             api = ChoresApi(httpClient, auth),

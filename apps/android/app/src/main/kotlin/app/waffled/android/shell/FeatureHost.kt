@@ -9,7 +9,9 @@ import app.waffled.android.AppContainer
 import app.waffled.core.design.WF
 import app.waffled.core.design.WaffledEmptyState
 import app.waffled.core.model.WaffledModule
+import app.waffled.feature.calendar.CalendarScreen
 import app.waffled.feature.chores.ChoresScreen
+import app.waffled.feature.lists.ListsIndexScreen
 import app.waffled.feature.photos.PhotosScreen
 import app.waffled.feature.rewards.RewardsScreen
 
@@ -39,6 +41,20 @@ fun FeatureHost(
             model = container.choresModel,
             members = members,
             viewer = viewer,
+            modifier = modifier.then(bottom),
+        )
+
+        "calendar" -> CalendarScreen(
+            model = container.calendarModel,
+            countdowns = container.countdownsModel,
+            api = container.calendarApi,
+            modifier = modifier.then(bottom),
+        )
+
+        WaffledModule.Lists.key -> ListsIndexScreen(
+            model = container.listsModel,
+            // Opening a list is Wave B's navigation work; the index stands alone today.
+            onOpen = {},
             modifier = modifier.then(bottom),
         )
 
