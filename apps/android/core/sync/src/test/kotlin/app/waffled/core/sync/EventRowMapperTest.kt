@@ -1,0 +1,109 @@
+package app.waffled.core.sync
+
+import com.powersync.db.SqlCursor
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/**
+ * Mapping a synced row into [SyncedEvent].
+ *
+ * Mapped **by column name**, not index. `SELECT *` column order is whatever SQLite
+ * decides, and a positional mapper would silently shift every field the day a column is
+ * added — putting a location into a title rather than failing.
+ */
+class EventRowMapperTest {
+
+    /** Minimal in-memory cursor over one row. */
+    private class FakeCursor(private val row: Map<String, Any?>) : SqlCursor {
+        private val names = row.keys.toList()
+        override val columnNames: Map<String, Int>
+            get() = names.withIndex().associate { (i, n) -> n to i }
+        override val columnCount: Int get() = names.size
+        override fun columnName(index: Int): String = names[index]
+        override fun getString(index: Int): String? = row[names[index]] as? String
+        override fun getLong(index: Int): Long? = row[names[index]] as? Long
+        override fun getDouble(index: Int): Double? = row[names[index]] as? Double
+        override fun getBoolean(index: Int): Boolean? = row[names[index]] as? Boolean
+        override fun getBytes(index: Int): ByteArray? = row[names[index]] as? ByteArray
+    }
+
+    @Test
+    fun mapsTheFieldsScreensActuallyRead() {
+        val e = EventRowMapper.map(
+            FakeCursor(
+                mapOf(
+                    "id" to "e1",
+                    "household_id" to "h1",
+                    "title" to "Dinner",
+                    "starts_at" to "2026-08-21T18:00:00Z",
+                    "ends_at" to "2026-08-21T19:00:00Z",
+                    "location" to "Kitchen",
+                    "visibility" to "personal",
+                    "owner_person_id" to "p1",
+                    "origin" to "ics",
+                    "goal_id" to "g1",
+                ),
+            ),
+        )
+
+        assertEquals("e1", e.id)
+        assertEquals("Dinner", e.title)
+        assertEquals("2026-08-21T18:00:00Z", e.startsAt)
+        assertEquals("Kitchen", e.location)
+        assertEquals("personal", e.visibility)
+        assertEquals("p1", e.ownerPersonId)
+        assertEquals("g1", e.goalId)
+        // An event from a subscribed feed is read-only.
+        assertTrue(e.isReadOnly)
+    }
+
+    @Test
+    fun sqliteIntegersBecomeBooleans() {
+        // SQLite has no boolean — all_day and is_countdown are 0/1.
+        val e = EventRowMapper.map(
+            FakeCursor(
+                mapOf(
+                    "id" to "e1", "household_id" to "h1", "title" to "t",
+                    "all_day" to 1L, "is_countdown" to 0L,
+                ),
+            ),
+        )
+        assertTrue(e.allDay)
+        assertFalse(e.isCountdown)
+    }
+
+    @Test
+    fun missingColumnsAreNullRatherThanCrashing() {
+        // A row from an older schema, or a projection that didn't select everything.
+        val e = EventRowMapper.map(
+            FakeCursor(mapOf("id" to "e1", "household_id" to "h1", "title" to "t")),
+        )
+        assertNull(e.startsAt)
+        assertNull(e.rrule)
+        assertFalse(e.allDay)
+        assertFalse(e.isReadOnly)
+    }
+
+    @Test
+    fun columnOrderDoesNotMatter() {
+        // The whole reason to map by name: `SELECT *` order is not ours to control.
+        val a = EventRowMapper.map(
+            FakeCursor(linkedMapOf("id" to "e1", "household_id" to "h1", "title" to "Dinner", "location" to "Kitchen")),
+        )
+        val b = EventRowMapper.map(
+            FakeCursor(linkedMapOf("location" to "Kitchen", "title" to "Dinner", "household_id" to "h1", "id" to "e1")),
+        )
+        assertEquals(a, b)
+    }
+
+    @Test
+    fun aRecurringMasterIsRecognisedByItsRrule() {
+        val master = EventRowMapper.map(
+            FakeCursor(mapOf("id" to "e1", "household_id" to "h1", "title" to "t", "rrule" to "FREQ=WEEKLY")),
+        )
+        assertEquals("FREQ=WEEKLY", master.rrule)
+    }
+}

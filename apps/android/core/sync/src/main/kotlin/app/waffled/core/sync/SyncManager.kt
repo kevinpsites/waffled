@@ -10,6 +10,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -89,10 +91,47 @@ class SyncManager(
             }
         }
 
-        // TODO(Wave A — Calendar): watch the `events` / `event_occurrences` tables and
-        //  feed `derived.setEvents(...)`, and read `households.timezone` into
-        //  `setHouseholdZone(...)`. Until then `visibleEvents` is legitimately empty —
-        //  Phase 0 proves the connection, not the query.
+        watchEvents(db)
+        watchHousehold(db)
+    }
+
+    /**
+     * Stream the calendar into [derived].
+     *
+     * Two queries, combined: non-recurring `events`, plus the materialised
+     * `event_occurrences` of the recurring masters. The masters themselves are excluded
+     * (`rrule IS NULL`) because their occurrences render instead — including both would
+     * double-render every repeat. There is no client-side RRULE expansion; a server
+     * worker keeps the occurrences in step.
+     */
+    private fun watchEvents(db: PowerSyncDatabase) {
+        scope.launch {
+            combine(
+                db.watch(EventRowMapper.EVENTS_SQL, mapper = EventRowMapper::map),
+                db.watch(EventRowMapper.OCCURRENCES_SQL, mapper = EventRowMapper::map),
+            ) { events, occurrences -> events + occurrences }
+                .catch { /* one malformed row must not tear the whole stream down */ }
+                .collect { derived.setEvents(it) }
+        }
+    }
+
+    /**
+     * The household's timezone drives day bucketing, and it arrives AFTER events may
+     * already have — which is why [DerivedEventState] treats it as its own input.
+     */
+    private fun watchHousehold(db: PowerSyncDatabase) {
+        scope.launch {
+            // The mapper must return a non-null row type, so absent reads as "".
+            db.watch<String>("SELECT timezone FROM households LIMIT 1") { cursor ->
+                cursor.columnNames["timezone"]?.let { cursor.getString(it) }.orEmpty()
+            }
+                .catch { }
+                .collect { rows ->
+                    val tz = rows.firstOrNull().orEmpty()
+                    if (tz.isEmpty()) return@collect
+                    runCatching { ZoneId.of(tz) }.getOrNull()?.let { derived.setZone(it) }
+                }
+        }
     }
 
     private suspend fun openWithRetry(attempts: Int = 3): PowerSyncDatabase? {
