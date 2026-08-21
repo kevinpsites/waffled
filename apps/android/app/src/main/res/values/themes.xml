@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Launch theme only. Everything after first frame is Compose + the WF token table.
+      windowBackground matches WF.canvas (#FAF7F2) so the splash hands off seamlessly —
+      the same trick as the iOS LaunchBackground asset.
+    -->
+    <style name="Theme.Waffled.Starting" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/launch_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

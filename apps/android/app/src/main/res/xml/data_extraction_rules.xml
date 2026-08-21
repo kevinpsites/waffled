@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup is off (android:allowBackup="false"), but these rules make the intent explicit:
+  auth tokens and the device secret must never leave the device via backup or transfer.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="waffled.prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="waffled.prefs.xml" />
+    </device-transfer>
+</data-extraction-rules>
