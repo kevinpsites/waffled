@@ -2,7 +2,11 @@ package app.waffled.android
 
 import android.content.Context
 import android.content.SharedPreferences
+import app.waffled.core.auth.AuthApi
 import app.waffled.core.auth.EncryptedTokenStore
+import app.waffled.core.auth.KtorRefreshBackend
+import app.waffled.core.auth.TokenRefresher
+import app.waffled.core.auth.WaffledAuth
 import app.waffled.core.auth.KeyValueStore
 import app.waffled.core.auth.KeystoreTokenCrypto
 import app.waffled.core.auth.TokenStore
@@ -12,6 +16,8 @@ import app.waffled.core.network.RefreshBus
 import app.waffled.core.network.ServerAddressProvider
 import app.waffled.core.network.ServerUrl
 import app.waffled.core.network.ServerUrlVerdict
+import app.waffled.core.network.WaffledHttp
+import io.ktor.client.HttpClient
 
 /**
  * Hand-rolled dependency container.
@@ -50,6 +56,24 @@ class AppContainer(context: Context) {
         prefs = SharedPrefsKeyValueStore(prefs),
         crypto = KeystoreTokenCrypto(),
     )
+
+    /** `/api/auth` — its own bare client; signing in must not itself need a token. */
+    val authApi: AuthApi = AuthApi(serverAddress)
+
+    /**
+     * The one [app.waffled.core.network.TokenProvider] the app shares. Feature
+     * ViewModels take this (or [httpClient]) rather than assembling their own auth.
+     */
+    val auth: WaffledAuth = WaffledAuth(
+        store = tokenStore,
+        refresher = TokenRefresher(
+            store = tokenStore,
+            backend = KtorRefreshBackend(AuthApi.defaultClient(serverAddress)),
+        ),
+    )
+
+    /** The authenticated client every feature API slice should use. */
+    val httpClient: HttpClient by lazy { WaffledHttp.client(auth, serverAddress) }
 }
 
 private class SharedPrefsKeyValueStore(

@@ -36,6 +36,20 @@ class WaffledAuth(
 
     fun signOut() = store.clear()
 
+    /**
+     * Clear the session and hand back the refresh token so the caller can revoke it
+     * server-side afterwards.
+     *
+     * Sign-out is optimistic on purpose: clear locally and flip the UI immediately, then
+     * revoke in the background. A failed revoke must never trap someone in a session
+     * they have already left.
+     */
+    fun signOutAndReturnRefreshToken(): String? {
+        val refresh = store.load()?.refreshToken
+        store.clear()
+        return refresh
+    }
+
     /** Adopt a freshly-issued pair (login, kiosk claim, household switch). */
     fun adopt(tokens: TokenPair) = store.save(tokens)
 

@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
+import app.waffled.android.auth.AuthGate
 import app.waffled.android.shell.FlexSlot
 import app.waffled.android.shell.TabSlot
 import app.waffled.android.shell.WaffledTabBar
@@ -75,7 +76,7 @@ class MainActivity : ComponentActivity() {
                 darkTheme = forcedDark
                     ?: androidx.compose.foundation.isSystemInDarkTheme(),
             ) {
-                AppRoot(container)
+                AuthGate(container) { AppRoot(container) }
             }
         }
     }

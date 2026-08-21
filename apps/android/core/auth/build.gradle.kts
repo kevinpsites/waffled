@@ -20,11 +20,13 @@ android {
 dependencies {
     api(project(":core:model"))
     api(project(":core:network"))
+    implementation(libs.ktor.client.okhttp)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
+    testImplementation(project(":core:testing"))
     testImplementation(libs.kotlin.test)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
