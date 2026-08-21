@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
 import app.waffled.android.auth.AuthGate
+import app.waffled.android.shell.FeatureHost
 import app.waffled.android.shell.FlexSlot
 import app.waffled.android.shell.TabSlot
 import app.waffled.android.shell.WaffledTabBar
@@ -115,15 +116,10 @@ private fun AppRoot(container: AppContainer) {
             .fillMaxSize()
             .background(WF.colors.canvas),
     ) {
-        // ⚠️ TEMPORARY: the Family tab hosts Photos so Phase 0 had something real to
-        // verify end to end. Family is its own 1,705-LOC feature (hub, person spotlight,
-        // approvals queue) — the `android/family` agent should reclaim this tab, and
-        // Photos should move behind its own route.
-        if (selected.id == "family") {
-            PhotosScreen(
-                model = container.photosModel,
-                modifier = Modifier.padding(bottom = WF.spacing.tabBarClearance),
-            )
+        // Every non-Today tab goes through FeatureHost, which is where merged features
+        // get composed on a device — see its KDoc for why that is the integrator's job.
+        if (selected.id != "today") {
+            FeatureHost(tab = selected, container = container)
             WaffledTabBar(
                 tabs = tabs,
                 selected = selected,

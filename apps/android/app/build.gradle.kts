@@ -55,6 +55,9 @@ dependencies {
     implementation(project(":core:auth"))
     implementation(project(":core:sync"))
     implementation(project(":feature:photos"))
+    implementation(project(":feature:chores"))
+    implementation(project(":feature:rewards"))
+    implementation(project(":feature:today"))
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)

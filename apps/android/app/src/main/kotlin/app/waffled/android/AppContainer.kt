@@ -20,8 +20,12 @@ import app.waffled.core.network.WaffledHttp
 import app.waffled.core.sync.KtorSyncBackend
 import app.waffled.core.sync.SyncManager
 import app.waffled.core.sync.WaffledConnector
+import app.waffled.feature.chores.ChoresApi
+import app.waffled.feature.chores.ChoresModel
 import app.waffled.feature.photos.PhotosApi
 import app.waffled.feature.photos.PhotosModel
+import app.waffled.feature.rewards.RewardsApi
+import app.waffled.feature.rewards.RewardsModel
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -99,6 +103,22 @@ class AppContainer(context: Context) {
      * Photos — the reference feature. One line per feature is the intended shape: build
      * the API slice from the shared client, hand it the base URL and the refresh bus.
      */
+    val choresModel: ChoresModel by lazy {
+        ChoresModel(
+            api = ChoresApi(httpClient, auth),
+            baseUrl = serverAddress.baseUrl(),
+            initialDate = java.time.LocalDate.now().toString(),
+            refreshBus = refreshBus,
+        )
+    }
+
+    val rewardsModel: RewardsModel by lazy {
+        RewardsModel(
+            api = RewardsApi(httpClient, auth),
+            refreshBus = refreshBus,
+        )
+    }
+
     val photosModel: PhotosModel by lazy {
         PhotosModel(
             api = PhotosApi(httpClient, auth),

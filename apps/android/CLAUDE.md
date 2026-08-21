@@ -153,18 +153,34 @@ then port the logic.** That gives behavioural parity rather than approximate par
   release is a beta, so it is deliberately not in the catalog, and `compose-ui-test-junit4`
   needs a device. `assembleDebug` proves a screen *compiles*, not that it composes.
 
-  So **running it is part of the definition of done**, not an optional extra:
+  **Who verifies on a device depends on who you are:**
 
-  ```bash
-  ./gradlew :app:assembleDebug
-  adb install -r app/build/outputs/apk/debug/app-debug.apk
-  adb shell am start -n app.waffled.debug/app.waffled.android.MainActivity
-  adb exec-out screencap -p > /tmp/shot.png        # look at it
-  adb logcat -d -s AndroidRuntime:E                # must be empty
-  ```
+  - **A feature agent cannot.** Reaching a screen means editing `app/**` — the dependency,
+    the nav host, `FeatureHost` — which a feature agent does not own. Your definition of
+    done is your module's `test` + `assembleDebug`, plus reporting anything you could not
+    verify. Say so explicitly; don't imply a screen has run when it hasn't.
+  - **The integrator must.** Whoever merges a feature wires it into
+    `app/…/shell/FeatureHost.kt` and composes it on a real device before it counts as
+    done:
 
-  Check dark mode too (`adb shell cmd uimode night yes`). A screen that has never been
-  composed on a device is not finished.
+    ```bash
+    ./gradlew :app:assembleDebug
+    adb install -r app/build/outputs/apk/debug/app-debug.apk
+    adb shell am start -n app.waffled.debug/app.waffled.android.MainActivity
+    adb exec-out screencap -p > /tmp/shot.png        # look at it
+    adb logcat -d -s AndroidRuntime:E                # must be empty
+    adb shell cmd uimode night yes                   # and check dark mode
+    ```
+
+  A screen that has never been composed on a device is not finished — but that is the
+  integrator's gate, not the feature agent's.
+
+### `RestDomain`: which method to call
+
+- List-shaped domain → `apply(value)` / `apply(null)` reads well.
+- Domain holding ONE optional thing (tonight's dinner) → use `succeeded(value)` and
+  `failed()`. `apply(null)` cannot say "succeeded, and there is nothing", so a deleted
+  item would haunt the card forever as every later refresh looked like a failure.
 
 ### Two traps that will bite every feature
 

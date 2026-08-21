@@ -31,11 +31,32 @@ class RestDomain<T> {
     val value: T? get() = _state.value.value
     val loaded: Boolean get() = _state.value.loaded
 
+    /**
+     * The fetch SUCCEEDED and this is the answer — including `null`, which means
+     * "genuinely nothing" for a nullable domain (no dinner planned tonight).
+     */
+    fun succeeded(newValue: T?) {
+        _state.value = Snapshot(value = newValue, loaded = true)
+    }
+
+    /**
+     * The fetch FAILED. Keep whatever we already had, but mark loaded, so a card never
+     * blanks on a flaky network and never sits on "Loading…" forever.
+     */
+    fun failed() {
+        _state.update { prior -> Snapshot(value = prior.value, loaded = true) }
+    }
+
+    /**
+     * Shorthand for the common list-shaped domain: a value means success, `null` means
+     * the fetch failed.
+     *
+     * ⚠️ Do NOT use this for a domain holding one OPTIONAL thing — it cannot express
+     * "succeeded, and there is nothing", so a deleted item would haunt the card forever
+     * as every later refresh looked like a failure. Use [succeeded] / [failed] there.
+     */
     fun apply(newValue: T?) {
-        _state.update { prior ->
-            // A failed fetch keeps the prior value; a real one replaces it.
-            Snapshot(value = newValue ?: prior.value, loaded = true)
-        }
+        if (newValue == null) failed() else succeeded(newValue)
     }
 
     fun reset() {

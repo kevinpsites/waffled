@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
@@ -129,7 +131,7 @@ class SyncManager(
                 .collect { rows ->
                     val tz = rows.firstOrNull().orEmpty()
                     if (tz.isEmpty()) return@collect
-                    runCatching { ZoneId.of(tz) }.getOrNull()?.let { derived.setZone(it) }
+                    runCatching { ZoneId.of(tz) }.getOrNull()?.let { setHouseholdZone(it) }
                 }
         }
     }
@@ -155,8 +157,18 @@ class SyncManager(
         derived.setViewer(personId)
     }
 
-    /** The household's timezone, which arrives from the server after events may have. */
+    private val _householdZone = MutableStateFlow(ZoneId.systemDefault())
+
+    /**
+     * The household's clock. Readable, not just settable — every screen that formats a
+     * date needs it, and three features had to take it as a parameter because it was
+     * write-only.
+     */
+    val householdZone: StateFlow<ZoneId> = _householdZone.asStateFlow()
+
+    /** Set from the synced `households` row; may arrive after events already have. */
     fun setHouseholdZone(zone: ZoneId) {
+        _householdZone.value = zone
         derived.setZone(zone)
     }
 
@@ -166,6 +178,30 @@ class SyncManager(
 
     /** Convenience gate, so screens don't reach into [modules] themselves. */
     fun isOn(module: WaffledModule): Boolean = _modules.value.isOn(module)
+
+    /**
+     * The person using this device, resolved from [members] and [currentPersonId].
+     *
+     * Provided here because otherwise every feature re-derives
+     * `members.first { it.id == currentPersonId }` — three of them already had.
+     * Null on an unclaimed shared device.
+     */
+    val currentPerson: StateFlow<Person?> =
+        combine(_members, _currentPersonId) { people, id ->
+            id?.let { people.firstOrNull { p -> p.id == it } }
+        }.stateIn(scope, SharingStarted.Eagerly, null)
+
+    /**
+     * Whether the current viewer holds [capability]. Admins hold everything; nobody holds
+     * anything on an unclaimed device. The SERVER enforces this independently — this only
+     * decides what to show.
+     */
+    fun can(capability: String): Boolean = currentPerson.value?.can(capability) == true
+
+    /** Replace the household roster (from the synced `persons` table or the API). */
+    fun setMembers(people: List<Person>) {
+        _members.value = people
+    }
 
     suspend fun stop() {
         runCatching { database?.disconnect() }

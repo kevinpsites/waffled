@@ -68,6 +68,55 @@ class RestDomainTest {
         d.apply(listOf("x"))
         assertEquals(listOf("x"), d.state.first().value)
     }
+
+    // ---- the nullable-single case ----
+    //
+    // `apply(null)` means "the fetch failed", which is right for a list. But a domain
+    // holding ONE optional thing — tonight's dinner, say — needs to say "the fetch
+    // succeeded and there is no dinner", and that is a different statement. Collapsing
+    // them means a deleted dinner haunts the card forever, because every later refresh
+    // looks like a failure and keeps the stale value.
+
+    @Test
+    fun succeededWithNullClearsTheValue() {
+        val d = RestDomain<String?>()
+        d.succeeded("Lasagne")
+        assertEquals("Lasagne", d.value)
+
+        d.succeeded(null) // the meal was deleted server-side
+        assertEquals(null, d.value)
+        assertTrue(d.loaded)
+    }
+
+    @Test
+    fun failedKeepsThePriorValueEvenForANullableDomain() {
+        val d = RestDomain<String?>()
+        d.succeeded("Lasagne")
+
+        d.failed()
+
+        assertEquals("Lasagne", d.value, "a flaky network must not clear the card")
+        assertTrue(d.loaded)
+    }
+
+    @Test
+    fun failedOnAFreshDomainStillLeavesLoadingBehind() {
+        val d = RestDomain<String?>()
+        d.failed()
+        assertEquals(null, d.value)
+        assertTrue(d.loaded)
+    }
+
+    @Test
+    fun applyRemainsTheShorthandForTheListCase() {
+        // apply(x) == succeeded(x); apply(null) == failed(). Kept because it reads well
+        // for the common non-nullable domain.
+        val d = RestDomain<List<String>>()
+        d.apply(listOf("a"))
+        d.apply(null)
+        assertEquals(listOf("a"), d.value)
+        assertTrue(d.loaded)
+    }
 }
 
 /**

@@ -23,7 +23,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * @Before fun setUp() {
  *     harness.start()
  *     // Build the client yourself — the harness supplies the token and address seams.
- *     api = PhotosApi(WaffledHttp.client(harness.tokens, harness.serverAddress))
+ *     // API slices take (client, tokens): the client carries the base URL, and the
+ *     // token provider is passed separately because the 401 retry must know WHICH
+ *     // token the failed request sent.
+ *     api = PhotosApi(WaffledHttp.client(harness.tokens, harness.serverAddress), harness.tokens)
  * }
  * @After fun tearDown() = harness.stop()
  *
@@ -93,6 +96,17 @@ class ApiTestHarness(
     }
 
     fun enqueueUnauthorized() = enqueueError(401, "AuthError", "Missing Bearer token")
+
+    /**
+     * A 204 / empty success — common for DELETE and some PATCH routes.
+     *
+     * Use this rather than `enqueueJson("", 204)`: MockWebServer throws a
+     * ProtocolException for a 204 carrying a Content-Length, which reads as a confusing
+     * transport error rather than a bad test.
+     */
+    fun enqueueNoContent() {
+        server.enqueue(MockResponse().setResponseCode(204))
+    }
 
     /** Simulate the server being unreachable mid-response. */
     fun enqueueDisconnect() {
