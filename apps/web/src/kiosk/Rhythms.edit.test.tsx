@@ -95,6 +95,15 @@ function mockApi(rhythms: unknown[], items: unknown[] = []) {
 
 const renderScreen = () => render(<MemoryRouter><Rhythms /></MemoryRouter>)
 
+// A row carries one primary verb; everything else is behind its ··· menu.
+const openMenu = (title: string) =>
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(`^more for ${title}$`, 'i') }))
+
+// Paused rhythms are collapsed behind a summary that NAMES them — "2 paused" alone
+// makes you open it to find out which, every single time.
+const expandPaused = async () =>
+  fireEvent.click(await screen.findByRole('button', { name: /paused/i }))
+
 const patches = () => calls.filter((c) => c.method === 'PATCH')
 
 beforeEach(() => {
@@ -108,7 +117,9 @@ describe('Rhythms — where each one stands', () => {
     mockApi([temple])
     renderScreen()
     await screen.findByText('Temple visit')
-    expect(screen.getByText(/handled for this period/i)).toBeInTheDocument()
+    // Said in the language of the shape rather than as a status badge: for a booking
+    // rhythm, "handled" only ever meant "something is on the calendar for it".
+    expect(screen.getByText(/on the calendar for this one/i)).toBeInTheDocument()
     // Nothing here may read as follow-through — we never asked whether they went.
     expect(screen.queryByText(/streak|on track|completed/i)).toBeNull()
   })
@@ -118,7 +129,11 @@ describe('Rhythms — where each one stands', () => {
     renderScreen()
     await screen.findByText('Self-care day')
     expect(screen.getByText(/not on the calendar yet/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /book a time/i })).toBeInTheDocument()
+    // Months from its runway it sits in Steady, which carries no primary button — but
+    // booking early is exactly the case /attention structurally cannot report, so the
+    // capability has to survive the quietening. It moves into the menu, not away.
+    openMenu('Self-care day')
+    expect(screen.getByRole('button', { name: /book a time for self-care day/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /skip this period for self-care day/i })).toBeInTheDocument()
   })
 
@@ -126,6 +141,7 @@ describe('Rhythms — where each one stands', () => {
     mockApi([temple])
     renderScreen()
     await screen.findByText('Temple visit')
+    openMenu('Temple visit')
     expect(screen.queryByRole('button', { name: /skip this period/i })).toBeNull()
   })
 
@@ -135,8 +151,10 @@ describe('Rhythms — where each one stands', () => {
     mockApi([filter], [{ kind: 'due', rhythm: filter, dueAt: '2026-11-01T09:00:00.000Z', overdue: false }])
     renderScreen()
     await screen.findByText('Air filter')
-    expect(screen.getByText(/due in/i)).toBeInTheDocument()
-    expect(screen.queryByText(/^Handled$/)).toBeNull()
+    // It lands in the band the server is nudging about, not in Steady — which is what
+    // "attention wins" now looks like, the grouping having replaced the badge.
+    expect(screen.getByText('Needs you now')).toBeInTheDocument()
+    expect(screen.queryByText(/handled/i)).toBeNull()
   })
 })
 
@@ -145,15 +163,18 @@ describe('Rhythms — pausing', () => {
     // listAttention filters `and is_active`, so a paused rhythm nudges nobody.
     mockApi([paused])
     renderScreen()
-    await screen.findByText('Gutter check')
+    await expandPaused()
+    expect(screen.getByText('Gutter check')).toBeInTheDocument()
     expect(screen.queryByText(/nudging/i)).toBeNull()
   })
 
   it('shows a paused rhythm as paused and stops offering to act on its period', async () => {
     mockApi([paused])
     renderScreen()
-    await screen.findByText('Gutter check')
-    expect(screen.getByText('Paused')).toBeInTheDocument()
+    // Named in the summary before it is even expanded.
+    expect(await screen.findByRole('button', { name: /1 paused . gutter check/i })).toBeInTheDocument()
+    await expandPaused()
+    openMenu('Gutter check')
     expect(screen.queryByRole('button', { name: /book a time/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /skip this period/i })).toBeNull()
     expect(screen.queryByText(/not on the calendar yet/i)).toBeNull()
@@ -162,7 +183,9 @@ describe('Rhythms — pausing', () => {
   it('resumes a paused rhythm', async () => {
     mockApi([paused])
     renderScreen()
-    fireEvent.click(await screen.findByRole('button', { name: /resume gutter check/i }))
+    await expandPaused()
+    openMenu('Gutter check')
+    fireEvent.click(screen.getByRole('button', { name: /resume gutter check/i }))
     await waitFor(() => expect(patches().length).toBe(1))
     expect(patches()[0].url).toContain('/api/rhythms/r-paused')
     expect(patches()[0].body).toEqual({ isActive: true })
@@ -171,7 +194,9 @@ describe('Rhythms — pausing', () => {
   it('pauses an active one', async () => {
     mockApi([temple])
     renderScreen()
-    fireEvent.click(await screen.findByRole('button', { name: /pause temple visit/i }))
+    await screen.findByText('Temple visit')
+    openMenu('Temple visit')
+    fireEvent.click(screen.getByRole('button', { name: /pause temple visit/i }))
     await waitFor(() => expect(patches().length).toBe(1))
     expect(patches()[0].body).toEqual({ isActive: false })
   })
@@ -185,13 +210,16 @@ describe('Rhythms — an overdue maintenance rhythm', () => {
     mockApi([{ ...filter, nextDueAt: '2026-08-16T09:00:00.000Z', satisfied: false }])
     renderScreen()
     await screen.findByText('Air filter')
-    expect(screen.getByText(/2 days overdue/i)).toBeInTheDocument()
+    const cd = screen.getByText('days late').closest('.rhy-cd')
+    expect(cd?.textContent).toContain('2')
   })
 })
 
 describe('Rhythms — editing', () => {
   async function openEditor(title = 'Temple visit') {
-    fireEvent.click(await screen.findByRole('button', { name: new RegExp(`edit ${title}`, 'i') }))
+    await screen.findByText(title)
+    openMenu(title)
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^edit ${title}$`, 'i') }))
     return screen.getByRole('dialog')
   }
 
@@ -248,11 +276,15 @@ describe('Rhythms — editing', () => {
   })
 
   it('shows the runway the server settled on, not the one that was asked for', async () => {
-    // PATCH re-clamps leadTime to half the (new) cadence, so a 14-day runway on a
-    // weekly rhythm comes back as 3 days 12:00:00.
+    // The server re-clamps leadTime to half the cadence, so a 14-day runway on a weekly
+    // rhythm is stored as 3 days 12:00:00. Asserted in the editor rather than on the
+    // row: the register is about WHEN each rhythm is next wanted, and a nudge setting
+    // repeated on every row was noise. This is the screen where the number is chosen,
+    // and so the screen where being shown a number the server discarded would mislead.
     mockApi([{ ...temple, every: '7 days', leadTime: '3 days 12:00:00' }])
     renderScreen()
-    await screen.findByText('Temple visit')
-    expect(screen.getByText(/3 days 12 hours ahead/i)).toBeInTheDocument()
+    const dialog = await openEditor()
+    expect(within(dialog).getByText(/last 3 days/i)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/last 14 days/i)).toBeNull()
   })
 })

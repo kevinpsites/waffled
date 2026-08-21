@@ -308,6 +308,156 @@ export function periodLabel(periodEnd: string, now: Date = new Date()): string {
   return `${plural(days, 'day')} left to book it`
 }
 
+// ── The register, grouped by when rather than by kind ───────────────────────────
+//
+// The screen used to be two sections named after the two shapes — "It gets scheduled"
+// and "You do it" — which sorts a household's rhythms by a distinction only the schema
+// cares about. Asked "what do I owe this week", you had to read both and do the merge
+// yourself. Grouping by urgency answers it in one pass, and the shape stops being a
+// heading: it survives in the words of the row ("last done May 12" versus "not on the
+// calendar yet") and in the verb on its button ("I did it" versus "Book a time"), which
+// is where the difference actually bears on what you do next.
+
+/**
+ * How far ahead "Coming up" looks, in days.
+ *
+ * A flat fortnight, deliberately, rather than something derived from each rhythm's own
+ * runway. The runway governs *nudging* — when a rhythm has earned the right to
+ * interrupt you — and that is exactly what "Needs you now" already reads. This band
+ * answers a different question, asked by someone who has deliberately opened the page:
+ * what is on the horizon. Deriving it per-rhythm would file a quarterly rhythm's
+ * 45-day warning and a weekly one's 3-day warning under one heading and call both
+ * "coming up", which is not a horizon anyone could read.
+ */
+const COMING_UP_DAYS = 14
+
+export type Urgency = 'now' | 'soon' | 'steady' | 'paused'
+
+/** A calendar date (YYYY-MM-DD) reads as local midnight; an instant stands as it is. */
+function asMoment(value: string): Date {
+  return new Date(value.length === 10 ? `${value}T00:00:00` : value)
+}
+
+/**
+ * Whole days until whatever this rhythm is counting toward — its due date if you do it,
+ * the closing of the booking window if it gets scheduled. null when there is nothing to
+ * count toward, which the callers render as no countdown rather than as a zero.
+ */
+export function daysToGo(r: RhythmWithPeriod, now: Date = new Date()): number | null {
+  const target = r.satisfiedBy === 'scheduling' ? r.currentPeriodEnd : r.nextDueAt
+  if (!target) return null
+  const d = asMoment(target)
+  return Number.isNaN(d.getTime()) ? null : dayDiff(d, now)
+}
+
+/**
+ * Which of the register's four bands a rhythm belongs in.
+ *
+ * "Needs you now" is the server's own attention list and nothing else. The Today card
+ * reads that same endpoint, so a second threshold invented here would let one rhythm be
+ * urgent on one half of a screen and calm on the other — which reads as a bug because
+ * it is one.
+ */
+export function urgencyOf(
+  r: RhythmWithPeriod,
+  attention: AttentionItem | undefined,
+  now: Date = new Date(),
+): Urgency {
+  // Off means off. Ordering a paused rhythm by how overdue it is would be sorting it
+  // by a consequence we have deliberately suspended.
+  if (!r.isActive) return 'paused'
+  if (attention) return 'now'
+  // A booked period is finished business — booking it WAS the thing to do, and whether
+  // it then happened is the question this shape refuses to ask.
+  if (r.satisfiedBy === 'scheduling' && r.satisfied) return 'steady'
+  const days = daysToGo(r, now)
+  if (days === null) return 'steady'
+  // Past due and yet absent from /attention means that call is in flight or has failed.
+  // The row must not go quiet in the meantime; being late is the one state that cannot
+  // afford to wait on a second request.
+  if (days < 0) return 'now'
+  return days <= COMING_UP_DAYS ? 'soon' : 'steady'
+}
+
+/** The number and unit that anchor a row, plus how loudly to say it. */
+export interface RhythmCountdown {
+  num: string
+  unit: string
+  tone: 'late' | 'near' | 'soft' | 'done'
+}
+
+/**
+ * The countdown that anchors every row — the same number the Today card shows.
+ *
+ * Tone comes from the group rather than from the arithmetic, so a row can never argue
+ * with the heading it is sitting under. Units coarsen with distance because a register
+ * is read at a glance: "7 months" is a fact you can act on, "213 days" is one you have
+ * to convert first.
+ */
+export function countdown(
+  r: RhythmWithPeriod,
+  urgency: Urgency,
+  now: Date = new Date(),
+): RhythmCountdown | null {
+  if (r.satisfiedBy === 'scheduling' && r.satisfied) {
+    return { num: 'Booked', unit: 'this period', tone: 'done' }
+  }
+  const days = daysToGo(r, now)
+  if (days === null) return null
+  const tone: RhythmCountdown['tone'] = urgency === 'now' ? 'late' : urgency === 'soon' ? 'near' : 'soft'
+
+  if (r.satisfiedBy === 'scheduling') {
+    // Always about the window, never about follow-through.
+    if (days <= 0) return { num: 'Today', unit: 'last day', tone }
+    return { num: String(days), unit: days === 1 ? 'day left' : 'days left', tone }
+  }
+  if (days < 0) {
+    const late = -days
+    return { num: String(late), unit: late === 1 ? 'day late' : 'days late', tone }
+  }
+  if (days === 0) return { num: 'Today', unit: 'due', tone }
+  if (days <= 13) return { num: String(days), unit: days === 1 ? 'day' : 'days', tone }
+  if (days < 60) {
+    const weeks = Math.round(days / 7)
+    return { num: String(weeks), unit: weeks === 1 ? 'week' : 'weeks', tone }
+  }
+  const months = Math.round(days / 30)
+  return { num: String(months), unit: months === 1 ? 'month' : 'months', tone }
+}
+
+/**
+ * How much of the current cycle is spent, 0–100, for the hairline track under a row.
+ *
+ * The two shapes measure from different places, which is the data model showing through
+ * honestly: a scheduling rhythm has a real period grid, while a completion rhythm has
+ * none by design — its clock restarts from when you actually did it, which is the whole
+ * reason lateness moves the next one instead of stacking misses.
+ *
+ * Returns null rather than a number it cannot stand behind. Overdue would otherwise
+ * compute past 100 (a 340%-wide bar that `overflow: hidden` quietly disguises), and a
+ * completion backdated past its own due date inverts the window into a negative one.
+ */
+export function periodProgress(r: RhythmWithPeriod, now: Date = new Date()): number | null {
+  let start: Date
+  let end: Date
+  if (r.satisfiedBy === 'scheduling') {
+    if (!r.currentPeriodStart || !r.currentPeriodEnd) return null
+    start = asMoment(r.currentPeriodStart)
+    end = asMoment(r.currentPeriodEnd)
+  } else {
+    if (!r.nextDueAt) return null
+    end = asMoment(r.nextDueAt)
+    // Never completed: the cycle it is in started one cadence back. The 30-day month
+    // that intervalDays assumes is wrong by a day or two, which is invisible at 3px.
+    start = r.lastCompletedAt
+      ? asMoment(r.lastCompletedAt)
+      : new Date(end.getTime() - intervalDays(r.every) * 86400000)
+  }
+  const total = end.getTime() - start.getTime()
+  if (!Number.isFinite(total) || total <= 0) return null
+  return Math.max(0, Math.min(100, Math.round(((now.getTime() - start.getTime()) / total) * 100)))
+}
+
 // ── Hooks ───────────────────────────────────────────────────────────────────────
 
 export function useRhythms() {

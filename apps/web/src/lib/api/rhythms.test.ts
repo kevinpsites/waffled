@@ -1,6 +1,7 @@
 import {
   formatInterval, cadenceLabel, dueLabel, periodLabel, splitCadence, intervalDays,
-  nudgePlan, nudgeExplainer,
+  nudgePlan, nudgeExplainer, urgencyOf, countdown, periodProgress, daysToGo,
+  type AttentionItem, type RhythmWithPeriod,
 } from './rhythms'
 
 // Postgres hands `interval::text` back in its own shorthand — `3 mons`, `1 mon`,
@@ -162,5 +163,204 @@ describe('nudgeExplainer', () => {
 
   it('makes clear a booked window goes quiet', () => {
     expect(nudgeExplainer('3 mons', 14)).toMatch(/nothing/i)
+  })
+})
+
+// ── The register, grouped by when rather than by kind ───────────────────────────
+//
+// The screen used to be two sections named after the two shapes — "It gets scheduled"
+// and "You do it" — which sorted a household's rhythms by a distinction only the schema
+// cares about. Asked "what do I owe this week", you had to read both. These three
+// helpers are the replacement: one axis, urgency, with the shape carried by the words
+// in the row instead of by which section it landed in.
+//
+// Pure functions with an injectable clock, so the boundaries can be pinned exactly —
+// "is a rhythm due in 14 days Coming up or Steady" is not a question to answer by
+// squinting at a rendered page at whatever time the suite happens to run.
+
+// Both clocks are built from local components on purpose. An ISO literal ending in Z
+// lands on a different calendar day either side of UTC, so `'2026-08-25T09:00:00Z'`
+// against a locally-built "now" would assert one thing in Denver and another in
+// Auckland — a suite that passes where it was written and nowhere else.
+const at = (month: number, day: number) => new Date(2026, month - 1, day).toISOString()
+const NOW = new Date(2026, 7, 20)
+
+function rhythm(over: Partial<RhythmWithPeriod> = {}): RhythmWithPeriod {
+  return {
+    id: 'r1', title: 'Air filter', emoji: '🌬', notes: null, personId: null,
+    satisfiedBy: 'completion', every: '3 mons', startsOn: null, autoSchedule: false,
+    rrule: null, leadTime: '14 days', lastCompletedAt: null, nextDueAt: null,
+    isActive: true, currentPeriodStart: null, currentPeriodEnd: null, satisfied: true,
+    ...over,
+  }
+}
+
+const due = (dueAt: string, overdue = false): AttentionItem =>
+  ({ kind: 'due', rhythm: rhythm(), dueAt, overdue })
+
+describe('urgencyOf', () => {
+  it('puts anything the server is already nudging about in "Needs you now"', () => {
+    // Deliberately the SAME signal the Today card reads, not a second threshold of our
+    // own. Two opinions about "does this need me" would let the register and Today
+    // disagree about one rhythm on one screen, which reads as a bug and is one.
+    const r = rhythm({ nextDueAt: at(8, 25) })
+    expect(urgencyOf(r, due(at(8, 25)), NOW)).toBe('now')
+  })
+
+  it('keeps an overdue rhythm in "Needs you now" rather than inventing a fourth group', () => {
+    const r = rhythm({ nextDueAt: at(8, 12), satisfied: false })
+    expect(urgencyOf(r, due(at(8, 12), true), NOW)).toBe('now')
+  })
+
+  it('shows the next fortnight as "Coming up", even though nothing is nudging yet', () => {
+    // The runway governs NUDGING — when a rhythm is allowed to interrupt you. This band
+    // is a different job: a peek ahead on a page you deliberately opened, where the
+    // question is "what is on the horizon", not "what should shout". A fixed fortnight
+    // is the honest answer to that and needs no per-rhythm arithmetic to explain.
+    const r = rhythm({ nextDueAt: at(8, 30) })
+    expect(urgencyOf(r, undefined, NOW)).toBe('soon')
+  })
+
+  it('draws the fortnight boundary inclusively, and the day after it is Steady', () => {
+    expect(urgencyOf(rhythm({ nextDueAt: at(9, 3) }), undefined, NOW)).toBe('soon')
+    expect(urgencyOf(rhythm({ nextDueAt: at(9, 4) }), undefined, NOW)).toBe('steady')
+  })
+
+  it('calls a booked period Steady — booking it WAS the thing to do', () => {
+    const r = rhythm({
+      satisfiedBy: 'scheduling', satisfied: true,
+      currentPeriodStart: '2026-08-17', currentPeriodEnd: '2026-08-23',
+    })
+    expect(urgencyOf(r, undefined, NOW)).toBe('steady')
+  })
+
+  it('measures an unbooked period from its closing date, not from a due date it has none of', () => {
+    const r = rhythm({
+      satisfiedBy: 'scheduling', satisfied: false,
+      currentPeriodStart: '2026-08-24', currentPeriodEnd: '2026-08-30',
+    })
+    expect(urgencyOf(r, undefined, NOW)).toBe('soon')
+  })
+
+  it('takes paused out of the urgency ordering entirely', () => {
+    // A paused rhythm is off. Sorting it by how overdue it is would be sorting by a
+    // consequence we have deliberately suspended.
+    const r = rhythm({ isActive: false, nextDueAt: at(8, 1), satisfied: false })
+    expect(urgencyOf(r, due(at(8, 1), true), NOW)).toBe('paused')
+  })
+
+  it('parks a rhythm with no due date in Steady instead of throwing', () => {
+    expect(urgencyOf(rhythm({ nextDueAt: null }), undefined, NOW)).toBe('steady')
+  })
+})
+
+describe('countdown', () => {
+  it('counts overdue days up, so the worst row reads loudest', () => {
+    const r = rhythm({ nextDueAt: at(8, 14), satisfied: false })
+    expect(countdown(r, 'now', NOW)).toEqual({ num: '6', unit: 'days late', tone: 'late' })
+  })
+
+  it('speaks days near, weeks next, months far — a "213 days" countdown anchors nothing', () => {
+    expect(countdown(rhythm({ nextDueAt: at(8, 25) }), 'soon', NOW)?.num).toBe('5')
+    expect(countdown(rhythm({ nextDueAt: at(8, 25) }), 'soon', NOW)?.unit).toBe('days')
+    expect(countdown(rhythm({ nextDueAt: at(9, 10) }), 'steady', NOW)?.unit).toBe('weeks')
+    expect(countdown(rhythm({ nextDueAt: at(10, 20) }), 'steady', NOW)?.unit).toBe('months')
+  })
+
+  it('says today rather than "0 days"', () => {
+    expect(countdown(rhythm({ nextDueAt: at(8, 20) }), 'now', NOW)?.num).toBe('Today')
+  })
+
+  it('tells a booking rhythm how long the window stays open, never whether it happened', () => {
+    const r = rhythm({
+      satisfiedBy: 'scheduling', satisfied: false,
+      currentPeriodStart: '2026-08-17', currentPeriodEnd: '2026-08-23',
+    })
+    expect(countdown(r, 'now', NOW)).toEqual({ num: '3', unit: 'days left', tone: 'late' })
+  })
+
+  it('reports a booked period as settled, in green, with no number to chase', () => {
+    const r = rhythm({
+      satisfiedBy: 'scheduling', satisfied: true,
+      currentPeriodStart: '2026-08-17', currentPeriodEnd: '2026-08-23',
+    })
+    expect(countdown(r, 'steady', NOW)?.tone).toBe('done')
+  })
+
+  it('takes its colour from the group, so one row never argues with its own heading', () => {
+    const r = rhythm({ nextDueAt: at(8, 25) })
+    expect(countdown(r, 'now', NOW)?.tone).toBe('late')
+    expect(countdown(r, 'soon', NOW)?.tone).toBe('near')
+    expect(countdown(r, 'steady', NOW)?.tone).toBe('soft')
+  })
+
+  it('shows nothing at all rather than a number for a rhythm with no due date', () => {
+    expect(countdown(rhythm({ nextDueAt: null }), 'steady', NOW)).toBeNull()
+  })
+})
+
+describe('daysToGo', () => {
+  it('orders a group soonest-first, counting overdue as further past due', () => {
+    // The page subtitle promises "soonest first", so the sort has to be real. Within
+    // "Needs you now" that means the most overdue row leads — otherwise a quarterly
+    // rhythm with a 45-day runway, which is legitimately nudging, outranks something
+    // that is a week late purely because it was fetched first.
+    const rows = [
+      rhythm({ id: 'soon', nextDueAt: at(8, 25) }),
+      rhythm({ id: 'late', nextDueAt: at(8, 14) }),
+      rhythm({ id: 'never', nextDueAt: null }),
+    ]
+    const order = [...rows]
+      .sort((a, b) => (daysToGo(a, NOW) ?? Infinity) - (daysToGo(b, NOW) ?? Infinity))
+      .map((r) => r.id)
+    expect(order).toEqual(['late', 'soon', 'never'])
+  })
+
+  it('counts a booking rhythm toward its window closing, not toward a due date', () => {
+    const r = rhythm({
+      satisfiedBy: 'scheduling', currentPeriodStart: '2026-08-17', currentPeriodEnd: '2026-08-23',
+    })
+    expect(daysToGo(r, NOW)).toBe(3)
+  })
+})
+
+describe('periodProgress', () => {
+  it('measures a completion rhythm from when it was last actually done', () => {
+    // Not from the period grid — the completion shape deliberately has none. Its clock
+    // restarts whenever you did it, which is the whole reason being late doesn't stack.
+    const r = rhythm({
+      every: '10 days', lastCompletedAt: at(8, 15), nextDueAt: at(8, 25),
+    })
+    expect(periodProgress(r, NOW)).toBe(50)
+  })
+
+  it('falls back to one cadence back when nothing has ever been logged', () => {
+    const r = rhythm({ every: '10 days', lastCompletedAt: null, nextDueAt: at(8, 25) })
+    expect(periodProgress(r, NOW)).toBe(50)
+  })
+
+  it('stops the bar at full instead of overflowing its track when overdue', () => {
+    // A 3px hairline hides a 340% width until the day it doesn't. Clamped here rather
+    // than trusted to overflow:hidden, so the number is right wherever it's read.
+    const r = rhythm({
+      every: '10 days', lastCompletedAt: at(7, 1), nextDueAt: at(7, 11),
+    })
+    expect(periodProgress(r, NOW)).toBe(100)
+  })
+
+  it('uses the real period bounds for a booking rhythm', () => {
+    const r = rhythm({
+      satisfiedBy: 'scheduling', currentPeriodStart: '2026-08-18', currentPeriodEnd: '2026-08-22',
+    })
+    expect(periodProgress(r, NOW)).toBe(50)
+  })
+
+  it('declines to draw a bar it cannot measure', () => {
+    // A backdated completion later than the next due date inverts the window; so does a
+    // missing due date. Both would render NaN% — an invisible bar, or a full one.
+    expect(periodProgress(rhythm({ nextDueAt: null }), NOW)).toBeNull()
+    expect(periodProgress(rhythm({
+      lastCompletedAt: at(9, 1), nextDueAt: at(8, 25),
+    }), NOW)).toBeNull()
   })
 })

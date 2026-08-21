@@ -64,6 +64,13 @@ function renderScreen() {
   return render(<MemoryRouter><Rhythms /></MemoryRouter>)
 }
 
+// Each row carries one primary verb; everything else lives behind its ··· menu, so
+// most of these have to open it first. The menu is per-row and only one is ever open,
+// which is why the assertions below can go straight to the item by name.
+function openMenu(title: string) {
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(`^more for ${title}$`, 'i') }))
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.setSystemTime(new Date('2026-08-18T12:00:00Z'))
@@ -105,6 +112,7 @@ describe('Rhythms screen', () => {
     renderScreen()
     await screen.findByText('Temple visit')
     expect(screen.getByText(/not on the calendar yet/i)).toBeInTheDocument()
+    openMenu('Temple visit')
     fireEvent.click(screen.getByRole('button', { name: /skip this period for temple visit/i }))
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/rhythms/r-temple/skip'))).toBe(true))
   })
@@ -244,7 +252,7 @@ describe('Rhythms screen', () => {
     renderScreen()
     await screen.findByText('Air filter')
     expect(screen.getByRole('button', { name: /done today/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^i did this today$/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^i did it$/i })).toBeNull()
   })
 
   it('refuses to log a second completion for a day already logged', async () => {
@@ -266,7 +274,8 @@ describe('Rhythms screen', () => {
     renderScreen()
     await screen.findByText('Air filter')
 
-    fireEvent.click(screen.getByRole('button', { name: /log it for another day/i }))
+    openMenu('Air filter')
+    fireEvent.click(screen.getByRole('button', { name: /mark air filter done on another day/i }))
     fireEvent.change(screen.getByLabelText(/when did you do it/i), { target: { value: '2026-08-14' } })
     fireEvent.click(screen.getByRole('button', { name: /^log it$/i }))
 
@@ -280,7 +289,8 @@ describe('Rhythms screen', () => {
     renderScreen()
     await screen.findByText('Air filter')
 
-    fireEvent.click(screen.getByRole('button', { name: /log it for another day/i }))
+    openMenu('Air filter')
+    fireEvent.click(screen.getByRole('button', { name: /mark air filter done on another day/i }))
     // System time in these tests is 2026-08-18.
     fireEvent.change(screen.getByLabelText(/when did you do it/i), { target: { value: '2026-12-25' } })
     // A rhythm records what happened, so "I did this next Christmas" is not a claim it
@@ -292,6 +302,6 @@ describe('Rhythms screen', () => {
     mockApi([filter])
     renderScreen()
     await screen.findByText('Air filter')
-    expect(screen.getByRole('button', { name: /^i did this today$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^i did it$/i })).toBeInTheDocument()
   })
 })
