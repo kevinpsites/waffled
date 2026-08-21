@@ -13,7 +13,7 @@ import kotlin.math.roundToInt
  * and `feature:goalcharts` (which owns drawing). Goals produces, charts consumes, and
  * neither depends on the other's module.
  *
- * Three rules carry the weight, and all three are pinned by `GoalSeriesBuilderTest`:
+ * Four rules carry the weight, and all four are pinned by `GoalSeriesBuilderTest`:
  *
  *  1. **A day with no entry is ABSENT, never zero-filled.** That absence is the only way
  *     a view can tell "logged nothing" from "not tracked" — they render differently on a
@@ -23,15 +23,23 @@ import kotlin.math.roundToInt
  *  3. **The day's total is never lost.** When the credited members sum to LESS than the
  *     day total, the difference is emitted as an unattributed household point, so
  *     `series.total` always agrees with the hero ring.
- *
- * ⚠️ **Known lossy edge: [GoalPoint.value] is an `Int`, while the server sends fractional
- * amounts** (an hours goal logs 1h5m as 1.0833…). Every amount is rounded here, so a
- * 20-minute log on an hours goal becomes a *present day with value 0*. Presence still
- * distinguishes it from an untracked day, but the magnitude is gone and per-day totals
- * can drift from the goal's own total by up to half a unit per day. Reported to the
- * contract's owner; the fix is a `Double` value on `GoalPoint`.
+ *  4. **Amounts pass through EXACT.** [GoalPoint.value] is a `Double`, matching the
+ *     server's numeric `goal_logs.amount` (`apps/api/src/modules/goals/goals.service.ts:33`),
+ *     so an hours goal's 1h5m stays 1.0833… and a 20-minute log stays 0.3333 instead of
+ *     rounding to a present day valued zero. Only [GoalSeries.target] is still narrowed
+ *     to a whole number, because a target is a count a person chose, not a measurement.
  */
 object GoalSeriesBuilder {
+
+    /**
+     * Floating-point residue tolerance for the "is there anything uncredited left" test.
+     *
+     * Amounts used to be rounded to whole numbers here, which incidentally swallowed the
+     * residue of summing doubles. Exact pass-through exposes it: a day whose members
+     * credit the total precisely can still leave ~1e-16 behind, and without this the
+     * builder would emit a phantom unattributed household point for it.
+     */
+    private const val RESIDUE = 1e-9
 
     fun build(
         goalType: String,
@@ -44,17 +52,23 @@ object GoalSeriesBuilder {
         today: String,
         days: List<DayEntry>,
         personColors: Map<String, String> = emptyMap(),
-    ): GoalSeries = GoalSeries(
-        points = points(days),
-        target = target(goalType, target, habitTargetPerPeriod),
-        cadence = cadence(goalType, habitPeriod),
-        rangeStart = parseDayOrNull(startDate),
-        // GoalSeries carries no `today`, so an open-ended goal's window has to end
-        // somewhere a view can draw to. Today is the only honest answer.
-        rangeEnd = parseDayOrNull(endDate) ?: parseDayOrNull(today),
-        unit = unit?.trim().orEmpty(),
-        personColors = personColors,
-    )
+    ): GoalSeries {
+        // The server knows the household's timezone and this client does not, so `today`
+        // travels on the series rather than being re-derived from the device's clock.
+        val householdToday = parseDayOrNull(today)
+        return GoalSeries(
+            points = points(days),
+            target = target(goalType, target, habitTargetPerPeriod),
+            cadence = cadence(goalType, habitPeriod),
+            rangeStart = parseDayOrNull(startDate),
+            // An open-ended goal's window still has to end somewhere a view can draw to.
+            // Today is the only honest answer.
+            rangeEnd = parseDayOrNull(endDate) ?: householdToday,
+            unit = unit?.trim().orEmpty(),
+            personColors = personColors,
+            today = householdToday,
+        )
+    }
 
     /**
      * One point per credited person per day, plus the uncredited remainder.
@@ -69,25 +83,30 @@ object GoalSeriesBuilder {
 
     private fun pointsForDay(day: LocalDate, entry: DayEntry): List<GoalPoint> {
         if (entry.perMember.isEmpty()) {
-            return listOf(GoalPoint(day = day, value = whole(entry.total), personId = null))
+            return listOf(GoalPoint(day = day, value = entry.total, personId = null))
         }
 
         val members = entry.perMember.entries
             .sortedBy { it.key }
-            .map { (personId, amount) -> GoalPoint(day = day, value = whole(amount), personId = personId) }
+            .map { (personId, amount) -> GoalPoint(day = day, value = amount, personId = personId) }
 
         // An `each_tracks` goal credits everyone fully, so the members can sum ABOVE the
         // pooled day total — the breakdown wins and no phantom point is invented.
         val credited = entry.perMember.values.sum()
         val remainder = entry.total - credited
-        if (whole(remainder) <= 0) return members
+        if (remainder <= RESIDUE) return members
 
-        return members + GoalPoint(day = day, value = whole(remainder), personId = null)
+        return members + GoalPoint(day = day, value = remainder, personId = null)
     }
 
     /**
      * A habit's target is its per-period count ("5× a week"), which is what a cadence
      * period means; every other type accumulates toward one lifetime number.
+     *
+     * This is the ONE place rounding survives, and deliberately: [GoalSeries.target] is an
+     * `Int` because a target is a whole number a person chose ("read 100 pages"). The
+     * server types it as a double, so a fractional target is narrowed here rather than
+     * silently somewhere downstream.
      */
     private fun target(goalType: String, target: Double?, habitTargetPerPeriod: Int?): Int? =
         if (goalType == "habit") habitTargetPerPeriod?.takeIf { it > 0 }

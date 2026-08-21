@@ -10,7 +10,6 @@ import java.time.temporal.ChronoUnit
 import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 /**
  * Everything the eight goal visualisations derive, as pure functions.
@@ -78,7 +77,7 @@ enum class DayPaint {
 data class DayCell(
     val day: LocalDate,
     /** The day's total. Zero when [hasEntry] is true means "logged nothing". */
-    val value: Int,
+    val value: Double,
     /** Whether the series actually carries a point for this day. */
     val hasEntry: Boolean,
     val paint: DayPaint,
@@ -93,13 +92,21 @@ data class DayCell(
 @Immutable
 data class MonthGrid(val month: YearMonth, val lead: Int, val cells: List<DayCell>)
 
-/** Target pace at a moment in a goal's life, and how far off it the goal actually is. */
+/**
+ * Target pace at a moment in a goal's life, and how far off it the goal actually is.
+ *
+ * Both numbers are `Double`s even though [GoalSeries.target] is an `Int`. [paceValue] is
+ * an INTERPOLATION of a whole target across elapsed time — 100 pages over 365 days is 2.74
+ * by day 10, not 3 — so it is fractional whether or not the target is, and [delta] is that
+ * interpolation subtracted from a measured total. Rounding either made the standing jitter
+ * by up to half a unit against a total that no longer rounds.
+ */
 @Immutable
-data class GoalPace(val paceValue: Int, val delta: Int, val endLabel: LocalDate)
+data class GoalPace(val paceValue: Double, val delta: Double, val endLabel: LocalDate)
 
 /** A day's total split by who logged it. */
 @Immutable
-data class DayTotals(val total: Int, val perPerson: Map<String, Int>)
+data class DayTotals(val total: Double, val perPerson: Map<String, Double>)
 
 // ---------------------------------------------------------------------------
 // Derived stats — computed once per GoalSeries change
@@ -115,20 +122,20 @@ data class GoalChartStats(
     val unit: String,
     val byDay: Map<LocalDate, DayTotals>,
     /** 12 entries, index 0 = January, for [today]'s calendar year. */
-    val byMonth: List<Int>,
+    val byMonth: List<Double>,
     /** 12 entries, matching [byMonth]. */
-    val byMonthPerPerson: List<Map<String, Int>>,
+    val byMonthPerPerson: List<Map<String, Double>>,
     /** Lifetime total per person. */
-    val byPerson: Map<String, Int>,
-    val total: Int,
+    val byPerson: Map<String, Double>,
+    val total: Double,
     val currentStreak: Int,
     val longestStreak: Int,
     val activeDays: Int,
     val bestDay: LocalDate?,
     /** Biggest single day in the last 7 days / this month / this calendar year. */
-    val weekMax: Int,
-    val monthMax: Int,
-    val yearMax: Int,
+    val weekMax: Double,
+    val monthMax: Double,
+    val yearMax: Double,
     val pace: GoalPace?,
     val projectedFinish: LocalDate?,
     /** Stable person ordering: declared colours first, then anyone else lexically. */
@@ -154,12 +161,12 @@ data class GoalChartStats(
             // still look like a month, not like three squares floating in a hole. The
             // finer absent-vs-zero difference is carried by [DayCell.hasEntry] and spoken
             // in the day sheet, which has room for a sentence a 13dp square does not.
-            entry == null || entry.total == 0 -> DayPaint.Empty
+            entry == null || entry.total <= 0.0 -> DayPaint.Empty
             else -> DayPaint.Heat
         }
         return DayCell(
             day = day,
-            value = entry?.total ?: 0,
+            value = entry?.total ?: 0.0,
             hasEntry = entry != null,
             paint = paint,
             personIds = entry?.let { totals -> personOrder.filter { totals.perPerson.containsKey(it) } }
@@ -187,14 +194,14 @@ fun computeGoalChartStats(series: GoalSeries, today: LocalDate): GoalChartStats 
     for (point in series.points) {
         val prior = byDay[point.day]
         val perPerson = LinkedHashMap(prior?.perPerson ?: emptyMap())
-        point.personId?.let { perPerson[it] = (perPerson[it] ?: 0) + point.value }
-        byDay[point.day] = DayTotals((prior?.total ?: 0) + point.value, perPerson)
+        point.personId?.let { perPerson[it] = (perPerson[it] ?: 0.0) + point.value }
+        byDay[point.day] = DayTotals((prior?.total ?: 0.0) + point.value, perPerson)
     }
 
-    var total = 0
+    var total = 0.0
     var bestDay: LocalDate? = null
-    var bestValue = Int.MIN_VALUE
-    val byPerson = LinkedHashMap<String, Int>()
+    var bestValue = Double.NEGATIVE_INFINITY
+    val byPerson = LinkedHashMap<String, Double>()
     for ((day, totals) in byDay) {
         total += totals.total
         if (totals.total > bestValue) {
@@ -202,13 +209,15 @@ fun computeGoalChartStats(series: GoalSeries, today: LocalDate): GoalChartStats 
             bestDay = day
         }
         for ((person, amount) in totals.perPerson) {
-            byPerson[person] = (byPerson[person] ?: 0) + amount
+            byPerson[person] = (byPerson[person] ?: 0.0) + amount
         }
     }
 
     // A day counts as "active" only when something was actually logged — a habit's daily
     // total is 1/0, so this doubles as hit/miss, and an explicit zero breaks a streak.
-    val activeDates = byDay.filterValues { it.total > 0 }.keys.sorted()
+    // ANY positive amount qualifies, including a fractional one: a 20-minute log is a day
+    // you showed up, and rounding it to zero used to break the streak that proves it.
+    val activeDates = byDay.filterValues { it.total > 0.0 }.keys.sorted()
 
     // currentStreak: consecutive active days ending today or yesterday, matching the
     // server's goalStreak rule.
@@ -236,19 +245,19 @@ fun computeGoalChartStats(series: GoalSeries, today: LocalDate): GoalChartStats 
     }
 
     val last7 = (0L..6L).map { today.minusDays(it) }.toSet()
-    val weekMax = byDay.filterKeys { it in last7 }.values.maxOfOrNull { it.total } ?: 0
+    val weekMax = byDay.filterKeys { it in last7 }.values.maxOfOrNull { it.total } ?: 0.0
     val thisMonth = YearMonth.from(today)
-    val monthMax = byDay.filterKeys { YearMonth.from(it) == thisMonth }.values.maxOfOrNull { it.total } ?: 0
-    val yearMax = byDay.filterKeys { it.year == today.year }.values.maxOfOrNull { it.total } ?: 0
+    val monthMax = byDay.filterKeys { YearMonth.from(it) == thisMonth }.values.maxOfOrNull { it.total } ?: 0.0
+    val yearMax = byDay.filterKeys { it.year == today.year }.values.maxOfOrNull { it.total } ?: 0.0
 
-    val byMonth = MutableList(12) { 0 }
-    val byMonthPerPerson = MutableList(12) { LinkedHashMap<String, Int>() }
+    val byMonth = MutableList(12) { 0.0 }
+    val byMonthPerPerson = MutableList(12) { LinkedHashMap<String, Double>() }
     for ((day, totals) in byDay) {
         if (day.year != today.year) continue
         val index = day.monthValue - 1
         byMonth[index] += totals.total
         for ((person, amount) in totals.perPerson) {
-            byMonthPerPerson[index][person] = (byMonthPerPerson[index][person] ?: 0) + amount
+            byMonthPerPerson[index][person] = (byMonthPerPerson[index][person] ?: 0.0) + amount
         }
     }
 
@@ -260,7 +269,7 @@ fun computeGoalChartStats(series: GoalSeries, today: LocalDate): GoalChartStats 
     val pace = if (start != null && end != null && target != null) {
         val duration = maxOf(1L, ChronoUnit.DAYS.between(start, end))
         val elapsed = ChronoUnit.DAYS.between(start, today).coerceIn(0L, duration)
-        val paceValue = (target.toDouble() * elapsed / duration).roundToInt()
+        val paceValue = target.toDouble() * elapsed / duration
         GoalPace(paceValue = paceValue, delta = total - paceValue, endLabel = end)
     } else {
         null
@@ -272,7 +281,7 @@ fun computeGoalChartStats(series: GoalSeries, today: LocalDate): GoalChartStats 
         null
     } else {
         val remaining = target - total
-        if (remaining <= 0) {
+        if (remaining <= 0.0) {
             today
         } else {
             val windowStart = today.minusDays(13)
@@ -284,7 +293,7 @@ fun computeGoalChartStats(series: GoalSeries, today: LocalDate): GoalChartStats 
             } else {
                 minOf(14L, ChronoUnit.DAYS.between(start, today) + 1).coerceAtLeast(1L)
             }
-            val rate = recent.toDouble() / spanDays
+            val rate = recent / spanDays
             if (rate > 0.001) today.plusDays(ceil(remaining / rate).toLong()) else null
         }
     }
@@ -367,12 +376,27 @@ fun yearColumns(stats: GoalChartStats, today: LocalDate): List<List<DayCell>> {
  * The denominator a heat ramp divides by: the biggest logged day among [cells], ignoring
  * the future, floored at 1 so an all-quiet page can never divide by zero.
  */
-fun scaleMax(cells: List<DayCell>): Int =
-    maxOf(1, cells.filter { !it.future }.maxOfOrNull { it.value } ?: 1)
+fun scaleMax(cells: List<DayCell>): Double =
+    scaleDenominator(cells.filter { !it.future }.maxOfOrNull { it.value })
+
+/**
+ * A safe denominator for a heat ramp or a bar track: the biggest value actually present,
+ * falling back to 1 only when there is nothing positive to scale against.
+ *
+ * Deliberately NOT `maxOf(1.0, max)`. That was harmless while amounts were whole numbers —
+ * the smallest real value was 1, so the floor only ever fired on an empty page — but it
+ * silently clamps fractional data. An hours goal whose week is 0.33, 0.5 and 0.25 has a
+ * true max of 0.5; floored to 1.0, every cell paints at half intensity or less and the
+ * darkest day never reaches the top of the ramp, so a week of real work renders as
+ * barely-there. The floor's job is divide-by-zero protection, nothing more, and
+ * [heatIntensity] already returns 0 for a non-positive value — an all-quiet page paints
+ * nothing whatever the denominator is.
+ */
+fun scaleDenominator(max: Double?): Double = max?.takeIf { it > 0.0 } ?: 1.0
 
 /** A day's position on the ramp, clamped to `0..1`. A zero max reads as no heat at all. */
-fun heatIntensity(value: Int, max: Int): Float =
-    if (max <= 0 || value <= 0) 0f else min(1f, value.toFloat() / max)
+fun heatIntensity(value: Double, max: Double): Float =
+    if (max <= 0.0 || value <= 0.0) 0f else min(1f, (value / max).toFloat())
 
 /**
  * The heat ramp, as a component-wise lerp between two theme tokens.
@@ -426,7 +450,7 @@ fun ringSector(month: Int, gapDegrees: Float = RING_GAP_DEGREES): RingSector {
 }
 
 /** How far out from [r0] a month's wedge is filled — a longer arc means more logged. */
-fun ringFillRadius(value: Int, max: Int, r0: Float, r1: Float): Float =
+fun ringFillRadius(value: Double, max: Double, r0: Float, r1: Float): Float =
     r0 + heatIntensity(value, max) * (r1 - r0)
 
 /** Which month a tap at ([dx], [dy]) from the ring's centre lands on. */
@@ -446,6 +470,10 @@ fun ringMonthAt(dx: Float, dy: Float): Int {
  *
  * Never fewer than [done]: over-achieving past the target must add shelf, not silently
  * hide the extras. Floored at 1 so a target-less goal still renders one slot.
+ *
+ * [done] stays an `Int` — a shelf slot is a discrete thing you either collected or did
+ * not, so the caller TRUNCATES a fractional total on the way in (see [CollectionGridView]).
+ * That is the same "not quite there is not there" rule `progressPercent` is built on.
  */
 fun collectionSlots(target: Int?, done: Int): Int = maxOf(1, maxOf(target ?: 0, done))
 

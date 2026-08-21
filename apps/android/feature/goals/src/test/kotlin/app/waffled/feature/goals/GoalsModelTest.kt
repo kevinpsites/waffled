@@ -403,7 +403,8 @@ class GoalsModelTest {
         assertEquals(mapOf("p1" to "#2F7FED"), s.personColors)
         assertEquals(LocalDate.of(2026, 1, 1), s.rangeStart)
         assertEquals(LocalDate.of(2026, 7, 17), s.rangeEnd)
-        assertEquals(8, s.total)
+        assertEquals(LocalDate.of(2026, 7, 17), s.today, "the household's today rides the seam")
+        assertEquals(8.0, s.total, 0.0001)
         assertNull(s.byDay[LocalDate.of(2026, 7, 15)], "the absence rule survives the round trip")
 
         assertEquals(2, m.current.stats?.currentStreak)

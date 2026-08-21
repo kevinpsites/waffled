@@ -206,7 +206,7 @@ fun PaceChartView(
             LegendDot(
                 ink3,
                 stats.pace?.let { "Pace to hit ${stats.target} by ${monthDay(it.endLabel)}" }
-                    ?: "Target · ${amount(stats.target ?: 0, chart.unit)}",
+                    ?: "Target · ${amount((stats.target ?: 0).toDouble(), chart.unit)}",
             )
             stats.projectedFinish?.let {
                 Text(
@@ -218,7 +218,7 @@ fun PaceChartView(
             } ?: run {
                 if (stats.pace == null && stats.target != null) {
                     Text(
-                        text = "Keep going — ${amount(maxOf(0, stats.target - stats.total), chart.unit)} to go",
+                        text = "Keep going — ${amount(maxOf(0.0, stats.target - stats.total), chart.unit)} to go",
                         style = WF.type.size(12.sp, FontWeight.SemiBold),
                         color = WF.colors.ink2,
                     )

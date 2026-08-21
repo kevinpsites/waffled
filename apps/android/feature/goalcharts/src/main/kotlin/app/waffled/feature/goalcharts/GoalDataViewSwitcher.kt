@@ -45,14 +45,15 @@ import java.time.YearMonth
  * choice per goal (iOS keeps it in `UserDefaults` under `waffled.goalView.<goalId>`);
  * left alone, the choice simply lives for as long as the screen does.
  *
- * [today] is a parameter rather than `LocalDate.now()` on purpose — the household's
- * timezone is the caller's knowledge, and every bucket in here depends on getting it right.
+ * [today] defaults to the household's today as carried on the series rather than to
+ * `LocalDate.now()`, which is the DEVICE's date — the exact drift the household timezone
+ * exists to prevent. The clock is only reached for when the series was built without one.
  */
 @Composable
 fun GoalDataViewSwitcher(
     series: GoalSeries,
     modifier: Modifier = Modifier,
-    today: LocalDate = LocalDate.now(),
+    today: LocalDate = series.today ?: LocalDate.now(),
     title: String = "",
     goalType: String? = null,
     personNames: Map<String, String> = emptyMap(),

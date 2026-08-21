@@ -24,6 +24,9 @@ class GoalChartMathTest {
 
     private val today = LocalDate.of(2026, 8, 21) // a Friday
 
+    /** Amounts are doubles, so every magnitude assertion carries a tolerance. */
+    private val EPS = 0.0001
+
     private fun series(
         vararg points: GoalPoint,
         target: Int? = null,
@@ -41,7 +44,12 @@ class GoalChartMathTest {
         personColors = colors,
     )
 
+    /** Whole-number amounts stay written as Ints here; only the model widened. */
     private fun p(day: String, value: Int, person: String? = null) =
+        GoalPoint(LocalDate.parse(day), value.toDouble(), person)
+
+    /** A fractional amount, for the cases the widening exists for. */
+    private fun pf(day: String, value: Double, person: String? = null) =
         GoalPoint(LocalDate.parse(day), value, person)
 
     // ---------------------------------------------------------------- day state
@@ -133,7 +141,46 @@ class GoalChartMathTest {
         val cell = computeGoalChartStats(s, today).cell(LocalDate.of(2026, 8, 20))
         // Declared people first in declaration order, then anyone else lexically.
         assertEquals(listOf("mia", "abe", "zoe"), cell.personIds)
-        assertEquals(6, cell.value)
+        assertEquals(6.0, cell.value, EPS)
+    }
+
+    @Test
+    fun `a sub-unit log paints heat, not the quiet nothing-logged cell`() {
+        // 20 minutes on an hours goal is 0.3333. Rounding it to 0 made the day paint as
+        // Empty — the "logged, but nothing counted" cell — which is a lie about a day
+        // somebody showed up for.
+        val stats = computeGoalChartStats(series(pf("2026-08-20", 1.0 / 3.0)), today)
+        val cell = stats.cell(LocalDate.of(2026, 8, 20))
+        assertEquals(DayPaint.Heat, cell.paint)
+        assertEquals(0.3333, cell.value, EPS)
+    }
+
+    @Test
+    fun `a sub-unit log counts as an active day and keeps a streak alive`() {
+        // activeDays and both streaks key off "total > 0", so a value rounded to zero
+        // used to BREAK the streak that logging the day was meant to preserve.
+        val stats = computeGoalChartStats(
+            series(pf("2026-08-21", 1.0 / 3.0), pf("2026-08-20", 0.25), p("2026-08-19", 1)),
+            today,
+        )
+        assertEquals(3, stats.activeDays)
+        assertEquals(3, stats.currentStreak)
+    }
+
+    @Test
+    fun `fractional amounts accumulate exactly across days and people`() {
+        val stats = computeGoalChartStats(
+            series(
+                pf("2026-08-20", 1.0833, "abe"),
+                pf("2026-08-20", 0.3333, "mia"),
+                pf("2026-08-19", 0.5, "abe"),
+            ),
+            today,
+        )
+        assertEquals(1.9166, stats.total, EPS)
+        assertEquals(1.4166, stats.byDay[LocalDate.of(2026, 8, 20)]!!.total, EPS)
+        assertEquals(1.5833, stats.byPerson["abe"]!!, EPS)
+        assertEquals(LocalDate.of(2026, 8, 20), stats.bestDay)
     }
 
     // ---------------------------------------------------------------- grids
@@ -153,7 +200,7 @@ class GoalChartMathTest {
         assertEquals(7, cells.size)
         assertEquals(LocalDate.of(2026, 8, 16), cells.first().day)
         assertEquals(LocalDate.of(2026, 8, 22), cells.last().day)
-        assertEquals(5, cells[2].value) // Tuesday
+        assertEquals(5.0, cells[2].value, EPS) // Tuesday
         assertEquals(DayPaint.Future, cells[6].paint)
     }
 
@@ -191,9 +238,33 @@ class GoalChartMathTest {
             today,
         )
         val cells = weekCells(stats, startOfWeek(today))
-        assertEquals(3, scaleMax(cells))
-        assertEquals(1, scaleMax(emptyList()))
-        assertEquals(1, scaleMax(weekCells(stats, startOfWeek(LocalDate.of(2026, 7, 1)))))
+        assertEquals(3.0, scaleMax(cells), EPS)
+        assertEquals(1.0, scaleMax(emptyList()), EPS)
+        assertEquals(1.0, scaleMax(weekCells(stats, startOfWeek(LocalDate.of(2026, 7, 1)))), EPS)
+    }
+
+    @Test
+    fun `a scale maximum is not floored at one, which would flatten a sub-unit goal`() {
+        // An hours goal whose week is 20 and 30 minutes has a true max of 0.5. Clamping
+        // the denominator to 1.0 would paint the whole week at half intensity forever and
+        // the biggest day would never reach the top of the ramp — the same class of bug as
+        // rounding the amount away in the first place.
+        val stats = computeGoalChartStats(
+            series(pf("2026-08-17", 1.0 / 3.0), pf("2026-08-18", 0.5)),
+            today,
+        )
+        val cells = weekCells(stats, startOfWeek(today))
+        val max = scaleMax(cells)
+        assertEquals(0.5, max, EPS)
+        assertEquals(1f, heatIntensity(0.5, max), "the best day tops the ramp")
+        assertEquals(0.6666f, heatIntensity(1.0 / 3.0, max), 0.0001f)
+    }
+
+    @Test
+    fun `the scale denominator only falls back to one when there is nothing to scale`() {
+        assertEquals(0.25, scaleDenominator(0.25), EPS, "real fractional data wins")
+        assertEquals(1.0, scaleDenominator(null), EPS)
+        assertEquals(1.0, scaleDenominator(0.0), EPS, "never divide by zero")
     }
 
     @Test
@@ -202,7 +273,7 @@ class GoalChartMathTest {
             series(p("2025-06-01", 500), p("2026-06-01", 12), p("2026-07-04", 30)),
             today,
         )
-        assertEquals(30, stats.yearMax)
+        assertEquals(30.0, stats.yearMax, EPS)
     }
 
     // ---------------------------------------------------------------- totals
@@ -214,9 +285,9 @@ class GoalChartMathTest {
             today,
         )
         assertEquals(12, stats.byMonth.size)
-        assertEquals(2, stats.byMonth[0])
-        assertEquals(10, stats.byMonth[7])
-        assertEquals(0, stats.byMonth[11])
+        assertEquals(2.0, stats.byMonth[0], EPS)
+        assertEquals(10.0, stats.byMonth[7], EPS)
+        assertEquals(0.0, stats.byMonth[11], EPS)
     }
 
     @Test
@@ -225,8 +296,8 @@ class GoalChartMathTest {
             series(p("2026-08-02", 4, "abe"), p("2026-08-03", 6, "mia"), p("2026-08-04", 1, "abe")),
             today,
         )
-        assertEquals(mapOf("abe" to 5, "mia" to 6), stats.byMonthPerPerson[7])
-        assertEquals(mapOf("abe" to 5, "mia" to 6), stats.byPerson)
+        assertEquals(mapOf("abe" to 5.0, "mia" to 6.0), stats.byMonthPerPerson[7])
+        assertEquals(mapOf("abe" to 5.0, "mia" to 6.0), stats.byPerson)
     }
 
     // ---------------------------------------------------------------- streaks
@@ -288,9 +359,12 @@ class GoalChartMathTest {
             today,
         )
         val pace = stats.pace!!
-        // 20 of 30 days elapsed -> pace 67 (rounded); only 40 logged -> 27 behind.
-        assertEquals(67, pace.paceValue)
-        assertEquals(-27, pace.delta)
+        // 20 of 30 days elapsed -> 66.67 of the 100 target. Kept EXACT rather than
+        // rounded to 67: pace is an interpolation of a whole target across elapsed time,
+        // and rounding it made the standing jitter by up to half a unit against a total
+        // that no longer rounds either. Only 40 logged -> 26.67 behind.
+        assertEquals(66.6666, pace.paceValue, EPS)
+        assertEquals(-26.6666, pace.delta, EPS)
         assertEquals(LocalDate.of(2026, 8, 31), pace.endLabel)
     }
 
@@ -312,7 +386,7 @@ class GoalChartMathTest {
             ),
             today,
         )
-        assertEquals(100, stats.pace!!.paceValue)
+        assertEquals(100.0, stats.pace!!.paceValue, EPS)
     }
 
     @Test
@@ -358,11 +432,13 @@ class GoalChartMathTest {
 
     @Test
     fun `heat intensity is the day over the scale max`() {
-        assertEquals(0f, heatIntensity(0, 8))
-        assertEquals(0.5f, heatIntensity(4, 8))
-        assertEquals(1f, heatIntensity(8, 8))
-        assertEquals(1f, heatIntensity(80, 8), "never overshoots the ramp")
-        assertEquals(0f, heatIntensity(4, 0), "a zero max must not divide by zero")
+        assertEquals(0f, heatIntensity(0.0, 8.0))
+        assertEquals(0.5f, heatIntensity(4.0, 8.0))
+        assertEquals(1f, heatIntensity(8.0, 8.0))
+        assertEquals(1f, heatIntensity(80.0, 8.0), "never overshoots the ramp")
+        assertEquals(0f, heatIntensity(4.0, 0.0), "a zero max must not divide by zero")
+        // The point of the widening: a third of a unit is a third of the ramp, not zero.
+        assertEquals(0.3333f, heatIntensity(1.0 / 3.0, 1.0), 0.0001f)
     }
 
     @Test
@@ -389,10 +465,10 @@ class GoalChartMathTest {
 
     @Test
     fun `a ring wedge fills from the inner radius in proportion to the month`() {
-        assertEquals(56f, ringFillRadius(0, 10, 56f, 116f), 0.001f)
-        assertEquals(86f, ringFillRadius(5, 10, 56f, 116f), 0.001f)
-        assertEquals(116f, ringFillRadius(10, 10, 56f, 116f), 0.001f)
-        assertEquals(116f, ringFillRadius(40, 10, 56f, 116f), 0.001f, "clamped to the outer radius")
+        assertEquals(56f, ringFillRadius(0.0, 10.0, 56f, 116f), 0.001f)
+        assertEquals(86f, ringFillRadius(5.0, 10.0, 56f, 116f), 0.001f)
+        assertEquals(116f, ringFillRadius(10.0, 10.0, 56f, 116f), 0.001f)
+        assertEquals(116f, ringFillRadius(40.0, 10.0, 56f, 116f), 0.001f, "clamped to the outer radius")
     }
 
     @Test

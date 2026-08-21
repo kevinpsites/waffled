@@ -5,6 +5,8 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.floor
+import kotlin.math.roundToLong
 
 /**
  * The spoken form of each chart.
@@ -31,9 +33,29 @@ internal fun monthDay(day: LocalDate): String = MONTH_DAY.format(day)
 
 internal fun longDay(day: LocalDate): String = LONG_DAY.format(day)
 
+/**
+ * A measured amount as text: whole numbers lose the decimal, everything else keeps at most
+ * two places with trailing zeros dropped — 12 becomes "12", 1.0833… becomes "1.08", and a
+ * 20-minute log (0.3333) becomes "0.33".
+ *
+ * `feature:goals` carries the same rule in its `goalFmt`, and this is deliberately a
+ * second copy rather than a dependency: `goalcharts` is the CONSUMER half of the
+ * `GoalSeries` seam and has no feature dependencies at all — that absence is the cheapest
+ * proof it only ever draws a series. `core:model` is the shared floor between the two, but
+ * a display formatter is presentation, not contract.
+ *
+ * The alternative — printing the raw `Double` — is not neutral: it renders "1.0833333"
+ * inside a 13dp calendar square.
+ */
+internal fun amountText(value: Double): String {
+    val rounded = (value * 100).roundToLong() / 100.0
+    if (rounded == floor(rounded)) return rounded.toLong().toString()
+    return String.format(Locale.US, "%.2f", rounded).trimEnd('0').trimEnd('.')
+}
+
 /** `"12 pages"`, or just `"12"` when the goal has no unit. */
-internal fun amount(value: Int, unit: String): String =
-    if (unit.isBlank()) value.toString() else "$value $unit"
+internal fun amount(value: Double, unit: String): String =
+    if (unit.isBlank()) amountText(value) else "${amountText(value)} $unit"
 
 /** A person's display name, or a neutral label — never a raw id, which reads as noise. */
 internal fun personLabel(personId: String, names: Map<String, String>): String =
@@ -51,11 +73,11 @@ fun monthSummary(stats: GoalChartStats, month: YearMonth, unit: String): String 
     val cells = monthGrid(stats, month).cells
     val total = cells.sumOf { it.value }
     val label = "${monthName(month.monthValue - 1)} ${month.year}"
-    if (total == 0) return "Calendar heatmap for $label. Nothing logged yet."
+    if (total <= 0.0) return "Calendar heatmap for $label. Nothing logged yet."
     val best = cells.filter { it.logged }.maxByOrNull { it.value }
     val active = cells.count { it.logged }
     return "Calendar heatmap for $label. ${amount(total, unit)} across $active days" +
-        (best?.let { ", best day ${it.value} on ${monthDay(it.day)}" } ?: "") + "."
+        (best?.let { ", best day ${amountText(it.value)} on ${monthDay(it.day)}" } ?: "") + "."
 }
 
 fun yearSummary(stats: GoalChartStats): String =
@@ -76,7 +98,11 @@ fun paceSummary(stats: GoalChartStats, unit: String): String {
         "needed to reach $target. ${amount(stats.total, unit)} logged so far"
     val pace = stats.pace ?: return "$head."
     val delta = pace.delta
-    val standing = if (delta >= 0) "$delta ahead of pace" else "${-delta} behind pace"
+    val standing = if (delta >= 0.0) {
+        "${amountText(delta)} ahead of pace"
+    } else {
+        "${amountText(-delta)} behind pace"
+    }
     val projection = stats.projectedFinish?.let { ", projected to finish ${monthDay(it)}" } ?: ""
     return "$head, $standing$projection."
 }
@@ -98,7 +124,7 @@ fun collectionSummary(done: Int, target: Int?, unit: String): String {
 fun byPersonSummary(stats: GoalChartStats, names: Map<String, String>, unit: String): String {
     if (stats.personOrder.isEmpty()) return "Monthly totals by person. Nobody has logged yet."
     val parts = stats.personOrder.joinToString(", ") {
-        "${personLabel(it, names)} ${amount(stats.byPerson[it] ?: 0, unit)}"
+        "${personLabel(it, names)} ${amount(stats.byPerson[it] ?: 0.0, unit)}"
     }
     return "Monthly totals by person. $parts."
 }

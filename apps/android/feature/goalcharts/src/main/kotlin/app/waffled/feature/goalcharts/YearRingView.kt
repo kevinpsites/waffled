@@ -53,7 +53,7 @@ fun YearRingView(
 ) {
     val currentMonth = chart.today.monthValue - 1
     val max = remember(chart) {
-        maxOf(1, chart.stats.byMonth.take(currentMonth + 1).maxOrNull() ?: 1)
+        scaleDenominator(chart.stats.byMonth.take(currentMonth + 1).maxOrNull())
     }
     val total = chart.stats.total
     val target = chart.stats.target ?: 0
@@ -137,7 +137,7 @@ fun YearRingView(
                     style = Stroke(width = 1f),
                 )
                 val monthTotal = chart.stats.byMonth[m]
-                if (m <= currentMonth && monthTotal > 0) {
+                if (m <= currentMonth && monthTotal > 0.0) {
                     val rr = ringFillRadius(monthTotal, max, r0, r1)
                     val t = 0.35f + 0.6f * heatIntensity(monthTotal, max)
                     drawPath(
@@ -162,13 +162,13 @@ fun YearRingView(
             // The hub, and the running total inside it.
             val hub = r0 - 4f * scale
             drawCircle(color = panel, radius = hub, center = centre)
-            val big = measurer.measure(total.toString(), centreBig)
+            val big = measurer.measure(amountText(total), centreBig)
             drawText(
                 textLayoutResult = big,
                 topLeft = Offset(centre.x - big.size.width / 2f, centre.y - big.size.height - 2f),
             )
             val small = measurer.measure(
-                if (target > 0) "of ${amount(target, chart.unit)}" else chart.unit,
+                if (target > 0) "of ${amount(target.toDouble(), chart.unit)}" else chart.unit,
                 centreSmall,
             )
             drawText(
@@ -199,7 +199,7 @@ fun YearRingView(
                         modifier = Modifier.weight(1f).height(8.dp),
                     )
                     androidx.compose.material3.Text(
-                        value.toString(),
+                        amountText(value),
                         modifier = Modifier.width(36.dp),
                         style = WF.type.serif(12.5.sp),
                         color = WF.colors.ink,
@@ -208,7 +208,7 @@ fun YearRingView(
             }
             if (target > 0) {
                 androidx.compose.material3.Text(
-                    "${amount(maxOf(0, target - total), chart.unit)} to go",
+                    "${amount(maxOf(0.0, target - total), chart.unit)} to go",
                     style = WF.type.size(11.5.sp, FontWeight.SemiBold),
                     color = WF.colors.ink3,
                 )

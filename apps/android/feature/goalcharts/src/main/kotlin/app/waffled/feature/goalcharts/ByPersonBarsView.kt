@@ -48,7 +48,7 @@ fun ByPersonBarsView(
     val currentMonth = chart.today.monthValue - 1
     val months = remember(chart) { (0..currentMonth).toList() }
     val max = remember(chart) {
-        maxOf(1, chart.stats.byMonth.take(currentMonth + 1).maxOrNull() ?: 1)
+        scaleDenominator(chart.stats.byMonth.take(currentMonth + 1).maxOrNull())
     }
     val summary = remember(chart) {
         byPersonSummary(chart.stats, chart.personNames, chart.unit)
@@ -95,7 +95,7 @@ fun ByPersonBarsView(
 }
 
 @Composable
-private fun StackedColumn(chart: GoalChart, month: Int, max: Int) {
+private fun StackedColumn(chart: GoalChart, month: Int, max: Double) {
     // 22dp of the 190 is the month label + spacing, so the tallest bar tops out at 160.
     val trackHeight = 160.dp
     val perPerson = chart.stats.byMonthPerPerson[month]
@@ -110,22 +110,22 @@ private fun StackedColumn(chart: GoalChart, month: Int, max: Int) {
             // Segments stack bottom-up in the same stable person order the dots use, so a
             // month's colours never reshuffle between frames.
             chart.stats.personOrder.reversed().forEach { personId ->
-                val amount = perPerson[personId] ?: 0
-                if (amount <= 0) return@forEach
+                val amount = perPerson[personId] ?: 0.0
+                if (amount <= 0.0) return@forEach
                 Box(
                     Modifier
                         .width(20.dp)
-                        .height(trackHeight * (amount.toFloat() / max))
+                        .height(trackHeight * (amount / max).toFloat())
                         .background(chart.colorOf(personId), RoundedCornerShape(3.dp)),
                 )
             }
             // A month logged without any person attached still has to show up.
             val unattributed = chart.stats.byMonth[month] - perPerson.values.sum()
-            if (unattributed > 0) {
+            if (unattributed > 0.0) {
                 Box(
                     Modifier
                         .width(20.dp)
-                        .height(trackHeight * (unattributed.toFloat() / max))
+                        .height(trackHeight * (unattributed / max).toFloat())
                         .background(WF.colors.ink3, RoundedCornerShape(3.dp)),
                 )
             }
@@ -166,7 +166,7 @@ private fun PersonTotalChips(chart: GoalChart) {
                                     color = WF.colors.ink2,
                                 )
                                 Text(
-                                    amount(chart.stats.byPerson[personId] ?: 0, chart.unit),
+                                    amount(chart.stats.byPerson[personId] ?: 0.0, chart.unit),
                                     style = WF.type.serif(15.sp),
                                     color = WF.colors.ink,
                                 )

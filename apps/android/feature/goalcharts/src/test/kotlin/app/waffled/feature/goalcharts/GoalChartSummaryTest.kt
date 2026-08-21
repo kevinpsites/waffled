@@ -32,7 +32,7 @@ class GoalChartSummaryTest {
             today,
         )
 
-    private fun p(day: String, value: Int) = GoalPoint(LocalDate.parse(day), value)
+    private fun p(day: String, value: Int) = GoalPoint(LocalDate.parse(day), value.toDouble())
 
     @Test
     fun `the week summary names the range, the total and the active days`() {
@@ -129,8 +129,8 @@ class GoalChartSummaryTest {
         val s = computeGoalChartStats(
             GoalSeries(
                 points = listOf(
-                    GoalPoint(LocalDate.of(2026, 8, 2), 4, "abe"),
-                    GoalPoint(LocalDate.of(2026, 8, 3), 6, "mia"),
+                    GoalPoint(LocalDate.of(2026, 8, 2), 4.0, "abe"),
+                    GoalPoint(LocalDate.of(2026, 8, 3), 6.0, "mia"),
                 ),
                 rangeStart = LocalDate.of(2026, 1, 1),
                 unit = "pages",
@@ -147,7 +147,7 @@ class GoalChartSummaryTest {
     fun `a person with no name falls back to a neutral label rather than an id`() {
         val s = computeGoalChartStats(
             GoalSeries(
-                points = listOf(GoalPoint(LocalDate.of(2026, 8, 2), 4, "abe-9f2c")),
+                points = listOf(GoalPoint(LocalDate.of(2026, 8, 2), 4.0, "abe-9f2c")),
                 rangeStart = LocalDate.of(2026, 1, 1),
             ),
             today,
@@ -155,5 +155,26 @@ class GoalChartSummaryTest {
         val text = byPersonSummary(s, emptyMap(), "")
         assertTrue(!text.contains("abe-9f2c"), "a raw id must never be spoken: $text")
         assertTrue(text.contains("Someone"), text)
+    }
+
+    // ---- fractional amounts ----------------------------------------------------
+
+    @Test
+    fun `a spoken amount drops the decimal on a whole number and keeps two otherwise`() {
+        // A screen reader saying "one point zero eight three three three three" is worse
+        // than useless, and the same string renders inside a 13dp calendar square.
+        assertEquals("12", amountText(12.0))
+        assertEquals("1.08", amountText(1.0833333))
+        assertEquals("0.33", amountText(1.0 / 3.0))
+        assertEquals("0.5", amountText(0.5), "a trailing zero is noise")
+        assertEquals("2.58 hours", amount(2.5833, "hours"))
+    }
+
+    @Test
+    fun `a fractional total is spoken, not rounded away`() {
+        val s = stats(GoalPoint(LocalDate.of(2026, 8, 19), 1.0 / 3.0))
+        val text = weekSummary(s, startOfWeek(today), "hours")
+        assertTrue(text.contains("0.33 hours"), text)
+        assertTrue(text.contains("1 of 7"), "a sub-unit log is still a day you showed up: $text")
     }
 }

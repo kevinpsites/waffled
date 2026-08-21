@@ -30,9 +30,9 @@ fun GoalChartPreview(modifier: Modifier = Modifier) {
             val day = today.minusDays(back.toLong())
             when {
                 back % 7 == 3 -> null                     // never logged
-                back % 5 == 0 -> GoalPoint(day, 0, "alice")  // logged, counted nothing
-                back % 3 == 0 -> GoalPoint(day, 4 + back % 7, "bob")
-                else -> GoalPoint(day, 1 + back % 9, "alice")
+                back % 5 == 0 -> GoalPoint(day, 0.0, "alice")  // logged, counted nothing
+                back % 3 == 0 -> GoalPoint(day, (4 + back % 7).toDouble(), "bob")
+                else -> GoalPoint(day, (1 + back % 9).toDouble(), "alice")
             }
         }
         GoalSeries(
