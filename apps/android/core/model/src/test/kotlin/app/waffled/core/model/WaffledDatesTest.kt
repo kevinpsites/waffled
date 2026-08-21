@@ -1,8 +1,10 @@
 package app.waffled.core.model
 
 import java.time.ZoneId
+import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 /**
@@ -70,7 +72,7 @@ class WaffledDatesTest {
     @Test
     fun formatsTheAgendaDateLikeIos() {
         val t = WaffledDates.parseInstant("2026-08-21T14:30:00Z")!!
-        assertEquals("Fri, Aug 21, 2026", WaffledDates.format(t, "EEE, MMM d, yyyy", ZoneId.of("UTC")))
+        assertEquals("Fri, Aug 21, 2026", WaffledDates.format(t, "EEE, MMM d, yyyy", ZoneId.of("UTC"), Locale.US))
     }
 
     @Test
@@ -79,6 +81,28 @@ class WaffledDatesTest {
         val a = WaffledDates.formatter("EEE, MMM d", ZoneId.of("UTC"))
         val b = WaffledDates.formatter("EEE, MMM d", ZoneId.of("UTC"))
         assertEquals(true, a === b)
+    }
+
+    @Test
+    fun localeIsPartOfTheCacheKeySoOneCallerCannotFixTheLanguageForEveryoneElse() {
+        // Caching on pattern+zone alone means whoever formats FIRST pins the language
+        // process-wide — a French device would then get English labels, or vice versa,
+        // depending purely on call order.
+        val en = WaffledDates.formatter("EEE, MMM d", ZoneId.of("UTC"), Locale.US)
+        val fr = WaffledDates.formatter("EEE, MMM d", ZoneId.of("UTC"), Locale.FRANCE)
+        assertNotEquals(en, fr)
+
+        val t = WaffledDates.parseInstant("2026-08-21T14:30:00Z")!!
+        assertEquals("Fri, Aug 21", WaffledDates.format(t, "EEE, MMM d", ZoneId.of("UTC"), Locale.US))
+        assertEquals("ven., août 21", WaffledDates.format(t, "EEE, MMM d", ZoneId.of("UTC"), Locale.FRANCE))
+    }
+
+    @Test
+    fun formattingDefaultsToTheDeviceLocaleNotAFixedOne() {
+        // The default must follow the device so dates read naturally for the user.
+        val t = WaffledDates.parseInstant("2026-08-21T14:30:00Z")!!
+        val explicit = WaffledDates.format(t, "EEE, MMM d", ZoneId.of("UTC"), Locale.getDefault())
+        assertEquals(explicit, WaffledDates.format(t, "EEE, MMM d", ZoneId.of("UTC")))
     }
 
     @Test

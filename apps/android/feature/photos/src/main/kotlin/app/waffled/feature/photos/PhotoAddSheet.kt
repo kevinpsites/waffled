@@ -54,6 +54,7 @@ import app.waffled.core.design.WF
 import app.waffled.core.design.WaffledCard
 import app.waffled.core.design.WaffledFieldCard
 import app.waffled.core.design.WaffledPrimaryCTA
+import app.waffled.core.network.MediaImageEncoder
 import app.waffled.core.network.WaffledApiException
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
@@ -114,7 +115,7 @@ fun PhotoAddSheet(
                 rows.add(staged)
                 val uploaded = withContext(Dispatchers.IO) {
                     runCatching {
-                        val encoded = PhotoImageEncoder.encode(context, uri)
+                        val encoded = MediaImageEncoder.encode(context, uri)
                         api.uploadMedia(encoded.base64, encoded.contentType)
                     }
                 }
@@ -246,7 +247,7 @@ private suspend fun createAll(api: PhotosApi, rows: List<StagedPhoto>): Int {
 }
 
 private fun Throwable.uploadFailureText(): String = when (this) {
-    is PhotoImageEncoder.TooLargeException -> message ?: "That image is too large to upload."
+    is MediaImageEncoder.TooLargeException -> message ?: "That image is too large to upload."
     is WaffledApiException -> userMessage
     else -> "Couldn’t upload this photo."
 }

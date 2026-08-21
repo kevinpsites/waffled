@@ -200,8 +200,15 @@ object WaffledSpacing {
     val xxl: Dp = 16.dp
     val xxxl: Dp = 20.dp
 
-    /** Content must scroll UNDER the phone tab bar; matches iOS `WF.tabBarClearance`. */
-    val tabBarClearance: Dp = 110.dp
+    /**
+     * Bottom padding every screen owes, because content scrolls UNDER the tab bar.
+     *
+     * iOS uses 110. Android needs more: the bar is 64dp of content PLUS
+     * `navigationBarsPadding()`, which is ~48dp under 3-button navigation — so 110 leaves
+     * the last row clipped on exactly the devices least likely to be tested. 128 clears
+     * both gesture and 3-button navigation.
+     */
+    val tabBarClearance: Dp = 128.dp
 }
 
 val LocalWaffledColors = staticCompositionLocalOf { LightColors }

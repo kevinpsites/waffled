@@ -18,14 +18,19 @@ import java.util.concurrent.atomic.AtomicInteger
  * Usage:
  * ```
  * private val harness = ApiTestHarness()
+ * private lateinit var api: PhotosApi
  *
- * @Before fun setUp() = harness.start()
- * @After  fun tearDown() = harness.stop()
+ * @Before fun setUp() {
+ *     harness.start()
+ *     // Build the client yourself — the harness supplies the token and address seams.
+ *     api = PhotosApi(WaffledHttp.client(harness.tokens, harness.serverAddress))
+ * }
+ * @After fun tearDown() = harness.stop()
  *
  * @Test fun loadsPhotos() = runTest {
- *     harness.enqueueJson("""[{"id":"1"}]""")
- *     val result = PhotosApi(harness.client, harness.server).list()
- *     assertEquals("1", result.first().id)
+ *     // Match the REAL response envelope; most routes wrap their list in an object.
+ *     harness.enqueueJson("{\"photos\":[{\"id\":\"1\"}]}")
+ *     assertEquals("1", api.list().first().id)
  *     assertEquals("/api/photos", harness.takeRequest().path)
  * }
  * ```

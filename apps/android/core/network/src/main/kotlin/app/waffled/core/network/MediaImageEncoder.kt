@@ -1,4 +1,4 @@
-package app.waffled.feature.photos
+package app.waffled.core.network
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -12,19 +12,15 @@ import kotlin.math.roundToInt
 /**
  * Downscale + JPEG-encode + base64 a picked image for `POST /api/media`.
  *
- * ⚠️ **This belongs in `core:network`, not here.** The port plan (§0.4) lists
- * `MediaUpload` — "downscale to 2048px long edge → JPEG → base64, 10 MB decoded cap" —
- * as Phase 0 work alongside `MediaURL`; `MediaUrl.kt` landed but the encoder did not.
- * Every other image-uploading feature (recipes, chore proof, pantry) needs exactly this,
- * so it should be lifted into `core:network` and this file deleted. It is module-local
- * only because the `core` modules are frozen — reported to the integrator.
+ * Shared by every image-uploading feature — Photos, recipe import, chore proof,
+ * pantry — so it lives here rather than in whichever one needed it first.
  *
  * Twin of `apps/ios/.../Sync/MediaUpload.swift` (`MediaImage`).
  *
  * `java.util.Base64` is used rather than `android.util.Base64` so the encoding path is
  * real code in a JVM unit test instead of a stubbed-out Android class.
  */
-object PhotoImageEncoder {
+object MediaImageEncoder {
 
     /** Long-edge cap, matching the web kiosk and iOS (2048px). */
     const val MAX_EDGE = 2048

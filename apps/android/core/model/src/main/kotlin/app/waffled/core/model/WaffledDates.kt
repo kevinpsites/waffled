@@ -5,6 +5,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -64,14 +65,28 @@ object WaffledDates {
     fun localDay(instant: Instant, zone: ZoneId): LocalDate =
         instant.atZone(zone).toLocalDate()
 
-    /** A cached formatter for [pattern] in [zone]. Never build these per row. */
-    fun formatter(pattern: String, zone: ZoneId): DateTimeFormatter =
-        formatters.getOrPut("$pattern|${zone.id}") {
-            DateTimeFormatter.ofPattern(pattern).withZone(zone)
+    /**
+     * A cached formatter for [pattern] in [zone] and [locale]. Never build these per row.
+     *
+     * ⚠️ [locale] is part of the cache key deliberately. Caching on pattern+zone alone
+     * means whichever caller formats FIRST pins the language for the whole process — so a
+     * French device could get English month names purely because of call order.
+     */
+    fun formatter(
+        pattern: String,
+        zone: ZoneId,
+        locale: Locale = Locale.getDefault(),
+    ): DateTimeFormatter =
+        formatters.getOrPut("$pattern|${zone.id}|${locale.toLanguageTag()}") {
+            DateTimeFormatter.ofPattern(pattern, locale).withZone(zone)
         }
 
-    fun format(instant: Instant, pattern: String, zone: ZoneId): String =
-        formatter(pattern, zone).format(instant)
+    fun format(
+        instant: Instant,
+        pattern: String,
+        zone: ZoneId,
+        locale: Locale = Locale.getDefault(),
+    ): String = formatter(pattern, zone, locale).format(instant)
 
     /**
      * ISO instant for "this date, no particular time".

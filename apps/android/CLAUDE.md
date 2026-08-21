@@ -147,9 +147,36 @@ Screens scroll **under** the tab bar, so every screen owes
 of SwiftUI. For each feature: **translate the Swift test to Kotlin first, watch it fail,
 then port the logic.** That gives behavioural parity rather than approximate parity.
 
-- API layer → JVM tests + **MockWebServer**.
+- API layer → JVM tests + **MockWebServer** (`ApiTestHarness`).
 - Pure logic → plain JVM `kotlin.test`.
-- Screens → Compose UI tests, smoke/interaction only; otherwise verified by eye like iOS.
+- Screens → **there is no JVM smoke test for a Composable.** Robolectric's only current
+  release is a beta, so it is deliberately not in the catalog, and `compose-ui-test-junit4`
+  needs a device. `assembleDebug` proves a screen *compiles*, not that it composes.
+
+  So **running it is part of the definition of done**, not an optional extra:
+
+  ```bash
+  ./gradlew :app:assembleDebug
+  adb install -r app/build/outputs/apk/debug/app-debug.apk
+  adb shell am start -n app.waffled.debug/app.waffled.android.MainActivity
+  adb exec-out screencap -p > /tmp/shot.png        # look at it
+  adb logcat -d -s AndroidRuntime:E                # must be empty
+  ```
+
+  Check dark mode too (`adb shell cmd uimode night yes`). A screen that has never been
+  composed on a device is not finished.
+
+### Two traps that will bite every feature
+
+**`WaffledJson` sets `explicitNulls = false`.** That means a null field is **omitted** from
+the request body — so modelling a PATCH as a data class silently turns "clear this value"
+into "leave it alone". When a PATCH must clear a field, build the body as a `JsonObject`
+with an explicit `JsonNull` and assert the null is on the wire. This affects Lists, Goals
+and Meals identically.
+
+**Kotlin nests block comments.** Writing `` `core/**` `` or `` `/api/auth/*` `` inside a
+KDoc opens a nested comment and yields a baffling "Unclosed comment" at end of file.
+Reword rather than escape.
 
 ## KEEP IN SYNC contracts Android now joins
 
