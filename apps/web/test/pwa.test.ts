@@ -8,7 +8,18 @@ const workerPath = resolve(dirname(fileURLToPath(import.meta.url)), '../public/s
 
 // Responses the worker's own fetches see. Keyed by path so a test can describe the
 // build it is installing against: the shell HTML plus the chunk manifest Vite emits.
-type Served = Record<string, string | undefined>
+// A plain string is served with the content type its extension implies; the object
+// form lets a test serve the *wrong* type deliberately, which is what a SPA fallback
+// does when a chunk is missing.
+type ServedValue = string | { body: string; type: string }
+type Served = Record<string, ServedValue | undefined>
+
+function contentTypeFor(path: string): string {
+  if (path.endsWith('.js')) return 'text/javascript'
+  if (path.endsWith('.css')) return 'text/css'
+  if (path.endsWith('.json')) return 'application/json'
+  return 'text/html'
+}
 
 // `networkDown` makes every fetch reject, the way a dropped wifi link does.
 // `shellStatus` serves the shell with a non-OK status — a rolling restart of the
@@ -55,12 +66,12 @@ async function loadWorker(served: Served = {}, options: WorkerOptions = {}) {
   const fetchMock = vi.fn(async (input: string) => {
     if (options.networkDown) throw new TypeError('Failed to fetch')
     const path = typeof input === 'string' ? input : String(input)
-    const body = served[path]
-    if (body === undefined) return new Response('{}', { status: 404 })
-    if (path === '/index.html' && options.shellStatus) {
-      return new Response(body, { status: options.shellStatus })
-    }
-    return new Response(body, { status: 200 })
+    const entry = served[path]
+    if (entry === undefined) return new Response('{}', { status: 404 })
+    const body = typeof entry === 'string' ? entry : entry.body
+    const type = typeof entry === 'string' ? contentTypeFor(path) : entry.type
+    const status = path === '/index.html' && options.shellStatus ? options.shellStatus : 200
+    return new Response(body, { status, headers: { 'content-type': type } })
   })
   runInNewContext(source, {
     self,
@@ -148,15 +159,25 @@ describe('service worker offline precache', () => {
     'src/kiosk/Meals.tsx': { file: 'assets/Meals-def.js' },
     'src/kiosk/Settings.tsx': { file: 'assets/Settings-ghi.js', css: ['assets/settings-ghi.css'] },
   })
+  // A whole build on the wire, so the tests exercise the real fetch path rather than
+  // a stubbed cache write.
+  const BUILD: Served = {
+    '/index.html': SHELL_HTML,
+    '/asset-manifest.json': MANIFEST,
+    '/assets/index-abc.js': 'export default 1',
+    '/assets/index-abc.css': '.a{}',
+    '/assets/Meals-def.js': 'export default 2',
+    '/assets/Settings-ghi.js': 'export default 3',
+    '/assets/settings-ghi.css': '.b{}',
+  }
+  const cachedUrls = (cache: { put: { mock: { calls: unknown[][] } } }) =>
+    cache.put.mock.calls.map(([url]) => String(url))
 
   it('precaches code-split chunks that index.html never references', async () => {
-    const { listeners, cacheFor } = await loadWorker({
-      '/index.html': SHELL_HTML,
-      '/asset-manifest.json': MANIFEST,
-    })
+    const { listeners, cacheFor } = await loadWorker(BUILD)
     await install(listeners)
 
-    const cached = cacheFor('waffled-dev-assets').add.mock.calls.map(([url]) => url)
+    const cached = cachedUrls(cacheFor('waffled-dev-assets'))
     // The entry is in the HTML; these two are reachable only through the manifest.
     expect(cached).toContain('/assets/index-abc.js')
     expect(cached).toContain('/assets/Meals-def.js')
@@ -169,28 +190,43 @@ describe('service worker offline precache', () => {
     // An older build, or a host that declines to serve the manifest. Losing the
     // extra chunks is a degraded offline experience; losing the entry bundle would
     // be a blank screen, so the HTML scrape has to keep working on its own.
-    const { listeners, cacheFor } = await loadWorker({ '/index.html': SHELL_HTML })
-    await install(listeners)
-
-    const cached = cacheFor('waffled-dev-assets').add.mock.calls.map(([url]) => url)
-    expect(cached).toContain('/assets/index-abc.js')
-  })
-
-  it('keeps the chunks it could fetch when one of them 404s', async () => {
-    // addAll is all-or-nothing. A single stale entry would have discarded the whole
-    // precache, which is the opposite of what a best-effort offline cache should do.
     const { listeners, cacheFor } = await loadWorker({
       '/index.html': SHELL_HTML,
-      '/asset-manifest.json': MANIFEST,
-    })
-    const assets = cacheFor('waffled-dev-assets')
-    assets.add.mockImplementation(async (url: string) => {
-      if (url === '/assets/Meals-def.js') throw new Error('404')
+      '/assets/index-abc.js': 'export default 1',
     })
     await install(listeners)
 
-    const cached = assets.add.mock.calls.map(([url]) => url)
+    expect(cachedUrls(cacheFor('waffled-dev-assets'))).toContain('/assets/index-abc.js')
+  })
+
+  it('keeps the chunks it could fetch when one of them is missing', async () => {
+    // addAll is all-or-nothing. A single stale entry would have discarded the whole
+    // precache, which is the opposite of what a best-effort offline cache should do.
+    const withoutMeals = { ...BUILD, '/assets/Meals-def.js': undefined }
+    const { listeners, cacheFor } = await loadWorker(withoutMeals)
+    await install(listeners)
+
+    const cached = cachedUrls(cacheFor('waffled-dev-assets'))
     expect(cached).toContain('/assets/Settings-ghi.js')
+    expect(cached).not.toContain('/assets/Meals-def.js')
+  })
+
+  it('refuses to cache the SPA fallback page as a chunk', async () => {
+    // A missing chunk does not 404 in production: infra/compose/caddy/Caddyfile
+    // serves the SPA with `try_files {path} /index.html`, so a stale manifest entry
+    // comes back as 200 + text/html. Cached under a .js URL that is exactly as
+    // permanent as a real chunk — cacheFirst never revalidates — the screen fails
+    // its module load on MIME type every time, offline or on, until someone clears
+    // the display's storage by hand.
+    const { listeners, cacheFor } = await loadWorker({
+      ...BUILD,
+      '/assets/Meals-def.js': { body: SHELL_HTML, type: 'text/html' },
+    })
+    await install(listeners)
+
+    const cached = cachedUrls(cacheFor('waffled-dev-assets'))
+    expect(cached).toContain('/assets/Settings-ghi.js')
+    expect(cached).not.toContain('/assets/Meals-def.js')
   })
 
   it('leaves the alternative SQLite wasm builds out of the precache', async () => {
@@ -200,8 +236,11 @@ describe('service worker offline precache', () => {
     // four means every display downloads ~7 MB it will never ask for on every
     // deploy. They still land in the cache the first time the engine actually loads
     // one, because /assets/* goes through cacheFirst.
-    const { listeners, cacheFor } = await loadWorker({
+    const { listeners, cacheFor, fetchMock } = await loadWorker({
       '/index.html': SHELL_HTML,
+      '/assets/index-abc.js': 'export default 1',
+      '/assets/wa-sqlite-xyz.wasm': 'wasm bytes',
+      '/assets/wa-sqlite-async-xyz.wasm': 'wasm bytes',
       '/asset-manifest.json': JSON.stringify({
         'src/main.tsx': { file: 'assets/index-abc.js' },
         'wa-sqlite.wasm': { file: 'assets/wa-sqlite-xyz.wasm' },
@@ -210,7 +249,11 @@ describe('service worker offline precache', () => {
     })
     await install(listeners)
 
-    const cached = cacheFor('waffled-dev-assets').add.mock.calls.map(([url]) => url)
+    // Not merely uncached — never even requested, which is the 7 MB that matters.
+    const fetched = fetchMock.mock.calls.map(([url]) => String(url))
+    expect(fetched).not.toContain('/assets/wa-sqlite-xyz.wasm')
+
+    const cached = cachedUrls(cacheFor('waffled-dev-assets'))
     expect(cached).toContain('/assets/index-abc.js')
     expect(cached).not.toContain('/assets/wa-sqlite-xyz.wasm')
     expect(cached).not.toContain('/assets/wa-sqlite-async-xyz.wasm')

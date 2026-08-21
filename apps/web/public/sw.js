@@ -80,12 +80,28 @@ async function precache() {
   const urls = new Set([...htmlAssets(html), ...(await manifestAssets())])
   if (urls.size) {
     const assetCache = await caches.open(ASSETS)
-    // addAll is all-or-nothing; one 404 among ~30 chunks would discard the lot, so
+    // addAll is all-or-nothing; one missing chunk among ~30 would discard the lot, so
     // cache them individually and keep whatever succeeds.
-    await Promise.all(
-      [...urls].map((url) => assetCache.add(url).catch(() => {}))
-    )
+    await Promise.all([...urls].map((url) => cacheAsset(assetCache, url).catch(() => {})))
   }
+}
+
+// Fetch one asset and store it only if what came back is actually that asset.
+//
+// A missing chunk does not 404 in production: Caddy serves the SPA with
+// `try_files {path} /index.html`, so a stale manifest entry comes back as 200 with
+// the HTML page in it. cache.add() would happily store that under a .js URL, and
+// because /assets/* is cache-first and never revalidated, the screen would fail its
+// module load on MIME type from then on — offline *and* online — until someone
+// cleared the display's storage by hand. Better to cache nothing for it and let the
+// network serve it later.
+async function cacheAsset(cache, url) {
+  const res = await fetch(url)
+  if (!res.ok) return
+  const type = res.headers.get('content-type') || ''
+  const expected = url.endsWith('.js') ? 'javascript' : url.endsWith('.css') ? 'css' : ''
+  if (expected && !type.includes(expected)) return
+  await cache.put(url, res)
 }
 
 // Let a failed precache fail the install, rather than swallowing it. Cache names carry

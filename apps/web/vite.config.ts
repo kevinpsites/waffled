@@ -13,20 +13,27 @@ import { buildId, stampServiceWorker } from './sw-stamp'
 // closeBundle rather than writeBundle: the public directory is copied during the
 // write phase, and closeBundle is the hook that is guaranteed to run after it.
 function stampServiceWorkerPlugin(): Plugin {
+  let root = __dirname
   let outDir = 'dist'
-  let assetFilenames: string[] = []
+  const assetFilenames: string[] = []
   return {
     name: 'waffled:stamp-service-worker',
     apply: 'build',
     configResolved(config) {
+      // outDir is resolved against config.root, which is not required to be this
+      // file's directory.
+      root = config.root
       outDir = config.build.outDir
     },
     writeBundle(_options, bundle) {
-      assetFilenames = Object.keys(bundle)
+      // Accumulate: a second Rollup output (a worker build, say) would otherwise
+      // replace the app's file list wholesale and the stamp would quietly stop
+      // tracking the app.
+      assetFilenames.push(...Object.keys(bundle))
     },
     closeBundle() {
       const version = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8')).version
-      const swPath = resolve(__dirname, outDir, 'sw.js')
+      const swPath = resolve(root, outDir, 'sw.js')
       const id = buildId(version, assetFilenames)
       // stampServiceWorker throws if it can't find what it's replacing, which fails
       // the build. That is the point: silently shipping an unstamped worker would
