@@ -2,7 +2,9 @@ package app.waffled.android
 
 import android.content.Context
 import android.content.SharedPreferences
-import app.waffled.core.auth.TokenPair
+import app.waffled.core.auth.EncryptedTokenStore
+import app.waffled.core.auth.KeyValueStore
+import app.waffled.core.auth.KeystoreTokenCrypto
 import app.waffled.core.auth.TokenStore
 import app.waffled.core.design.ThemePrefsStore
 import app.waffled.core.design.ThemeStore
@@ -41,11 +43,25 @@ class AppContainer(context: Context) {
     val serverAddress: MutableServerAddress = MutableServerAddress(prefs)
 
     /**
-     * ⚠️ Placeholder. Tokens MUST be encrypted at rest before this ships — a Keystore
-     * AES-GCM wrapper over these prefs. Tracked as the first task of the auth work;
-     * deliberately obvious rather than quietly insecure.
+     * Tokens encrypted at rest under a key held in the Android Keystore — the analogue
+     * of the iOS Keychain.
      */
-    val tokenStore: TokenStore = SharedPrefsTokenStore(prefs)
+    val tokenStore: TokenStore = EncryptedTokenStore(
+        prefs = SharedPrefsKeyValueStore(prefs),
+        crypto = KeystoreTokenCrypto(),
+    )
+}
+
+private class SharedPrefsKeyValueStore(
+    private val prefs: SharedPreferences,
+) : KeyValueStore {
+    override fun getString(key: String): String? = prefs.getString(key, null)
+    override fun putString(key: String, value: String) {
+        prefs.edit().putString(key, value).apply()
+    }
+    override fun remove(key: String) {
+        prefs.edit().remove(key).apply()
+    }
 }
 
 /** Server address, user-editable at runtime because Waffled is self-hosted. */
@@ -71,27 +87,3 @@ class MutableServerAddress(private val prefs: SharedPreferences) : ServerAddress
     }
 }
 
-private class SharedPrefsTokenStore(private val prefs: SharedPreferences) : TokenStore {
-
-    override fun load(): TokenPair? {
-        val access = prefs.getString(ACCESS, null) ?: return null
-        val refresh = prefs.getString(REFRESH, null) ?: return null
-        return TokenPair(access, refresh)
-    }
-
-    override fun save(tokens: TokenPair) {
-        prefs.edit()
-            .putString(ACCESS, tokens.accessToken)
-            .putString(REFRESH, tokens.refreshToken)
-            .apply()
-    }
-
-    override fun clear() {
-        prefs.edit().remove(ACCESS).remove(REFRESH).apply()
-    }
-
-    private companion object {
-        const val ACCESS = "waffled.auth.access"
-        const val REFRESH = "waffled.auth.refresh"
-    }
-}
