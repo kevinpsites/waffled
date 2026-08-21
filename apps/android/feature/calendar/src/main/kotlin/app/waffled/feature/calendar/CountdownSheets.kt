@@ -19,6 +19,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -64,11 +65,13 @@ fun AddCountdownSheet(
         heading = "Add countdown",
         confirmLabel = "Add",
         busyLabel = "Adding…",
-        // A countdown to a past date has nothing to count, so today is the floor.
         initial = CountdownDraft(date = LocalDate.now()),
         errorHeading = "Couldn't add this countdown. Check your connection and try again.",
         onDismiss = onDismiss,
         onConfirm = { draft -> onAdd(draft.title.trim(), draft.date.toString(), draft.emojiOrNull()) },
+        // A countdown to a past date has nothing left to count, and the server drops past
+        // items from the list — so it would vanish the moment it was created.
+        minDate = LocalDate.now(),
     )
 }
 
@@ -130,6 +133,8 @@ private fun CountdownSheet(
     onDismiss: () -> Unit,
     onConfirm: suspend (CountdownDraft) -> Unit,
     onRemove: (suspend () -> Unit)? = null,
+    /** Earliest day the picker offers, or null when any day is legitimate. */
+    minDate: LocalDate? = null,
 ) {
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -249,6 +254,7 @@ private fun CountdownSheet(
                 draft = draft.copy(date = it)
                 pickingDate = false
             },
+            minDate = minDate,
         )
     }
 }
@@ -266,9 +272,20 @@ fun WaffledDatePickerDialog(
     initial: LocalDate,
     onDismiss: () -> Unit,
     onPick: (LocalDate) -> Unit,
+    /** Earliest selectable day, or null for no floor. Also in UTC — see above. */
+    minDate: LocalDate? = null,
 ) {
+    val floor = minDate?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli()
     val state = rememberDatePickerState(
         initialSelectedDateMillis = initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                floor == null || utcTimeMillis >= floor
+
+            // Year-level too, or the year picker still offers years with no selectable day.
+            override fun isSelectableYear(year: Int): Boolean =
+                minDate == null || year >= minDate.year
+        },
     )
     DatePickerDialog(
         onDismissRequest = onDismiss,

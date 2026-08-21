@@ -61,8 +61,20 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 
-/** A new timed event defaults to an hour, matching the web and iOS editors. */
-private const val DEFAULT_DURATION_MINUTES = 60L
+/**
+ * Whether the rich REST detail an edit depends on has arrived.
+ *
+ * Not cosmetic: the synced mirror knows neither who is on an event nor whether it repeats,
+ * so a save issued before this resolves would strip participants and could target the wrong
+ * row entirely.
+ */
+private sealed interface DetailState {
+    data object Loading : DetailState
+    data object Ready : DetailState
+
+    /** Loaded and refused, or an id this server does not recognise. */
+    data class Blocked(val reason: String) : DetailState
+}
 
 /** Which occurrences an edit to a recurring event applies to. */
 enum class EditScope(val wire: String, val label: String) {
@@ -107,35 +119,59 @@ fun EventEditSheet(
     var pickingDate by remember { mutableStateOf(false) }
     var pickingTime by remember { mutableStateOf(false) }
     var askingScope by remember { mutableStateOf(false) }
+    // Creating an event needs no detail; editing one does.
+    var detailState by remember(event?.id) {
+        mutableStateOf<DetailState>(if (event == null) DetailState.Ready else DetailState.Loading)
+    }
 
-    // The mirror carries no participants (nothing joins `event_participants`), so an edit
-    // seeded only from it would post an EMPTY list and silently strip everyone off the
-    // event. The rich detail does carry them — so load it before offering Save.
+    // ⚠️ The synced mirror carries NO participants — nothing joins `event_participants` —
+    // so an edit seeded from it alone would post an empty list and silently strip everyone
+    // off the event. Only the rich REST detail knows who is on it, so Save stays blocked
+    // until that detail lands. Refusing to save is the safe failure here; saving on a guess
+    // is data loss that reports success.
     LaunchedEffect(event?.id) {
         val id = event?.id ?: return@LaunchedEffect
-        runCatching { api.eventDetail(id) }.getOrNull()?.let { detail ->
-            val participants = detail.participants.map { it.id }
-                .ifEmpty { listOfNotNull(detail.personId) }
-            draft = draft.copy(
-                personIds = participants,
-                repeat = Recurrence.parseRepeat(detail.rrule),
-                originalRrule = detail.rrule,
-                goalId = detail.goalId,
-                goalStepId = detail.goalStepId,
-                isRecurring = !detail.rrule.isNullOrEmpty(),
-                // The baseline the scope rule compares against. Without it every edit
-                // would look series-changing and "just this one" would never be offered.
-                original = RecurringEventSeriesFields(
-                    allDay = detail.allDay,
-                    isCountdown = draft.isCountdown,
-                    participantIds = participants,
+        detailState = runCatching { api.eventDetail(id) }.fold(
+            onSuccess = { detail ->
+                val participants = detail.participants.map { it.id }
+                    .ifEmpty { listOfNotNull(detail.personId) }
+                draft = draft.copy(
+                    personIds = participants,
+                    repeat = Recurrence.parseRepeat(detail.rrule),
+                    originalRrule = detail.rrule,
                     goalId = detail.goalId,
                     goalStepId = detail.goalStepId,
-                    rrule = detail.rrule,
-                    recurrenceEndAt = detail.recurrenceEndAt,
-                ),
-            )
-        }
+                    isRecurring = !detail.rrule.isNullOrEmpty(),
+                ).withSeriesBaseline(
+                    // The baseline the scope rule compares against. Without it every edit
+                    // looks series-changing and "just this one" is never offered.
+                    RecurringEventSeriesFields(
+                        allDay = detail.allDay,
+                        isCountdown = draft.isCountdown,
+                        participantIds = participants,
+                        goalId = detail.goalId,
+                        goalStepId = detail.goalStepId,
+                        rrule = detail.rrule,
+                        recurrenceEndAt = detail.recurrenceEndAt,
+                    ),
+                )
+                DetailState.Ready
+            },
+            onFailure = { failure ->
+                // A 404 on an id the agenda just showed means this row is one materialised
+                // OCCURRENCE of a repeating event: `event_occurrences` holds the master's
+                // `event_id` and the occurrence's `original_start`, but `SyncedEvent` carries
+                // neither, so there is no id here the server would accept. Editing anyway
+                // would write against the wrong row. See the port report.
+                DetailState.Blocked(
+                    if ((failure as? WaffledApiException)?.status == 404) {
+                        "This is one occurrence of a repeating event. Edit it on the web or on iPhone for now."
+                    } else {
+                        "Couldn't load this event's details, so it can't be edited safely right now."
+                    },
+                )
+            },
+        )
     }
 
     fun save(editScope: EditScope?) {
@@ -174,7 +210,9 @@ fun EventEditSheet(
                         // missing key would leave the series in place.
                         clearRrule = rrule == null && draft.originalRrule != null,
                         scope = editScope?.wire,
-                        occurrenceStart = editScope?.let { startIso },
+                        // The ORIGINAL start, never the edited one — it is how the
+                        // server picks which occurrence to override.
+                        occurrenceStart = editScope?.let { draft.occurrenceStartIso },
                         isCountdown = draft.isCountdown,
                     )
                 }
@@ -299,20 +337,26 @@ fun EventEditSheet(
                 )
             }
 
+            (detailState as? DetailState.Blocked)?.let { LockNote(text = it.reason) }
+
             if (!locked) {
                 WaffledPrimaryCTA(
-                    label = if (busy) "Saving…" else "Save",
+                    label = when {
+                        busy -> "Saving…"
+                        detailState is DetailState.Loading -> "Loading…"
+                        else -> "Save"
+                    },
                     onClick = {
                         // A recurring occurrence needs to know WHICH occurrences to touch;
                         // a one-off can just save.
                         if (draft.isRecurring) askingScope = true else save(null)
                     },
                     isBusy = busy,
-                    isDisabled = draft.title.isBlank(),
+                    isDisabled = !draft.canSave || detailState !is DetailState.Ready,
                 )
             }
 
-            if (event != null && !locked) {
+            if (event != null && !locked && detailState is DetailState.Ready) {
                 TextButton(
                     onClick = {
                         busy = true
@@ -375,65 +419,6 @@ fun EventEditSheet(
                 save(it)
             },
         )
-    }
-}
-
-/** Everything the editor holds while you are typing. */
-private data class EventDraft(
-    val title: String = "",
-    val date: LocalDate,
-    val startTime: LocalTime = LocalTime.of(9, 0),
-    val allDay: Boolean = false,
-    val location: String = "",
-    val personIds: List<String> = emptyList(),
-    val isCountdown: Boolean = false,
-    val repeat: RepeatState = RepeatState.NONE,
-    val originalRrule: String? = null,
-    val isRecurring: Boolean = false,
-    val goalId: String? = null,
-    val goalStepId: String? = null,
-    val original: RecurringEventSeriesFields? = null,
-) {
-    fun startInstant(zone: ZoneId) =
-        if (allDay) date.atStartOfDay(zone).toInstant() else date.atTime(startTime).atZone(zone).toInstant()
-
-    /** All-day events carry no end; a timed one defaults to an hour. */
-    fun endInstant(zone: ZoneId) =
-        if (allDay) null else startInstant(zone).plusSeconds(DEFAULT_DURATION_MINUTES * 60)
-
-    /** Has anything a per-occurrence override CANNOT represent changed? */
-    fun seriesUnchanged(): Boolean {
-        val before = original ?: return true
-        return RecurringEventEditPolicy.canApplyToSingleOccurrence(before, current())
-    }
-
-    private fun current() = RecurringEventSeriesFields(
-        allDay = allDay,
-        isCountdown = isCountdown,
-        participantIds = personIds,
-        goalId = goalId,
-        goalStepId = goalStepId,
-        rrule = Recurrence.buildRrule(repeat, date),
-        recurrenceEndAt = original?.recurrenceEndAt,
-    )
-
-    companion object {
-        fun seed(event: SyncedEvent?, initialDate: LocalDate, zone: ZoneId): EventDraft {
-            if (event == null) return EventDraft(date = initialDate)
-            val start = app.waffled.core.model.WaffledDates.parseInstant(event.startsAt, zone)
-                ?.atZone(zone)
-            return EventDraft(
-                title = event.title,
-                date = start?.toLocalDate() ?: initialDate,
-                startTime = start?.toLocalTime() ?: LocalTime.of(9, 0),
-                allDay = event.allDay,
-                location = event.location.orEmpty(),
-                personIds = listOfNotNull(event.personId),
-                isCountdown = event.isCountdown,
-                goalId = event.goalId,
-                goalStepId = event.goalStepId,
-            )
-        }
     }
 }
 
