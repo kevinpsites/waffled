@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import {
   usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, uploadImage, ageLabel, monthsOnHand, ALLERGEN_LABELS, DIETARY_LABELS, productSourceLabel,
   type PantryItem, type PantryItemInput, type OffProduct, type ItemRecipe,
 } from '../lib/api'
-import { ScanModal } from './components/ScanModal'
 import { LocationField } from './components/LocationField'
 import { CookFromPantry } from './components/CookFromPantry'
 import { AllergenBadges, AllergenBadge, AllergenKey } from './components/Allergens'
 import '../styles/pantry.css'
+
+// The scanner drags in the zxing decoder (~440 kB minified) — by far the biggest
+// dependency in the app, and only ever needed once someone taps Scan. Loading it
+// on demand keeps it out of the entry bundle every other screen has to download.
+const ScanModal = lazy(() => import('./components/ScanModal').then((m) => ({ default: m.ScanModal })))
 
 // A small expiry badge: red if past, amber within 3 days, muted date otherwise.
 function ExpiryBadge({ expiresOn }: { expiresOn: string | null }) {
@@ -278,7 +282,9 @@ export function Pantry() {
       </div>
 
       {scanning && (
-        <ScanModal locations={locations} avoidAllergens={avoidAllergens} allergenPeople={allergenPeople} onClose={() => setScanning(false)} onAdded={refetch} onLocationsChanged={refetch} />
+        <Suspense fallback={<div className="modal-overlay"><div className="spinner lg" /></div>}>
+          <ScanModal locations={locations} avoidAllergens={avoidAllergens} allergenPeople={allergenPeople} onClose={() => setScanning(false)} onAdded={refetch} onLocationsChanged={refetch} />
+        </Suspense>
       )}
 
       {detail && (
