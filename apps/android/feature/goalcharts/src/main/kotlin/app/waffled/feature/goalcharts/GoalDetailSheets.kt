@@ -43,7 +43,7 @@ fun GoalDayDetailSheet(chart: GoalChart, day: LocalDate, onDismiss: () -> Unit) 
         ) {
             Text(longDay(day), style = WF.type.title, color = WF.colors.ink)
             Text(
-                text = "${amount(totals?.total ?: 0, chart.unit)} logged",
+                text = "${amount(totals?.total ?: 0.0, chart.unit)} logged",
                 style = WF.type.size(13.sp, FontWeight.SemiBold),
                 color = WF.colors.ink2,
             )
@@ -54,7 +54,7 @@ fun GoalDayDetailSheet(chart: GoalChart, day: LocalDate, onDismiss: () -> Unit) 
                     style = WF.type.size(13.sp, FontWeight.SemiBold),
                     color = WF.colors.ink3,
                 )
-            } else if (totals.total == 0) {
+            } else if (totals.total <= 0.0) {
                 Text(
                     "Logged, but nothing counted toward the goal.",
                     style = WF.type.size(13.sp, FontWeight.SemiBold),
@@ -77,7 +77,7 @@ fun GoalDayDetailSheet(chart: GoalChart, day: LocalDate, onDismiss: () -> Unit) 
 fun GoalMonthDetailSheet(chart: GoalChart, month: YearMonth, onDismiss: () -> Unit) {
     val index = month.monthValue - 1
     val sameYear = month.year == chart.today.year
-    val total = if (sameYear) chart.stats.byMonth[index] else 0
+    val total = if (sameYear) chart.stats.byMonth[index] else 0.0
     val perPerson = if (sameYear) chart.stats.byMonthPerPerson[index] else emptyMap()
 
     ModalBottomSheet(
@@ -95,7 +95,7 @@ fun GoalMonthDetailSheet(chart: GoalChart, month: YearMonth, onDismiss: () -> Un
                 style = WF.type.size(13.sp, FontWeight.SemiBold),
                 color = WF.colors.ink2,
             )
-            if (total == 0) {
+            if (total <= 0.0) {
                 Text(
                     "No activity logged this month.",
                     style = WF.type.size(13.sp, FontWeight.SemiBold),
@@ -109,8 +109,8 @@ fun GoalMonthDetailSheet(chart: GoalChart, month: YearMonth, onDismiss: () -> Un
 }
 
 @Composable
-private fun PersonBreakdown(chart: GoalChart, perPerson: Map<String, Int>) {
-    val rows = chart.stats.personOrder.filter { (perPerson[it] ?: 0) > 0 }
+private fun PersonBreakdown(chart: GoalChart, perPerson: Map<String, Double>) {
+    val rows = chart.stats.personOrder.filter { (perPerson[it] ?: 0.0) > 0.0 }
     if (rows.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(WF.spacing.md)) {
         rows.forEach { personId ->
@@ -131,7 +131,7 @@ private fun PersonBreakdown(chart: GoalChart, perPerson: Map<String, Int>) {
                     color = WF.colors.ink,
                 )
                 Text(
-                    amount(perPerson[personId] ?: 0, chart.unit),
+                    amount(perPerson[personId] ?: 0.0, chart.unit),
                     style = WF.type.size(12.sp, FontWeight.Bold),
                     color = WF.colors.ink2,
                 )

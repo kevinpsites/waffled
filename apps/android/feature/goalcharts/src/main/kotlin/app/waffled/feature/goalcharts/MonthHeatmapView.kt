@@ -173,7 +173,7 @@ fun MonthHeatmapView(
 private fun MonthDayCell(
     chart: GoalChart,
     cell: DayCell,
-    max: Int,
+    max: Double,
     modifier: Modifier,
     onDayTap: (LocalDate) -> Unit,
 ) {
@@ -210,7 +210,9 @@ private fun MonthDayCell(
         }
         if (cell.logged) {
             Text(
-                text = cell.value.toString(),
+                // amountText, not toString: a raw Double renders "1.0833333" in a cell
+                // barely wider than the number itself.
+                text = amountText(cell.value),
                 style = WF.type.serif(12.sp),
                 color = if (dark) Color.White else WF.colors.ink,
             )

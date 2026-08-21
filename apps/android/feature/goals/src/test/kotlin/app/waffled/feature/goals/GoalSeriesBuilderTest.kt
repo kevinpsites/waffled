@@ -16,6 +16,9 @@ import kotlin.test.assertTrue
  */
 class GoalSeriesBuilderTest {
 
+    /** Amounts are doubles now, so every magnitude assertion carries a tolerance. */
+    private val EPS = 0.0001
+
     private fun day(d: Int) = LocalDate.of(2026, 7, d)
 
     private fun build(
@@ -52,8 +55,8 @@ class GoalSeriesBuilderTest {
                 DayEntry("2026-07-12", 2.0, mapOf("alice" to 2.0)),
             ),
         )
-        assertEquals(3, s.byDay[day(10)])
-        assertEquals(2, s.byDay[day(12)])
+        assertEquals(3.0, s.byDay[day(10)]!!, EPS)
+        assertEquals(2.0, s.byDay[day(12)]!!, EPS)
         assertNull(s.byDay[day(11)], "a day nobody logged must not appear at all")
         assertEquals(2, s.points.size)
     }
@@ -63,7 +66,7 @@ class GoalSeriesBuilderTest {
         // "Logged nothing" and "not tracked" render differently on a heatmap; a habit
         // explicitly marked as missed is the former.
         val s = build(days = listOf(DayEntry("2026-07-10", 0.0, emptyMap())))
-        assertEquals(0, s.byDay[day(10)])
+        assertEquals(0.0, s.byDay[day(10)]!!, EPS)
         assertEquals(1, s.points.size)
     }
 
@@ -88,8 +91,8 @@ class GoalSeriesBuilderTest {
         )
         assertEquals(2, s.points.size)
         assertEquals(setOf("alice", "bob"), s.points.mapNotNull { it.personId }.toSet())
-        assertEquals(9, s.byDay[day(10)])
-        assertEquals(9, s.total)
+        assertEquals(9.0, s.byDay[day(10)]!!, EPS)
+        assertEquals(9.0, s.total, EPS)
     }
 
     @Test
@@ -102,8 +105,8 @@ class GoalSeriesBuilderTest {
             days = listOf(DayEntry("2026-07-10", 1.0, mapOf("alice" to 1.0, "bob" to 0.0))),
         )
         val bob = s.points.single { it.personId == "bob" }
-        assertEquals(0, bob.value)
-        assertEquals(1, s.byDay[day(10)], "an uncredited attendee must not inflate the day")
+        assertEquals(0.0, bob.value, EPS)
+        assertEquals(1.0, s.byDay[day(10)]!!, EPS, "an uncredited attendee must not inflate the day")
     }
 
     @Test
@@ -111,7 +114,7 @@ class GoalSeriesBuilderTest {
         val s = build(days = listOf(DayEntry("2026-07-10", 4.0, emptyMap())))
         val only = s.points.single()
         assertNull(only.personId, "a household total carries no person id")
-        assertEquals(4, only.value)
+        assertEquals(4.0, only.value, EPS)
     }
 
     @Test
@@ -119,9 +122,9 @@ class GoalSeriesBuilderTest {
         // A split-pool log can credit less than the day's total (the rest is the pool's).
         // Dropping the difference would make the chart disagree with the hero ring.
         val s = build(days = listOf(DayEntry("2026-07-10", 10.0, mapOf("alice" to 6.0))))
-        assertEquals(10, s.byDay[day(10)])
-        assertEquals(6, s.points.single { it.personId == "alice" }.value)
-        assertEquals(4, s.points.single { it.personId == null }.value)
+        assertEquals(10.0, s.byDay[day(10)]!!, EPS)
+        assertEquals(6.0, s.points.single { it.personId == "alice" }.value, EPS)
+        assertEquals(4.0, s.points.single { it.personId == null }.value, EPS)
     }
 
     @Test
@@ -187,10 +190,18 @@ class GoalSeriesBuilderTest {
 
     @Test
     fun anOpenEndedGoalsWindowEndsToday() {
-        // GoalSeries has no `today` field, so an open goal's window has to end somewhere
-        // a view can draw. Today is the only honest answer.
+        // An open goal's window still has to end somewhere a view can draw to. Today is
+        // the only honest answer.
         val s = build(endDate = null, today = "2026-07-17")
         assertEquals(LocalDate.of(2026, 7, 17), s.rangeEnd)
+    }
+
+    @Test
+    fun theHouseholdsTodayTravelsOnTheSeries() {
+        // The server knows the household's timezone and this client does not, so no
+        // consumer should ever have to fall back to the DEVICE's clock.
+        assertEquals(LocalDate.of(2026, 7, 17), build(today = "2026-07-17").today)
+        assertNull(build(today = "nonsense").today, "an unparseable today is null, not a guess")
     }
 
     @Test
@@ -221,7 +232,7 @@ class GoalSeriesBuilderTest {
     fun noActivityYieldsAnEmptySeriesThatIsStillSafeToDraw() {
         val s = build(days = emptyList())
         assertTrue(s.points.isEmpty())
-        assertEquals(0, s.total)
+        assertEquals(0.0, s.total, EPS)
         assertEquals(0, s.percent)
         assertEquals(emptyMap(), s.byDay)
     }
@@ -235,25 +246,55 @@ class GoalSeriesBuilderTest {
             ),
         )
         assertEquals(1, s.points.size)
-        assertEquals(3, s.total)
+        assertEquals(3.0, s.total, EPS)
     }
 
-    // ---- the Int seam ----------------------------------------------------------
+    // ---- fractional amounts ----------------------------------------------------
 
     @Test
-    fun aFractionalAmountRoundsToTheNearestWholeUnit() {
-        // GoalPoint.value is an Int, so an hours goal's 1h5m (1.0833) has to round.
-        // See the KDoc on GoalSeriesBuilder — this is a known lossy edge of the contract.
+    fun aFractionalAmountPassesThroughExact() {
+        // An hours goal's 1h5m is 1.0833… and the server stores it in the same numeric
+        // column as everything else (goals.service.ts:33). The builder must not narrow it.
         val s = build(days = listOf(DayEntry("2026-07-10", 1.0833, mapOf("alice" to 1.0833))))
-        assertEquals(1, s.byDay[day(10)])
+        assertEquals(1.0833, s.byDay[day(10)]!!, EPS)
+        assertEquals(1.0833, s.points.single().value, EPS)
     }
 
     @Test
-    fun aSubHalfUnitLogStillReadsAsALoggedDay() {
-        // 20 minutes on an hours goal is 0.333, which rounds to 0 — but the DAY must
-        // still be present, or the chart would claim nothing was tracked.
+    fun aSubHalfUnitLogKeepsItsMagnitudeNotJustItsPresence() {
+        // 20 minutes on an hours goal is 0.3333. Rounding it made a LOGGED day render as
+        // a day valued zero — present, but indistinguishable from "nothing counted".
         val s = build(days = listOf(DayEntry("2026-07-10", 0.3333, mapOf("alice" to 0.3333))))
-        assertEquals(0, s.byDay[day(10)])
+        assertEquals(0.3333, s.byDay[day(10)]!!, EPS)
+        assertTrue(s.total > 0.0, "a 20-minute log is not nothing")
         assertTrue(s.points.isNotEmpty(), "presence is what tells 'did nothing' from 'not tracked'")
+    }
+
+    @Test
+    fun severalFractionalPeopleOnOneDaySumWithoutDrift() {
+        // Rounding each person's amount first gave 1 + 0 = 1 for what is really 1.4166.
+        val s = build(
+            days = listOf(
+                DayEntry("2026-07-10", 1.4166, mapOf("alice" to 1.0833, "bob" to 0.3333)),
+            ),
+        )
+        assertEquals(1.4166, s.byDay[day(10)]!!, EPS)
+        assertEquals(s.total, s.byDay[day(10)]!!, EPS)
+    }
+
+    @Test
+    fun anExactlyCreditedFractionalDayEmitsNoPhantomHouseholdPoint() {
+        // Floating-point residue: summing two doubles need not land exactly on the stored
+        // total, and the old roundToInt was silently absorbing the difference. Without a
+        // tolerance the builder would invent an unattributed point worth ~1e-16.
+        val alice = 1.0833
+        val bob = 0.3333
+        val s = build(
+            days = listOf(
+                DayEntry("2026-07-10", alice + bob, mapOf("alice" to alice, "bob" to bob)),
+            ),
+        )
+        assertEquals(2, s.points.size, "only the two people, no residue point")
+        assertTrue(s.points.none { it.personId == null })
     }
 }

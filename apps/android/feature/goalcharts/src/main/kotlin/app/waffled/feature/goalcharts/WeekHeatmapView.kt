@@ -137,7 +137,7 @@ fun WeekHeatmapView(
                             verticalArrangement = Arrangement.spacedBy(3.dp),
                         ) {
                             Text(
-                                text = if (cell.logged) cell.value.toString() else "·",
+                                text = if (cell.logged) amountText(cell.value) else "·",
                                 style = WF.type.serif(15.sp),
                                 color = when {
                                     dark -> androidx.compose.ui.graphics.Color.White

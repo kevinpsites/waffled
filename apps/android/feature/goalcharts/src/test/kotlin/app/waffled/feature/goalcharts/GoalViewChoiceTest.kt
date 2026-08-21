@@ -76,7 +76,7 @@ class GoalViewChoiceTest {
         assertTrue(GoalViewKey.ByPerson !in offeredViews(series(), today))
         assertTrue(GoalViewKey.ByPerson in offeredViews(series(colors = mapOf("abe" to "#EC6049")), today))
         // A person can show up in the points even when no colour was sent.
-        val withPoints = series(points = listOf(GoalPoint(today, 1, "abe")))
+        val withPoints = series(points = listOf(GoalPoint(today, 1.0, "abe")))
         assertTrue(GoalViewKey.ByPerson in offeredViews(withPoints, today))
     }
 

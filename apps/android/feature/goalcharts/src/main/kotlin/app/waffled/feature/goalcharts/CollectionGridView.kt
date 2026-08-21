@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.waffled.core.design.SectionLabel
 import app.waffled.core.design.WF
+import kotlin.math.floor
 
 /**
  * Collection — the count signature view. Progress reads as "the shelf fills up", not as a
@@ -39,7 +40,12 @@ fun CollectionGridView(
     modifier: Modifier = Modifier,
     headerRight: @Composable (RowScope.() -> Unit)? = null,
 ) {
-    val done = chart.stats.total
+    // The one place the widened total is deliberately narrowed again. A shelf slot is a
+    // discrete thing you either collected or did not, so a fractional total TRUNCATES:
+    // 4.8 books fills four slots, not five. Same rule as `progressPercent` — not quite
+    // there is not there — and now an explicit decision rather than a silent `roundToInt`
+    // upstream, which used to round 4.6 UP into a slot nobody had earned.
+    val done = floor(chart.stats.total).toInt()
     val slots = collectionSlots(chart.stats.target, done)
     val base = WF.colors.panel
     val peak = WF.colors.success
@@ -142,7 +148,7 @@ fun CollectionGridView(
 private fun MonthlyBars(chart: GoalChart) {
     val currentMonth = chart.today.monthValue - 1
     val max = remember(chart) {
-        maxOf(1, chart.stats.byMonth.take(currentMonth + 1).maxOrNull() ?: 1)
+        scaleDenominator(chart.stats.byMonth.take(currentMonth + 1).maxOrNull())
     }
     Row(
         modifier = Modifier.height(48.dp),
@@ -157,7 +163,7 @@ private fun MonthlyBars(chart: GoalChart) {
                 Box(
                     Modifier
                         .width(18.dp)
-                        .height((2f + 38f * chart.stats.byMonth[m] / max).dp)
+                        .height((2f + 38f * (chart.stats.byMonth[m] / max).toFloat()).dp)
                         .background(WF.colors.success, RoundedCornerShape(3.dp)),
                 )
                 Text(

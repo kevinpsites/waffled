@@ -274,6 +274,9 @@ fun GoalDetailScreen(
             }
             GoalLogSheet(
                 goal = logGoal,
+                // The household's today, off the series the server built — not the
+                // DEVICE's date, which drifts across a timezone boundary.
+                today = state.series.today ?: LocalDate.now(),
                 noteSuggestions = noteSuggestions,
                 steps = detail?.steps.orEmpty(),
                 stepsLoaded = detail != null,
@@ -309,6 +312,7 @@ fun GoalDetailScreen(
         ) {
             GoalEntryEditSheet(
                 entry = entry,
+                today = state.series.today ?: LocalDate.now(),
                 participants = model.participants,
                 goalType = goalType,
                 unit = unit,
@@ -633,7 +637,7 @@ fun GoalSeriesPlaceholder(series: GoalSeries) {
         SectionLabel("Data view")
         Text(
             text = "${series.points.size} points · ${series.byDay.size} days · " +
-                "total ${series.total}${series.unit.let { if (it.isEmpty()) "" else " $it" }}",
+                "total ${goalFmt(series.total)}${series.unit.let { if (it.isEmpty()) "" else " $it" }}",
             style = WF.type.bodySmall,
             color = WF.colors.ink2,
         )
@@ -653,8 +657,8 @@ private fun GoalSeriesPlaceholderPreview() {
             GoalSeriesPlaceholder(
                 GoalSeries(
                     points = listOf(
-                        GoalPoint(LocalDate.of(2026, 7, 15), 3, "p1"),
-                        GoalPoint(LocalDate.of(2026, 7, 17), 5, "p1"),
+                        GoalPoint(LocalDate.of(2026, 7, 15), 3.0, "p1"),
+                        GoalPoint(LocalDate.of(2026, 7, 17), 5.0, "p1"),
                     ),
                     target = 100,
                     unit = "hours",
