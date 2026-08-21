@@ -51,6 +51,8 @@ import app.waffled.core.design.WaffledLoading
 import app.waffled.core.design.WaffledStatusBadge
 import app.waffled.core.design.wfField
 import app.waffled.core.model.Person
+import app.waffled.core.network.RefreshDomain
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -87,6 +89,18 @@ fun GoalsScreen(
 
     LaunchedEffect(Unit) {
         if (state.lists.isEmpty()) model.loadLists()
+    }
+
+    // Re-fetch when something ELSE changed goals — the detail screen owns a separate
+    // model, so logging progress or deleting a goal there leaves this list stale. iOS
+    // reloads on nav pop; watching the bus is the Android equivalent, and `isStale()`
+    // keeps this model's own writes from triggering a second, redundant fetch.
+    val busState = remember(model) {
+        model.refreshBus?.state ?: MutableStateFlow(emptyMap<RefreshDomain, Int>())
+    }
+    val revisions by busState.collectAsStateWithLifecycle()
+    LaunchedEffect(revisions[RefreshDomain.Goals]) {
+        if (model.isStale()) model.loadGoals()
     }
 
     Column(
@@ -211,8 +225,16 @@ fun GoalsScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = WF.colors.canvas,
         ) {
+            // This goal's own most-used notes, scoped to the logger so each member's box
+            // learns their own history. Best-effort: a failure leaves the defaults.
+            var noteSuggestions by remember(goal.id) { mutableStateOf(emptyList<String>()) }
+            LaunchedEffect(goal.id, me?.id) {
+                noteSuggestions = runCatching { model.api.noteSuggestions(goal.id, me?.id) }
+                    .getOrDefault(emptyList())
+            }
             GoalLogSheet(
                 goal = goal,
+                noteSuggestions = noteSuggestions,
                 onDismiss = { logging = null },
                 onSave = { amount, hours, minutes, ids, note, loggedOn ->
                     scope.launch {

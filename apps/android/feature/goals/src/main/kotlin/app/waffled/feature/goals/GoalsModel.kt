@@ -27,7 +27,8 @@ import kotlinx.serialization.json.put
 class GoalsModel(
     /** Public so the sheets can issue their own writes against one slice. */
     val api: GoalsApi,
-    private val refreshBus: RefreshBus? = null,
+    /** Public so the screen can watch it and re-fetch after somebody ELSE writes. */
+    val refreshBus: RefreshBus? = null,
 ) {
 
     /** The All / Shared / Each segmented filter. Only meaningful on a shared list. */
@@ -75,6 +76,19 @@ class GoalsModel(
 
     val current: State get() = _state.value
 
+    /**
+     * The `Goals` bus revision this model has already absorbed.
+     *
+     * The goal DETAIL screen owns a separate model, so logging progress or deleting a
+     * goal there never touches this list's state — iOS reloads on nav pop. Watching the
+     * bus is the Android equivalent, and comparing against what we've already seen is
+     * what stops this model's OWN writes triggering a second, redundant fetch.
+     */
+    private var seenGoalsRevision = 0
+
+    /** True when something else has changed goals since this model last read them. */
+    fun isStale(): Boolean = (refreshBus?.revisionOf(RefreshDomain.Goals) ?: 0) > seenGoalsRevision
+
     // ---- loading ---------------------------------------------------------------
 
     /** Fetch the lists, keep or re-pick the selection, then load that list's goals. */
@@ -109,6 +123,9 @@ class GoalsModel(
     }
 
     suspend fun loadGoals() {
+        // Absorbed here rather than on success: a failed refresh still means we've SEEN
+        // the change, and re-firing on every recomposition would hammer a flaky server.
+        seenGoalsRevision = refreshBus?.revisionOf(RefreshDomain.Goals) ?: 0
         val listId = _state.value.selectedList?.id
         if (listId == null) {
             _state.value = _state.value.copy(goals = emptyList())

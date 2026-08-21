@@ -307,6 +307,67 @@ class GoalsModelTest {
         assertEquals("l1", m.current.selectedListId)
     }
 
+    // ---- staleness -------------------------------------------------------------
+
+    @Test
+    fun `a write from somewhere else marks the list stale`() = runTest {
+        // The goal DETAIL screen owns a separate model, so logging progress or deleting a
+        // goal there never touches this list. Without this, popping back showed stale
+        // numbers — or a goal that no longer exists.
+        harness.enqueueJson("""{"lists":[{"id":"l1","name":"A","members":[]}]}""")
+        harness.enqueueJson("""{"goals":[]}""")
+
+        val m = model()
+        m.loadLists()
+        assertFalse(m.isStale())
+
+        bus.bump(RefreshDomain.Goals)
+
+        assertTrue(m.isStale())
+    }
+
+    @Test
+    fun `this model's own write does not mark it stale`() = runTest {
+        // It bumps the bus AND reloads, so a second fetch would be pure waste.
+        harness.enqueueJson("""{"lists":[{"id":"l1","name":"A","members":[]}]}""")
+        harness.enqueueJson("""{"goals":[{"id":"g1","title":"Outside"}]}""")
+        harness.enqueueNoContent()
+        harness.enqueueJson("""{"goals":[{"id":"g1","title":"Outside","isFeatured":true}]}""")
+
+        val m = model()
+        m.loadLists()
+        m.togglePin(m.current.goals.single())
+
+        assertEquals(1, bus.revisionOf(RefreshDomain.Goals))
+        assertFalse(m.isStale())
+    }
+
+    @Test
+    fun `absorbing a change clears the staleness even when the re-fetch fails`() = runTest {
+        // Re-firing on every recomposition would hammer an already-flaky server.
+        harness.enqueueJson("""{"lists":[{"id":"l1","name":"A","members":[]}]}""")
+        harness.enqueueJson("""{"goals":[]}""")
+        harness.enqueueError(500, "ServerError")
+
+        val m = model()
+        m.loadLists()
+        bus.bump(RefreshDomain.Goals)
+        m.loadGoals()
+
+        assertTrue(m.current.error)
+        assertFalse(m.isStale())
+    }
+
+    @Test
+    fun `a model with no bus is never stale`() = runTest {
+        harness.enqueueJson("""{"lists":[]}""")
+
+        val m = GoalsModel(api, refreshBus = null)
+        m.loadLists()
+
+        assertFalse(m.isStale())
+    }
+
     // ---- the detail model ------------------------------------------------------
 
     @Test

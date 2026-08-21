@@ -387,4 +387,54 @@ class GoalDraftTest {
         assertFalse("healthDailyTarget" in body)
         assertEquals("steps", body["unit"]?.jsonPrimitive?.content)
     }
+
+    // ---- participants ----------------------------------------------------------
+
+    @Test
+    fun theChosenListsMembersAreTheParticipants() {
+        val body = amountDraft().body(participantIds = listOf("p1", "p2"))
+        assertEquals(listOf("p1", "p2"), body["participantIds"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    @Test
+    fun editingAGoalInNoListKeepsItsExistingParticipants() {
+        // The editor derives participants from the SELECTED LIST. A goal that belongs to
+        // no list — or to a list this client hasn't fetched — yields an empty list, and
+        // sending `participantIds: []` would silently un-assign everyone on the goal.
+        val detail = GoalsApi.GoalDetail(
+            id = "g1",
+            goalListId = null,
+            title = "Read 20 books",
+            participants = listOf(
+                GoalsApi.Participant(personId = "p1", name = "Kevin"),
+                GoalsApi.Participant(personId = "p2", name = "Kelly"),
+            ),
+        )
+
+        val body = GoalDraft.from(detail).body(participantIds = emptyList())
+
+        assertEquals(
+            listOf("p1", "p2"),
+            body["participantIds"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+    }
+
+    @Test
+    fun aPickedListStillWinsOverTheGoalsOldParticipants() {
+        val detail = GoalsApi.GoalDetail(
+            id = "g1",
+            participants = listOf(GoalsApi.Participant(personId = "p1", name = "Kevin")),
+        )
+
+        val body = GoalDraft.from(detail).body(participantIds = listOf("p3"))
+
+        assertEquals(listOf("p3"), body["participantIds"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    @Test
+    fun aBrandNewGoalWithNobodyPickedSendsAnEmptyList() {
+        // Nothing to preserve on a create — the route scopes an empty list to the caller.
+        val body = amountDraft().body(participantIds = emptyList())
+        assertTrue(body["participantIds"]!!.jsonArray.isEmpty())
+    }
 }

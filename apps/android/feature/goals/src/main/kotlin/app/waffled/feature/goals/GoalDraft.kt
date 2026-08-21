@@ -54,6 +54,16 @@ data class GoalDraft(
      */
     val lastDerivedSignature: String = "",
     val steps: List<StepDraft> = List(3) { StepDraft() },
+    /**
+     * Who the goal ALREADY belongs to, carried through an edit.
+     *
+     * The editor derives participants from the selected list, but a goal can belong to no
+     * list at all — or to a list this client hasn't fetched — and then that derivation is
+     * empty. Without this fallback, saving such a goal would PATCH `participantIds: []`
+     * and silently un-assign everyone on it. Empty for a create, where there is nothing
+     * to preserve.
+     */
+    val existingParticipantIds: List<String> = emptyList(),
     /** True when this draft is editing an existing goal rather than creating one. */
     val isEditing: Boolean = false,
 ) {
@@ -250,7 +260,11 @@ data class GoalDraft(
             else -> put("targetValue", target.trim().toDoubleOrNull()?.let(::JsonPrimitive) ?: JsonNull)
         }
 
-        put("participantIds", buildJsonArray { participantIds.forEach { add(JsonPrimitive(it)) } })
+        // Participants follow the chosen list; an edit with no list keeps whoever the
+        // goal already had, rather than un-assigning everyone. See
+        // [existingParticipantIds].
+        val people = participantIds.ifEmpty { existingParticipantIds }
+        put("participantIds", buildJsonArray { people.forEach { add(JsonPrimitive(it)) } })
         put(
             "milestones",
             buildJsonArray {
@@ -320,6 +334,7 @@ data class GoalDraft(
                 steps = detail.steps
                     .map { StepDraft(existingId = it.id, label = it.label) }
                     .ifEmpty { List(3) { StepDraft() } },
+                existingParticipantIds = detail.participants.map { it.personId },
                 isEditing = true,
             )
         }

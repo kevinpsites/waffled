@@ -265,8 +265,16 @@ fun GoalDetailScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = WF.colors.canvas,
         ) {
+            // This goal's own most-used notes, scoped to the logger so each member's box
+            // learns their own history. Best-effort: a failure leaves the defaults.
+            var noteSuggestions by remember(model.goal.id) { mutableStateOf(emptyList<String>()) }
+            LaunchedEffect(model.goal.id, me?.id) {
+                noteSuggestions = runCatching { model.api.noteSuggestions(model.goal.id, me?.id) }
+                    .getOrDefault(emptyList())
+            }
             GoalLogSheet(
                 goal = logGoal,
+                noteSuggestions = noteSuggestions,
                 steps = detail?.steps.orEmpty(),
                 stepsLoaded = detail != null,
                 onTickStep = { step, done -> scope.launch { model.tickStep(step.id, done) } },

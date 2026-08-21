@@ -278,8 +278,9 @@ fun GoalCreateSheet(
             label = if (draft.isEditing) "Save changes" else "Create goal",
             isDisabled = !draft.canSave,
             onClick = {
-                // Participants follow the chosen list; on an edit with no list, the goal
-                // keeps whoever it already had (the caller passes them through `initial`).
+                // Participants follow the chosen list. When that yields nothing — a goal
+                // in no list, or a list this client hasn't fetched — `body()` falls back
+                // to the goal's existing participants rather than un-assigning everyone.
                 val memberIds = lists.firstOrNull { it.id == draft.goalListId }
                     ?.members?.map { it.personId }.orEmpty()
                 onSubmit(draft.body(memberIds), draft.goalListId)
