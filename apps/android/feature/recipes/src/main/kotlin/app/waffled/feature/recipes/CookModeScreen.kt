@@ -31,11 +31,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FormatListBulleted
-import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -56,7 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -395,7 +395,7 @@ private fun CookTopBar(title: String, onClose: () -> Unit, onOverview: () -> Uni
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
         Icon(
-            imageVector = Icons.Filled.FormatListBulleted,
+            imageVector = Icons.AutoMirrored.Filled.FormatListBulleted,
             contentDescription = "The whole recipe",
             tint = WF.colors.ink2,
             modifier = Modifier.size(20.dp).clickable(onClick = onOverview),
@@ -468,7 +468,7 @@ private fun ReturnPill(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = Icons.Filled.Undo,
+                imageVector = Icons.AutoMirrored.Filled.Undo,
                 contentDescription = null,
                 tint = WF.colors.ink,
                 modifier = Modifier.size(14.dp),
@@ -862,7 +862,7 @@ private fun CookOverviewSheet(
                         color = WF.colors.ink,
                     )
                     Icon(
-                        Icons.Filled.KeyboardArrowRight,
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         null,
                         tint = WF.colors.ink3,
                         modifier = Modifier.size(16.dp),

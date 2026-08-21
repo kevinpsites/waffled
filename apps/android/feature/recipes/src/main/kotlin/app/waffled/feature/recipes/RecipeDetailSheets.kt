@@ -23,8 +23,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -140,7 +140,7 @@ fun RecipeScheduleSheet(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RoundGlyph(Icons.Filled.KeyboardArrowLeft, "Previous week", weekOffset > 0) {
+                RoundGlyph(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous week", weekOffset > 0) {
                     weekOffset = maxOf(0, weekOffset - 1)
                 }
                 Text(
@@ -150,7 +150,7 @@ fun RecipeScheduleSheet(
                     color = WF.colors.ink,
                     textAlign = TextAlign.Center,
                 )
-                RoundGlyph(Icons.Filled.KeyboardArrowRight, "Next week", true) { weekOffset += 1 }
+                RoundGlyph(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next week", true) { weekOffset += 1 }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
