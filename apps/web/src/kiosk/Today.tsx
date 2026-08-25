@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import { AgendaCard } from './components/AgendaCard'
 import { TonightCardSlot, WeekDinnersCard } from './components/MealsColumn'
 import { ChoresCard } from './components/ChoresCard'
@@ -11,10 +11,15 @@ import { GoalRecapBar } from './components/GoalRecap'
 import { ApprovalsBar } from './components/Approvals'
 import { CaptureBar } from './components/CaptureBar'
 import { GettingStartedBar } from './onboarding/GettingStarted'
-import { PantryCard } from './Pantry'
 import { useTopbarRight } from './topbar-slot'
 import { useTodayLayout, useHousehold, type LayoutScope, type StoredLayout } from '../lib/api'
 import { moduleEnabled, rewardsEnabled } from '../lib/modules'
+
+// Pantry is an optional module that defaults to off, and its card is the only one
+// whose module isn't already on Today's critical path. Loading it on demand keeps it
+// out of the entry bundle for every household that never turned pantry on; the card
+// renders nothing until its own fetch lands, so a null fallback shows nothing extra.
+const PantryCard = lazy(() => import('./PantryCard').then((m) => ({ default: m.PantryCard })))
 
 // The cards that can live on Today, keyed the same as the stored layout. `fill`
 // cards are long, scrollable lists (agenda, grocery) — they take the spare room in
@@ -32,7 +37,7 @@ const CARDS: Record<string, { label: string; node: ReactNode; fill?: boolean }> 
   countdowns: { label: 'Countdowns', node: <CountdownsCard /> },
   familyNight: { label: 'Family Night', node: <FamilyNightCard /> },
   goals: { label: 'Goals', node: <GoalSpotlightCard /> },
-  pantry: { label: 'Pantry', node: <PantryCard /> },
+  pantry: { label: 'Pantry', node: <Suspense fallback={null}><PantryCard /></Suspense> },
 }
 
 // Layout helpers (pure). A card lives in exactly one column.
