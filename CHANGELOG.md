@@ -32,9 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kind** — *Needs you now*, *Coming up*, *Steady*, with the paused ones named in a single
   line at the bottom — and every row is anchored by a countdown (*6 days late*, *3 months*,
   or **Booked**) above a hairline showing how much of the cycle is already spent, so the top
-  of the page is always the thing most worth your attention. A **Today card** shows only what needs
-  attention and stays invisible on the many quiet days, and the things you do yourself turn
-  into countdowns ("18 days until the air filter"). Turning on **Put it on the calendar
+  of the page is always the thing most worth your attention. The **Today card** is a countdown block:
+  *"3 want attention"* on one side and *"All 10 →"* on the other, so you see both what is
+  being asked of you and how much isn't; each row leads with its countdown (*7 days late ·
+  every 3 months*) and the filled button is kept for the things that are actually late,
+  since a card where everything shouts says nothing. It stays invisible on the many quiet
+  days, and the things you do yourself turn into countdowns ("18 days until the air
+  filter"). Turning on **Put it on the calendar
   automatically** books the series there and then, so the thing is on the calendar from the
   moment you create it; the day it lands on is picked with the same weekday control the
   calendar uses, rather than by typing a repeat rule. Something you did but forgot to log
@@ -47,8 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   due **one full cadence out** rather than immediately, so it doesn't arrive already
   overdue, and the warning runway sizes itself to the cadence instead of always starting at
   a fortnight. Off by default — turn **Rhythms** on in Settings → Modules. Everything ships
-  on web, kiosk, iPhone and iPad; the regrouped register and the sentence form land on web
-  and kiosk first.
+  on web, kiosk, iPhone and iPad; the regrouped register, the sentence form and the new
+  Today card land on web and kiosk first.
 - **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
   hardware run, the packing list, whatever's live this week — right on the Today board,
   with tap-to-tick-off. Pick which list from the card itself, the same way the Goals

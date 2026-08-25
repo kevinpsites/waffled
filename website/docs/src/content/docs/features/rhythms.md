@@ -167,8 +167,20 @@ The Rhythms card shows **only what needs attention today**, and **renders nothin
 otherwise — most days a quarterly register is quiet, and an empty card every morning is how
 a board stops being read. Anything overdue sorts to the top.
 
-Each row gets the verb its shape deserves: an I-mark-it-done rhythm offers **Mark done**, a
-scheduled one offers **Book a time** and **Skip**. There is no "done" on a scheduled rhythm,
+Its header says both halves of where you stand: **3 want attention** on the left, and
+**All 10 →** on the right. The second number is the reassuring one — seven other things are
+handled — and it's the way into the full register.
+
+Each row **leads with the countdown**, then the cadence: *7 days late · every 3 months*,
+*in 5 days · every 3 months*, *1 day left to book it*. On a board read from the other side
+of a kitchen the cadence is the half you already know.
+
+The loud button is **earned, not given**. Everything on this card wants attention, so a
+primary button on every row would make none of them mean anything; the filled button is
+kept for what is actually late, or a booking window with a day left in it.
+
+Each row gets the verb its shape deserves: an I-mark-it-done rhythm offers **I did it**, a
+scheduled one offers **Book** and **Skip**. There is no "done" on a scheduled rhythm,
 because that isn't a question rhythms ask.
 
 ### Booking a period
