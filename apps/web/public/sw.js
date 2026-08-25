@@ -6,6 +6,9 @@
 //   • navigations      → network-first, fall back to the cached app shell
 //   • hashed assets     → cache-first (Vite fingerprints them, so they're immutable),
 //                        all of them precached from the build's asset manifest
+//   • unhashed assets   → stale-while-revalidate: the files copied from public/ keep
+//                        their names across builds, so cache-first would pin whatever
+//                        the display saw first (see below)
 //   • GET /api/*        → straight to network (never persisted by this worker)
 //   • everything else   → straight to network
 // API requests are never cached because their responses contain household data
@@ -95,12 +98,22 @@ async function precache() {
 // module load on MIME type from then on — offline *and* online — until someone
 // cleared the display's storage by hand. Better to cache nothing for it and let the
 // network serve it later.
+function contentTypeOk(url, res) {
+  const type = res.headers.get('content-type') || ''
+  const expected = url.endsWith('.js')
+    ? 'javascript'
+    : url.endsWith('.css')
+      ? 'css'
+      : /\.(?:png|jpe?g|svg|webp|ico|gif|avif)$/.test(url)
+        ? 'image'
+        : ''
+  return !expected || type.includes(expected)
+}
+
 async function cacheAsset(cache, url) {
   const res = await fetch(url)
   if (!res.ok) return
-  const type = res.headers.get('content-type') || ''
-  const expected = url.endsWith('.js') ? 'javascript' : url.endsWith('.css') ? 'css' : ''
-  if (expected && !type.includes(expected)) return
+  if (!contentTypeOk(url, res)) return
   await cache.put(url, res)
 }
 
@@ -125,8 +138,19 @@ self.addEventListener('activate', (event) => {
   )
 })
 
-function isAsset(url) {
-  return url.pathname.startsWith('/assets/') || /\.(?:js|css|woff2?|png|jpe?g|svg|webp|ico)$/.test(url.pathname)
+// Everything Vite emits is content-hashed, so its URL is a permanent name for those
+// exact bytes and cache-first is free.
+function isFingerprinted(url) {
+  return url.pathname.startsWith('/assets/')
+}
+
+// Files copied verbatim from public/ — /logo.png, the favicons, the touch icon — keep
+// their filenames from one build to the next. Cache-first would pin whatever a display
+// saw first and never look again, and the build stamp is no help: it only moves when
+// the build does, so changing an icon and rebuilding off an unbumped version leaves
+// every display showing the old one indefinitely.
+function isUnhashedAsset(url) {
+  return /\.(?:js|css|woff2?|png|jpe?g|svg|webp|ico|gif|avif)$/.test(url.pathname)
 }
 
 async function networkFirstShell(request) {
@@ -159,6 +183,26 @@ async function cacheFirst(request) {
   return res
 }
 
+// Serve the cached copy immediately — an offline display keeps its branding, and one
+// that is online doesn't wait on the network for a file it already has — then refresh
+// it in the background so a changed icon self-heals on the next load. The refresh is
+// content-type checked for the same reason the precache is: Caddy answers a missing
+// path with 200 + index.html, and storing that would replace the icon with an HTML
+// document that every later load would serve.
+async function staleWhileRevalidate(request, event) {
+  const cache = await caches.open(ASSETS)
+  const cached = await cache.match(request, MATCH)
+  const update = fetch(request)
+    .then(async (res) => {
+      if (res.ok && contentTypeOk(request.url, res)) await cache.put(request, res.clone())
+      return res
+    })
+    .catch(() => undefined)
+  if (!cached) return (await update) || Response.error()
+  event.waitUntil(update)
+  return cached
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event
   if (request.method !== 'GET') return
@@ -170,7 +214,11 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(networkFirstShell(request))
     return
   }
-  if (isAsset(url)) {
+  if (isFingerprinted(url)) {
     event.respondWith(cacheFirst(request))
+    return
+  }
+  if (isUnhashedAsset(url)) {
+    event.respondWith(staleWhileRevalidate(request, event))
   }
 })

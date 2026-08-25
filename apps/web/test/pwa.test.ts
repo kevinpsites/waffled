@@ -63,9 +63,15 @@ async function loadWorker(served: Served = {}, options: WorkerOptions = {}) {
       listeners.set(type, listener)
     },
   }
-  const fetchMock = vi.fn(async (input: string) => {
+  // The install path fetches string URLs; the fetch handler passes the Request through
+  // to fetch(request). Stringifying the latter yielded "[object Object]", which served
+  // a 404 for every request the handler made — so a test could assert that nothing was
+  // written to the cache and pass because the fetch never resolved, not because the
+  // worker declined it. Resolve both shapes to a path.
+  const fetchMock = vi.fn(async (input: string | { url: string }) => {
     if (options.networkDown) throw new TypeError('Failed to fetch')
-    const path = typeof input === 'string' ? input : String(input)
+    const raw = typeof input === 'string' ? input : input.url
+    const path = raw.startsWith('http') ? new URL(raw).pathname : raw
     const entry = served[path]
     if (entry === undefined) return new Response('{}', { status: 404 })
     const body = typeof entry === 'string' ? entry : entry.body
@@ -345,5 +351,76 @@ describe('service worker install safety', () => {
 
     await expect(install(listeners)).rejects.toThrow()
     expect(cacheFor('waffled-dev-shell').put).not.toHaveBeenCalled()
+  })
+})
+
+// Vite fingerprints everything it emits, so /assets/* can be cache-first forever: a
+// changed file gets a new URL. Files copied from public/ keep their names — /logo.png,
+// the favicons, the touch icon — so cache-first pins whatever the display saw first
+// and never looks again. The build stamp doesn't save it either: the stamp only moves
+// when the build does, so editing an icon and rebuilding off an unbumped version
+// leaves every display showing the old one indefinitely.
+//
+// They're served stale-while-revalidate instead: the cached copy answers immediately
+// (so an offline display still has its branding), and the worker refreshes it in the
+// background, so a changed icon self-heals on the next load with a network.
+describe('service worker unhashed assets', () => {
+  function assetEvent(listeners: Map<string, (event: unknown) => void>, url: string) {
+    let responded: Promise<Response> | undefined
+    const background: Promise<unknown>[] = []
+    listeners.get('fetch')?.({
+      request: { method: 'GET', mode: 'no-cors', url, headers: {} },
+      respondWith: (promise: Promise<Response>) => {
+        responded = promise
+      },
+      waitUntil: (promise: Promise<unknown>) => {
+        background.push(promise)
+      },
+    })
+    return { responded, background }
+  }
+
+  it('answers from cache instantly and refreshes an unhashed icon in the background', async () => {
+    const { listeners, cacheFor } = await loadWorker({ '/logo.png': { body: 'new-logo', type: 'image/png' } })
+    const assets = cacheFor('waffled-dev-assets')
+    assets.match = vi.fn(async () => new Response('old-logo', { headers: { 'content-type': 'image/png' } }))
+
+    const { responded, background } = assetEvent(listeners, 'https://waffled.test/logo.png')
+    // The display is not made to wait on the network for a file it already has.
+    expect(await (await responded)?.text()).toBe('old-logo')
+
+    await Promise.all(background)
+    const stored = assets.put.mock.calls.map(([, res]: [unknown, Response]) => res)
+    expect(stored.length).toBe(1)
+    expect(await stored[0].text()).toBe('new-logo')
+  })
+
+  it('keeps fingerprinted assets on cache-first, with no revalidation fetch', async () => {
+    // The whole point of a content hash: re-checking it every load would be pure waste
+    // on a display that opens the same screens all day.
+    const { listeners, cacheStorage, fetchMock } = await loadWorker()
+    cacheStorage.match = vi.fn(async () => new Response('cached chunk', { headers: { 'content-type': 'text/javascript' } }))
+
+    const { responded } = assetEvent(listeners, 'https://waffled.test/assets/index-abc.js')
+    await responded
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('does not overwrite a cached icon with the SPA fallback page', async () => {
+    // Caddy answers a missing path with 200 + index.html. Revalidating into the cache
+    // without checking would replace the icon with an HTML document, and every later
+    // load would serve that.
+    const { listeners, cacheFor } = await loadWorker({
+      '/logo.png': { body: '<html>the app shell</html>', type: 'text/html' },
+    })
+    const assets = cacheFor('waffled-dev-assets')
+    assets.match = vi.fn(async () => new Response('old-logo', { headers: { 'content-type': 'image/png' } }))
+
+    const { responded, background } = assetEvent(listeners, 'https://waffled.test/logo.png')
+    await responded
+    await Promise.all(background)
+
+    expect(assets.put).not.toHaveBeenCalled()
   })
 })
