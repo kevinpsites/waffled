@@ -51,14 +51,14 @@ describe('dueLabel', () => {
   const today = new Date('2026-08-18T09:00:00Z')
 
   it('names an overdue item as overdue, never as a missed streak', () => {
-    expect(dueLabel('2026-08-11T09:00:00Z', true, today)).toBe('7 days overdue')
-    expect(dueLabel('2026-08-17T09:00:00Z', true, today)).toBe('1 day overdue')
+    expect(dueLabel('2026-08-11T09:00:00Z', true, today)).toBe('7 days late')
+    expect(dueLabel('2026-08-17T09:00:00Z', true, today)).toBe('1 day late')
   })
 
   it('counts down to a due date that has not arrived', () => {
     expect(dueLabel('2026-08-18T09:00:00Z', false, today)).toBe('due today')
     expect(dueLabel('2026-08-19T09:00:00Z', false, today)).toBe('due tomorrow')
-    expect(dueLabel('2026-08-25T09:00:00Z', false, today)).toBe('due in 7 days')
+    expect(dueLabel('2026-08-25T09:00:00Z', false, today)).toBe('in 7 days')
   })
 
   // "Today" is the day on the viewer's wall clock. Counting UTC days instead reads

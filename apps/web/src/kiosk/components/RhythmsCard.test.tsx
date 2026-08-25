@@ -47,15 +47,28 @@ const outing = { ...temple, id: 'r-outing', title: 'Family outing', emoji: '🎠
 
 const calls: { url: string; method: string; body: unknown }[] = []
 
-function mockAttention(items: unknown[]) {
+function mockAttention(items: unknown[], all: unknown[] = []) {
   calls.length = 0
   globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url)
-    calls.push({ url: u, method: init?.method ?? 'GET', body: init?.body ? JSON.parse(String(init.body)) : null })
+    const method = init?.method ?? 'GET'
+    calls.push({ url: u, method, body: init?.body ? JSON.parse(String(init.body)) : null })
     if (u.includes('/api/rhythms/attention')) return { ok: true, json: async () => ({ items }) }
+    if (u.endsWith('/api/rhythms') && method === 'GET') return { ok: true, json: async () => ({ rhythms: all }) }
     return { ok: true, json: async () => ({ ok: true, event: { id: 'ev-new' } }) }
   }) as unknown as typeof fetch
 }
+
+// The status line colours only its first half, so it is two text nodes and
+// getByText cannot see across the boundary. Read the whole line instead of
+// reshaping the DOM to suit the assertion.
+const statusLine = (re: RegExp) =>
+  screen.getByText((_t, el) => el?.className === 'rhy-sub tiny muted' && re.test(el.textContent ?? ''))
+
+// Ten rhythms in the register, of which some number want you today. The card's
+// header states both, which is the whole point of the redesigned block: you see
+// what is being asked of you AND how much you are not being asked about.
+const ten = Array.from({ length: 10 }, (_, i) => ({ ...filter, id: `r-${i}`, title: `Rhythm ${i}` }))
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
@@ -85,10 +98,11 @@ describe('RhythmsCard', () => {
     mockAttention([{ kind: 'due', rhythm: filter, dueAt: '2026-08-16T09:00:00.000Z', overdue: true }])
     render()
     expect(await screen.findByText('Air filter')).toBeInTheDocument()
-    expect(screen.getByText(/every 3 months/)).toBeInTheDocument()
-    expect(screen.getByText(/2 days overdue/)).toBeInTheDocument()
+    // Urgency first, cadence second: on a board read from across a kitchen, "2 days
+    // late" is the part worth seeing, and it used to be the second half of the line.
+    expect(statusLine(/2 days late . every 3 months/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /mark done/i }))
+    fireEvent.click(screen.getByRole('button', { name: /i did it for air filter/i }))
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/rhythms/r-filter/complete') && c.method === 'POST')).toBe(true))
   })
 
@@ -96,7 +110,11 @@ describe('RhythmsCard', () => {
     mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01' }])
     render()
     expect(await screen.findByText('Temple visit')).toBeInTheDocument()
-    expect(screen.getByText(/not on the calendar yet/i)).toBeInTheDocument()
+    // Every row on this card is something that needs attention, so "not on the
+    // calendar yet" was true of all of them and told you nothing. The deadline is
+    // the part that differs.
+    expect(screen.getByText(/left to book it/i)).toBeInTheDocument()
+    expect(screen.queryByText(/not on the calendar yet/i)).toBeNull()
     // The line a rhythm must never cross: no follow-through language.
     expect(screen.queryByRole('button', { name: /mark done/i })).toBeNull()
     expect(screen.queryByText(/streak|completed|on track/i)).toBeNull()
@@ -105,7 +123,7 @@ describe('RhythmsCard', () => {
   it('books a period into a real event from a time picker alone', async () => {
     mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01' }])
     render()
-    fireEvent.click(await screen.findByRole('button', { name: /book a time/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /book a time for temple visit/i }))
 
     // Title and assignee come from the rhythm, so the modal asks for a time and
     // nothing else — no title field to retype.
@@ -135,6 +153,55 @@ describe('RhythmsCard', () => {
     mockAttention([{ kind: 'unscheduled', rhythm: outing, periodStart: '2026-08-01', periodEnd: '2026-09-01' }])
     render()
     expect(await screen.findByText('Family outing')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /put it back on the calendar/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /put the series back on the calendar for family outing/i })).toBeInTheDocument()
+  })
+  it('says how many want you, and how many there are altogether', async () => {
+    mockAttention(
+      [{ kind: 'due', rhythm: filter, dueAt: '2026-08-16T09:00:00.000Z', overdue: true }],
+      ten
+    )
+    render()
+    expect(await screen.findByText(/1 wants attention/i)).toBeInTheDocument()
+    // The register's size is the reassuring half: nine other things are handled.
+    expect(await screen.findByRole('link', { name: /all 10/i })).toBeInTheDocument()
+  })
+
+  it('does not ask for the register at all on a quiet day', async () => {
+    // Most days a quarterly register wants nothing, and the card renders nothing.
+    // Fetching the whole list anyway would be a request per board refresh, forever,
+    // to render something no one is going to see.
+    mockAttention([], ten)
+    render()
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/api/rhythms/attention'))).toBe(true))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(calls.some((c) => c.url.endsWith('/api/rhythms') && c.method === 'GET')).toBe(false)
+  })
+
+  it('leads with the countdown for something not yet late', async () => {
+    mockAttention([{ kind: 'due', rhythm: filter, dueAt: '2026-08-23T09:00:00.000Z', overdue: false }], ten)
+    render()
+    await screen.findByText('Air filter')
+    expect(statusLine(/in 5 days . every 3 months/i)).toBeInTheDocument()
+  })
+
+  it('keeps the loud button for the things that are actually late', async () => {
+    // Everything on this card wants attention, so making every button primary makes
+    // none of them mean anything. The emphasis is reserved for late, or out of time.
+    mockAttention([
+      { kind: 'due', rhythm: filter, dueAt: '2026-08-16T09:00:00.000Z', overdue: true },
+      { kind: 'due', rhythm: { ...filter, id: 'r-soon', title: 'Softener salt' }, dueAt: '2026-08-23T09:00:00.000Z', overdue: false },
+    ], ten)
+    render()
+    await screen.findByText('Air filter')
+    expect(screen.getByRole('button', { name: /i did it for air filter/i })).toHaveClass('btn-primary')
+    expect(screen.getByRole('button', { name: /i did it for softener salt/i })).not.toHaveClass('btn-primary')
+  })
+
+  it('still lets a period be skipped from the board', async () => {
+    // Not in the redesign's sketch of this card, and kept anyway: skipping is the
+    // one thing here you cannot otherwise do without leaving Today.
+    mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01' }], ten)
+    render()
+    expect(await screen.findByRole('button', { name: /skip this period for temple visit/i })).toBeInTheDocument()
   })
 })

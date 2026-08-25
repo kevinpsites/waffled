@@ -288,11 +288,13 @@ export function dueLabel(dueAt: string, overdue: boolean, now: Date = new Date()
   const days = dayDiff(new Date(dueAt), now)
   if (overdue || days < 0) {
     const late = Math.max(1, -days)
-    return `${plural(late, 'day')} overdue`
+    // "late", matching the register's countdown, rather than "overdue" — the two
+    // surfaces describe the same rhythm and should not use two words for it.
+    return `${plural(late, 'day')} late`
   }
   if (days === 0) return 'due today'
   if (days === 1) return 'due tomorrow'
-  return `due in ${plural(days, 'day')}`
+  return `in ${plural(days, 'day')}`
 }
 
 /**

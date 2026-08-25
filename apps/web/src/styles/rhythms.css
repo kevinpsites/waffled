@@ -3,7 +3,7 @@
    module's own rows, matching pantry.css in shape and spacing.
 
    TWO VOCABULARIES LIVE IN THIS FILE. Keep them disjoint:
-     Today card (RhythmsCard.tsx) — .rhy-card .rhy-head .rhy-h .rhy-all .rhy-list
+     Today card (RhythmsCard.tsx) — .rhy-card .rhy-head .rhy-h .rhy-n .rhy-all .rhy-list
                                     .rhy-row .rhy-emoji .rhy-main .rhy-title
                                     .rhy-sub .rhy-late .rhy-acts .rhy-act
      Register  (Rhythms.tsx)      — .rhy-screen* .rhy-band .rhy-regs .rhy-reg
@@ -24,7 +24,11 @@
 .rhy-card { padding: 18px 20px 14px; display: flex; flex-direction: column; }
 .rhy-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .rhy-h { font-size: 17px; text-decoration: none; color: inherit; }
-.rhy-all { margin-left: auto; text-decoration: none; color: var(--ink-2); }
+/* The count sits with the title and the link is pushed to the far edge, so the
+   header reads "Rhythms — 3 want attention ......... All 10 →": what is being asked
+   of you, and how much is not. */
+.rhy-n { white-space: nowrap; }
+.rhy-all { margin-left: auto; white-space: nowrap; text-decoration: none; color: var(--ink-2); }
 
 .rhy-list { display: flex; flex-direction: column; gap: 8px; }
 .rhy-row {
