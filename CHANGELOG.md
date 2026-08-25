@@ -51,8 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   due **one full cadence out** rather than immediately, so it doesn't arrive already
   overdue, and the warning runway sizes itself to the cadence instead of always starting at
   a fortnight. Off by default — turn **Rhythms** on in Settings → Modules. Everything ships
-  on web, kiosk, iPhone and iPad; the regrouped register, the sentence form and the new
-  Today card land on web and kiosk first.
+  on web, kiosk, iPhone and iPad — including the regrouped register and the new Today
+  card. The sentence form is web and kiosk first; iPhone and iPad ask the same questions
+  as a form for now, and make exactly the same rhythm.
 - **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
   hardware run, the packing list, whatever's live this week — right on the Today board,
   with tap-to-tick-off. Pick which list from the card itself, the same way the Goals

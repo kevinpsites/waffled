@@ -20,9 +20,9 @@ each row, but they are no longer headings. **Shipped on web/kiosk; iPhone and iP
 group by shape.** The creation form is now an editable sentence with a consequence card
 stating what it will do, and its defaults follow the cadence rather than a fixed number.
 The Today card is a countdown block: "3 want attention" beside "All 10 →", each row led by
-its countdown, and the filled button kept for what is late or out of time. Still to come:
-the iPad list+detail split with completion history, and iOS parity for the regrouped
-register, the sentence form and the new card. Three things the design asks for have no server behind them yet — "push
+its countdown, and the filled button kept for what is late or out of time. iOS now matches on the register and the Today card, from
+the same helpers. Still to come: the iPad list+detail split with completion history, and
+the sentence form on iPhone/iPad. Three things the design asks for have no server behind them yet — "push
 out a week" (there is no endpoint; `nextDueAt` is not in `UpdateRhythmInput`), the booked
 time on a settled row (the list returns `satisfied` as a boolean, no event time), and the
 "real average" interval in the history panel.

@@ -245,9 +245,10 @@ register exists.
 
 Every part of Rhythms works on every surface, including the 🔁 marker on a booked event.
 
-The **regrouped register** described above — Needs you now / Coming up / Steady — is on
-web and kiosk today. iPhone and iPad still group the list by shape; they lose nothing by
-it, and they're next.
+The **regrouped register** described above — Needs you now / Coming up / Steady — and the
+**Today card** are on every surface. The one thing still web-only is the creation form as
+an editable sentence; iPhone and iPad ask the same questions as a form for now, and make
+exactly the same rhythm.
 
 The events a scheduled rhythm books are ordinary calendar events, so they show up
 **everywhere** — including on your phone, and including offline — the moment they're booked.
