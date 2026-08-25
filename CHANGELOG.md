@@ -17,14 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Opening the web app downloads about a quarter of what it used to.** Waffled handed
+- **Opening the web app downloads about a third of what it used to.** Waffled handed
   your browser the entire app up front — every screen, the barcode scanner, the sync
-  engine — before it could paint anything: roughly 520 KB of compressed code even if all
+  engine — before it could paint anything: about 510 KB of compressed code even if all
   you wanted was the Today board, which is felt most on a phone joining over patchy wifi
   or a hub reached from outside the house. Now each screen is fetched the moment you
   first open it, and the two heavyweights load only when they're genuinely needed — the
   barcode scanner when you tap **Scan** in the pantry, the live-sync engine in the
-  background once the app is already on screen. A first load is down to about 165 KB.
+  background once the app is already on screen. A first load is down to about 175 KB.
   Nothing about how the app behaves changes: screens you've visited stay instant, the
   kiosk still caches everything for offline use (now including screens nobody has opened
   yet), and a screen that can't be fetched says so and leaves the rest of the app usable
