@@ -243,7 +243,8 @@ register exists.
 | iPhone | ✅ |
 | iPad | ✅ |
 
-Every part of Rhythms works on every surface, including the 🔁 marker on a booked event.
+Rhythms works on every surface, including the 🔁 marker on a booked event — with one
+exception, below.
 
 The **regrouped register** described above — Needs you now / Coming up / Steady — and the
 **Today card** are on every surface. The one thing still web-only is the creation form as
