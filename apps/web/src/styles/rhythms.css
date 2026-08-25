@@ -48,6 +48,10 @@
 
 .rhy-acts { display: flex; align-items: center; gap: 6px; flex: none; }
 .rhy-act { flex: none; padding: 6px 12px; font-size: 13px; }
+/* btn-ghost paints --panel, which is exactly the row's own background, so the
+   secondary verb sat on this card as bold text with no edge to it — next to a
+   primary pill it stopped reading as a control at all. Lift it off the row. */
+.rhy-act.btn-ghost { background: var(--card); border: 1px solid var(--hair); }
 .rhy-skip {
   background: none; border: 0; padding: 6px 4px; cursor: pointer;
   font: inherit; font-size: 12px; font-weight: 700; color: var(--ink-3);
