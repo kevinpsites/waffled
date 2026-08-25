@@ -41,11 +41,11 @@ Turn the module back off and all of that disappears; nothing is deleted.
 
 ## The two shapes — pick the right one
 
-Making a rhythm asks one question before anything else: **what closes out a period?**
-Everything below the shape picker follows from the answer, and it can't be changed later
-(see [Notes](#notes)), so it's worth thirty seconds.
+One question decides everything else about a rhythm: **what closes out a period?** You
+answer it inside the sentence you write when you make one — the *counted when* clause —
+and it can't be changed later (see [Notes](#notes)), so it's worth thirty seconds.
 
-### "It gets scheduled"
+### "It's on the calendar"
 
 A period is closed by **a calendar event existing for it**. Whether it happened is
 deliberately not tracked.
@@ -73,7 +73,7 @@ You then choose whether Waffled can pick the time itself:
 - **Off** — the cadence is known but *when* is an open decision every period. Waffled will
   ask you to pick a time as each period's deadline approaches.
 
-### "You do it"
+### "I mark it done"
 
 A period is closed by **you doing the thing**, and the clock restarts from when you
 *actually* did it — so doing it two weeks late shifts everything two weeks instead of
@@ -84,28 +84,56 @@ smoke-detector batteries. These are exactly the items a calendar grid gets wrong
 
 ## Setting one up
 
-**Rhythms → New rhythm.** After the shape picker:
+**Rhythms → New rhythm.** You say it as a sentence and everything else has a sane default:
 
-- **What** and an optional **emoji** — the emoji is what shows on the Today card and in
-  countdowns.
-- **Every** *N* **days / weeks / months / years** — the cadence, for both shapes.
-- **Who** — a person, or **Whole household** (the default). "My self-care day" is not "our
-  self-care day", and a booked rhythm inherits this as the event's owner, so it can be
-  private to that person.
-- **First due** *(you-do-it)* or **Periods start** *(it-gets-scheduled)* — the anchor. For a
-  scheduled rhythm this is what makes "which period are we in?" answerable: period *N* runs
-  from the start date plus *N* cadences.
-- **The nudge runway** — how many days of warning you want. For a you-do-it rhythm that's
-  "warn me this many days before it's due"; for a scheduled one it's "how many days'
-  warning before the **booking window** closes". The booking window is simply one cadence:
-  a weekly rhythm opens a fresh one every week, and the runway is the tail of it.
+> 🌬 **Air filter** every **3** **months**, counted when **I mark it done**, on **Kevin**
 
-  It defaults to **14 days** and is **capped at half the cadence** — a runway longer than
-  the cycle never closes, so the item would nag forever and you'd learn to ignore it. Ask
-  for 14 days on a weekly rhythm and you'll get three. The form spells out what you'll
-  actually get, in days, so a number that got trimmed doesn't quietly become a mystery
-  later. This is also why a weekly rhythm set to one day's warning shows nothing on Today
-  for most of the week: that's the runway working, not a fault.
+Each bolded part is editable in place. **What** and the optional **emoji** are the name and
+the icon you'll see on the Today card and in countdowns; **every N days / weeks / months /
+years** is the cadence, which both shapes use; **counted when** is the shape (above);
+and **on** is a person, or **the whole household** (the default). "My self-care day" is not
+"our self-care day", and a booked rhythm inherits this as the event's owner, so it can be
+private to that person.
+
+### What it will actually do
+
+Underneath the sentence, Waffled states the consequence in plain language before you commit
+to it — the two dates that are the whole promise:
+
+> Next one lands around **November 19**. It'll be on your Today card from **November 5**. If
+> you do it late the next one moves with it — misses never stack up.
+
+A scheduled rhythm gets the other promise instead: that nobody will ever be asked whether it
+happened, and the date its booking window closes if nothing is on the calendar by then.
+
+Two things worth knowing about those dates:
+
+- **A new rhythm is due one full cadence out, not today.** "Every 3 months, starting now"
+  means the first one lands in three months. If you're adding something you're already
+  behind on, set **First one due** under More options.
+- **The date is the one you'll really get.** The runway is capped at half the cadence (see
+  below), and the card quotes the capped number, so it never promises a nudge on a day
+  nothing is going to happen.
+
+### More options
+
+Folded away, because each has a default worth having:
+
+- **First one due** *(I-mark-it-done)* or **First period starts** *(it's-on-the-calendar)* —
+  the anchor. For a scheduled rhythm this is what makes "which period are we in?"
+  answerable: period *N* runs from the start date plus *N* cadences.
+- **Start nudging me** — how many days of warning you want. For an I-mark-it-done rhythm
+  that's "this many days early"; for a scheduled one it's "this many days before the
+  **booking window** closes". The booking window is simply one cadence: a weekly rhythm
+  opens a fresh one every week, and the runway is the tail of it.
+
+  It **follows the cadence** unless you set it — up to 14 days, and never more than half the
+  cycle. That cap is the real rule: a runway longer than the cycle never closes, so the item
+  would nag forever and you'd learn to ignore it. Ask for 14 days on a weekly rhythm and
+  you'll get three, and the form says so rather than letting a trimmed number become a
+  mystery later. This is also why a weekly rhythm set to one day's warning shows nothing on
+  Today for most of the week: that's the runway working, not a fault.
+- **Put it on the calendar automatically** *(it's-on-the-calendar only)* — see above.
 - **Notes** — the bit you'll want later: *"Furnace, 20x25x1"*.
 
 ## Living with them
@@ -128,7 +156,7 @@ shows how much of the current cycle is already spent. Rows are ordered soonest-f
 each group, so the top of the page is always the thing most worth your attention.
 
 You won't see the two shapes named anywhere on this page, and that's deliberate — the
-difference shows up where it changes what you'd do. A you-do-it rhythm reads *"last done
+difference shows up where it changes what you'd do. An I-mark-it-done rhythm reads *"last done
 Aug 19"* and offers **I did it**; a scheduled one reads *"not on the calendar yet"* and
 offers **Book a time**. Steady rows offer no button at all; everything else — backdating,
 skipping, editing, pausing — lives in the row's **⋯** menu.
@@ -139,7 +167,7 @@ The Rhythms card shows **only what needs attention today**, and **renders nothin
 otherwise — most days a quarterly register is quiet, and an empty card every morning is how
 a board stops being read. Anything overdue sorts to the top.
 
-Each row gets the verb its shape deserves: a you-do-it rhythm offers **Mark done**, a
+Each row gets the verb its shape deserves: an I-mark-it-done rhythm offers **Mark done**, a
 scheduled one offers **Book a time** and **Skip**. There is no "done" on a scheduled rhythm,
 because that isn't a question rhythms ask.
 
@@ -160,7 +188,7 @@ a rhythm"** — so a booked rhythm doesn't look identical to every other event.
 
 ### Marking a completion done
 
-A you-do-it rhythm can be completed from the Today card or the register, **whether or not
+An I-mark-it-done rhythm can be completed from the Today card or the register, **whether or not
 it's due yet** — "I did this today" resets the clock from today. Once it's done the button
 says **Done today ✓** rather than offering itself again, so you can tell the tap landed;
 pressing it twice in a day doesn't record two of anything.

@@ -39,9 +39,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   moment you create it; the day it lands on is picked with the same weekday control the
   calendar uses, rather than by typing a repeat rule. Something you did but forgot to log
   can be recorded for **the day it actually happened**, which matters for the shapes whose
-  clock restarts from that date. Off by default — turn **Rhythms** on in Settings →
-  Modules. Everything ships on web, kiosk, iPhone and iPad; the regrouped register lands on
-  web and kiosk first.
+  clock restarts from that date. Making one is a **sentence you edit in place** — *Air
+  filter every 3 months, counted when I mark it done, on Kevin* — with everything else
+  folded away behind More options, and Waffled states the consequence underneath before you
+  commit to it: the day the next one lands, the day it starts appearing on Today, and the
+  promise that doing it late moves the next one instead of stacking a miss. A new rhythm is
+  due **one full cadence out** rather than immediately, so it doesn't arrive already
+  overdue, and the warning runway sizes itself to the cadence instead of always starting at
+  a fortnight. Off by default — turn **Rhythms** on in Settings → Modules. Everything ships
+  on web, kiosk, iPhone and iPad; the regrouped register and the sentence form land on web
+  and kiosk first.
 - **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
   hardware run, the packing list, whatever's live this week — right on the Today board,
   with tap-to-tick-off. Pick which list from the card itself, the same way the Goals

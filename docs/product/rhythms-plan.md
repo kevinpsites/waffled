@@ -17,8 +17,9 @@ groups by urgency (Needs you now / Coming up / Steady, paused named at the botto
 anchored by a countdown over a progress hairline, one verb per row and the rest behind a ⋯
 menu. The shapes survive as a first-class choice where you make one, and as the language of
 each row, but they are no longer headings. **Shipped on web/kiosk; iPhone and iPad still
-group by shape.** Still to come: the creation form as an editable sentence with a
-consequence line, the Today card as a countdown block, and the iPad list+detail split with
+group by shape.** The creation form is now an editable sentence with a consequence card
+stating what it will do, and its defaults follow the cadence rather than a fixed number.
+Still to come: the Today card as a countdown block, and the iPad list+detail split with
 completion history. Three things the design asks for have no server behind them yet — "push
 out a week" (there is no endpoint; `nextDueAt` is not in `UpdateRhythmInput`), the booked
 time on a settled row (the list returns `satisfied` as a boolean, no event time), and the
