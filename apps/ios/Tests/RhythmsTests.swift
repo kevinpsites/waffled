@@ -99,10 +99,10 @@ struct RhythmStatusLineTests {
     func dueLines() {
         #expect(RhythmFormat.dueLabel("2026-08-18T09:00:00Z", overdue: false, now: now, calendar: utcCal) == "due today")
         #expect(RhythmFormat.dueLabel("2026-08-19T09:00:00Z", overdue: false, now: now, calendar: utcCal) == "due tomorrow")
-        #expect(RhythmFormat.dueLabel("2026-08-23T09:00:00Z", overdue: false, now: now, calendar: utcCal) == "due in 5 days")
-        #expect(RhythmFormat.dueLabel("2026-08-15T09:00:00Z", overdue: true, now: now, calendar: utcCal) == "3 days overdue")
-        // Overdue by a fraction of a day still reads as a day late, never "0 days".
-        #expect(RhythmFormat.dueLabel("2026-08-18T09:00:00Z", overdue: true, now: now, calendar: utcCal) == "1 day overdue")
+        #expect(RhythmFormat.dueLabel("2026-08-23T09:00:00Z", overdue: false, now: now, calendar: utcCal) == "in 5 days")
+        #expect(RhythmFormat.dueLabel("2026-08-15T09:00:00Z", overdue: true, now: now, calendar: utcCal) == "3 days late")
+        // Late by a fraction of a day still reads as a day late, never "0 days".
+        #expect(RhythmFormat.dueLabel("2026-08-18T09:00:00Z", overdue: true, now: now, calendar: utcCal) == "1 day late")
     }
 
     @Test("The scheduling shape talks about the booking window, never follow-through")
@@ -298,7 +298,7 @@ struct RhythmsModelTests {
         #expect(model.loaded)
         #expect(model.attention.map(\.rhythm.id) == ["a", "b"])
         // Precomputed once per load — a view body must never redo this date math.
-        #expect(model.statusLines["a"] == "3 days overdue")
+        #expect(model.statusLines["a"] == "3 days late")
         #expect(model.statusLines["b"] == "7 days left to book it")
     }
 

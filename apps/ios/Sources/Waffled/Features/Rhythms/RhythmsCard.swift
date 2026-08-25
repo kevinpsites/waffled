@@ -8,8 +8,12 @@ import SwiftUI
 /// the web card and the Lists card): most days a quarterly register is quiet, and an empty
 /// card on the board every morning is how a board stops being read.
 ///
+/// Each row leads with its countdown and follows with the cadence — "2 days late · every
+/// 3 months" — because on a board read from the other side of a kitchen the cadence is the
+/// half you already know and the countdown is the half you don't.
+///
 /// The two shapes get different verbs on purpose:
-///   `.due`         — you did the thing, so "Mark done" is the honest action.
+///   `.due`         — you did the thing, so "I did it" is the honest action.
 ///   `.unscheduled` — a calendar event exists for the period, or it doesn't. The action is
 ///                    to book it; there is no "done", no streak and no "on track", because
 ///                    whether you actually went is deliberately not a question a rhythm asks.
@@ -64,25 +68,56 @@ struct RhythmsTodayCard: View {
     @ViewBuilder private var cardBody: some View {
         VStack(alignment: .leading, spacing: kiosk ? 12 : 10) {
             Button(action: onOpen) {
-                HStack(spacing: 8) {
-                    Text("🔁 Rhythms")
-                        .font(kiosk ? .system(size: 16, weight: .heavy) : .system(size: 12.5, weight: .bold))
-                        .foregroundStyle(kiosk ? WF.ink : WF.ink2)
-                    Spacer(minLength: 6)
-                    Text(model.attention.count == 1 ? "1 needs attention" : "\(model.attention.count) need attention")
-                        .font(.system(size: kiosk ? 13 : 12)).foregroundStyle(WF.ink3)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: kiosk ? 13 : 12, weight: kiosk ? .bold : .semibold))
-                        .foregroundStyle(WF.ink3)
+                // Both halves of where you stand when there's room for both; the title and
+                // the way in when there isn't. ViewThatFits rather than a width guess:
+                // this card sits in a phone list AND in a kiosk column, and the count's
+                // own length changes with the number.
+                ViewThatFits(in: .horizontal) {
+                    header(showingCount: true)
+                    header(showingCount: false)
                 }
             }
             .buttonStyle(.plain)
 
             ForEach(model.attention.prefix(cap)) { row($0) }
+
             if model.attention.count > cap {
                 Text("+\(model.attention.count - cap) more")
                     .font(.system(size: kiosk ? 13 : 11, weight: .semibold)).foregroundStyle(WF.ink3)
             }
+        }
+        // The header's total needs the whole register, which is a second request. It is
+        // asked for HERE rather than by the parent so it only happens on days this card
+        // actually renders: SwiftUI installs no lifecycle modifier on an EmptyView, and a
+        // quarterly register is quiet most mornings. A request per board refresh to render
+        // something nobody sees is not a trade worth making.
+        .task {
+            if !model.listLoaded { await model.loadAll() }
+        }
+    }
+
+    /// The card's header. `showingCount` is dropped by `ViewThatFits` when the column is
+    /// too narrow for it — the title and the way into the register both stay.
+    @ViewBuilder private func header(showingCount: Bool) -> some View {
+        HStack(spacing: 8) {
+            Text("🔁 Rhythms")
+                .font(kiosk ? .system(size: 16, weight: .heavy) : .system(size: 12.5, weight: .bold))
+                .foregroundStyle(kiosk ? WF.ink : WF.ink2)
+                .lineLimit(1).fixedSize()
+            if showingCount {
+                Text(model.attention.count == 1 ? "1 wants attention" : "\(model.attention.count) want attention")
+                    .font(.system(size: kiosk ? 13 : 12)).foregroundStyle(WF.ink3)
+                    .lineLimit(1).fixedSize()
+            }
+            Spacer(minLength: 6)
+            // The reassuring half: the others are handled, and the register is one tap
+            // away. Held back until the count has arrived rather than flashing "All 0".
+            Text(model.rhythms.isEmpty ? "All" : "All \(model.rhythms.count)")
+                .font(.system(size: kiosk ? 13 : 12)).foregroundStyle(WF.ink3)
+                .lineLimit(1).fixedSize()
+            Image(systemName: "arrow.right")
+                .font(.system(size: kiosk ? 13 : 12, weight: kiosk ? .bold : .semibold))
+                .foregroundStyle(WF.ink3)
         }
     }
 
@@ -97,7 +132,14 @@ struct RhythmsTodayCard: View {
                     .font(.system(size: kiosk ? 13 : 11)).foregroundStyle(overdue(item) ? WF.danger : WF.ink3)
                     .lineLimit(1)
             }
-            Spacer(minLength: kiosk ? 8 : 6)
+            // The verb refuses to wrap, so without this the row satisfies it by starving
+            // the text column instead and the rhythm's own name collapses to an ellipsis.
+            // Priority says which side gives: the title truncates, the verb never does.
+            // No Spacer after this: an expanding frame and an expanding Spacer split the
+            // free width between them, so the title got half of what was going spare and
+            // collapsed to "T…" on the kiosk board. The frame does the pushing on its own.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
             actions(item)
         }
     }
@@ -106,30 +148,51 @@ struct RhythmsTodayCard: View {
         item.kind == .due && (item.overdue ?? false)
     }
 
+    /// Everything on this card wants attention, so a loud button on every row makes none
+    /// of them mean anything. The emphasis is kept for what is actually late, or a booking
+    /// window with a day left in it.
+    private func urgent(_ item: WaffledAPI.RhythmAttentionItem) -> Bool {
+        if overdue(item) { return true }
+        guard item.kind == .unscheduled, let end = item.periodEnd,
+              let date = RhythmFormat.moment(end, Cal.current) else { return false }
+        return RhythmFormat.dayDiff(date, Date(), Cal.current) <= 1
+    }
+
     private func subtitle(_ item: WaffledAPI.RhythmAttentionItem) -> String {
         let status = model.statusLines[item.rhythm.id] ?? ""
         switch item.kind {
         case .due:
-            return "\(RhythmFormat.cadenceLabel(item.rhythm.every)) · \(status)"
+            // Countdown first, cadence second — see the note at the top of this file.
+            return "\(status) · \(RhythmFormat.cadenceLabel(item.rhythm.every))"
         case .unscheduled:
             // An autoSchedule rhythm is normally absent from this list — its recurring event
             // IS the satisfied state. Turning up here means the calendar and the intention
             // have disagreed, so the offer is to put the series back.
-            let lead = item.rhythm.autoSchedule ? "The series needs putting back" : "Not on the calendar yet"
-            return status.isEmpty ? lead : "\(lead) · \(status)"
+            // "Not on the calendar yet" was true of every row on this card and so
+            // distinguished nothing; the deadline is what differs. The series anomaly
+            // keeps its explanation, because that one is genuinely unusual.
+            guard item.rhythm.autoSchedule else { return status }
+            return status.isEmpty ? "The series needs putting back"
+                                  : "\(status) · the series needs putting back"
         }
     }
 
     @ViewBuilder private func actions(_ item: WaffledAPI.RhythmAttentionItem) -> some View {
         switch item.kind {
         case .due:
-            RhythmActionButton(label: "Mark done", kiosk: kiosk, busy: busyId == item.rhythm.id) {
+            RhythmActionButton(label: "I did it", kiosk: kiosk,
+                               tint: urgent(item) ? WF.primary : WF.panel,
+                               labelColor: urgent(item) ? .white : WF.ink,
+                               busy: busyId == item.rhythm.id) {
                 run(item.rhythm.id) { try await model.markDone(item.rhythm.id) }
             }
         case .unscheduled:
             HStack(spacing: kiosk ? 8 : 6) {
                 RhythmActionButton(label: item.rhythm.autoSchedule ? "Put it back" : "Book a time",
-                                   kiosk: kiosk, busy: false) { booking = item }
+                                   kiosk: kiosk,
+                                   tint: urgent(item) ? WF.primary : WF.panel,
+                                   labelColor: urgent(item) ? .white : WF.ink,
+                                   busy: false) { booking = item }
                 // Skipping is the quiet way out of a period; tucked in a menu so the booking
                 // action stays the obvious one.
                 Menu {
@@ -269,6 +332,10 @@ struct RhythmActionButton: View {
                     // A colored fill stays saturated in both themes, so .white is right
                     // for the default; a wash passes its own ink in.
                     .foregroundStyle(labelColor)
+                    // Never wrap. In a narrow kiosk column "Book a time" came out as three
+                    // stacked characters — the row has to give up width from the title,
+                    // which can truncate, rather than from the verb, which cannot.
+                    .lineLimit(1).fixedSize(horizontal: true, vertical: false)
             }
             .padding(.horizontal, kiosk ? 12 : 10).padding(.vertical, kiosk ? 7 : 5)
             .background(tint).clipShape(Capsule())

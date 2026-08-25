@@ -122,10 +122,12 @@ enum RhythmFormat {
                          calendar: Calendar = Cal.current) -> String {
         guard let target = EventTime.parse(dueAt) else { return overdue ? "overdue" : "due" }
         let days = dayDiff(target, now, calendar)
-        if overdue || days < 0 { return "\(plural(max(1, -days), "day")) overdue" }
+        // "late", matching the register's countdown, rather than "overdue" — the two
+        // surfaces describe the same rhythm and should not use two words for it.
+        if overdue || days < 0 { return "\(plural(max(1, -days), "day")) late" }
         if days == 0 { return "due today" }
         if days == 1 { return "due tomorrow" }
-        return "due in \(plural(days, "day"))"
+        return "in \(plural(days, "day"))"
     }
 
     /// The scheduling shape's status line. Deliberately about the booking window closing —
