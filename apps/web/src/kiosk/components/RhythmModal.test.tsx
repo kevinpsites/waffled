@@ -1,0 +1,179 @@
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { RhythmModal } from './RhythmModal'
+
+// The create form says the rhythm as a sentence — "🌬 Air filter every 3 months,
+// counted when I mark it done, on Kevin" — and then states, underneath it, what that
+// sentence will actually do. Everything else is a default worth having, folded away.
+//
+// The sentence is made of REAL form controls, not clickable spans: each token is an
+// input or a select carrying an aria-label, because there is nowhere to hang a visible
+// one. The single exception is the mode token, which opens a listbox — the two options
+// need their explanations shown, and a <select> has nowhere to put them.
+
+const calls: { url: string; method: string; body: Record<string, unknown> | null }[] = []
+
+function mockApi() {
+  calls.length = 0
+  globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    const u = String(url)
+    const method = init?.method ?? 'GET'
+    calls.push({ url: u, method, body: init?.body ? JSON.parse(String(init.body)) : null })
+    if (u.includes('/api/persons')) {
+      return {
+        ok: true,
+        json: async () => ({
+          persons: [{ id: 'p1', name: 'Kevin', avatarEmoji: '🐻', colorHex: '#2F7FED', memberType: 'adult', isAdmin: true }],
+        }),
+      }
+    }
+    return { ok: true, json: async () => ({ rhythm: {} }) }
+  }) as unknown as typeof fetch
+}
+
+const posts = () => calls.filter((c) => c.method === 'POST')
+
+const openCreate = () => {
+  render(<RhythmModal onClose={() => {}} />)
+  return screen.getByRole('dialog')
+}
+
+// The mode token is a button, not a select — see the note above.
+const openMode = () => fireEvent.click(screen.getByRole('button', { name: /counted when/i }))
+const moreOptions = () => screen.getByRole('button', { name: /more options/i })
+
+beforeEach(() => {
+  mockApi()
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  // Local midday, so "today" is the same calendar day either side of UTC.
+  vi.setSystemTime(new Date(2026, 7, 19, 12, 0, 0))
+})
+afterEach(() => vi.useRealTimers())
+
+describe('New rhythm — the sentence', () => {
+  it('asks for the whole rhythm as labelled controls, not clickable text', async () => {
+    const dialog = openCreate()
+    // The four tokens anyone actually has to answer. Keyboard users get to all of
+    // them, and so do the edit tests that have always found them this way.
+    expect(within(dialog).getByLabelText(/^what$/i)).toBeInTheDocument()
+    expect(within(dialog).getByLabelText(/^who$/i)).toBeInTheDocument()
+    expect(within(dialog).getByLabelText(/how often/i)).toBeInTheDocument()
+    expect(within(dialog).getByLabelText(/^unit$/i)).toBeInTheDocument()
+  })
+
+  it('starts on "I mark it done", the shape that forgives being late', async () => {
+    openCreate()
+    // Following the redesign, and a deliberate flip from the old default. A booking
+    // rhythm builds a period grid and wants the calendar; a completion rhythm needs
+    // only a date, and its whole promise is that one late turn moves the next one
+    // instead of stacking a miss.
+    expect(screen.getByRole('button', { name: /counted when/i })).toHaveTextContent(/i mark it done/i)
+  })
+
+  it('explains both shapes where the choice is made', async () => {
+    openCreate()
+    openMode()
+    const list = screen.getByRole('listbox')
+    expect(within(list).getByText(/late once/i)).toBeInTheDocument()
+    expect(within(list).getByText(/nobody asks later whether it happened/i)).toBeInTheDocument()
+  })
+})
+
+describe('New rhythm — the consequence card', () => {
+  it('names the day it lands and the day it starts asking', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/how often/i), { target: { value: '3' } })
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    // Aug 19 + 3 months = Nov 19; the default 14-day runway opens Nov 5.
+    await waitFor(() => expect(within(dialog).getByText(/November 19/)).toBeInTheDocument())
+    expect(within(dialog).getByText(/November 5/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/misses never stack up/i)).toBeInTheDocument()
+  })
+
+  it('promises the runway the server will keep, not the one that was typed', async () => {
+    // A weekly rhythm cannot hold a 14-day runway — the server trims it to 3. The
+    // card must name the day it will really start asking, or it is promising a
+    // nudge that never comes.
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/how often/i), { target: { value: '1' } })
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'weeks' } })
+    fireEvent.click(moreOptions())
+    fireEvent.change(within(dialog).getByLabelText(/start nudging/i), { target: { value: '14' } })
+    // Aug 19 + 1 week = Aug 26, trimmed runway of 3 days opens Aug 23.
+    await waitFor(() => expect(within(dialog).getByText(/August 26/)).toBeInTheDocument())
+    expect(within(dialog).getByText(/August 23/)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/August 12/)).toBeNull()
+    expect(within(dialog).getByText(/trimmed/i)).toBeInTheDocument()
+  })
+
+  it('sizes the default runway to the cadence instead of always offering a fortnight', async () => {
+    // 14 days on a weekly rhythm is trimmed to 3 by the server. An untouched form
+    // that opened promising a fortnight would be explaining away a clamp nobody
+    // asked for, on the very first screen.
+    const dialog = openCreate()
+    fireEvent.click(moreOptions())
+    expect(within(dialog).getByLabelText(/start nudging/i)).toHaveValue(3)
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    expect(within(dialog).getByLabelText(/start nudging/i)).toHaveValue(14)
+    expect(within(dialog).queryByText(/trimmed/i)).toBeNull()
+  })
+
+  it('says the booking shape closes a window rather than coming due', async () => {
+    const dialog = openCreate()
+    openMode()
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(/it's on the calendar/i))
+    expect(within(dialog).getByText(/never ask whether it happened/i)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/misses never stack up/i)).toBeNull()
+  })
+})
+
+describe('New rhythm — more options', () => {
+  it('keeps the defaults folded away until they are asked for', async () => {
+    const dialog = openCreate()
+    expect(within(dialog).queryByLabelText(/notes/i)).toBeNull()
+    fireEvent.click(moreOptions())
+    expect(within(dialog).getByLabelText(/notes/i)).toBeInTheDocument()
+    expect(within(dialog).getByLabelText(/start nudging/i)).toBeInTheDocument()
+  })
+
+  it('offers the anchor it is quoting a date from', async () => {
+    // The card promises "next one lands around Nov 19". The input that decides that
+    // date has to be reachable, or the promise is unfalsifiable.
+    const dialog = openCreate()
+    fireEvent.click(moreOptions())
+    expect(within(dialog).getByLabelText(/first one due/i)).toBeInTheDocument()
+  })
+})
+
+describe('New rhythm — what gets created', () => {
+  it('dates a completion rhythm one full cadence out, not today', async () => {
+    // Anchored at today, every new rhythm arrives already overdue and shouting from
+    // "Needs you now" — which is not what "every 3 months, starting now" means.
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Air filter' } })
+    fireEvent.change(within(dialog).getByLabelText(/how often/i), { target: { value: '3' } })
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    const body = posts()[0].body!
+    expect(body.satisfiedBy).toBe('completion')
+    expect(body.every).toBe('3 months')
+    expect(String(body.nextDueAt)).toContain('2026-11-19')
+    // The shape constraint rejects a row carrying both anchors.
+    expect(body).not.toHaveProperty('startsOn')
+  })
+
+  it('anchors a booking rhythm at the period start instead', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Date night' } })
+    openMode()
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(/it's on the calendar/i))
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    const body = posts()[0].body!
+    expect(body.satisfiedBy).toBe('scheduling')
+    expect(body.startsOn).toBe('2026-08-19')
+    expect(body).not.toHaveProperty('nextDueAt')
+  })
+})

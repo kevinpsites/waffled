@@ -71,6 +71,20 @@ function openMenu(title: string) {
   fireEvent.click(screen.getByRole('button', { name: new RegExp(`^more for ${title}$`, 'i') }))
 }
 
+// The shape is no longer a pair of cards at the top of the create form. It is the
+// sentence's "counted when" clause, and it opens a listbox rather than a select
+// because each option needs its consequence spelled out next to it.
+function pickMode(dialog: HTMLElement, label: RegExp) {
+  fireEvent.click(within(dialog).getByRole('button', { name: /counted when/i }))
+  fireEvent.click(within(screen.getByRole('listbox')).getByText(label))
+}
+
+// Anchors, the runway and auto-scheduling are defaults worth having rather than
+// questions worth asking, so they sit behind a disclosure now.
+function openMore(dialog: HTMLElement) {
+  fireEvent.click(within(dialog).getByRole('button', { name: /more options/i }))
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.setSystemTime(new Date('2026-08-18T12:00:00Z'))
@@ -122,12 +136,13 @@ describe('Rhythms screen', () => {
     renderScreen()
     fireEvent.click(await screen.findByRole('button', { name: /new rhythm/i }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: /you do it/i }))
+    openMore(dialog)
+    pickMode(dialog, /i mark it done/i)
     fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Smoke detector batteries' } })
-    fireEvent.change(within(dialog).getByLabelText(/^every$/i), { target: { value: '6' } })
+    fireEvent.change(within(dialog).getByLabelText(/how often/i), { target: { value: '6' } })
     fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
-    fireEvent.change(within(dialog).getByLabelText(/first due/i), { target: { value: '2026-09-01' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: /^create rhythm$/i }))
+    fireEvent.change(within(dialog).getByLabelText(/first one due/i), { target: { value: '2026-09-01' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /^add rhythm$/i }))
 
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))).toBe(true))
     const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))!.body!
@@ -144,12 +159,13 @@ describe('Rhythms screen', () => {
     renderScreen()
     fireEvent.click(await screen.findByRole('button', { name: /new rhythm/i }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: /it gets scheduled/i }))
+    openMore(dialog)
+    pickMode(dialog, /it's on the calendar/i)
     fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Self-care day' } })
-    fireEvent.change(within(dialog).getByLabelText(/^every$/i), { target: { value: '1' } })
+    fireEvent.change(within(dialog).getByLabelText(/how often/i), { target: { value: '1' } })
     fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
-    fireEvent.change(within(dialog).getByLabelText(/periods start/i), { target: { value: '2026-09-01' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: /^create rhythm$/i }))
+    fireEvent.change(within(dialog).getByLabelText(/first period starts/i), { target: { value: '2026-09-01' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /^add rhythm$/i }))
 
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))).toBe(true))
     const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))!.body!
@@ -164,11 +180,12 @@ describe('Rhythms screen', () => {
     renderScreen()
     fireEvent.click(await screen.findByRole('button', { name: /new rhythm/i }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: /it gets scheduled/i }))
+    openMore(dialog)
+    pickMode(dialog, /it's on the calendar/i)
     fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Trash night' } })
-    fireEvent.change(within(dialog).getByLabelText(/periods start/i), { target: { value: '2026-09-01' } })
+    fireEvent.change(within(dialog).getByLabelText(/first period starts/i), { target: { value: '2026-09-01' } })
     fireEvent.click(within(dialog).getByLabelText(/put it on the calendar automatically/i))
-    fireEvent.click(within(dialog).getByRole('button', { name: /^create rhythm$/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /^add rhythm$/i }))
 
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))).toBe(true))
     const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))!.body!
@@ -184,14 +201,15 @@ describe('Rhythms screen', () => {
     renderScreen()
     fireEvent.click(await screen.findByRole('button', { name: /new rhythm/i }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: /it gets scheduled/i }))
+    openMore(dialog)
+    pickMode(dialog, /it's on the calendar/i)
     fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Trash night' } })
-    fireEvent.change(within(dialog).getByLabelText(/periods start/i), { target: { value: '2026-09-01' } })
+    fireEvent.change(within(dialog).getByLabelText(/first period starts/i), { target: { value: '2026-09-01' } })
     fireEvent.click(within(dialog).getByLabelText(/put it on the calendar automatically/i))
 
     // Wednesday, chosen the same way it's chosen on the calendar.
     fireEvent.click(within(dialog).getByRole('button', { name: 'WE' }))
-    fireEvent.click(within(dialog).getByRole('button', { name: /^create rhythm$/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /^add rhythm$/i }))
 
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))).toBe(true))
     const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))!.body!
@@ -203,7 +221,8 @@ describe('Rhythms screen', () => {
     renderScreen()
     fireEvent.click(await screen.findByRole('button', { name: /new rhythm/i }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: /it gets scheduled/i }))
+    openMore(dialog)
+    pickMode(dialog, /it's on the calendar/i)
     fireEvent.click(within(dialog).getByLabelText(/put it on the calendar automatically/i))
 
     // Still reachable — imported rules and odd cadences need it — but no longer the
@@ -217,9 +236,10 @@ describe('Rhythms screen', () => {
     renderScreen()
     fireEvent.click(await screen.findByRole('button', { name: /new rhythm/i }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: /it gets scheduled/i }))
+    openMore(dialog)
+    pickMode(dialog, /it's on the calendar/i)
     fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Trash night' } })
-    fireEvent.change(within(dialog).getByLabelText(/periods start/i), { target: { value: '2026-09-01' } })
+    fireEvent.change(within(dialog).getByLabelText(/first period starts/i), { target: { value: '2026-09-01' } })
     fireEvent.click(within(dialog).getByLabelText(/put it on the calendar automatically/i))
 
     // A rhythm's rule is DERIVED from its cadence — "every week" plus BYDAY=MO,WE would
@@ -227,7 +247,7 @@ describe('Rhythms screen', () => {
     // day replaces the first rather than adding to it.
     fireEvent.click(within(dialog).getByRole('button', { name: 'MO' }))
     fireEvent.click(within(dialog).getByRole('button', { name: 'WE' }))
-    fireEvent.click(within(dialog).getByRole('button', { name: /^create rhythm$/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /^add rhythm$/i }))
 
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))).toBe(true))
     const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/rhythms'))!.body!

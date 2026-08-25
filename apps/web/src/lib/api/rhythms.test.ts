@@ -1,6 +1,7 @@
 import {
   formatInterval, cadenceLabel, dueLabel, periodLabel, splitCadence, intervalDays,
   nudgePlan, nudgeExplainer, urgencyOf, countdown, periodProgress, daysToGo,
+  addCadence, consequence,
   type AttentionItem, type RhythmWithPeriod,
 } from './rhythms'
 
@@ -362,5 +363,85 @@ describe('periodProgress', () => {
     expect(periodProgress(rhythm({
       lastCompletedAt: at(9, 1), nextDueAt: at(8, 25),
     }), NOW)).toBeNull()
+  })
+})
+
+
+// -- The consequence card ----------------------------------------------------
+// The create form no longer asks for a due date up front; it says the cadence as a
+// sentence and then states, in plain language, what that sentence will actually do.
+// Those two dates are the whole promise, so the arithmetic behind them is pinned
+// here rather than read off a rendered card.
+
+const ymd = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+describe('addCadence', () => {
+  it('adds calendar months, not thirty-day blocks', () => {
+    // The card says "next one lands around Nov 19" for a 3-month cadence set on
+    // Aug 19. Adding 90 days would say Nov 17 and be wrong every other quarter.
+    expect(ymd(addCadence(new Date(2026, 7, 19), '3 months'))).toBe('2026-11-19')
+    expect(ymd(addCadence(new Date(2026, 7, 19), '1 mon'))).toBe('2026-09-19')
+  })
+
+  it('clamps a month-end date onto a shorter month', () => {
+    // Jan 31 + 1 month has no honest answer; Feb 28 is the one that does not skip
+    // a month entirely, which is what a naive setMonth does (it lands in March).
+    expect(ymd(addCadence(new Date(2026, 0, 31), '1 mon'))).toBe('2026-02-28')
+    expect(ymd(addCadence(new Date(2026, 0, 31), '1 month'))).toBe('2026-02-28')
+  })
+
+  it('handles days, weeks and years', () => {
+    expect(ymd(addCadence(new Date(2026, 7, 19), '10 days'))).toBe('2026-08-29')
+    expect(ymd(addCadence(new Date(2026, 7, 19), '2 weeks'))).toBe('2026-09-02')
+    expect(ymd(addCadence(new Date(2026, 7, 19), '1 year'))).toBe('2027-08-19')
+  })
+})
+
+describe('consequence', () => {
+  const AUG19 = new Date(2026, 7, 19)
+
+  it('tells a completion rhythm when it lands and when it starts asking', () => {
+    // The design's own example: every 3 months, 14 days' notice, set up today.
+    const c = consequence({ satisfiedBy: 'completion', every: '3 months', leadDays: 14, anchor: '2026-11-19' })
+    expect(ymd(c!.landsOn)).toBe('2026-11-19')
+    expect(ymd(c!.nudgeFrom)).toBe('2026-11-05')
+    expect(c!.capped).toBe(false)
+  })
+
+  it('closes a booking rhythm at the end of its first period', () => {
+    // "If nothing's on the calendar by Sep 12, it moves to Needs you now" -- a
+    // monthly window opened Aug 19 closes Sep 19, and the 7-day runway starts Sep 12.
+    const c = consequence({ satisfiedBy: 'scheduling', every: '1 month', leadDays: 7, anchor: '2026-08-19' })
+    expect(ymd(c!.landsOn)).toBe('2026-09-19')
+    expect(ymd(c!.nudgeFrom)).toBe('2026-09-12')
+  })
+
+  it('quotes the runway the SERVER will keep, not the one that was typed', () => {
+    // `least(lead_time, every/2)`: a weekly rhythm asked for 14 days' notice is
+    // stored with 3. A card promising a nudge from 14 days out would be promising
+    // a date the server will never nudge on -- the same bug the register already
+    // had once, in a new place.
+    const c = consequence({ satisfiedBy: 'completion', every: '7 days', leadDays: 14, anchor: '2026-08-26' })
+    expect(c!.capped).toBe(true)
+    expect(ymd(c!.nudgeFrom)).toBe('2026-08-23')
+    expect(ymd(c!.landsOn)).toBe('2026-08-26')
+  })
+
+  it('starts nudging on the day itself when there is no runway', () => {
+    const c = consequence({ satisfiedBy: 'completion', every: '3 months', leadDays: 0, anchor: '2026-11-19' })
+    expect(ymd(c!.nudgeFrom)).toBe('2026-11-19')
+    expect(c!.capped).toBe(false)
+  })
+
+  it('declines to promise anything from an unreadable anchor', () => {
+    expect(consequence({ satisfiedBy: 'completion', every: '3 months', leadDays: 14, anchor: '' })).toBeNull()
+  })
+
+  it('defaults a fresh completion rhythm to one full cadence out, not to today', () => {
+    // Anchoring a brand-new rhythm at today makes it due the moment it is created,
+    // so every new rhythm arrives already shouting from Needs you now. One cadence
+    // out is what "every 3 months, starting now" actually means.
+    expect(ymd(addCadence(AUG19, '3 months'))).toBe('2026-11-19')
   })
 })

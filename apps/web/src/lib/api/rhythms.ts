@@ -458,6 +458,77 @@ export function periodProgress(r: RhythmWithPeriod, now: Date = new Date()): num
   return Math.max(0, Math.min(100, Math.round(((now.getTime() - start.getTime()) / total) * 100)))
 }
 
+/**
+ * Move a date on by one cadence, on the calendar rather than in milliseconds.
+ *
+ * Months are the reason this exists: "every 3 months" from Aug 19 means Nov 19, and
+ * adding `3 * 30` days says Nov 17. The clamp on the second line is the other half —
+ * `setMonth` on Jan 31 rolls into March, silently skipping February altogether, so a
+ * month-end date is pulled back to the last day that month actually has.
+ */
+export function addCadence(from: Date, every: string): Date {
+  const { count, unit } = splitCadence(every)
+  const d = new Date(from.getTime())
+  if (unit === 'days') d.setDate(d.getDate() + count)
+  else if (unit === 'weeks') d.setDate(d.getDate() + count * 7)
+  else {
+    const months = unit === 'years' ? count * 12 : count
+    const day = d.getDate()
+    d.setDate(1)
+    d.setMonth(d.getMonth() + months)
+    d.setDate(Math.min(day, daysInMonth(d.getFullYear(), d.getMonth())))
+  }
+  return d
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate()
+}
+
+export interface ConsequenceInput {
+  satisfiedBy: SatisfiedBy
+  /** The cadence as the form holds it — '3 months'. */
+  every: string
+  /** The runway as TYPED. The clamp is applied here, not by the caller. */
+  leadDays: number
+  /**
+   * completion — the date the first one is due (YYYY-MM-DD).
+   * scheduling  — the day the first period opens (YYYY-MM-DD).
+   */
+  anchor: string
+}
+
+export interface Consequence {
+  /** completion: when it comes due. scheduling: when the booking window closes. */
+  landsOn: Date
+  /** The day it starts asking: onto Today, or into "Needs you now". */
+  nudgeFrom: Date
+  /** The typed runway did not fit in half the cadence, so the server will trim it. */
+  capped: boolean
+}
+
+/**
+ * What the sentence will actually DO, in two dates.
+ *
+ * The runway goes through `nudgePlan` rather than being subtracted raw. The server
+ * stores `least(lead_time, every / 2)`, so a weekly rhythm asked for 14 days' notice
+ * keeps 3 — and a card promising "on your Today card from the 5th" off the typed 14
+ * would be naming a day the server is never going to nudge on. The register learned
+ * this once already; the promise has to be made against the stored number.
+ */
+export function consequence(input: ConsequenceInput): Consequence | null {
+  const anchor = input.anchor ? asMoment(input.anchor) : null
+  if (!anchor || Number.isNaN(anchor.getTime())) return null
+
+  // A completion rhythm is anchored ON its due date; a booking window is anchored at
+  // its START, and what matters is when it closes — one cadence later.
+  const landsOn = input.satisfiedBy === 'scheduling' ? addCadence(anchor, input.every) : anchor
+  const { effectiveDays, capped } = nudgePlan(input.every, input.leadDays)
+  const nudgeFrom = new Date(landsOn.getTime())
+  nudgeFrom.setDate(nudgeFrom.getDate() - effectiveDays)
+  return { landsOn, nudgeFrom, capped }
+}
+
 // ── Hooks ───────────────────────────────────────────────────────────────────────
 
 export function useRhythms() {

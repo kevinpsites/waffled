@@ -284,6 +284,8 @@ describe('Rhythms — editing', () => {
     mockApi([{ ...temple, every: '7 days', leadTime: '3 days 12:00:00' }])
     renderScreen()
     const dialog = await openEditor()
+    // It now sits next to the field it explains, rather than floating in the form.
+    fireEvent.click(within(dialog).getByRole('button', { name: /more options/i }))
     expect(within(dialog).getByText(/last 3 days/i)).toBeInTheDocument()
     expect(within(dialog).queryByText(/last 14 days/i)).toBeNull()
   })

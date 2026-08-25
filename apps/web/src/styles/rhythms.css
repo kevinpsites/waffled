@@ -11,7 +11,10 @@
                                     .rhy-tick .rhy-meta .rhy-track .rhy-cd
                                     .rhy-actcell .rhy-more .rhy-menu .rhy-done
                                     .rhy-backdate* .rhy-paused-*
-     Editor    (RhythmModal.tsx)  — .rhy-anchor .rhy-shape*
+     Editor    (RhythmModal.tsx)  — .rhy-anchor .rhy-sent .rhy-fix .rhy-tok*
+                                    .rhy-chev .rhy-drop .rhy-opt* .rhy-ck
+                                    .rhy-conseq* .rhy-more-row .rhy-more-chev
+                                    .rhy-adv
      Genuinely shared             — .rhy-skip, and nothing else.
    The register originally reused .rhy-row and .rhy-main. Its rules load second, so
    `display: grid` won and every row of the Today card silently became a grid — with
@@ -185,12 +188,90 @@
   border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--panel);
 }
 
-.rhy-shape-pick { display: flex; gap: 10px; margin-bottom: 12px; }
-.rhy-shape {
-  flex: 1; text-align: left; cursor: pointer;
-  padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--hair);
-  background: var(--panel); font: inherit; color: var(--ink);
+/* The sentence. Every token is a real control wearing a chip: the browser default
+   look is stripped off with `appearance: none` and the chip is drawn here, so the
+   line reads as a sentence rather than as a row of form fields. Line-height is
+   generous because the tokens are taller than the fixed words between them. */
+.rhy-sent {
+  font-family: var(--serif); font-size: 21px; line-height: 2.1; letter-spacing: -0.01em;
+  color: var(--ink-3); margin-bottom: 16px;
 }
-.rhy-shape.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); }
-.rhy-shape-t { font-weight: 700; font-size: 14px; }
-.rhy-shape-d { font-size: 12px; font-weight: 600; color: var(--ink-3); margin-top: 2px; }
+.rhy-fix { color: var(--ink-3); }
+.rhy-tok {
+  display: inline-flex; align-items: center; gap: 4px;
+  font: inherit; font-family: var(--sans); font-size: 16px; font-weight: 650;
+  color: var(--ink); background: var(--panel);
+  border: 1px solid var(--hair); border-radius: 10px; padding: 4px 10px;
+  vertical-align: middle; cursor: pointer; -webkit-appearance: none; appearance: none;
+}
+.rhy-tok:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+/* An input keeps a caret, so it should not also claim to be a button. */
+input.rhy-tok { cursor: text; }
+input.rhy-tok::placeholder { color: var(--ink-3); font-weight: 600; }
+.rhy-tok-emoji { width: 42px; justify-content: center; font-size: 18px; padding: 4px 6px; }
+.rhy-tok-name { min-width: 120px; }
+/* Spinners would put two more clickable targets inside a sentence. */
+.rhy-tok-num { width: 52px; text-align: center; -moz-appearance: textfield; }
+.rhy-tok-num::-webkit-outer-spin-button,
+.rhy-tok-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* The select is layered UNDER its own chevron rather than given one: a native arrow
+   sits at the far right of the control and cannot be moved. */
+.rhy-tok-sel { position: relative; padding-right: 8px; }
+.rhy-tok-sel select {
+  font: inherit; font-weight: 650; color: inherit; background: none; border: 0;
+  padding: 0 18px 0 0; -webkit-appearance: none; appearance: none; cursor: pointer;
+}
+.rhy-tok-sel select:focus { outline: none; }
+.rhy-tok-sel .rhy-chev { position: absolute; right: 6px; pointer-events: none; }
+/* Stated rather than offered — an edit cannot re-shape a live rhythm. */
+.rhy-tok-fixed { cursor: default; color: var(--ink-2); background: transparent; border-style: dashed; }
+.rhy-tok-btn.on { border-color: var(--primary); }
+.rhy-chev { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.4;
+  stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; flex: none; }
+
+.rhy-tok-mode { position: relative; display: inline-block; }
+.rhy-drop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; width: 330px;
+  background: var(--card); border-radius: 16px; box-shadow: var(--sh-3); padding: 6px;
+  font-family: var(--sans); font-size: 14px; line-height: 1.4; letter-spacing: normal;
+}
+.rhy-opt { display: flex; gap: 10px; padding: 10px 11px; border-radius: 12px; cursor: pointer; }
+.rhy-opt:hover { background: var(--card-2); }
+.rhy-ck {
+  flex: none; width: 15px; height: 15px; margin-top: 2px; border-radius: 999px;
+  border: 1.6px solid var(--hair); background: var(--panel);
+}
+.rhy-opt.on .rhy-ck { border-color: var(--primary); background: var(--primary); box-shadow: inset 0 0 0 3px var(--card); }
+.rhy-opt-t { display: block; font-weight: 700; color: var(--ink); }
+.rhy-opt-d { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-3); margin-top: 2px; }
+
+/* What the sentence will actually do. Quiet on purpose: it is a consequence, not a
+   warning, and the two dates inside it are the only emphasis it needs. */
+.rhy-conseq {
+  display: flex; gap: 11px; align-items: flex-start;
+  padding: 13px 15px; margin-bottom: 14px;
+  border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--panel);
+  font-size: 13.5px; font-weight: 600; line-height: 1.5; color: var(--ink-2);
+}
+.rhy-conseq b { color: var(--ink); font-weight: 750; }
+.rhy-conseq-ic { flex: none; margin-top: 1px; }
+.rhy-conseq-ic svg { width: 17px; height: 17px; fill: none; stroke: var(--success);
+  stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.rhy-conseq-cap { margin-top: 7px; font-size: 12.5px; color: var(--ink-3); }
+
+.rhy-more-row {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  background: none; border: 0; padding: 8px 0; margin-bottom: 6px;
+  font: inherit; font-size: 13px; font-weight: 650; color: var(--ink-3);
+  cursor: pointer; text-align: left;
+}
+.rhy-more-row:hover { color: var(--ink); }
+.rhy-more-chev { display: inline-flex; transition: transform 120ms ease; }
+.rhy-more-chev.on { transform: rotate(180deg); }
+.rhy-adv { border-top: 1px solid var(--hair-2); padding-top: 13px; margin-bottom: 4px; }
+
+@media (max-width: 560px) {
+  /* The sentence wraps hard on a phone; shrink it rather than let a token break. */
+  .rhy-sent { font-size: 18px; line-height: 1.95; }
+  .rhy-drop { width: min(330px, calc(100vw - 80px)); }
+}
