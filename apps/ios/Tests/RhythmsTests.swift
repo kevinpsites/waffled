@@ -368,8 +368,8 @@ struct RhythmsModelTests {
         #expect(model.attention.map(\.rhythm.id) == ["a"])
     }
 
-    @Test("The register splits by shape and precomputes each row's detail line")
-    func listGroupsByShape() async {
+    @Test("The register bands by when, not by kind, and precomputes each row's detail line")
+    func listBandsByUrgency() async {
         let feed = RhythmFeed(all: [
             rhythm(id: "a", title: "Air filter", satisfiedBy: .completion,
                    lastCompletedAt: "2026-05-20T09:00:00Z", nextDueAt: "2026-08-20T09:00:00Z"),
@@ -379,8 +379,22 @@ struct RhythmsModelTests {
         let model = feed.model()
         await model.loadAll()
 
-        #expect(model.scheduling.map(\.id) == ["b"])
-        #expect(model.completion.map(\.id) == ["a"])
+        // Two shapes, and the grouping ignores that entirely: the filter is due in two
+        // days so it is on the horizon, and the temple visit is booked so there is
+        // nothing to do about it. Which of them is a booking rhythm decides neither.
+        #expect(model.bands.map(\.title) == ["Coming up", "Steady"])
+        #expect(model.bands.first?.rhythms.map(\.id) == ["a"])
+        #expect(model.bands.last?.rhythms.map(\.id) == ["b"])
+        #expect(model.countdowns["b"]?.number == "Booked")
+
+        // Grouping by urgency quietens most rows, so the capabilities that used to hang
+        // off a visible row have to survive the quietening rather than disappear with it.
+        // The one /attention structurally cannot report is an unbooked period whose
+        // runway has not opened — it answers "what needs attention by today?".
+        let quiet = rhythm(id: "c", title: "Self-care day", satisfiedBy: .scheduling,
+                           startsOn: "2026-07-01", currentPeriodStart: "2026-10-01",
+                           currentPeriodEnd: "2027-01-01", satisfied: false)
+        #expect(RhythmFormat.urgency(quiet, attention: nil, now: at("2026-08-18T12:00:00")) == .steady)
         // The completion row says when it was last done; the scheduling row NEVER does —
         // whether it happened is deliberately not tracked.
         #expect(model.detailLines["a"]?.contains("Last done") == true)
@@ -753,8 +767,8 @@ struct RhythmCompletionAckTests {
         let fresh = RhythmFormat.completionAction(doneToday: false, due: false)
         let nagged = RhythmFormat.completionAction(doneToday: false, due: true)
         let settled = RhythmFormat.completionAction(doneToday: true, due: false)
-        #expect(fresh == "I did this today")
-        #expect(nagged == "Mark done")
+        #expect(fresh == "I did it today")
+        #expect(nagged == "I did it")
         #expect(settled == "Done today ✓")
         #expect(Set([fresh, nagged, settled]).count == 3)
     }
@@ -766,5 +780,143 @@ struct RhythmCompletionAckTests {
         for word in ["streak", "on track", "missed", "kept up", "complete rate"] {
             #expect(!settled.contains(word))
         }
+    }
+}
+
+
+// MARK: - banding the register by when, not by kind
+
+/// The register used to be two sections named after the two shapes, which sorts a
+/// household's rhythms by a distinction only the schema cares about. Asked "what do I owe
+/// this week", you had to read both and do the merge yourself.
+///
+/// These are the same rules the web register runs on, ported so the two surfaces cannot
+/// answer the question differently. "Needs you now" is EXACTLY the server's own
+/// `/attention` list — never a second opinion computed here — because the Today card reads
+/// that list too, and two surfaces disagreeing about one rhythm is worse than either being
+/// slightly conservative.
+@Suite("Rhythm urgency banding")
+struct RhythmUrgencyTests {
+    private let now = at("2026-08-20T12:00:00")
+
+    @Test("A rhythm the server is nudging about is 'needs you now', whatever its dates say")
+    func attentionWins() {
+        let r = rhythm(nextDueAt: "2026-11-01T09:00:00Z", satisfied: true)
+        let item = due(r, at: "2026-11-01T09:00:00Z", overdue: false)
+        #expect(RhythmFormat.urgency(r, attention: item, now: now, calendar: utcCal) == .now)
+    }
+
+    @Test("Overdue still reads as urgent when the attention call has not come back")
+    func overdueWithoutAttention() {
+        // `satisfied` is `next_due_at > now()`, so an overdue rhythm is genuinely
+        // unsatisfied. The row must not go quiet just because a second request is in
+        // flight or failed.
+        let r = rhythm(nextDueAt: "2026-08-14T09:00:00Z", satisfied: false)
+        #expect(RhythmFormat.urgency(r, attention: nil, now: now, calendar: utcCal) == .now)
+    }
+
+    @Test("A fortnight is the horizon for 'coming up', flat rather than per-rhythm")
+    func comingUp() {
+        // Deliberately not derived from each rhythm's own runway: the runway governs
+        // NUDGING, which /attention already answers. This band answers "what is on the
+        // horizon" for someone who opened the page on purpose.
+        #expect(RhythmFormat.urgency(rhythm(nextDueAt: "2026-08-30T09:00:00Z"),
+                                     attention: nil, now: now, calendar: utcCal) == .soon)
+        #expect(RhythmFormat.urgency(rhythm(nextDueAt: "2026-09-20T09:00:00Z"),
+                                     attention: nil, now: now, calendar: utcCal) == .steady)
+    }
+
+    @Test("A booked period is steady, because booking it was the whole outcome")
+    func bookedIsSteady() {
+        let r = rhythm(satisfiedBy: .scheduling, every: "7 days",
+                       currentPeriodStart: "2026-08-17", currentPeriodEnd: "2026-08-24",
+                       satisfied: true)
+        #expect(RhythmFormat.urgency(r, attention: nil, now: now, calendar: utcCal) == .steady)
+    }
+
+    @Test("A paused rhythm is off, not merely quiet")
+    func pausedIsItsOwnBand() {
+        // Sorting a paused rhythm by how overdue it is would be sorting by a number that
+        // stopped meaning anything the moment it was switched off.
+        let r = rhythm(nextDueAt: "2026-08-01T09:00:00Z", isActive: false)
+        #expect(RhythmFormat.urgency(r, attention: nil, now: now, calendar: utcCal) == .paused)
+    }
+}
+
+@Suite("Rhythm countdown")
+struct RhythmCountdownTests {
+    private let now = at("2026-08-20T12:00:00")
+
+    @Test("Days late count up, so the worst row reads loudest")
+    func late() {
+        let r = rhythm(nextDueAt: "2026-08-14T09:00:00Z")
+        let cd = RhythmFormat.countdown(r, urgency: .now, now: now, calendar: utcCal)
+        #expect(cd?.number == "6")
+        #expect(cd?.unit == "days late")
+    }
+
+    @Test("Distant dates collapse into weeks and then months, so a row stays readable")
+    func collapses() {
+        // "97 days" is a number nobody converts in their head on the way past a kiosk.
+        let weeks = RhythmFormat.countdown(rhythm(nextDueAt: "2026-09-20T09:00:00Z"),
+                                           urgency: .steady, now: now, calendar: utcCal)
+        #expect(weeks?.number == "4")
+        #expect(weeks?.unit == "weeks")
+        let months = RhythmFormat.countdown(rhythm(nextDueAt: "2026-11-25T09:00:00Z"),
+                                            urgency: .steady, now: now, calendar: utcCal)
+        #expect(months?.unit == "months")
+    }
+
+    @Test("A settled booking reads 'Booked', never a follow-through claim")
+    func booked() {
+        let r = rhythm(satisfiedBy: .scheduling, every: "7 days",
+                       currentPeriodStart: "2026-08-17", currentPeriodEnd: "2026-08-24",
+                       satisfied: true)
+        let cd = RhythmFormat.countdown(r, urgency: .steady, now: now, calendar: utcCal)
+        #expect(cd?.number == "Booked")
+        #expect(cd?.unit == "this period")
+    }
+
+    @Test("An unbooked period counts down to the day the window closes")
+    func windowClosing() {
+        let r = rhythm(satisfiedBy: .scheduling, every: "7 days",
+                       currentPeriodStart: "2026-08-17", currentPeriodEnd: "2026-08-24",
+                       satisfied: false)
+        let cd = RhythmFormat.countdown(r, urgency: .soon, now: now, calendar: utcCal)
+        #expect(cd?.number == "4")
+        #expect(cd?.unit == "days left")
+    }
+}
+
+@Suite("Rhythm period progress")
+struct RhythmProgressTests {
+    private let now = at("2026-08-20T12:00:00")
+
+    @Test("The bar measures the real period for a booking rhythm")
+    func realPeriod() {
+        let r = rhythm(satisfiedBy: .scheduling, every: "7 days",
+                       currentPeriodStart: "2026-08-18", currentPeriodEnd: "2026-08-22",
+                       satisfied: false)
+        // Aug 18 00:00 to Aug 22 00:00 is 96 hours; the clock above is 60 hours into it.
+        // (The web's equivalent test reads 50 because its fixture clock is midnight.)
+        #expect(RhythmFormat.periodProgress(r, now: now, calendar: utcCal) == 63)
+    }
+
+    @Test("It stops at full instead of overflowing its track when overdue")
+    func clamped() {
+        let r = rhythm(every: "7 days", lastCompletedAt: "2026-08-01T09:00:00Z",
+                       nextDueAt: "2026-08-08T09:00:00Z")
+        #expect(RhythmFormat.periodProgress(r, now: now, calendar: utcCal) == 100)
+    }
+
+    @Test("It declines to draw a bar it cannot measure")
+    func unmeasurable() {
+        // A backdated completion later than the next due date inverts the window, and a
+        // missing due date has no window at all. Both would render as a full bar or an
+        // invisible one, and both would be a lie.
+        #expect(RhythmFormat.periodProgress(rhythm(nextDueAt: nil), now: now, calendar: utcCal) == nil)
+        #expect(RhythmFormat.periodProgress(
+            rhythm(lastCompletedAt: "2026-09-01T09:00:00Z", nextDueAt: "2026-08-25T09:00:00Z"),
+            now: now, calendar: utcCal) == nil)
     }
 }

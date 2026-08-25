@@ -25,6 +25,21 @@ import Observation
 /// is not something to put in front of a person. Pure + `nonisolated` so the model can
 /// precompute every line once per load — per `apps/ios/CLAUDE.md`, date math must never
 /// live in a view body.
+/// One band of the register, and the order they appear in.
+struct RhythmBand: Identifiable {
+    let urgency: RhythmFormat.Urgency
+    let title: String
+    let hint: String
+    let rhythms: [WaffledAPI.Rhythm]
+    var id: String { title }
+
+    static let order: [(urgency: RhythmFormat.Urgency, title: String, hint: String)] = [
+        (.now, "Needs you now", "late, or the window is closing"),
+        (.soon, "Coming up", "the next two weeks"),
+        (.steady, "Steady", "nothing to do yet"),
+    ]
+}
+
 enum RhythmFormat {
     struct Parts: Equatable {
         var year = 0, month = 0, week = 0, day = 0, hour = 0, minute = 0
@@ -149,7 +164,10 @@ enum RhythmFormat {
     /// today" is a statement about this row right now, not a record being kept.
     static func completionAction(doneToday: Bool, due: Bool) -> String {
         if doneToday { return "Done today ✓" }
-        return due ? "Mark done" : "I did this today"
+        // First person throughout, matching the sentence the rhythm was made with
+        // ("counted when I mark it done") and the web register's own verb. "Mark done"
+        // was the system telling you to do something; these are you telling it.
+        return due ? "I did it" : "I did it today"
     }
 
     /// What the nudge runway will ACTUALLY be, once the server has had it.
@@ -182,6 +200,116 @@ enum RhythmFormat {
             line += " (\(plural(max(0, leadDays), "day")) won’t fit in \(window.replacingOccurrences(of: "every ", with: "a ")), so it’s trimmed to half the cycle — a runway longer than the cycle never goes quiet)"
         }
         return line + "."
+    }
+
+    // MARK: - banding by when, not by kind
+
+    /// How far ahead "Coming up" looks, in days.
+    ///
+    /// A flat fortnight, deliberately, rather than something derived from each rhythm's own
+    /// runway. The runway governs *nudging* — when a rhythm has earned the right to
+    /// interrupt you — and that is exactly what "Needs you now" already reads. This band
+    /// answers a different question, asked by someone who deliberately opened the page:
+    /// what is on the horizon. Deriving it per-rhythm would file a quarterly rhythm's
+    /// 45-day warning and a weekly one's 3-day warning under one heading and call both
+    /// "coming up", which is not a horizon anyone could read.
+    static let comingUpDays = 14
+
+    enum Urgency: Hashable { case now, soon, steady, paused }
+
+    /// A calendar date (`yyyy-MM-dd`) reads as local midnight; an instant stands as it is.
+    static func moment(_ value: String, _ calendar: Calendar) -> Date? {
+        value.count == 10 ? DateFmt.date(value, "yyyy-MM-dd", calendar.timeZone) : EventTime.parse(value)
+    }
+
+    /// Whole days until the thing this rhythm is counting towards — its due date, or the
+    /// day its booking window closes. Negative means it has already gone past.
+    static func daysToGo(_ r: WaffledAPI.Rhythm, now: Date = Date(),
+                         calendar: Calendar = Cal.current) -> Int? {
+        let target = r.satisfiedBy == .scheduling ? r.currentPeriodEnd : r.nextDueAt
+        guard let target, let date = moment(target, calendar) else { return nil }
+        return dayDiff(date, now, calendar)
+    }
+
+    /// Which band a rhythm belongs in.
+    ///
+    /// "Needs you now" is the server's own `/attention` list and nothing else — never a
+    /// second opinion computed here. The Today card reads that same list, so the two
+    /// surfaces cannot disagree about one rhythm. The single local addition is an overdue
+    /// date: `satisfied` is `next_due_at > now()`, so a late rhythm is genuinely
+    /// unsatisfied and must not go quiet merely because a second request is in flight.
+    static func urgency(_ r: WaffledAPI.Rhythm, attention: WaffledAPI.RhythmAttentionItem?,
+                        now: Date = Date(), calendar: Calendar = Cal.current) -> Urgency {
+        if !r.isActive { return .paused }
+        if attention != nil { return .now }
+        if r.satisfiedBy == .scheduling, r.satisfied == true { return .steady }
+        guard let days = daysToGo(r, now: now, calendar: calendar) else { return .steady }
+        if days < 0 { return .now }
+        return days <= comingUpDays ? .soon : .steady
+    }
+
+    struct Countdown: Equatable {
+        let number: String
+        let unit: String
+    }
+
+    /// The row's anchor — the one thing worth reading from across a kitchen.
+    ///
+    /// Days collapse into weeks and then months past a fortnight: "97 days" is a number
+    /// nobody converts on the way past a kiosk, and the point of this line is the size of
+    /// the wait rather than its exact length.
+    static func countdown(_ r: WaffledAPI.Rhythm, urgency: Urgency, now: Date = Date(),
+                          calendar: Calendar = Cal.current) -> Countdown? {
+        if r.satisfiedBy == .scheduling, r.satisfied == true {
+            return Countdown(number: "Booked", unit: "this period")
+        }
+        guard let days = daysToGo(r, now: now, calendar: calendar) else { return nil }
+        if r.satisfiedBy == .scheduling {
+            if days <= 0 { return Countdown(number: "Today", unit: "last day") }
+            return Countdown(number: "\(days)", unit: days == 1 ? "day left" : "days left")
+        }
+        if days < 0 {
+            let late = -days
+            return Countdown(number: "\(late)", unit: late == 1 ? "day late" : "days late")
+        }
+        if days == 0 { return Countdown(number: "Today", unit: "due") }
+        if days <= 13 { return Countdown(number: "\(days)", unit: days == 1 ? "day" : "days") }
+        if days < 60 {
+            let weeks = Int((Double(days) / 7).rounded())
+            return Countdown(number: "\(weeks)", unit: weeks == 1 ? "week" : "weeks")
+        }
+        let months = Int((Double(days) / 30).rounded())
+        return Countdown(number: "\(months)", unit: months == 1 ? "month" : "months")
+    }
+
+    /// How much of the current cycle is already spent, 0–100, or nil when there is no
+    /// window to measure. A backdated completion later than the next due date inverts the
+    /// window, and a rhythm with no due date has none at all; drawing either as a full or
+    /// an empty bar would be inventing a fact.
+    static func periodProgress(_ r: WaffledAPI.Rhythm, now: Date = Date(),
+                               calendar: Calendar = Cal.current) -> Int? {
+        var start: Date
+        var end: Date
+        if r.satisfiedBy == .scheduling {
+            guard let s = r.currentPeriodStart, let e = r.currentPeriodEnd,
+                  let sd = moment(s, calendar), let ed = moment(e, calendar) else { return nil }
+            start = sd
+            end = ed
+        } else {
+            guard let due = r.nextDueAt, let ed = moment(due, calendar) else { return nil }
+            end = ed
+            if let last = r.lastCompletedAt, let ld = moment(last, calendar) {
+                start = ld
+            } else {
+                // No completion yet, so assume one whole cadence behind the due date. The
+                // approximation is invisible at three points of bar height.
+                start = ed.addingTimeInterval(-Double(days(fromInterval: r.every)) * 86400)
+            }
+        }
+        let total = end.timeIntervalSince(start)
+        guard total > 0 else { return nil }
+        let spent = now.timeIntervalSince(start) / total * 100
+        return max(0, min(100, Int(spent.rounded())))
     }
 
     /// Whole days in a Postgres interval — the cadence's length for the clamp above, and
@@ -273,6 +401,12 @@ final class RhythmsModel {
     private(set) var statusLines: [String: String] = [:]
     /// Precomputed per load: the register row's "where this stands" line.
     private(set) var detailLines: [String: String] = [:]
+    /// The register grouped by when rather than by kind, precomputed for the same reason
+    /// the lines above are: this is date math, and a view body is not where it belongs.
+    private(set) var bands: [RhythmBand] = []
+    private(set) var paused: [WaffledAPI.Rhythm] = []
+    private(set) var countdowns: [String: RhythmFormat.Countdown] = [:]
+    private(set) var progress: [String: Int] = [:]
 
     private let fetchAttention: FetchAttention
     private let fetchRhythms: FetchRhythms
@@ -326,6 +460,9 @@ final class RhythmsModel {
             statusLines = Self.statusLines(for: attention, now: now())
         }
         loaded = true
+        // Banding reads BOTH lists — "Needs you now" is the attention list itself — so it
+        // has to be redone whenever either arrives, in whichever order they do.
+        regroup()
     }
 
     /// Reload the register. A failure keeps whatever was already on screen — a dropped
@@ -347,6 +484,7 @@ final class RhythmsModel {
             listFailed = true
         }
         listLoaded = true
+        regroup()
     }
 
     /// Reload whichever surfaces are actually on screen — a Today card that never listed
@@ -356,10 +494,43 @@ final class RhythmsModel {
         if listLoaded { await loadAll() }
     }
 
-    // MARK: grouping (the register is split by shape — the two answer different questions)
+    // MARK: grouping — by WHEN, not by kind
+    //
+    // The register used to be two sections named after the two shapes, which sorts a
+    // household's rhythms by a distinction only the schema cares about. Asked "what do I
+    // owe this week", you had to read both and merge them yourself. The shapes don't
+    // disappear — they survive in each row's own words ("last done Aug 19" vs "not on the
+    // calendar yet") and in its verb, which is where the difference bears on what you do.
 
-    var scheduling: [WaffledAPI.Rhythm] { rhythms.filter { $0.satisfiedBy == .scheduling } }
-    var completion: [WaffledAPI.Rhythm] { rhythms.filter { $0.satisfiedBy == .completion } }
+    private func regroup() {
+        let clock = now()
+        var grouped: [RhythmFormat.Urgency: [WaffledAPI.Rhythm]] = [:]
+        var cds: [String: RhythmFormat.Countdown] = [:]
+        var bars: [String: Int] = [:]
+        for r in rhythms {
+            let band = RhythmFormat.urgency(r, attention: attentionItem(for: r), now: clock)
+            grouped[band, default: []].append(r)
+            if let cd = RhythmFormat.countdown(r, urgency: band, now: clock) { cds[r.id] = cd }
+            if let bar = RhythmFormat.periodProgress(r, now: clock) { bars[r.id] = bar }
+        }
+        // Soonest first inside each band, so the top of the page is always the thing most
+        // worth the next minute. A rhythm with no date sorts last rather than first.
+        for key in grouped.keys {
+            grouped[key]?.sort {
+                (RhythmFormat.daysToGo($0, now: clock) ?? Int.max)
+                    < (RhythmFormat.daysToGo($1, now: clock) ?? Int.max)
+            }
+        }
+        bands = RhythmBand.order.compactMap { spec in
+            guard let rows = grouped[spec.urgency], !rows.isEmpty else { return nil }
+            return RhythmBand(urgency: spec.urgency, title: spec.title, hint: spec.hint, rhythms: rows)
+        }
+        // Paused rhythms are NAMED rather than counted — "2 paused" alone makes you open
+        // it to find out which, every single time.
+        paused = (grouped[.paused] ?? []).sorted { $0.title < $1.title }
+        countdowns = cds
+        progress = bars
+    }
 
     /// The attention row for a rhythm, when it has one — lets the register show the same
     /// "book it / skip it" affordances the Today card does.

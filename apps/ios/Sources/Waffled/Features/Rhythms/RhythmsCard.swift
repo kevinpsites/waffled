@@ -183,6 +183,68 @@ struct RhythmGlyph: View {
     }
 }
 
+/// The countdown that anchors a register row — the one thing on it worth reading from the
+/// other side of a kitchen, which is why the number is set large and the unit small
+/// underneath rather than the two running together as a sentence.
+///
+/// It replaces the "Needs attention" badge the row used to carry. A badge said only THAT
+/// something wanted you; this says how much, which is the difference between a row you
+/// scan past and a row you act on.
+struct RhythmCountdownLabel: View {
+    let countdown: RhythmFormat.Countdown
+    /// A paused rhythm keeps its number — it is still true — but stops shouting it.
+    var muted = false
+
+    private var late: Bool { countdown.unit.contains("late") }
+    private var booked: Bool { countdown.number == "Booked" }
+
+    private var tint: Color {
+        if muted { return WF.ink3 }
+        if booked { return WF.success }
+        return late ? WF.danger : WF.ink
+    }
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(countdown.number)
+                // "Booked" is a word, not a number, so it doesn't get the display size —
+                // set large it reads as a shout about something already handled.
+                .font(.system(size: booked ? 14 : 21, weight: booked ? .bold : .semibold,
+                              design: booked ? .default : .serif))
+                .foregroundStyle(tint)
+            Text(countdown.unit)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(muted ? WF.ink3 : (late ? WF.danger : WF.ink3))
+        }
+        .fixedSize()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(countdown.number) \(countdown.unit)")
+    }
+}
+
+/// How much of the current cycle is already spent. A hairline rather than a chart: the
+/// exact fraction doesn't matter, only whether the row is near the end of its window.
+struct RhythmProgressBar: View {
+    let percent: Int
+    var late = false
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(WF.hair)
+                Capsule()
+                    .fill(late ? WF.danger : WF.ink3.opacity(0.55))
+                    // `percent` is already clamped to 0–100 by periodProgress; this keeps
+                    // the width non-negative if that ever stops being true.
+                    .frame(width: max(0, geo.size.width * Double(min(100, max(0, percent))) / 100))
+            }
+        }
+        .frame(height: 3)
+        .frame(maxWidth: 260)
+        .accessibilityHidden(true)
+    }
+}
+
 /// The compact inline action on a rhythm row ("Mark done", "Book a time"). A tinted capsule
 /// rather than a `WaffledPrimaryCTA`, which is the full-width bottom-of-sheet shape; the
 /// tint + capsule match `WaffledStatusBadge`'s treatment so the card reads as one family.
