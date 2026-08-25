@@ -86,6 +86,8 @@ describe('New rhythm — the consequence card', () => {
     // Aug 19 + 3 months = Nov 19; the default 14-day runway opens Nov 5.
     await waitFor(() => expect(within(dialog).getByText(/November 19/)).toBeInTheDocument())
     expect(within(dialog).getByText(/November 5/)).toBeInTheDocument()
+    // The token shows the choice back, not just the first option.
+    expect(within(dialog).getByLabelText(/^unit$/i)).toHaveValue('months')
     expect(within(dialog).getByText(/misses never stack up/i)).toBeInTheDocument()
   })
 

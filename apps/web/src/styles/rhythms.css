@@ -272,6 +272,11 @@ input.rhy-tok::placeholder { color: var(--ink-3); font-weight: 600; }
 
 @media (max-width: 560px) {
   /* The sentence wraps hard on a phone; shrink it rather than let a token break. */
-  .rhy-sent { font-size: 18px; line-height: 1.95; }
-  .rhy-drop { width: min(330px, calc(100vw - 80px)); }
+  .rhy-sent { font-size: 18px; line-height: 1.95; position: relative; }
+  /* The popover hangs off its own token, which on a wide card puts its left edge a
+     third of the way along the line. At 430px that pushed 89px of it off the right
+     of the screen. Anchor it to the sentence instead and let it span the width:
+     measured at 430px it now sits fully inside the card. */
+  .rhy-tok-mode { position: static; }
+  .rhy-drop { left: 0; right: 0; width: auto; }
 }
