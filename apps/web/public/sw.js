@@ -26,7 +26,7 @@ const SHELL = `${VERSION}-shell`
 const ASSETS = `${VERSION}-assets`
 const SHELL_URL = '/index.html'
 
-// Precache the shell AND every hashed asset at install time — otherwise an offline
+// Precache the shell and the app's own chunks at install time — otherwise an offline
 // reload would get the cached shell but fail to load the (never-cached) JS/CSS the
 // first load fetched before the SW took control.
 //
@@ -37,6 +37,16 @@ const SHELL_URL = '/index.html'
 // The build writes /asset-manifest.json listing the JS and CSS chunks, so read that
 // and fall back to scraping the HTML if it is missing (an older build, or a host that
 // won't serve it).
+//
+// This is NOT every file in the build, and it is worth being precise about the gap.
+// Vite's manifest plugin covers the main Rollup build only, so PowerSync's worker
+// output is absent from it: SharedSyncImplementation and WASQLiteDB, plus the VFS
+// modules they load. Nothing here precaches those. They are cached the first time the
+// sync engine loads one, because /assets/* goes through cacheFirst below — so the
+// exposure is narrow but real: a display whose very first boot on a new build happens
+// with no network can open every screen and still fail to start the calendar's local
+// database. Closing it properly means listing the output directory at build time
+// instead of trusting the manifest, which is a build change rather than a worker one.
 //
 // The .wasm files are deliberately skipped. The manifest lists four wa-sqlite builds —
 // sync/async paired with two threading models, ~7 MB together — and a browser loads
