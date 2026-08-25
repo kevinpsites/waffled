@@ -417,6 +417,19 @@ describe('consequence', () => {
     expect(ymd(c!.nudgeFrom)).toBe('2026-09-12')
   })
 
+  it('promises the same day the server actually starts nudging on', () => {
+    // Deliberately the exact case the API pins in rhythms.integration.test.ts
+    // ("surfaces as unscheduled inside the booking runway"): a period of
+    // 2026-07-01..2026-10-01 with a 14-day runway surfaces from 09-17. The server
+    // gate is `(period_start + every) - lead_time <= today`, and lead_time is
+    // clamped at INSERT, so this card and that query have to agree on a date or the
+    // form is promising a nudge the server will not send. Paired on purpose: if
+    // either side moves, one of the two tests goes red.
+    const c = consequence({ satisfiedBy: 'scheduling', every: '3 months', leadDays: 14, anchor: '2026-07-01' })
+    expect(ymd(c!.landsOn)).toBe('2026-10-01')
+    expect(ymd(c!.nudgeFrom)).toBe('2026-09-17')
+  })
+
   it('quotes the runway the SERVER will keep, not the one that was typed', () => {
     // `least(lead_time, every/2)`: a weekly rhythm asked for 14 days' notice is
     // stored with 3. A card promising a nudge from 14 days out would be promising
