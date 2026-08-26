@@ -231,6 +231,29 @@ enum RhythmFormat {
         return Consequence(landsOn: landsOn, nudgeFrom: nudgeFrom, capped: plan.capped)
     }
 
+    /// How far "push it out" moves a due date. A week — long enough to be worth pressing.
+    static let pushDays = 7
+
+    /// The new due date for "push it out a week", or nil when there is nothing to push.
+    ///
+    /// Counted from **today or the due date, whichever is later**, and both halves matter:
+    ///
+    ///  - From today when it is late. An oil change six days overdue, pushed "a week" from
+    ///    its own due date, would come back tomorrow — a control that reads as a week and
+    ///    delivers a day is worse than no control at all.
+    ///  - From the due date when it has not arrived. Something due in three days should
+    ///    move to ten days out rather than resetting to seven, so the rhythm keeps the
+    ///    shape of its own schedule instead of being re-anchored to whenever a button
+    ///    happened to be pressed.
+    ///
+    /// One period's reprieve either way: marking it done re-anchors the clock from when
+    /// you actually did it, so the push is forgotten rather than compounding.
+    static func pushOut(_ nextDueAt: String?, now: Date = Date(),
+                        calendar: Calendar = Cal.current) -> Date? {
+        guard let nextDueAt, let due = moment(nextDueAt, calendar) else { return nil }
+        return calendar.date(byAdding: .day, value: pushDays, to: max(due, now))
+    }
+
     /// The clamp, admitted next to the promise it modifies — or nil when nothing was
     /// trimmed, because a form explaining a clamp that didn't happen is how the old
     /// default came to teach the wrong thing.
@@ -652,6 +675,15 @@ final class RhythmsModel {
     /// keeps its history and can be switched back on.
     func setActive(id: String, isActive: Bool) async throws {
         try await save(id, ["isActive": .bool(isActive)])
+        await refresh()
+    }
+
+    /// "It's asking and I can't do it today." Moves the clock without claiming the thing
+    /// was done — a completion would restart the cadence from today and quietly erase the
+    /// fact that it is still outstanding.
+    func pushOut(_ rhythm: WaffledAPI.Rhythm) async throws {
+        guard let moved = RhythmFormat.pushOut(rhythm.nextDueAt, now: now()) else { return }
+        try await save(rhythm.id, ["nextDueAt": .string(RhythmFormat.isoInstant(moved))])
         await refresh()
     }
 

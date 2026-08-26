@@ -230,7 +230,7 @@ struct RhythmsView: View {
                 // In the top line rather than on one of its own: a row with nothing to do
                 // was still spending a whole line on a lone ··· button, which made a quiet
                 // register look like a busy one.
-                rowMenu(r)
+                rowMenu(r, urgency: urgency)
             }
 
             if showAction {
@@ -253,6 +253,15 @@ struct RhythmsView: View {
                 Label(r.isActive ? "Pause" : "Resume", systemImage: r.isActive ? "pause.circle" : "play.circle")
             }
             .tint(WF.warn)
+            // The design puts this on the swipe, which is the faster path once you know
+            // it is there. It is in the ··· menu too, for the same reason edit/pause/retire
+            // are: a swipe is invisible until you try it.
+            if canPush(r, urgency: urgency) {
+                Button { run(r.id) { try await model.pushOut(r) } } label: {
+                    Label("Push a week", systemImage: "clock.arrow.circlepath")
+                }
+                .tint(WF.info)
+            }
         }
     }
 
@@ -289,11 +298,27 @@ struct RhythmsView: View {
     ///
     /// Retire sits behind the same confirmation the swipe uses, and says which of the two
     /// is reversible: pausing is, retiring isn't.
-    @ViewBuilder private func rowMenu(_ r: WaffledAPI.Rhythm) -> some View {
+    /// Whether "push it out" has anything to push away from.
+    ///
+    /// Only while the rhythm is actually asking: there is nothing to defer on a Steady
+    /// row, and a control that does nothing you can feel is one that teaches people the
+    /// menu is noise. Completion shape only — a booking rhythm's periods ARE its anchor,
+    /// the server refuses the field outright, and Skip is that shape's version of this.
+    private func canPush(_ r: WaffledAPI.Rhythm, urgency: RhythmFormat.Urgency) -> Bool {
+        r.satisfiedBy == .completion && r.isActive && r.nextDueAt != nil
+            && (urgency == .now || urgency == .soon)
+    }
+
+    @ViewBuilder private func rowMenu(_ r: WaffledAPI.Rhythm, urgency: RhythmFormat.Urgency) -> some View {
         Menu {
             if r.satisfiedBy == .completion {
                 Button { backdating = r } label: {
                     Label("Log it for another day", systemImage: "calendar.badge.clock")
+                }
+                if canPush(r, urgency: urgency) {
+                    Button { run(r.id) { try await model.pushOut(r) } } label: {
+                        Label("Push it out a week", systemImage: "clock.arrow.circlepath")
+                    }
                 }
             }
             if let item = period(r) {

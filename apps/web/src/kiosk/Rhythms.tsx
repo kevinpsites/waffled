@@ -8,6 +8,7 @@ import {
   countdown,
   daysToGo,
   periodProgress,
+  pushOut,
   urgencyOf,
   type RhythmPeriod,
   type RhythmWithPeriod,
@@ -240,6 +241,23 @@ function RhythmRow({
               onClick={() => { setBackdate(todayKey()); setMenu(false) }}
             >
               Mark done on another day
+            </button>
+          )}
+          {/* "It's asking and I can't do it today." Offered only while the rhythm is
+              actually asking — there is nothing to push a Steady row away from, and a
+              control that does nothing you can feel is a control that teaches people the
+              menu is noise. Scheduling rhythms are excluded by the server too: their
+              periods ARE their anchor, so Skip is their version of this. */}
+          {!paused && !scheduling && (urgency === 'now' || urgency === 'soon') && rhythm.nextDueAt && (
+            <button
+              type="button"
+              aria-label={`Push ${rhythm.title} out a week`}
+              disabled={busy}
+              onClick={() => run(() =>
+                rhythmsApi.update(rhythm.id, { nextDueAt: pushOut(rhythm.nextDueAt)! })
+              )}
+            >
+              Push it out a week
             </button>
           )}
           {/* A period can be booked long before its runway opens — that is the case

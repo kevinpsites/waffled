@@ -290,3 +290,51 @@ describe('Rhythms — editing', () => {
     expect(within(dialog).queryByText(/last 14 days/i)).toBeNull()
   })
 })
+
+// "It's asking and I can't do it today." The clock, moved — not a completion.
+describe('pushing a rhythm out a week', () => {
+  // Six days late on the frozen clock (2026-08-18), so it sits in Needs you now.
+  const late = {
+    ...filter,
+    lastCompletedAt: '2026-05-12T09:00:00.000Z',
+    nextDueAt: '2026-08-12T09:00:00.000Z',
+    satisfied: false,
+  }
+
+  it('sends a due date a week from today, not a week from the date it missed', async () => {
+    mockApi([late])
+    renderScreen()
+    await screen.findByText('Air filter')
+    openMenu('Air filter')
+    fireEvent.click(screen.getByRole('button', { name: /push air filter out a week/i }))
+
+    await waitFor(() => expect(patches()).toHaveLength(1))
+    const sent = String(patches()[0]!.body!.nextDueAt)
+    // A control that reads as a week and delivers a day is worse than no control: from
+    // the missed date this would land on 2026-08-19, i.e. tomorrow.
+    expect(sent.slice(0, 10)).toBe('2026-08-25')
+    // Moving the clock is not claiming you did it — that would restart the cadence from
+    // today and quietly erase the fact that it is still outstanding.
+    expect(patches()[0]!.body).not.toHaveProperty('lastCompletedAt')
+  })
+
+  it('is not offered for something with nothing to push away from', async () => {
+    // `filter` is due in November — Steady. A control that does nothing you can feel is
+    // one that teaches people the menu is noise.
+    mockApi([filter])
+    renderScreen()
+    await screen.findByText('Air filter')
+    openMenu('Air filter')
+    expect(screen.queryByRole('button', { name: /push .* out a week/i })).toBeNull()
+  })
+
+  it('is never offered on a booking rhythm, which has no due date to move', async () => {
+    // Its periods ARE its anchor, and the server refuses the field outright. Skip is the
+    // booking shape's version of this.
+    mockApi([selfCare])
+    renderScreen()
+    await screen.findByText('Self-care day')
+    openMenu('Self-care day')
+    expect(screen.queryByRole('button', { name: /push .* out a week/i })).toBeNull()
+  })
+})

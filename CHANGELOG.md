@@ -58,7 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   will actually get rather than the ones you typed, so a weekly rhythm asked for a
   fortnight's notice says plainly that it is keeping three days. A new rhythm now starts
   one full cadence out instead of due today, so nothing you create arrives already
-  overdue.
+  overdue. And when something is asking and today isn't the day, **push it out a week** —
+  in the row's ⋯ menu everywhere, and on a swipe on the phone. It moves the clock without
+  claiming you did the thing, and it buys a full week of quiet even from something already
+  late; doing it for real still restarts the count from the day you actually did it.
 - **Pin a list to Today.** A new **Lists** card puts one of your custom lists — the
   hardware run, the packing list, whatever's live this week — right on the Today board,
   with tap-to-tick-off. Pick which list from the card itself, the same way the Goals

@@ -593,6 +593,26 @@ struct RhythmEditorTests {
         #expect(RhythmForm().shape == .completion)
     }
 
+    @Test("Pushing a rhythm out buys a week from today when it is already late")
+    func pushOutFromTheLaterOfTheTwo() {
+        let now = at("2026-08-20T09:00:00")
+        // From TODAY, not from the date it already sailed past: an oil change six days
+        // overdue, pushed "a week" from its own due date, would come back tomorrow. A
+        // control that reads as a week and delivers a day is worse than no control.
+        let late = RhythmFormat.pushOut("2026-08-14T09:00:00Z", now: now, calendar: utcCal)
+        #expect(RhythmFormat.ymd(late!, calendar: utcCal) == "2026-08-27")
+
+        // From the due date when it hasn't arrived: something due in three days moves to
+        // ten days out rather than resetting to seven, so the rhythm keeps the shape of
+        // its own schedule instead of being re-anchored to whenever a button was pressed.
+        let soon = RhythmFormat.pushOut("2026-08-23T09:00:00Z", now: now, calendar: utcCal)
+        #expect(RhythmFormat.ymd(soon!, calendar: utcCal) == "2026-08-30")
+
+        // A scheduling rhythm has no due date at all — its periods are its anchor, and
+        // the server refuses to give it one.
+        #expect(RhythmFormat.pushOut(nil, now: now, calendar: utcCal) == nil)
+    }
+
     @Test("The clamp is admitted in the sentence's own terms, or not at all")
     func capNoteNamesTheCadence() {
         // Said next to the promise it modifies, in days rather than as "half the cycle":

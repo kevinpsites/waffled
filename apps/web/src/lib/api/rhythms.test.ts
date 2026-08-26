@@ -1,7 +1,7 @@
 import {
   formatInterval, cadenceLabel, dueLabel, periodLabel, splitCadence, intervalDays,
   nudgePlan, nudgeExplainer, urgencyOf, countdown, periodProgress, daysToGo,
-  addCadence, consequence,
+  addCadence, consequence, pushOut,
   type AttentionItem, type RhythmWithPeriod,
 } from './rhythms'
 
@@ -457,5 +457,32 @@ describe('consequence', () => {
     // so every new rhythm arrives already shouting from Needs you now. One cadence
     // out is what "every 3 months, starting now" actually means.
     expect(ymd(addCadence(AUG19, '3 months'))).toBe('2026-11-19')
+  })
+})
+
+
+// "Push it out a week" — the answer to "it's asking and I can't do it today".
+describe('pushing a due date out', () => {
+  it('buys a full week of quiet from a rhythm that is already late', () => {
+    // Counted from TODAY, not from the due date it has already sailed past. An oil change
+    // six days late, pushed "a week", must not come back tomorrow — that would be a
+    // control that reads as a week and delivers a day.
+    const now = new Date(2026, 7, 20, 9)
+    const late = new Date(2026, 7, 14, 9).toISOString()
+    expect(pushOut(late, now)).toBe(new Date(2026, 7, 27, 9).toISOString())
+  })
+
+  it('adds the week to the due date when it has not arrived yet', () => {
+    // Not from today: pushing something due in three days should move it to ten days out,
+    // not reset it to seven. The rhythm keeps the shape of its own schedule.
+    const now = new Date(2026, 7, 20, 9)
+    const soon = new Date(2026, 7, 23, 9).toISOString()
+    expect(pushOut(soon, now)).toBe(new Date(2026, 7, 30, 9).toISOString())
+  })
+
+  it('has nothing to push when there is no due date', () => {
+    // A scheduling rhythm has no due date at all — its periods are its anchor, and the
+    // server refuses to give it one.
+    expect(pushOut(null, new Date(2026, 7, 20))).toBeNull()
   })
 })

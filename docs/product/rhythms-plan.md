@@ -31,9 +31,9 @@ takes a `limit` and reports `total` plus `averageIntervalDays`, the latter compu
 every completion rather than over the returned page.
 
 Still to come, and it is now client work only: the **iPad list+detail split** — the history
-panel ("May 24 · 13 weeks later"), the real average beside the nominal cadence, and the
-push-out and skip controls wired to the endpoints above. iOS has no `completions` call yet;
-the web client has one and no UI using it.
+panel ("May 24 · 13 weeks later") and the real average beside the nominal cadence. iOS has
+no `completions` call yet; the web client has one and no UI using it. Nothing on any
+surface renders `bookedAt`, so a settled row still says "Booked" without saying when.
 
 Where "trash out weekly", "air filter every 3 months", "change the car's oil", "book a
 temple visit", "take a self-care day once a quarter", and "family outing on the third

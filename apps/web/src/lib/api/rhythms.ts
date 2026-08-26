@@ -119,6 +119,11 @@ export interface UpdateRhythmInput {
   every?: string
   leadTime?: string
   isActive?: boolean
+  /**
+   * completion shape only — the server refuses it on a scheduling rhythm, whose periods
+   * ARE its anchor and whose skips are keyed on them. See `pushOut`.
+   */
+  nextDueAt?: string
 }
 
 export interface ScheduleRhythmInput {
@@ -544,6 +549,34 @@ export interface Consequence {
  * would be naming a day the server is never going to nudge on. The register learned
  * this once already; the promise has to be made against the stored number.
  */
+/** How far "push it out" moves a due date. A week — long enough to be worth pressing. */
+export const PUSH_DAYS = 7
+
+/**
+ * The new due date for "push it out a week", or null when there is nothing to push.
+ *
+ * Counted from **today or the due date, whichever is later**. Both halves matter:
+ *
+ *  - From today when it's late. An oil change six days overdue, pushed "a week" from its
+ *    own due date, would come back tomorrow — a control that reads as a week and delivers
+ *    a day is worse than no control.
+ *  - From the due date when it hasn't arrived. Something due in three days should move to
+ *    ten days out, not reset to seven; the rhythm keeps the shape of its own schedule
+ *    rather than being re-anchored to whenever you happened to press the button.
+ *
+ * It is one period's reprieve either way: marking it done re-anchors the clock from when
+ * you actually did it, so the push is forgotten rather than compounding.
+ */
+export function pushOut(nextDueAt: string | null, now: Date = new Date()): string | null {
+  if (!nextDueAt) return null
+  const due = new Date(nextDueAt)
+  if (Number.isNaN(due.getTime())) return null
+  const from = due.getTime() > now.getTime() ? due : now
+  const moved = new Date(from.getTime())
+  moved.setDate(moved.getDate() + PUSH_DAYS)
+  return moved.toISOString()
+}
+
 export function consequence(input: ConsequenceInput): Consequence | null {
   const anchor = input.anchor ? asMoment(input.anchor) : null
   if (!anchor || Number.isNaN(anchor.getTime())) return null
