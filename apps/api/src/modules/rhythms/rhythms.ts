@@ -39,6 +39,16 @@ export interface RhythmWithPeriod extends Rhythm {
   currentPeriodStart: string | null
   currentPeriodEnd: string | null
   satisfied: boolean
+  /**
+   * When the event that settles this period starts, or null.
+   *
+   * Null does NOT mean unsettled: a **skip** settles a period and has no time, and the
+   * completion shape has no periods at all. `satisfied && bookedAt === null` on a
+   * scheduling rhythm is precisely "skipped", which is what lets a row say *Booked · Sat
+   * 2pm* without printing "Booked" over a period nobody intends to do anything in.
+   */
+  bookedAt: string | null
+  bookedAllDay: boolean | null
 }
 
 interface Row {
@@ -109,7 +119,13 @@ const SELECT = `
 // on its own either: stepping true calendar months from an interval like '3 mons' is the
 // arithmetic this query already does.
 export async function listRhythms(householdId: string): Promise<RhythmWithPeriod[]> {
-  const { rows } = await query<Row & { period_start: string | null; period_end: string | null; satisfied: boolean }>(
+  const { rows } = await query<Row & {
+    period_start: string | null
+    period_end: string | null
+    satisfied: boolean
+    booked_at: Date | null
+    booked_all_day: boolean | null
+  }>(
     `with base as (
        select r.*,
               case when r.satisfied_by = 'scheduling' then
@@ -124,30 +140,46 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
             b.last_completed_at, b.next_due_at, b.is_active,
             b.period_start,
             case when b.period_start is not null then (b.period_start + b.every)::date end as period_end,
+            bk.starts_at as booked_at,
+            bk.all_day as booked_all_day,
             case
               -- Completion shape has no period grid at all: its clock restarts from
               -- whenever you actually did it, so "handled" just means not yet due.
               when b.satisfied_by = 'completion' then b.next_due_at > now()
               when b.period_start is null then false
-              else exists (
+              -- A booking settles the period; so does a deliberate skip, which has no
+              -- time and never will. Both are "handled", and the row can tell them apart
+              -- by whether booked_at came back.
+              else bk.starts_at is not null
+                or exists (
                      select 1 from rhythm_skips s
                       where s.rhythm_id = b.id and s.period_start = b.period_start
                    )
-                or exists (
-                     select 1 from events e
-                      where e.rhythm_id = b.id and e.deleted_at is null
-                        and e.starts_at >= b.period_start::timestamptz
-                        and e.starts_at < (b.period_start + b.every)::timestamptz
-                   )
-                or exists (
-                     select 1 from event_occurrences o
-                      join events m on m.id = o.event_id
-                      where m.rhythm_id = b.id and m.deleted_at is null and o.deleted_at is null
-                        and o.starts_at >= b.period_start::timestamptz
-                        and o.starts_at < (b.period_start + b.every)::timestamptz
-                   )
             end as satisfied
        from base b
+       -- The earliest thing on the calendar for this period, from either source: a
+       -- one-off booking, or an occurrence of a recurring master (an auto-scheduled
+       -- rhythm books a series, so its periods are settled by occurrences rather than by
+       -- events). all_day is read off the OCCURRENCE, not the master — an override can
+       -- move a single instance to all-day without touching the series.
+       left join lateral (
+         select starts_at, all_day from (
+           select e.starts_at, e.all_day
+             from events e
+            where e.rhythm_id = b.id and e.deleted_at is null
+              and e.starts_at >= b.period_start::timestamptz
+              and e.starts_at < (b.period_start + b.every)::timestamptz
+           union all
+           select o.starts_at, o.all_day
+             from event_occurrences o
+             join events m on m.id = o.event_id
+            where m.rhythm_id = b.id and m.deleted_at is null and o.deleted_at is null
+              and o.starts_at >= b.period_start::timestamptz
+              and o.starts_at < (b.period_start + b.every)::timestamptz
+         ) settling
+          order by starts_at
+          limit 1
+       ) bk on true
       order by b.title`,
     [householdId]
   )
@@ -156,6 +188,8 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
     currentPeriodStart: dateText(r.period_start),
     currentPeriodEnd: dateText(r.period_end),
     satisfied: r.satisfied ?? false,
+    bookedAt: r.booked_at ? r.booked_at.toISOString() : null,
+    bookedAllDay: r.booked_at ? (r.booked_all_day ?? false) : null,
   }))
 }
 
@@ -366,20 +400,73 @@ export interface Completion {
   notes: string | null
 }
 
-export async function listCompletions(householdId: string, id: string): Promise<Completion[]> {
+export interface CompletionHistory {
+  completions: Completion[]
+  /** How many there are in total, which is usually more than were returned. */
+  total: number
+  /**
+   * The mean gap between consecutive completions, in days — what actually happens, as
+   * against the cadence the rhythm claims. Null from fewer than two: one date is not an
+   * interval, and reporting 0 would read as "you do this every day".
+   */
+  averageIntervalDays: number | null
+}
+
+/** Bigger than any history panel shows and small enough to stay a cheap read. */
+const COMPLETIONS_MAX = 200
+const COMPLETIONS_DEFAULT = 50
+
+/**
+ * A page of history, newest first, plus a statistic taken over ALL of it.
+ *
+ * The two halves are deliberately scoped differently. Returning every row was fine for a
+ * quarterly rhythm and unbounded for a weekly one — years of history on a screen that
+ * shows a handful. But the average has to be computed over the whole table rather than
+ * over the page: a "real average" derived from the most recent 50 rows is a *recent*
+ * average wearing the wrong label, and the mislabelling only becomes visible to someone
+ * who has been using the thing for years. So the server does that arithmetic once, rather
+ * than each client doing it over whatever subset it happens to hold — which is exactly how
+ * the two surfaces ended up with two spellings of the nudge clamp.
+ */
+export async function listCompletions(
+  householdId: string,
+  id: string,
+  limit?: number
+): Promise<CompletionHistory> {
+  const take = Math.min(
+    COMPLETIONS_MAX,
+    Math.max(1, Number.isFinite(limit) ? Math.floor(limit as number) : COMPLETIONS_DEFAULT)
+  )
   const { rows } = await query<{ id: string; person_id: string | null; completed_at: Date; notes: string | null }>(
     `select id, person_id, completed_at, notes
        from rhythm_completions
       where household_id = $1 and rhythm_id = $2
-      order by completed_at desc`,
+      order by completed_at desc
+      limit $3`,
+    [householdId, id, take]
+  )
+  // The span between the first and last completion divided by the gaps between them —
+  // the same answer as averaging each interval, in one pass and without pulling the rows.
+  const { rows: agg } = await query<{ total: string; avg_days: string | null }>(
+    `select count(*)::text as total,
+            case when count(*) > 1 then
+              (extract(epoch from (max(completed_at) - min(completed_at)))
+                 / 86400 / (count(*) - 1))::text
+            end as avg_days
+       from rhythm_completions
+      where household_id = $1 and rhythm_id = $2`,
     [householdId, id]
   )
-  return rows.map((r) => ({
-    id: r.id,
-    personId: r.person_id,
-    completedAt: r.completed_at.toISOString(),
-    notes: r.notes,
-  }))
+  return {
+    completions: rows.map((r) => ({
+      id: r.id,
+      personId: r.person_id,
+      completedAt: r.completed_at.toISOString(),
+      notes: r.notes,
+    })),
+    total: Number(agg[0]?.total ?? 0),
+    averageIntervalDays: agg[0]?.avg_days == null ? null : Number(agg[0].avg_days),
+  }
 }
 
 export async function skipPeriod(
@@ -513,14 +600,23 @@ export interface UpdateRhythmInput {
   every?: unknown
   leadTime?: unknown
   isActive?: unknown
+  /** completion shape only — see the note below on why the anchor rule splits by shape. */
+  nextDueAt?: unknown
 }
 
 // Edit a rhythm. Deliberately covers only the fields that are safe to change in place:
-// title/emoji/notes/assignee, the cadence, the runway, and active. `satisfiedBy`,
-// `startsOn`, `autoSchedule` and `rrule` are not editable here — changing the shape or the
-// period anchor of a live rhythm would silently re-interpret its existing skips (keyed on
-// period_start) and re-point its bookings at periods that no longer exist. Retire it and
-// make a new one instead.
+// title/emoji/notes/assignee, the cadence, the runway, active, and — for the completion
+// shape only — the due date. `satisfiedBy`, `startsOn`, `autoSchedule` and `rrule` are not
+// editable here: changing the shape or the period anchor of a live rhythm would silently
+// re-interpret its existing skips (keyed on period_start) and re-point its bookings at
+// periods that no longer exist. Retire it and make a new one instead.
+//
+// `nextDueAt` is the exception to that rule, and the split is by shape rather than by
+// taste. A scheduling rhythm's periods ARE its anchor — the grid is generated from
+// starts_on, so moving anything re-reads every skip. A completion rhythm has no grid at
+// all: next_due_at is a single date saying when it next asks, and nothing else is keyed on
+// it. Moving it is "push it out a week", and it is one period's reprieve rather than a
+// permanent shift — the next completion re-anchors from when you actually did it.
 export async function updateRhythm(
   householdId: string,
   id: string,
@@ -537,6 +633,21 @@ export async function updateRhythm(
   const personId = input.personId === undefined ? undefined : (typeof input.personId === 'string' ? input.personId : null)
   if (personId) await assertPersonInHousehold(householdId, personId)
 
+  let nextDueAt: string | null = null
+  if (input.nextDueAt !== undefined && input.nextDueAt !== null) {
+    // Refused rather than ignored. Letting it through would hit the shape CHECK and come
+    // back as a constraint violation — a 500 where the caller deserves a sentence.
+    if (existing.satisfiedBy !== 'completion') {
+      throw new InvalidReferenceError(
+        'only a completion rhythm has a due date; a scheduling rhythm is anchored to its periods'
+      )
+    }
+    if (typeof input.nextDueAt !== 'string' || Number.isNaN(Date.parse(input.nextDueAt))) {
+      throw new InvalidReferenceError('nextDueAt must be an ISO timestamp')
+    }
+    nextDueAt = new Date(input.nextDueAt).toISOString()
+  }
+
   const { rows } = await query<Row>(
     `update rhythms set
        title      = coalesce($3, title),
@@ -552,6 +663,9 @@ export async function updateRhythm(
                       coalesce($10::interval, every) / 2
                     ),
        is_active  = coalesce($12::boolean, is_active),
+       -- Guarded above: only ever non-null for a completion rhythm, whose shape CHECK
+       -- requires next_due_at to stay set. A scheduling rhythm must keep it null.
+       next_due_at = coalesce($13::timestamptz, next_due_at),
        updated_at = now()
      where household_id = $1 and id = $2 and deleted_at is null
      returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
@@ -567,6 +681,7 @@ export async function updateRhythm(
       typeof input.every === 'string' && input.every.trim() ? input.every.trim() : null,
       typeof input.leadTime === 'string' && input.leadTime.trim() ? input.leadTime.trim() : null,
       typeof input.isActive === 'boolean' ? input.isActive : null,
+      nextDueAt,
     ]
   )
   return rows[0] ? toRhythm(rows[0]) : null

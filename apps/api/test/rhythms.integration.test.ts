@@ -644,3 +644,170 @@ describe('an auto-scheduled rhythm lands on the calendar at creation', () => {
     expect(events.rowCount).toBe(0)
   })
 })
+
+// "Push it out a week" — the one edit the register offers that moves the clock.
+//
+// `next_due_at` was deliberately absent from the PATCH allowlist, on the grounds that
+// re-anchoring a live rhythm re-interprets its history. That reasoning holds for the
+// PERIOD anchor of a scheduling rhythm — skips are keyed on period_start — but not for a
+// completion rhythm, which has no grid at all: moving its due date changes when it next
+// asks and nothing else. Marking it done still re-anchors from the completion, so a push
+// is one period's reprieve rather than a permanent shift.
+describe('pushing a completion rhythm out', () => {
+  let gutterId = ''
+
+  beforeAll(async () => {
+    await call('PATCH', '/api/household/modules', kevin, { rhythms: true })
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Gutters', satisfiedBy: 'completion', every: '1 year',
+      nextDueAt: '2026-09-01T09:00:00Z',
+    })
+    gutterId = JSON.parse(made.body).rhythm.id
+  })
+
+  it('moves the due date without touching when it was last done', async () => {
+    const res = await call('PATCH', `/api/rhythms/${gutterId}`, kevin, {
+      nextDueAt: '2026-09-08T09:00:00Z',
+    })
+    expect(res.statusCode).toBe(200)
+    const r = JSON.parse(res.body).rhythm
+    expect(new Date(r.nextDueAt).toISOString()).toBe('2026-09-08T09:00:00.000Z')
+    // A push is not a completion. Claiming it was done would restart the clock from today
+    // and quietly erase the fact that it is still outstanding.
+    expect(r.lastCompletedAt).toBeNull()
+  })
+
+  it('refuses a value that is not an instant', async () => {
+    expect((await call('PATCH', `/api/rhythms/${gutterId}`, kevin, { nextDueAt: 'next tuesday' })).statusCode).toBe(400)
+  })
+
+  // The shape CHECK requires next_due_at to be null for a scheduling rhythm, so without
+  // this guard the write fails as a 500 from a constraint rather than as an explanation.
+  it('refuses to give a scheduling rhythm a due date at all', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Dentist', satisfiedBy: 'scheduling', every: '6 months', startsOn: '2026-01-01',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+    const res = await call('PATCH', `/api/rhythms/${id}`, kevin, { nextDueAt: '2026-09-08T09:00:00Z' })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/scheduling/i)
+  })
+})
+
+// A settled row says "Booked" and can't say when.
+//
+// `satisfied` is a boolean computed from three separate sources — a skip, a one-off event,
+// or an occurrence of a recurring master — so the register knows the period is handled but
+// not what time it is handled AT, which is the one thing you'd want off a settled row.
+describe('when a booked period is actually booked', () => {
+  let templeId = ''
+
+  beforeAll(async () => {
+    await call('PATCH', '/api/household/modules', kevin, { rhythms: true })
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Massage', satisfiedBy: 'scheduling', every: '1 month', startsOn: '2026-08-01',
+    })
+    templeId = JSON.parse(made.body).rhythm.id
+  })
+
+  async function row() {
+    const res = await call('GET', '/api/rhythms', kevin)
+    return JSON.parse(res.body).rhythms.find((r: { id: string }) => r.id === templeId)
+  }
+
+  it('reports no booking before anything is on the calendar', async () => {
+    const r = await row()
+    expect(r.satisfied).toBe(false)
+    expect(r.bookedAt).toBeNull()
+  })
+
+  it('carries the time and all-day flag of the event that settles it', async () => {
+    const start = await withClient(async (c) => {
+      const { rows } = await c.query<{ s: Date }>(
+        `select (date_trunc('month', now()) + interval '9 days 14 hours') as s`
+      )
+      return rows[0]!.s.toISOString()
+    })
+    const ev = await call('POST', `/api/rhythms/${templeId}/schedule`, kevin, { startsAt: start, allDay: false })
+    expect(ev.statusCode).toBe(201)
+
+    const r = await row()
+    expect(r.satisfied).toBe(true)
+    expect(new Date(r.bookedAt).toISOString()).toBe(start)
+    expect(r.bookedAllDay).toBe(false)
+  })
+
+  // A skip settles a period and has no time. The register has to be able to tell the two
+  // apart, or "Booked" gets printed over a period nobody is going to do anything in.
+  it('settles a skipped period with no time at all', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Deep clean', satisfiedBy: 'scheduling', every: '3 months', startsOn: '2026-07-01',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+    const before = await call('GET', '/api/rhythms', kevin)
+    const period = JSON.parse(before.body).rhythms.find((r: { id: string }) => r.id === id).currentPeriodStart
+    expect((await call('POST', `/api/rhythms/${id}/skip`, kevin, { periodStart: period })).statusCode).toBe(200)
+
+    const res = await call('GET', '/api/rhythms', kevin)
+    const r = JSON.parse(res.body).rhythms.find((x: { id: string }) => x.id === id)
+    expect(r.satisfied).toBe(true)
+    expect(r.bookedAt).toBeNull()
+  })
+})
+
+// The history is unbounded, and one of its readers wants a statistic over all of it.
+describe('completion history is paged, and its average is not', () => {
+  let hoovId = ''
+
+  beforeAll(async () => {
+    await call('PATCH', '/api/household/modules', kevin, { rhythms: true })
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Hoover', satisfiedBy: 'completion', every: '1 week',
+      nextDueAt: '2026-09-01T09:00:00Z',
+    })
+    hoovId = JSON.parse(made.body).rhythm.id
+    // Six completions, a fortnight apart — so the REAL interval is 14 days against a
+    // nominal cadence of 7, which is exactly the gap the history panel exists to show.
+    for (let i = 5; i >= 0; i--) {
+      await call('POST', `/api/rhythms/${hoovId}/complete`, kevin, {
+        completedAt: new Date(Date.UTC(2026, 0, 1 + i * 14, 12)).toISOString(),
+      })
+    }
+  })
+
+  it('caps what it returns, newest first, and says there is more', async () => {
+    const res = await call('GET', `/api/rhythms/${hoovId}/completions?limit=2`, kevin)
+    const body = JSON.parse(res.body)
+    expect(body.completions).toHaveLength(2)
+    expect(new Date(body.completions[0].completedAt).getTime())
+      .toBeGreaterThan(new Date(body.completions[1].completedAt).getTime())
+    expect(body.total).toBe(6)
+  })
+
+  // The average has to be taken over every completion, not over the page — a "real
+  // average" computed from the most recent 20 rows is a recent average wearing the wrong
+  // label, and that mislabelling is invisible until someone has years of history.
+  it('averages the true interval over all of them, not over the page', async () => {
+    const res = await call('GET', `/api/rhythms/${hoovId}/completions?limit=2`, kevin)
+    const body = JSON.parse(res.body)
+    expect(body.averageIntervalDays).toBeCloseTo(14, 1)
+  })
+
+  it('has no average to report from a single completion', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Once', satisfiedBy: 'completion', every: '1 year', nextDueAt: '2027-01-01T09:00:00Z',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+    await call('POST', `/api/rhythms/${id}/complete`, kevin, {})
+    const body = JSON.parse((await call('GET', `/api/rhythms/${id}/completions`, kevin)).body)
+    expect(body.total).toBe(1)
+    // One date is not an interval. Reporting 0 would read as "you do this every day".
+    expect(body.averageIntervalDays).toBeNull()
+  })
+
+  it('clamps a silly limit rather than trusting it', async () => {
+    const res = await call('GET', `/api/rhythms/${hoovId}/completions?limit=99999`, kevin)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).completions.length).toBeLessThanOrEqual(200)
+  })
+})

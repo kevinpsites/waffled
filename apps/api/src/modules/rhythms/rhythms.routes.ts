@@ -105,8 +105,12 @@ export function registerRhythmRoutes(api: Api): void {
     }
   }))
 
+  // The history panel's backing read: a page of completions plus the true average
+  // interval, which is taken over all of them rather than over the page.
   api.get('/api/rhythms/:id/completions', tenantRoute(async (tenant, req: Request) => {
-    return { completions: await listCompletions(tenant.householdId, req.params.id!) }
+    const raw = (req.query as Record<string, string | undefined>)?.limit
+    const limit = raw === undefined ? undefined : Number(raw)
+    return await listCompletions(tenant.householdId, req.params.id!, limit)
   }))
 
   // Skipping is how a period goes quiet without inventing a calendar entry for something

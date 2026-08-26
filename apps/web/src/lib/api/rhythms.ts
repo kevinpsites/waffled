@@ -44,6 +44,15 @@ export interface RhythmWithPeriod extends Rhythm {
   currentPeriodStart: string | null
   currentPeriodEnd: string | null
   satisfied: boolean
+  /**
+   * When the event that settles this period starts, or null.
+   *
+   * Null is NOT "unsettled": a **skip** settles a period and has no time, and the
+   * completion shape has no periods at all. On a scheduling rhythm,
+   * `satisfied && bookedAt === null` is exactly "skipped".
+   */
+  bookedAt: string | null
+  bookedAllDay: boolean | null
 }
 
 // One period of one rhythm — enough to book or skip it. An unscheduled attention
@@ -64,6 +73,20 @@ export interface Completion {
   personId: string | null
   completedAt: string
   notes: string | null
+}
+
+/**
+ * A page of history plus a statistic taken over all of it.
+ *
+ * `averageIntervalDays` is deliberately NOT derivable from `completions`: the list is
+ * capped and the average is not, so computing one from the other would give a *recent*
+ * average wearing the wrong label. Null from fewer than two completions — one date is not
+ * an interval.
+ */
+export interface CompletionHistory {
+  completions: Completion[]
+  total: number
+  averageIntervalDays: number | null
 }
 
 export interface CreateRhythmInput {
@@ -133,7 +156,10 @@ export const rhythmsApi = {
   // genuinely isn't happening this time round.
   skip: (id: string, periodStart: string) =>
     apiSend<{ ok: true }>('POST', `/api/rhythms/${id}/skip`, { periodStart }).then((r) => { emit('rhythms'); return r }),
-  completions: (id: string) => apiGet<{ completions: Completion[] }>(`/api/rhythms/${id}/completions`),
+  completions: (id: string, limit?: number) =>
+    apiGet<CompletionHistory>(
+      `/api/rhythms/${id}/completions${limit === undefined ? '' : `?limit=${limit}`}`
+    ),
 }
 
 // ── Rendering Postgres intervals ────────────────────────────────────────────────
