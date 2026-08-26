@@ -46,6 +46,10 @@ struct RhythmsView: View {
             }
         }
         .task(id: sync.refreshRev) {
+            // Whose rhythm it is, for the row's subtitle. The register endpoint carries a
+            // person id and no name, and the household is already loaded here.
+            model.personNames = Dictionary(sync.members.map { ($0.id, $0.name) },
+                                           uniquingKeysWith: { a, _ in a })
             await model.loadAll()
             await model.loadAttention()
         }
@@ -101,9 +105,9 @@ struct RhythmsView: View {
             }
             ForEach(model.bands) { band in
                 Section {
-                    ForEach(band.rhythms) { row($0) }
+                    ForEach(band.rhythms) { row($0, urgency: band.urgency) }
                 } header: {
-                    header(band.title, band.hint)
+                    header(band.title, band.hint, band.rhythms.count)
                 }
             }
             if !model.paused.isEmpty {
@@ -125,7 +129,7 @@ struct RhythmsView: View {
                     .buttonStyle(.plain)
                     .listRowBackground(WF.card)
                     if showPaused {
-                        ForEach(model.paused) { row($0) }
+                        ForEach(model.paused) { row($0, urgency: .paused) }
                     }
                 }
             }
@@ -157,9 +161,17 @@ struct RhythmsView: View {
         }
     }
 
-    private func header(_ title: String, _ blurb: String) -> some View {
+    private func header(_ title: String, _ blurb: String, _ count: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            SectionLabel(text: title)
+            HStack(spacing: 6) {
+                SectionLabel(text: title)
+                // How many, next to the name of the band. "Needs you now" answers whether
+                // anything does; the number answers how much of your evening it is.
+                Text("\(count)")
+                    .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+                    .textCase(nil)
+                    .monospacedDigit()
+            }
             Text(blurb).font(.system(size: 12)).foregroundStyle(WF.ink3)
                 .textCase(nil)
                 .fixedSize(horizontal: false, vertical: true)
@@ -167,8 +179,18 @@ struct RhythmsView: View {
         .padding(.bottom, 4)
     }
 
-    @ViewBuilder private func row(_ r: WaffledAPI.Rhythm) -> some View {
-        let item = model.attentionItem(for: r)
+    @ViewBuilder private func row(_ r: WaffledAPI.Rhythm, urgency: RhythmFormat.Urgency) -> some View {
+        let doneToday = r.satisfiedBy == .completion && RhythmFormat.wasCompletedToday(r.lastCompletedAt)
+        // Only Needs-you-now and Coming-up carry a verb. Most of a healthy register is
+        // Steady, and a page of buttons for things with nothing to do reads as a page of
+        // chores — which is the opposite of what a rhythm is.
+        //
+        // `doneToday` is the exception and it earns it: completing something already done
+        // today recomputes the row to the identical string, so the button looked dead and
+        // got pressed again — the demo household ended up with four rows for one air
+        // filter. Finishing it also drops the row into Steady, so without this the
+        // acknowledgement would vanish in the same tick the tap landed.
+        let showAction = urgency == .now || urgency == .soon || doneToday
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 RhythmGlyph(r)
@@ -181,11 +203,15 @@ struct RhythmsView: View {
                     // How much of the current cycle is already spent. Absent rather than
                     // guessed when there is no window to measure.
                     if let pct = model.progress[r.id] {
-                        RhythmProgressBar(percent: pct, late: model.countdowns[r.id]?.unit.contains("late") == true)
+                        RhythmProgressBar(percent: pct, late: model.countdowns[r.id]?.tone == .late)
                             .padding(.top, 4)
                     }
                 }
-                Spacer(minLength: 6)
+                // No Spacer here: an expanding frame and an expanding Spacer split the free
+                // width between them, so the subtitle wrapped onto a second line with a
+                // hundred points of nothing sitting next to it. Same trap that once
+                // collapsed the Today card's row title to "T…". The frame does the pushing.
+                .frame(maxWidth: .infinity, alignment: .leading)
                 // The anchor of the row: the one thing worth reading from across a
                 // kitchen. It replaces the "Needs attention" badge — a badge said THAT
                 // something wanted you, this says how much.
@@ -194,39 +220,17 @@ struct RhythmsView: View {
                 } else if !r.isActive {
                     WaffledStatusBadge(text: "Paused", color: WF.ink3)
                 }
-            }
-
-            if let notes = r.notes, !notes.isEmpty {
-                Text(notes).font(.system(size: 12)).foregroundStyle(WF.ink3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: 8) {
-                if r.satisfiedBy == .completion {
-                    // Available whether or not it's due — "I did the filter today" resets
-                    // the clock. Once it IS done today the button says so instead of
-                    // offering the same action again: the detail line above recomputes to
-                    // the identical string, so this label is the only place the tap can be
-                    // seen to have landed.
-                    let doneToday = RhythmFormat.wasCompletedToday(r.lastCompletedAt)
-                    RhythmActionButton(label: RhythmFormat.completionAction(doneToday: doneToday, due: item != nil),
-                                       tint: doneToday ? WF.successT : WF.primary,
-                                       labelColor: doneToday ? WF.success : .white,
-                                       busy: busyId == r.id,
-                                       disabled: doneToday) {
-                        run(r.id) { try await model.markDone(r.id) }
-                    }
-                }
-                if let item, item.kind == .unscheduled {
-                    RhythmActionButton(label: r.autoSchedule ? "Put it back" : "Book a time") { booking = item }
-                    Button("Skip this period") { run(r.id) { try await model.skipPeriod(item) } }
-                        .font(.system(size: 12, weight: .semibold))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(WF.ink3)
-                        .disabled(busyId == r.id)
-                }
+                // In the top line rather than on one of its own: a row with nothing to do
+                // was still spending a whole line on a lone ··· button, which made a quiet
+                // register look like a busy one.
                 rowMenu(r)
-                Spacer(minLength: 0)
+            }
+
+            if showAction {
+                // One verb, full width. At phone widths there is no room for a title, a
+                // countdown and a verb across one line, and the verb is the half that
+                // cannot be truncated.
+                verb(r, doneToday: doneToday, primary: urgency == .now)
             }
         }
         .padding(.vertical, 4)
@@ -242,6 +246,30 @@ struct RhythmsView: View {
                 Label(r.isActive ? "Pause" : "Resume", systemImage: r.isActive ? "pause.circle" : "play.circle")
             }
             .tint(WF.warn)
+        }
+    }
+
+    /// The row's one verb. Filled when this is late or out of time, quiet when it is
+    /// merely coming up — a filled button on every row makes none of them mean anything.
+    @ViewBuilder private func verb(_ r: WaffledAPI.Rhythm, doneToday: Bool, primary: Bool) -> some View {
+        if r.satisfiedBy == .completion {
+            // Available whether or not it's due — "I did the filter today" resets the
+            // clock. Once it IS done today the button says so instead of offering the
+            // same action again: the subtitle recomputes to the identical string, so this
+            // label is the only place the tap can be seen to have landed.
+            RhythmActionButton(label: RhythmFormat.completionAction(doneToday: doneToday, due: primary),
+                               tint: doneToday ? WF.successT : (primary ? WF.primary : WF.panel),
+                               labelColor: doneToday ? WF.success : (primary ? .white : WF.ink),
+                               busy: busyId == r.id,
+                               disabled: doneToday,
+                               fullWidth: true) {
+                run(r.id) { try await model.markDone(r.id) }
+            }
+        } else if let item = period(r) {
+            RhythmActionButton(label: r.autoSchedule ? "Put it back" : "Book a time",
+                               tint: primary ? WF.primary : WF.panel,
+                               labelColor: primary ? .white : WF.ink,
+                               fullWidth: true) { booking = item }
         }
     }
 
@@ -261,17 +289,23 @@ struct RhythmsView: View {
                     Label("Log it for another day", systemImage: "calendar.badge.clock")
                 }
             }
-            // Booking a period whose runway has NOT opened yet. `/attention` structurally
-            // cannot report this — it answers "what needs attention by today?" — so
-            // without this, a quarterly rhythm you happen to be thinking about in month
-            // one simply has no way to be booked from this screen. The row's own button
-            // covers the nudged case; this covers the early one, which is the good habit.
-            if let early = earlyBooking(r) {
-                Button { booking = early } label: {
-                    Label(r.autoSchedule ? "Put it back on the calendar" : "Book a time",
-                          systemImage: "calendar.badge.plus")
+            if let item = period(r) {
+                // Booking a period whose runway has NOT opened yet. `/attention`
+                // structurally cannot report this — it answers "what needs attention by
+                // today?" — so without this, a quarterly rhythm you happen to be thinking
+                // about in month one has no way to be booked from this screen at all.
+                // The row's own verb covers the nudged case; this covers the early one,
+                // which is the good habit.
+                if model.attentionItem(for: r) == nil {
+                    Button { booking = item } label: {
+                        Label(r.autoSchedule ? "Put it back on the calendar" : "Book a time",
+                              systemImage: "calendar.badge.plus")
+                    }
                 }
-                Button { run(r.id) { try await model.skipPeriod(early) } } label: {
+                // Always here, never beside the verb. Skipping a period is the rarer of
+                // the two answers and the one you can't take back, so it doesn't get to
+                // sit at thumb height next to the one you meant to press.
+                Button { run(r.id) { try await model.skipPeriod(item) } } label: {
                     Label("Skip this period", systemImage: "forward.end")
                 }
             }
@@ -294,14 +328,15 @@ struct RhythmsView: View {
         .disabled(busyId == r.id)
     }
 
-    /// A synthetic attention row for a period that is unbooked but not yet being nudged
-    /// about, so the booking sheet can be opened from the menu with the same period bounds
-    /// the server would have sent. Nil whenever the row's own button already offers it, or
-    /// the period is settled, or the rhythm is paused — offering to book a paused rhythm
-    /// would be offering something the server will happily accept and nobody wants.
-    private func earlyBooking(_ r: WaffledAPI.Rhythm) -> WaffledAPI.RhythmAttentionItem? {
+    /// This rhythm's open period, as the row the booking sheet expects — carrying the
+    /// same bounds the server would have sent. Nil when the period is already settled, or
+    /// the rhythm is paused: offering to book a paused rhythm would be offering something
+    /// the server will happily accept and nobody wants.
+    ///
+    /// Deliberately NOT `model.attentionItem(for:)`. A period can be booked long before
+    /// its runway opens, and that is precisely the case `/attention` cannot report.
+    private func period(_ r: WaffledAPI.Rhythm) -> WaffledAPI.RhythmAttentionItem? {
         guard r.satisfiedBy == .scheduling, r.isActive, r.satisfied != true,
-              model.attentionItem(for: r) == nil,
               let start = r.currentPeriodStart, let end = r.currentPeriodEnd else { return nil }
         return WaffledAPI.RhythmAttentionItem(kind: .unscheduled, rhythm: r, dueAt: nil,
                                               overdue: nil, periodStart: start, periodEnd: end)

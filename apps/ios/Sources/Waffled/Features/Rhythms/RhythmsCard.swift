@@ -258,13 +258,17 @@ struct RhythmCountdownLabel: View {
     /// A paused rhythm keeps its number — it is still true — but stops shouting it.
     var muted = false
 
-    private var late: Bool { countdown.unit.contains("late") }
-    private var booked: Bool { countdown.number == "Booked" }
+    private var booked: Bool { countdown.tone == .done }
 
     private var tint: Color {
         if muted { return WF.ink3 }
-        if booked { return WF.success }
-        return late ? WF.danger : WF.ink
+        switch countdown.tone {
+        case .done: return WF.success
+        case .late: return WF.danger
+        // Coming up is neither shouting nor greyed out; steady recedes a step.
+        case .near: return WF.ink
+        case .soft: return WF.ink2
+        }
     }
 
     var body: some View {
@@ -277,7 +281,7 @@ struct RhythmCountdownLabel: View {
                 .foregroundStyle(tint)
             Text(countdown.unit)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(muted ? WF.ink3 : (late ? WF.danger : WF.ink3))
+                .foregroundStyle(muted || countdown.tone != .late ? WF.ink3 : WF.danger)
         }
         .fixedSize()
         .accessibilityElement(children: .combine)
@@ -322,13 +326,17 @@ struct RhythmActionButton: View {
     /// A settled state, not a blocked one — the row still shows the capsule, it just has
     /// nothing left to do. Kept apart from `busy` so a disabled button doesn't spin.
     var disabled = false
+    /// The register's row verb, which spans the row rather than sitting inline: at phone
+    /// widths a title, a countdown and a verb do not fit across one line, and the verb is
+    /// the one that cannot be truncated.
+    var fullWidth = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
                 if busy { ProgressView().controlSize(.small).tint(labelColor) }
-                Text(label).font(.system(size: kiosk ? 14 : 12, weight: .bold))
+                Text(label).font(.system(size: kiosk || fullWidth ? 14 : 12, weight: .bold))
                     // A colored fill stays saturated in both themes, so .white is right
                     // for the default; a wash passes its own ink in.
                     .foregroundStyle(labelColor)
@@ -337,7 +345,9 @@ struct RhythmActionButton: View {
                     // which can truncate, rather than from the verb, which cannot.
                     .lineLimit(1).fixedSize(horizontal: true, vertical: false)
             }
-            .padding(.horizontal, kiosk ? 12 : 10).padding(.vertical, kiosk ? 7 : 5)
+            .padding(.horizontal, kiosk ? 12 : 10)
+            .padding(.vertical, fullWidth ? 10 : (kiosk ? 7 : 5))
+            .frame(maxWidth: fullWidth ? .infinity : nil)
             .background(tint).clipShape(Capsule())
         }
         .buttonStyle(.plain)

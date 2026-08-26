@@ -131,6 +131,11 @@ enum AppConfig {
 enum DemoHooks {
     /// Initial tab: today | calendar | meals | family.
     static var startTab: String? { AppConfig.env("WAFFLED_START_TAB") }
+    /// A Family-hub screen to push on launch: rhythms | pantry | chores | goals |
+    /// lists | rewards | photos. The iPhone counterpart of `kioskPage` — those screens
+    /// are otherwise only reachable by tapping, and the simulator has no tap API, so
+    /// without this the phone rendering of any of them can't be looked at headlessly.
+    static var hubPage: String? { AppConfig.env("WAFFLED_HUB_PAGE") }
     /// Initial iPad kiosk page (rail selection): today | calendar | tasks | goals |
     /// family | meals | lists | photos | settings. No effect on iPhone.
     static var kioskPage: String? { AppConfig.env("WAFFLED_KIOSK_PAGE") }

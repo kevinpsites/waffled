@@ -295,8 +295,14 @@ enum RhythmFormat {
     }
 
     struct Countdown: Equatable {
+        /// How the countdown is painted. Carried rather than re-derived from `unit`: that
+        /// read "late" out of the copy, so a booking window closing tomorrow — the entire
+        /// reason it is in Needs you now — came out in plain ink because "1 day left" has
+        /// no such word in it. Its band already knows.
+        enum Tone: Equatable { case late, near, soft, done }
         let number: String
         let unit: String
+        let tone: Tone
     }
 
     /// The row's anchor — the one thing worth reading from across a kitchen.
@@ -307,25 +313,26 @@ enum RhythmFormat {
     static func countdown(_ r: WaffledAPI.Rhythm, urgency: Urgency, now: Date = Date(),
                           calendar: Calendar = Cal.current) -> Countdown? {
         if r.satisfiedBy == .scheduling, r.satisfied == true {
-            return Countdown(number: "Booked", unit: "this period")
+            return Countdown(number: "Booked", unit: "this period", tone: .done)
         }
         guard let days = daysToGo(r, now: now, calendar: calendar) else { return nil }
+        let tone: Countdown.Tone = urgency == .now ? .late : (urgency == .soon ? .near : .soft)
         if r.satisfiedBy == .scheduling {
-            if days <= 0 { return Countdown(number: "Today", unit: "last day") }
-            return Countdown(number: "\(days)", unit: days == 1 ? "day left" : "days left")
+            if days <= 0 { return Countdown(number: "Today", unit: "last day", tone: tone) }
+            return Countdown(number: "\(days)", unit: days == 1 ? "day left" : "days left", tone: tone)
         }
         if days < 0 {
             let late = -days
-            return Countdown(number: "\(late)", unit: late == 1 ? "day late" : "days late")
+            return Countdown(number: "\(late)", unit: late == 1 ? "day late" : "days late", tone: tone)
         }
-        if days == 0 { return Countdown(number: "Today", unit: "due") }
-        if days <= 13 { return Countdown(number: "\(days)", unit: days == 1 ? "day" : "days") }
+        if days == 0 { return Countdown(number: "Today", unit: "due", tone: tone) }
+        if days <= 13 { return Countdown(number: "\(days)", unit: days == 1 ? "day" : "days", tone: tone) }
         if days < 60 {
             let weeks = Int((Double(days) / 7).rounded())
-            return Countdown(number: "\(weeks)", unit: weeks == 1 ? "week" : "weeks")
+            return Countdown(number: "\(weeks)", unit: weeks == 1 ? "week" : "weeks", tone: tone)
         }
         let months = Int((Double(days) / 30).rounded())
-        return Countdown(number: "\(months)", unit: months == 1 ? "month" : "months")
+        return Countdown(number: "\(months)", unit: months == 1 ? "month" : "months", tone: tone)
     }
 
     /// How much of the current cycle is already spent, 0–100, or nil when there is no
@@ -453,6 +460,10 @@ final class RhythmsModel {
     private(set) var paused: [WaffledAPI.Rhythm] = []
     private(set) var countdowns: [String: RhythmFormat.Countdown] = [:]
     private(set) var progress: [String: Int] = [:]
+    /// Person id → name, supplied by the view from the household it already has. The
+    /// register's subtitle names whose rhythm it is, and that name lives outside this
+    /// endpoint's payload.
+    var personNames: [String: String] = [:] { didSet { if listLoaded { regroup() } } }
 
     private let fetchAttention: FetchAttention
     private let fetchRhythms: FetchRhythms
@@ -522,9 +533,7 @@ final class RhythmsModel {
     /// failed request is no evidence for it.
     func loadAll() async {
         do {
-            let all = try await fetchRhythms()
-            rhythms = all
-            detailLines = Self.detailLines(for: all, now: now())
+            rhythms = try await fetchRhythms()
             listFailed = false
         } catch {
             listFailed = true
@@ -550,6 +559,10 @@ final class RhythmsModel {
 
     private func regroup() {
         let clock = now()
+        // Derived here rather than in `loadAll` so it is rebuilt whenever anything it
+        // reads changes — including the member names, which arrive from the view on their
+        // own schedule and after the rhythms as often as before them.
+        detailLines = Self.detailLines(for: rhythms, names: personNames, now: clock)
         var grouped: [RhythmFormat.Urgency: [WaffledAPI.Rhythm]] = [:]
         var cds: [String: RhythmFormat.Countdown] = [:]
         var bars: [String: Int] = [:]
@@ -650,34 +663,55 @@ final class RhythmsModel {
         return out
     }
 
-    static func detailLines(for rhythms: [WaffledAPI.Rhythm], now: Date,
-                            calendar: Calendar = Cal.current) -> [String: String] {
+    /// The register row's subtitle: **the cadence first**, then where this one stands.
+    ///
+    /// It used to lead with the state and end with the window — "Not on the calendar yet ·
+    /// 1 day left to book it" — which spent the row's one spare line restating the
+    /// countdown already sitting at its right edge in the largest type on screen. The
+    /// cadence is the thing that countdown cannot say, and the thing that makes a row a
+    /// rhythm rather than a task, so it goes first and the deadline is left where it
+    /// already reads.
+    ///
+    /// `names` maps person id → name; an id with no name simply doesn't appear, which is
+    /// the right answer while the member list is still loading.
+    static func detailLines(for rhythms: [WaffledAPI.Rhythm], names: [String: String] = [:],
+                            now: Date, calendar: Calendar = Cal.current) -> [String: String] {
         var out: [String: String] = [:]
         for r in rhythms {
-            switch r.satisfiedBy {
-            case .completion:
-                out[r.id] = "Last done \(RhythmFormat.shortDate(r.lastCompletedAt, calendar: calendar))"
-                    + " · Next due \(RhythmFormat.shortDate(r.nextDueAt, calendar: calendar))"
-            case .scheduling:
-                // Never "last done" — whether it happened is deliberately not tracked. The
-                // only question is whether this period has something on the calendar.
-                //
-                // No current period means the grid hasn't started: the server tiles periods
-                // from `startsOn` up to now, so a rhythm anchored in the future has none
-                // yet. Saying "Not on the calendar yet" there was flatly wrong for an
-                // auto-scheduled rhythm whose series was booked the moment it was created —
-                // the calendar has it, the period just hasn't come round. Say that instead.
-                if r.currentPeriodStart == nil, let start = r.startsOn {
-                    out[r.id] = "Periods start \(RhythmFormat.shortDate(start, calendar: calendar))"
-                    continue
+            var parts = [RhythmFormat.sentence(RhythmFormat.cadenceLabel(r.every))]
+            if !r.isActive {
+                // A paused rhythm says only that it is paused. Its period state is still
+                // computed, but nothing nudges about it and nothing can be done with it —
+                // so "not on the calendar yet" would be a complaint about a situation we
+                // have deliberately stopped caring about.
+                parts.append("paused")
+            } else {
+                switch r.satisfiedBy {
+                case .completion:
+                    // "Last done —" was a row saying nothing with a punctuation mark.
+                    parts.append(r.lastCompletedAt == nil
+                                 ? "never done"
+                                 : "last done \(RhythmFormat.shortDate(r.lastCompletedAt, calendar: calendar))")
+                case .scheduling:
+                    // Never "last done" — whether it happened is deliberately not tracked.
+                    // The only question is whether this period has something booked.
+                    //
+                    // No current period means the grid hasn't started: the server tiles
+                    // periods from `startsOn` up to now, so a rhythm anchored in the future
+                    // has none yet. "Not on the calendar yet" there was flatly wrong for an
+                    // auto-scheduled rhythm whose series was booked the moment it was made.
+                    if r.currentPeriodStart == nil, let start = r.startsOn {
+                        parts.append("periods start \(RhythmFormat.shortDate(start, calendar: calendar))")
+                    } else {
+                        parts.append((r.satisfied ?? false) ? "on the calendar for this one"
+                                                            : "not on the calendar yet")
+                    }
                 }
-                var line = (r.satisfied ?? false) ? "On the calendar for this period" : "Not on the calendar yet"
-                if let end = r.currentPeriodEnd, !(r.satisfied ?? false) {
-                    let window = RhythmFormat.periodLabel(end, now: now, calendar: calendar)
-                    if !window.isEmpty { line += " · \(window)" }
-                }
-                out[r.id] = line
             }
+            if let id = r.personId, let name = names[id] { parts.append(name) }
+            let notes = (r.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !notes.isEmpty { parts.append(notes) }
+            out[r.id] = parts.joined(separator: " · ")
         }
         return out
     }

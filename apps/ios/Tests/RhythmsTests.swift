@@ -25,6 +25,8 @@ private func rhythm(
     id: String = "r1",
     title: String = "Air filter",
     emoji: String? = nil,
+    notes: String? = nil,
+    personId: String? = nil,
     satisfiedBy: WaffledAPI.RhythmShape = .completion,
     every: String = "3 mons",
     startsOn: String? = nil,
@@ -39,7 +41,7 @@ private func rhythm(
     satisfied: Bool? = nil
 ) -> WaffledAPI.Rhythm {
     WaffledAPI.Rhythm(
-        id: id, title: title, emoji: emoji, notes: nil, personId: nil,
+        id: id, title: title, emoji: emoji, notes: notes, personId: personId,
         satisfiedBy: satisfiedBy, every: every, startsOn: startsOn,
         autoSchedule: autoSchedule, rrule: rrule, leadTime: leadTime,
         lastCompletedAt: lastCompletedAt, nextDueAt: nextDueAt, isActive: isActive,
@@ -397,9 +399,9 @@ struct RhythmsModelTests {
         #expect(RhythmFormat.urgency(quiet, attention: nil, now: at("2026-08-18T12:00:00")) == .steady)
         // The completion row says when it was last done; the scheduling row NEVER does —
         // whether it happened is deliberately not tracked.
-        #expect(model.detailLines["a"]?.contains("Last done") == true)
-        #expect(model.detailLines["b"]?.contains("Last done") == false)
-        #expect(model.detailLines["b"]?.contains("On the calendar") == true)
+        #expect(model.detailLines["a"]?.contains("last done") == true)
+        #expect(model.detailLines["b"]?.contains("last done") == false)
+        #expect(model.detailLines["b"]?.contains("on the calendar for this one") == true)
     }
 
     @Test("Pausing a rhythm is a PATCH of isActive, not a delete")
@@ -686,8 +688,89 @@ struct RhythmRegisterFailureTests {
                             autoSchedule: true, rrule: "FREQ=WEEKLY;BYDAY=MO",
                             currentPeriodStart: nil, currentPeriodEnd: nil, satisfied: false)
         let lines = RhythmsModel.detailLines(for: [future], now: at("2026-08-19T12:00:00"), calendar: utcCal)
-        #expect(lines["f"] == "Periods start Mar 1, 2027")
-        #expect(!(lines["f"] ?? "").contains("Not on the calendar"))
+        #expect(lines["f"] == "Every 3 months · periods start Mar 1, 2027")
+        #expect(!(lines["f"] ?? "").contains("not on the calendar"))
+    }
+
+    @Test("A register row leads with the cadence and never restates its own countdown")
+    func metaLeadsWithTheCadence() {
+        // The row's right edge already carries "1 day left" at the size you read from
+        // across a room. Saying it again in the subtitle spent the one line that could
+        // have carried the thing the countdown can't: how often this is meant to happen.
+        let now = at("2026-08-26T12:00:00")
+        let booking = rhythm(id: "t", title: "Trash", personId: "p1", satisfiedBy: .scheduling,
+                             every: "7 days", startsOn: "2026-08-19",
+                             currentPeriodStart: "2026-08-19", currentPeriodEnd: "2026-08-27",
+                             satisfied: false)
+        let lines = RhythmsModel.detailLines(for: [booking], names: ["p1": "Jerry"],
+                                             now: now, calendar: utcCal)
+        #expect(lines["t"] == "Every week · not on the calendar yet · Jerry")
+        #expect(!(lines["t"] ?? "").contains("left to book"))
+
+        // A booked period is settled, and says so in the same slot.
+        let booked = rhythm(id: "u", title: "Temple visit", satisfiedBy: .scheduling, every: "7 days",
+                            currentPeriodStart: "2026-08-19", currentPeriodEnd: "2026-08-27",
+                            satisfied: true)
+        #expect(RhythmsModel.detailLines(for: [booked], now: now, calendar: utcCal)["u"]
+                == "Every week · on the calendar for this one")
+    }
+
+    @Test("A completion row says when it last happened, and admits when it never has")
+    func metaForCompletion() {
+        let now = at("2026-08-26T12:00:00")
+        let done = rhythm(id: "a", title: "Air filter", notes: "Furnace, 20x25x1",
+                          satisfiedBy: .completion, every: "3 mons",
+                          lastCompletedAt: "2026-05-24T09:00:00Z")
+        #expect(RhythmsModel.detailLines(for: [done], now: now, calendar: utcCal)["a"]
+                == "Every 3 months · last done May 24, 2026 · Furnace, 20x25x1")
+
+        // "Last done —" was a row saying nothing with a punctuation mark. A rhythm that
+        // has never happened is a real and useful state, so it gets words.
+        let never = rhythm(id: "b", title: "Gutters", satisfiedBy: .completion, every: "1 year",
+                           lastCompletedAt: nil)
+        #expect(RhythmsModel.detailLines(for: [never], now: now, calendar: utcCal)["b"]
+                == "Every year · never done")
+    }
+
+    @Test("The countdown's tone comes from the band, not from the word 'late'")
+    func countdownCarriesItsTone() {
+        // It used to be read back off the unit string, so a rhythm whose booking window
+        // closes tomorrow — the whole reason it is in Needs you now — rendered in plain
+        // ink, because "1 day left" doesn't contain the word "late". Web painted the same
+        // row red. The band already knows the answer; carry it rather than re-derive it
+        // from copy that was never meant to be parsed.
+        let now = at("2026-08-26T12:00:00")
+        let closing = rhythm(id: "t", title: "Trash", satisfiedBy: .scheduling, every: "7 days",
+                             currentPeriodStart: "2026-08-21", currentPeriodEnd: "2026-08-27",
+                             satisfied: false)
+        let cd = RhythmFormat.countdown(closing, urgency: .now, now: now, calendar: utcCal)
+        #expect(cd?.unit == "day left")
+        #expect(cd?.tone == .late)
+
+        // Coming up is neither shouting nor greyed out.
+        #expect(RhythmFormat.countdown(rhythm(id: "a", nextDueAt: "2026-09-02T09:00:00Z"),
+                                       urgency: .soon, now: now, calendar: utcCal)?.tone == .near)
+        // Steady recedes.
+        #expect(RhythmFormat.countdown(rhythm(id: "b", nextDueAt: "2026-11-25T09:00:00Z"),
+                                       urgency: .steady, now: now, calendar: utcCal)?.tone == .soft)
+        // A booked period is settled, whatever band it was filed under.
+        let booked = rhythm(id: "c", satisfiedBy: .scheduling, every: "7 days",
+                            currentPeriodStart: "2026-08-21", currentPeriodEnd: "2026-08-27",
+                            satisfied: true)
+        #expect(RhythmFormat.countdown(booked, urgency: .steady, now: now, calendar: utcCal)?.tone == .done)
+    }
+
+    @Test("A paused row says only that it is paused")
+    func metaForPaused() {
+        // Its period state is still computed, but nothing nudges about it and nothing can
+        // be done with it — so "not on the calendar yet" would be a complaint about a
+        // situation we have deliberately stopped caring about.
+        let off = rhythm(id: "p", title: "Trash", satisfiedBy: .scheduling, every: "7 days",
+                         isActive: false,
+                         currentPeriodStart: "2026-08-19", currentPeriodEnd: "2026-08-27",
+                         satisfied: false)
+        #expect(RhythmsModel.detailLines(for: [off], now: at("2026-08-26T12:00:00"), calendar: utcCal)["p"]
+                == "Every week · paused")
     }
 
     @Test("A recovered load clears the failure")

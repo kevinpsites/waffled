@@ -34,6 +34,22 @@ enum HubRoute: Hashable {
     case approvals                   // Today → pending reward purchases + chore check-offs
 }
 
+extension DemoHooks {
+    /// `WAFFLED_HUB_PAGE` as a route, for the headless verification described on it.
+    static var hubRoute: HubRoute? {
+        switch hubPage {
+        case "rhythms": return .rhythms
+        case "pantry": return .pantry
+        case "chores": return .chores
+        case "goals": return .goals
+        case "lists": return .lists
+        case "rewards": return .rewards
+        case "photos": return .photos
+        default: return nil
+        }
+    }
+}
+
 /// Renders a `HubRoute` destination. Shared by the Family hub and the Today tab so
 /// drilling into a person/chores/grocery/recipe stays on whichever tab you started
 /// from — Back returns there instead of switching tabs. `hub` is optional: only the
