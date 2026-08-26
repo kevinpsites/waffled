@@ -52,6 +52,13 @@ struct RhythmsView: View {
                                            uniquingKeysWith: { a, _ in a })
             await model.loadAll()
             await model.loadAttention()
+            // Headless verification of the editor, which is otherwise behind a toolbar
+            // button and so unreachable — the simulator has no tap API.
+            switch DemoHooks.rhythmEditor {
+            case nil: break
+            case "new": creating = true
+            case let title?: editing = model.rhythms.first { $0.title == title }
+            }
         }
         .sheet(isPresented: $creating) { RhythmEditorSheet(model: model) }
         .sheet(item: $editing) { r in RhythmEditorSheet(model: model, editing: r) }

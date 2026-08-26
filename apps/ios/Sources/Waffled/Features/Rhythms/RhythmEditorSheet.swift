@@ -1,15 +1,36 @@
 import SwiftUI
 
-/// Create or edit a rhythm.
+/// Create a rhythm by saying it as a sentence:
 ///
-/// The first thing it asks is the only thing that really matters: **what closes out a
-/// period?** Everything below the shape picker follows from that answer, which is why the
-/// two branches ask for different anchors (a first due date vs. a period start).
+///     🌬 Air filter
+///     every 3 months,
+///     counted when I mark it done,
+///     on Kevin
 ///
-/// When editing, the shape and the period anchor are shown but not editable — re-anchoring
-/// a live rhythm would silently re-interpret its existing skips (keyed on the period start)
-/// and point its bookings at periods that no longer exist. The server refuses those fields
-/// for the same reason; retire it and make a new one.
+/// and then read, underneath, what that sentence will actually do. The sheet used to open
+/// with a two-card picker for the shape, which put the most abstract question first and
+/// asked it in the vocabulary of the schema. That choice hasn't gone anywhere — it is the
+/// "counted when" clause, phrased as the thing it decides:
+///
+///   `.completion` — you did the thing, and the clock restarts from when you ACTUALLY did
+///                   it, so being late shifts the next one instead of stacking misses.
+///   `.scheduling` — a calendar event exists for the period. We never ask whether it
+///                   happened; getting the opportunity onto the calendar IS the outcome.
+///
+/// Mirrors the web `RhythmModal.tsx`, down to the line breaks — web places them with
+/// `<br />` and this places them as rows of a `VStack`, because SwiftUI has no inline flow
+/// and the design prescribes the same four lines either way.
+///
+/// Every token is a real control, never a tappable label: the sentence has nowhere to hang
+/// a visible label, so each one carries an accessibility label instead. The "counted when"
+/// token is a `Menu` rather than a picker because both options need their consequence
+/// spelled out, and a two-`Text` menu button is exactly the native control for that.
+///
+/// Editing asks LESS. The shape and the period anchor (`startsOn`, `autoSchedule`,
+/// `rrule`) are not editable and the server refuses them: moving the anchor of a live
+/// rhythm would silently re-interpret the periods it has already skipped — they are keyed
+/// on `period_start` — and point its bookings at periods that no longer exist. So on an
+/// edit those clauses are stated rather than offered.
 struct RhythmEditorSheet: View {
     let model: RhythmsModel
     @Environment(SyncManager.self) private var sync
@@ -17,6 +38,7 @@ struct RhythmEditorSheet: View {
     @State private var form: RhythmForm
     @State private var saving = false
     @State private var error: String?
+    @State private var advanced = DemoHooks.rhythmEditorMore
 
     init(model: RhythmsModel, editing: WaffledAPI.Rhythm? = nil) {
         self.model = model
@@ -25,10 +47,22 @@ struct RhythmEditorSheet: View {
 
     private var isNew: Bool { form.editingId == nil }
 
+    /// Named for what it decides, not for the column it is stored in.
+    private static let modes: [(shape: WaffledAPI.RhythmShape, label: String, why: String)] = [
+        (.completion, "I mark it done",
+         "The clock restarts the day you actually do it. Late once ≠ late forever."),
+        (.scheduling, "it’s on the calendar",
+         "Getting it booked is the win — nobody asks later whether it happened."),
+    ]
+
+    private var modeLabel: String {
+        Self.modes.first { $0.shape == form.shape }?.label ?? ""
+    }
+
     /// Both fields follow the cadence until they are touched, and touching one is what
-    /// pins it. The stepper and the picker therefore read the derived value and write the
-    /// raw one — reading `$form.leadDays` directly would show an empty control for a
-    /// default that is, in fact, entirely definite.
+    /// pins it. The controls therefore read the derived value and write the raw one —
+    /// binding straight to the optional would show an empty control for a default that is,
+    /// in fact, entirely definite.
     private var leadBinding: Binding<Int> {
         Binding(get: { form.effectiveLeadDays }, set: { form.leadDays = $0 })
     }
@@ -41,84 +75,23 @@ struct RhythmEditorSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    if isNew { shapePicker } else { shapeNote }
+                    Text("Say it as a sentence. Everything else has a sane default.")
+                        .font(.system(size: 13)).foregroundStyle(WF.ink3)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                    WaffledFieldCard(title: "What") {
-                        HStack(spacing: 10) {
-                            // The first example anyone reads should be the most ordinary
-                            // rhythm there is, not the most exotic one.
-                            TextField("Take the trash out", text: $form.title)
-                                .font(.system(size: 15))
-                                .padding(.horizontal, 12).padding(.vertical, 11)
-                                .wfField(radius: WF.rSM, fill: WF.panel)
-                            TextField("🛕", text: $form.emoji)
-                                .font(.system(size: 15))
-                                .multilineTextAlignment(.center)
-                                .frame(width: 64)
-                                .padding(.vertical, 11)
-                                .wfField(radius: WF.rSM, fill: WF.panel)
-                        }
-                    }
+                    sentence
 
-                    WaffledFieldCard(title: "How often") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(spacing: 10) {
-                                Stepper("Every \(form.count)", value: $form.count, in: 1...52)
-                                    .font(.system(size: 15, weight: .semibold))
-                                Menu {
-                                    ForEach(RhythmForm.Unit.allCases) { u in
-                                        Button(u.label) { form.unit = u }
-                                    }
-                                } label: { WaffledMenuPill(text: form.unit.label) }
-                            }
-                            Text(RhythmFormat.sentence(RhythmFormat.cadenceLabel(form.every)))
-                                .font(.system(size: 13)).foregroundStyle(WF.ink3)
-                        }
-                    }
+                    if isNew { consequence } else { anchorNote }
 
-                    WaffledFieldCard(title: "Who it's for") {
-                        Menu {
-                            Button("Whole household") { form.personId = nil }
-                            ForEach(sync.members) { m in Button(m.name) { form.personId = m.id } }
-                        } label: {
-                            WaffledMenuPill(text: sync.members.first { $0.id == form.personId }?.name ?? "Whole household")
-                        }
-                    }
-
-                    if form.shape == .completion { completionFields } else { schedulingFields }
-
-                    WaffledFieldCard(title: form.shape == .completion
-                                     ? "Warn me this many days before it’s due"
-                                     : "How many days’ warning before the booking window closes") {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Stepper("\(form.effectiveLeadDays) days", value: leadBinding, in: 0...365)
-                                .font(.system(size: 15, weight: .semibold))
-                            // Spelled out against THIS rhythm's cadence rather than left as
-                            // "the period", and stating the clamp's effect in days — the
-                            // server stores least(leadTime, every/2), so a weekly rhythm
-                            // asking for 14 days' notice quietly gets 3.
-                            Text(form.shape == .completion
-                                 ? "Capped at half the cadence — a runway longer than the cycle never closes, so it would never go quiet."
-                                 : RhythmFormat.nudgeExplainer(every: form.every, leadDays: form.effectiveLeadDays))
-                                .font(.system(size: 12)).foregroundStyle(WF.ink3)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-
-                    WaffledFieldCard(title: "Notes") {
-                        TextField("Furnace, 20x25x1", text: $form.notes, axis: .vertical)
-                            .lineLimit(2...4)
-                            .font(.system(size: 15))
-                            .padding(.horizontal, 12).padding(.vertical, 11)
-                            .wfField(radius: WF.rSM, fill: WF.panel)
-                    }
+                    moreRow
+                    if advanced { advancedFields }
 
                     if let error {
                         Text(error).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.danger)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    WaffledPrimaryCTA(label: isNew ? "Create rhythm" : "Save changes",
+                    WaffledPrimaryCTA(label: isNew ? "Add rhythm" : "Save changes",
                                       isBusy: saving, isDisabled: !form.isValid) {
                         Task { await save() }
                     }
@@ -134,87 +107,244 @@ struct RhythmEditorSheet: View {
         }
     }
 
-    // MARK: the load-bearing choice
+    // MARK: - the sentence
 
-    private var shapePicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionLabel(text: "What closes out a period")
-            shapeOption(.scheduling, title: "It gets scheduled",
-                        detail: "Done when it's on the calendar. We never ask whether it happened.")
-            shapeOption(.completion, title: "You do it",
-                        detail: "The clock restarts from when you actually did it.")
-        }
-    }
-
-    private func shapeOption(_ shape: WaffledAPI.RhythmShape, title: String, detail: String) -> some View {
-        Button { form.shape = shape } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: form.shape == shape ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 18)).foregroundStyle(form.shape == shape ? WF.primary : WF.ink3)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
-                    Text(detail).font(.system(size: 12.5)).foregroundStyle(WF.ink3)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+    private var sentence: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                // The emoji leads, as it does on every row this will become.
+                TextField("🔁", text: $form.emoji)
+                    .font(.system(size: 17))
+                    .multilineTextAlignment(.center)
+                    .frame(width: 54)
+                    .padding(.vertical, 9)
+                    .wfField(radius: WF.rSM, fill: WF.panel)
+                    .accessibilityLabel("Emoji")
+                // The placeholder is the first example anyone reads, so it is the most
+                // ordinary rhythm there is rather than the most exotic one.
+                TextField("Take the trash out", text: $form.title)
+                    .font(.system(size: 17, weight: .semibold))
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .frame(maxWidth: .infinity)
+                    .wfField(radius: WF.rSM, fill: WF.panel)
+                    .accessibilityLabel("What")
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .wfField(radius: WF.rMD, fill: form.shape == shape ? WF.primaryT : WF.card)
-        }
-        .buttonStyle(.plain)
-    }
 
-    private var shapeNote: some View {
-        LockNote(form.shape == .scheduling
-                 ? "This one is closed out by a calendar event existing for the period. That can't be changed — make a new rhythm instead."
-                 : "This one is closed out by you doing it. That can't be changed — make a new rhythm instead.")
-    }
-
-    // MARK: per-shape anchors
-
-    private var completionFields: some View {
-        WaffledFieldCard(title: "First due") {
-            DatePicker("First due", selection: dueBinding, displayedComponents: [.date])
-                .datePickerStyle(.compact)
-                .labelsHidden()
-                .disabled(!isNew)
-                .opacity(isNew ? 1 : 0.5)
-        }
-    }
-
-    @ViewBuilder private var schedulingFields: some View {
-        WaffledFieldCard(title: "Periods start") {
-            VStack(alignment: .leading, spacing: 10) {
-                DatePicker("Periods start", selection: $form.startsOn, displayedComponents: [.date])
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
-                    .disabled(!isNew)
-                    .opacity(isNew ? 1 : 0.5)
-
-                if isNew {
-                    Toggle("Put it on the calendar automatically", isOn: $form.autoSchedule)
-                        .font(.system(size: 15, weight: .semibold))
-                        .tint(WF.primary)
-                    if form.autoSchedule {
-                        Text("\(Recurrence.describeRrule(form.rrule(), start: form.startsOn)) — booked once, then it just stays there.")
-                            .font(.system(size: 12)).foregroundStyle(WF.ink3)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if form.unit == .months {
-                            Menu {
-                                Button("The same date") { form.monthlyMode = .dayOfMonth }
-                                Button("The same weekday (e.g. the third Saturday)") { form.monthlyMode = .nthWeekday }
-                            } label: {
-                                WaffledMenuPill(text: form.monthlyMode == .dayOfMonth ? "The same date" : "The same weekday")
-                            }
+            HStack(spacing: 8) {
+                fixed("every")
+                TextField("1", value: $form.count, format: .number)
+                    .font(.system(size: 17, weight: .semibold))
+                    .multilineTextAlignment(.center)
+                    .keyboardType(.numberPad)
+                    .frame(width: 56)
+                    .padding(.vertical, 9)
+                    .wfField(radius: WF.rSM, fill: WF.panel)
+                    .accessibilityLabel("How often")
+                // The comma hangs off the token it follows rather than sitting a whole
+                // word-space away from it, which read as a stray mark on its own.
+                HStack(spacing: 1) {
+                    Menu {
+                        ForEach(RhythmForm.Unit.allCases) { u in
+                            Button(u.label) { form.unit = u }
                         }
+                    } label: { WaffledMenuPill(text: form.unit.label) }
+                        .accessibilityLabel("Unit")
+                    fixed(",")
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                fixed("counted when")
+                HStack(spacing: 1) {
+                    if isNew {
+                        // Two `Text`s in a menu button become a title and a subtitle, which
+                        // is the whole reason this is a Menu and not a Picker: both answers
+                        // need their consequence spelled out, and a wheel has nowhere to
+                        // put one.
+                        Menu {
+                            ForEach(Self.modes, id: \.shape) { m in
+                                Button { form.shape = m.shape } label: {
+                                    Text(m.label)
+                                    Text(m.why)
+                                }
+                            }
+                        } label: { WaffledMenuPill(text: modeLabel) }
+                            .accessibilityLabel("counted when")
                     } else {
-                        Text("When it happens is an open decision every period, so it'll ask you to pick a time.")
-                            .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                        // Not offered: re-shaping a live rhythm would re-read every period
+                        // it has already skipped or booked. Stated plainly, not hidden.
+                        fixedToken(modeLabel)
+                    }
+                    fixed(",")
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                fixed("on")
+                Menu {
+                    Button("the whole household") { form.personId = nil }
+                    ForEach(sync.members) { m in Button(m.name) { form.personId = m.id } }
+                } label: {
+                    WaffledMenuPill(text: sync.members.first { $0.id == form.personId }?.name
+                                    ?? "the whole household")
+                }
+                .accessibilityLabel("Who")
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    /// The words between the tokens — the parts of the sentence nobody edits.
+    private func fixed(_ text: String) -> some View {
+        Text(text).font(.system(size: 17)).foregroundStyle(WF.ink2)
+            .lineLimit(1).fixedSize()
+    }
+
+    /// A clause that is stated rather than offered. Shaped like the tokens beside it so the
+    /// sentence still reads as one sentence, and flat so it doesn't invite a tap.
+    private func fixedToken(_ text: String) -> some View {
+        Text(text).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink2)
+            .padding(.horizontal, 14).padding(.vertical, 9)
+            .background(WF.panel.opacity(0.6)).clipShape(Capsule())
+    }
+
+    // MARK: - what the sentence will do
+
+    /// The two dates that are the whole promise. Both come through `consequence`, which
+    /// derives them from `nudgePlan` rather than from the typed runway: the server keeps
+    /// `least(leadTime, every / 2)`, so a weekly rhythm asked for 14 days' notice would
+    /// otherwise be promised a nudge on a day nothing is ever going to happen.
+    @ViewBuilder private var consequence: some View {
+        let anchor = form.shape == .scheduling ? form.startsOn : form.firstDue()
+        if let plan = RhythmFormat.consequence(shape: form.shape, every: form.every,
+                                               leadDays: form.effectiveLeadDays, anchor: anchor) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: form.shape == .completion ? "checkmark.circle.fill" : "calendar")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(WF.primary)
+                    .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 6) {
+                    promise(plan)
+                        .font(.system(size: 13.5)).foregroundStyle(WF.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let cap = RhythmFormat.capNote(every: form.every, leadDays: form.effectiveLeadDays) {
+                        Text(cap).font(.system(size: 12)).foregroundStyle(WF.ink3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        }
+    }
+
+    private func promise(_ plan: RhythmFormat.Consequence) -> Text {
+        let lands = Text(RhythmFormat.dayMonth(plan.landsOn)).bold()
+        let nudge = Text(RhythmFormat.dayMonth(plan.nudgeFrom)).bold()
+        if form.shape == .completion {
+            return Text("Next one lands around ") + lands + Text(". It’ll be on your Today card from ")
+                + nudge + Text(". If you do it late the next one moves with it — misses never stack up.")
+        }
+        return Text("Booking it is the win — we’ll never ask whether it happened. A fresh window opens ")
+            + Text(RhythmFormat.cadenceLabel(form.every))
+            + Text(", and if nothing’s on the calendar by ") + nudge + Text(" it moves to Needs you now.")
+    }
+
+    /// On an edit, the clause the sheet won't offer — named in full, with the way through.
+    private var anchorNote: some View {
+        LockNote(form.shape == .scheduling
+                 ? "Periods are anchored to \(RhythmFormat.shortDate(RhythmFormat.ymd(form.startsOn))), \(RhythmFormat.cadenceLabel(form.every)). Moving the anchor would re-interpret the periods you’ve already skipped or booked, so it can’t change here — retire this one and make a new one instead."
+                 : "The clock isn’t set by hand — marking it done restarts it from when you actually did it. Moving the anchor would mean a different rhythm, so retire this one and make a new one instead.")
+    }
+
+    // MARK: - more options
+
+    private var moreRow: some View {
+        Button { advanced.toggle() } label: {
+            HStack(spacing: 8) {
+                Image(systemName: advanced ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                Text(advanced ? "Fewer options"
+                     : "More options — notes, how early to nudge, auto-add to calendar")
+                    .font(.system(size: 13, weight: .semibold))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(WF.ink2)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private var advancedFields: some View {
+        WaffledFieldCard(title: form.shape == .completion
+                         ? "Start nudging me this many days early"
+                         : "Start nudging me this many days before the window closes") {
+            VStack(alignment: .leading, spacing: 6) {
+                Stepper("\(form.effectiveLeadDays) days", value: leadBinding, in: 0...365)
+                    .font(.system(size: 15, weight: .semibold))
+                // Spelled out against THIS rhythm's cadence rather than left as "the
+                // period", which was reasonably read as "what period? I'm scheduling it
+                // every week".
+                Text(form.shape == .completion
+                     ? "Capped at half the cadence — a runway longer than the cycle never closes, so it would never go quiet."
+                     : RhythmFormat.nudgeExplainer(every: form.every, leadDays: form.effectiveLeadDays))
+                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+
+        // The anchors are create-only: see the note at the top of this file.
+        if isNew {
+            if form.shape == .completion {
+                WaffledFieldCard(title: "First one due") {
+                    DatePicker("First one due", selection: dueBinding, displayedComponents: [.date])
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                }
+            } else {
+                WaffledFieldCard(title: "First period starts") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        DatePicker("First period starts", selection: $form.startsOn,
+                                   displayedComponents: [.date])
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
+
+                        Toggle("Put it on the calendar automatically", isOn: $form.autoSchedule)
+                            .font(.system(size: 15, weight: .semibold))
+                            .tint(WF.primary)
+                        if form.autoSchedule {
+                            Text("\(Recurrence.describeRrule(form.rrule(), start: form.startsOn)) — booked once, then it just stays there.")
+                                .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if form.unit == .months {
+                                Menu {
+                                    Button("The same date") { form.monthlyMode = .dayOfMonth }
+                                    Button("The same weekday (e.g. the third Saturday)") { form.monthlyMode = .nthWeekday }
+                                } label: {
+                                    WaffledMenuPill(text: form.monthlyMode == .dayOfMonth
+                                                    ? "The same date" : "The same weekday")
+                                }
+                            }
+                        } else {
+                            Text("When it happens is an open decision every period, so it’ll ask you to pick a time.")
+                                .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+
+        WaffledFieldCard(title: "Notes") {
+            TextField("Furnace, 20x25x1", text: $form.notes, axis: .vertical)
+                .lineLimit(2...4)
+                .font(.system(size: 15))
+                .padding(.horizontal, 12).padding(.vertical, 11)
+                .wfField(radius: WF.rSM, fill: WF.panel)
         }
     }
 

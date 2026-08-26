@@ -231,6 +231,25 @@ enum RhythmFormat {
         return Consequence(landsOn: landsOn, nudgeFrom: nudgeFrom, capped: plan.capped)
     }
 
+    /// The clamp, admitted next to the promise it modifies — or nil when nothing was
+    /// trimmed, because a form explaining a clamp that didn't happen is how the old
+    /// default came to teach the wrong thing.
+    ///
+    /// Both numbers appear together on purpose: the whole failure was a field showing 14
+    /// and a server delivering 3, with the two never once in the same sentence.
+    static func capNote(every: String, leadDays: Int) -> String? {
+        let plan = nudgePlan(every: every, leadDays: leadDays)
+        guard plan.capped else { return nil }
+        let window = cadenceLabel(every).replacingOccurrences(of: "every ", with: "a ")
+        return "\(plural(max(0, leadDays), "day"))’ notice won’t fit in \(window), so it’s trimmed"
+            + " to \(plan.effectiveDays) — a runway longer than the cycle never goes quiet."
+    }
+
+    /// "November 19" — inside a sentence, where the year is noise.
+    static func dayMonth(_ date: Date, calendar: Calendar = Cal.current) -> String {
+        DateFmt.localizedString(date, "MMMM d", calendar.timeZone)
+    }
+
     /// The runway in a sentence, naming the window it counts back from. "…before the
     /// period ends" assumed you knew what the period was, which was fairly answered with
     /// "what period? I'm scheduling it every week". For a scheduling rhythm the period IS
@@ -741,7 +760,11 @@ struct RhythmForm {
     /// nil when creating; the rhythm's id when editing.
     let editingId: String?
     /// Fixed at creation — the server refuses to change a live rhythm's shape.
-    var shape: WaffledAPI.RhythmShape = .scheduling
+    ///
+    /// Completion, matching web: the same blank form used to make two different rhythms
+    /// depending on which surface you were holding. It is also the gentler default — it
+    /// needs no calendar, and getting it wrong costs a tap rather than a stray event.
+    var shape: WaffledAPI.RhythmShape = .completion
     var title = ""
     var emoji = ""
     var notes = ""

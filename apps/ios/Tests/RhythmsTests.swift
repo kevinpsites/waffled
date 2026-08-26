@@ -584,6 +584,31 @@ struct RhythmEditorTests {
         #expect(RhythmFormat.ymd(form.firstDue(now: now, calendar: utcCal), calendar: utcCal) == "2026-09-01")
     }
 
+    @Test("A blank sentence opens on the shape most rhythms actually are")
+    func defaultsToCompletion() {
+        // Web has always opened on "I mark it done" and iOS opened on "it's on the
+        // calendar", so the same blank form made two different rhythms depending on which
+        // one you happened to be holding. Completion is also the gentler default: it needs
+        // no calendar, and getting it wrong costs a tap rather than a stray event.
+        #expect(RhythmForm().shape == .completion)
+    }
+
+    @Test("The clamp is admitted in the sentence's own terms, or not at all")
+    func capNoteNamesTheCadence() {
+        // Said next to the promise it modifies, in days rather than as "half the cycle":
+        // the whole failure was a form that showed 14 and delivered 3 without either
+        // number ever appearing together.
+        let note = RhythmFormat.capNote(every: "7 days", leadDays: 14)
+        #expect(note?.contains("14 days") == true)
+        #expect(note?.contains("a week") == true)
+        #expect(note?.contains("trimmed to 3") == true)
+
+        // Nothing to admit when nothing was trimmed — a form explaining a clamp that
+        // didn't happen is how the default came to teach the wrong thing.
+        #expect(RhythmFormat.capNote(every: "3 mons", leadDays: 14) == nil)
+        #expect(RhythmFormat.capNote(every: "7 days", leadDays: 3) == nil)
+    }
+
     @Test("The consequence block promises the dates the server will actually use")
     func consequenceUsesTheClampedRunway() {
         let now = at("2026-08-26T00:00:00")
