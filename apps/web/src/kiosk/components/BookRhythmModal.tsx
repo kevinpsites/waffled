@@ -32,7 +32,10 @@ export function BookRhythmModal({
   onBooked?: () => void
 }) {
   const { rhythm, periodStart, periodEnd } = item
-  const series = rhythm.autoSchedule
+  // Only when there is no recurrence left. Booking a period whose series is alive adds
+  // one event to that period; the server refuses to clone the rule a second time, and the
+  // copy here must not promise otherwise.
+  const series = rhythm.autoSchedule && !item.hasSeries
   const last = lastDayOfPeriod(periodEnd)
   const today = ymd(new Date())
   // Default to today when today is inside the period (the common case — the runway

@@ -107,7 +107,7 @@ describe('RhythmsCard', () => {
   })
 
   it('asks a scheduling rhythm to be booked, never to be completed', async () => {
-    mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01' }])
+    mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01', hasSeries: false }])
     render()
     expect(await screen.findByText('Temple visit')).toBeInTheDocument()
     // Every row on this card is something that needs attention, so "not on the
@@ -121,7 +121,7 @@ describe('RhythmsCard', () => {
   })
 
   it('books a period into a real event from a time picker alone', async () => {
-    mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01' }])
+    mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01', hasSeries: false }])
     render()
     fireEvent.click(await screen.findByRole('button', { name: /book a time for temple visit/i }))
 
@@ -140,20 +140,37 @@ describe('RhythmsCard', () => {
   })
 
   it('skips a period without inventing a calendar entry for it', async () => {
-    mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01' }])
+    mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01', hasSeries: false }])
     render()
     fireEvent.click(await screen.findByRole('button', { name: /skip this period for temple visit/i }))
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/rhythms/r-temple/skip'))).toBe(true))
     expect(calls.find((c) => c.url.endsWith('/api/rhythms/r-temple/skip'))!.body).toEqual({ periodStart: '2026-07-01' })
   })
 
-  it('offers to put the series back when an auto-scheduled rhythm resurfaces', async () => {
+  it('offers to put the series back only when the series is actually gone', async () => {
     // An auto_schedule rhythm is normally absent — its recurring event IS the
-    // satisfied state. Showing up means the event was deleted or ran out.
-    mockAttention([{ kind: 'unscheduled', rhythm: outing, periodStart: '2026-08-01', periodEnd: '2026-09-01' }])
+    // satisfied state. With no series left, showing up means it was deleted or ran out,
+    // and putting one back is exactly right.
+    mockAttention([{
+      kind: 'unscheduled', rhythm: outing,
+      periodStart: '2026-08-01', periodEnd: '2026-09-01', hasSeries: false,
+    }])
     render()
     expect(await screen.findByText('Family outing')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /put the series back on the calendar for family outing/i })).toBeInTheDocument()
+  })
+
+  it('offers an ordinary booking when the series is alive and one period is empty', async () => {
+    // Offering to put back a series that is already there built a SECOND one beside it
+    // and doubled every future occurrence, permanently. One empty period wants one event.
+    mockAttention([{
+      kind: 'unscheduled', rhythm: outing,
+      periodStart: '2026-08-01', periodEnd: '2026-09-01', hasSeries: true,
+    }])
+    render()
+    expect(await screen.findByText('Family outing')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^book a time for family outing$/i })).toBeInTheDocument()
+    expect(screen.queryByText(/needs putting back/i)).toBeNull()
   })
   it('says how many want you, and how many there are altogether', async () => {
     mockAttention(
@@ -200,7 +217,7 @@ describe('RhythmsCard', () => {
   it('still lets a period be skipped from the board', async () => {
     // Not in the redesign's sketch of this card, and kept anyway: skipping is the
     // one thing here you cannot otherwise do without leaving Today.
-    mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01' }], ten)
+    mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01', hasSeries: false }], ten)
     render()
     expect(await screen.findByRole('button', { name: /skip this period for temple visit/i })).toBeInTheDocument()
   })

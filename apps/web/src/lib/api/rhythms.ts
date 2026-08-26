@@ -53,6 +53,15 @@ export interface RhythmWithPeriod extends Rhythm {
    */
   bookedAt: string | null
   bookedAllDay: boolean | null
+  /**
+   * Whether a live recurring event still exists for this rhythm.
+   *
+   * Only meaningful on an auto-scheduled one, where it separates two situations an empty
+   * period cannot tell apart on its own: the series is **gone** (deleted, or the
+   * recurrence ran out) and wants putting back, versus the series is **alive** and this
+   * one period has nothing in it. Different sentences, different buttons.
+   */
+  hasSeries: boolean
 }
 
 // One period of one rhythm — enough to book or skip it. An unscheduled attention
@@ -62,11 +71,20 @@ export interface RhythmPeriod {
   rhythm: Rhythm
   periodStart: string
   periodEnd: string
+  /** See RhythmWithPeriod.hasSeries. Decides whether booking restores the recurrence. */
+  hasSeries: boolean
 }
 
 export type AttentionItem =
   | { kind: 'due'; rhythm: Rhythm; dueAt: string; overdue: boolean }
-  | { kind: 'unscheduled'; rhythm: Rhythm; periodStart: string; periodEnd: string }
+  | {
+      kind: 'unscheduled'
+      rhythm: Rhythm
+      periodStart: string
+      periodEnd: string
+      /** See RhythmWithPeriod.hasSeries. */
+      hasSeries: boolean
+    }
 
 export interface Completion {
   id: string

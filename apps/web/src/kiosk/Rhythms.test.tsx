@@ -44,6 +44,7 @@ const temple = {
   currentPeriodStart: '2026-07-01',
   currentPeriodEnd: '2026-10-01',
   satisfied: false,
+  hasSeries: false,
 }
 
 const calls: { url: string; method: string; body: Record<string, unknown> | null }[] = []
@@ -131,25 +132,49 @@ describe('Rhythms screen', () => {
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/rhythms/r-temple/skip'))).toBe(true))
   })
 
-  it('says which row books itself, so its different verb is not a mystery', async () => {
-    // Two rows both reading "Every week - not on the calendar yet" sprouted two different
-    // buttons - "Put it back" on one, "Book a time" on the other - and the row never
-    // mentioned the fact that decides which: one of them books its own series. The Today
-    // card already explains this; the register had lost it.
-    const auto = { ...temple, id: 'r-auto', title: 'Auto temple', autoSchedule: true, rrule: 'FREQ=WEEKLY;BYDAY=WE' }
-    mockApi([auto])
+  it('offers the ordinary booking when only this period is empty', async () => {
+    // A live series with one empty period does NOT need putting back - it is right there
+    // on the calendar. Saying so sent people to a button that built a SECOND weekly series
+    // beside the first and doubled every future occurrence. What is missing is one event
+    // in one period, which is the same thing a hand-booked row is missing, so it is the
+    // same offer. Only the sentence differs, because "yet" would be wrong here: nobody
+    // was ever going to book this by hand.
+    const auto = {
+      ...temple, id: 'r-auto', title: 'Auto temple',
+      autoSchedule: true, rrule: 'FREQ=WEEKLY;BYDAY=WE', hasSeries: true,
+    }
+    mockApi([auto], [{
+      kind: 'unscheduled', rhythm: auto,
+      periodStart: '2026-07-01', periodEnd: '2026-10-01', hasSeries: true,
+    }])
+    renderScreen()
+    await screen.findByText('Auto temple')
+    expect(screen.getByText(/nothing on the calendar this time/i)).toBeInTheDocument()
+    expect(screen.queryByText(/needs putting back/i)).toBeNull()
+    expect(screen.getByRole('button', { name: /^book a time$/i })).toBeInTheDocument()
+  })
+
+  it('asks for the series back only when there is no series left', async () => {
+    // The case the button was built for: the recurrence was deleted or ran out, so what
+    // is missing really is the series and re-booking one is exactly right.
+    const gone = {
+      ...temple, id: 'r-gone', title: 'Auto temple',
+      autoSchedule: true, rrule: 'FREQ=WEEKLY;BYDAY=WE', hasSeries: false,
+    }
+    mockApi([gone], [{
+      kind: 'unscheduled', rhythm: gone,
+      periodStart: '2026-07-01', periodEnd: '2026-10-01', hasSeries: false,
+    }])
     renderScreen()
     await screen.findByText('Auto temple')
     expect(screen.getByText(/the series needs putting back/i)).toBeInTheDocument()
-    // Not "yet": nobody was ever going to book this by hand, so "yet" blamed the reader
-    // for a slot the rhythm had promised to fill itself.
-    expect(screen.queryByText(/not on the calendar yet/i)).toBeNull()
+    expect(screen.getByRole('button', { name: /put it back/i })).toBeInTheDocument()
   })
 
   it('leaves a healthy self-booking row reading like any other settled one', async () => {
-    // While the series is doing its job there is no anomaly to report and no button
-    // either, so the fact it books itself buys the row nothing and costs it a phrase.
-    mockApi([{ ...temple, id: 'r-ok', title: 'Auto temple', autoSchedule: true, satisfied: true }])
+    // While the series is doing its job there is nothing to report and no button either,
+    // so the fact it books itself buys the row nothing and costs it a phrase.
+    mockApi([{ ...temple, id: 'r-ok', title: 'Auto temple', autoSchedule: true, hasSeries: true, satisfied: true }])
     renderScreen()
     await screen.findByText('Auto temple')
     expect(screen.getByText(/on the calendar for this one/i)).toBeInTheDocument()

@@ -167,11 +167,12 @@ struct RhythmsTodayCard: View {
         case .unscheduled:
             // An autoSchedule rhythm is normally absent from this list — its recurring event
             // IS the satisfied state. Turning up here means the calendar and the intention
-            // have disagreed, so the offer is to put the series back.
+            // have disagreed, and only a MISSING SERIES is worth explaining: said of a
+            // series that is alive it sent people to a button that built a second one
+            // beside it, doubling every future occurrence.
             // "Not on the calendar yet" was true of every row on this card and so
-            // distinguished nothing; the deadline is what differs. The series anomaly
-            // keeps its explanation, because that one is genuinely unusual.
-            guard item.rhythm.autoSchedule else { return status }
+            // distinguished nothing; the deadline is what differs.
+            guard item.rhythm.autoSchedule, item.hasSeries != true else { return status }
             return status.isEmpty ? "The series needs putting back"
                                   : "\(status) · the series needs putting back"
         }
@@ -188,7 +189,8 @@ struct RhythmsTodayCard: View {
             }
         case .unscheduled:
             HStack(spacing: kiosk ? 8 : 6) {
-                RhythmActionButton(label: item.rhythm.autoSchedule ? "Put it back" : "Book a time",
+                RhythmActionButton(label: item.rhythm.autoSchedule && item.hasSeries != true
+                                          ? "Put it back" : "Book a time",
                                    kiosk: kiosk,
                                    tint: urgent(item) ? WF.primary : WF.panel,
                                    labelColor: urgent(item) ? .white : WF.ink,

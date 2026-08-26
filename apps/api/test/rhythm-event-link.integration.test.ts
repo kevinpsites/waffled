@@ -354,14 +354,27 @@ describe('a recurring booking satisfies every period it covers', () => {
     expect(events.rowCount).toBe(1)
   })
 
-  it('books the whole series in one go', async () => {
+  // This used to assert the opposite — that booking handed back the rhythm's own rule —
+  // and that is exactly the double-booking the test above warns about. A series already
+  // exists by now, so repeating the rule here built a SECOND one beside it and doubled
+  // every future third Saturday, permanently, while every satisfaction assertion below
+  // stayed green. What an empty period needs is an event in that period, not another
+  // series; the rule is reused only when nothing recurring is left alive.
+  it('fills the period with a one-off rather than a second series', async () => {
     const res = await call('POST', `/api/rhythms/${seriesRhythmId}/schedule`, kevin, {
       startsAt: '2026-09-19T15:00:00Z',
       endsAt: '2026-09-19T18:00:00Z',
     })
     expect(res.statusCode).toBe(201)
-    // The rhythm's own rule, so the caller never restates the recurrence.
-    expect(JSON.parse(res.body).event.rrule).toBe('FREQ=MONTHLY;BYDAY=3SA')
+    expect(JSON.parse(res.body).event.rrule).toBeNull()
+
+    const series = await withClient((c) =>
+      c.query(
+        `select 1 from events where rhythm_id = $1 and deleted_at is null and rrule is not null`,
+        [seriesRhythmId]
+      )
+    )
+    expect(series.rowCount).toBe(1)
   })
 
   it('is satisfied in the month it was created', async () => {

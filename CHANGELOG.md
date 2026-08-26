@@ -41,10 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   filter"). Turning on **Put it on the calendar
   automatically** books the series there and then, so the thing is on the calendar from the
   moment you create it; the day it lands on is picked with the same weekday control the
-  calendar uses, rather than by typing a repeat rule. If a self-booking series ever does come
-  up empty — the event was deleted, or the recurrence ran out — the row now says **the series
-  needs putting back** rather than "not on the calendar yet", because that is a promise the
-  calendar stopped keeping and not a slot you forgot to book. Something you did but forgot to log
+  calendar uses, rather than by typing a repeat rule. When a self-booking rhythm does come up
+  empty, the row now says which kind of empty it is: **nothing on the calendar this time**
+  when the series is fine and one occurrence is missing, and **the series needs putting
+  back** only when there is no recurrence left. Booking the first kind adds the one missing
+  event — where it used to create a **second** series beside the live one and quietly double
+  every occurrence from then on. Something you did but forgot to log
   can be recorded for **the day it actually happened**, which matters for the shapes whose
   clock restarts from that date. Making one is a **sentence you edit in place** — *Air
   filter every 3 months, counted when I mark it done, on Kevin* — with everything else

@@ -3970,6 +3970,13 @@ struct WaffledAPI: Sendable {
         let currentPeriodStart: String?
         let currentPeriodEnd: String?
         let satisfied: Bool?
+        /// Whether a live recurring event still exists for this rhythm.
+        ///
+        /// Only meaningful on an auto-scheduled one, where it separates two situations an
+        /// empty period cannot tell apart: the series is **gone** and wants putting back,
+        /// versus the series is **alive** and this one period has nothing in it. Optional
+        /// for the same reason as `satisfied` — single-row reads don't carry it.
+        let hasSeries: Bool?
     }
 
     enum RhythmAttentionKind: String, Codable, Sendable { case due, unscheduled }
@@ -3984,6 +3991,8 @@ struct WaffledAPI: Sendable {
         let overdue: Bool?
         let periodStart: String?
         let periodEnd: String?
+        /// `.unscheduled` only — see `Rhythm.hasSeries`.
+        let hasSeries: Bool?
         var id: String { rhythm.id }
     }
 

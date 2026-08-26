@@ -192,7 +192,7 @@ function rhythm(over: Partial<RhythmWithPeriod> = {}): RhythmWithPeriod {
     satisfiedBy: 'completion', every: '3 mons', startsOn: null, autoSchedule: false,
     rrule: null, leadTime: '14 days', lastCompletedAt: null, nextDueAt: null,
     isActive: true, currentPeriodStart: null, currentPeriodEnd: null, satisfied: true,
-    bookedAt: null, bookedAllDay: null,
+    bookedAt: null, bookedAllDay: null, hasSeries: false,
     ...over,
   }
 }

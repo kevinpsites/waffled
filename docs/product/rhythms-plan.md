@@ -129,6 +129,15 @@ Within `'scheduling'`, one more bit decides whether a human is needed:
   `createEvent` again, because the events write path can blank `rhythm_id` and a second
   booking path is how the two drift apart. A failed booking warns instead of 500ing: the
   rhythm is valid, and "not on the calendar yet" is a state the register already explains.
+
+  **`scheduleRhythm` reuses the rhythm's `rrule` only when no live recurring event is
+  left.** Passing it unconditionally meant booking a period on a rhythm whose series was
+  perfectly healthy — one occurrence cancelled — created a SECOND series beside the first
+  and doubled every future occurrence, permanently, while every satisfaction assertion
+  stayed green (satisfaction only asks whether SOME occurrence lands in the period, so it
+  is structurally blind to duplicates). The list and the attention feed now carry
+  `hasSeries`, because an empty period alone cannot tell "the series is gone" from "the
+  series is alive and this one is missing" — different sentences, different buttons.
 - **`auto_schedule = false`** — the cadence is known but *when* is an open decision every
   period. The period surfaces as **needs scheduling** until someone picks a slot. Temple
   visit, self-care day.

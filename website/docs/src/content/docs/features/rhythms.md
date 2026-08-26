@@ -161,11 +161,18 @@ Aug 19"* and offers **I did it**; a scheduled one reads *"not on the calendar ye
 offers **Book a time**. Steady rows offer no button at all; everything else — backdating,
 skipping, editing, pausing — lives in the row's **⋯** menu.
 
-One scheduled row reads differently. A rhythm set to **put itself on the calendar
-automatically** should never have an empty period, so when one turns up empty — the event
-was deleted, or the series ran out — the row says *"the series needs putting back"* and the
-button says **Put it back**. It isn't a slot you forgot to book; it's a promise the calendar
-stopped keeping, and the button restores the series rather than picking a one-off time.
+A rhythm set to **put itself on the calendar automatically** should never have an empty
+period, and there are two different ways one ends up empty. If the series is still there
+and a single occurrence is missing — you cancelled that week, say — the row reads *"nothing
+on the calendar this time"* and offers the ordinary **Book a time**, because what is missing
+is one event in one period, exactly as it would be for a hand-booked rhythm. If nothing
+recurring is left at all — the series was deleted, or the recurrence ran out — the row reads
+*"the series needs putting back"* and the button becomes **Put it back**, which restores the
+whole series rather than picking a single slot.
+
+The distinction is not cosmetic. Booking a period on a rhythm whose series was still alive
+used to create a *second* series beside the first, silently doubling every future occurrence
+from then on.
 
 ### The Today card
 

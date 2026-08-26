@@ -49,6 +49,16 @@ export interface RhythmWithPeriod extends Rhythm {
    */
   bookedAt: string | null
   bookedAllDay: boolean | null
+  /**
+   * Whether a live recurring event still exists for this rhythm.
+   *
+   * Only meaningful on an auto-scheduled one, where it separates two situations that
+   * otherwise look identical from an empty period: the series is **gone** (deleted, or
+   * the recurrence ran out) and needs putting back, versus the series is **alive** and a
+   * single instance was cancelled. Different sentences, different buttons — and only the
+   * server can see the difference.
+   */
+  hasSeries: boolean
 }
 
 interface Row {
@@ -125,6 +135,7 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
     satisfied: boolean
     booked_at: Date | null
     booked_all_day: boolean | null
+    has_series: boolean
   }>(
     `with base as (
        select r.*,
@@ -142,6 +153,10 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
             case when b.period_start is not null then (b.period_start + b.every)::date end as period_end,
             bk.starts_at as booked_at,
             bk.all_day as booked_all_day,
+            exists (
+              select 1 from events e
+               where e.rhythm_id = b.id and e.deleted_at is null and e.rrule is not null
+            ) as has_series,
             case
               -- Completion shape has no period grid at all: its clock restarts from
               -- whenever you actually did it, so "handled" just means not yet due.
@@ -190,6 +205,7 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
     satisfied: r.satisfied ?? false,
     bookedAt: r.booked_at ? r.booked_at.toISOString() : null,
     bookedAllDay: r.booked_at ? (r.booked_all_day ?? false) : null,
+    hasSeries: r.has_series ?? false,
   }))
 }
 
@@ -491,7 +507,10 @@ export async function skipPeriod(
 
 export type AttentionItem =
   | { kind: 'due'; rhythm: Rhythm; dueAt: string; overdue: boolean }
-  | { kind: 'unscheduled'; rhythm: Rhythm; periodStart: string; periodEnd: string }
+  // `hasSeries` separates the two ways an auto-scheduled period comes up empty: the
+  // series is gone and needs putting back, or it is alive and one instance was cancelled.
+  // See the note on RhythmWithPeriod.hasSeries.
+  | { kind: 'unscheduled'; rhythm: Rhythm; periodStart: string; periodEnd: string; hasSeries: boolean }
 
 // The one question every surface asks: what needs attention in this window? Today passes
 // a one-day window, the weekly planner passes a week.
@@ -530,7 +549,11 @@ export async function listAttention(householdId: string, horizon: string): Promi
 
   // Scheduling shape: the period covering the window, unsatisfied and not skipped, and
   // only once the booking runway has opened (period_end - lead_time).
-  const unscheduled = await query<Row & { period_start: string; period_end: string }>(
+  const unscheduled = await query<Row & {
+    period_start: string
+    period_end: string
+    has_series: boolean
+  }>(
     `with periods as (
        select r.*,
               -- The period covering the window: the latest boundary at or before its end.
@@ -549,7 +572,11 @@ export async function listAttention(householdId: string, horizon: string): Promi
      select p.id, p.title, p.emoji, p.notes, p.person_id, p.satisfied_by, p.every::text as every,
             p.starts_on, p.auto_schedule, p.rrule, p.lead_time::text as lead_time,
             p.last_completed_at, p.next_due_at, p.is_active,
-            p.period_start, (p.period_start + p.every)::date as period_end
+            p.period_start, (p.period_start + p.every)::date as period_end,
+            exists (
+              select 1 from events e
+               where e.rhythm_id = p.id and e.deleted_at is null and e.rrule is not null
+            ) as has_series
        from periods p
       where (p.period_start + p.every)::date - p.lead_time <= $2::date
         and not exists (
@@ -586,6 +613,7 @@ export async function listAttention(householdId: string, horizon: string): Promi
       rhythm: toRhythm(r),
       periodStart: dateText(r.period_start)!,
       periodEnd: dateText(r.period_end)!,
+      hasSeries: r.has_series ?? false,
     })
   }
 
@@ -737,6 +765,18 @@ export async function scheduleRhythm(
   const endsAt = typeof input.endsAt === 'string' && input.endsAt ? input.endsAt : null
   const title = typeof input.title === 'string' && input.title.trim() ? input.title.trim() : rhythm.title
 
+  // An auto_schedule rhythm books its whole series at once — the rule already says when
+  // it recurs, so asking the caller to restate it would just be a chance to disagree with
+  // the rhythm. But ONLY when nothing recurring is left alive. Handing the rrule over
+  // unconditionally meant booking a period whose series was perfectly healthy — one
+  // instance cancelled, say — created a SECOND weekly series beside the first and doubled
+  // every future occurrence, permanently. What was empty was the period, not the series.
+  const live = await query<{ id: string }>(
+    `select id from events
+      where rhythm_id = $1 and household_id = $2 and deleted_at is null and rrule is not null
+      limit 1`,
+    [rhythm.id, tenant.householdId]
+  )
   return createEvent(tenant, {
     title,
     startsAt,
@@ -744,9 +784,6 @@ export async function scheduleRhythm(
     allDay: input.allDay === true,
     personId: rhythm.personId,
     rhythmId: rhythm.id,
-    // An auto_schedule rhythm books its whole series at once — the rule already says when
-    // it recurs, so asking the caller to restate it would just be a chance to disagree
-    // with the rhythm. A booking-shape rhythm has no rule and books one slot.
-    rrule: rhythm.autoSchedule ? rhythm.rrule : null,
+    rrule: rhythm.autoSchedule && live.rowCount === 0 ? rhythm.rrule : null,
   })
 }

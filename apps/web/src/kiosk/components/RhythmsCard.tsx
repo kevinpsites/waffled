@@ -91,11 +91,14 @@ function UnscheduledRow({
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState(false)
-  // An auto_schedule rhythm is normally absent from this list — its recurring event
-  // IS the satisfied state. Turning up here means the calendar and the intention
-  // have disagreed (the event was deleted, or the recurrence ran out), so the offer
-  // is to put the series back rather than to pick a one-off slot.
-  const series = item.rhythm.autoSchedule
+  // An auto_schedule rhythm is normally absent from this list — its recurring event IS
+  // the satisfied state. Turning up here means the calendar and the intention have
+  // disagreed, and there are two ways that happens. If nothing recurring is left the
+  // series itself is what went missing, and putting one back is the offer. If the series
+  // is alive and only this period is empty, it is one event that is missing — and
+  // offering to put back a series that is already there built a SECOND one beside it,
+  // doubling every future occurrence, permanently.
+  const series = item.rhythm.autoSchedule && !item.hasSeries
   const left = daysLeft(item.periodEnd)
 
   async function skip() {

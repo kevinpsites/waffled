@@ -113,11 +113,20 @@ function RhythmRow({
   const scheduling = rhythm.satisfiedBy === 'scheduling'
   const doneToday = !scheduling && completedToday(rhythm.lastCompletedAt)
   const needsBooking = !paused && scheduling && !rhythm.satisfied
+  // "Put it back" restores a recurrence, so it is only right when there is no recurrence
+  // left. Offering it while the series is alive built a SECOND one beside the first and
+  // doubled every future occurrence — the period was empty, not the series.
+  const needsSeriesBack = needsBooking && rhythm.autoSchedule && !rhythm.hasSeries
   const cd = paused ? null : countdown(rhythm, urgency, new Date())
   const pct = paused ? null : periodProgress(rhythm)
   const period: RhythmPeriod | null =
     rhythm.currentPeriodStart && rhythm.currentPeriodEnd
-      ? { rhythm, periodStart: rhythm.currentPeriodStart, periodEnd: rhythm.currentPeriodEnd }
+      ? {
+          rhythm,
+          periodStart: rhythm.currentPeriodStart,
+          periodEnd: rhythm.currentPeriodEnd,
+          hasSeries: rhythm.hasSeries,
+        }
       : null
 
   // Only Needs-you-now and Coming-up carry a button. Most of a healthy register is
@@ -176,13 +185,16 @@ function RhythmRow({
           {paused ? <> · <b>paused</b></> : scheduling ? (
             rhythm.satisfied
               ? <> · on the calendar for this one</>
-              // A rhythm that books its own series turning up empty is an anomaly, not a
-              // chore you haven't got to: "yet" blamed the reader for a slot the rhythm
-              // had promised to fill itself, and left "Put it back" looking like an
-              // arbitrarily different button next to a hand-booked row's "Book a time".
-              // The Today card has explained this since it shipped; the register hadn't.
+              // Three different empty periods, and they are not the same problem.
+              // A live series with one gap is missing ONE event, exactly like a
+              // hand-booked row is — so it gets the same offer, and only the sentence
+              // differs, because "yet" would blame the reader for a slot the rhythm had
+              // promised to fill itself. A series that is GONE is missing the recurrence,
+              // which is the one case worth a different button.
               : rhythm.autoSchedule
-                ? <> · <b>the series needs putting back</b></>
+                ? rhythm.hasSeries
+                  ? <> · <b>nothing on the calendar this time</b></>
+                  : <> · <b>the series needs putting back</b></>
                 // One node, not "<b>not on the calendar</b> yet" as the mock has it: a
                 // phrase split across elements is unfindable by the text people actually
                 // read, which is how a screen reader and a test both see the page.
@@ -224,7 +236,7 @@ function RhythmRow({
             className={`btn ${primary ? 'btn-primary' : 'btn-ghost'}`}
             onClick={() => onBook(period)}
           >
-            {rhythm.autoSchedule ? 'Put it back' : 'Book a time'}
+            {needsSeriesBack ? 'Put it back' : 'Book a time'}
           </button>
         )}
       </div>
@@ -275,10 +287,10 @@ function RhythmRow({
           {needsBooking && period && !showAction && (
             <button
               type="button"
-              aria-label={`Book a time for ${rhythm.title}`}
+              aria-label={`${needsSeriesBack ? 'Put the series back on the calendar' : 'Book a time'} for ${rhythm.title}`}
               onClick={() => { setMenu(false); onBook(period) }}
             >
-              {rhythm.autoSchedule ? 'Put it back on the calendar' : 'Book a time'}
+              {needsSeriesBack ? 'Put it back on the calendar' : 'Book a time'}
             </button>
           )}
           {needsBooking && period && (

@@ -597,6 +597,84 @@ describe('an auto-scheduled rhythm lands on the calendar at creation', () => {
     expect(ids).not.toContain(autoId)
   })
 
+  // Booking a period on a rhythm whose series is STILL ALIVE used to hand `createEvent`
+  // the rhythm's rrule again, with no dedupe — so pressing the register's button after a
+  // single instance had been cancelled left two live weekly series and doubled every
+  // future occurrence, permanently. The period is what is empty; the series is not.
+  it('books a one-off when the series is alive, rather than a second series', async () => {
+    const created = await call('POST', '/api/rhythms', kevin, {
+      title: 'Temple visit',
+      satisfiedBy: 'scheduling',
+      every: '1 week',
+      startsOn: '2027-03-01',
+      autoSchedule: true,
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+    })
+    const id = JSON.parse(created.body).rhythm.id
+
+    const res = await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: '2027-03-08T18:00:00Z',
+    })
+    expect(res.statusCode).toBe(201)
+    // The new event repeats never — it fills one empty period and leaves the series be.
+    expect(JSON.parse(res.body).event.rrule).toBeNull()
+
+    const series = await withClient((c) =>
+      c.query(
+        `select 1 from events where rhythm_id = $1 and deleted_at is null and rrule is not null`,
+        [id]
+      )
+    )
+    expect(series.rowCount).toBe(1)
+  })
+
+  // The case the button was actually built for, which must keep working: nothing recurring
+  // is left, so what is missing IS the series and booking one back is the whole point.
+  it('re-books the series when none is left alive', async () => {
+    const created = await call('POST', '/api/rhythms', kevin, {
+      title: 'Deep clean',
+      satisfiedBy: 'scheduling',
+      every: '1 week',
+      startsOn: '2027-03-01',
+      autoSchedule: true,
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+    })
+    const id = JSON.parse(created.body).rhythm.id
+    await withClient((c) =>
+      c.query(`update events set deleted_at = now() where rhythm_id = $1`, [id])
+    )
+
+    const res = await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: '2027-03-08T18:00:00Z',
+    })
+    expect(JSON.parse(res.body).event.rrule).toBe('FREQ=WEEKLY;BYDAY=MO')
+  })
+
+  // The row cannot word itself without this: "the series needs putting back" and "this one
+  // was cancelled" are different sentences with different buttons, and only the server
+  // knows whether anything recurring is still alive.
+  it('tells the list whether a recurring series still exists', async () => {
+    const created = await call('POST', '/api/rhythms', kevin, {
+      title: 'Bin day',
+      satisfiedBy: 'scheduling',
+      every: '1 week',
+      startsOn: '2027-03-01',
+      autoSchedule: true,
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+    })
+    const id = JSON.parse(created.body).rhythm.id
+    const find = async () => {
+      const list = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+      return list.find((r: { id: string }) => r.id === id)
+    }
+    expect((await find()).hasSeries).toBe(true)
+
+    await withClient((c) =>
+      c.query(`update events set deleted_at = now() where rhythm_id = $1`, [id])
+    )
+    expect((await find()).hasSeries).toBe(false)
+  })
+
   // The anchor date and the repeat rule are separate answers to separate questions, and
   // nothing made them agree: the series was booked at `starts_on` whatever the rule said.
   // Anchor a weekly rhythm on a Wednesday, pick Monday with the day chips, and the first

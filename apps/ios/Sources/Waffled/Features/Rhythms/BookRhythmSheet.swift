@@ -22,10 +22,10 @@ struct BookRhythmSheet: View {
     @State private var window: ClosedRange<Date>?
 
     private var rhythm: WaffledAPI.Rhythm { item.rhythm }
-    /// An autoSchedule rhythm here means the calendar and the intention have disagreed (the
-    /// event was deleted, or the recurrence ran out), so the offer is to put the series back
-    /// rather than to pick a one-off slot.
-    private var series: Bool { rhythm.autoSchedule }
+    /// True only when there is no recurrence left, so the offer really is to put a series
+    /// back. While the series is alive an empty period wants one event in it — the server
+    /// refuses to clone the rule a second time, and this copy must not promise otherwise.
+    private var series: Bool { rhythm.autoSchedule && item.hasSeries != true }
 
     var body: some View {
         NavigationStack {

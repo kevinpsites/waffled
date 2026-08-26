@@ -285,7 +285,7 @@ struct RhythmsView: View {
                 run(r.id) { try await model.markDone(r.id) }
             }
         } else if let item = period(r) {
-            RhythmActionButton(label: r.autoSchedule ? "Put it back" : "Book a time",
+            RhythmActionButton(label: needsSeriesBack(r) ? "Put it back" : "Book a time",
                                tint: primary ? WF.primary : WF.panel,
                                labelColor: primary ? .white : WF.ink,
                                fullWidth: true) { booking = item }
@@ -340,7 +340,7 @@ struct RhythmsView: View {
                 // which is the good habit.
                 if model.attentionItem(for: r) == nil {
                     Button { booking = item } label: {
-                        Label(r.autoSchedule ? "Put it back on the calendar" : "Book a time",
+                        Label(needsSeriesBack(r) ? "Put it back on the calendar" : "Book a time",
                               systemImage: "calendar.badge.plus")
                     }
                 }
@@ -377,11 +377,19 @@ struct RhythmsView: View {
     ///
     /// Deliberately NOT `model.attentionItem(for:)`. A period can be booked long before
     /// its runway opens, and that is precisely the case `/attention` cannot report.
+    /// Whether booking this rhythm restores a recurrence rather than filling one period.
+    /// Only when there is no recurrence left: offering it while the series is alive built
+    /// a SECOND series beside the first and doubled every future occurrence.
+    private func needsSeriesBack(_ r: WaffledAPI.Rhythm) -> Bool {
+        r.autoSchedule && r.hasSeries != true
+    }
+
     private func period(_ r: WaffledAPI.Rhythm) -> WaffledAPI.RhythmAttentionItem? {
         guard r.satisfiedBy == .scheduling, r.isActive, r.satisfied != true,
               let start = r.currentPeriodStart, let end = r.currentPeriodEnd else { return nil }
         return WaffledAPI.RhythmAttentionItem(kind: .unscheduled, rhythm: r, dueAt: nil,
-                                              overdue: nil, periodStart: start, periodEnd: end)
+                                              overdue: nil, periodStart: start, periodEnd: end,
+                                              hasSeries: r.hasSeries)
     }
 
     private func run(_ id: String, _ work: @escaping () async throws -> Void) {

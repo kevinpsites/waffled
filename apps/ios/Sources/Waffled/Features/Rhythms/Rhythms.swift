@@ -756,13 +756,16 @@ final class RhythmsModel {
                     } else if r.satisfied ?? false {
                         parts.append("on the calendar for this one")
                     } else if r.autoSchedule {
-                        // A rhythm that books its own series turning up empty is an
-                        // anomaly, not a chore you haven't got to: "yet" blamed the reader
-                        // for a slot the rhythm had promised to fill itself, and left "Put
-                        // it back" looking like an arbitrarily different button next to a
-                        // hand-booked row's "Book a time". The Today card has explained
-                        // this since it shipped; the register hadn't.
-                        parts.append("the series needs putting back")
+                        // Two ways a self-booking rhythm comes up empty, and they are not
+                        // the same problem. A live series missing ONE period is missing one
+                        // event, exactly like a hand-booked row is — so it gets the same
+                        // offer, and only the sentence differs, because "yet" would blame
+                        // the reader for a slot the rhythm had promised to fill itself. A
+                        // series that is GONE is missing the recurrence, and saying so of a
+                        // series that is alive sent people to a button that built a SECOND
+                        // one beside it, doubling every future occurrence.
+                        parts.append(r.hasSeries == true ? "nothing on the calendar this time"
+                                                         : "the series needs putting back")
                     } else {
                         parts.append("not on the calendar yet")
                     }
