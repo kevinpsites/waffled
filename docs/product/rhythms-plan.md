@@ -20,11 +20,20 @@ each row, but they are no longer headings. The creation form is an editable sent
 a consequence card stating what it will do, and its defaults follow the cadence rather than
 a fixed number. The Today card is a countdown block: "3 want attention" beside "All 10 →",
 each row led by its countdown, and the filled button kept for what is late or out of time.
-**All three now ship on web/kiosk, iPhone and iPad, from the same helpers.** Still to come:
-the iPad list+detail split with completion history. Three things the design asks for have no server behind them yet — "push
-out a week" (there is no endpoint; `nextDueAt` is not in `UpdateRhythmInput`), the booked
-time on a settled row (the list returns `satisfied` as a boolean, no event time), and the
-"real average" interval in the history panel.
+**All three now ship on web/kiosk, iPhone and iPad, from the same helpers.**
+
+**The server side of the rest is done.** `PATCH /api/rhythms/:id` now accepts `nextDueAt`
+for a completion rhythm ("push it out a week" — refused on a scheduling rhythm, whose
+periods *are* its anchor); the list carries `bookedAt` / `bookedAllDay` so a settled row
+can say when, with `satisfied && bookedAt === null` meaning **skipped**; and
+`GET /api/rhythms/:id/completions` — which has existed and been tested since 0097 — now
+takes a `limit` and reports `total` plus `averageIntervalDays`, the latter computed over
+every completion rather than over the returned page.
+
+Still to come, and it is now client work only: the **iPad list+detail split** — the history
+panel ("May 24 · 13 weeks later"), the real average beside the nominal cadence, and the
+push-out and skip controls wired to the endpoints above. iOS has no `completions` call yet;
+the web client has one and no UI using it.
 
 Where "trash out weekly", "air filter every 3 months", "change the car's oil", "book a
 temple visit", "take a self-care day once a quarter", and "family outing on the third
