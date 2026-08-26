@@ -247,9 +247,10 @@ Rhythms works on every surface, including the 🔁 marker on a booked event.
 
 The **regrouped register** described above — Needs you now / Coming up / Steady — the
 **Today card**, and the **creation form as an editable sentence** are all on every surface.
-The one difference left is a matter of room rather than of features: on a phone each row's
-verb is a button of its own beneath the row, because a title, a countdown and a verb do not
-fit across one line at that width.
+The one difference left is where a row's verb sits, and it's a matter of room rather than
+of features: on the web the verb lives in a column at the right of the row, and on iPhone
+and iPad it sits on its own line beneath the row, because a title, a countdown and a verb
+don't fit across one line on a phone.
 
 The events a scheduled rhythm books are ordinary calendar events, so they show up
 **everywhere** — including on your phone, and including offline — the moment they're booked.

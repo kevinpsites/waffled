@@ -98,6 +98,10 @@ struct RhythmEditorSheet: View {
                 }
                 .padding(16)
             }
+            // The cadence field is a number pad, and a number pad has no return key. Without
+            // this the only way out of it is to tap another control, which is a trap on a
+            // sheet whose primary button the keyboard is covering.
+            .scrollDismissesKeyboard(.interactively)
             .background(WF.canvas)
             .navigationTitle(isNew ? "New rhythm" : "Edit rhythm")
             .navigationBarTitleDisplayMode(.inline)
