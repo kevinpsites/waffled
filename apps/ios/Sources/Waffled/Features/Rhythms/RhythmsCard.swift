@@ -326,10 +326,14 @@ struct RhythmActionButton: View {
     /// A settled state, not a blocked one — the row still shows the capsule, it just has
     /// nothing left to do. Kept apart from `busy` so a disabled button doesn't spin.
     var disabled = false
-    /// The register's row verb, which spans the row rather than sitting inline: at phone
-    /// widths a title, a countdown and a verb do not fit across one line, and the verb is
-    /// the one that cannot be truncated.
+    /// The register's row verb, which sits on its own line rather than inline: at phone
+    /// widths a title, a countdown and a verb do not fit across one, and the verb is the
+    /// one that cannot be truncated. Capped rather than genuinely full-width — the same
+    /// register runs on the iPad wall display, where "spans the row" is a 1400pt coral
+    /// slab. Below the cap (every phone) it still fills the row exactly as the design has
+    /// it, so one number covers both surfaces without a discriminator.
     var fullWidth = false
+    private static let verbCap: CGFloat = 420
     let action: () -> Void
 
     var body: some View {
@@ -347,7 +351,7 @@ struct RhythmActionButton: View {
             }
             .padding(.horizontal, kiosk ? 12 : 10)
             .padding(.vertical, fullWidth ? 10 : (kiosk ? 7 : 5))
-            .frame(maxWidth: fullWidth ? .infinity : nil)
+            .frame(maxWidth: fullWidth ? Self.verbCap : nil)
             .background(tint).clipShape(Capsule())
         }
         .buttonStyle(.plain)
