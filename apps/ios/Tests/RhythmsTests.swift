@@ -760,6 +760,35 @@ struct RhythmRegisterFailureTests {
                 == "Every week · on the calendar for this one")
     }
 
+    @Test("A row that books itself says so, so its different verb isn't a mystery")
+    func metaForAnAutoScheduledRhythm() {
+        // Two rows both reading "Every week · not on the calendar yet" sprouted two
+        // different buttons — "Put it back" on one and "Book a time" on the other — and
+        // the row never mentioned the fact that decides which: one of them books itself.
+        // The Today card already explains this; the register had lost it.
+        let now = at("2026-08-26T12:00:00")
+        let auto = rhythm(id: "a", title: "Temple Visit", personId: "p1", satisfiedBy: .scheduling,
+                          every: "7 days", startsOn: "2026-08-19", autoSchedule: true,
+                          rrule: "FREQ=WEEKLY;BYDAY=WE",
+                          currentPeriodStart: "2026-08-26", currentPeriodEnd: "2026-09-02",
+                          satisfied: false)
+        let lines = RhythmsModel.detailLines(for: [auto], names: ["p1": "Jerry"],
+                                             now: now, calendar: utcCal)
+        #expect(lines["a"] == "Every week · the series needs putting back · Jerry")
+        // Not "yet": nobody was ever going to book this by hand, so "yet" blamed the
+        // reader for a slot the rhythm had promised to fill itself.
+        #expect(!(lines["a"] ?? "").contains("not on the calendar yet"))
+
+        // While the series is doing its job there is no anomaly to report, and no button
+        // either — the healthy row reads exactly like a hand-booked one that is settled.
+        let healthy = rhythm(id: "b", title: "Temple Visit", satisfiedBy: .scheduling,
+                             every: "7 days", startsOn: "2026-08-19", autoSchedule: true,
+                             currentPeriodStart: "2026-08-26", currentPeriodEnd: "2026-09-02",
+                             satisfied: true)
+        #expect(RhythmsModel.detailLines(for: [healthy], now: now, calendar: utcCal)["b"]
+                == "Every week · on the calendar for this one")
+    }
+
     @Test("A completion row says when it last happened, and admits when it never has")
     func metaForCompletion() {
         let now = at("2026-08-26T12:00:00")

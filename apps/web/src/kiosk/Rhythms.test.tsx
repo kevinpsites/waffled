@@ -131,6 +131,31 @@ describe('Rhythms screen', () => {
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/rhythms/r-temple/skip'))).toBe(true))
   })
 
+  it('says which row books itself, so its different verb is not a mystery', async () => {
+    // Two rows both reading "Every week - not on the calendar yet" sprouted two different
+    // buttons - "Put it back" on one, "Book a time" on the other - and the row never
+    // mentioned the fact that decides which: one of them books its own series. The Today
+    // card already explains this; the register had lost it.
+    const auto = { ...temple, id: 'r-auto', title: 'Auto temple', autoSchedule: true, rrule: 'FREQ=WEEKLY;BYDAY=WE' }
+    mockApi([auto])
+    renderScreen()
+    await screen.findByText('Auto temple')
+    expect(screen.getByText(/the series needs putting back/i)).toBeInTheDocument()
+    // Not "yet": nobody was ever going to book this by hand, so "yet" blamed the reader
+    // for a slot the rhythm had promised to fill itself.
+    expect(screen.queryByText(/not on the calendar yet/i)).toBeNull()
+  })
+
+  it('leaves a healthy self-booking row reading like any other settled one', async () => {
+    // While the series is doing its job there is no anomaly to report and no button
+    // either, so the fact it books itself buys the row nothing and costs it a phrase.
+    mockApi([{ ...temple, id: 'r-ok', title: 'Auto temple', autoSchedule: true, satisfied: true }])
+    renderScreen()
+    await screen.findByText('Auto temple')
+    expect(screen.getByText(/on the calendar for this one/i)).toBeInTheDocument()
+    expect(screen.queryByText(/needs putting back/i)).toBeNull()
+  })
+
   it('creates a maintenance rhythm with a first due date', async () => {
     mockApi([])
     renderScreen()

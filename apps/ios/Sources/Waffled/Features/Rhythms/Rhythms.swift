@@ -753,9 +753,18 @@ final class RhythmsModel {
                     // auto-scheduled rhythm whose series was booked the moment it was made.
                     if r.currentPeriodStart == nil, let start = r.startsOn {
                         parts.append("periods start \(RhythmFormat.shortDate(start, calendar: calendar))")
+                    } else if r.satisfied ?? false {
+                        parts.append("on the calendar for this one")
+                    } else if r.autoSchedule {
+                        // A rhythm that books its own series turning up empty is an
+                        // anomaly, not a chore you haven't got to: "yet" blamed the reader
+                        // for a slot the rhythm had promised to fill itself, and left "Put
+                        // it back" looking like an arbitrarily different button next to a
+                        // hand-booked row's "Book a time". The Today card has explained
+                        // this since it shipped; the register hadn't.
+                        parts.append("the series needs putting back")
                     } else {
-                        parts.append((r.satisfied ?? false) ? "on the calendar for this one"
-                                                            : "not on the calendar yet")
+                        parts.append("not on the calendar yet")
                     }
                 }
             }

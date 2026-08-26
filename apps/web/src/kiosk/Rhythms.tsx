@@ -176,10 +176,17 @@ function RhythmRow({
           {paused ? <> · <b>paused</b></> : scheduling ? (
             rhythm.satisfied
               ? <> · on the calendar for this one</>
-              // One node, not "<b>not on the calendar</b> yet" as the mock has it: a
-              // phrase split across elements is unfindable by the text people actually
-              // read, which is how a screen reader and a test both see the page.
-              : <> · <b>not on the calendar yet</b></>
+              // A rhythm that books its own series turning up empty is an anomaly, not a
+              // chore you haven't got to: "yet" blamed the reader for a slot the rhythm
+              // had promised to fill itself, and left "Put it back" looking like an
+              // arbitrarily different button next to a hand-booked row's "Book a time".
+              // The Today card has explained this since it shipped; the register hadn't.
+              : rhythm.autoSchedule
+                ? <> · <b>the series needs putting back</b></>
+                // One node, not "<b>not on the calendar</b> yet" as the mock has it: a
+                // phrase split across elements is unfindable by the text people actually
+                // read, which is how a screen reader and a test both see the page.
+                : <> · <b>not on the calendar yet</b></>
           ) : (
             rhythm.lastCompletedAt
               ? <> · last done <b>{shortDate(rhythm.lastCompletedAt)}</b></>

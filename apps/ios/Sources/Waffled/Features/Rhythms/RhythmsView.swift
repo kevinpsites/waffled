@@ -45,11 +45,14 @@ struct RhythmsView: View {
                     .accessibilityLabel("New rhythm")
             }
         }
+        // Whose rhythm it is, for the row's subtitle. Keyed on the member list and not
+        // only on `refreshRev`: members arrive over sync on their own schedule, and taking
+        // one snapshot when the screen appears meant a register opened before they landed
+        // dropped every name until something unrelated bumped the revision. Observed on a
+        // cold open straight to this screen, where the names never came back at all.
+        .task(id: sync.members.map(\.id)) { syncNames() }
         .task(id: sync.refreshRev) {
-            // Whose rhythm it is, for the row's subtitle. The register endpoint carries a
-            // person id and no name, and the household is already loaded here.
-            model.personNames = Dictionary(sync.members.map { ($0.id, $0.name) },
-                                           uniquingKeysWith: { a, _ in a })
+            syncNames()
             await model.loadAll()
             await model.loadAttention()
             // Headless verification of the editor, which is otherwise behind a toolbar
@@ -307,6 +310,13 @@ struct RhythmsView: View {
     private func canPush(_ r: WaffledAPI.Rhythm, urgency: RhythmFormat.Urgency) -> Bool {
         r.satisfiedBy == .completion && r.isActive && r.nextDueAt != nil
             && (urgency == .now || urgency == .soon)
+    }
+
+    /// The register endpoint carries a person id and no name, so the names are joined on
+    /// here from the household the app already has.
+    private func syncNames() {
+        model.personNames = Dictionary(sync.members.map { ($0.id, $0.name) },
+                                       uniquingKeysWith: { a, _ in a })
     }
 
     @ViewBuilder private func rowMenu(_ r: WaffledAPI.Rhythm, urgency: RhythmFormat.Urgency) -> some View {
