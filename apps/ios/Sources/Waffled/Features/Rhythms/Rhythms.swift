@@ -187,6 +187,50 @@ enum RhythmFormat {
         return (min(asked, half), asked > half)
     }
 
+    /// One cadence on from `from`, through `Calendar` rather than by hand: adding a month
+    /// to January 31 has to land on February 28, and rolling the month over on a date whose
+    /// day is still 31 spills into March instead — a monthly rhythm whose first period
+    /// begins in the month after the one it belongs to.
+    static func addCadence(from: Date, every: String, calendar: Calendar = Cal.current) -> Date {
+        let p = parts(every)
+        var move = DateComponents()
+        move.year = p.year
+        move.month = p.month
+        move.day = p.week * 7 + p.day
+        // A cadence we couldn't read moves nothing, rather than inventing a date from a
+        // string we failed to parse.
+        guard p.year != 0 || p.month != 0 || p.week != 0 || p.day != 0 else { return from }
+        return calendar.date(byAdding: move, to: from) ?? from
+    }
+
+    /// What a sentence will actually do, in the two dates that are the whole promise.
+    struct Consequence {
+        /// The day the first period comes due.
+        let landsOn: Date
+        /// The first day it starts asking — `landsOn` minus the runway the server will keep.
+        let nudgeFrom: Date
+        /// Whether that runway is shorter than the one that was asked for.
+        let capped: Bool
+    }
+
+    /// Both dates go through `nudgePlan`, never through the typed runway. The server stores
+    /// `least(leadTime, every / 2)`, so a weekly rhythm asked for 14 days' notice would
+    /// otherwise be promised a nudge on a day nothing is ever going to happen.
+    static func consequence(shape: WaffledAPI.RhythmShape, every: String, leadDays: Int,
+                            anchor: Date, calendar: Calendar = Cal.current) -> Consequence? {
+        let plan = nudgePlan(every: every, leadDays: leadDays)
+        // A booking rhythm's anchor is where the period grid STARTS, so its first window
+        // closes one cadence later. A completion rhythm's anchor is the due date itself —
+        // the cadence has already been added to reach it, and adding it twice would
+        // promise a day a whole cycle too far out.
+        let landsOn = shape == .scheduling
+            ? addCadence(from: anchor, every: every, calendar: calendar)
+            : anchor
+        guard let nudgeFrom = calendar.date(byAdding: .day, value: -plan.effectiveDays, to: landsOn)
+        else { return nil }
+        return Consequence(landsOn: landsOn, nudgeFrom: nudgeFrom, capped: plan.capped)
+    }
+
     /// The runway in a sentence, naming the window it counts back from. "…before the
     /// period ends" assumed you knew what the period was, which was fairly answered with
     /// "what period? I'm scheduling it every week". For a scheduling rhythm the period IS
@@ -670,8 +714,10 @@ struct RhythmForm {
     var personId: String?
     var count = 1
     var unit: Unit = .weeks
-    var leadDays = 14
-    var nextDue = Date()
+    /// nil means "still following the cadence" — see `effectiveLeadDays`.
+    var leadDays: Int?
+    /// nil means "still following the cadence" — see `firstDue(now:calendar:)`.
+    var nextDue: Date?
     var startsOn = Date()
     var autoSchedule = false
     var monthlyMode: MonthlyMode = .dayOfMonth
@@ -703,6 +749,29 @@ struct RhythmForm {
     var isValid: Bool { !trimmedTitle.isEmpty }
     var every: String { "\(max(1, count)) \(unit.rawValue)" }
 
+    /// The runway to actually send, in days.
+    ///
+    /// A flat 14 is wrong for most cadences: the server keeps `least(leadTime, every / 2)`,
+    /// so on anything up to a fortnight it trims what it was given. An untouched form
+    /// therefore opened already promising a nudge on a day nothing happens, and explaining
+    /// a clamp nobody had asked for. Follow the cadence until a number is actually typed —
+    /// and then send that one, clamp and all, because the field is an escape hatch and the
+    /// copy beside it says what the server will do with it.
+    var effectiveLeadDays: Int {
+        if let leadDays { return max(0, leadDays) }
+        return min(14, RhythmFormat.days(fromInterval: every) / 2)
+    }
+
+    /// The day the first period comes due.
+    ///
+    /// One full cadence out, not today. Anchoring a new rhythm at today makes "every 3
+    /// months" mean "and the first one is overdue right now", so everything anyone creates
+    /// arrives already shouting from Needs you now. Still an open field under More options:
+    /// adding something you are already behind on is a real case.
+    func firstDue(now: Date = Date(), calendar: Calendar = Cal.current) -> Date {
+        nextDue ?? RhythmFormat.addCadence(from: now, every: every, calendar: calendar)
+    }
+
     /// The rule is DERIVED from the cadence rather than asked for again: an rrule that
     /// disagreed with `every` would put the generated event outside the period it is
     /// supposed to satisfy. `customRule` is the escape hatch, not the normal path.
@@ -713,7 +782,7 @@ struct RhythmForm {
             start: startsOn, calendar)
     }
 
-    func createBody(calendar: Calendar = Cal.current) -> [String: JSONValue] {
+    func createBody(now: Date = Date(), calendar: Calendar = Cal.current) -> [String: JSONValue] {
         var body: [String: JSONValue] = [
             "title": .string(trimmedTitle),
             "emoji": emoji.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(emoji.trimmingCharacters(in: .whitespaces)),
@@ -721,13 +790,17 @@ struct RhythmForm {
             "personId": personId.map(JSONValue.string) ?? .null,
             "satisfiedBy": .string(shape.rawValue),
             "every": .string(every),
-            "leadTime": .string("\(max(0, leadDays)) days"),
+            "leadTime": .string("\(effectiveLeadDays) days"),
         ]
         // A completion rhythm has no period grid and a scheduling one has no due date; the
         // server's shape constraint rejects a row carrying both.
         switch shape {
         case .completion:
-            body["nextDueAt"] = .string(RhythmFormat.isoInstant(nextDue))
+            // 09:00 on the day, not the instant the sheet happened to be open. A due date
+            // is a day; the hour it carries shouldn't be whatever o'clock someone tapped +.
+            let day = calendar.startOfDay(for: firstDue(now: now, calendar: calendar))
+            body["nextDueAt"] = .string(RhythmFormat.isoInstant(
+                calendar.date(bySettingHour: 9, minute: 0, second: 0, of: day) ?? day))
         case .scheduling:
             body["startsOn"] = .string(RhythmFormat.ymd(startsOn, calendar: calendar))
             body["autoSchedule"] = .bool(autoSchedule)
@@ -747,7 +820,7 @@ struct RhythmForm {
             "notes": notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .null : .string(notes.trimmingCharacters(in: .whitespacesAndNewlines)),
             "personId": personId.map(JSONValue.string) ?? .null,
             "every": .string(every),
-            "leadTime": .string("\(max(0, leadDays)) days"),
+            "leadTime": .string("\(effectiveLeadDays) days"),
         ]
     }
 

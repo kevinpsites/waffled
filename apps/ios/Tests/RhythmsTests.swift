@@ -532,6 +532,89 @@ struct RhythmEditorTests {
         form.title = "Trash"
         #expect(form.isValid)
     }
+
+    @Test("An untouched form asks for a runway the cadence can actually hold")
+    func leadFollowsTheCadence() {
+        // A fixed 14-day default is wrong for most cadences. The server keeps
+        // least(leadTime, every / 2), so a weekly rhythm asked for 14 days' notice
+        // quietly got 3 — an untouched form opened already promising a nudge on a day
+        // nothing happens, and explaining a clamp nobody had asked for.
+        var form = RhythmForm()
+        form.shape = .scheduling
+        form.title = "Trash"
+        form.count = 1
+        form.unit = .weeks
+        #expect(form.effectiveLeadDays == 3)
+        #expect(form.createBody(calendar: utcCal)["leadTime"] == .string("3 days"))
+        #expect(!RhythmFormat.nudgePlan(every: form.every, leadDays: form.effectiveLeadDays).capped)
+
+        // A cadence long enough to hold it gets the full fortnight, which is the ceiling.
+        form.count = 3
+        form.unit = .months
+        #expect(form.effectiveLeadDays == 14)
+
+        // A typed number still wins, clamp and all — the field is an escape hatch, not a
+        // suggestion, and the copy next to it says what the server will do with it.
+        form.leadDays = 30
+        #expect(form.effectiveLeadDays == 30)
+    }
+
+    @Test("A brand-new rhythm is due one cadence out, not today")
+    func firstDueFollowsTheCadence() {
+        // Anchoring at today makes "every 3 months" mean "and the first one is overdue
+        // right now", so every rhythm anyone creates arrives already shouting from
+        // Needs you now.
+        var form = RhythmForm()
+        form.shape = .completion
+        form.title = "Air filter"
+        form.count = 3
+        form.unit = .months
+        let now = at("2026-08-26T15:00:00")
+        #expect(RhythmFormat.ymd(form.firstDue(now: now, calendar: utcCal), calendar: utcCal) == "2026-11-26")
+
+        // At 09:00 rather than at the current instant: a due date is a day, and the hour
+        // it carries shouldn't be whatever o'clock the sheet happened to be opened.
+        #expect(form.createBody(now: now, calendar: utcCal)["nextDueAt"] == .string("2026-11-26T09:00:00Z"))
+
+        // Still an open field under More options — adding something you are already
+        // behind on is a real case.
+        form.nextDue = at("2026-09-01T00:00:00")
+        #expect(RhythmFormat.ymd(form.firstDue(now: now, calendar: utcCal), calendar: utcCal) == "2026-09-01")
+    }
+
+    @Test("The consequence block promises the dates the server will actually use")
+    func consequenceUsesTheClampedRunway() {
+        let now = at("2026-08-26T00:00:00")
+        // Built through nudgePlan, never from the typed runway: a weekly rhythm asked for
+        // 14 days' notice keeps 3, so a promise built from 14 would name a day nothing is
+        // ever going to happen on.
+        let booking = RhythmFormat.consequence(shape: .scheduling, every: "1 weeks", leadDays: 14,
+                                               anchor: now, calendar: utcCal)
+        #expect(RhythmFormat.ymd(booking!.landsOn, calendar: utcCal) == "2026-09-02")
+        #expect(RhythmFormat.ymd(booking!.nudgeFrom, calendar: utcCal) == "2026-08-30")
+        #expect(booking!.capped)
+
+        // A completion rhythm's anchor IS the due date — the cadence has already been
+        // added to reach it, so adding it again would promise a date a cycle too far out.
+        let doing = RhythmFormat.consequence(shape: .completion, every: "3 mons", leadDays: 14,
+                                             anchor: at("2026-11-26T00:00:00"), calendar: utcCal)
+        #expect(RhythmFormat.ymd(doing!.landsOn, calendar: utcCal) == "2026-11-26")
+        #expect(RhythmFormat.ymd(doing!.nudgeFrom, calendar: utcCal) == "2026-11-12")
+        #expect(!doing!.capped)
+    }
+
+    @Test("Adding a cadence to a month-end date lands inside the next month")
+    func addCadenceClampsShortMonths() {
+        // Jan 31 + 1 month is Feb 28, not Mar 3. Rolling the month over on a date whose
+        // day is still 31 spills into the month after the one the period belongs to.
+        let jan31 = at("2026-01-31T00:00:00")
+        #expect(RhythmFormat.ymd(RhythmFormat.addCadence(from: jan31, every: "1 months", calendar: utcCal),
+                                 calendar: utcCal) == "2026-02-28")
+        #expect(RhythmFormat.ymd(RhythmFormat.addCadence(from: jan31, every: "2 weeks", calendar: utcCal),
+                                 calendar: utcCal) == "2026-02-14")
+        #expect(RhythmFormat.ymd(RhythmFormat.addCadence(from: jan31, every: "1 years", calendar: utcCal),
+                                 calendar: utcCal) == "2027-01-31")
+    }
 }
 
 // MARK: - module registration

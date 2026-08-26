@@ -25,6 +25,18 @@ struct RhythmEditorSheet: View {
 
     private var isNew: Bool { form.editingId == nil }
 
+    /// Both fields follow the cadence until they are touched, and touching one is what
+    /// pins it. The stepper and the picker therefore read the derived value and write the
+    /// raw one — reading `$form.leadDays` directly would show an empty control for a
+    /// default that is, in fact, entirely definite.
+    private var leadBinding: Binding<Int> {
+        Binding(get: { form.effectiveLeadDays }, set: { form.leadDays = $0 })
+    }
+
+    private var dueBinding: Binding<Date> {
+        Binding(get: { form.firstDue() }, set: { form.nextDue = $0 })
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -79,7 +91,7 @@ struct RhythmEditorSheet: View {
                                      ? "Warn me this many days before it’s due"
                                      : "How many days’ warning before the booking window closes") {
                         VStack(alignment: .leading, spacing: 6) {
-                            Stepper("\(form.leadDays) days", value: $form.leadDays, in: 0...365)
+                            Stepper("\(form.effectiveLeadDays) days", value: leadBinding, in: 0...365)
                                 .font(.system(size: 15, weight: .semibold))
                             // Spelled out against THIS rhythm's cadence rather than left as
                             // "the period", and stating the clamp's effect in days — the
@@ -87,7 +99,7 @@ struct RhythmEditorSheet: View {
                             // asking for 14 days' notice quietly gets 3.
                             Text(form.shape == .completion
                                  ? "Capped at half the cadence — a runway longer than the cycle never closes, so it would never go quiet."
-                                 : RhythmFormat.nudgeExplainer(every: form.every, leadDays: form.leadDays))
+                                 : RhythmFormat.nudgeExplainer(every: form.every, leadDays: form.effectiveLeadDays))
                                 .font(.system(size: 12)).foregroundStyle(WF.ink3)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -163,7 +175,7 @@ struct RhythmEditorSheet: View {
 
     private var completionFields: some View {
         WaffledFieldCard(title: "First due") {
-            DatePicker("First due", selection: $form.nextDue, displayedComponents: [.date])
+            DatePicker("First due", selection: dueBinding, displayedComponents: [.date])
                 .datePickerStyle(.compact)
                 .labelsHidden()
                 .disabled(!isNew)
