@@ -243,13 +243,13 @@ register exists.
 | iPhone | ✅ |
 | iPad | ✅ |
 
-Rhythms works on every surface, including the 🔁 marker on a booked event — with one
-exception, below.
+Rhythms works on every surface, including the 🔁 marker on a booked event.
 
-The **regrouped register** described above — Needs you now / Coming up / Steady — and the
-**Today card** are on every surface. The one thing still web-only is the creation form as
-an editable sentence; iPhone and iPad ask the same questions as a form for now, and make
-exactly the same rhythm.
+The **regrouped register** described above — Needs you now / Coming up / Steady — the
+**Today card**, and the **creation form as an editable sentence** are all on every surface.
+The one difference left is a matter of room rather than of features: on a phone each row's
+verb is a button of its own beneath the row, because a title, a countdown and a verb do not
+fit across one line at that width.
 
 The events a scheduled rhythm books are ordinary calendar events, so they show up
 **everywhere** — including on your phone, and including offline — the moment they're booked.

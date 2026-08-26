@@ -16,13 +16,12 @@ every surface. Per-surface status is the
 groups by urgency (Needs you now / Coming up / Steady, paused named at the bottom), each row
 anchored by a countdown over a progress hairline, one verb per row and the rest behind a ⋯
 menu. The shapes survive as a first-class choice where you make one, and as the language of
-each row, but they are no longer headings. **Shipped on web/kiosk; iPhone and iPad still
-group by shape.** The creation form is now an editable sentence with a consequence card
-stating what it will do, and its defaults follow the cadence rather than a fixed number.
-The Today card is a countdown block: "3 want attention" beside "All 10 →", each row led by
-its countdown, and the filled button kept for what is late or out of time. iOS now matches on the register and the Today card, from
-the same helpers. Still to come: the iPad list+detail split with completion history, and
-the sentence form on iPhone/iPad. Three things the design asks for have no server behind them yet — "push
+each row, but they are no longer headings. The creation form is an editable sentence with
+a consequence card stating what it will do, and its defaults follow the cadence rather than
+a fixed number. The Today card is a countdown block: "3 want attention" beside "All 10 →",
+each row led by its countdown, and the filled button kept for what is late or out of time.
+**All three now ship on web/kiosk, iPhone and iPad, from the same helpers.** Still to come:
+the iPad list+detail split with completion history. Three things the design asks for have no server behind them yet — "push
 out a week" (there is no endpoint; `nextDueAt` is not in `UpdateRhythmInput`), the booked
 time on a settled row (the list returns `satisfied` as a boolean, no event time), and the
 "real average" interval in the history panel.
