@@ -48,12 +48,18 @@ const verbClass = (urgent: boolean) => `btn ${urgent ? 'btn-primary' : 'btn-ghos
 
 function DueRow({ item, onChanged }: { item: Extract<AttentionItem, { kind: 'due' }>; onChanged: () => void }) {
   const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
   async function markDone() {
     if (busy) return
     setBusy(true)
+    setFailed(false)
     try {
       await rhythmsApi.complete(item.rhythm.id)
       onChanged()
+    } catch {
+      // A refused write that says nothing is indistinguishable from a tap that missed,
+      // and this card is read from across a kitchen by people who will just tap again.
+      setFailed(true)
     } finally {
       setBusy(false)
     }
@@ -67,6 +73,9 @@ function DueRow({ item, onChanged }: { item: Extract<AttentionItem, { kind: 'due
           <span className={item.overdue ? 'rhy-late' : ''}>{dueLabel(item.dueAt, item.overdue)}</span>
           {' · '}{cadenceLabel(item.rhythm.every)}
         </div>
+        {failed && (
+          <div className="rhy-failed" role="status">That didn't go through — try again.</div>
+        )}
       </div>
       <button
         type="button"
@@ -91,6 +100,7 @@ function UnscheduledRow({
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
   // An auto_schedule rhythm is normally absent from this list — its recurring event IS
   // the satisfied state. Turning up here means the calendar and the intention have
   // disagreed, and there are two ways that happens. If nothing recurring is left the
@@ -104,9 +114,12 @@ function UnscheduledRow({
   async function skip() {
     if (busy) return
     setBusy(true)
+    setFailed(false)
     try {
       await rhythmsApi.skip(item.rhythm.id, item.periodStart)
       onChanged()
+    } catch {
+      setFailed(true)
     } finally {
       setBusy(false)
     }
@@ -124,6 +137,9 @@ function UnscheduledRow({
           <span className={left <= 1 ? 'rhy-late' : ''}>{periodLabel(item.periodEnd)}</span>
           {series ? ' · the series needs putting back' : ''}
         </div>
+        {failed && (
+          <div className="rhy-failed" role="status">That didn't go through — try again.</div>
+        )}
       </div>
       <div className="rhy-acts">
         <button

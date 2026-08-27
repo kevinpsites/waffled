@@ -288,3 +288,12 @@ input.rhy-tok::placeholder { color: var(--ink-3); font-weight: 600; }
   .rhy-tok-mode { position: static; }
   .rhy-drop { left: 0; right: 0; width: auto; }
 }
+
+/* A row action that was refused. Sits under the row's own meta rather than as a toast,
+   because the thing that failed is this row and nothing else on the page changed. */
+.rhy-failed {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--danger);
+}

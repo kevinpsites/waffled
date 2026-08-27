@@ -61,6 +61,19 @@ function mockApi(rhythms: unknown[], items: unknown[] = []) {
   }) as unknown as typeof fetch
 }
 
+// Reads succeed, writes fail — the state a row is in when the server is down, the token
+// has gone stale, or a 403 comes back. Every control in the ··· menu is a write.
+function mockApiWritesFail(rhythms: unknown[], items: unknown[] = []) {
+  mockApi(rhythms, items)
+  const reads = globalThis.fetch
+  globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? 'GET'
+    if (method === 'GET') return (reads as typeof fetch)(url as never, init as never)
+    calls.push({ url: String(url), method, body: init?.body ? JSON.parse(String(init.body)) : null })
+    return { ok: false, status: 500, json: async () => ({ error: 'nope' }), text: async () => 'nope' }
+  }) as unknown as typeof fetch
+}
+
 function renderScreen() {
   return render(<MemoryRouter><Rhythms /></MemoryRouter>)
 }
@@ -197,6 +210,21 @@ describe('Rhythms screen', () => {
     expect(screen.getByText(/skipped this one/i)).toBeInTheDocument()
     expect(screen.queryByText(/on the calendar for this one/i)).toBeNull()
     expect(screen.queryByLabelText(/on the calendar/i)).toBeNull()
+  })
+
+  it('says so when a row action fails, rather than looking like nothing happened', async () => {
+    // Every one of these is a write that can be refused. Swallowing the rejection leaves
+    // the row exactly as it was with no message, which reads as "the tap missed" — so the
+    // honest response is to press it again, and again. The one thing a failed write must
+    // never do is look identical to one that never started.
+    mockApiWritesFail([{ ...temple, id: 'r-skip-fail', title: 'Temple visit' }],
+      [{ kind: 'unscheduled', rhythm: { ...temple, id: 'r-skip-fail', title: 'Temple visit' },
+         periodStart: '2026-07-01', periodEnd: '2026-10-01', hasSeries: false }])
+    renderScreen()
+    await screen.findByText('Temple visit')
+    openMenu('Temple visit')
+    fireEvent.click(screen.getByRole('button', { name: /skip this period/i }))
+    expect(await screen.findByText(/didn't go through/i)).toBeInTheDocument()
   })
 
   it('creates a maintenance rhythm with a first due date', async () => {

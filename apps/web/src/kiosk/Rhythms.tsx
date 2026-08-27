@@ -102,6 +102,7 @@ function RhythmRow({
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
   const [menu, setMenu] = useState(false)
   // The backdating row, opened from the menu. Closed by default: the common case is
   // "I just did it", and putting a date picker in front of that every time would be
@@ -154,9 +155,18 @@ function RhythmRow({
     if (busy) return
     setBusy(true)
     setMenu(false)
+    setFailed(false)
     try {
       await fn()
       onChanged()
+    } catch {
+      // Every row action is a write, and a write can be refused — the server is down, the
+      // token went stale, a period was skipped from another device a second ago. Letting
+      // the rejection escape left the row looking exactly as it did before, which reads
+      // as a tap that missed: the honest response to that is to press it again. Say it
+      // didn't land instead. The next attempt clears this, so the message can never
+      // outlive the failure it describes.
+      setFailed(true)
     } finally {
       setBusy(false)
     }
@@ -214,6 +224,9 @@ function RhythmRow({
         </div>
         {pct !== null && (
           <div className="rhy-track"><div style={{ width: `${pct}%` }} /></div>
+        )}
+        {failed && (
+          <div className="rhy-failed" role="status">That didn't go through — try again.</div>
         )}
       </div>
 

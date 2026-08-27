@@ -204,7 +204,16 @@ export function RhythmModal({
 
   async function retire() {
     if (!rhythm) return
-    await rhythmsApi.remove(rhythm.id)
+    try {
+      await rhythmsApi.remove(rhythm.id)
+    } catch {
+      // The confirm dialog re-enables its own button in a `finally`, so an escaping
+      // rejection left "Retire it" looking live after the delete had already failed —
+      // a dialog that appears to be waiting for a press it has already had.
+      setFailed("Couldn't retire that one — try again.")
+      setRetiring(false)
+      return
+    }
     onSaved?.()
     setRetiring(false)
     onClose()
