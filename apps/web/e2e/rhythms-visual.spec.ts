@@ -163,14 +163,18 @@ test('the register survives the narrow grid minimum', async ({ page }) => {
 test('the paused rhythm reads as paused and offers no period actions', async ({ page }) => {
   await signIn(page)
   await page.goto('/rhythms')
-  const row = page.locator('.rhy-item', { hasText: 'Summer-only pool check' })
+  // Paused rhythms are a single line at the bottom that NAMES them, rather than a count
+  // you'd have to open to make sense of — so they have to be opened to be inspected.
+  await page.locator('.rhy-paused-toggle').click()
+  const row = page.locator('.rhy-reg.off', { hasText: 'Summer-only pool check' })
   await expect(row).toBeVisible()
-  await expect(row.locator('.rhy-badge.off')).toHaveText(/paused/i)
+  await expect(row.locator('.rhy-meta')).toHaveText(/paused/i)
   // Booking a paused rhythm would actually work server-side, which is exactly why the
   // control must not be here. Same for skip.
   await expect(row.getByRole('button', { name: /^Book a time$/ })).toHaveCount(0)
   await expect(row.getByRole('button', { name: /^Skip this period for/ })).toHaveCount(0)
   // Resume must be reachable, or pausing is a one-way trip.
+  await row.getByRole('button', { name: /^More for Summer-only pool check$/ }).click()
   await expect(row.getByRole('button', { name: /^Resume / })).toBeVisible()
 })
 
@@ -181,9 +185,11 @@ test('the backdate row fits the register at the narrow grid minimum', async ({ p
   await signIn(page)
   await page.setViewportSize({ width: 380, height: 900 })
   await page.goto('/rhythms')
-  const row = page.locator('.rhy-item', { hasText: 'Air filter' })
+  const row = page.locator('.rhy-reg', { hasText: 'Air filter' })
   await expect(row).toBeVisible()
-  await row.getByRole('button', { name: /log it for another day/i }).click()
+  // Everything but the row's one primary verb lives behind the ⋯ menu now.
+  await row.getByRole('button', { name: /^More for Air filter$/ }).click()
+  await row.getByRole('button', { name: /^Mark Air filter done on another day$/ }).click()
 
   await expect(row.locator('.rhy-backdate')).toBeVisible()
   await expect(row.getByRole('button', { name: /^Log it$/ })).toBeVisible()
@@ -200,7 +206,13 @@ test('the editor picks a repeat day with chips rather than an RRULE box', async 
   await page.goto('/rhythms')
   await page.getByRole('button', { name: 'New rhythm' }).click()
   const card = page.locator('.modal-card')
-  await card.getByRole('button', { name: /it gets scheduled/i }).click()
+  // The shape is no longer a pair of cards at the top. It is the sentence's "counted when"
+  // clause, and it opens a listbox because each answer needs its consequence spelled out.
+  await card.getByRole('button', { name: /counted when/i }).click()
+  await page.getByRole('listbox').getByText(/it's on the calendar/i).click()
+  // Anchors and auto-scheduling are defaults worth having rather than questions worth
+  // asking, so they sit behind a disclosure.
+  await card.getByRole('button', { name: /more options/i }).click()
   await card.getByLabel('Put it on the calendar automatically').click()
 
   // Seven day chips, rendered — not a text field asking for FREQ=…
@@ -219,7 +231,8 @@ test('the editor picks a repeat day with chips rather than an RRULE box', async 
 test('the editor explains the anchor instead of offering to move it', async ({ page }) => {
   await signIn(page)
   await page.goto('/rhythms')
-  const row = page.locator('.rhy-item', { hasText: 'Temple visit' })
+  const row = page.locator('.rhy-reg', { hasText: 'Temple visit' })
+  await row.getByRole('button', { name: /^More for Temple visit$/ }).click()
   await row.getByRole('button', { name: 'Edit Temple visit' }).click()
 
   const card = page.locator('.modal-card')
