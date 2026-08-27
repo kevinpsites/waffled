@@ -367,7 +367,7 @@ function RhythmRow({
           >
             Log it
           </button>
-          <button type="button" className="rhy-skip" onClick={() => setBackdate(null)}>Cancel</button>
+          <button type="button" className="btn btn-ghost" onClick={() => setBackdate(null)}>Cancel</button>
         </div>
       )}
     </div>
