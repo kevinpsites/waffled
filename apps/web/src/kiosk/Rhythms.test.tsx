@@ -66,7 +66,7 @@ function mockApi(rhythms: unknown[], items: unknown[] = []) {
 function mockApiWritesFail(rhythms: unknown[], items: unknown[] = []) {
   mockApi(rhythms, items)
   const reads = globalThis.fetch
-  globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+  globalThis.fetch = vi.fn(async (url: string, init?: RequestInit): Promise<unknown> => {
     const method = init?.method ?? 'GET'
     if (method === 'GET') return (reads as typeof fetch)(url as never, init as never)
     calls.push({ url: String(url), method, body: init?.body ? JSON.parse(String(init.body)) : null })

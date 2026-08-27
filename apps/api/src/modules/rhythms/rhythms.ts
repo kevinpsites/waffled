@@ -181,7 +181,15 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
          select starts_at, all_day from (
            select e.starts_at, e.all_day
              from events e
-            where e.rhythm_id = b.id and e.deleted_at is null
+            -- rrule is null matters here: a recurring master is a TEMPLATE, not an
+            -- instance, and its own starts_at is not something on the calendar. Without
+            -- this it settled whichever period contained the anchor — and cancelling
+            -- that instance tombstones the OCCURRENCE while leaving the master alone, so
+            -- the period reported itself booked with nothing on the calendar to show for
+            -- it, and never surfaced for rebooking. The occurrence half below is what
+            -- speaks for a series. Every other events/occurrences union in the codebase
+            -- carries this filter for the same reason.
+            where e.rhythm_id = b.id and e.deleted_at is null and e.rrule is null
               and e.starts_at >= b.period_start::timestamptz
               and e.starts_at < (b.period_start + b.every)::timestamptz
            union all
@@ -623,8 +631,12 @@ export async function listAttention(householdId: string, horizon: string): Promi
         -- right there on the calendar.
         and not exists (
           select 1 from events e
+           -- A recurring master is a template, not an instance — see the same filter in
+           -- the list query. Without it, cancelling the anchor instance left this period
+           -- silently absent from the attention feed forever.
            where e.rhythm_id = p.id
              and e.deleted_at is null
+             and e.rrule is null
              and e.starts_at >= p.period_start::timestamptz
              and e.starts_at < (p.period_start + p.every)::timestamptz
         )

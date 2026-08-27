@@ -809,6 +809,64 @@ describe('pushing a completion rhythm out', () => {
 // `satisfied` is a boolean computed from three separate sources — a skip, a one-off event,
 // or an occurrence of a recurring master — so the register knows the period is handled but
 // not what time it is handled AT, which is the one thing you'd want off a settled row.
+// A recurring master is a TEMPLATE, not an instance. Everywhere else in the codebase that
+// unions `events` with `event_occurrences` filters the single-event half to `rrule is null`
+// for exactly that reason; the rhythm queries did not. So the master's own `starts_at`
+// counted as a booking for whichever period contains it — and cancelling that instance
+// tombstones the OCCURRENCE while leaving the master untouched, so the period went on
+// reporting itself as booked with nothing on the calendar to show for it.
+describe('a cancelled instance of a self-booking series', () => {
+  let autoId = ''
+  let anchor = ''
+
+  beforeAll(async () => {
+    await call('PATCH', '/api/household/modules', kevin, { rhythms: true })
+    // Anchored inside the CURRENT period, so the grid actually has one to report on.
+    anchor = await withClient(async (c) => {
+      const { rows } = await c.query<{ d: string }>(
+        `select to_char((now() at time zone 'America/Chicago')::date, 'YYYY-MM-DD') as d`
+      )
+      return rows[0]!.d
+    })
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Trash night', satisfiedBy: 'scheduling', every: '1 week',
+      startsOn: anchor, autoSchedule: true, rrule: 'FREQ=WEEKLY',
+    })
+    autoId = JSON.parse(made.body).rhythm.id
+  })
+
+  it('stops reporting the period as booked once that instance is cancelled', async () => {
+    const before = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+      .find((r: { id: string }) => r.id === autoId)
+    expect(before.satisfied).toBe(true)
+
+    const master = await withClient((c) =>
+      c.query<{ id: string; starts_at: Date }>(
+        `select id, starts_at from events
+          where rhythm_id = $1 and deleted_at is null and rrule is not null`,
+        [autoId]
+      )
+    )
+    expect(master.rowCount).toBe(1)
+
+    const del = await call(
+      'DELETE',
+      `/api/events/${master.rows[0]!.id}?scope=this&occurrenceStart=${encodeURIComponent(master.rows[0]!.starts_at.toISOString())}`,
+      kevin
+    )
+    expect(del.statusCode).toBe(204)
+
+    // Nothing is on the calendar for this period any more. The series is still alive —
+    // which is what `hasSeries` is for — but the period itself is empty and has to say so,
+    // or the register never offers the one action that would fill it.
+    const after = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+      .find((r: { id: string }) => r.id === autoId)
+    expect(after.bookedAt).toBeNull()
+    expect(after.satisfied).toBe(false)
+    expect(after.hasSeries).toBe(true)
+  })
+})
+
 describe('when a booked period is actually booked', () => {
   let templeId = ''
 
