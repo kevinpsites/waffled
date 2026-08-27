@@ -21,6 +21,7 @@ import SwiftUI
 /// Gated by `sync.module(.rhythms)` at the call site (`TodayView` / `KioskDashboard`) — the
 /// module is off by default.
 struct RhythmsTodayCard: View {
+    @Environment(SyncManager.self) private var sync
     var kiosk = false
     /// Owned and loaded by the parent (`TodayView` / `KioskDashboard`), deliberately.
     ///
@@ -91,8 +92,17 @@ struct RhythmsTodayCard: View {
         // actually renders: SwiftUI installs no lifecycle modifier on an EmptyView, and a
         // quarterly register is quiet most mornings. A request per board refresh to render
         // something nobody sees is not a trade worth making.
-        .task {
-            if !model.listLoaded { await model.loadAll() }
+        // Keyed on `refreshRev`, like every other self-loading card on this board. It
+        // used to be a bare `.task` guarded by `listLoaded`, which meant the total was
+        // fetched once and then never again: add three rhythms on the web, pull to refresh
+        // here, and the attention rows updated (the PAGE refreshes those) while the header
+        // still read "All 4". That is the same load-once bug this branch fixed on the
+        // pantry, countdowns, lists and Family Night cards, reintroduced by the new one.
+        //
+        // `.task(id:)` re-runs only when the id changes, so it does the de-duplicating the
+        // `listLoaded` guard was there for, without also blocking the refresh.
+        .task(id: sync.refreshRev) {
+            await model.loadAll()
         }
     }
 
