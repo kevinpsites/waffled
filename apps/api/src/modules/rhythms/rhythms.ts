@@ -260,6 +260,34 @@ async function anchorInstant(householdId: string, startsOn: string, rrule: strin
 
 // Validation lives here rather than in the route so the shape rules sit next to the
 // schema constraint they mirror — a mismatch between the two would surface as a 500.
+/**
+ * Refuse a cadence the period grid cannot be built from.
+ *
+ * `every` reaches Postgres as an `interval` and is then handed to `generate_series` to
+ * tile a rhythm's periods. A zero step raises "step size cannot equal zero" from inside
+ * the LIST query rather than the write that caused it, and the routes only turn an
+ * InvalidReferenceError into a 400 — so one bad row 500s the whole household's register
+ * and Today card, for every member, until someone repairs it by hand. A value that is not
+ * an interval at all fails at insert with a 500 where the sibling paths return 400.
+ *
+ * Validated by asking Postgres, which owns the grammar, rather than by a regex here that
+ * would drift from it.
+ */
+async function assertUsableCadence(every: string): Promise<void> {
+  let positive = false
+  try {
+    const { rows } = await query<{ ok: boolean }>(
+      `select ($1::interval > interval '0') as ok`, [every]
+    )
+    positive = rows[0]?.ok === true
+  } catch {
+    throw new InvalidReferenceError(`every must be an interval such as '3 months' — got '${every}'`)
+  }
+  if (!positive) {
+    throw new InvalidReferenceError('every must be a positive interval — a rhythm with no cycle has no periods')
+  }
+}
+
 export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Promise<Rhythm> {
   const householdId = tenant.householdId
   const title = typeof input.title === 'string' ? input.title.trim() : ''
@@ -271,6 +299,7 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
   }
   const every = typeof input.every === 'string' ? input.every.trim() : ''
   if (!every) throw new InvalidReferenceError('every is required')
+  await assertUsableCadence(every)
 
   const personId = typeof input.personId === 'string' ? input.personId : null
   if (personId) await assertPersonInHousehold(householdId, personId)
@@ -287,6 +316,9 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
     // A never-done item still needs a first due date, so the caller seeds it.
     const nextDueAt = typeof input.nextDueAt === 'string' ? input.nextDueAt : null
     if (!nextDueAt) throw new InvalidReferenceError('nextDueAt is required for a completion rhythm')
+    if (Number.isNaN(Date.parse(nextDueAt))) {
+      throw new InvalidReferenceError('nextDueAt must be an ISO timestamp')
+    }
     const { rows } = await query<Row>(
       `insert into rhythms (household_id, title, emoji, notes, person_id, satisfied_by, every, lead_time, next_due_at)
        values ($1,$2,$3,$4,$5,'completion',$6::interval,least($7::interval, $6::interval / 2),$8::timestamptz)
@@ -674,6 +706,11 @@ export async function updateRhythm(
       throw new InvalidReferenceError('nextDueAt must be an ISO timestamp')
     }
     nextDueAt = new Date(input.nextDueAt).toISOString()
+  }
+
+  // The edit path can poison the register exactly as the create path could.
+  if (typeof input.every === 'string' && input.every.trim()) {
+    await assertUsableCadence(input.every.trim())
   }
 
   const { rows } = await query<Row>(

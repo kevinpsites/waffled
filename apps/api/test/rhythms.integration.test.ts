@@ -206,6 +206,38 @@ describe('completion-shape rhythms', () => {
 // in the past, so the item never goes quiet — it just sits on Today forever, thirty
 // seconds after you took the trash out included. A rhythm that is always shouting is
 // indistinguishable from one you've stopped reading.
+// `every` lands in a Postgres `interval` and is then fed to `generate_series` to tile the
+// period grid. A zero step raises "step size cannot equal zero" INSIDE the list query, and
+// the route only converts InvalidReferenceError to a 400 — so a single bad row 500s the
+// whole household's register and Today card, for every member, until someone repairs it by
+// hand. Refusing the value at the door is the only place this is cheap.
+describe('a cadence the period grid cannot be built from', () => {
+  it('refuses a zero-length cadence rather than letting it 500 the whole register', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Poison pill', satisfiedBy: 'scheduling', every: '0 seconds', startsOn: '2026-01-01',
+    })
+    expect(res.statusCode).toBe(400)
+
+    // ...and the list still answers, which is the thing actually being protected.
+    const list = await call('GET', '/api/rhythms', kevin)
+    expect(list.statusCode).toBe(200)
+  })
+
+  it('refuses a cadence that is not an interval at all, with a 400 rather than a 500', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Nonsense', satisfiedBy: 'scheduling', every: 'whenever', startsOn: '2026-01-01',
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuses a first due date that is not a date, the way the edit path already does', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Bad date', satisfiedBy: 'completion', every: '3 months', nextDueAt: 'garbage',
+    })
+    expect(res.statusCode).toBe(400)
+  })
+})
+
 describe('a short cadence does not out-run its lead time', () => {
   let trashId = ''
 
