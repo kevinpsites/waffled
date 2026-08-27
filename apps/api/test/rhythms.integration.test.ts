@@ -867,6 +867,53 @@ describe('a cancelled instance of a self-booking series', () => {
   })
 })
 
+// The runway clamps to half the cadence, so a scheduling rhythm only starts asking in the
+// BACK half of its period — which makes the last day the ordinary day to book on, not an
+// edge case. Both booking sheets default to 6pm, and the client's date picker is clamped to
+// the period, so it OFFERS that day. It has to count.
+describe('booking at 6pm on the last day of a period, west of UTC', () => {
+  it('settles the period the booking is actually inside', async () => {
+    await call('PATCH', '/api/household/modules', kevin, { rhythms: true })
+    // Los Angeles is UTC-7 in August, so 18:00 local is 01:00Z the NEXT day. A period
+    // boundary resolved anywhere but the household's own zone puts that just past the end
+    // of the period the booking plainly belongs to.
+    await withClient((c) => c.query(`update households set timezone = 'America/Los_Angeles'`))
+    try {
+      const made = await call('POST', '/api/rhythms', kevin, {
+        title: 'Late booker', satisfiedBy: 'scheduling', every: '1 week',
+        startsOn: '2026-08-06',
+      })
+      const id = JSON.parse(made.body).rhythm.id
+
+      // Ask the server which period it thinks we are in, rather than deriving one here —
+      // deriving it is the very mistake under test.
+      const before = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+        .find((r: { id: string }) => r.id === id)
+      expect(before.currentPeriodEnd).toBeTruthy()
+
+      // 6pm on the period's LAST day, in the household's own timezone.
+      const at6pm = await withClient(async (c) => {
+        const { rows } = await c.query<{ t: Date }>(
+          `select ((($1::date - 1) + time '18:00') at time zone 'America/Los_Angeles') as t`,
+          [before.currentPeriodEnd]
+        )
+        return rows[0]!.t.toISOString()
+      })
+
+      expect((await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+        startsAt: at6pm, allDay: false,
+      })).statusCode).toBe(201)
+
+      const after = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+        .find((r: { id: string }) => r.id === id)
+      expect(after.bookedAt).toBe(at6pm)
+      expect(after.satisfied).toBe(true)
+    } finally {
+      await withClient((c) => c.query(`update households set timezone = 'America/Chicago'`))
+    }
+  })
+})
+
 describe('when a booked period is actually booked', () => {
   let templeId = ''
 

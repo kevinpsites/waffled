@@ -137,13 +137,19 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
     booked_all_day: boolean | null
     has_series: boolean
   }>(
-    `with base as (
+    `with hh as (select timezone from households where id = $1),
+          base as (
        select r.*,
               case when r.satisfied_by = 'scheduling' then
+                -- Tiled up to the household's OWN today. Against a bare now() the grid
+                -- rolls over at UTC midnight, so a household in Los Angeles watched its
+                -- period advance at 5pm — while the evening it was still meant to be
+                -- booking in was, locally, not over.
                 (select max(gs)::date
-                   from generate_series(r.starts_on::timestamp, now()::timestamp, r.every) gs)
+                   from generate_series(r.starts_on::timestamp,
+                                        (now() at time zone hh.timezone), r.every) gs)
               end as period_start
-         from rhythms r
+         from rhythms r, hh
         where r.household_id = $1 and r.deleted_at is null
      )
      select b.id, b.title, b.emoji, b.notes, b.person_id, b.satisfied_by, b.every::text as every,
@@ -180,7 +186,7 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
        left join lateral (
          select starts_at, all_day from (
            select e.starts_at, e.all_day
-             from events e
+             from events e, hh
             -- rrule is null matters here: a recurring master is a TEMPLATE, not an
             -- instance, and its own starts_at is not something on the calendar. Without
             -- this it settled whichever period contained the anchor — and cancelling
@@ -190,15 +196,16 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
             -- speaks for a series. Every other events/occurrences union in the codebase
             -- carries this filter for the same reason.
             where e.rhythm_id = b.id and e.deleted_at is null and e.rrule is null
-              and e.starts_at >= b.period_start::timestamptz
-              and e.starts_at < (b.period_start + b.every)::timestamptz
+              and e.starts_at >= (b.period_start::timestamp at time zone hh.timezone)
+              and e.starts_at < ((b.period_start + b.every)::timestamp at time zone hh.timezone)
            union all
            select o.starts_at, o.all_day
              from event_occurrences o
              join events m on m.id = o.event_id
+             cross join hh
             where m.rhythm_id = b.id and m.deleted_at is null and o.deleted_at is null
-              and o.starts_at >= b.period_start::timestamptz
-              and o.starts_at < (b.period_start + b.every)::timestamptz
+              and o.starts_at >= (b.period_start::timestamp at time zone hh.timezone)
+              and o.starts_at < ((b.period_start + b.every)::timestamp at time zone hh.timezone)
          ) settling
           order by starts_at
           limit 1
@@ -608,7 +615,8 @@ export async function listAttention(householdId: string, horizon: string): Promi
     period_end: string
     has_series: boolean
   }>(
-    `with periods as (
+    `with hh as (select timezone from households where id = $1),
+          periods as (
        select r.*,
               -- The period covering the window: the latest boundary at or before its end.
               -- generate_series with an interval step tiles TRUE calendar periods, so
@@ -644,24 +652,27 @@ export async function listAttention(householdId: string, horizon: string): Promi
         -- let every later month resurface as "needs scheduling" while the outing sits
         -- right there on the calendar.
         and not exists (
-          select 1 from events e
+          select 1 from events e, hh
            -- A recurring master is a template, not an instance — see the same filter in
            -- the list query. Without it, cancelling the anchor instance left this period
            -- silently absent from the attention feed forever.
            where e.rhythm_id = p.id
              and e.deleted_at is null
              and e.rrule is null
-             and e.starts_at >= p.period_start::timestamptz
-             and e.starts_at < (p.period_start + p.every)::timestamptz
+             -- Local midnights, like the list query: a period boundary resolved in the
+             -- server's zone puts a 6pm booking west of UTC in the NEXT period.
+             and e.starts_at >= (p.period_start::timestamp at time zone hh.timezone)
+             and e.starts_at < ((p.period_start + p.every)::timestamp at time zone hh.timezone)
         )
         and not exists (
           select 1 from event_occurrences o
            join events m on m.id = o.event_id
+           cross join hh
            where m.rhythm_id = p.id
              and m.deleted_at is null
              and o.deleted_at is null
-             and o.starts_at >= p.period_start::timestamptz
-             and o.starts_at < (p.period_start + p.every)::timestamptz
+             and o.starts_at >= (p.period_start::timestamp at time zone hh.timezone)
+             and o.starts_at < ((p.period_start + p.every)::timestamp at time zone hh.timezone)
         )`,
     [householdId, to]
   )
