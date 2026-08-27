@@ -22,18 +22,29 @@ a fixed number. The Today card is a countdown block: "3 want attention" beside "
 each row led by its countdown, and the filled button kept for what is late or out of time.
 **All three now ship on web/kiosk, iPhone and iPad, from the same helpers.**
 
-**The server side of the rest is done.** `PATCH /api/rhythms/:id` now accepts `nextDueAt`
-for a completion rhythm ("push it out a week" — refused on a scheduling rhythm, whose
-periods *are* its anchor); the list carries `bookedAt` / `bookedAllDay` so a settled row
-can say when, with `satisfied && bookedAt === null` meaning **skipped**; and
-`GET /api/rhythms/:id/completions` — which has existed and been tested since 0097 — now
+**"Push it out a week" now has its control on every surface** — the row's ⋯ menu
+everywhere, plus a swipe on iPhone and iPad — sending today-or-the-due-date-whichever-is-
+later plus seven days to `PATCH /api/rhythms/:id`, which takes `nextDueAt` for a completion
+rhythm only and refuses it on a scheduling one, whose periods *are* its anchor.
+
+The list carries `bookedAt` / `bookedAllDay`, and **both clients now read it**: a period
+settled with no time is a **skip**, and says so ("Skipped", "skipped this one") rather than
+claiming a calendar entry that the act of skipping exists to avoid inventing.
+`GET /api/rhythms/:id/completions` — which has existed and been tested since the migration —
 takes a `limit` and reports `total` plus `averageIntervalDays`, the latter computed over
 every completion rather than over the returned page.
 
-Still to come, and it is now client work only: the **iPad list+detail split** — the history
-panel ("May 24 · 13 weeks later") and the real average beside the nominal cadence. iOS has
-no `completions` call yet; the web client has one and no UI using it. Nothing on any
-surface renders `bookedAt`, so a settled row still says "Booked" without saying when.
+Still to come, and it is now client work only:
+
+- the **iPad list+detail split** — the history panel ("May 24 · 13 weeks later") and the
+  real average beside the nominal cadence. iOS has no `completions` call yet; the web
+  client has one and no UI using it.
+- **nothing renders the booking's time**, so a settled row says "Booked" without saying
+  when — `bookedAt` is used only to tell a booking from a skip.
+- the **auto-schedule day pickers are web-only**: the weekday chips, the "last of that
+  weekday" monthly option and the raw-RRULE escape hatch have no iOS equivalent, so the
+  weekday there comes from the start date. The rhythm behaves the same either way; it is
+  the editor that is short.
 
 Where "trash out weekly", "air filter every 3 months", "change the car's oil", "book a
 temple visit", "take a self-care day once a quarter", and "family outing on the third

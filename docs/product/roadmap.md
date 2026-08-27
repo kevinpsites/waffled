@@ -222,8 +222,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Booking a period creates a **real `events` row** carrying `rhythm_id` (mirroring
   `events.goal_id` from `0033_event_goal`) rather than a read-only chip, so it inherits
   recurrence, Google/Outlook sync, visibility, participants, the existing editor and local
-  reminders for free; on web/kiosk those events wear a 🔁 marker in every calendar view, on
-  Today's agenda card and on the event detail (the iOS marker is the one piece still open).
+  reminders for free; those events wear a 🔁 marker in every calendar view, on
+  Today's agenda card and on the event detail, on every surface.
   A **Today card** (silent on quiet days) and a **register
   screen** cover completing, booking, skipping, editing, pausing and retiring — on all three
   surfaces — and completion-shape rhythms join

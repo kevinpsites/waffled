@@ -160,6 +160,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A skipped period no longer claims to be on the calendar.** Skipping exists to send one
+  period quiet *without* inventing an entry for something that isn't going to happen — and
+  the row then reported it as booked anyway, which was the one thing the choice was made to
+  avoid saying. A skipped period now reads **Skipped**, and only a real booking reads
+  **Booked**. Web, kiosk, iPhone and iPad.
+- **A cancelled instance of a self-booking rhythm brings the period back.** Cancelling one
+  occurrence of an automatic series left the rhythm insisting the period was still handled,
+  with nothing on the calendar to show for it, and it never resurfaced to be rebooked. It
+  now goes back to asking — while still knowing the series itself is fine, so it offers the
+  ordinary **Book a time** rather than proposing to rebuild the whole recurrence.
+- **A rhythm action that fails now says so.** Skipping, completing, pausing, pushing out or
+  retiring against a server that refused the change left the row exactly as it was and said
+  nothing, which is indistinguishable from a tap that missed — so the natural response was
+  to press it again. Each now reports that it didn't go through.
+- **Pull-to-refresh on Today refreshes the whole screen on iPhone**, and the wall iPad can
+  refresh its cards at all. Countdowns, pantry, Family Night, Lists and Rhythms all read
+  from the server rather than the offline copy, and were quietly holding whatever they had
+  loaded when the app started.
 - **The month view can add an event again.** On a day that already had something on it,
   there was no way to create a second one: the grid's cells only select a day, and the
   "＋" in the day panel beside them had been invisible since 0.13.1 — the tap-to-add empty

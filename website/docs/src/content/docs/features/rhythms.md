@@ -58,13 +58,18 @@ You then choose whether Waffled can pick the time itself:
 - **Put it on the calendar automatically** *(on)* — the cadence fully determines when, so
   the recurring event is created **the moment you save the rhythm** and it just stays
   satisfied from there. Trash every Tuesday; a family outing on the third Saturday of the
-  month. You pick the day it lands on with the same weekday chips the
+  month. How *often* it repeats isn't asked twice — it comes from the cadence you already
+  set, because a repeat rule that disagreed with the cadence would drop the event outside
+  the period it's meant to satisfy.
+
+  **Which day it lands on is picked on the web**, with the same weekday chips the
   [calendar](/features/calendar/) uses; monthly rhythms get a "which day of the month"
-  choice instead (the same date · the same weekday · the last of that weekday). How
-  *often* it repeats isn't asked twice — it comes from the cadence you already set, because
-  a repeat rule that disagreed with the cadence would drop the event outside the period
-  it's meant to satisfy. **Advanced (raw RRULE)** is there for imported rules and anything
-  the picker can't say.
+  choice instead (the same date · the same weekday · the last of that weekday), and
+  **Advanced (raw RRULE)** is there for imported rules and anything the pickers can't say.
+  On iPhone and iPad the weekday comes from the start date you set, monthly offers the
+  same date or the same weekday, and there is no raw-rule box — so a rule the pickers
+  can't express is one to author on the web. The rhythm itself behaves identically
+  wherever it was made.
 
   The first event goes in at **6pm on the first day the rule allows, on or after the start
   date** — anchor a weekly rhythm on a Wednesday but choose Monday, and it starts the
@@ -159,7 +164,8 @@ You won't see the two shapes named anywhere on this page, and that's deliberate 
 difference shows up where it changes what you'd do. An I-mark-it-done rhythm reads *"last done
 Aug 19"* and offers **I did it**; a scheduled one reads *"not on the calendar yet"* and
 offers **Book a time**. Steady rows offer no button at all; everything else — backdating,
-skipping, editing, pausing — lives in the row's **⋯** menu.
+skipping, pushing it out a week, editing, pausing and retiring — lives in the row's **⋯**
+menu. (On iPhone and iPad, editing, pausing and pushing out are on a swipe as well.)
 
 A rhythm set to **put itself on the calendar automatically** should never have an empty
 period, and there are two different ways one ends up empty. If the series is still there
@@ -193,8 +199,9 @@ primary button on every row would make none of them mean anything; the filled bu
 kept for what is actually late, or a booking window with a day left in it.
 
 Each row gets the verb its shape deserves: an I-mark-it-done rhythm offers **I did it**, a
-scheduled one offers **Book** and **Skip**. There is no "done" on a scheduled rhythm,
-because that isn't a question rhythms ask.
+scheduled one offers **Book** — with **Skip** beside it on the web and in the row's **⋯**
+menu on iPhone and iPad, where there isn't width for two. There is no "done" on a scheduled
+rhythm, because that isn't a question rhythms ask.
 
 ### Booking a period
 
@@ -232,6 +239,27 @@ Sometimes a period genuinely isn't happening — you're away, the quarter got ea
 sends that period quiet without inventing a calendar entry for something that isn't going to
 take place. Only that one period is skipped; the next one comes round as normal.
 
+### Pushing one out a week
+
+It's asking, and today isn't the day. **Push it out a week** (in the row's **⋯** menu on
+every surface, and on a swipe on iPhone and iPad) moves the clock without recording a
+completion — claiming you did it would restart the cadence from today and quietly erase the
+fact that it's still outstanding.
+
+The new date is **today or the due date, whichever is later, plus seven days**, and both
+halves of that matter. Counted from a date it already sailed past, "a week" on something six
+days overdue would bring it back tomorrow — a control that reads as a week and delivers a
+day is worse than none. Counted from the due date when it hasn't arrived, something due in
+three days moves to ten rather than resetting to seven, so the rhythm keeps the shape of its
+own schedule instead of being re-anchored to whenever a button got pressed.
+
+It's one period's reprieve, not a permanent shift: doing it for real still restarts the
+count from the day you actually did it, so the push is forgotten rather than compounding.
+
+It's offered only while the rhythm is actually asking — *Needs you now* or *Coming up* —
+because there's nothing to defer on a Steady row. It's for the I-mark-it-done shape only: a
+scheduled rhythm's periods *are* its anchor, so **Skip** is that shape's version of this.
+
 ### Pausing vs retiring
 
 **Pause** a rhythm when it's genuinely on hold — a summer-only outing, a car you're not
@@ -260,10 +288,17 @@ Rhythms works on every surface, including the 🔁 marker on a booked event.
 
 The **regrouped register** described above — Needs you now / Coming up / Steady — the
 **Today card**, and the **creation form as an editable sentence** are all on every surface.
-The one difference left is where a row's verb sits, and it's a matter of room rather than
-of features: on the web the verb lives in a column at the right of the row, and on iPhone
-and iPad it sits on its own line beneath the row, because a title, a countdown and a verb
-don't fit across one line on a phone.
+What differs is mostly room rather than features. On the web a row's verb lives in a column
+at the right; on iPhone and iPad it sits on its own line beneath the row, because a title, a
+countdown and a verb don't fit across one phone line. For the same reason the Today card's
+**Skip** is a button beside **Book** on the web and an item in the row's **⋯** menu on the
+phone, and that card shows its first four rows there with a **+N more** line rather than the
+full list.
+
+One real gap is left, and it's in the **editor**: choosing which day an auto-scheduled series
+lands on — the weekday chips, the "last of that weekday" monthly option and the raw-RRULE
+escape hatch — is web-only. See [Put it on the calendar automatically](#its-on-the-calendar)
+above.
 
 The events a scheduled rhythm books are ordinary calendar events, so they show up
 **everywhere** — including on your phone, and including offline — the moment they're booked.
