@@ -180,15 +180,22 @@ describe('completion-shape rhythms', () => {
   // The load-bearing behaviour: the clock restarts from when you ACTUALLY did it,
   // so doing it late shifts the next one rather than silently stacking up.
   it('re-anchors next_due_at to the completion time, not the old due date', async () => {
+    // Relative to now, not a fixed date: this was pinned to 2026-09-15, which quietly
+    // became a FUTURE completion once the wall clock passed the fixture — and a future
+    // completion is now refused, as it should be. A date the suite can never outrun.
+    const doneAt = new Date(Date.now() - 10 * 86400000)
+    doneAt.setUTCHours(12, 0, 0, 0)
     const res = await call('POST', `/api/rhythms/${filterId}/complete`, kevin, {
-      completedAt: '2026-09-15T12:00:00Z',
+      completedAt: doneAt.toISOString(),
       notes: 'ordered a 3-pack',
     })
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body).rhythm
-    expect(body.lastCompletedAt).toBe('2026-09-15T12:00:00.000Z')
-    // 2026-09-15 + 3 months, NOT 2026-09-01 + 3 months.
-    expect(body.nextDueAt).toBe('2026-12-15T12:00:00.000Z')
+    expect(body.lastCompletedAt).toBe(doneAt.toISOString())
+    // completion + 3 months, NOT the old due date + 3 months.
+    const expected = new Date(doneAt)
+    expected.setUTCMonth(expected.getUTCMonth() + 3)
+    expect(body.nextDueAt).toBe(expected.toISOString())
   })
 
   it('keeps the completion in a history you can read back', async () => {
@@ -564,6 +571,23 @@ describe('completing the same rhythm twice in a day', () => {
 
   // The dedupe is per DAY, not "collapse everything" — a genuinely separate completion
   // that happened on another date is real history and has to survive.
+  // The clock restarts from when you actually did it, so a completion dated in the future
+  // moves the next one past a day that has not happened and files history for a thing
+  // nobody has done. The web form already refuses it (`max` on the date input) — but a
+  // guard only the browser enforces is not a rule, and iOS and the API bypass it.
+  it('refuses a completion dated in the future', async () => {
+    const ahead = new Date(Date.now() + 9 * 86400000).toISOString()
+    const res = await call('POST', `/api/rhythms/${brushId}/complete`, kevin, { completedAt: ahead })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('still accepts one dated today, clock skew and all', async () => {
+    const res = await call('POST', `/api/rhythms/${brushId}/complete`, kevin, {
+      completedAt: new Date(Date.now() + 60_000).toISOString(),
+    })
+    expect(res.statusCode).toBe(200)
+  })
+
   it('keeps a completion logged for a different day', async () => {
     expect((await call('POST', `/api/rhythms/${brushId}/complete`, kevin, {
       completedAt: '2026-05-04T15:00:00Z',

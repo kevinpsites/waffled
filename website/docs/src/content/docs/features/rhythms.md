@@ -164,8 +164,10 @@ You won't see the two shapes named anywhere on this page, and that's deliberate 
 difference shows up where it changes what you'd do. An I-mark-it-done rhythm reads *"last done
 Aug 19"* and offers **I did it**; a scheduled one reads *"not on the calendar yet"* and
 offers **Book a time**. Steady rows offer no button at all; everything else — backdating,
-skipping, pushing it out a week, editing, pausing and retiring — lives in the row's **⋯**
-menu. (On iPhone and iPad, editing, pausing and pushing out are on a swipe as well.)
+skipping, pushing it out a week, editing and pausing — lives in the row's **⋯** menu.
+**Retire** is in that menu on iPhone and iPad; on the web it sits inside the edit dialog,
+one step further from the tap that would end a rhythm for good. (On iPhone and iPad,
+editing, pausing and pushing out are on a swipe as well.)
 
 A rhythm set to **put itself on the calendar automatically** should never have an empty
 period, and there are two different ways one ends up empty. If the series is still there
@@ -220,10 +222,13 @@ a rhythm"** — so a booked rhythm doesn't look identical to every other event.
 
 ### Marking a completion done
 
-An I-mark-it-done rhythm can be completed from the Today card or the register, **whether or not
-it's due yet** — "I did this today" resets the clock from today. Once it's done the button
-says **Done today ✓** rather than offering itself again, so you can tell the tap landed;
-pressing it twice in a day doesn't record two of anything.
+An I-mark-it-done rhythm can be completed from the Today card or the register, and it doesn't
+have to be due — "I did this today" resets the clock from today whenever you press it. The
+**I did it** button is on the row while the rhythm is *Needs you now* or *Coming up*; a
+**Steady** row has no buttons at all by design, so reach for **Mark done on another day** in
+its ⋯ menu and pick today. Once it's done the button says **Done today ✓** rather than
+offering itself again, so you can tell the tap landed; pressing it twice in a day doesn't
+record two of anything.
 
 Did it on Tuesday and only got round to logging it on Friday? **Mark done on another day**
 (in the row's ⋯ menu) records the date it actually happened, which is the date the clock

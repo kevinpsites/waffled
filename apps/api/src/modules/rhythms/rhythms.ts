@@ -417,6 +417,25 @@ export async function completeRhythm(
   completedAt: string | null,
   notes: string | null
 ): Promise<Rhythm | null> {
+  // A completion dated in the future would push `next_due_at` past a day that has not
+  // happened and file history for a thing nobody has done — and because the clock restarts
+  // from the completion date, the error compounds rather than washing out. The web form
+  // already refuses it with `max` on the date input, but a guard only the browser enforces
+  // is not a rule: iOS and the API go straight past it.
+  //
+  // The minute of slack is for clock skew between a client and the server, not for
+  // backdating's sake — "I did it just now" must not become a 400 because a phone is
+  // thirty seconds fast.
+  if (completedAt !== null) {
+    const at = Date.parse(completedAt)
+    if (Number.isNaN(at)) {
+      throw new InvalidReferenceError('completedAt must be an ISO timestamp')
+    }
+    if (at > Date.now() + 60_000) {
+      throw new InvalidReferenceError('completedAt cannot be in the future — a rhythm is completed when you actually do it')
+    }
+  }
+
   const existing = await readOne(householdId, id)
   if (!existing) return null
   if (existing.satisfiedBy !== 'completion') {
