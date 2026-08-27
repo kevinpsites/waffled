@@ -230,6 +230,16 @@ describe('a cadence the period grid cannot be built from', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  it('refuses a recurrence rule the calendar cannot expand', async () => {
+    // Unvalidated, this COMMITS the event and then throws expanding it, leaving a master
+    // behind that can never produce an occurrence. Both event write paths already check.
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Banana', satisfiedBy: 'scheduling', every: '1 week',
+      startsOn: '2026-01-01', autoSchedule: true, rrule: 'FREQ=BANANA',
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
   it('refuses a first due date that is not a date, the way the edit path already does', async () => {
     const res = await call('POST', '/api/rhythms', kevin, {
       title: 'Bad date', satisfiedBy: 'completion', every: '3 months', nextDueAt: 'garbage',

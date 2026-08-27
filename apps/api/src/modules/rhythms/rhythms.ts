@@ -10,7 +10,7 @@ import { query, getPool } from '../../platform/db'
 import { log } from '../../platform/logger'
 import { InvalidReferenceError } from '../../platform/household-refs'
 import { createEvent, type EventRow } from '../events/events'
-import { firstSlotOnOrAfter } from '../calendar/recurrence'
+import { firstSlotOnOrAfter, isValidRrule } from '../calendar/recurrence'
 import { type Tenant } from '../households/households'
 
 export type SatisfiedBy = 'completion' | 'scheduling'
@@ -352,6 +352,13 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
   const autoSchedule = input.autoSchedule === true
   const rrule = typeof input.rrule === 'string' && input.rrule.trim() ? input.rrule.trim() : null
   if (autoSchedule && !rrule) throw new InvalidReferenceError('rrule is required when autoSchedule is true')
+  // Both event write paths enforce this and this one didn't, so a rule the expander
+  // cannot parse got stored. `FREQ=BANANA` then COMMITTED an event and threw on the way
+  // to expanding it, leaving a permanently unexpandable master behind; on the create path
+  // the same failure was swallowed, leaving a rhythm that can never book.
+  if (rrule && !isValidRrule(rrule)) {
+    throw new InvalidReferenceError('rrule is not a recurrence rule this calendar can expand')
+  }
 
   const { rows } = await query<Row>(
     `insert into rhythms (household_id, title, emoji, notes, person_id, satisfied_by, every, lead_time,
