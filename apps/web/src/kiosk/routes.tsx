@@ -1,28 +1,37 @@
+import { lazy } from 'react'
 import { Routes, Route, Navigate, Outlet } from 'react-router'
 import { useHousehold } from '../lib/api'
 import { moduleEnabled, type ModuleKey } from '../lib/modules'
 import { KioskLayout } from './KioskLayout'
-import { Today } from './Today'
-import { Tasks } from './Tasks'
-import { Calendar } from './Calendar'
-import { EventDetail } from './EventDetail'
-import { Goals } from './Goals'
-import { GoalCreate } from './GoalCreate'
-import { GoalDetail } from './GoalDetail'
-import { PersonProfile } from './PersonProfile'
-import { WaffledBiteDevice } from './WaffledBiteDevice'
-import { FamilyOverview } from './FamilyOverview'
-import { Meals } from './Meals'
-import { RecipeDetail } from './RecipeDetail'
-import { RecipeEditor } from './RecipeEditor'
-import { CookMode } from './CookMode'
-import { RecipesLibrary } from './RecipesLibrary'
-import { MealBuilder } from './MealBuilder'
-import { Lists } from './Lists'
-import { Pantry } from './Pantry'
-import { Rhythms } from './Rhythms'
-import { Photos } from './Photos'
-import { Settings } from './Settings'
+
+// Every screen is loaded on demand. Statically imported, all twenty landed in the
+// entry bundle, so opening the kiosk to Today downloaded Settings, the recipe
+// editor and the pantry too. lazy() gives each screen its own chunk, fetched the
+// first time someone navigates to it; KioskLayout holds the <Suspense> boundary so
+// the rail and topbar stay put while a chunk loads.
+//
+// KioskLayout itself stays eager — it is the shell, needed on literally every route.
+const Today = lazy(() => import('./Today').then((m) => ({ default: m.Today })))
+const Tasks = lazy(() => import('./Tasks').then((m) => ({ default: m.Tasks })))
+const Calendar = lazy(() => import('./Calendar').then((m) => ({ default: m.Calendar })))
+const EventDetail = lazy(() => import('./EventDetail').then((m) => ({ default: m.EventDetail })))
+const Goals = lazy(() => import('./Goals').then((m) => ({ default: m.Goals })))
+const GoalCreate = lazy(() => import('./GoalCreate').then((m) => ({ default: m.GoalCreate })))
+const GoalDetail = lazy(() => import('./GoalDetail').then((m) => ({ default: m.GoalDetail })))
+const PersonProfile = lazy(() => import('./PersonProfile').then((m) => ({ default: m.PersonProfile })))
+const WaffledBiteDevice = lazy(() => import('./WaffledBiteDevice').then((m) => ({ default: m.WaffledBiteDevice })))
+const FamilyOverview = lazy(() => import('./FamilyOverview').then((m) => ({ default: m.FamilyOverview })))
+const Meals = lazy(() => import('./Meals').then((m) => ({ default: m.Meals })))
+const RecipeDetail = lazy(() => import('./RecipeDetail').then((m) => ({ default: m.RecipeDetail })))
+const RecipeEditor = lazy(() => import('./RecipeEditor').then((m) => ({ default: m.RecipeEditor })))
+const CookMode = lazy(() => import('./CookMode').then((m) => ({ default: m.CookMode })))
+const RecipesLibrary = lazy(() => import('./RecipesLibrary').then((m) => ({ default: m.RecipesLibrary })))
+const MealBuilder = lazy(() => import('./MealBuilder').then((m) => ({ default: m.MealBuilder })))
+const Lists = lazy(() => import('./Lists').then((m) => ({ default: m.Lists })))
+const Pantry = lazy(() => import('./Pantry').then((m) => ({ default: m.Pantry })))
+const Rhythms = lazy(() => import('./Rhythms').then((m) => ({ default: m.Rhythms })))
+const Photos = lazy(() => import('./Photos').then((m) => ({ default: m.Photos })))
+const Settings = lazy(() => import('./Settings').then((m) => ({ default: m.Settings })))
 
 // Layout route that redirects to Today when an optional module is off, so a
 // bookmark/direct URL to a disabled page doesn't render a dead (403-ing) screen.

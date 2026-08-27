@@ -999,21 +999,32 @@ struct ListDetailView: View {
 
     // MARK: grocery week switcher
 
-    private var viewedWeekStart: Date {
-        let base = Cal.weekStart(Date(), sync.householdTz)   // honors first-day-of-week
-        return Cal.gregorian(sync.householdTz).date(byAdding: .weekOfYear, value: weekOffset, to: base) ?? base
-    }
-    /// The YYYY-MM-DD to request; nil for the current week (server default).
-    private var requestedWeekYMD: String? {
-        weekOffset == 0 ? nil : DateFmt.string(viewedWeekStart, "yyyy-MM-dd", sync.householdTz)
-    }
+    /// `weekOffset` counts steps for the LABEL only. The week actually requested is
+    /// derived from `model.weekStart` — the board's own echo of the week the server
+    /// chose — because the server snaps every `?weekStart=` onto the household's
+    /// boundary while `Cal.weekStart` follows the device region's. When a household
+    /// starts its week on Monday and the phone's locale starts on Sunday, computing the
+    /// date here sent "next week" to a value that snapped back to the week already
+    /// shown, and "last week" two weeks back — leaving one week unreachable entirely.
     private var groceryWeekLabel: String {
         switch weekOffset {
         case 0: return "This week"
         case 1: return "Next week"
         case -1: return "Last week"
-        default: return "Week of " + DateFmt.string(viewedWeekStart, "MMM d", sync.householdTz)
+        default:
+            // Label from the server's answer too, so the heading can't name a different
+            // week from the one on screen.
+            guard let d = DateFmt.date(model.weekStart, "yyyy-MM-dd", DateFmt.utc) else { return "Another week" }
+            return "Week of " + DateFmt.string(d, "MMM d", DateFmt.utc)
         }
+    }
+
+    /// Move one week from the week currently shown, and reload.
+    private func stepGroceryWeek(_ weeks: Int) {
+        guard let next = GroceryWeeks.step(from: model.weekStart, weeks: weeks) else { return }
+        weekOffset += weeks
+        model.requestedWeekStart = next
+        Task { await model.load() }
     }
 
     /// Prev/next week with a "This week" reset — always visible for grocery so an empty
@@ -1021,26 +1032,29 @@ struct ListDetailView: View {
     /// that week; this week's list is never touched.
     @ViewBuilder private var groceryWeekSwitcher: some View {
         HStack(spacing: 10) {
-            Button { withAnimation { weekOffset -= 1 } } label: {
+            Button { withAnimation { stepGroceryWeek(-1) } } label: {
                 Image(systemName: "chevron.left").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
                     .frame(width: 36, height: 30).background(WF.panel).clipShape(Capsule())
             }.buttonStyle(.plain)
             Text(groceryWeekLabel).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
                 .frame(maxWidth: .infinity)
             if weekOffset != 0 {
-                Button("This week") { withAnimation { weekOffset = 0 } }
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ai).buttonStyle(.plain)
+                // Back to the server's own current week — nil, not a computed date.
+                Button("This week") {
+                    withAnimation {
+                        weekOffset = 0
+                        model.requestedWeekStart = nil
+                        Task { await model.load() }
+                    }
+                }
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ai).buttonStyle(.plain)
             }
-            Button { withAnimation { weekOffset += 1 } } label: {
+            Button { withAnimation { stepGroceryWeek(1) } } label: {
                 Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
                     .frame(width: 36, height: 30).background(WF.panel).clipShape(Capsule())
             }.buttonStyle(.plain)
         }
         .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 2)
-        .onChange(of: weekOffset) { _, _ in
-            model.requestedWeekStart = requestedWeekYMD
-            Task { await model.load() }
-        }
     }
 
     /// Inline search box — filters items by name, section, or quantity.
@@ -1759,10 +1773,21 @@ struct ListDetailView: View {
                                 .font(.system(size: 13))
                                 .accessibilityLabel(ListItemPriority.meta(item.priority).label)
                         }
-                        Text(item.name)
-                            .font(.system(size: 16, weight: .semibold))
-                            .strikethrough(item.checked, color: WF.ink3)
-                            .foregroundStyle(item.checked ? WF.ink3 : WF.ink)
+                        // The pantry badge sits UNDER the name, not among the trailing
+                        // chips. The row is already carrying meal dots, a store tag, a
+                        // quantity and an avatar; on a narrow iPhone a fifth chip
+                        // competing for that width starved the name and wrapped it
+                        // mid-word (the same bug the web version hit). On its own line
+                        // it costs no horizontal room at all.
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.name)
+                                .font(.system(size: 16, weight: .semibold))
+                                .strikethrough(item.checked, color: WF.ink3)
+                                .foregroundStyle(item.checked ? WF.ink3 : WF.ink)
+                            if let hit = item.pantry {
+                                PantryBadgeChip(rowName: item.name, hit: hit, dimmed: item.checked)
+                            }
+                        }
                         Spacer(minLength: 8)
                         mealDots(for: item)
                         // Store tag (hidden in the By-store view, where the header already says it).

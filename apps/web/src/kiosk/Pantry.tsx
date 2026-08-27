@@ -1,24 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 import {
   usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, uploadImage, ageLabel, monthsOnHand, ALLERGEN_LABELS, DIETARY_LABELS, productSourceLabel,
   type PantryItem, type PantryItemInput, type OffProduct, type ItemRecipe,
 } from '../lib/api'
-import { ScanModal } from './components/ScanModal'
 import { LocationField } from './components/LocationField'
 import { CookFromPantry } from './components/CookFromPantry'
 import { AllergenBadges, AllergenBadge, AllergenKey } from './components/Allergens'
 import '../styles/pantry.css'
 
-// A small expiry badge: red if past, amber within 3 days, muted date otherwise.
-function ExpiryBadge({ expiresOn }: { expiresOn: string | null }) {
-  const d = daysUntil(expiresOn)
-  if (d == null) return null
-  if (d < 0) return <span className="pantry-exp past">Expired</span>
-  if (d === 0) return <span className="pantry-exp soon">Today</span>
-  if (d <= 3) return <span className="pantry-exp soon">{d}d left</span>
-  return <span className="pantry-exp">{expiresOn}</span>
-}
+// The scanner drags in the zxing decoder (~440 kB minified) — by far the biggest
+// dependency in the app, and only ever needed once someone taps Scan. Loading it
+// on demand keeps it out of the entry bundle every other screen has to download.
+const ScanModal = lazy(() => import('./components/ScanModal').then((m) => ({ default: m.ScanModal })))
 
 // A compact per-item expiry sub-line (greyed when far off / absent).
 function expiryText(expiresOn: string | null): { text: string; tone: 'past' | 'soon' | 'ok' | 'none' } {
@@ -278,7 +272,9 @@ export function Pantry() {
       </div>
 
       {scanning && (
-        <ScanModal locations={locations} avoidAllergens={avoidAllergens} allergenPeople={allergenPeople} onClose={() => setScanning(false)} onAdded={refetch} onLocationsChanged={refetch} />
+        <Suspense fallback={<div className="modal-overlay"><div className="spinner lg" /></div>}>
+          <ScanModal locations={locations} avoidAllergens={avoidAllergens} allergenPeople={allergenPeople} onClose={() => setScanning(false)} onAdded={refetch} onLocationsChanged={refetch} />
+        </Suspense>
       )}
 
       {detail && (
@@ -581,48 +577,5 @@ function ItemModal({ item, locations, onLocationsChanged, onClose, onSaved }: {
         </div>
       </div>
     </div>
-  )
-}
-
-// Today card — an at-a-glance "what's on hand," soonest-to-expire first. Used-up
-// items are excluded.
-export function PantryCard() {
-  const [items, setItems] = useState<PantryItem[] | null>(null)
-  useEffect(() => {
-    let alive = true
-    pantryApi.list().then((d) => alive && setItems(d.items.filter((i) => !i.usedUp))).catch(() => {})
-    return () => { alive = false }
-  }, [])
-
-  if (!items) return null
-  const sorted = [...items].sort((a, b) => {
-    const da = daysUntil(a.expiresOn), db = daysUntil(b.expiresOn)
-    if (da == null && db == null) return a.name.localeCompare(b.name)
-    if (da == null) return 1
-    if (db == null) return -1
-    return da - db
-  })
-  const soon = items.filter((it) => { const d = daysUntil(it.expiresOn); return d != null && d <= 3 }).length
-
-  return (
-    <Link to="/pantry" className="card pantry-card">
-      <div className="pantry-card-h">
-        <span className="pantry-card-title">🥫 Pantry</span>
-        <span className="pantry-card-count">{items.length} on hand{soon > 0 ? ` · ${soon} soon` : ''}</span>
-      </div>
-      {items.length === 0 ? (
-        <div className="pantry-card-empty">Nothing logged yet — add what's on hand ›</div>
-      ) : (
-        <div className="pantry-card-list">
-          {sorted.map((it) => (
-            <div key={it.id} className="pantry-card-row">
-              <span className="pantry-card-name">{it.name}</span>
-              {(it.amount || it.unit) && <span className="pantry-card-qty">{[it.amount, it.unit].filter(Boolean).join(' ')}</span>}
-              <span className="pantry-card-meta"><ExpiryBadge expiresOn={it.expiresOn} /></span>
-            </div>
-          ))}
-        </div>
-      )}
-    </Link>
   )
 }

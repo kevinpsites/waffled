@@ -3,10 +3,18 @@ import { groceryApi, type RecipeIngredient } from '../../lib/api'
 import { fmtAmt } from '../../lib/amount'
 
 // "Add all, or pick specific ingredients" — the shopper may already have some on hand.
-// Defaults to EVERY ingredient checked, staples included: what's actually in someone's
-// pantry is a guess, and an item missing at the shop costs more than an extra one to
-// uncheck. Staples still carry a "likely on hand" hint to steer the unchecking. Adds
-// only the checked subset.
+//
+// Defaults to every ingredient checked EXCEPT the ones the pantry says you actually have
+// (`inPantry`). That exception is the whole point: guessing was the old problem, and with
+// the pantry module on this is no longer a guess but a real match against your inventory.
+//
+// Staples are a different thing and stay CHECKED. A staple is something the household is
+// assumed to keep around — a standing assumption, not an observation — so it keeps only
+// its "likely on hand" hint to steer the unchecking. Reversing that default would mean
+// silently dropping items the shopper never told us they had, and an item missing at the
+// shop costs more than an extra one to uncheck.
+//
+// Adds only the checked subset.
 export function RecipeGroceryModal({
   recipeId,
   title,
@@ -25,8 +33,11 @@ export function RecipeGroceryModal({
   onClose: () => void
   onAdded: (added: number) => void
 }) {
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(ingredients.map((i) => i.id)))
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(ingredients.filter((i) => !i.inPantry).map((i) => i.id))
+  )
   const [saving, setSaving] = useState(false)
+  const pantryCount = ingredients.filter((i) => i.inPantry).length
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -60,7 +71,9 @@ export function RecipeGroceryModal({
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
         <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Add to grocery list</div>
         <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
-          Choose what to add from “{title}” — uncheck anything you already have.
+          {pantryCount > 0
+            ? `Choose what to add from “${title}” — we’ve already unchecked ${pantryCount} item${pantryCount === 1 ? '' : 's'} your pantry says you have.`
+            : `Choose what to add from “${title}” — uncheck anything you already have.`}
         </div>
 
         <button type="button" className="pill" style={{ cursor: 'pointer', marginBottom: 10 }} onClick={toggleAll}>
@@ -86,7 +99,13 @@ export function RecipeGroceryModal({
                 <span className="ring-amt">{left}</span>
                 <span className="ring-name">
                   {name}
-                  {ing.isStaple && <span className="ring-was">pantry staple — likely on hand</span>}
+                  {/* The real match wins the hint slot: "in your pantry" is something we
+                      observed, "likely on hand" only something we assumed. */}
+                  {ing.inPantry ? (
+                    <span className="ring-was ring-inpantry">🥫 in your pantry</span>
+                  ) : (
+                    ing.isStaple && <span className="ring-was">pantry staple — likely on hand</span>
+                  )}
                 </span>
               </div>
             )
@@ -96,7 +115,10 @@ export function RecipeGroceryModal({
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button type="button" className="btn btn-ghost" style={{ cursor: 'pointer' }} onClick={onClose}>Cancel</button>
           <button type="button" className="btn btn-primary" style={{ cursor: 'pointer', marginLeft: 'auto' }} disabled={saving || selected.size === 0} onClick={add}>
-            {saving ? 'Adding…' : `Add ${selected.size} item${selected.size === 1 ? '' : 's'}`}
+            {/* Pre-unchecking can empty the selection outright when the pantry covers the
+                whole recipe. "Add 0 items" on a dead button explains nothing; name the
+                state instead, and leave "Select all" as the way out. */}
+            {saving ? 'Adding…' : selected.size === 0 ? 'Nothing to add' : `Add ${selected.size} item${selected.size === 1 ? '' : 's'}`}
           </button>
         </div>
       </div>

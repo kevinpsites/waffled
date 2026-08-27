@@ -41,6 +41,39 @@ const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const
 // read as such ("from meal plan"); hand-added items show who added them
 // ("added by {name}").
 // Subtle by design — same visual weight as the quantity metadata.
+// "You already have this" — shown when something in the pantry matches the row.
+//
+// The row stays ON the list. The match is presence-only (it never compares quantities),
+// so this is a nudge to check the shelf, not a verdict that you have enough: having "1
+// bag" of rice says nothing about whether it covers the 2 cups a recipe wants. Which is
+// why the badge shows the pantry item's OWN amount instead of a yes/no — the shopper is
+// the one who can actually judge, and giving them the number is what lets them.
+function PantryBadge({ item }: { item: GroceryBoardItem }) {
+  const hit = item.pantry
+  if (!hit) return null
+  const amount = [hit.amount, hit.unit].map((s) => s?.trim()).filter(Boolean).join(' ')
+  // Name the matched item when it differs from the row — the match is fuzzy ("chicken" ↔
+  // "chicken breast"), so a bare "you have some" leaves you wondering *what* it found.
+  const matched = hit.name.trim().toLowerCase() !== item.name.trim().toLowerCase() ? hit.name : null
+  // Whichever half matters more goes first, because a crowded row (store chip + quantity)
+  // leaves the body column narrow enough to ellipsize the tail.
+  // Fuzzy match → the NAME leads: a row reading "Chicken" matched by "Boneless chicken
+  // breast" is a difference that can change your mind, and "3 pack…" wouldn't tell you.
+  // Exact match → the name is already the row's own, so only the amount adds anything.
+  const detail = matched ? [matched, amount].filter(Boolean).join(' · ') : amount
+  return (
+    <span
+      className="gpantry"
+      title={`In your pantry${detail ? ` — ${detail}` : ''}. Still on the list: we can't tell whether it's enough.`}
+    >
+      {/* The 🥫 is decoration, so the badge has to name itself in text — otherwise an
+          exact match reaches a screen reader as a naked "2 cups" right next to the row's
+          own quantity, two unlabeled numbers with nothing saying which is the shelf. */}
+      <span aria-hidden>🥫</span> {detail ? <><span className="sr-only">In pantry: </span>{detail}</> : 'in pantry'}
+    </span>
+  )
+}
+
 function ItemAttribution({ item }: { item: GroceryBoardItem }) {
   const fromMeal = item.source === 'auto' || (item.sourceRecipeIds?.length ?? 0) > 0
   if (fromMeal) {
@@ -195,6 +228,12 @@ function ItemRow({
       <span className="gitem-body">
         <span className="gnm">{item.name}</span>
         <ItemAttribution item={item} />
+        {/* Inside the body column, NOT a fourth trailing chip. The row already carries
+            meal dots, a quantity, sometimes a store, and two action buttons, and in the
+            board's two-column layout there is no horizontal room left: as a sibling of
+            those, the badge starved `.gitem-body` (flex:1; min-width:0) and wrapped the
+            item name mid-word. Here it costs no width and wraps on its own line. */}
+        <PantryBadge item={item} />
       </span>
       <span className="gdots">
         {colors.map((c, i) => (

@@ -216,6 +216,11 @@ export interface RecipeIngredient {
   isStaple: boolean
   sortOrder: number | null
   sub: string | null
+  // Real pantry match: is something on hand right now that covers this ingredient?
+  // Distinct from `isStaple` — a staple is something the household is ASSUMED to keep
+  // around, this is something it actually HAS. Always false when the pantry module is
+  // off (nothing is known). Optional so a server predating it doesn't break the client.
+  inPantry?: boolean
 }
 
 export interface RecipeStep {

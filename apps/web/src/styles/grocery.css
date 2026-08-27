@@ -349,6 +349,40 @@
   white-space: nowrap;
 }
 
+/* "You already have this" — the pantry match on a grocery row.
+   Lives INSIDE .gitem-body (below the name + attribution), not among the row's trailing
+   chips. The row is already full — meal dots, quantity, store, two action buttons — and
+   in the board's two-column layout a chip competing for that width starved the flexible
+   name column and wrapped item names mid-word. On its own line in the body it costs no
+   horizontal room at all.
+   Deliberately NOT a warning color: the row is still on the list on purpose (we can't
+   tell whether what's on the shelf is enough), so this is a "check the shelf" nudge.
+   --success-t/--success is the tint pair the Pantry screen uses for its own "you've got
+   this" chips (.pl-chip.ok, .pl-badge.green), so the badge reads as the pantry speaking
+   on a surface that isn't the pantry. */
+.gpantry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin-top: 1px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--success);
+  background: var(--success-t);
+  border-radius: 999px;
+  padding: 1px 8px;
+  max-width: 100%;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A checked-off row has already been dealt with — let its badge recede with the rest. */
+.gitem.done .gpantry {
+  opacity: 0.5;
+}
+
 .grocery-clear {
   cursor: pointer;
 }

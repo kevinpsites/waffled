@@ -856,6 +856,12 @@ button.tick {
   font-weight: 600;
 }
 
+/* Body copy for a placeholder that explains itself (the chunk-load error state).
+   A measure, so a sentence doesn't run the full width of a 1280px display. */
+.screen-placeholder .ph-body {
+  max-width: 420px;
+}
+
 /* ===== Rewards panel (Tasks → Rewards) ===== */
 /* Matches the 30px screen gutter the rest of the Tasks page uses (.tasks-head,
    .tasks-datenav) so balances + catalog line up with the heading. */

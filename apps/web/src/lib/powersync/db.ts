@@ -10,12 +10,30 @@
 // (rebuild the client), then hard with the local replica wiped. A hard restart
 // replaces the db instance, so long-lived watches subscribe to
 // onPowerSyncRecreated to re-arm against the new one.
-import { PowerSyncDatabase } from '@powersync/web'
-import type { SyncStatus } from '@powersync/web'
-import { AppSchema } from './schema'
-import { WaffledConnector } from './connector'
+import type { PowerSyncDatabase, SyncStatus } from '@powersync/web'
 import { getAccessToken } from '../api/client'
 import { SyncHealthMonitor } from './sync-health'
+
+// The engine — @powersync/web plus the wa-sqlite build it wraps — is ~540 kB
+// minified, and this module is reachable from every screen (lib/api's event hooks
+// import events-local, which imports this file). Imported statically that weight
+// lands in the entry bundle, delaying first paint on a screen nobody has to have
+// sync for. Nothing here needs the engine until something actually connects, so
+// pull it in then: `import type` above is erased at build time, and the schema +
+// connector ride along in the same lazily-loaded chunk.
+//
+// This is safe precisely because the module is already null-until-started —
+// getPowerSyncDb() returns null while the client boots and every caller falls
+// back to REST — so an extra network round-trip for the chunk is just a slightly
+// longer version of a window that already exists.
+async function loadEngine() {
+  const [web, schema, connector] = await Promise.all([
+    import('@powersync/web'),
+    import('./schema'),
+    import('./connector'),
+  ])
+  return { PowerSyncDatabase: web.PowerSyncDatabase, AppSchema: schema.AppSchema, WaffledConnector: connector.WaffledConnector }
+}
 
 let db: PowerSyncDatabase | null = null
 let unlistenStatus: (() => void) | null = null
@@ -37,6 +55,7 @@ async function startClient(): Promise<void> {
   // WASM/OPFS init takes a few seconds — publish 'starting' so the Live Sync card
   // never reads "off" during a perfectly normal boot.
   monitor.engineStarting()
+  const { PowerSyncDatabase, AppSchema, WaffledConnector } = await loadEngine()
   const instance = new PowerSyncDatabase({
     schema: AppSchema,
     database: { dbFilename: 'waffled.db' },
@@ -116,6 +135,7 @@ export async function restartPowerSyncSoft(): Promise<void> {
   const instance = db
   if (!instance) return
   try {
+    const { WaffledConnector } = await loadEngine()
     await instance.disconnect()
     await instance.connect(new WaffledConnector())
   } catch (err) {

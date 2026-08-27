@@ -713,8 +713,20 @@ struct KioskDashboard: View {
             HStack(spacing: 12) {
                 Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 22)).foregroundStyle(item.checked ? WF.primary : WF.ink3)
-                Text(item.name).font(.system(size: 17)).foregroundStyle(item.checked ? WF.ink3 : WF.ink)
-                    .strikethrough(item.checked, color: WF.ink3).lineLimit(1)
+                // The pantry badge stacks UNDER the name, as it does on the grocery
+                // board itself. This row carries less than the full list row does, but
+                // it's a third of an iPad's width, both texts are `lineLimit(1)`, and
+                // the badge's whole job is to name what the pantry matched — put it in
+                // the trailing run next to the quantity and the two truncate against
+                // each other, which is worse here than on a phone you can lean into.
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.name).font(.system(size: 17)).foregroundStyle(item.checked ? WF.ink3 : WF.ink)
+                        .strikethrough(item.checked, color: WF.ink3).lineLimit(1)
+                    // A checked row has been dealt with; let its badge recede with it.
+                    if let hit = item.pantry {
+                        PantryBadgeChip(rowName: item.name, hit: hit, dimmed: item.checked)
+                    }
+                }
                 Spacer(minLength: 6)
                 if let q = item.quantity, !q.isEmpty {
                     Text(q).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)

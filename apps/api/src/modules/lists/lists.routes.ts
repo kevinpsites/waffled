@@ -34,6 +34,8 @@ import {
   clearGroceryChecks,
   groceryBoard,
   householdWeekStart,
+  householdWeekStartFor,
+  parseWeekStartParam,
   presentList,
   presentListItem,
 } from './lists.service'
@@ -306,19 +308,18 @@ export function registerListRoutes(api: Api): void {
   }))
 
   // ---- grocery board + auto-build + pantry staples --------------------------
-  // The week to operate on: an explicit ?weekStart=YYYY-MM-DD, else the household's
-  // current week (honoring its first-day-of-week + timezone). Household-aware so the
-  // default matches what the clients render for "this week" — and the 0088 backfill.
+  // The week to operate on: the household week CONTAINING an explicit
+  // ?weekStart=YYYY-MM-DD, else its current week (both honoring first-day-of-week +
+  // timezone). Household-aware so it matches what the clients render for "this week" —
+  // and the 0088 backfill.
+  //
+  // The snap is the point, not a nicety: grocery rows are keyed by week start and the
+  // board only ever asks for week starts, so accepting the caller's date verbatim writes
+  // rows onto a key no board will ever query. "Plan the month" did exactly that with the
+  // 1st of the month (a Tuesday in Sep 2026) and the whole list came back empty.
   async function weekStartFor(tenant: { householdId: string }, req: Request): Promise<string> {
-    const ws = (req.query?.weekStart as string | undefined) || ''
-    // Require a REAL calendar date — the regex alone lets "2026-13-45" through, which
-    // then throws on the Postgres date cast (→ 500). Round-trip through Date to reject
-    // impossible dates (and JS's silent overflow normalization) and fall back cleanly.
-    if (/^\d{4}-\d{2}-\d{2}$/.test(ws)) {
-      const d = new Date(ws + 'T00:00:00Z')
-      if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ws) return ws
-    }
-    return householdWeekStart(tenant.householdId)
+    const ws = parseWeekStartParam(req.query?.weekStart)
+    return ws === null ? householdWeekStart(tenant.householdId) : householdWeekStartFor(tenant.householdId, ws)
   }
 
   api.get('/api/lists/grocery/board', tenantRoute(async (tenant, req: Request) => {

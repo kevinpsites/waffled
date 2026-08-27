@@ -476,16 +476,15 @@ struct PlanMonthSheet: View {
 
     private func apply() async {
         applying = true
-        // Write new drafts + edited existing nights; leave untouched existing nights
-        // alone; clear nights that were planned before but the user skipped.
-        for card in suggestions where !plannedDates.contains(card.date) || dirty.contains(card.date) {
-            _ = await sync.setMealPlan(date: card.date, mealType: card.mealType,
-                                       recipeId: card.recipeId, title: card.recipeId == nil ? card.title : nil)
+        // What to send is decided in MealPlanApply and tested there — which weeks a month
+        // touches, that a rebuild covers only ONE of them, and that rebuilds follow every
+        // write. This is deliberately just the executor: with the derivation inline here it
+        // was untestable, and a revert to a single rebuild call went unnoticed.
+        for op in MealPlanApply.month(suggestions: suggestions, plannedDates: plannedDates,
+                                      dirty: dirty, skipped: skipped,
+                                      firstDay: sync.householdWeekStart) {
+            await sync.perform(op)
         }
-        for d in skipped where plannedDates.contains(d) {
-            _ = await sync.clearMealPlan(date: d, mealType: "dinner")
-        }
-        await sync.rebuildGroceryFromWeek(weekStart: monthStart)
         applying = false
         onApplied()
         dismiss()
