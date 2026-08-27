@@ -169,10 +169,12 @@ function RhythmRow({
       <div className="rhy-reg-main">
         <div className="rhy-name">
           {rhythm.title}
-          {/* A booked period is settled. The tick says so without a badge saying
-              "Handled", which was a label for a state the countdown already shows. */}
+          {/* A settled period gets a tick, without a badge saying "Handled" — a label
+              for a state the countdown already shows. Settled is not always BOOKED,
+              though: a skip settles a period and has no time, so the label follows
+              `bookedAt` rather than announcing a calendar entry that isn't there. */}
           {scheduling && rhythm.satisfied && !paused && (
-            <span className="rhy-tick" aria-label="on the calendar">✓</span>
+            <span className="rhy-tick" aria-label={rhythm.bookedAt ? 'on the calendar' : 'skipped'}>✓</span>
           )}
           {personColor && <i className="rhy-dot" style={{ background: personColor }} aria-hidden />}
         </div>
@@ -184,7 +186,10 @@ function RhythmRow({
               situation we have deliberately stopped caring about. */}
           {paused ? <> · <b>paused</b></> : scheduling ? (
             rhythm.satisfied
-              ? <> · on the calendar for this one</>
+              // Two ways to be settled, and only one of them involves the calendar.
+              ? rhythm.bookedAt
+                ? <> · on the calendar for this one</>
+                : <> · <b>skipped this one</b></>
               // Three different empty periods, and they are not the same problem.
               // A live series with one gap is missing ONE event, exactly like a
               // hand-booked row is — so it gets the same offer, and only the sentence

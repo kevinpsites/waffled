@@ -39,7 +39,8 @@ private func rhythm(
     currentPeriodStart: String? = nil,
     currentPeriodEnd: String? = nil,
     satisfied: Bool? = nil,
-    hasSeries: Bool? = nil
+    hasSeries: Bool? = nil,
+    bookedAt: String? = nil
 ) -> WaffledAPI.Rhythm {
     WaffledAPI.Rhythm(
         id: id, title: title, emoji: emoji, notes: notes, personId: personId,
@@ -47,7 +48,7 @@ private func rhythm(
         autoSchedule: autoSchedule, rrule: rrule, leadTime: leadTime,
         lastCompletedAt: lastCompletedAt, nextDueAt: nextDueAt, isActive: isActive,
         currentPeriodStart: currentPeriodStart, currentPeriodEnd: currentPeriodEnd,
-        satisfied: satisfied, hasSeries: hasSeries)
+        satisfied: satisfied, hasSeries: hasSeries, bookedAt: bookedAt)
 }
 
 private func due(_ r: WaffledAPI.Rhythm, at dueAt: String, overdue: Bool) -> WaffledAPI.RhythmAttentionItem {
@@ -377,8 +378,11 @@ struct RhythmsModelTests {
         let feed = RhythmFeed(all: [
             rhythm(id: "a", title: "Air filter", satisfiedBy: .completion,
                    lastCompletedAt: "2026-05-20T09:00:00Z", nextDueAt: "2026-08-20T09:00:00Z"),
+            // Settled by a BOOKING, so it carries the booking's time — only a skip settles
+            // a period without one, and the row now has to tell those two apart.
             rhythm(id: "b", title: "Temple visit", satisfiedBy: .scheduling, startsOn: "2026-01-01",
-                   currentPeriodStart: "2026-07-01", currentPeriodEnd: "2026-10-01", satisfied: true),
+                   currentPeriodStart: "2026-07-01", currentPeriodEnd: "2026-10-01", satisfied: true,
+                   bookedAt: "2026-08-19T18:00:00Z"),
         ])
         let model = feed.model()
         await model.loadAll()
@@ -757,9 +761,30 @@ struct RhythmRegisterFailureTests {
         // A booked period is settled, and says so in the same slot.
         let booked = rhythm(id: "u", title: "Temple visit", satisfiedBy: .scheduling, every: "7 days",
                             currentPeriodStart: "2026-08-19", currentPeriodEnd: "2026-08-27",
-                            satisfied: true)
+                            satisfied: true, bookedAt: "2026-08-20T18:00:00Z")
         #expect(RhythmsModel.detailLines(for: [booked], now: now, calendar: utcCal)["u"]
                 == "Every week · on the calendar for this one")
+    }
+
+    @Test("A settled period says whether it was booked or skipped, never both")
+    func skippedIsNotBooked() {
+        // Skipping sends a period quiet WITHOUT inventing a calendar entry for something
+        // that isn't going to happen. The server settles a period either way and marks the
+        // difference with `bookedAt` — a skip has no time and never will — so a row reading
+        // only `satisfied` announces the very entry the action was chosen to avoid.
+        let skipped = rhythm(satisfiedBy: .scheduling, startsOn: "2026-08-17",
+                             currentPeriodStart: "2026-08-17", currentPeriodEnd: "2026-08-24",
+                             satisfied: true, bookedAt: nil)
+        #expect(RhythmFormat.countdown(skipped, urgency: .steady)?.number == "Skipped")
+        #expect(RhythmsModel.detailLines(for: [skipped], now: at("2026-08-20T09:00:00"),
+                                        calendar: utcCal)["r1"]?.contains("skipped this one") == true)
+
+        let booked = rhythm(satisfiedBy: .scheduling, startsOn: "2026-08-17",
+                            currentPeriodStart: "2026-08-17", currentPeriodEnd: "2026-08-24",
+                            satisfied: true, bookedAt: "2026-08-19T18:00:00Z")
+        #expect(RhythmFormat.countdown(booked, urgency: .steady)?.number == "Booked")
+        #expect(RhythmsModel.detailLines(for: [booked], now: at("2026-08-20T09:00:00"),
+                                        calendar: utcCal)["r1"]?.contains("on the calendar for this one") == true)
     }
 
     @Test("A self-booking row separates one empty period from a series that is gone")
@@ -799,7 +824,7 @@ struct RhythmRegisterFailureTests {
         let healthy = rhythm(id: "b", title: "Temple Visit", satisfiedBy: .scheduling,
                              every: "7 days", startsOn: "2026-08-19", autoSchedule: true,
                              currentPeriodStart: "2026-08-26", currentPeriodEnd: "2026-09-02",
-                             satisfied: true, hasSeries: true)
+                             satisfied: true, hasSeries: true, bookedAt: "2026-08-26T18:00:00Z")
         #expect(RhythmsModel.detailLines(for: [healthy], now: now, calendar: utcCal)["b"]
                 == "Every week · on the calendar for this one")
     }
@@ -1126,7 +1151,7 @@ struct RhythmCountdownTests {
     func booked() {
         let r = rhythm(satisfiedBy: .scheduling, every: "7 days",
                        currentPeriodStart: "2026-08-17", currentPeriodEnd: "2026-08-24",
-                       satisfied: true)
+                       satisfied: true, bookedAt: "2026-08-19T18:00:00Z")
         let cd = RhythmFormat.countdown(r, urgency: .steady, now: now, calendar: utcCal)
         #expect(cd?.number == "Booked")
         #expect(cd?.unit == "this period")

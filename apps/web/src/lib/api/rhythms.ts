@@ -451,6 +451,11 @@ export function countdown(
   now: Date = new Date(),
 ): RhythmCountdown | null {
   if (r.satisfiedBy === 'scheduling' && r.satisfied) {
+    // Settled, but not necessarily booked. A skip settles a period and has no time and
+    // never will, so the server hands back `satisfied` with a null `bookedAt` — and
+    // saying "Booked" there claims the very calendar entry that skipping exists to
+    // avoid inventing.
+    if (!r.bookedAt) return { num: 'Skipped', unit: 'this period', tone: 'done' }
     return { num: 'Booked', unit: 'this period', tone: 'done' }
   }
   const days = daysToGo(r, now)

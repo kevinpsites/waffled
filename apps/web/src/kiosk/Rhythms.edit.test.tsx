@@ -33,6 +33,11 @@ const temple = {
   currentPeriodStart: '2026-07-01',
   currentPeriodEnd: '2026-10-01',
   satisfied: true,
+  // A period settled by a BOOKING carries the booking's time; only a skip settles one
+  // without a time. Leaving this out made the fixture indistinguishable from a skipped
+  // period, which is a state this row now has to report differently.
+  bookedAt: '2026-08-19T18:00:00.000Z',
+  bookedAllDay: false,
 }
 
 // Unbooked, but its runway hasn't opened — the case attention structurally can't

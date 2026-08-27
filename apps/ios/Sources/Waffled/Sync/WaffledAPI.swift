@@ -3977,6 +3977,14 @@ struct WaffledAPI: Sendable {
         /// versus the series is **alive** and this one period has nothing in it. Optional
         /// for the same reason as `satisfied` — single-row reads don't carry it.
         let hasSeries: Bool?
+        /// When the event that settles this period starts, or nil.
+        ///
+        /// Nil is NOT "unsettled". A **skip** settles a period and has no time and never
+        /// will, so on a scheduling rhythm `satisfied == true` with a nil `bookedAt` is
+        /// exactly "skipped" — the one distinction that stops a row claiming a calendar
+        /// entry the user chose specifically not to create. Optional for the same reason
+        /// as the two above.
+        let bookedAt: String?
     }
 
     enum RhythmAttentionKind: String, Codable, Sendable { case due, unscheduled }

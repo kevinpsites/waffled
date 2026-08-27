@@ -174,11 +174,29 @@ describe('Rhythms screen', () => {
   it('leaves a healthy self-booking row reading like any other settled one', async () => {
     // While the series is doing its job there is nothing to report and no button either,
     // so the fact it books itself buys the row nothing and costs it a phrase.
-    mockApi([{ ...temple, id: 'r-ok', title: 'Auto temple', autoSchedule: true, hasSeries: true, satisfied: true }])
+    mockApi([{
+      ...temple, id: 'r-ok', title: 'Auto temple', autoSchedule: true, hasSeries: true,
+      satisfied: true, bookedAt: '2026-08-19T18:00:00.000Z', bookedAllDay: false,
+    }])
     renderScreen()
     await screen.findByText('Auto temple')
     expect(screen.getByText(/on the calendar for this one/i)).toBeInTheDocument()
     expect(screen.queryByText(/needs putting back/i)).toBeNull()
+  })
+
+  it('says a skipped period was skipped, rather than claiming a calendar entry', async () => {
+    // Skipping exists to send a period quiet WITHOUT inventing an entry for something
+    // that isn't happening — so a row that then reports itself as being on the calendar
+    // states the one thing the action was chosen to avoid. The server settles both ways
+    // and distinguishes them by whether a booking time came back; the row has to read it.
+    mockApi([{
+      ...temple, id: 'r-skip', title: 'Skipped temple', satisfied: true, bookedAt: null,
+    }])
+    renderScreen()
+    await screen.findByText('Skipped temple')
+    expect(screen.getByText(/skipped this one/i)).toBeInTheDocument()
+    expect(screen.queryByText(/on the calendar for this one/i)).toBeNull()
+    expect(screen.queryByLabelText(/on the calendar/i)).toBeNull()
   })
 
   it('creates a maintenance rhythm with a first due date', async () => {

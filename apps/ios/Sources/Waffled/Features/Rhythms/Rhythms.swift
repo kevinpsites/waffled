@@ -355,6 +355,12 @@ enum RhythmFormat {
     static func countdown(_ r: WaffledAPI.Rhythm, urgency: Urgency, now: Date = Date(),
                           calendar: Calendar = Cal.current) -> Countdown? {
         if r.satisfiedBy == .scheduling, r.satisfied == true {
+            // Settled, but not necessarily booked: a skip settles a period and has no
+            // time, so saying "Booked" there claims the very calendar entry that skipping
+            // exists to avoid inventing.
+            guard r.bookedAt != nil else {
+                return Countdown(number: "Skipped", unit: "this period", tone: .done)
+            }
             return Countdown(number: "Booked", unit: "this period", tone: .done)
         }
         guard let days = daysToGo(r, now: now, calendar: calendar) else { return nil }
@@ -754,7 +760,9 @@ final class RhythmsModel {
                     if r.currentPeriodStart == nil, let start = r.startsOn {
                         parts.append("periods start \(RhythmFormat.shortDate(start, calendar: calendar))")
                     } else if r.satisfied ?? false {
-                        parts.append("on the calendar for this one")
+                        // Two ways to be settled, and only one of them is the calendar.
+                        parts.append(r.bookedAt == nil ? "skipped this one"
+                                                       : "on the calendar for this one")
                     } else if r.autoSchedule {
                         // Two ways a self-booking rhythm comes up empty, and they are not
                         // the same problem. A live series missing ONE period is missing one

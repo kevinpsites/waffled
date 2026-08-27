@@ -289,6 +289,28 @@ describe('countdown', () => {
     expect(countdown(r, 'steady', NOW)?.tone).toBe('done')
   })
 
+  it('says a skipped period was skipped, not booked', () => {
+    // The server settles a period two ways and says so in its own comment: a booking
+    // has a time, a skip never will, and "the row can tell them apart by whether
+    // booked_at came back". Reading only `satisfied` collapses the two, so a period
+    // deliberately sent quiet reports as being on the calendar — the one thing skipping
+    // exists to avoid claiming.
+    const skipped = rhythm({
+      satisfiedBy: 'scheduling', satisfied: true, bookedAt: null,
+      currentPeriodStart: '2026-08-17', currentPeriodEnd: '2026-08-23',
+    })
+    expect(countdown(skipped, 'steady', NOW)).toEqual({
+      num: 'Skipped', unit: 'this period', tone: 'done',
+    })
+
+    // ...while an actual booking still reads as one.
+    const booked = rhythm({
+      satisfiedBy: 'scheduling', satisfied: true, bookedAt: '2026-08-19T18:00:00.000Z',
+      currentPeriodStart: '2026-08-17', currentPeriodEnd: '2026-08-23',
+    })
+    expect(countdown(booked, 'steady', NOW)?.num).toBe('Booked')
+  })
+
   it('takes its colour from the group, so one row never argues with its own heading', () => {
     const r = rhythm({ nextDueAt: at(8, 25) })
     expect(countdown(r, 'now', NOW)?.tone).toBe('late')
