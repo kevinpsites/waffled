@@ -213,7 +213,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   no `MONTHLY` and no `INTERVAL`) and deliberately *not* goals: goals are about
   **follow-through**, while a rhythm is about the **opportunity existing** — getting a time
   set aside is the whole outcome, and whether it happened is never asked. One `rhythms` row
-  (mig `0097_rhythms.sql`) carries the cadence, a `person_id` assignee and a `satisfied_by`
+  (mig `0098_rhythms.sql`) carries the cadence, a `person_id` assignee and a `satisfied_by`
   discriminator: `'completion'` items are completion-anchored (due N months after you
   *actually* last did it, so being late shifts the next one), `'scheduling'` items are
   satisfied when a calendar event exists for the period. The three-state machine — **needs

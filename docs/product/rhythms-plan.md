@@ -2,7 +2,7 @@
 
 **Status:** shipping. Decided 2026-08-13, rescoped and renamed from "Upkeep" 2026-08-18
 after checking the original design against real household cases. **Phases 1 and 2 are
-built** — migration `0097_rhythms.sql`, the service, `GET /rhythms/attention`, module and
+built** — migration `0098_rhythms.sql`, the service, `GET /rhythms/attention`, module and
 Today-card registration, `POST /rhythms/:id/schedule`, and the `rhythm_id` link pinned
 through all three event write paths (see *Implementation sequencing*). **Phase 3 is built
 too**: Today card, register, booking, skipping, editing, pausing and retiring on web/kiosk
@@ -490,7 +490,7 @@ would silently un-satisfy a period. Build that second, with integration tests, b
 
 Everything lands on **one branch, one PR, one commit per piece**, per the repo's batch rule.
 
-**Phase 1 — the contract (serial).** Migration `0097_rhythms.sql` (three tables +
+**Phase 1 — the contract (serial).** Migration `0098_rhythms.sql` (three tables +
 `events.rhythm_id` + partial index; `-- Up Migration` first), failing integration test
 first against the `goals.integration.test.ts` harness — testcontainer Postgres,
 `runMigrations`, real routes. Then the service (create / update / complete / skip /
