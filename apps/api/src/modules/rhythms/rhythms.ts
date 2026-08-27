@@ -6,7 +6,7 @@
 //   'scheduling' — a calendar event exists for the period. We never ask whether it
 //                  happened; getting the opportunity on the calendar IS the outcome.
 //                  That last sentence is the whole line between a rhythm and a goal.
-import { query } from '../../platform/db'
+import { query, getPool } from '../../platform/db'
 import { log } from '../../platform/logger'
 import { InvalidReferenceError } from '../../platform/household-refs'
 import { createEvent, type EventRow } from '../events/events'
@@ -417,7 +417,14 @@ export async function completeRhythm(
   //
   // Same-day is judged on the HOUSEHOLD's clock: near midnight, UTC and local disagree
   // about which day it is, and the register is read in local terms.
-  await query(
+  // One transaction, and actually one: these were two independent `query()` calls, each
+  // taking whatever pooled connection was free. If the second failed, a completion row
+  // existed while the rhythm's clock had not moved — the item stayed due, and the next tap
+  // folded into a history row for a completion the register had never acknowledged.
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    await client.query(
     `with stamp as (select coalesce($4::timestamptz, now()) as at),
           zone as (select timezone from households where id = $1),
           upd as (
@@ -434,19 +441,26 @@ export async function completeRhythm(
      insert into rhythm_completions (household_id, rhythm_id, person_id, completed_at, notes)
      select $1, $2, $3, stamp.at, $5 from stamp
       where not exists (select 1 from upd)`,
-    [householdId, id, personId, completedAt, notes]
-  )
-  const { rows } = await query<Row>(
-    `update rhythms
-        set last_completed_at = coalesce($3::timestamptz, now()),
-            next_due_at = coalesce($3::timestamptz, now()) + every
-      where household_id = $1 and id = $2 and deleted_at is null
-      returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
-                starts_on, auto_schedule, rrule, lead_time::text as lead_time,
-                last_completed_at, next_due_at, is_active`,
-    [householdId, id, completedAt]
-  )
-  return rows[0] ? toRhythm(rows[0]) : null
+      [householdId, id, personId, completedAt, notes]
+    )
+    const { rows } = await client.query<Row>(
+      `update rhythms
+          set last_completed_at = coalesce($3::timestamptz, now()),
+              next_due_at = coalesce($3::timestamptz, now()) + every
+        where household_id = $1 and id = $2 and deleted_at is null
+        returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
+                  starts_on, auto_schedule, rrule, lead_time::text as lead_time,
+                  last_completed_at, next_due_at, is_active`,
+      [householdId, id, completedAt]
+    )
+    await client.query('commit')
+    return rows[0] ? toRhythm(rows[0]) : null
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
 }
 
 export interface Completion {
