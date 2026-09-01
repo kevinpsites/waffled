@@ -55,12 +55,33 @@ describe('the bookable window is always visible', () => {
     expect(line.textContent).toMatch(/5 days/)
   })
 
-  it('names both ends when the period has not started yet', () => {
+  // The two out-of-window branches are only reachable when the BROWSER's day disagrees
+  // with the household's — the period was tiled server-side in the household timezone, and
+  // `period_start` is by construction the latest boundary at or before the household's
+  // today, so server-side `today` is always inside the window. A kiosk left on the wrong
+  // zone, or a phone that travelled, is what puts us outside it.
+  //
+  // The server owns the period. So a clock landing outside the window is a disagreement,
+  // not a verdict: name the span and let the min/max clamp — which uses the server's own
+  // dates — do the deciding.
+  it('names both ends when our clock sits before the window', () => {
     at('2026-08-24T09:00:00')
     open()
     const line = screen.getByText(/counts/i)
     expect(line.textContent).toMatch(/Aug 26/)
     expect(line.textContent).toMatch(/Sep 1/)
+  })
+
+  it('never declares the period closed while the booking would still land', () => {
+    // Household in Los Angeles, browser a day ahead: server-side the weekly period
+    // Aug 26 → Sep 2 is still open and a booking WOULD settle it.
+    at('2026-09-02T09:00:00')
+    open()
+    const body = document.body.textContent ?? ''
+    expect(body).not.toMatch(/closed/i)
+    // and the button it sits beside is enabled, which is why the claim would be a lie
+    expect(screen.getByRole('button', { name: /put it on the calendar/i })).toBeEnabled()
+    expect(screen.getByText(/counts/i).textContent).toMatch(/Aug 26/)
   })
 
   it('still clamps the input to the period', () => {

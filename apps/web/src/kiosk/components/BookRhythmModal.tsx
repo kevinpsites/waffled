@@ -41,9 +41,18 @@ function daysApart(from: string, to: string): number {
 //
 // Past days inside the window are legal but rarely the point, so once the period is
 // underway this leads with the deadline rather than the span.
+//
+// `today` is the BROWSER's day; the window was tiled server-side in the HOUSEHOLD's
+// timezone, and `period_start` is by construction the latest boundary at or before the
+// household's today — so server-side, today is always inside the window. Landing outside
+// it means the two clocks disagree (a kiosk on the wrong zone, a phone that travelled),
+// and the server is the one that owns the period. Such a day gets the plain span: saying
+// "this period closed" next to an enabled button whose booking WOULD still settle the
+// period is the one thing this line must never do.
 function windowNote(periodStart: string, last: string, today: string): string {
-  if (today < periodStart) return `Counts on any day from ${day(periodStart)} to ${day(last)}.`
-  if (today > last) return `This period closed on ${day(last)}.`
+  if (today < periodStart || today > last) {
+    return `Counts on any day from ${day(periodStart)} to ${day(last)}.`
+  }
   if (today === last) return `Today is the last day that counts for this period.`
   const left = daysApart(today, last) + 1
   return `Counts on any day up to ${day(last)} — ${left} days including today.`
