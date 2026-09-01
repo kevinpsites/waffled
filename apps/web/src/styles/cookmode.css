@@ -173,10 +173,13 @@
   align-items: baseline;
   gap: 12px;
   margin-bottom: 12px;
+  /* the modal's × is absolutely positioned in this corner — keep the count clear of it */
+  padding-right: 34px;
 }
 .cm-all-count {
   margin-left: auto;
   font-weight: 700;
+  white-space: nowrap;
 }
 .cm-all-row {
   display: flex;
