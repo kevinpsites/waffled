@@ -102,6 +102,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a column that was already three cards deep — and the dashboard is a fixed height, so the
   fourth card wasn't squeezed to fit, it was cut off the bottom with no way to scroll to
   it. It now sits with the chores, above the grocery list that gives up the room.
+- **A booked rhythm says when it's booked for** — "Booked · Aug 19, 6:00 PM" rather than
+  just "Booked", which left you opening the calendar to find out. An all-day booking gives
+  its date and no invented time.
+- **You can see how often something really happens.** Editing a rhythm you mark done shows
+  what it has kept — "Done 6 times · about every 123 days, against every 3 months" — so a
+  cadence that doesn't match reality says so instead of quietly drifting.
+- **On iPhone and iPad you can pick the day an automatic booking lands on** — the weekday
+  chips, "the last Saturday of the month", and a box for writing the repeat rule yourself.
+  Before, the day came from the start date, so a rhythm you wanted on Wednesdays had to
+  begin on a Wednesday.
+- **"Push it out a week" only appears when something is actually asking.** On anything
+  repeating fortnightly or sooner it used to be offered permanently, including the moment
+  after you'd just done it.
+- **A rhythm that repeats on a schedule keeps its cadence.** Changing it would have
+  re-read every period you'd already skipped or booked, so it's now fixed once the rhythm
+  exists — retire it and make a new one. Rhythms you mark done are unaffected.
+- **A future update to Waffled can't blank the rhythms screen on an older phone.** One
+  unfamiliar value used to empty the whole list and report it as a connection problem.
 - **A rhythm is no longer called late just because you looked further ahead.** The weekly
   planner asks a week out, and everything due inside that week came back marked late — sorted
   to the top and shown in red. Lateness is now measured against the actual moment, and the
