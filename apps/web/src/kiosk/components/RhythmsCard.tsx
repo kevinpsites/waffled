@@ -172,7 +172,7 @@ function UnscheduledRow({
  * conditional, so the only way to skip that request is to not mount the component
  * that makes it, and a quarterly register is quiet most mornings.
  */
-function RhythmsBlock({ items, refetch }: { items: AttentionItem[]; refetch: () => void }) {
+function RhythmsBlock({ items, refetch, stale }: { items: AttentionItem[]; refetch: () => void; stale?: boolean }) {
   const { rhythms } = useRhythms()
   const [booking, setBooking] = useState<Extract<AttentionItem, { kind: 'unscheduled' }> | null>(null)
   const total = rhythms.length
@@ -182,7 +182,11 @@ function RhythmsBlock({ items, refetch }: { items: AttentionItem[]; refetch: () 
       <div className="rhy-head">
         <Link to="/rhythms" className="card-h rhy-h">Rhythms</Link>
         <span className="tiny muted rhy-n">
-          {items.length} want{items.length === 1 ? 's' : ''} attention
+          {/* Said plainly rather than shown as an error: the rows below are real, they
+              are just from a moment ago. Hiding them would be the bigger lie. */}
+          {stale
+            ? 'Showing what loaded last'
+            : `${items.length} want${items.length === 1 ? 's' : ''} attention`}
         </span>
         {/* The reassuring half of the header: the other seven are handled. Held back
             until the count has actually arrived rather than flashing "All 0". */}
@@ -210,9 +214,14 @@ export function RhythmsCard() {
   const { items, loading, error, refetch } = useRhythmAttention()
 
   // Quiet is the normal state — render nothing rather than an empty card. A failed
-  // fetch is quiet too: "nothing needs attention" is a claim, and a dropped
+  // FIRST fetch is quiet too: "nothing needs attention" is a claim, and a dropped
   // connection isn't evidence for it either way.
-  if (loading || error || items.length === 0) return null
+  //
+  // A failed REFETCH is a different thing, and it used to be treated the same. We already
+  // hold rows that were true a moment ago, and every write emits 'rhythms' — so tapping
+  // "I did it" during a blip deleted the whole card out from under the person using it.
+  // Keep the rows and say they may be behind. Same policy iOS states at length.
+  if (loading || items.length === 0) return null
 
-  return <RhythmsBlock items={items} refetch={refetch} />
+  return <RhythmsBlock items={items} refetch={refetch} stale={error} />
 }

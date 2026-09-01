@@ -106,6 +106,41 @@ describe('RhythmsCard', () => {
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/rhythms/r-filter/complete') && c.method === 'POST')).toBe(true))
   })
 
+  // A failed FIRST load is quiet — "nothing needs attention" is a claim, and a dropped
+  // connection is no evidence for it. A failed REFETCH is a different thing entirely: we
+  // already have rows that were true a moment ago, and throwing them away deletes a card
+  // the person is mid-way through using. Every write emits 'rhythms' and triggers a
+  // refetch, so tapping "I did it" during a blip made the whole card disappear.
+  //
+  // iOS documents exactly this policy and keeps the rows; web is now the same.
+  it('keeps the rows it already has when a refetch fails', async () => {
+    let failNext = false
+    calls.length = 0
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      const method = init?.method ?? 'GET'
+      calls.push({ url: u, method, body: init?.body ? JSON.parse(String(init.body)) : null })
+      if (u.includes('/api/rhythms/attention')) {
+        if (failNext) throw new Error('offline')
+        return { ok: true, json: async () => ({ items: [{ kind: 'due', rhythm: filter, dueAt: '2026-08-16T09:00:00.000Z', overdue: true }] }) }
+      }
+      if (u.endsWith('/api/rhythms') && method === 'GET') return { ok: true, json: async () => ({ rhythms: [] }) }
+      return { ok: true, json: async () => ({ ok: true }) }
+    }) as unknown as typeof fetch
+
+    render()
+    expect(await screen.findByText('Air filter')).toBeInTheDocument()
+
+    failNext = true
+    fireEvent.click(screen.getByRole('button', { name: /i did it for air filter/i }))
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('/complete'))).toBe(true))
+
+    // The row is still on screen, and the card says the numbers may be behind rather
+    // than pretending they are current.
+    expect(await screen.findByText(/showing what loaded last/i)).toBeInTheDocument()
+    expect(screen.getByText('Air filter')).toBeInTheDocument()
+  })
+
   it('asks a scheduling rhythm to be booked, never to be completed', async () => {
     mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01', hasSeries: false }])
     render()
