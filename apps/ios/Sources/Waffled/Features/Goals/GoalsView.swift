@@ -2448,10 +2448,12 @@ struct GoalEntryEditSheet: View {
         // at. No `loggedAt` fallback here on purpose: `dateKey` is non-optional on a
         // strictly-decoded DTO, so a server too old to send it fails to decode the whole
         // payload long before this — a fallback would only ever be dead code.
-        _loggedOn = State(initialValue: GoalEntryEditSheet.parseDay(entry.dateKey))
-    }
-    private static func parseDay(_ iso: String) -> Date {
-        DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc) ?? Date()
+        //
+        // Parsed in the DEVICE's calendar, via the same `GoalDateKey` the heatmaps use,
+        // because that is the zone the DatePicker below renders in. Reading the key as a
+        // UTC instant made the picker show the day BEFORE for every household behind UTC
+        // — the same off-by-a-day this fix is about, just at the other end.
+        _loggedOn = State(initialValue: GoalDateKey.parse(String(entry.dateKey.prefix(10))))
     }
 
     var body: some View {
@@ -2537,7 +2539,9 @@ struct GoalEntryEditSheet: View {
                         onSave(numeric ? logAmount : nil,
                                showWho ? Array(who) : nil,
                                note.trimmingCharacters(in: .whitespacesAndNewlines),
-                               DateFmt.string(loggedOn, "yyyy-MM-dd", DateFmt.utc))
+                               // Formatted in the same zone the picker showed it in, or
+                               // the day the user picked is sent back off by one.
+                               GoalDateKey.toKey(loggedOn))
                         dismiss()
                     }.fontWeight(.semibold)
                     // A cleared amount is 0 — block saving it rather than writing a 0 entry.

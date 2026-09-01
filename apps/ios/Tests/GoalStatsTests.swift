@@ -157,4 +157,23 @@ import Testing
         #expect(july["kelly"] == 2)
         #expect(s.byMonthPerMember[0].isEmpty)
     }
+
+    // The goal-entry edit sheet seeds its DatePicker from an entry's `dateKey` and sends
+    // whatever day is showing straight back on save. The picker renders in the DEVICE's
+    // calendar, so both ends have to live in that zone — reading the key as a UTC instant
+    // showed the day BEFORE for every household behind UTC, and any day the user then
+    // picked went back to the server off by one. The sheet is view-`init` wiring with no
+    // harness to drive; this pins the contract it now leans on in both directions.
+    @Test func aDayKeyRoundTripsInTheZoneThePickerShows() {
+        let key = "2026-08-31"
+        let d = GoalDateKey.parse(key)
+
+        // What the picker puts on screen.
+        #expect(GoalDateKey.calendar.component(.year, from: d) == 2026)
+        #expect(GoalDateKey.calendar.component(.month, from: d) == 8)
+        #expect(GoalDateKey.calendar.component(.day, from: d) == 31)
+
+        // ...and what a save sends back for an untouched picker.
+        #expect(GoalDateKey.toKey(d) == key)
+    }
 }
