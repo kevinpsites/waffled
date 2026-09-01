@@ -124,7 +124,9 @@ Durations accept minutes / hours / seconds and compound or short forms — `20 m
 **Settings → Family & People → Week starts on** (Sunday or Monday) sets the day every
 household week is cut on, and the meal planner follows it: the weekly grid runs from
 that day, the monthly grid leads with that column, and the "Plan my week / Plan my
-month" review groups its nights the same way.
+month" review groups its nights the same way. Scheduling straight from a recipe or a
+saved meal follows it too, so the "This week" you pick there is the same seven days the
+planner is showing.
 
 It matters for more than the layout. The [grocery list](/features/lists/) is keyed by
 the household's week, so the planner and the list have to agree on where a week ends —
