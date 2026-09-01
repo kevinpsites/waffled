@@ -303,9 +303,6 @@ struct KioskDashboard: View {
             // Pantry (shared card; it hides itself when the household's "show on Today"
             // toggle is off, matching web).
             if sync.module(.pantry) { PantryTodayCard(kiosk: true) { navigate(.pantry) } }
-            // Rhythms (shared card; it renders nothing when the register is quiet, which is
-            // most days — same rule as the web card).
-            if sync.module(.rhythms) { RhythmsTodayCard(kiosk: true, model: rhythms) { navigate(.rhythms) } }
         }
     }
 
@@ -325,9 +322,19 @@ struct KioskDashboard: View {
     // Chores sized to content; the grocery card fills the rest and scrolls its own
     // (full) list internally so it stays reachable. Grocery must be the *last* fill
     // element here — the pantry card lives in the agenda column so it can't crush it.
+    //
+    // Rhythms sits here rather than under pantry, where it first went. The dashboard is a
+    // fixed-height GeometryReader and every column is an unbounded VStack, so a card that
+    // doesn't fit isn't squeezed — it's clipped, off the bottom, with no scroll to reach
+    // it. The agenda column was already three self-sizing cards deep and had no room to
+    // give; this one is built around a fill element that yields, and chores + rhythms are
+    // the same kind of thing anyway: the recurring work of the house.
     private var choreGroceryCol: some View {
         VStack(spacing: 22) {
             choresCard
+            // Renders nothing when the register is quiet, which is most days — same rule
+            // as the web card, so on a normal morning this column is exactly as it was.
+            if sync.module(.rhythms) { RhythmsTodayCard(kiosk: true, model: rhythms) { navigate(.rhythms) } }
             groceryCard
         }
     }
