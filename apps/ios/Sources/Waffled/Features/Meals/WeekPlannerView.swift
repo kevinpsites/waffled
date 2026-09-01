@@ -518,7 +518,9 @@ struct WeekPlannerView: View {
         Cal.gregorian(sync.householdTz)
     }
     private var weekStart: Date {
-        let base = Cal.weekStart(Date(), sync.householdTz)   // honors live first-day-of-week
+        // The HOUSEHOLD's first day, not the phone region's — the grocery list is keyed
+        // by that boundary, so a week cut elsewhere straddles two of the household's.
+        let base = Cal.weekStart(Date(), sync.householdTz, sync.householdWeekStart ?? .sunday)
         return cal.date(byAdding: .weekOfYear, value: weekOffset, to: base) ?? base
     }
     private var days: [Date] { (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: weekStart) } }

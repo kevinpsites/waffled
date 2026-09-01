@@ -119,6 +119,20 @@ Paste-markdown import (**Use template** / **See example** in the editor) reads a
 
 Durations accept minutes / hours / seconds and compound or short forms — `20 minutes`, `1 hour 30 min`, `1.5 hrs`, `90s`. You can also drop a timer **inline** anywhere in the step text as `{timer: 20 minutes}` (equivalent, also stripped). Parsed timers become the per-step timer in [cook mode](#highlights), and the in-editor **Use template** / **See example** both include a `**Timer:**` line to copy. This works the same on web and iOS (iOS uses the same server-side parser).
 
+## Which day your week starts on
+
+**Settings → Family & People → Week starts on** (Sunday or Monday) sets the day every
+household week is cut on, and the meal planner follows it: the weekly grid runs from
+that day, the monthly grid leads with that column, and the "Plan my week / Plan my
+month" review groups its nights the same way.
+
+It matters for more than the layout. The [grocery list](/features/lists/) is keyed by
+the household's week, so the planner and the list have to agree on where a week ends —
+if they don't, a planned week straddles two grocery weeks and only one of them gets
+built. Change the setting and the planner re-cuts immediately on every device.
+
+The **calendar** is deliberately unaffected: its month and week grids stay Sunday-led.
+
 ## Settings
 
 **Settings → Meals** holds the meal-calendar toggle (`addToCalendar`), push-to-Google (`pushToGoogle`), and your per-meal-type default times — breakfast 08:00, lunch 12:00, dinner 18:00, snack 15:00.

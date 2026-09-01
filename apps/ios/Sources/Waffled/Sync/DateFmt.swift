@@ -119,4 +119,23 @@ enum Cal {
         c.firstWeekday = Calendar.current.firstWeekday
         return c.dateInterval(of: .weekOfYear, for: date)?.start ?? c.startOfDay(for: date)
     }
+
+    /// Start of the week containing `date` in `tz`, cut on the **household's** first day
+    /// rather than the device region's. The two routinely disagree (a monday household on
+    /// a US phone), and the planner grids have to follow the household: the server keys
+    /// the grocery list by that boundary, so a grid cut on the other day plans a week
+    /// that straddles two of the household's own. The overload above still follows the
+    /// device, for screens that genuinely want the phone's idea of a week.
+    static func weekStart(_ date: Date, _ tz: TimeZone, _ firstDay: HouseholdWeekStart) -> Date {
+        var c = gregorian(tz)
+        c.firstWeekday = firstDay == .monday ? 2 : 1   // Calendar: 1 = Sunday
+        return c.dateInterval(of: .weekOfYear, for: date)?.start ?? c.startOfDay(for: date)
+    }
+
+    /// The two-letter weekday headings for a grid, read from the household's first day.
+    static func weekdaySymbols(from firstDay: HouseholdWeekStart) -> [String] {
+        let base = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+        let offset = firstDay == .monday ? 1 : 0
+        return (0..<7).map { base[($0 + offset) % 7] }
+    }
 }

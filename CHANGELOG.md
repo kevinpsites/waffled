@@ -48,6 +48,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **"Week starts on Monday" now actually moves the meal planner.** The household's
+  week-start setting quietly did nothing you could see: it cut the grocery list's weeks
+  behind the scenes, but the weekly and monthly meal grids were hard-coded to Sunday, so
+  a Monday household changed the setting and watched nothing happen. Both grids now run
+  from the day you chose — as does the "Plan my week / Plan my month" review — on the
+  web and on iPhone/iPad. That also closes a quieter problem: a Sunday-cut week in a
+  Monday household spanned two of the household's grocery weeks, so planning it only
+  ever built the shopping for one of them. (The calendar's month and week views are
+  still Sunday-led — that hasn't changed.)
+
 - **Adding a note to a goal entry no longer moves it to another day.** Tapping an
   entry in a goal's recent activity and writing a note did save the note — but it also
   quietly re-dated the entry, because the edit box read the day off the raw timestamp
