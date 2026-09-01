@@ -398,7 +398,13 @@ struct RhythmsView: View {
         confirmingDelete = nil
         Task {
             defer { busyId = nil }
-            do { try await work() } catch {
+            do {
+                try await work()
+                // A completion rhythm is a countdown source, so the chip beside this row
+                // is now stale. Nothing else bumps it: the model reloads only its own two
+                // lists, and CountdownsCard keys on the sync buses.
+                sync.touchCountdowns()
+            } catch {
                 errorMessage = APIErrorText.message(
                     for: error, fallback: "That didn’t stick — check your connection and try again.")
             }

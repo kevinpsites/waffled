@@ -130,7 +130,7 @@ struct CountdownsCard: View {
         // Keyed on the refresh signal, not a bare `.task`: SwiftUI runs a bare one
         // once per appearance, so this card sat on launch-time data through every
         // pull-to-refresh. See SyncManager.refreshRev.
-        .task(id: sync.refreshRev) { await model.load() }
+        .task(id: "\(sync.refreshRev)|\(sync.countdownsRev)") { await model.load() }
         .sheet(isPresented: $adding) {
             AddCountdownSheet { title, date, emoji in
                 try await model.add(title: title, date: date, emoji: emoji)

@@ -101,6 +101,17 @@ final class SyncManager {
     /// Nudge the goals refresh bus (call after logging/review changes goal progress).
     func touchGoals() { goalsRev += 1 }
 
+    /// Bumped when something that FEEDS a countdown changes — today, a rhythm.
+    ///
+    /// A completion rhythm is a countdown source, and both cards sit on the same screen,
+    /// so marking one done left the countdown chip beside it still counting to the old
+    /// date until a manual refresh. Web has wired this from the start
+    /// (`useRefetchOn(['countdowns', 'rhythms'])`); this is the iOS half.
+    private(set) var countdownsRev = 0
+
+    /// Nudge the countdowns bus (call after a rhythm mutation).
+    func touchCountdowns() { countdownsRev &+= 1 }
+
     /// The logged-in person — id plus household role & capabilities (so "my" goals
     /// respect who's signed in, and management/approval controls only show when the
     /// server would allow the action). Loaded once.

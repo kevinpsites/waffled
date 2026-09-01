@@ -225,7 +225,11 @@ struct RhythmsTodayCard: View {
         busyId = id
         Task {
             defer { busyId = nil }
-            do { try await work() } catch {
+            do {
+                try await work()
+                // The countdown chip for this very rhythm may be on the same screen.
+                sync.touchCountdowns()
+            } catch {
                 errorMessage = APIErrorText.message(
                     for: error, fallback: "That didn’t stick — check your connection and try again.")
             }
