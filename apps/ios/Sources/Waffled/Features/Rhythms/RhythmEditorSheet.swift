@@ -53,6 +53,7 @@ struct RhythmEditorSheet: View {
     /// Completion shape only: a scheduling rhythm has no completions by design — whether
     /// it happened is the question that shape refuses to ask — so it is never requested.
     @State private var history: WaffledAPI.RhythmHistory?
+    @State private var rawRuleOpen = false
 
     /// Named for what it decides, not for the column it is stored in.
     private static let modes: [(shape: WaffledAPI.RhythmShape, label: String, why: String)] = [
@@ -312,6 +313,63 @@ struct RhythmEditorSheet: View {
         return "\(done) · about every \(Int(avg.rounded())) days, against \(RhythmFormat.cadenceLabel(form.every))"
     }
 
+    /// One weekday, not several.
+    ///
+    /// Single-select on purpose, unlike the calendar's event editor: a rule that fires
+    /// twice inside one period would assert something the cadence never said, and the
+    /// period is satisfied by ONE booking either way. Web behaves the same.
+    private var weekdayChips: some View {
+        let current = form.byday.first ?? Recurrence.weekdayCode(form.startsOn)
+        return HStack(spacing: 6) {
+            ForEach(Recurrence.weekdays, id: \.self) { code in
+                WeekdayToggleChip(label: Self.chipDay[code] ?? code, isOn: current == code) {
+                    form.byday = [code]
+                }
+            }
+        }
+    }
+
+    private static let chipDay = ["SU": "Su", "MO": "Mo", "TU": "Tu", "WE": "We", "TH": "Th", "FR": "Fr", "SA": "Sa"]
+    /// 1…5 and -1 (last) — "the last Saturday" is not expressible as a day number, and a
+    /// rhythm anchored on the 31st is the case that makes it necessary.
+    private static let monthlyOrdinals = [1, 2, 3, 4, 5, -1]
+    private static let ordinalWord = ["", "first", "second", "third", "fourth", "fifth"]
+
+    private func ordinalWord(_ n: Int) -> String {
+        n == -1 ? "last" : (Self.ordinalWord.indices.contains(n) ? Self.ordinalWord[n] : "\(n)th")
+    }
+
+    private var monthlyModeMenu: some View {
+        let weekdayName = DateFmt.string(form.startsOn, "EEEE", Cal.current.timeZone)
+        func nth(_ ord: Int) -> String { "The \(ordinalWord(ord)) \(weekdayName)" }
+        let current = form.monthlyMode == .dayOfMonth ? "The same date" : nth(form.monthlyOrdinal)
+        return Menu {
+            Button("The same date") { form.monthlyMode = .dayOfMonth }
+            ForEach(Self.monthlyOrdinals, id: \.self) { ord in
+                Button(nth(ord)) { form.monthlyMode = .nthWeekday; form.monthlyOrdinal = ord }
+            }
+        } label: {
+            WaffledMenuPill(text: current)
+        }
+    }
+
+    /// The escape hatch, for anything the builder cannot say. Carried by the form since it
+    /// was written and never shown, so a rule web could express had no iOS equivalent.
+    @ViewBuilder private var advancedRule: some View {
+        DisclosureGroup(isExpanded: $rawRuleOpen) {
+            TextField("FREQ=MONTHLY;BYDAY=2FR", text: $form.customRule)
+                .font(.system(size: 14, design: .monospaced))
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.characters)
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .wfField(radius: WF.rSM, fill: WF.panel)
+                .padding(.top, 6)
+        } label: {
+            Text("Advanced — write the rule yourself")
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
+        }
+    }
+
     private var anchorNote: some View {
         LockNote(form.shape == .scheduling
                  ? "Periods are anchored to \(RhythmFormat.shortDate(RhythmFormat.ymd(form.startsOn))), \(RhythmFormat.cadenceLabel(form.every)). Moving the anchor would re-interpret the periods you’ve already skipped or booked, so it can’t change here — retire this one and make a new one instead."
@@ -378,15 +436,13 @@ struct RhythmEditorSheet: View {
                             Text("\(Recurrence.describeRrule(form.rrule(), start: form.startsOn)) — booked once, then it just stays there.")
                                 .font(.system(size: 12)).foregroundStyle(WF.ink3)
                                 .fixedSize(horizontal: false, vertical: true)
-                            if form.unit == .months {
-                                Menu {
-                                    Button("The same date") { form.monthlyMode = .dayOfMonth }
-                                    Button("The same weekday (e.g. the third Saturday)") { form.monthlyMode = .nthWeekday }
-                                } label: {
-                                    WaffledMenuPill(text: form.monthlyMode == .dayOfMonth
-                                                    ? "The same date" : "The same weekday")
-                                }
-                            }
+                            // Which day it lands on. The weekday used to come from the
+                            // anchor date and only from there, so a rhythm you wanted on
+                            // Wednesdays had to be ANCHORED on a Wednesday. Web has had
+                            // these since the redesign.
+                            if form.unit == .weeks { weekdayChips }
+                            if form.unit == .months { monthlyModeMenu }
+                            advancedRule
                         } else {
                             Text("When it happens is an open decision every period, so it’ll ask you to pick a time.")
                                 .font(.system(size: 12)).foregroundStyle(WF.ink3)

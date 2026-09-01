@@ -568,6 +568,61 @@ struct RhythmEditorTests {
         #expect(body["rrule"] == .string("FREQ=MONTHLY"))
     }
 
+    // The weekday used to come from the anchor date and only from there, so a rhythm you
+    // wanted on Wednesdays had to be ANCHORED on a Wednesday. Web has had day chips since
+    // the redesign; iOS derived it and left you no say.
+    @Test("A weekly rhythm can pick its day, rather than inheriting the anchor's")
+    func weeklyPicksItsDay() {
+        var form = RhythmForm()
+        form.title = "Temple visit"
+        form.shape = .scheduling
+        form.count = 1
+        form.unit = .weeks
+        // A Thursday.
+        form.startsOn = at("2026-01-01T00:00:00")
+        form.autoSchedule = true
+
+        // Left alone it still follows the anchor, which is the sane default.
+        #expect(form.createBody(calendar: utcCal)["rrule"] == .string("FREQ=WEEKLY;BYDAY=TH"))
+
+        form.byday = ["WE"]
+        #expect(form.createBody(calendar: utcCal)["rrule"] == .string("FREQ=WEEKLY;BYDAY=WE"))
+    }
+
+    // "The last Saturday of the month" is not expressible as a day number, and a monthly
+    // rhythm anchored on the 31st is the case that makes it necessary.
+    @Test("A monthly rhythm can say 'the last <weekday>' instead of a day number")
+    func monthlyLastWeekday() {
+        var form = RhythmForm()
+        form.title = "Deep clean"
+        form.shape = .scheduling
+        form.count = 1
+        form.unit = .months
+        form.startsOn = at("2026-01-03T00:00:00")   // a Saturday
+        form.autoSchedule = true
+
+        #expect(form.createBody(calendar: utcCal)["rrule"] == .string("FREQ=MONTHLY"))
+
+        form.monthlyMode = .nthWeekday
+        form.monthlyOrdinal = -1
+        #expect(form.createBody(calendar: utcCal)["rrule"] == .string("FREQ=MONTHLY;BYDAY=-1SA"))
+    }
+
+    // The escape hatch: anything the builder cannot say, said directly. Web has had it;
+    // iOS carried the field and never showed it.
+    @Test("A raw rule overrides the builder entirely")
+    func rawRuleWins() {
+        var form = RhythmForm()
+        form.title = "Odd one"
+        form.shape = .scheduling
+        form.count = 1
+        form.unit = .months
+        form.startsOn = at("2026-01-01T00:00:00")
+        form.autoSchedule = true
+        form.customRule = "FREQ=MONTHLY;BYDAY=2FR"
+        #expect(form.createBody(calendar: utcCal)["rrule"] == .string("FREQ=MONTHLY;BYDAY=2FR"))
+    }
+
     @Test("Editing covers only the fields the server allows to change in place")
     func patchBodyIsNarrow() {
         var form = RhythmForm(editing: rhythm(id: "a", title: "Air filter", satisfiedBy: .completion,

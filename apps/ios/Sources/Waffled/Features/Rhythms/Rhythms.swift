@@ -867,6 +867,13 @@ struct RhythmForm {
     var startsOn = Date()
     var autoSchedule = false
     var monthlyMode: MonthlyMode = .dayOfMonth
+    /// Which weekday a weekly rhythm lands on. Empty means "follow the anchor", which is
+    /// the sane default and was previously the ONLY option — so a rhythm you wanted on
+    /// Wednesdays had to be anchored on a Wednesday.
+    var byday: [String] = []
+    /// For "the Nth <weekday> of the month": 1…5, or -1 for last. Only read when
+    /// `monthlyMode == .nthWeekday`.
+    var monthlyOrdinal = 1
     var customRule = ""
 
     init() { editingId = nil }
@@ -923,8 +930,9 @@ struct RhythmForm {
     /// supposed to satisfy. `customRule` is the escape hatch, not the normal path.
     func rrule(calendar: Calendar = Cal.current) -> String? {
         Recurrence.buildRrule(
-            RepeatState(freq: .custom, interval: max(1, count), unit: unit.recurrenceUnit,
-                        monthlyMode: monthlyMode, custom: customRule),
+            RepeatState(freq: .custom, byday: byday, interval: max(1, count),
+                        unit: unit.recurrenceUnit, monthlyMode: monthlyMode,
+                        monthlyOrdinal: monthlyOrdinal, custom: customRule),
             start: startsOn, calendar)
     }
 

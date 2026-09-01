@@ -49,17 +49,28 @@ claiming a calendar entry that the act of skipping exists to avoid inventing.
 takes a `limit` and reports `total` plus `averageIntervalDays`, the latter computed over
 every completion rather than over the returned page.
 
-Still to come, and it is now client work only:
+**Phase 4 is complete.** The three gaps that were open are closed:
 
-- the **iPad list+detail split** — the history panel ("May 24 · 13 weeks later") and the
-  real average beside the nominal cadence. iOS has no `completions` call yet; the web
-  client has one and no UI using it.
-- **nothing renders the booking's time**, so a settled row says "Booked" without saying
-  when — `bookedAt` is used only to tell a booking from a skip.
-- the **auto-schedule day pickers are web-only**: the weekday chips, the "last of that
-  weekday" monthly option and the raw-RRULE escape hatch have no iOS equivalent, so the
-  weekday there comes from the start date. The rhythm behaves the same either way; it is
-  the editor that is short.
+- **the history and the real average** now appear when editing a completion rhythm, on
+  both surfaces — "Done 6 times · about every 123 days, against every 3 months", over its
+  recent dates. `GET /:id/completions` had existed and been tested since the migration and
+  was reachable from no client at all. The average stays the server's, computed over every
+  completion rather than the page fetched.
+- **a booked row says when**: "Booked · Aug 19, 6:00 PM". `bookedAllDay` is what keeps an
+  all-day booking from printing "12:00 AM", an hour nobody chose — it had been derived,
+  sent, and read by nothing.
+- **the auto-schedule day pickers ship on iOS**: weekday chips, the ordinals including
+  "the last <weekday>", and the raw-RRULE escape hatch. The chips are single-select on
+  both surfaces, unlike the calendar's event editor — a rule firing twice inside one
+  period would assert something the cadence never said, and one booking settles it either
+  way. Leaving the chips alone still follows the anchor, which is the sane default and was
+  previously the only option.
+
+Still open, and both are UI shape rather than capability:
+
+- the **iPad list+detail split** — the register is one column on iPad as on iPhone.
+- a **history view of its own**: the panel above lives in the edit sheet, which is where
+  someone already goes to ask about a rhythm, but it is not a browsable record.
 
 Where "trash out weekly", "air filter every 3 months", "change the car's oil", "book a
 temple visit", "take a self-care day once a quarter", and "family outing on the third
