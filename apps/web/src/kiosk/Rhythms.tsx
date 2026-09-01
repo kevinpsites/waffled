@@ -360,7 +360,15 @@ function RhythmRow({
               // Midday, not midnight: a date-only value read as local midnight can land
               // on the previous day once it's an instant in a western timezone, which
               // would file the completion under the wrong date.
-              const at = new Date(`${backdate}T12:00:00`).toISOString()
+              //
+              // Clamped to now, because the server refuses a completion in the future and
+              // it means it to the second, while this control only knows the day. Logging
+              // TODAY — the default this opens on — sent a noon that hadn't happened yet,
+              // so every morning it was a 400 the row could only report as "that didn't go
+              // through". Yesterday worked, which made it look arbitrary. Same clamp iOS
+              // has always had (BackdateCompletionSheet).
+              const noon = new Date(`${backdate}T12:00:00`).getTime()
+              const at = new Date(Math.min(noon, Date.now())).toISOString()
               run(() => rhythmsApi.complete(rhythm.id, { completedAt: at }))
               setBackdate(null)
             }}

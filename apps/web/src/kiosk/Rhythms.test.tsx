@@ -400,6 +400,47 @@ describe('Rhythms screen', () => {
     expect(String(body.completedAt)).toContain('2026-08-14')
   })
 
+  // The server's guard against a future completion is instant-granular; this control is
+  // date-granular and sent local NOON. Before midday that is a time that hasn't happened,
+  // so logging TODAY — which is the default the button opens on — was a 400 every morning,
+  // and the row could only say the tap didn't go through. Backdating to yesterday worked,
+  // which made it look arbitrary. iOS already clamped to now; web didn't.
+  it('logs today as now rather than midday, so a morning backdate is not in the future', async () => {
+    // 9am *local*, whatever local is — the bug only shows before noon.
+    vi.setSystemTime(new Date('2026-08-18T09:00:00'))
+    mockApi([filter])
+    renderScreen()
+    await screen.findByText('Air filter')
+
+    openMenu('Air filter')
+    fireEvent.click(screen.getByRole('button', { name: /mark air filter done on another day/i }))
+    // Straight to "Log it" without touching the date: the default is today.
+    fireEvent.click(screen.getByRole('button', { name: /^log it$/i }))
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/complete'))).toBe(true))
+    const body = calls.find((c) => c.url.includes('/complete'))!.body!
+    expect(Date.parse(String(body.completedAt))).toBeLessThanOrEqual(Date.now() + 60_000)
+  })
+
+  it('still files an earlier day at midday, so it cannot slide to the day before', async () => {
+    // The reason noon was chosen in the first place: local midnight, read as an instant,
+    // can land on the previous date in a western timezone. Clamping must not undo that.
+    vi.setSystemTime(new Date('2026-08-18T09:00:00'))
+    mockApi([filter])
+    renderScreen()
+    await screen.findByText('Air filter')
+
+    openMenu('Air filter')
+    fireEvent.click(screen.getByRole('button', { name: /mark air filter done on another day/i }))
+    fireEvent.change(screen.getByLabelText(/when did you do it/i), { target: { value: '2026-08-14' } })
+    fireEvent.click(screen.getByRole('button', { name: /^log it$/i }))
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/complete'))).toBe(true))
+    const sent = new Date(Date.parse(String(calls.find((c) => c.url.includes('/complete'))!.body!.completedAt)))
+    expect(sent.getDate()).toBe(14)
+    expect(sent.getHours()).toBe(12)
+  })
+
   it('refuses a completion dated in the future', async () => {
     mockApi([filter])
     renderScreen()
