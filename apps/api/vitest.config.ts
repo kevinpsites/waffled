@@ -11,6 +11,11 @@ import { defineConfig, configDefaults } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
+    // A run that executes NOTHING is a failure, not a pass. When the Docker socket is
+    // unreachable the global setup throws, every file is skipped, and vitest exits 0 with
+    // `success: true` and an empty result set — indistinguishable from a clean run for
+    // anything reading the exit code, which is how a green CI can mean "we tested nothing".
+    passWithNoTests: false,
     exclude: [...configDefaults.exclude, 'test/api.e2e.test.ts'],
     globalSetup: ['test/global-setup.ts'],
     // Signals runMigrations() to skip node-pg-migrate's cluster-wide advisory lock:

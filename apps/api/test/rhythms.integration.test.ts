@@ -157,6 +157,66 @@ describe('rhythms module gating', () => {
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).rhythms).toEqual([])
   })
+
+  // The line is drawn around the SWITCH, not the feature. A module-gated feature has a
+  // standing temptation to gate itself as well, which would make an optional feature an
+  // admin one — a household turns rhythms on so the household can use them, not so the
+  // owner can. Every route here is a plain tenantRoute and only the toggle is adminRoute,
+  // and neither half had a test: this was a manual step on the walkthrough checklist,
+  // which is the wrong place to answer a question the server can answer for itself.
+  describe('a member who is not an admin', () => {
+    let george = ''
+
+    beforeAll(async () => {
+      const id = await withClient(async (c) => {
+        const p = await c.query<{ id: string }>(
+          `insert into persons (household_id, name, member_type, is_admin)
+           values ($1, 'George', 'adult', false) returning id`,
+          [householdId]
+        )
+        const pid = p.rows[0]!.id
+        await c.query(
+          `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified)
+           values ($1,$2,'password','dev|george',true)`,
+          [householdId, pid]
+        )
+        return pid
+      })
+      expect(id).toBeTruthy()
+      george = mint('dev|george')
+    })
+
+    it('can use rhythms fully — read, create, complete, skip, edit, retire', async () => {
+      expect((await call('GET', '/api/rhythms', george)).statusCode).toBe(200)
+      expect((await call('GET', '/api/rhythms/attention?from=2026-08-18&to=2026-08-18', george)).statusCode).toBe(200)
+
+      const made = await call('POST', '/api/rhythms', george, {
+        title: 'George bins', satisfiedBy: 'scheduling', every: '1 week', startsOn: '2026-01-01',
+      })
+      expect(made.statusCode).toBe(201)
+      const id = JSON.parse(made.body).rhythm.id
+
+      expect((await call('POST', `/api/rhythms/${id}/skip`, george, { periodStart: '2026-01-08' })).statusCode).toBeLessThan(300)
+      expect((await call('POST', `/api/rhythms/${id}/schedule`, george, { startsAt: '2027-06-02T18:00:00Z' })).statusCode).toBe(201)
+      expect((await call('PATCH', `/api/rhythms/${id}`, george, { title: 'George bins, renamed' })).statusCode).toBe(200)
+      expect((await call('DELETE', `/api/rhythms/${id}`, george)).statusCode).toBeLessThan(300)
+
+      const done = await call('POST', '/api/rhythms', george, {
+        title: 'George filter', satisfiedBy: 'completion', every: '1 month',
+        nextDueAt: '2027-01-01T00:00:00Z',
+      })
+      const doneId = JSON.parse(done.body).rhythm.id
+      expect((await call('POST', `/api/rhythms/${doneId}/complete`, george, {})).statusCode).toBe(200)
+      await call('DELETE', `/api/rhythms/${doneId}`, george)
+    })
+
+    it('still cannot turn the module off for everyone', async () => {
+      const res = await call('PATCH', '/api/household/modules', george, { rhythms: false })
+      expect(res.statusCode).toBe(403)
+      // ...and the refusal changed nothing.
+      expect((await call('GET', '/api/rhythms', kevin)).statusCode).toBe(200)
+    })
+  })
 })
 
 describe('completion-shape rhythms', () => {
