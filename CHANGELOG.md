@@ -102,6 +102,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a column that was already three cards deep — and the dashboard is a fixed height, so the
   fourth card wasn't squeezed to fit, it was cut off the bottom with no way to scroll to
   it. It now sits with the chores, above the grocery list that gives up the room.
+- **A rhythm is no longer called late just because you looked further ahead.** The weekly
+  planner asks a week out, and everything due inside that week came back marked late — sorted
+  to the top and shown in red. Lateness is now measured against the actual moment, and the
+  runway that decides when something first appears is worked out in the household's own
+  timezone rather than UTC, which had been hiding some rhythms for their whole first day.
+- **A repeat deleted with "this and all following" stops being treated as still running.**
+  The rhythm went on saying its series was on the calendar when nothing was left of it, so it
+  kept offering to fill in single dates instead of offering to put the series back — and never
+  did put it back. Relatedly, a repeat rule that stops on its own (after N times, or on a set
+  date) is now refused when you set it: a rhythm runs for as long as it's active, and you stop
+  it by pausing or retiring it.
+- **Booking a rhythm for a time outside its period is refused, instead of quietly doing
+  nothing.** It used to put a real event on your calendar and leave the card still asking, with
+  nothing to explain why.
+- **Skipping now has to name a real period.** A skip aimed at a date that wasn't the start of
+  one reported success and silenced nothing.
+- **Two people marking the same thing done on the same day no longer overwrite each other.**
+  The two taps still fold into one entry, but it stays credited to whoever actually did it —
+  and a tap from the wall display no longer erases the name entirely.
+- **The Today rhythms card no longer disappears when the connection wobbles.** Marking
+  something done during a blip removed the whole card; it now keeps showing what it had and
+  says so.
+- **A rhythm that hasn't started yet says when it begins**, instead of claiming nothing is on
+  the calendar — which was wrong for one that had already booked itself.
+- **On iPhone and iPad, a countdown updates when its rhythm does.** Marking something done left
+  the countdown beside it counting to the old date until you refreshed.
+- **Clearer errors instead of failures.** A few settings — the runway, the start date, and the
+  dates behind the Today card — could fail in a way that just broke, rather than explaining what
+  was wrong.
 - **Logging a rhythm "on another day" works in the morning.** Choosing today — which is
   what the button opens on — was refused until midday, and the row could only say the tap
   didn't go through, so trying again failed the same way. Backdating to an earlier day
