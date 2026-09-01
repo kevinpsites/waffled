@@ -65,6 +65,16 @@ struct WaffledAPI: Sendable {
             if case let .http(code, _) = self { return code == 422 }
             return false
         }
+        /// The server's own sentence for a refusal — every API error answers
+        /// `{ error, message }`, and a sheet that just says "something went wrong"
+        /// hides the one thing the user needs (e.g. why a derived entry won't move).
+        var serverMessage: String? {
+            guard case let .http(_, body) = self,
+                  let data = body.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let msg = obj["message"] as? String, !msg.isEmpty else { return nil }
+            return msg
+        }
     }
 
     /// One shared decoder (default config) — JSONDecoder is reusable and decoding is
@@ -3351,6 +3361,11 @@ struct WaffledAPI: Sendable {
             /// Split-pool logs collapse to one entry: `amount` is the summed total and
             /// `participants` lists everyone credited (empty for a family/shared log).
             let participants: [Participant]
+            /// False when the entry belongs to its source (a checklist tick, a calendar
+            /// confirm, an Apple Health sync): only its note can be edited, and it can't
+            /// be deleted from the entry sheet. Optional so a server too old to send it
+            /// still decodes — and reads as fully editable, exactly as it behaved before.
+            let editable: Bool?
             struct Participant: Decodable, Identifiable, Sendable {
                 let personId: String?
                 let name: String?

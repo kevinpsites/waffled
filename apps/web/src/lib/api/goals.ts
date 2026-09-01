@@ -135,6 +135,10 @@ export interface GoalLogEntry {
   // Split-pool logs write one row per person but collapse to a single entry here —
   // `amount` is the summed total and `participants` lists everyone credited.
   participants: GoalLogParticipant[]
+  // False when the entry is owned by its source (a checklist tick, a calendar
+  // confirm, a Health sync): only its note can be changed and it cannot be deleted
+  // from here. Optional so a server too old to send it still reads as fully editable.
+  editable?: boolean
 }
 
 export interface GoalDetail extends Goal {

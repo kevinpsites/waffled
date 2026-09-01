@@ -385,7 +385,7 @@ export function registerGoalRoutes(api: Api): void {
     if (!(parts.length === 1 && parts[0] === tenant.personId)) await requireCapability(tenant, 'goal.manage')
     const result = await editGoalLog(tenant, id, logId, patch)
     if (result === 'not_found') return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
-    if (result === 'not_editable') return res.status(400).json({ error: 'BadRequest', message: 'this entry is managed by its source (a checklist tick, calendar event, or Health sync)' })
+    if (result === 'not_editable') return res.status(400).json({ error: 'BadRequest', message: 'this entry is managed by its source (a checklist tick, calendar event, or Health sync) — only its note can be edited here' })
     return { goal: await goalDetail(tenant.householdId, id) }
   }))
 

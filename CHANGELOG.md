@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Notes can now be added to entries that counted themselves.** A goal entry that came
+  from a checklist tick, a confirmed calendar event, or an Apple Health sync used to
+  refuse every edit — on iPhone it failed with no explanation at all. You can now leave
+  or change its note; its amount, date and who took part still belong to the thing that
+  logged it, and both apps now say so instead of offering fields that can't be saved.
+  iPhone also shows the server's reason when an entry edit or delete is refused.
+
 ## [0.14.0] - 2026-09-01
 
 ### Added
