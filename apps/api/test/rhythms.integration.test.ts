@@ -237,6 +237,53 @@ describe('a cadence the period grid cannot be built from', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  // "Positive" is not the property generate_series needs; "advances" is. Interval
+  // comparison normalizes a month to 30 days, so '1 mon -29 days' compares as +1 day and
+  // sails past any nominal test — but MONTH ARITHMETIC CLAMPS FIRST: Jan 31 + 1 mon is
+  // Feb 28, and minus 29 days is Jan 30. The step lands a day EARLIER than it started, so
+  // the series never reaches its end and never terminates.
+  //
+  // That is strictly worse than the zero-step case above. A zero step raises an error;
+  // this one holds a pool connection open forever. The pool is 10 wide and this deployment
+  // runs with statement_timeout = 0, so a handful of these takes the API down for every
+  // household on the box — not just the one that owns the bad row.
+  it('refuses a cadence that steps backwards off a month end', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Never ends', satisfiedBy: 'scheduling', every: '1 mon -29 days', startsOn: '2026-01-31',
+    })
+    expect(res.statusCode).toBe(400)
+
+    // The register still answers — and answers PROMPTLY, which is the actual claim.
+    const started = Date.now()
+    const list = await call('GET', '/api/rhythms', kevin)
+    expect(list.statusCode).toBe(200)
+    expect(Date.now() - started).toBeLessThan(5_000)
+  })
+
+  // Periods are dated (period_start is a date, and rhythm_skips is keyed on it), so a
+  // sub-day cycle collapses several periods onto one key and they stop being distinct.
+  // A one-second cadence anchored a few years back is also ~10^8 rows per read.
+  it('refuses a cadence shorter than a day', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Every twelve hours', satisfiedBy: 'scheduling', every: '12 hours', startsOn: '2026-01-01',
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  // The guard has to let the real cadences through — a month-end anchor especially, since
+  // that is the very case the backwards-step probe is built around. Cleans up after itself:
+  // this household is shared with the rest of the file, and an extra row moves counts.
+  it('still accepts the real cadences, including a month-end anchor', async () => {
+    for (const [every, startsOn] of [['7 days', '2026-01-01'], ['1 mon', '2026-01-31'], ['3 mons', '2026-01-01']]) {
+      const res = await call('POST', '/api/rhythms', kevin, {
+        title: `Fine ${every}`, satisfiedBy: 'scheduling', every, startsOn,
+      })
+      expect(res.statusCode).toBe(201)
+      const created = JSON.parse(res.body).rhythm
+      expect((await call('DELETE', `/api/rhythms/${created.id}`, kevin)).statusCode).toBeLessThan(300)
+    }
+  })
+
   it('refuses a recurrence rule the calendar cannot expand', async () => {
     // Unvalidated, this COMMITS the event and then throws expanding it, leaving a master
     // behind that can never produce an occurrence. Both event write paths already check.

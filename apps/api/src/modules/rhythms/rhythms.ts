@@ -289,17 +289,43 @@ async function anchorInstant(householdId: string, startsOn: string, rrule: strin
  * would drift from it.
  */
 async function assertUsableCadence(every: string): Promise<void> {
-  let positive = false
+  let checks: { positive: boolean; atLeastADay: boolean; advances: boolean } | undefined
   try {
-    const { rows } = await query<{ ok: boolean }>(
-      `select ($1::interval > interval '0') as ok`, [every]
+    const { rows } = await query<{ positive: boolean; at_least_a_day: boolean; advances: boolean }>(
+      `select ($1::interval > interval '0')       as positive,
+              ($1::interval >= interval '1 day')  as at_least_a_day,
+              -- The property generate_series actually needs is that the step MOVES
+              -- FORWARD from the anchor, which is not the same as being positive.
+              -- Interval comparison normalizes a month to 30 days, so '1 mon -29 days'
+              -- compares as +1 day and passes any nominal test — but date arithmetic
+              -- applies the months FIRST and clamps to the short month: Jan 31 + 1 mon is
+              -- Feb 28, and -29 days from there is Jan 30. The step lands a day earlier
+              -- than it started, so the series never reaches its end and never returns.
+              -- Jan 31 of a non-leap year is the largest clamp there is (3 days), which
+              -- makes it the strictest probe.
+              (('2026-01-31'::timestamp + $1::interval) > '2026-01-31'::timestamp) as advances`,
+      [every]
     )
-    positive = rows[0]?.ok === true
+    const r = rows[0]
+    checks = r && { positive: r.positive, atLeastADay: r.at_least_a_day, advances: r.advances }
   } catch {
     throw new InvalidReferenceError(`every must be an interval such as '3 months' — got '${every}'`)
   }
-  if (!positive) {
+  if (!checks?.positive) {
     throw new InvalidReferenceError('every must be a positive interval — a rhythm with no cycle has no periods')
+  }
+  // Periods are dated — period_start is a date, and rhythm_skips is keyed on it — so a
+  // sub-day cycle folds several periods onto one key and they stop being distinct. It is
+  // also the difference between tiling hundreds of boundaries per read and hundreds of
+  // millions of them.
+  if (!checks.atLeastADay) {
+    throw new InvalidReferenceError('every must be at least a day — periods are dated, so a shorter cycle would put several of them on one day')
+  }
+  // Worse than the zero step, which at least raises: a backwards step holds the connection
+  // open forever. The pool is ten wide, so a handful of these takes the API down for every
+  // household on the box, not just the one that owns the row.
+  if (!checks.advances) {
+    throw new InvalidReferenceError("every must move the calendar forward from any date — a mixed interval like '1 month -29 days' can land earlier than it started")
   }
 }
 
