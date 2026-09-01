@@ -78,6 +78,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timezone. Editing a goal on the web also left the deadline box empty for the same
   reason; it now shows the deadline that's set. Fixed on the web and on iPhone/iPad.
 
+- **Days no longer drift by a day on servers outside UTC.** Waffled stores plain
+  calendar days — a birthday, a goal's deadline, the night a meal is planned for — but
+  it was handing them to your screens as precise moments in time, pinned to the
+  server's own timezone. Anywhere those two disagreed, the day could land on the one
+  before: the grocery list's dinner rail could name the wrong weekday, and a birthday
+  could read a day early. Birthdays were also arriving in two different forms
+  depending on which screen asked. A day is now a day everywhere it's sent.
+
 - **A kiosk's offline copy now follows the version you upgraded to.** The wall display
   keeps its own copy of the app so a dropped connection doesn't blank the screen, but it
   only ever refreshed that copy when Waffled's offline component itself changed — which
