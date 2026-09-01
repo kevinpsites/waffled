@@ -117,8 +117,10 @@ const updated = 'September 1, 2026';
 
 				<h3>Retention and deletion</h3>
 				<p>Synced calendar data stays in your database until you remove it. Disconnecting the Google
-				account in <strong>Settings → Calendar</strong> deletes the stored tokens and removes the synced
-				calendars and their events from your server. Deleting your Waffled installation, or its database,
+				account in <strong>Settings → Calendars</strong> destroys the stored access and refresh tokens
+				immediately and removes those calendars from Waffled, so nothing further is ever fetched from
+				Google. Events that were already imported stay on your family calendar as ordinary Waffled
+				entries — they are yours to keep or delete. Deleting your Waffled installation, or its database,
 				removes everything.</p>
 
 				<h3>Revoking access</h3>

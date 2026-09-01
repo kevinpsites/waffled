@@ -84,6 +84,15 @@ app, or on iPhone/iPad, whichever is to hand:
    Waffled pushes.
 3. Use **Sync now** for an immediate pull (otherwise the poll picks it up within ~5 min).
 
+## Disconnecting
+
+**Settings → Calendars → Disconnect** destroys that account's stored access and refresh tokens
+and drops its calendars, so nothing further is fetched from Google. Events already pulled in
+**stay** on the family calendar as ordinary Waffled entries — disconnecting is not a way to
+un-import them; delete them yourself if that's what you want. To withdraw the grant on Google's
+side as well, remove Waffled at
+[myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+
 ## Troubleshooting
 
 - **`invalid_grant` / sync stopped** — the stored refresh token expired or was revoked. Reconnect

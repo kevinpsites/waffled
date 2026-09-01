@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Security
+
+- **Disconnecting a calendar account now destroys its stored tokens.** Disconnecting a Google
+  or Outlook account hid it from the app but left the encrypted refresh token sitting in the
+  database indefinitely — a working credential for an account you had explicitly disconnected.
+  It's now wiped as part of the disconnect. Events already imported still stay on your family
+  calendar, as before.
+
 ## [0.14.0] - 2026-09-01
 
 ### Added

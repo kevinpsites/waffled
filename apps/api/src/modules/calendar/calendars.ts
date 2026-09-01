@@ -400,12 +400,20 @@ export function registerCalendarRoutes(api: Api): void {
     return { calendar: updated ? presentCalendar(updated) : null }
   }))
 
-  // Disconnect an account: soft-delete it and its calendars (events are kept).
+  // Disconnect an account: soft-delete it and its calendars (events are kept), and
+  // destroy the stored credentials on the way out. The row has to stay for the
+  // events that reference it, but a disconnected account has no remaining use for a
+  // working refresh token — and the privacy policy promises disconnecting deletes it.
+  // refresh_token_encrypted is NOT NULL, so it's blanked rather than nulled.
   api.delete('/api/calendar/google/accounts/:id', adminRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'account not found' })
     const { rowCount } = await query(
-      `update calendar_accounts set deleted_at = now()
+      `update calendar_accounts
+          set deleted_at = now(),
+              refresh_token_encrypted = '',
+              access_token_encrypted = null,
+              access_token_expires_at = null
         where id = $1 and household_id = $2 and deleted_at is null`,
       [id, tenant.householdId]
     )
