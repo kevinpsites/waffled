@@ -111,7 +111,7 @@ struct BookRhythmSheet: View {
         do {
             // An all-day booking still hands the server an instant; it flags the event all-day.
             let startsAt = allDay ? Cal.current.startOfDay(for: when) : when
-            try await model.book(id: rhythm.id, startsAt: startsAt, allDay: allDay)
+            try await model.book(id: rhythm.id, startsAt: startsAt, allDay: allDay, periodStart: item.periodStart)
             dismiss()
         } catch {
             self.error = APIErrorText.message(for: error, fallback: "Couldn’t book it — try again.")

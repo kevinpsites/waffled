@@ -96,7 +96,7 @@ export function BookRhythmModal({
       // datetime-local string through would leave the timezone to the server and
       // could put a boundary booking in the neighbouring period.
       const startsAt = new Date(allDay ? `${date}T00:00` : `${date}T${time}`).toISOString()
-      await rhythmsApi.schedule(rhythm.id, { startsAt, allDay })
+      await rhythmsApi.schedule(rhythm.id, { startsAt, allDay, periodStart })
       onBooked?.()
       onClose()
     } catch {

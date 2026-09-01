@@ -241,7 +241,7 @@ private final class RhythmFeed {
     /// nil = "now, server-stamped"; a string = a backdated completion.
     var completedAt: [String?] = []
     var skipped: [(id: String, periodStart: String)] = []
-    var booked: [(id: String, startsAt: String, allDay: Bool)] = []
+    var booked: [(id: String, startsAt: String, allDay: Bool, periodStart: String?)] = []
     var deleted: [String] = []
     var saved: [(id: String?, body: [String: JSONValue])] = []
 
@@ -271,9 +271,9 @@ private final class RhythmFeed {
                 if self.mutationFails { throw RhythmFeedError.rejected }
                 self.skipped.append((id, periodStart))
             },
-            book: { id, startsAt, allDay in
+            book: { id, startsAt, allDay, periodStart in
                 if self.mutationFails { throw RhythmFeedError.rejected }
-                self.booked.append((id, startsAt, allDay))
+                self.booked.append((id, startsAt, allDay, periodStart))
             },
             save: { id, body in
                 if self.mutationFails { throw RhythmFeedError.rejected }
@@ -352,13 +352,16 @@ struct RhythmsModelTests {
         ])
         let model = feed.model()
         await model.loadAttention()
-        try? await model.book(id: "b", startsAt: at("2026-08-20T18:00:00"), allDay: false)
+        try? await model.book(id: "b", startsAt: at("2026-08-20T18:00:00"), allDay: false, periodStart: "2026-07-01")
 
         #expect(feed.booked.count == 1)
         #expect(feed.booked[0].id == "b")
         #expect(feed.booked[0].allDay == false)
         // An ISO instant, not a local wall-clock string — the server decides the period.
         #expect(feed.booked[0].startsAt.hasSuffix("Z"))
+        // And the period we were SHOWING travels with it, so the server can refuse a
+        // booking that would land somewhere else and leave this one still asking.
+        #expect(feed.booked[0].periodStart == "2026-07-01")
         #expect(feed.attentionLoads == 2)
     }
 

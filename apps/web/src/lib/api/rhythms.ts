@@ -148,6 +148,15 @@ export interface ScheduleRhythmInput {
   startsAt: string
   endsAt?: string | null
   allDay?: boolean
+  /**
+   * The period this booking is meant to fill.
+   *
+   * Any booking is legal — satisfaction is derived, so it settles whichever period it
+   * lands in — which is exactly why the server cannot tell an intended booking from a
+   * mistyped one. Sending the period we are SHOWING lets it refuse the mismatch instead
+   * of returning 201 for a booking that leaves the card still asking.
+   */
+  periodStart?: string
 }
 
 export const rhythmsApi = {

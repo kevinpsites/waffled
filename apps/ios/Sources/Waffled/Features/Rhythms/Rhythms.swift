@@ -486,7 +486,7 @@ final class RhythmsModel {
     /// when a completion is being logged for a day that has already passed.
     typealias Complete = (_ id: String, _ completedAt: String?) async throws -> Void
     typealias Skip = (_ id: String, _ periodStart: String) async throws -> Void
-    typealias Book = (_ id: String, _ startsAt: String, _ allDay: Bool) async throws -> Void
+    typealias Book = (_ id: String, _ startsAt: String, _ allDay: Bool, _ periodStart: String?) async throws -> Void
     /// Create when `id` is nil, otherwise PATCH.
     typealias Save = (_ id: String?, _ body: [String: JSONValue]) async throws -> Void
     typealias Remove = (_ id: String) async throws -> Void
@@ -533,8 +533,9 @@ final class RhythmsModel {
         skip: @escaping Skip = { id, periodStart in
             try await WaffledAPI().skipRhythmPeriod(id: id, periodStart: periodStart)
         },
-        book: @escaping Book = { id, startsAt, allDay in
-            _ = try await WaffledAPI().scheduleRhythm(id: id, startsAt: startsAt, allDay: allDay)
+        book: @escaping Book = { id, startsAt, allDay, periodStart in
+            _ = try await WaffledAPI().scheduleRhythm(id: id, startsAt: startsAt, allDay: allDay,
+                                                      periodStart: periodStart)
         },
         save: @escaping Save = { id, body in
             if let id { _ = try await WaffledAPI().updateRhythm(id: id, body) }
@@ -670,10 +671,10 @@ final class RhythmsModel {
         await refresh()
     }
 
-    func book(id: String, startsAt: Date, allDay: Bool) async throws {
+    func book(id: String, startsAt: Date, allDay: Bool, periodStart: String? = nil) async throws {
         // An explicit instant. Handing a local wall-clock string through would leave the
         // timezone to the server and could put a boundary booking in the wrong period.
-        try await book(id, RhythmFormat.isoInstant(startsAt), allDay)
+        try await book(id, RhythmFormat.isoInstant(startsAt), allDay, periodStart)
         await refresh()
     }
 

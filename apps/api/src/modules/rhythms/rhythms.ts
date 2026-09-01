@@ -976,6 +976,8 @@ export interface ScheduleRhythmInput {
   endsAt?: unknown
   allDay?: unknown
   title?: unknown
+  /** Which period the caller means to fill. Optional; checked when given. */
+  periodStart?: unknown
 }
 
 // Book a period: turn "this should happen" into an actual dated event.
@@ -1008,6 +1010,35 @@ export async function scheduleRhythm(
   }
   const endsAt = typeof input.endsAt === 'string' && input.endsAt ? input.endsAt : null
   const title = typeof input.title === 'string' && input.title.trim() ? input.title.trim() : rhythm.title
+
+  // Optionally: which period the caller BELIEVES it is filling.
+  //
+  // Satisfaction is derived per period, so a booking is always legal — it just settles
+  // whichever period it happens to land in. That makes booking ahead work, which is worth
+  // keeping. What it also made possible was a booking that landed in no period the user
+  // was looking at: the request succeeded, a real event appeared on the calendar, and the
+  // card carried on asking, with nothing anywhere saying why. The server cannot infer the
+  // intent from an instant alone, so the caller says it, and the server checks it. Both
+  // clients already hold the period they are showing.
+  //
+  // Optional so an older client keeps working exactly as before.
+  const claimed = typeof input.periodStart === 'string' && input.periodStart ? input.periodStart : null
+  if (claimed) {
+    assertRealDate(claimed, 'periodStart')
+    const { rows } = await query<{ inside: boolean }>(
+      `with hh as (select timezone from households where id = $2)
+       select $3::timestamptz >= ($1::date::timestamp at time zone hh.timezone)
+          and $3::timestamptz <  (($1::date + r.every)::timestamp at time zone hh.timezone)
+              as inside
+         from rhythms r, hh where r.id = $4`,
+      [claimed, tenant.householdId, new Date(startsAt).toISOString(), rhythmId]
+    )
+    if (rows[0]?.inside !== true) {
+      throw new InvalidReferenceError(
+        `that time is not inside the period starting ${claimed} — booking it would leave that period still asking`
+      )
+    }
+  }
 
   // An auto_schedule rhythm books its whole series at once — the rule already says when
   // it recurs, so asking the caller to restate it would just be a chance to disagree with

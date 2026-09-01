@@ -401,6 +401,45 @@ describe('a cadence the period grid cannot be built from', () => {
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
+  // Satisfaction is derived per period, so any booking is legal — it settles whichever
+  // period it lands in, which is what makes booking ahead work and is worth keeping. What
+  // was missing was a way to say which period you MEANT: a booking that landed outside it
+  // returned 201, put a real event on the calendar, and left the card asking, with nothing
+  // anywhere explaining why. The server can't read that intent out of an instant, so the
+  // caller states it and the server checks it.
+  it('refuses a booking that falls outside the period the caller named', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Named period', satisfiedBy: 'scheduling', every: '1 week', startsOn: '2027-04-05',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+
+    // Period 2027-04-05 → 04-12. A booking two weeks out is in a different one.
+    const wrong = await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: '2027-04-20T18:00:00Z', periodStart: '2027-04-05',
+    })
+    expect(wrong.statusCode).toBe(400)
+
+    const right = await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: '2027-04-08T18:00:00Z', periodStart: '2027-04-05',
+    })
+    expect(right.statusCode).toBe(201)
+
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  // Optional, so a client that hasn't been taught to send it behaves exactly as before.
+  it('still books without a named period, so an older client is unaffected', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Unnamed period', satisfiedBy: 'scheduling', every: '1 week', startsOn: '2027-04-05',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+    const res = await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: '2027-04-20T18:00:00Z',
+    })
+    expect(res.statusCode).toBe(201)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
   it('refuses to skip a date that is not one of the rhythm periods', async () => {
     const made = await call('POST', '/api/rhythms', kevin, {
       title: 'Off-boundary skip', satisfiedBy: 'scheduling', every: '1 week', startsOn: '2026-01-01',

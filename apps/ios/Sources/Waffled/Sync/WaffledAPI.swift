@@ -4088,11 +4088,19 @@ struct WaffledAPI: Sendable {
     /// so a booking UI needs a time picker and nothing else — retyping the title is
     /// precisely the friction that keeps these things off the calendar.
     @discardableResult
-    func scheduleRhythm(id: String, startsAt: String, allDay: Bool) async throws -> String {
+    /// `periodStart` names the period this booking is meant to fill.
+    ///
+    /// Any booking is legal — satisfaction is derived, so it settles whichever period it
+    /// lands in — which is exactly why the server cannot tell an intended booking from a
+    /// mistaken one. Sending the period we are SHOWING lets it refuse the mismatch rather
+    /// than return 201 for a booking that leaves the card still asking.
+    func scheduleRhythm(id: String, startsAt: String, allDay: Bool,
+                        periodStart: String? = nil) async throws -> String {
         struct Resp: Decodable { let event: Ev; struct Ev: Decodable { let id: String } }
+        var body: [String: JSONValue] = ["startsAt": .string(startsAt), "allDay": .bool(allDay)]
+        if let periodStart { body["periodStart"] = .string(periodStart) }
         return try await sendReturning("POST", "/api/rhythms/\(id)/schedule",
-                                       body: ["startsAt": .string(startsAt), "allDay": .bool(allDay)],
-                                       as: Resp.self).event.id
+                                       body: body, as: Resp.self).event.id
     }
 
     /// How a period goes quiet without inventing a calendar entry for something that
