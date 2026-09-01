@@ -1,7 +1,8 @@
 import { render, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { Calendar } from './Calendar'
-import { TopbarSlotProvider } from './topbar-slot'
+import { TopbarSlotProvider, useTopbarSlots } from './topbar-slot'
+import { MONTHS_SHORT } from './components/cal-utils'
 
 // The calendar grids were cut on Sunday no matter what the household's "week starts
 // on" said. The subtle part isn't the header row — it's that the month grid's first
@@ -83,5 +84,57 @@ describe('Calendar — the household decides which day starts the week', () => {
     renderCalendar()
     await waitFor(() => expect(asked.length).toBeGreaterThan(0))
     await waitFor(() => expect(asked.some((u) => u.includes(expectedGridStart(0)))).toBe(true))
+  })
+})
+
+// The week label is drawn TWICE: once into the topbar's right slot (a node frozen
+// until its deps change) and once inline as the grid heading. `useHousehold` has no
+// cache, so `firstDay` is 0 on every first mount — and the calendar mounts straight
+// into week view whenever you return to it or follow a `?view=week` deep link. If
+// the frozen node doesn't re-render when the household lands, the two labels sit on
+// screen naming different weeks.
+describe('Calendar — the topbar week label follows the household too', () => {
+  function TopbarRight() {
+    const { right } = useTopbarSlots()
+    return <div data-testid="topbar-right">{right}</div>
+  }
+
+  function renderWeekView() {
+    return render(
+      <MemoryRouter initialEntries={['/calendar?view=week']}>
+        <TopbarSlotProvider>
+          <TopbarRight />
+          <Calendar />
+        </TopbarSlotProvider>
+      </MemoryRouter>
+    )
+  }
+
+  // The label `periodLabel` should produce for the week containing today, cut on
+  // `firstDay` — built the same way the screen builds it.
+  function expectedWeekLabel(firstDay: number): string {
+    const now = new Date()
+    const ws = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() - firstDay + 7) % 7))
+    const we = new Date(ws.getFullYear(), ws.getMonth(), ws.getDate() + 6)
+    const start = `${MONTHS_SHORT[ws.getMonth()]} ${ws.getDate()}`
+    const end = ws.getMonth() === we.getMonth() ? `${we.getDate()}` : `${MONTHS_SHORT[we.getMonth()]} ${we.getDate()}`
+    return `${start} – ${end}`
+  }
+
+  const heading = () => document.querySelector('.cal-period-title')?.textContent?.trim()
+  const pill = () => document.querySelector('.cal-period')?.textContent?.trim()
+
+  it('re-cuts the topbar label once a monday household lands', async () => {
+    mockApi('monday')
+    renderWeekView()
+    await waitFor(() => expect(heading()).toBe(expectedWeekLabel(1)))
+    expect(pill()).toBe(expectedWeekLabel(1))
+  })
+
+  it('keeps the two labels naming the same week', async () => {
+    mockApi('monday')
+    renderWeekView()
+    await waitFor(() => expect(heading()).toBe(expectedWeekLabel(1)))
+    expect(pill()).toBe(heading())
   })
 })

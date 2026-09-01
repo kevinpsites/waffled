@@ -179,7 +179,12 @@ export function Calendar() {
         )}
       </div>
     ),
-    [view, anchor.getTime()]
+    // `firstDay` is in here because this node is FROZEN until a dep changes, and
+    // `useHousehold` has no cache: it is 0 on every first mount, and the calendar
+    // mounts straight into week view whenever you return to it or follow a
+    // `?view=week` link. Leave it out and the pill keeps naming the Sunday-cut week
+    // while the heading right below it names the Monday-cut one.
+    [view, anchor.getTime(), firstDay]
   )
 
   // Is the anchor inside the period the user is actually living in? Drives the
@@ -189,7 +194,7 @@ export function Calendar() {
     if (view === 'month') return anchor.getFullYear() === now.getFullYear() && anchor.getMonth() === now.getMonth()
     if (view === 'day' || view === 'people') return ymd(anchor) === ymd(now)
     return ymd(startOfWeek(anchor, firstDay)) === ymd(startOfWeek(now, firstDay))
-  }, [view, anchor])
+  }, [view, anchor, firstDay])
 
   return (
     <div className="cal-screen">
