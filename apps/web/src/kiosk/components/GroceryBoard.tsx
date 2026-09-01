@@ -9,6 +9,7 @@ import { ShareListModal } from './ShareListModal'
 // the same order to group the shared text the way the board reads top-to-bottom.
 import { AISLE_ORDER } from './share-list'
 import '../../styles/grocery.css'
+import { CHECK } from './CheckGlyph'
 
 // Aisles offered in the "move to section" picker. 'Other' is omitted — the board
 // treats an 'Other' category as auto-filed anyway, so "Auto (by name)" covers it.
@@ -23,11 +24,6 @@ const AISLE_EMOJI: Record<string, string> = {
   Other: '🛒',
 }
 
-const CHECK = (
-  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" strokeWidth="3">
-    <path d="M5 12l5 5 9-10" />
-  </svg>
-)
 
 // A checked item lingers in place this long (undo window) before tucking into the
 // collapsible "Completed" section, so the active list keeps itself tidy.

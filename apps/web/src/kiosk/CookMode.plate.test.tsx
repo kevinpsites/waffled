@@ -225,6 +225,33 @@ describe('CookMode — cooking a plate', () => {
   })
 })
 
+describe('CookMode — ticked ingredients belong to their dish', () => {
+  it('keeps each dish’s ticks across a tab switch', async () => {
+    // The cooking body is keyed by dish and remounts on every switch, so ticks have
+    // to live above it — beside step position and the timers.
+    mockPlate('Sunday BBQ', [BBQ, SALAD], { r1: ['chicken thighs'], r2: ['potatoes'] })
+    renderAt('/meals/meal/m1/cook')
+    await screen.findByText('Rub the chicken')
+
+    fireEvent.click(screen.getByRole('button', { name: /All ingredients/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /chicken thighs/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    // Over to the potato salad: its own list, nothing ticked.
+    fireEvent.click(screen.getByRole('tab', { name: /Potato Salad/i }))
+    await screen.findByText('Boil the potatoes')
+    fireEvent.click(screen.getByRole('button', { name: /All ingredients/i }))
+    expect(screen.getByRole('checkbox', { name: /potatoes/i })).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    // ...and back: the chicken is still ticked.
+    fireEvent.click(screen.getByRole('tab', { name: /BBQ Chicken/i }))
+    await screen.findByText('Rub the chicken')
+    fireEvent.click(screen.getByRole('button', { name: /All ingredients/i }))
+    expect(screen.getByRole('checkbox', { name: /chicken thighs/i })).toHaveAttribute('aria-checked', 'true')
+  })
+})
+
 describe('CookMode — single-recipe route is unchanged', () => {
   it('renders no tab strip when cooking one recipe', async () => {
     mockSingleRecipe(['Chop the onions', 'Heat the pan'])

@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Tick ingredients off as you cook them.** Cook mode listed a step's ingredients,
+  and the full list behind the **All ingredients** button, but they were only ever
+  something to read — easy to lose your place in halfway through a recipe with flour on
+  your hands. Every ingredient is now a checkbox: tap it as it goes in and it's struck
+  through. A step's ingredient and its row in the full list are the same thing, so
+  ticking either ticks both, and the list keeps a running "3 of 11" count of what you've
+  gathered. Ticks stay put as you move between steps, and on a meal with several dishes
+  each dish keeps its own. Starting a recipe fresh starts with a clean list.
+
 - **Opening the web app downloads about a third of what it used to.** Waffled handed
   your browser the entire app up front — every screen, the barcode scanner, the sync
   engine — before it could paint anything: about 510 KB of compressed code even if all
