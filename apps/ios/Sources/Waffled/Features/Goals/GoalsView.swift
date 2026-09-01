@@ -2441,7 +2441,14 @@ struct GoalEntryEditSheet: View {
         _amountText = State(initialValue: goalFmt(entry.amount))
         _who = State(initialValue: Set(entry.participants.compactMap { $0.personId }))
         _note = State(initialValue: entry.note ?? "")
-        _loggedOn = State(initialValue: GoalEntryEditSheet.parseDay(entry.loggedAt))
+        // The day this entry belongs to is `dateKey` — the household's own day, the one
+        // the day cells and the activity views bucket by. Re-parsing `loggedAt` (a UTC
+        // instant) put an evening log on tomorrow's date, and since a save always sends
+        // `loggedOn`, editing just the note moved the entry off the day you were looking
+        // at. No `loggedAt` fallback here on purpose: `dateKey` is non-optional on a
+        // strictly-decoded DTO, so a server too old to send it fails to decode the whole
+        // payload long before this — a fallback would only ever be dead code.
+        _loggedOn = State(initialValue: GoalEntryEditSheet.parseDay(entry.dateKey))
     }
     private static func parseDay(_ iso: String) -> Date {
         DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc) ?? Date()

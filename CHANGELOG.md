@@ -39,6 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Adding a note to a goal entry no longer moves it to another day.** Tapping an
+  entry in a goal's recent activity and writing a note did save the note — but it also
+  quietly re-dated the entry, because the edit box read the day off the raw timestamp
+  in UTC instead of your household's own day. Log something in the evening and the box
+  showed tomorrow; saving pushed the entry onto tomorrow with it. The note was written
+  to an entry that had left the day you were looking at, so nothing appeared to change.
+  The edit box now shows and keeps the day the entry actually belongs to, and won't
+  let you date an entry into the future. Fixed on the web and on iPhone/iPad.
+
 - **A kiosk's offline copy now follows the version you upgraded to.** The wall display
   keeps its own copy of the app so a dropped connection doesn't blank the screen, but it
   only ever refreshed that copy when Waffled's offline component itself changed — which

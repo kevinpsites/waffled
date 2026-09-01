@@ -800,6 +800,36 @@ describe('editing and deleting logged entries', () => {
     expect(detail.recent[0]).toMatchObject({ amount: 8, note: 'long hike' })
   })
 
+  it('keeps an entry on its own day when a note is added to it', async () => {
+    // Both edit sheets send `loggedOn` on every save, so a note-only change is really
+    // "same day, new note" on the wire. Re-sending the entry's own dateKey has to be a
+    // no-op for the day it lands on — a drift here moves the entry out of the day cell
+    // the user was looking at, which reads as the note never having saved.
+    const add = await call('POST', '/api/goals', kevin, { title: 'Pages', goalType: 'total', unit: 'pages', targetValue: 500, trackingMode: 'shared_total', participantIds: [kevinId] })
+    const id = JSON.parse(add.body).goal.id
+    await call('POST', `/api/goals/${id}/log`, kevin, { amount: 12, personId: kevinId, loggedOn: '2026-08-31' })
+    let entry = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.recent[0]
+    expect(entry.dateKey).toBe('2026-08-31')
+    expect(entry.note).toBeNull()
+
+    const res = await call('PATCH', `/api/goals/${id}/logs/${entry.id}`, kevin, { amount: 12, note: 'finished chapter 4', loggedOn: entry.dateKey })
+    expect(res.statusCode).toBe(200)
+
+    entry = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.recent[0]
+    expect(entry).toMatchObject({ amount: 12, note: 'finished chapter 4', dateKey: '2026-08-31' })
+  })
+
+  it('clears a note when the field is emptied', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Miles', goalType: 'total', unit: 'miles', targetValue: 50, trackingMode: 'shared_total', participantIds: [kevinId] })
+    const id = JSON.parse(add.body).goal.id
+    await call('POST', `/api/goals/${id}/log`, kevin, { amount: 3, personId: kevinId, note: 'river loop' })
+    const entry = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.recent[0]
+
+    expect((await call('PATCH', `/api/goals/${id}/logs/${entry.id}`, kevin, { note: null })).statusCode).toBe(200)
+    const after = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.recent[0]
+    expect(after.note).toBeNull()
+  })
+
   it('edits a logged entry’s participants (re-plans who took part)', async () => {
     const pippaId = JSON.parse((await call('POST', '/api/persons', kevin, { name: 'Pippa', memberType: 'adult' })).body).person.id
     const add = await call('POST', '/api/goals', kevin, { title: 'Parks', goalType: 'count', unit: 'parks', targetValue: 5, trackingMode: 'shared_total', participantMode: 'count_once', participantIds: [kevinId, pippaId] })
