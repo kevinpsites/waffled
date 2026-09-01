@@ -353,6 +353,70 @@ describe('a cadence the period grid cannot be built from', () => {
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
+  // A write that reports success and does nothing is the worst shape there is. Skips are
+  // keyed on period_start and every reader matches that against a boundary the SERVER
+  // computed, so a date that is not a boundary inserts happily, returns ok, and silences
+  // nothing — the row goes on asking. A client rendering a period whose boundary has since
+  // moved is exactly how you get there.
+  // Two taps on the same day fold into one history row — that is deliberate, so the
+  // register can answer "when did we last change it?" without filling up with repeats
+  // nobody performed. But the fold handed the row to whoever tapped LAST, so a second
+  // person took the credit. `notes` on the same statement was already protected; the
+  // person was not.
+  it('keeps the first person on a completion two people log the same day', async () => {
+    const elaine = await withClient(async (c) => {
+      const p = await c.query<{ id: string }>(
+        `insert into persons (household_id, name, member_type) values ($1, 'Elaine', 'adult') returning id`,
+        [householdId]
+      )
+      const id = p.rows[0]!.id
+      await c.query(
+        `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified)
+         values ($1,$2,'password','dev|elaine',true)`,
+        [householdId, id]
+      )
+      return id
+    })
+    const elaineToken = mint('dev|elaine')
+
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Shared filter', satisfiedBy: 'completion', every: '1 month',
+      nextDueAt: '2027-01-01T00:00:00Z',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+
+    expect((await call('POST', `/api/rhythms/${id}/complete`, kevin, {})).statusCode).toBe(200)
+    expect((await call('POST', `/api/rhythms/${id}/complete`, elaineToken, {})).statusCode).toBe(200)
+
+    const rows = await withClient((c) =>
+      c.query<{ person_id: string | null }>(
+        `select person_id from rhythm_completions where rhythm_id = $1`, [id]
+      )
+    )
+    // Folded to one row, and it still belongs to the person who actually did it.
+    expect(rows.rowCount).toBe(1)
+    expect(rows.rows[0]!.person_id).toBe(kevinId)
+    expect(rows.rows[0]!.person_id).not.toBe(elaine)
+
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('refuses to skip a date that is not one of the rhythm periods', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Off-boundary skip', satisfiedBy: 'scheduling', every: '1 week', startsOn: '2026-01-01',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+
+    // 2026-01-01 tiles weekly: Jan 1, 8, 15... The 5th is inside a period, not the start.
+    const off = await call('POST', `/api/rhythms/${id}/skip`, kevin, { periodStart: '2026-01-05' })
+    expect(off.statusCode).toBe(400)
+
+    const on = await call('POST', `/api/rhythms/${id}/skip`, kevin, { periodStart: '2026-01-08' })
+    expect(on.statusCode).toBeLessThan(300)
+
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
   it('refuses a recurrence rule that ends on its own', async () => {
     for (const rrule of ['FREQ=WEEKLY;COUNT=4', 'FREQ=WEEKLY;UNTIL=20270101T000000Z']) {
       const res = await call('POST', '/api/rhythms', kevin, {

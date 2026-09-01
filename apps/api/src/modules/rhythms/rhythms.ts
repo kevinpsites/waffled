@@ -551,7 +551,14 @@ export async function completeRhythm(
           upd as (
             update rhythm_completions c
                set completed_at = stamp.at,
-                   person_id = $3,
+                   -- First name on the row keeps it. The fold means two taps the same day
+                   -- become one row, and this used to hand that row to whoever tapped
+                   -- last, so a second person took credit for the first one's work. It
+                   -- also erased the name entirely when the second tap came from a kiosk,
+                   -- which has no person at all — the tenant's personId is null there.
+                   -- Filling in a blank is still right, which is why this is coalesce and
+                   -- not a flat refusal to change.
+                   person_id = coalesce(c.person_id, $3),
                    notes = coalesce($5, c.notes)
               from stamp, zone
              where c.household_id = $1 and c.rhythm_id = $2
@@ -670,6 +677,27 @@ export async function skipPeriod(
   if (!existing) return false
   if (existing.satisfiedBy !== 'scheduling') {
     throw new InvalidReferenceError('only a scheduling rhythm has periods to skip')
+  }
+  // The skip is keyed on period_start, and every reader matches it against a boundary the
+  // SERVER computed. A date that isn't one inserts happily, returns ok, and silences
+  // nothing — the row goes on asking and the only evidence the skip existed is a row
+  // nobody will ever join to. That is the worst shape a write can have: it reports
+  // success and does nothing. A client rendering a period whose boundary has since moved
+  // is exactly how it happens.
+  //
+  // Tiling up to the offered date, the last boundary at or before it IS that date only if
+  // the date is itself a boundary.
+  const { rows: grid } = await query<{ ok: boolean }>(
+    `select (select max(gs)::date
+               from generate_series(r.starts_on::timestamp, $2::timestamp, r.every) gs) = $2::date
+              as ok
+       from rhythms r where r.id = $1`,
+    [id, periodStart]
+  )
+  if (grid[0]?.ok !== true) {
+    throw new InvalidReferenceError(
+      `periodStart must be the start of one of this rhythm's periods — '${periodStart}' is not a boundary of its cycle`
+    )
   }
   await query(
     `insert into rhythm_skips (household_id, rhythm_id, period_start, skipped_by)
