@@ -165,6 +165,53 @@ struct RhythmDecodingTests {
         try WaffledAPI.decoder.decode(T.self, from: Data(json.utf8))
     }
 
+    // A strict Decodable enum fails the WHOLE response the moment the server grows a value
+    // it doesn't know, and `satisfiedBy` sits on every row of the register while `kind`
+    // sits on every row of /attention. One unrecognised value emptied the screen — and the
+    // app surfaced the decode failure as "couldn't reach the server", which sends someone
+    // to check their wifi over an ordinary additive server change. `CountdownSource` two
+    // files over was softened for exactly this reason; these two were missed.
+    @Test("An unknown satisfiedBy does not throw away the rest of the register")
+    func unknownShapeStillDecodes() throws {
+        struct Resp: Decodable { let rhythms: [WaffledAPI.Rhythm] }
+        let json = """
+        {"rhythms":[
+          {"id":"a","title":"Air filter","emoji":null,"notes":null,"personId":null,
+           "satisfiedBy":"completion","every":"3 mons","startsOn":null,"autoSchedule":false,
+           "rrule":null,"leadTime":"14 days","lastCompletedAt":null,"nextDueAt":null,"isActive":true},
+          {"id":"b","title":"Something new","emoji":null,"notes":null,"personId":null,
+           "satisfiedBy":"measurement","every":"1 week","startsOn":null,"autoSchedule":false,
+           "rrule":null,"leadTime":"3 days","lastCompletedAt":null,"nextDueAt":null,"isActive":true}
+        ]}
+        """
+        let resp = try decode(json, as: Resp.self)
+        #expect(resp.rhythms.count == 2)
+        #expect(resp.rhythms[0].satisfiedBy == .completion)
+        #expect(resp.rhythms[1].satisfiedBy == .unknown)
+    }
+
+    @Test("An unknown attention kind does not empty the Today card")
+    func unknownKindStillDecodes() throws {
+        struct Resp: Decodable { let items: [WaffledAPI.RhythmAttentionItem] }
+        let json = """
+        {"items":[
+          {"kind":"due","rhythm":{"id":"a","title":"Air filter","emoji":null,"notes":null,
+            "personId":null,"satisfiedBy":"completion","every":"3 mons","startsOn":null,
+            "autoSchedule":false,"rrule":null,"leadTime":"14 days","lastCompletedAt":null,
+            "nextDueAt":"2026-09-01T00:00:00.000Z","isActive":true},
+           "dueAt":"2026-09-01T00:00:00.000Z","overdue":false},
+          {"kind":"nudged","rhythm":{"id":"b","title":"Future thing","emoji":null,"notes":null,
+            "personId":null,"satisfiedBy":"scheduling","every":"1 week","startsOn":"2026-01-01",
+            "autoSchedule":false,"rrule":null,"leadTime":"3 days","lastCompletedAt":null,
+            "nextDueAt":null,"isActive":true}}
+        ]}
+        """
+        let resp = try decode(json, as: Resp.self)
+        #expect(resp.items.count == 2)
+        #expect(resp.items[0].kind == .due)
+        #expect(resp.items[1].kind == .unknown)
+    }
+
     @Test("An attention payload decodes both kinds off the one route")
     func decodesAttention() throws {
         let json = """

@@ -927,10 +927,20 @@ export async function updateRhythm(
     //
     // Restating the same cadence is not a change — clients send the whole form back on
     // save, and refusing an unchanged field would make every edit a 400.
-    if (existing.satisfiedBy === 'scheduling' && input.every.trim() !== existing.every) {
-      throw new InvalidReferenceError(
-        "a scheduling rhythm's cadence is its period grid, and changing it would re-read every period — including the ones already skipped or booked. Retire it and make a new one."
+    //
+    // Compared as INTERVALS, not as strings. The clients build "3 months" out of a number
+    // and a unit while Postgres renders the stored column as "3 mons", so a string test
+    // calls every unchanged cadence a change and refuses every ordinary edit. Only
+    // Postgres knows these are the same value, so Postgres is asked.
+    if (existing.satisfiedBy === 'scheduling') {
+      const { rows } = await query<{ same: boolean }>(
+        `select ($1::interval = $2::interval) as same`, [input.every.trim(), existing.every]
       )
+      if (rows[0]?.same !== true) {
+        throw new InvalidReferenceError(
+          "a scheduling rhythm's cadence is its period grid, and changing it would re-read every period — including the ones already skipped or booked. Retire it and make a new one."
+        )
+      }
     }
   }
   if (typeof input.leadTime === 'string' && input.leadTime.trim()) {

@@ -523,8 +523,13 @@ describe('a cadence the period grid cannot be built from', () => {
     // Everything else about it is still editable.
     expect((await call('PATCH', `/api/rhythms/${id}`, kevin, { title: 'Renamed' })).statusCode).toBe(200)
     // Restating the SAME cadence is not a change, so it must not be refused — clients send
-    // the whole form back on save.
+    // the whole form back on save. And they spell it differently from the way Postgres
+    // renders the stored column: both clients build "1 month" out of a number and a unit,
+    // while every::text comes back "1 mon". Compared as strings, every ordinary edit of a
+    // scheduling rhythm would be a 400.
     expect((await call('PATCH', `/api/rhythms/${id}`, kevin, { every: '1 mon' })).statusCode).toBe(200)
+    expect((await call('PATCH', `/api/rhythms/${id}`, kevin, { every: '1 month' })).statusCode).toBe(200)
+    expect((await call('PATCH', `/api/rhythms/${id}`, kevin, { every: '30 days' })).statusCode).toBe(200)
 
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })

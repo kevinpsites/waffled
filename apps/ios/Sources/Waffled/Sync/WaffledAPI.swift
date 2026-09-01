@@ -3978,7 +3978,22 @@ struct WaffledAPI: Sendable {
     // deliberately not on PowerSync); the events a booking creates sync as usual.
     // Mirrors apps/web/src/lib/api/rhythms.ts 1:1.
 
-    enum RhythmShape: String, Codable, Sendable { case completion, scheduling }
+    /// What closes out a period.
+    ///
+    /// `unknown` is the forward-compatibility valve, not a state the server sends: a
+    /// strict Decodable enum fails the WHOLE response the moment the server grows a third
+    /// shape, and this one sits on every row of the register — so one unrecognised value
+    /// emptied the screen and reported it as "couldn't reach the server", which sends
+    /// someone to check their wifi over an additive server change. `CountdownSource` was
+    /// softened for exactly this reason; these two were missed.
+    enum RhythmShape: String, Codable, Sendable {
+        case completion, scheduling, unknown
+
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = RhythmShape(rawValue: raw) ?? .unknown
+        }
+    }
 
     struct Rhythm: Codable, Identifiable, Hashable, Sendable {
         let id: String
@@ -4022,7 +4037,17 @@ struct WaffledAPI: Sendable {
         let bookedAt: String?
     }
 
-    enum RhythmAttentionKind: String, Codable, Sendable { case due, unscheduled }
+    /// Why a rhythm is on the attention feed. `unknown` is the same forward-compatibility
+    /// valve as `RhythmShape.unknown`; the model drops those rows rather than drawing a
+    /// row it has no words for.
+    enum RhythmAttentionKind: String, Codable, Sendable {
+        case due, unscheduled, unknown
+
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = RhythmAttentionKind(rawValue: raw) ?? .unknown
+        }
+    }
 
     /// One row of `GET /api/rhythms/attention` — the single question every surface asks.
     /// The fields are per-kind: `dueAt`/`overdue` for `.due`, `periodStart`/`periodEnd`

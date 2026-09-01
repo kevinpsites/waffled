@@ -185,6 +185,10 @@ struct RhythmsTodayCard: View {
             guard item.rhythm.autoSchedule, item.hasSeries != true else { return status }
             return status.isEmpty ? "The series needs putting back"
                                   : "\(status) · the series needs putting back"
+        // Never reached — loadAttention drops these. Total so a future third kind is a
+        // compile error here rather than a crash in front of someone.
+        case .unknown:
+            return status
         }
     }
 
@@ -217,6 +221,10 @@ struct RhythmsTodayCard: View {
                 }
                 .disabled(busyId == item.rhythm.id)
             }
+        // Never reached — loadAttention drops these — but keeping the switch total means a
+        // future third kind fails the build here instead of surprising someone at runtime.
+        case .unknown:
+            EmptyView()
         }
     }
 

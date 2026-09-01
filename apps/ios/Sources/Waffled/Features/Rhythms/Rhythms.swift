@@ -460,6 +460,9 @@ enum RhythmAttention {
         switch item.kind {
         case .due: return (item.overdue ?? false) ? 0 : 1
         case .unscheduled: return 2
+        // Never reached — loadAttention drops these — but a total switch is what keeps a
+        // future third kind a compile error here rather than a crash there.
+        case .unknown: return 3
         }
     }
 
@@ -562,7 +565,11 @@ final class RhythmsModel {
     func loadAttention() async {
         let today = RhythmFormat.ymd(now())
         if let items = try? await fetchAttention(today, today) {
-            attention = RhythmAttention.sorted(items)
+            // A kind this build has no words for is dropped rather than drawn: every
+            // switch downstream would need a placeholder branch that says nothing useful,
+            // and a row with no verb is worse than a row that isn't there. Dropping ONE is
+            // the whole point — a strict enum used to throw away the entire response.
+            attention = RhythmAttention.sorted(items.filter { $0.kind != .unknown })
             statusLines = Self.statusLines(for: attention, now: now())
         }
         loaded = true
@@ -716,6 +723,8 @@ final class RhythmsModel {
                                                             now: now, calendar: calendar)
             case .unscheduled:
                 out[item.rhythm.id] = RhythmFormat.periodLabel(item.periodEnd ?? "", now: now, calendar: calendar)
+            case .unknown:
+                continue
             }
         }
         return out
@@ -745,6 +754,10 @@ final class RhythmsModel {
                 parts.append("paused")
             } else {
                 switch r.satisfiedBy {
+                // A shape this build has no words for: say the cadence and stop, rather
+                // than guessing at a sentence for something we don't understand.
+                case .unknown:
+                    break
                 case .completion:
                     // "Last done —" was a row saying nothing with a punctuation mark.
                     parts.append(r.lastCompletedAt == nil
@@ -915,6 +928,10 @@ struct RhythmForm {
             body["startsOn"] = .string(RhythmFormat.ymd(startsOn, calendar: calendar))
             body["autoSchedule"] = .bool(autoSchedule)
             body["rrule"] = autoSchedule ? (rrule(calendar: calendar).map(JSONValue.string) ?? .null) : .null
+        // Not reachable: `shape` is chosen in this form, never decoded from the server.
+        // Total anyway, so a third shape has to be handled here rather than compiling.
+        case .unknown:
+            break
         }
         return body
     }
