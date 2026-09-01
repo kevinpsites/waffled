@@ -336,6 +336,47 @@ describe('a short cadence does not out-run its lead time', () => {
     expect(items.map((i: { rhythm: { id: string } }) => i.rhythm.id)).toContain(trashId)
   })
 
+  // `overdue` means LATE, and both clients treat it that way: it sorts the row to the top,
+  // paints it red and turns dueLabel into "N days late". It was compared against the
+  // window's far edge rather than against now — so the further ahead a caller looked, the
+  // more things it was told were already late. The weekly planner asks a week out, which
+  // means everything due this week came back late; on the Today card, whose window is one
+  // day, the same comparison also called anything due later today late.
+  it('does not call a rhythm late merely because the window reaches past its due date', async () => {
+    const soon = new Date(Date.now() + 3 * 86_400_000)
+    const horizon = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10)
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Due in three days', satisfiedBy: 'completion', every: '1 month',
+      nextDueAt: soon.toISOString(), leadTime: '14 days',
+    })
+    expect(made.statusCode).toBe(201)
+    const id = JSON.parse(made.body).rhythm.id
+
+    const res = await call('GET', `/api/rhythms/attention?from=${horizon}&to=${horizon}`, kevin)
+    const item = JSON.parse(res.body).items.find((i: { rhythm: { id: string } }) => i.rhythm.id === id)
+    expect(item).toBeDefined()
+    expect(item.overdue).toBe(false)
+
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('does call a rhythm late once its due date has actually passed', async () => {
+    const past = new Date(Date.now() - 2 * 86_400_000)
+    const horizon = new Date().toISOString().slice(0, 10)
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Two days late', satisfiedBy: 'completion', every: '1 month',
+      nextDueAt: past.toISOString(), leadTime: '3 days',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+
+    const res = await call('GET', `/api/rhythms/attention?from=${horizon}&to=${horizon}`, kevin)
+    const item = JSON.parse(res.body).items.find((i: { rhythm: { id: string } }) => i.rhythm.id === id)
+    expect(item).toBeDefined()
+    expect(item.overdue).toBe(true)
+
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
   it('leaves a long cadence its full requested runway', async () => {
     // The clamp is a ceiling, not a rewrite: 14 days is well under half of 3 months.
     const res = await call('POST', '/api/rhythms', kevin, {

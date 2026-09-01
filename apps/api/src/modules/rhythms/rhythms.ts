@@ -645,15 +645,27 @@ export async function listAttention(householdId: string, horizon: string): Promi
   // keeps surfacing indefinitely — that is the point of a maintenance register — so there
   // is no lower bound on next_due_at.
   const due = await query<Row & { due_at: Date; overdue: boolean }>(
-    `select id, title, emoji, notes, person_id, satisfied_by, every::text as every,
-            starts_on, auto_schedule, rrule, lead_time::text as lead_time,
-            last_completed_at, next_due_at, is_active,
-            next_due_at as due_at, (next_due_at <= $2::date) as overdue
-       from rhythms
-      where household_id = $1
-        and deleted_at is null and is_active
-        and satisfied_by = 'completion'
-        and next_due_at - lead_time <= $2::date`,
+    `with hh as (select timezone from households where id = $1)
+     select r.id, r.title, r.emoji, r.notes, r.person_id, r.satisfied_by, r.every::text as every,
+            r.starts_on, r.auto_schedule, r.rrule, r.lead_time::text as lead_time,
+            r.last_completed_at, r.next_due_at, r.is_active,
+            r.next_due_at as due_at,
+            -- Late means LATE, so it is measured against now and nothing else. It used to
+            -- be measured against the window's far edge, which made the answer depend on
+            -- how far ahead the caller happened to be looking: the weekly planner asks a
+            -- week out, so everything due this week came back late, and both clients sort
+            -- those first, paint them red and label them "N days late".
+            (r.next_due_at < now()) as overdue
+       from rhythms r, hh
+      where r.household_id = $1
+        and r.deleted_at is null and r.is_active
+        and r.satisfied_by = 'completion'
+        -- "Is the runway open by the END of the horizon day, locally?" next_due_at is a
+        -- timestamptz, so comparing it to a bare $2::date resolved at the SESSION zone
+        -- (Etc/UTC in the shipped image) and against the START of that day — the only day
+        -- boundary in this module that wasn't the household's. For a household behind UTC
+        -- that hid a rhythm for its whole first day.
+        and (r.next_due_at - r.lead_time) < ((($2::date + 1)::timestamp) at time zone hh.timezone)`,
     [householdId, to]
   )
   for (const r of due.rows) {
@@ -674,10 +686,21 @@ export async function listAttention(householdId: string, horizon: string): Promi
               -- generate_series with an interval step tiles TRUE calendar periods, so
               -- '3 months' lands on real month boundaries. Doing this by epoch division
               -- would treat a month as 30 days and drift a little further every quarter.
+              --
+              -- Tiled to the LATER of the horizon and the household's own now. The horizon
+              -- has to stay authoritative for looking ahead — that is what makes a weekly
+              -- planner window mean anything — but on its own it let a client's clock name
+              -- a current period the household is already past, so the Today card and the
+              -- register (which tiles to household-now) could disagree about which period
+              -- a rhythm is in. The server owns the period; a client may only ask it to
+              -- look further forward, never further back.
               (select max(gs)::date
-                 from generate_series(r.starts_on::timestamp, $2::timestamp, r.every) gs
+                 from generate_series(
+                        r.starts_on::timestamp,
+                        greatest($2::timestamp, (now() at time zone hh.timezone)),
+                        r.every) gs
               ) as period_start
-         from rhythms r
+         from rhythms r, hh
         where r.household_id = $1
           and r.deleted_at is null and r.is_active
           and r.satisfied_by = 'scheduling'
