@@ -102,6 +102,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a column that was already three cards deep — and the dashboard is a fixed height, so the
   fourth card wasn't squeezed to fit, it was cut off the bottom with no way to scroll to
   it. It now sits with the chores, above the grocery list that gives up the room.
+- **Logging a rhythm "on another day" works in the morning.** Choosing today — which is
+  what the button opens on — was refused until midday, and the row could only say the tap
+  didn't go through, so trying again failed the same way. Backdating to an earlier day
+  worked, which made it look arbitrary rather than broken.
+- **The booking sheet no longer says a period has closed when it hasn't.** A display or
+  phone whose clock is a day ahead of the household's could be told the window had shut
+  while the button beside it was still live and the booking would still have counted.
+- **One unusual repeat setting could stop the whole household's rhythms loading.** A cadence
+  mixing months and days — the sort nothing in the app offers, but the API accepted — could
+  describe a cycle that steps backwards, which left the list building forever rather than
+  answering. Enough of them could tie up a self-hosted server for everyone on it. Such a
+  cadence is now refused when it's set, with an explanation, and so is one shorter than a
+  day (periods are whole days, so several would land on the same one).
 - **Booking a rhythm says which days actually count.** The date picker was already limited
   to the period, but it never said so, and it opens on the month holding today — so on the
   last day of a weekly period the six other days you could have picked sat in the previous
