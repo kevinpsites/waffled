@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   rhythmsApi, usePersons, splitCadence, intervalDays, cadenceLabel, nudgeExplainer,
-  nudgePlan, addCadence, consequence, type SatisfiedBy, type Rhythm,
+  nudgePlan, addCadence, consequence, type SatisfiedBy, type Rhythm, type Completion,
 } from '../../lib/api'
 import { ConfirmDialog } from './ConfirmDialog'
 import { buildRrule, describeRrule, weekdayCode, NO_REPEAT, type CustomUnit, type MonthlyMode } from './recurrence'
@@ -93,6 +93,27 @@ export function RhythmModal({
   // Editable on a completion rhythm — that just moves the next due date. Not on a
   // scheduling one, whose periods are generated from it.
   const cadenceFixed = editing && rhythm!.satisfiedBy === 'scheduling'
+
+  // The history this rhythm has actually kept.
+  //
+  // `GET /:id/completions` and its `averageIntervalDays` have existed since the migration
+  // and were reachable from no client at all — so the register kept a record it could not
+  // show, and the one fact it is kept FOR ("how often does this really happen?") had
+  // nowhere to appear. A nominal 3 months that runs at 5 is the cadence telling you it is
+  // wrong; only the server can say so, because the average is computed over every
+  // completion rather than the page we fetched.
+  //
+  // Completion shape only: a scheduling rhythm has no completions by design — whether it
+  // happened is the question that shape refuses to ask — so it is never even requested.
+  const [history, setHistory] = useState<{ completions: Completion[]; total: number; averageIntervalDays: number | null } | null>(null)
+  useEffect(() => {
+    if (!editing || !rhythm || rhythm.satisfiedBy !== 'completion') return
+    let alive = true
+    rhythmsApi.completions(rhythm.id, 5)
+      .then((d) => { if (alive) setHistory(d) })
+      .catch(() => { /* a missing history is not worth a message; the row still edits */ })
+    return () => { alive = false }
+  }, [editing, rhythm])
   const seed = splitCadence(rhythm?.every ?? '')
   const { persons } = usePersons()
   const [shape, setShape] = useState<SatisfiedBy>(rhythm?.satisfiedBy ?? 'completion')
@@ -388,6 +409,22 @@ export function RhythmModal({
                   this one and make a new one instead.
                 </>
               )}
+            </div>
+          )}
+
+          {history && history.total > 0 && (
+            <div className="rhy-anchor">
+              <b>{history.total === 1 ? 'Done once' : `Done ${history.total} times`}</b>
+              {/* Rounded: a household needs "about every 123 days", not a decimal place.
+                  Absent below two completions, because one date is not an interval — the
+                  server returns null there rather than inventing one, and this must not
+                  fill that in with a number of its own. */}
+              {history.averageIntervalDays !== null && (
+                <> · about every <b>{Math.round(history.averageIntervalDays)} days</b>, against {cadenceLabel(rhythm!.every)}</>
+              )}
+              <div className="tiny muted" style={{ marginTop: 6 }}>
+                {history.completions.map((c) => dayMonth(new Date(c.completedAt))).join(' · ')}
+              </div>
             </div>
           )}
 

@@ -50,6 +50,10 @@ struct RhythmEditorSheet: View {
     /// scheduling one, whose periods are generated from it.
     private var cadenceFixed: Bool { !isNew && form.shape == .scheduling }
 
+    /// Completion shape only: a scheduling rhythm has no completions by design — whether
+    /// it happened is the question that shape refuses to ask — so it is never requested.
+    @State private var history: WaffledAPI.RhythmHistory?
+
     /// Named for what it decides, not for the column it is stored in.
     private static let modes: [(shape: WaffledAPI.RhythmShape, label: String, why: String)] = [
         (.completion, "I mark it done",
@@ -85,6 +89,7 @@ struct RhythmEditorSheet: View {
                     sentence
 
                     if isNew { consequence } else { anchorNote }
+                    if let history, history.total > 0 { historyNote(history) }
 
                     moreRow
                     if advanced { advancedFields }
@@ -106,6 +111,10 @@ struct RhythmEditorSheet: View {
             // sheet whose primary button the keyboard is covering.
             .scrollDismissesKeyboard(.interactively)
             .background(WF.canvas)
+            .task {
+                guard let id = form.editingId, form.shape == .completion else { return }
+                history = try? await WaffledAPI().rhythmCompletions(id: id, limit: 5)
+            }
             .navigationTitle(isNew ? "New rhythm" : "Edit rhythm")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -273,6 +282,36 @@ struct RhythmEditorSheet: View {
     }
 
     /// On an edit, the clause the sheet won't offer — named in full, with the way through.
+    /// The history this rhythm has actually kept, and how often it REALLY happens.
+    ///
+    /// `GET /:id/completions` and its average have existed since the migration and were
+    /// reachable from no client — iOS did not even have the call. So the register kept a
+    /// record it could not show, and the fact it is kept FOR ("how often does this really
+    /// happen?") had nowhere to appear. A nominal 3 months that runs at 5 is the cadence
+    /// telling you it is wrong.
+    @ViewBuilder private func historyNote(_ h: WaffledAPI.RhythmHistory) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(historyHeadline(h))
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(h.completions.map { RhythmFormat.shortDate($0.completedAt) }.joined(separator: " · "))
+                .font(.system(size: 13)).foregroundStyle(WF.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .wfField(radius: WF.rSM, fill: WF.panel)
+    }
+
+    private func historyHeadline(_ h: WaffledAPI.RhythmHistory) -> String {
+        let done = h.total == 1 ? "Done once" : "Done \(h.total) times"
+        // Rounded, and absent below two completions: one date is not an interval, so the
+        // server returns null there rather than inventing one — and this must not fill
+        // that in with a number of its own.
+        guard let avg = h.averageIntervalDays else { return done }
+        return "\(done) · about every \(Int(avg.rounded())) days, against \(RhythmFormat.cadenceLabel(form.every))"
+    }
+
     private var anchorNote: some View {
         LockNote(form.shape == .scheduling
                  ? "Periods are anchored to \(RhythmFormat.shortDate(RhythmFormat.ymd(form.startsOn))), \(RhythmFormat.cadenceLabel(form.every)). Moving the anchor would re-interpret the periods you’ve already skipped or booked, so it can’t change here — retire this one and make a new one instead."

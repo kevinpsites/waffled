@@ -32,8 +32,32 @@ function mockApi() {
 
 const posts = () => calls.filter((c) => c.method === 'POST')
 
+const filter = {
+  id: 'r-filter', title: 'Air filter', emoji: '🌬️', notes: null, personId: null,
+  satisfiedBy: 'completion' as const, every: '3 mons', startsOn: null, autoSchedule: false,
+  rrule: null, leadTime: '14 days', lastCompletedAt: '2026-05-16T09:00:00.000Z',
+  nextDueAt: '2026-08-16T09:00:00.000Z', isActive: true,
+  currentPeriodStart: null, currentPeriodEnd: null, satisfied: false, hasSeries: false,
+  bookedAt: null, bookedAllDay: null,
+}
+
 const openCreate = () => {
   render(<RhythmModal onClose={() => {}} />)
+  return screen.getByRole('dialog')
+}
+
+function mockHistory(body: unknown) {
+  const prev = globalThis.fetch
+  globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    const u = String(url)
+    calls.push({ url: u, method: init?.method ?? 'GET', body: null })
+    if (u.includes('/completions')) return { ok: true, json: async () => body }
+    return (prev as typeof fetch)(url as never, init as never)
+  }) as unknown as typeof fetch
+}
+
+const openEdit = (rhythm: unknown = filter) => {
+  render(<RhythmModal rhythm={rhythm as never} onClose={() => {}} />)
   return screen.getByRole('dialog')
 }
 
@@ -177,5 +201,66 @@ describe('New rhythm — what gets created', () => {
     expect(body.satisfiedBy).toBe('scheduling')
     expect(body.startsOn).toBe('2026-08-19')
     expect(body).not.toHaveProperty('nextDueAt')
+  })
+})
+
+// `GET /:id/completions` and its `averageIntervalDays` have existed and been tested since
+// the migration, and were reachable from NO client — the web layer declared the call and
+// nothing invoked it. So the register kept a history it could not show you, and the one
+// fact it exists to answer ("how often does this ACTUALLY happen?") had nowhere to appear.
+//
+// The average is the interesting half: a rhythm nominally every 3 months that really runs
+// every 5 is telling you the cadence is wrong, and only the server can compute it — over
+// every completion, not the page you happened to fetch.
+describe('the history a completion rhythm keeps', () => {
+  it('shows how often it really happens, beside how often it is meant to', async () => {
+    mockHistory({
+      completions: [
+        { id: 'c3', personId: null, completedAt: '2026-05-16T09:00:00.000Z', notes: null },
+        { id: 'c2', personId: null, completedAt: '2026-01-20T09:00:00.000Z', notes: null },
+        { id: 'c1', personId: null, completedAt: '2025-09-14T09:00:00.000Z', notes: null },
+      ],
+      total: 3,
+      averageIntervalDays: 122.5,
+    })
+    openEdit()
+    expect(await screen.findByText(/done 3 times/i)).toBeInTheDocument()
+    // Bolding the number splits the sentence across elements, so read the whole line.
+    const line = screen.getByText((_t, el) =>
+      el?.className === 'rhy-anchor' && /done 3 times/i.test(el.textContent ?? ''))
+    // Rounded — a household does not need a decimal place on "about every".
+    expect(line.textContent).toMatch(/about every 123 days/i)
+    // ...and stated against the nominal cadence, which is the comparison worth making.
+    expect(line.textContent).toMatch(/every 3 months/i)
+    expect(screen.getByText(/May 16/)).toBeInTheDocument()
+  })
+
+  it('says nothing about an average it cannot have', async () => {
+    // One date is not an interval. The server returns null rather than inventing one, and
+    // the row must not fill that in with a number of its own.
+    mockHistory({
+      completions: [{ id: 'c1', personId: null, completedAt: '2026-05-16T09:00:00.000Z', notes: null }],
+      total: 1,
+      averageIntervalDays: null,
+    })
+    openEdit()
+    expect(await screen.findByText(/done once/i)).toBeInTheDocument()
+    expect(screen.queryByText(/about every/i)).toBeNull()
+  })
+
+  it('stays quiet for a rhythm with no history yet', async () => {
+    mockHistory({ completions: [], total: 0, averageIntervalDays: null })
+    openEdit()
+    await screen.findByRole('dialog')
+    expect(screen.queryByText(/done .* times|about every/i)).toBeNull()
+  })
+
+  // A scheduling rhythm has no completions by design — asking whether it happened is the
+  // question this shape refuses to ask — so it must not even request them.
+  it('never asks a scheduling rhythm about completions', async () => {
+    mockHistory({ completions: [], total: 0, averageIntervalDays: null })
+    openEdit({ ...filter, id: 'r-temple', satisfiedBy: 'scheduling', startsOn: '2026-07-01', nextDueAt: null })
+    await screen.findByRole('dialog')
+    expect(calls.some((c) => c.url.includes('/completions'))).toBe(false)
   })
 })

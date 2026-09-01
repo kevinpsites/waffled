@@ -4142,6 +4142,31 @@ struct WaffledAPI: Sendable {
         try await send("POST", "/api/rhythms/\(id)/skip", body: ["periodStart": .string(periodStart)])
     }
 
+    /// One completion in a rhythm's history.
+    struct RhythmCompletion: Decodable, Identifiable, Sendable {
+        let id: String
+        let personId: String?
+        let completedAt: String
+        let notes: String?
+    }
+
+    /// A rhythm's history, and how often it REALLY happens.
+    ///
+    /// `averageIntervalDays` is deliberately not derivable from `completions`: the list is
+    /// a page and the average is over all of them, so computing it here would be a
+    /// different number wearing the same label. Null below two completions — one date is
+    /// not an interval.
+    struct RhythmHistory: Decodable, Sendable {
+        let completions: [RhythmCompletion]
+        let total: Int
+        let averageIntervalDays: Double?
+    }
+
+    func rhythmCompletions(id: String, limit: Int? = nil) async throws -> RhythmHistory {
+        let q = limit.map { "?limit=\($0)" } ?? ""
+        return try await getJSON("/api/rhythms/\(id)/completions\(q)", as: RhythmHistory.self)
+    }
+
     // MARK: Photos (the family photo wall)
 
     /// Who uploaded a photo (display info for the "added by" row).

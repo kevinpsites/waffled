@@ -213,6 +213,36 @@ struct RhythmDecodingTests {
         #expect(resp.items[1].kind == .unknown)
     }
 
+    // The average is the interesting half and is deliberately NOT derivable from the
+    // completions list: the list is a page, the average is over all of them, so computing
+    // it here would be a different number wearing the same label. Null below two
+    // completions, because one date is not an interval.
+    @Test("A completion history decodes, average and all")
+    func decodesHistory() throws {
+        let json = """
+        {"completions":[
+           {"id":"c2","personId":null,"completedAt":"2026-05-16T09:00:00.000Z","notes":"3-pack"},
+           {"id":"c1","personId":null,"completedAt":"2026-01-20T09:00:00.000Z","notes":null}],
+         "total":2,"averageIntervalDays":116.5}
+        """
+        let h = try decode(json, as: WaffledAPI.RhythmHistory.self)
+        #expect(h.total == 2)
+        #expect(h.completions.count == 2)
+        #expect(h.averageIntervalDays == 116.5)
+        #expect(h.completions[0].notes == "3-pack")
+    }
+
+    @Test("A history with one completion reports no average rather than inventing one")
+    func decodesHistoryWithoutAverage() throws {
+        let json = """
+        {"completions":[{"id":"c1","personId":null,"completedAt":"2026-05-16T09:00:00.000Z","notes":null}],
+         "total":1,"averageIntervalDays":null}
+        """
+        let h = try decode(json, as: WaffledAPI.RhythmHistory.self)
+        #expect(h.total == 1)
+        #expect(h.averageIntervalDays == nil)
+    }
+
     @Test("An attention payload decodes both kinds off the one route")
     func decodesAttention() throws {
         let json = """
