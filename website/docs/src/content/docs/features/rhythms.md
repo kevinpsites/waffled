@@ -62,14 +62,14 @@ You then choose whether Waffled can pick the time itself:
   set, because a repeat rule that disagreed with the cadence would drop the event outside
   the period it's meant to satisfy.
 
-  **Which day it lands on is picked on the web**, with the same weekday chips the
+  **You pick which day it lands on**, on every surface: weekday chips like the
   [calendar](/features/calendar/) uses; monthly rhythms get a "which day of the month"
-  choice instead (the same date · the same weekday · the last of that weekday), and
-  **Advanced (raw RRULE)** is there for imported rules and anything the pickers can't say.
-  On iPhone and iPad the weekday comes from the start date you set, monthly offers the
-  same date or the same weekday, and there is no raw-rule box — so a rule the pickers
-  can't express is one to author on the web. The rhythm itself behaves identically
-  wherever it was made.
+  choice instead (the same date · the same weekday · the last of that weekday); and
+  **Advanced** is there for imported rules and anything the pickers can't say. Leave the
+  chips alone and it follows the start date you set, which is the sane default.
+
+  One day at a time, deliberately — a rule that fired twice inside one period would claim
+  something the cadence never said, and one booking settles the period either way.
 
   The first event goes in at **6pm on the first day the rule allows, on or after the start
   date** — anchor a weekly rhythm on a Wednesday but choose Monday, and it starts the
@@ -156,8 +156,11 @@ Paused rhythms sit in a single line at the bottom that **names** them, rather th
 you'd have to open to make sense of.
 
 Every row is anchored by a **countdown** on the right — *6 days late*, *5 days*, *3 months*,
-or **Booked** in green once a scheduled period has an event. Under the name, a hairline
-shows how much of the current cycle is already spent. Rows are ordered soonest-first inside
+or **Booked · Aug 19, 6:00 PM** in green once a scheduled period has an event, so you can see
+*when* without opening the calendar. (An all-day booking gives its date and no time, because
+it hasn't got one.) A period you skipped reads **Skipped** instead — skipping exists to send
+one period quiet without inventing a calendar entry, so it never claims one. Under the name,
+a hairline shows how much of the current cycle is already spent. Rows are ordered soonest-first inside
 each group, so the top of the page is always the thing most worth your attention.
 
 You won't see the two shapes named anywhere on this page, and that's deliberate — the
@@ -165,6 +168,10 @@ difference shows up where it changes what you'd do. An I-mark-it-done rhythm rea
 Aug 19"* and offers **I did it**; a scheduled one reads *"not on the calendar yet"* and
 offers **Book a time**. Steady rows offer no button at all; everything else — backdating,
 skipping, pushing it out a week, editing and pausing — lives in the row's **⋯** menu.
+**Push it out a week** only appears while a rhythm is actually asking — on a Steady row
+there is nothing to push away from, and a control that does nothing you can feel just teaches
+you the menu is noise.
+
 **Retire** is in that menu on iPhone and iPad; on the web it sits inside the edit dialog,
 one step further from the tap that would end a rhythm for good. (On iPhone and iPad,
 editing, pausing and pushing out are on a swipe as well.)
@@ -238,6 +245,12 @@ The register shows **last done** on every one of them alongside its countdown, w
 whole point of keeping the register: *"the filter last changed March 12"* stops being a
 guess.
 
+Open one to edit it and you get the rest of the record: **Done 6 times · about every 123
+days, against every 3 months**, over its recent dates. The comparison is the useful half — a
+rhythm you set to every 3 months that really runs at five is the cadence telling you it's
+wrong, and worth changing to what actually happens. The average needs at least two
+completions, because one date isn't an interval.
+
 ### Skipping a period
 
 Sometimes a period genuinely isn't happening — you're away, the quarter got eaten. **Skip**
@@ -300,10 +313,8 @@ countdown and a verb don't fit across one phone line. For the same reason the To
 phone, and that card shows its first four rows there with a **+N more** line rather than the
 full list.
 
-One real gap is left, and it's in the **editor**: choosing which day an auto-scheduled series
-lands on — the weekday chips, the "last of that weekday" monthly option and the raw-RRULE
-escape hatch — is web-only. See [Put it on the calendar automatically](#its-on-the-calendar)
-above.
+The editor is the same on every surface, including the day pickers for an auto-scheduled
+series — see [Put it on the calendar automatically](#its-on-the-calendar) above.
 
 The events a scheduled rhythm books are ordinary calendar events, so they show up
 **everywhere** — including on your phone, and including offline — the moment they're booked.
