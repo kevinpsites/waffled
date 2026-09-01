@@ -1269,6 +1269,65 @@ describe('a cancelled instance of a self-booking series', () => {
     expect(after.satisfied).toBe(false)
     expect(after.hasSeries).toBe(true)
   })
+
+  // /attention computes its OWN copy of the hasSeries expression, separate from the list
+  // query's. Every existing assertion above reads the list, so the attention copy has
+  // never been pinned — and it is the one the Today card reads to choose between "put the
+  // series back" and "book this one". Get that wrong and the card offers to rebuild a
+  // series that is alive, which is the regression this branch already had once: it built a
+  // SECOND weekly series beside the first and doubled every future occurrence, for good.
+  //
+  // Both directions, because both are wrong in different ways.
+  it('tells the Today card whether a series is alive, on the attention feed too', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Attention series', satisfiedBy: 'scheduling', every: '1 week',
+      startsOn: '2027-05-03', autoSchedule: true, rrule: 'FREQ=WEEKLY;BYDAY=MO',
+    })
+    expect(made.statusCode).toBe(201)
+    const id = JSON.parse(made.body).rhythm.id
+
+    // Period 2027-05-03 → 05-10; the runway clamps to half a week, so it opens on the 6th.
+    const item = async () =>
+      JSON.parse((await call('GET', '/api/rhythms/attention?from=2027-05-07&to=2027-05-07', kevin)).body)
+        .items.find((i: { rhythm: { id: string } }) => i.rhythm.id === id)
+
+    const master = await withClient((c) =>
+      c.query<{ id: string; starts_at: Date }>(
+        `select id, starts_at from events where rhythm_id = $1 and rrule is not null and deleted_at is null`,
+        [id]
+      )
+    )
+    expect(master.rowCount).toBe(1)
+
+    // The series booked itself at creation, so this period is settled and nothing is asked.
+    expect(await item()).toBeUndefined()
+
+    // Cancel just THIS occurrence: the period empties, the series lives on.
+    const one = await call(
+      'DELETE',
+      `/api/events/${master.rows[0]!.id}?scope=this&occurrenceStart=${encodeURIComponent(master.rows[0]!.starts_at.toISOString())}`,
+      kevin
+    )
+    expect(one.statusCode).toBe(204)
+    const alive = await item()
+    expect(alive).toBeDefined()
+    expect(alive.kind).toBe('unscheduled')
+    expect(alive.hasSeries).toBe(true)
+
+    // Now cap it from its first occurrence: the master survives with its rrule, but there
+    // is no occurrence left to come, so what is missing IS the series.
+    const capped = await call(
+      'DELETE',
+      `/api/events/${master.rows[0]!.id}?scope=following&occurrenceStart=${encodeURIComponent(master.rows[0]!.starts_at.toISOString())}`,
+      kevin
+    )
+    expect(capped.statusCode).toBe(204)
+    const dead = await item()
+    expect(dead).toBeDefined()
+    expect(dead.hasSeries).toBe(false)
+
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
 })
 
 // The runway clamps to half the cadence, so a scheduling rhythm only starts asking in the
