@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { api, type Goal, type GoalLogEntry } from '../../lib/api'
+import { api, localToday, type Goal, type GoalLogEntry } from '../../lib/api'
 
 // Edit or remove a single logged entry from a goal's Recent activity. Amount is
 // editable for numeric goals (total/count); habits just carry a note + date. A
@@ -19,7 +19,12 @@ export function EntryModal({
   const numeric = goal.goalType === 'total' || isCount
   const [amount, setAmount] = useState<number>(entry.amount)
   const [note, setNote] = useState(entry.note ?? '')
-  const [loggedOn, setLoggedOn] = useState<string>(new Date(entry.loggedAt).toISOString().slice(0, 10))
+  // The day this entry belongs to is `dateKey` — the household's own day, the same
+  // one the day cells and the activity popover bucket by. Re-parsing `loggedAt` (a
+  // UTC instant) instead put an evening log on tomorrow's date, and since a save
+  // always sends `loggedOn`, editing just the note moved the entry off the day you
+  // were looking at. Fall back only for a server too old to send dateKey.
+  const [loggedOn, setLoggedOn] = useState<string>(entry.dateKey || new Date(entry.loggedAt).toISOString().slice(0, 10))
   // Who took part — editable when the goal has more than one member. Prefilled from the
   // people this entry currently credits.
   const showWho = goal.participants.length > 1
@@ -114,7 +119,13 @@ export function EntryModal({
           )}
 
           <div className="flabel" style={{ marginTop: 16 }}>When?</div>
-          <input className="log-note" type="date" value={loggedOn} onChange={(e) => setLoggedOn(e.target.value)} aria-label="Date this happened" />
+          {/* Capped at today, same as the log modal — you can catch a log up, not
+              schedule one in the future. Never below the day already in the field,
+              though: `loggedOn` is the HOUSEHOLD's day and the cap is the BROWSER's,
+              and a household ahead of the device has already turned the page. A cap
+              under the seeded value makes the input :invalid, and since Save is a
+              submit button, native validation would swallow the save silently. */}
+          <input className="log-note" type="date" max={loggedOn > localToday() ? loggedOn : localToday()} value={loggedOn} onChange={(e) => setLoggedOn(e.target.value || loggedOn)} aria-label="Date this happened" />
 
           <div className="flabel" style={{ marginTop: 16 }}>Note <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600, color: 'var(--ink-3)' }}>· optional</span></div>
           <input className="log-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What happened" />

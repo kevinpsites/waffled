@@ -9,6 +9,7 @@ import { ShareListModal } from './ShareListModal'
 // the same order to group the shared text the way the board reads top-to-bottom.
 import { AISLE_ORDER } from './share-list'
 import '../../styles/grocery.css'
+import { CHECK } from './CheckGlyph'
 
 // Aisles offered in the "move to section" picker. 'Other' is omitted — the board
 // treats an 'Other' category as auto-filed anyway, so "Auto (by name)" covers it.
@@ -23,11 +24,6 @@ const AISLE_EMOJI: Record<string, string> = {
   Other: '🛒',
 }
 
-const CHECK = (
-  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" strokeWidth="3">
-    <path d="M5 12l5 5 9-10" />
-  </svg>
-)
 
 // A checked item lingers in place this long (undo window) before tucking into the
 // collapsible "Completed" section, so the active list keeps itself tidy.
@@ -36,6 +32,13 @@ const COMPLETE_GRACE_MS = 2000
 const MEAL_LABEL: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' }
 const MEAL_EMOJI: Record<string, string> = { breakfast: '🍳', lunch: '🥪', dinner: '🍽️', snack: '🍎' }
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const
+
+// The weekday a planned night falls on. The date is a bare `yyyy-MM-dd`, and the
+// `T00:00:00` is what makes it a LOCAL day — without it the constructor reads it as
+// UTC midnight and the label slides to the previous weekday behind UTC.
+function dayLabel(date: string): string {
+  return new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short' })
+}
 
 // Ambient attribution under an item name: items auto-generated from the meal plan
 // read as such ("from meal plan"); hand-added items show who added them
@@ -818,7 +821,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
                 name={d.title ?? 'Meal'}
                 color={d.color}
                 dishes={d.recipes ?? []}
-                day={new Date(String(d.date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}
+                day={dayLabel(d.date)}
                 open={openMeals.has(d.mealId)}
                 onToggle={() => toggleMeal(d.mealId!)}
                 onOpenRecipe={(id) => navigate(`/meals/recipe/${id}`)}
@@ -830,7 +833,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
                 {...(d.recipeId ? { role: 'button', tabIndex: 0, onClick: () => navigate(`/meals/recipe/${d.recipeId}`) } : {})}
               >
                 <span className="gdinner-c" style={{ background: d.color }} />
-                <span className="gdinner-day">{new Date(String(d.date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                <span className="gdinner-day">{dayLabel(d.date)}</span>
                 <span className="gdinner-t">{d.title ?? '—'}</span>
                 {d.recipeId && <span className="gdinner-chev">›</span>}
                 <span className="gdinner-e" style={{ background: `${d.color}1f` }}>{d.emoji ?? MEAL_EMOJI[d.mealType] ?? '🍽️'}</span>

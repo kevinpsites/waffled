@@ -346,19 +346,25 @@ struct CookModeView: View {
                         .foregroundStyle(WF.ink3)
                         .padding(.bottom, 4)
                     ForEach(igs, id: \.self) { ig in
-                        HStack(alignment: .top, spacing: 10) {
-                            Circle().fill(WF.success.opacity(0.5))
-                                .frame(width: 6, height: 6).padding(.top, 8)
-                            Text(ig)
-                                .font(.system(size: 17, weight: .medium))
-                                .foregroundStyle(WF.ink)
-                                .lineLimit(nil)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        let key = CookSession.ingredientKey(ig, in: store.ingredients)
+                        let on = store.isTicked(key)
+                        Button { store.toggleTick(key) } label: {
+                            HStack(alignment: .top, spacing: 10) {
+                                tickBox(on: on).padding(.top, 1)
+                                Text(ig)
+                                    .font(.system(size: 17, weight: .medium))
+                                    .foregroundStyle(on ? WF.ink3 : WF.ink)
+                                    .strikethrough(on)
+                                    .lineLimit(nil)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 9)
+                            .background(WF.success.opacity(on ? 0.04 : 0.10))
+                            .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                         }
-                        .padding(.horizontal, 12).padding(.vertical, 9)
-                        .background(WF.success.opacity(0.10))
-                        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -369,14 +375,43 @@ struct CookModeView: View {
         }
     }
 
+    /// The tick box shared by the sidebar rows, the inline chips and the overview list —
+    /// the same fill-on-check mark the Lists and grocery rows use.
+    private func tickBox(on: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .strokeBorder(WF.success, lineWidth: 2)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(on ? WF.success : .clear)
+            )
+            .frame(width: 20, height: 20)
+            .overlay {
+                if on {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundStyle(.white)
+                }
+            }
+    }
+
     private func ingredientChips(_ igs: [String]) -> some View {
         ChipFlow(spacing: 8, lineSpacing: 8, alignment: .leading) {
             ForEach(igs, id: \.self) { ig in
-                Text(ig).font(.system(size: isKiosk ? 18 : 15, weight: .medium))
-                    .foregroundStyle(WF.success)
+                let key = CookSession.ingredientKey(ig, in: store.ingredients)
+                let on = store.isTicked(key)
+                Button { store.toggleTick(key) } label: {
+                    HStack(spacing: 8) {
+                        tickBox(on: on)
+                        Text(ig).font(.system(size: isKiosk ? 18 : 15, weight: .medium))
+                            .foregroundStyle(WF.success)
+                            .strikethrough(on)
+                    }
                     .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(WF.success.opacity(0.12))
+                    .background(WF.success.opacity(on ? 0.05 : 0.12))
                     .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
             }
         }
     }
@@ -637,15 +672,30 @@ struct CookModeView: View {
                     }
                     if !ingredients.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
-                            sectionLabel("INGREDIENTS")
+                            HStack {
+                                sectionLabel("INGREDIENTS")
+                                Spacer(minLength: 0)
+                                Text("\(store.tickedCount) of \(ingredients.count)")
+                                    .font(.system(size: 13, weight: .heavy)).tracking(0.6)
+                                    .foregroundStyle(WF.ink3)
+                            }
                             ForEach(ingredients) { ing in
-                                HStack(alignment: .top, spacing: 12) {
-                                    Text(amountText(ing)).font(.system(size: 15, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(WF.ink2).frame(width: 70, alignment: .trailing)
-                                    Text(ing.sub ?? ing.name).font(.system(size: 16)).foregroundStyle(WF.ink)
-                                    Spacer(minLength: 0)
+                                let on = store.isTicked(ing.id)
+                                Button { store.toggleTick(ing.id) } label: {
+                                    HStack(alignment: .top, spacing: 12) {
+                                        tickBox(on: on)
+                                        Text(amountText(ing)).font(.system(size: 15, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(on ? WF.ink3 : WF.ink2).strikethrough(on)
+                                            .frame(width: 70, alignment: .trailing)
+                                        Text(ing.sub ?? ing.name).font(.system(size: 16))
+                                            .foregroundStyle(on ? WF.ink3 : WF.ink).strikethrough(on)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .contentShape(Rectangle())
+                                    .padding(.vertical, 8)
                                 }
-                                .padding(.vertical, 8)
+                                .buttonStyle(.plain)
+                                .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
                                 if ing.id != ingredients.last?.id { Divider().background(WF.hair) }
                             }
                         }

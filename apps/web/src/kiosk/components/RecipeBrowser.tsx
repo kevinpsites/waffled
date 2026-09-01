@@ -1,7 +1,14 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { RecipeModal } from './RecipeModal'
 import { MealCard } from './MealCard'
 import { mealBuilderApi, type Meal, type Recipe } from '../../lib/api'
+
+// The full editor, opened in a modal over the picker. Lazy so picking a recipe
+// doesn't pay for the editor's weight (it's one of the heavier screens) until you
+// actually decide to write one.
+const RecipeEditorBody = lazy(() =>
+  import('../RecipeEditor').then((m) => ({ default: m.RecipeEditorBody }))
+)
 
 // Shared meal-type vocabulary + the category→gradient mapping, used by the meal
 // planner grid and the recipe browser.
@@ -88,6 +95,10 @@ export function RecipeBrowser({
   const [filter, setFilter] = useState<'all' | MealType>(browse ? 'all' : slot ?? 'dinner')
   const [q, setQ] = useState('')
   const [preview, setPreview] = useState<Recipe | null>(null)
+  // Writing a recipe from inside the picker. The slot being filled lives in the
+  // caller's onPick closure, so the new recipe is handed straight back through it —
+  // the picker never navigates, and a draft plan behind it survives untouched.
+  const [creating, setCreating] = useState(false)
   const query = q.trim().toLowerCase()
   // Free-text search across title + metadata, then the meal-type filter chip.
   const matchesQuery = (r: Recipe) =>
@@ -107,6 +118,12 @@ export function RecipeBrowser({
     <div className="meals-picker">
       <div className="picker-search">
         <input className="cal-search" placeholder="Search recipes by name, cuisine, ingredient…" value={q} onChange={(e) => setQ(e.target.value)} />
+        {/* Browsing the library? It has its own New recipe button in the topbar. */}
+        {!browse && (
+          <button type="button" className="btn btn-primary picker-new" onClick={() => setCreating(true)}>
+            ＋ New recipe
+          </button>
+        )}
       </div>
       <div className="picker-filters">
         {FILTERS.map((f) => (
@@ -202,6 +219,24 @@ export function RecipeBrowser({
           onSelect={onPick ? () => onPick(preview) : undefined}
           selectLabel={onPick ? selectLabel ?? 'Select' : undefined}
         />
+      )}
+
+      {creating && onPick && (
+        <div className="modal-overlay">
+          <div className="modal-card picker-new-card" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="modal-close" aria-label="Close" onClick={() => setCreating(false)}>×</button>
+            <div className="wf-serif picker-new-h">New recipe</div>
+            <Suspense fallback={<div className="muted" style={{ padding: 30 }}>Loading…</div>}>
+              <RecipeEditorBody
+                mode="create"
+                // Saving fills the slot with what was just written — that's the whole
+                // point of creating from here, so there's no second "now select it".
+                onSaved={(saved) => { setCreating(false); onPick(saved) }}
+                onCancel={() => setCreating(false)}
+              />
+            </Suspense>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -25,12 +25,12 @@ describe('YearRing', () => {
   const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
 
   it('draws 12 month wedge tracks', () => {
-    const { container } = render(<YearRing goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const { container } = render(<YearRing goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(container.querySelectorAll('.gdv-ring-track')).toHaveLength(12)
   })
 
   it('shows the lifetime total and target in the center disk', () => {
-    render(<YearRing goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<YearRing goal={makeGoal()} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(screen.getByText('18.3')).toBeInTheDocument() // 10 + 8.3
     expect(screen.getByText(/of 1,000/)).toBeInTheDocument()
   })

@@ -152,8 +152,11 @@ plan B when a workplace won't approve calendar OAuth access.
 ## Settings
 - **Settings → Calendars** — connect Google or Outlook, add calendar feeds, set
   each person's **write-target** calendar, and **"sync now"**.
-- **Household settings** — week start, timezone, and location (which also feeds
-  weather). Provider sync and feed polling run **server-side**, on a schedule.
+- **Household settings** — **week start**, timezone, and location (which also feeds
+  weather). Provider sync and feed polling run **server-side**, on a schedule. Set the
+  week to start on Monday and the calendar follows: the month grid leads with Monday,
+  the week view runs Mon–Sun, and the mini-month and "whose week is busy" summary are
+  cut the same way.
 
 ## Module
 None — Calendar is **core** and never gated. See [Modules](/administration/modules/)

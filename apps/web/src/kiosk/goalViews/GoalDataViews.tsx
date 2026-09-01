@@ -3,7 +3,7 @@
 // timeframe, and persists the last-selected view per goal. Sits in the goal-detail's
 // left column in place of the old flat "By person" card.
 import { useEffect, useMemo, useState } from 'react'
-import { useGoalActivity, type GoalDetail as GoalDetailT } from '../../lib/api'
+import { useGoalActivity, useHousehold, type GoalDetail as GoalDetailT } from '../../lib/api'
 import { availableViews, classifyTimeframe, computeGoalStats, defaultView, type ViewKey } from '../../lib/goalStats'
 import { getSavedView, saveView } from './persist'
 import { DayDetailPopover } from './DayDetailPopover'
@@ -42,6 +42,10 @@ const VIEW_COMPONENT: Record<ViewKey, (props: DataViewProps) => React.JSX.Elemen
 
 export function GoalDataViews({ goal }: { goal: GoalDetailT }) {
   const { activity, loading, error } = useGoalActivity(goal.id)
+  // The week/month/consistency/year views bucket by calendar week, so they follow the
+  // household's own first day rather than a fixed Sunday.
+  const { household } = useHousehold()
+  const firstDay = household?.weekStart === 'monday' ? 1 : 0
   const [view, setView] = useState<ViewKey | null>(null)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [selectedMonth, setSelectedMonth] = useState<{ year: number; month: number } | null>(null)
@@ -97,6 +101,7 @@ export function GoalDataViews({ goal }: { goal: GoalDetailT }) {
         onDayClick={setSelectedDay}
         onMonthClick={(year, month) => setSelectedMonth({ year, month })}
         headerRight={segControl}
+        firstDay={firstDay}
       />
       {selectedDay && (
         <DayDetailPopover

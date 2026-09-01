@@ -8,6 +8,7 @@ import { useTopbarFull } from './topbar-slot'
 import {
   api,
   mealBuilderApi,
+  useHousehold,
   useMealsWeek,
   useRecipes,
   localToday,
@@ -19,16 +20,23 @@ import { isEatingOut, isLeftovers, isTryNew } from './components/MealsColumn'
 import '../styles/meals.css'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+// The weekday headings, read from whichever day the household starts its week on.
+function dowFrom(firstDay: number): string[] {
+  return Array.from({ length: 7 }, (_, i) => DOW[(firstDay + i) % 7])
+}
 
 // Local YYYY-MM-DD (kiosk timezone).
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-// Sunday that starts the week containing `d`.
-function weekStart(d: Date): Date {
+// The day that starts the week containing `d`, cut on the household's own first day
+// (0 = Sunday, 1 = Monday). This isn't only cosmetic: the grocery list is keyed by the
+// household's week, so a block cut on the wrong day straddles two of them and a
+// rebuild covers only one of the two.
+function weekStart(d: Date, firstDay: number): Date {
   const s = new Date(d)
   s.setHours(0, 0, 0, 0)
-  s.setDate(s.getDate() - s.getDay())
+  s.setDate(s.getDate() - ((s.getDay() - firstDay + 7) % 7))
   return s
 }
 function addDays(d: Date, n: number): Date {
@@ -155,6 +163,11 @@ function monthStartOf(d: Date): Date {
 
 export function Meals() {
   const navigate = useNavigate()
+  // Which day the household starts its week on. Sunday until the household resolves —
+  // that's what this screen always assumed, so a Sunday household never sees a shift
+  // and a Monday one settles into place as soon as the setting arrives.
+  const { household } = useHousehold()
+  const firstDay = household?.weekStart === 'monday' ? 1 : 0
   const [view, setView] = useState<'week' | 'month'>('week')
   // One anchor date; the week view reads its week, the month view its month.
   const [anchor, setAnchor] = useState<Date>(() => new Date())
@@ -172,14 +185,16 @@ export function Meals() {
     }
   }, [])
 
-  const weekStartD = useMemo(() => weekStart(anchor), [anchor])
+  const weekStartD = useMemo(() => weekStart(anchor, firstDay), [anchor, firstDay])
   const monthStartD = useMemo(() => monthStartOf(anchor), [anchor])
-  // The month grid is a 6-week (42-day) block starting on the Sunday on/before the 1st.
+  // The month grid is a 6-week (42-day) block starting on the household's first day
+  // on/before the 1st.
   const gridStartD = useMemo(() => {
     const d = new Date(monthStartD)
-    d.setDate(1 - d.getDay())
+    d.setDate(1 - ((d.getDay() - firstDay + 7) % 7))
     return d
-  }, [monthStartD])
+  }, [monthStartD, firstDay])
+  const dowLabels = useMemo(() => dowFrom(firstDay), [firstDay])
 
   const startStr = ymd(weekStartD)
   const fetchStart = view === 'month' ? ymd(gridStartD) : startStr
@@ -459,7 +474,7 @@ export function Meals() {
 
       {view === 'month' ? (
         <div className="meals-month" onPointerDown={gridPointerDown} onClickCapture={gridClickCapture}>
-          {DOW.map((d) => (
+          {dowLabels.map((d) => (
             <div key={d} className="mm-dow">{d}</div>
           ))}
           {monthCells.map((d) => {

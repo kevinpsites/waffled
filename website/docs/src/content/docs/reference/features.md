@@ -327,7 +327,7 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | **API Keys** (per-user keys + scopes for external integrations) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; admin-gated) |
 | **Notifications** (reminders) | ❌ N/A | ✅ | ✅ | ✅ Done (mobile) |
 | **Login & security** (OIDC config, password toggle) | ✅ | 🟡 | 🟡 | ✅ Done (web); mobile shows accounts/sign-in, OIDC config is web-only |
-| Household settings (name, week start, timezone, location) | ✅ | ✅ | ✅ | ✅ Done |
+| Household settings (name, week start, timezone, location) | ✅ | ✅ | ✅ | ✅ Done — **week start** (Sunday or Monday) sets the day every household week is cut on, everywhere: the meal planner's weekly + monthly grids and the "Plan my week/month" review, the calendar's month/week grids (plus the agenda mini-month and its "whose week is busy" summary), the goal heatmaps (week/month/consistency/year), the "This week / Next week" pickers that schedule a recipe or a saved meal, and the grocery list's own weeks — which is why a mis-cut planner week used to leave one unshopped |
 | **Event style + Family color** (how the calendar is colored) | ✅ | ✅ | ✅ | ✅ Done — admin-gated (Settings → Family & People) on every surface |
 | **About** (version, editable server address + switch warning) | — | ✅ | ✅ | ✅ Done (mobile) |
 | **Lists** settings | 🚧 | 🚧 | 🚧 | 🚧 Planned ("Soon") |

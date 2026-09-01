@@ -74,13 +74,39 @@
   flex-wrap: wrap;
   gap: 9px;
 }
+/* Tick an ingredient off as it goes in. Same check-off vocabulary as the grocery
+   board (a box that fills on the person-3 green), sized for a chip you tap from
+   across the kitchen. */
 .cm-ing-chip {
+  font: inherit;
   font-size: 16px;
   font-weight: 600;
   padding: 9px 16px;
   border-radius: 999px;
   background: var(--person-3-t);
   color: var(--success);
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+}
+.cm-ing-box {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 7px;
+  border: 2px solid var(--success);
+  display: grid;
+  place-items: center;
+}
+.cm-ing-chip.on .cm-ing-box {
+  background: var(--success);
+  border-color: var(--success);
+}
+.cm-ing-chip.on {
+  opacity: 0.62;
+  text-decoration: line-through;
 }
 .cm-note {
   font-size: 17px;
@@ -142,20 +168,66 @@
   display: flex;
   flex-direction: column;
 }
+.cm-all-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+  /* the modal's × is absolutely positioned in this corner — keep the count clear of it */
+  padding-right: 34px;
+}
+.cm-all-count {
+  margin-left: auto;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .cm-all-row {
   display: flex;
+  align-items: center;
   gap: 14px;
   padding: 11px 0;
   border-bottom: 1px solid var(--hair-2);
   font-size: 15.5px;
+  /* a whole-row tick target, not a link-looking button */
+  font-family: inherit;
+  width: 100%;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
 }
 .cm-all-row:last-child {
   border-bottom: 0;
+}
+.cm-all-box {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 7px;
+  border: 2px solid var(--hair);
+  background: var(--card);
+  display: grid;
+  place-items: center;
+}
+.cm-all-row.done .cm-all-box {
+  background: var(--person-3);
+  border-color: var(--person-3);
+}
+.cm-all-row.done .cm-all-amt,
+.cm-all-row.done .cm-all-nm {
+  text-decoration: line-through;
+  color: var(--ink-3);
 }
 .cm-all-amt {
   width: 96px;
   flex: none;
   font-weight: 700;
+}
+.cm-all-nm {
+  min-width: 0;
 }
 
 /* finish screen */

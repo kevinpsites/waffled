@@ -34,10 +34,13 @@ function friendlyAiError(msg: string): string {
   return 'Couldn’t draft the month — please try again.'
 }
 
-function isoWeekKey(date: string): string {
-  // Group nights by the Sunday that starts their week (for the review headers).
+function isoWeekKey(date: string, firstDay: 'sunday' | 'monday' | null): string {
+  // Group nights by the day that starts their week, for the review headers. Only a
+  // heading — the rebuild boundaries come from weekStartsToRebuild below, which treats
+  // an unknown household very differently. Here an unknown one just reads as Sunday,
+  // the planner grid's own fallback, so the headers match the grid the user came from.
   const d = new Date(`${date}T00:00:00`)
-  d.setDate(d.getDate() - d.getDay())
+  d.setDate(d.getDate() - ((d.getDay() - (firstDay === 'monday' ? 1 : 0) + 7) % 7))
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
@@ -393,7 +396,7 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
   // Group every night by week for the review.
   const weeks: Array<{ key: string; cards: MonthCard[] }> = []
   for (const c of [...cards].sort(byDate)) {
-    const k = isoWeekKey(c.date)
+    const k = isoWeekKey(c.date, firstDayOfWeek)
     let g = weeks.find((w) => w.key === k)
     if (!g) {
       g = { key: k, cards: [] }

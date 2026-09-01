@@ -1,13 +1,14 @@
 import { useMemo, type MouseEvent } from 'react'
 import type { AgendaEvent, Countdown } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
-import { DOW, ymd, localDate } from './cal-utils'
+import { DOW, dowFrom, monthGridStart, ymd, localDate } from './cal-utils'
 import { MonthDayPanel } from './MonthDayPanel'
 
 // The visible 6-week (42-cell) grid for a month, including leading/trailing days.
-function monthGrid(year: number, month: number): Date[] {
-  const startWeekday = new Date(year, month, 1).getDay()
-  const gridStart = new Date(year, month, 1 - startWeekday)
+// `monthGridStart` is shared with Calendar's fetch window on purpose — this used to
+// hold its own copy of the formula, and the two must never disagree.
+function monthGrid(year: number, month: number, firstDay: number): Date[] {
+  const gridStart = monthGridStart(year, month, firstDay)
   return Array.from({ length: 42 }, (_, i) => {
     const d = new Date(gridStart)
     d.setDate(gridStart.getDate() + i)
@@ -27,6 +28,7 @@ export function MonthView({
   onCountdownTap,
   onCreateOnDay,
   onMore,
+  firstDay,
 }: {
   year: number
   month: number
@@ -39,9 +41,13 @@ export function MonthView({
   onCountdownTap?: (cds: Countdown[]) => void
   onCreateOnDay: (date: string) => void
   onMore: (date: string) => void
+  /// Which day starts the week (0 = Sunday, 1 = Monday) — passed from Calendar so the
+  /// grid and the fetched range are always cut the same way.
+  firstDay: number
 }) {
   const colorOf = useEventColor()
-  const cells = useMemo(() => monthGrid(year, month), [year, month])
+  const cells = useMemo(() => monthGrid(year, month, firstDay), [year, month, firstDay])
+  const dowLabels = useMemo(() => dowFrom(DOW, firstDay), [firstDay])
   const byDate = useMemo(() => {
     const map: Record<string, AgendaEvent[]> = {}
     for (const e of events) (map[localDate(e.startsAt, tz)] ??= []).push(e)
@@ -53,7 +59,7 @@ export function MonthView({
     <div className="cal-month">
     <div className="cal">
       <div className="cal-dow">
-        {DOW.map((d) => (
+        {dowLabels.map((d) => (
           <div key={d}>{d}</div>
         ))}
       </div>

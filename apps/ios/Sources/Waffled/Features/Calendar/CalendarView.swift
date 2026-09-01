@@ -47,6 +47,10 @@ struct CalendarView: View {
     }
 
     private var tz: TimeZone { sync.householdTz }
+    /// The household's first day of the week — the month grid and its headings follow
+    /// it. Sunday until the setting reaches this device (it's persisted across launches,
+    /// so that's only ever a fresh install).
+    private var firstDay: HouseholdWeekStart { sync.householdWeekStart ?? .sunday }
     /// Events filtered to the selected person — owner or a participant — or all.
     private var filtered: [SyncedEvent] {
         guard let p = filterPerson else { return sync.events }
@@ -235,7 +239,9 @@ struct CalendarView: View {
         let cells = monthCells(monthAnchor)
         VStack(spacing: 8) {
             HStack(spacing: 0) {
-                ForEach(["S", "M", "T", "W", "T", "F", "S"], id: \.self) { d in
+                // Rotated to the household's first day. Indexed by offset, not by the
+                // label: "T" and "S" each appear twice, so `id: \.self` would collide.
+                ForEach(Array(Cal.rotated(["S", "M", "T", "W", "T", "F", "S"], from: firstDay).enumerated()), id: \.offset) { _, d in
                     Text(d).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3)
                         .frame(maxWidth: .infinity)
                 }
@@ -487,14 +493,14 @@ struct CalendarView: View {
 
     struct MonthCell { let key: String; let day: Int; let inMonth: Bool }
 
-    /// 42 day-cells (6 weeks, Sunday-led) covering `anchor`'s month.
+    /// 42 day-cells (6 weeks) covering `anchor`'s month, led by the household's own
+    /// first day of the week rather than a fixed Sunday.
     private func monthCells(_ anchor: Date) -> [MonthCell] {
         let cal = Cal.gregorian(tz)
         let comps = cal.dateComponents([.year, .month], from: anchor)
         guard let first = cal.date(from: comps) else { return [] }
         let anchorMonth = cal.component(.month, from: first)
-        let leading = cal.component(.weekday, from: first) - 1   // 1=Sun → 0 offset
-        guard let start = cal.date(byAdding: .day, value: -leading, to: first) else { return [] }
+        let start = Cal.weekStart(first, tz, firstDay)
         return (0..<42).compactMap { i in
             guard let d = cal.date(byAdding: .day, value: i, to: start) else { return nil }
             return MonthCell(key: EventTime.dayKey(d, tz), day: cal.component(.day, from: d),

@@ -15,7 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Write a new recipe without leaving the meal you're planning.** Filling a night on
+  the weekly or monthly plan opens your recipe list — and if what you wanted to cook
+  isn't in it yet, that used to be a dead end: back out of the planner, go to Recipes,
+  write it, then find your way back to the same night. The picker now has a **New
+  recipe** button of its own. Write it there and it goes straight into the slot you
+  opened, with the plan behind it untouched. On the web and on iPhone/iPad.
+
 ### Changed
+
+- **Tick ingredients off as you cook them.** Cook mode listed a step's ingredients,
+  and the full list behind the **All ingredients** button, but they were only ever
+  something to read — easy to lose your place in halfway through a recipe with flour on
+  your hands. Every ingredient is now a checkbox: tap it as it goes in and it's struck
+  through. A step's ingredient and its row in the full list are the same thing, so
+  ticking either ticks both, and the list keeps a running "3 of 11" count of what you've
+  gathered. Ticks stay put as you move between steps, and on a meal with several dishes
+  each dish keeps its own. Starting a recipe fresh starts with a clean list.
 
 - **Opening the web app downloads about a third of what it used to.** Waffled handed
   your browser the entire app up front — every screen, the barcode scanner, the sync
@@ -31,6 +47,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of blanking the display.
 
 ### Fixed
+
+- **"Week starts on Monday" now actually starts your week on Monday.** The setting
+  quietly did nothing you could see: it cut the grocery list's weeks behind the scenes,
+  but every grid in the app was hard-coded to Sunday, so you'd change it and watch
+  nothing happen. Now it moves all of them — the meal planner's weekly and monthly
+  grids and the "Plan my week / Plan my month" review, the calendar's month and week
+  views (down to the agenda's mini-month and its "whose week is busy" summary), the
+  "This week / Next week" pickers you get when scheduling straight from a recipe or a
+  saved meal, and the goal heatmaps — on the web and on iPhone/iPad. That also closes a
+  quieter problem: a
+  Sunday-cut week in a Monday household spanned two of the household's grocery weeks,
+  so planning it only ever built the shopping for one of them.
+
+- **Adding a note to a goal entry no longer moves it to another day.** Tapping an
+  entry in a goal's recent activity and writing a note did save the note — but it also
+  quietly re-dated the entry, because the edit box read the day off the raw timestamp
+  in UTC instead of your household's own day. Log something in the evening and the box
+  showed tomorrow; saving pushed the entry onto tomorrow with it. The note was written
+  to an entry that had left the day you were looking at, so nothing appeared to change.
+  The edit box now shows and keeps the day the entry actually belongs to, and won't
+  let you date an entry into the future. Fixed on the web and on iPhone/iPad.
+
+- **A goal's deadline is the day you picked.** Goals showed their deadline a day early
+  for anyone living behind UTC — a goal due Sep 30 read "by Sep 29" on the goals list
+  and the goal page — and on iPhone/iPad the deadline picker opened on that same wrong
+  day, so nudging it back to the day you meant saved a day *later* than you wanted. The
+  cause sat under all of it: a deadline is a plain calendar day, but the server was
+  handing it out as a precise moment in time, which every screen then re-read in its own
+  timezone. Editing a goal on the web also left the deadline box empty for the same
+  reason; it now shows the deadline that's set. Fixed on the web and on iPhone/iPad.
+
+- **Days no longer drift by a day on servers outside UTC.** Waffled stores plain
+  calendar days — a birthday, a goal's deadline, the night a meal is planned for — but
+  it was handing them to your screens as precise moments in time, pinned to the
+  server's own timezone. Anywhere those two disagreed, the day could land on the one
+  before: the grocery list's dinner rail could name the wrong weekday, and a birthday
+  could read a day early. Birthdays were also arriving in two different forms
+  depending on which screen asked. A day is now a day everywhere it's sent.
 
 - **A kiosk's offline copy now follows the version you upgraded to.** The wall display
   keeps its own copy of the app so a dropped connection doesn't blank the screen, but it

@@ -24,6 +24,9 @@ struct KioskCalendarView: View {
     @State private var editingCountdown: WaffledAPI.Countdown?
 
     private var tz: TimeZone { sync.householdTz }
+    /// The household's first day of the week — the week columns, the month grid and
+    /// both weekday header rows follow it rather than a fixed Sunday.
+    private var firstDay: HouseholdWeekStart { sync.householdWeekStart ?? .sunday }
 
     /// The shared prebuilt day index (`SyncManager.eventsByDay`), person-filtered.
     /// With no filter chip this is the index verbatim (no copy, no scan); with one
@@ -292,7 +295,7 @@ struct KioskCalendarView: View {
         let today = Agenda.todayKey(tz)
         return VStack(spacing: 6) {
             HStack(spacing: 6) {
-                ForEach(Array(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].enumerated()), id: \.offset) { _, d in
+                ForEach(Array(Cal.rotated(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], from: firstDay).enumerated()), id: \.offset) { _, d in
                     Text(d).font(.system(size: 12, weight: .heavy)).foregroundStyle(WF.ink3).frame(maxWidth: .infinity)
                 }
             }
@@ -464,7 +467,7 @@ struct KioskCalendarView: View {
                 Button { stepMini(1) } label: { miniChevron("chevron.right") }
             }
             HStack(spacing: 0) {
-                ForEach(Array(["S", "M", "T", "W", "T", "F", "S"].enumerated()), id: \.offset) { _, d in
+                ForEach(Array(Cal.rotated(["S", "M", "T", "W", "T", "F", "S"], from: firstDay).enumerated()), id: \.offset) { _, d in
                     Text(d).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3).frame(maxWidth: .infinity)
                 }
             }
@@ -600,12 +603,11 @@ struct KioskCalendarView: View {
 
     private func dayKeyToDate(_ key: String) -> Date? { DateFmt.date(key, "yyyy-MM-dd", tz) }
 
-    /// The Sun-led week (7 day keys) containing `key`.
+    /// The 7 day keys of the week containing `key`, cut on the household's first day.
     private func weekDays(_ key: String) -> [String] {
         let cal = Cal.gregorian(tz)
         guard let d = dayKeyToDate(key) else { return [] }
-        let weekday = cal.component(.weekday, from: d) - 1   // 0=Sun
-        guard let start = cal.date(byAdding: .day, value: -weekday, to: d) else { return [] }
+        let start = Cal.weekStart(d, tz, firstDay)
         return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: start).map { EventTime.dayKey($0, tz) } }
     }
 
@@ -628,8 +630,7 @@ struct KioskCalendarView: View {
         let comps = cal.dateComponents([.year, .month], from: anchor)
         guard let first = cal.date(from: comps) else { return [] }
         let anchorMonth = cal.component(.month, from: first)
-        let leading = cal.component(.weekday, from: first) - 1
-        guard let start = cal.date(byAdding: .day, value: -leading, to: first) else { return [] }
+        let start = Cal.weekStart(first, tz, firstDay)
         return (0..<42).compactMap { i in
             guard let d = cal.date(byAdding: .day, value: i, to: start) else { return nil }
             return CalendarView.MonthCell(key: EventTime.dayKey(d, tz), day: cal.component(.day, from: d),

@@ -2334,8 +2334,14 @@ struct GoalCreateSheet: View {
         if let t = g.healthDailyTarget { healthDailyTarget = goalFmt(t) }
     }
 
+    /// A deadline is a bare calendar day, and the DatePicker that shows it renders in
+    /// the DEVICE's zone — so it is read in that zone too. Read as UTC it became an
+    /// instant, and behind UTC that instant is the previous day: a goal due Sep 30
+    /// opened the sheet showing Sep 29, and "correcting" it back to Sep 30 saved Oct 1.
+    /// Optional-returning on purpose: `deadline` is optional on the wire, and a
+    /// malformed one should leave the field unset rather than blow up.
     private static func parseDay(_ iso: String) -> Date? {
-        DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc)
+        DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", .current)
     }
 
     private func submit() {
@@ -2401,7 +2407,8 @@ struct GoalCreateSheet: View {
         dismiss()
     }
 
-    private func isoDay(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", DateFmt.utc) }
+    /// Formatted in the same zone the picker showed the day in — see `parseDay`.
+    private func isoDay(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", .current) }
 }
 
 // MARK: - Goal detail
@@ -2441,10 +2448,19 @@ struct GoalEntryEditSheet: View {
         _amountText = State(initialValue: goalFmt(entry.amount))
         _who = State(initialValue: Set(entry.participants.compactMap { $0.personId }))
         _note = State(initialValue: entry.note ?? "")
-        _loggedOn = State(initialValue: GoalEntryEditSheet.parseDay(entry.loggedAt))
-    }
-    private static func parseDay(_ iso: String) -> Date {
-        DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc) ?? Date()
+        // The day this entry belongs to is `dateKey` — the household's own day, the one
+        // the day cells and the activity views bucket by. Re-parsing `loggedAt` (a UTC
+        // instant) put an evening log on tomorrow's date, and since a save always sends
+        // `loggedOn`, editing just the note moved the entry off the day you were looking
+        // at. No `loggedAt` fallback here on purpose: `dateKey` is non-optional on a
+        // strictly-decoded DTO, so a server too old to send it fails to decode the whole
+        // payload long before this — a fallback would only ever be dead code.
+        //
+        // Parsed in the DEVICE's calendar, via the same `GoalDateKey` the heatmaps use,
+        // because that is the zone the DatePicker below renders in. Reading the key as a
+        // UTC instant made the picker show the day BEFORE for every household behind UTC
+        // — the same off-by-a-day this fix is about, just at the other end.
+        _loggedOn = State(initialValue: GoalDateKey.parse(String(entry.dateKey.prefix(10))))
     }
 
     var body: some View {
@@ -2530,7 +2546,9 @@ struct GoalEntryEditSheet: View {
                         onSave(numeric ? logAmount : nil,
                                showWho ? Array(who) : nil,
                                note.trimmingCharacters(in: .whitespacesAndNewlines),
-                               DateFmt.string(loggedOn, "yyyy-MM-dd", DateFmt.utc))
+                               // Formatted in the same zone the picker showed it in, or
+                               // the day the user picked is sent back off by one.
+                               GoalDateKey.toKey(loggedOn))
                         dismiss()
                     }.fontWeight(.semibold)
                     // A cleared amount is 0 — block saving it rather than writing a 0 entry.
@@ -2988,8 +3006,10 @@ struct GoalDetailView: View {
     private func fmtDate(_ iso: String, _ fmt: String) -> String {
         let date = Self.isoFracDF.date(from: iso) ?? Self.isoDF.date(from: iso)
         guard let date else {
-            // Fall back to a plain yyyy-MM-dd date string.
-            guard let parsed = DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc) else { return "" }
+            // Fall back to a plain yyyy-MM-dd date string. Read in the same zone it is
+            // formatted in below — parsing a bare day as UTC and then rendering it
+            // locally is how a day string comes out as the day before behind UTC.
+            guard let parsed = DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", .current) else { return "" }
             return DateFmt.string(parsed, fmt, .current)
         }
         return DateFmt.string(date, fmt, .current)

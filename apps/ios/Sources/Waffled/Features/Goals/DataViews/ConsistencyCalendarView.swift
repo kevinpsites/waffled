@@ -13,7 +13,7 @@ struct ConsistencyCalendarView: View {
     private var year: Int { GoalDateKey.calendar.component(.year, from: todayDate) }
     private var month: Int { GoalDateKey.calendar.component(.month, from: todayDate) - 1 }
     private var daysInMonth: Int { GoalDateKey.calendar.range(of: .day, in: .month, for: todayDate)!.count }
-    private var lead: Int { GoalDateKey.calendar.component(.weekday, from: GoalDateKey.calendar.date(from: DateComponents(year: year, month: month + 1, day: 1))!) - 1 }
+    private var lead: Int { GoalDateKey.monthLeadCells(GoalDateKey.calendar.date(from: DateComponents(year: year, month: month + 1, day: 1))!, ctx.firstDay) }
     private var dayOfMonth: Int { GoalDateKey.calendar.component(.day, from: todayDate) }
 
     private struct DayInfo { let day: Int; let dateKey: String; let future: Bool; let hit: Bool }

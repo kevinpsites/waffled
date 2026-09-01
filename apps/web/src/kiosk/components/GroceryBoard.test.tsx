@@ -392,6 +392,19 @@ describe('GroceryBoard meal plates (week rail)', () => {
 
   // Regression guard: a single-recipe slot keeps its drill-in caret and gains no
   // expand affordance.
+  it('labels a planned night with the weekday that day actually is', async () => {
+    // The day label is derived from the entry's date, which the API sends as a bare
+    // `yyyy-MM-dd`. It has to be read as a local day: parsed as an instant instead, the
+    // label slides to the previous weekday for anyone behind UTC. 2026-06-08 is a Monday.
+    mockBoardWithPlate()
+    renderBoard()
+    await screen.findByText('BBQ sauce')
+
+    const rail = railCard()
+    const pasta = within(rail).getByText('Pasta').closest('.gdinner') as HTMLElement
+    expect(pasta.querySelector('.gdinner-day')?.textContent).toBe('Mon')
+  })
+
   it('leaves a plain single-recipe slot un-expandable', async () => {
     mockBoardWithPlate()
     renderBoard()

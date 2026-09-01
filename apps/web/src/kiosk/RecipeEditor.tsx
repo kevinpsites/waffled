@@ -5,7 +5,7 @@ import { ChipEditor } from './components/ChipEditor'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { RECIPE_TEMPLATE, RECIPE_EXAMPLE } from './components/recipe-template'
 import { PhotoImportModal, DescribeImportModal } from './components/RecipeImportModals'
-import { mealsApi, uploadImage, useRecipe, type IngredientInput, type RecipeMetadataSuggestion, type RecipeWriteInput, type StepInput } from '../lib/api'
+import { mealsApi, uploadImage, useRecipe, type IngredientInput, type RecipeDetail, type RecipeMetadataSuggestion, type RecipeWriteInput, type StepInput } from '../lib/api'
 import { fmtAmt, parseAmt } from '../lib/amount'
 import { ApiSendError } from '../lib/api/client'
 import '../styles/recipe.css'
@@ -107,10 +107,57 @@ function stepFromStrings(instruction: string, strings: string[], ings: EditIng[]
   return { uid: newUid(), instruction, picks, extra, timerSeconds }
 }
 
+// The editor as its own screen: it owns the topbar and moves the browser around.
+// Everything below it is routing-free so the same editor can be opened in a modal
+// (the meal-plan recipe picker does exactly that) — see RecipeEditorBody.
 export function RecipeEditor() {
   const { id } = useParams()
   const isEdit = !!id
   const navigate = useNavigate()
+
+  useTopbarFull(
+    () => (
+      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
+        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(-1)}>‹ Back</button>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600 }}>{isEdit ? 'Edit recipe' : 'New recipe'}</div>
+      </div>
+    ),
+    [navigate, isEdit]
+  )
+
+  return (
+    <RecipeEditorBody
+      // The mode is explicit rather than inferred from the route param: embedded in a
+      // host route that carries its own `:id`, a `useParams()` reading would silently
+      // turn "new recipe" into an edit of whatever that id happens to be.
+      mode={isEdit ? 'edit' : 'create'}
+      recipeId={id ?? null}
+      // replace: true so the editor page doesn't linger in history — otherwise
+      // "‹ Recipes" from the saved recipe would walk back INTO the editor.
+      onSaved={(saved) => navigate(`/meals/recipe/${saved.id}`, { replace: true })}
+      onDeleted={() => navigate('/meals/recipes')}
+      onCancel={() => navigate(-1)}
+    />
+  )
+}
+
+// The editor body — no router, no topbar. Anything that leaves the editor is a
+// callback, so a host can put this in a modal and stay where it is.
+export function RecipeEditorBody({
+  mode,
+  recipeId = null,
+  onSaved,
+  onDeleted,
+  onCancel,
+}: {
+  mode: 'create' | 'edit'
+  recipeId?: string | null
+  onSaved: (recipe: RecipeDetail) => void
+  onDeleted?: () => void
+  onCancel: () => void
+}) {
+  const isEdit = mode === 'edit'
+  const id = recipeId
   const { recipe, ingredients, steps, loading } = useRecipe(isEdit ? id! : null)
 
   const [title, setTitle] = useState('')
@@ -169,16 +216,6 @@ export function RecipeEditor() {
   const stepListRef = useRef<HTMLDivElement>(null)
   const focusIngRef = useRef(false)
   const focusStepRef = useRef(false)
-
-  useTopbarFull(
-    () => (
-      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
-        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(-1)}>‹ Back</button>
-        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600 }}>{isEdit ? 'Edit recipe' : 'New recipe'}</div>
-      </div>
-    ),
-    [navigate, isEdit]
-  )
 
   // New recipe only: ask which AI import paths this household can use, to show the
   // photo/describe buttons. Silent on failure (module off, offline) — just no buttons.
@@ -320,8 +357,6 @@ export function RecipeEditor() {
     setSaveErr(null)
     try {
       const payload = buildPayload()
-      // replace: true so the editor page doesn't linger in history — otherwise
-      // "‹ Recipes" from the saved recipe would walk back INTO the editor.
       if (isEdit) {
         // Only send userNotes when this editor actually changed it. The API writes the
         // column whenever it gets a string, so an unconditional send would clobber a
@@ -329,11 +364,9 @@ export function RecipeEditor() {
         // edits it too. Clearing still works: '' differs from the loaded note, and ''
         // (not null) is what the API takes as "empty this column".
         const notesPatch = userNotes !== (recipe?.userNotes ?? '') ? { userNotes } : {}
-        await mealsApi.updateRecipe(id!, { ...payload, ...notesPatch })
-        navigate(`/meals/recipe/${id}`, { replace: true })
+        onSaved(await mealsApi.updateRecipe(id!, { ...payload, ...notesPatch }))
       } else {
-        const created = await mealsApi.createRecipe(payload)
-        navigate(`/meals/recipe/${created.id}`, { replace: true })
+        onSaved(await mealsApi.createRecipe(payload))
       }
     } catch (e) {
       // Say so — a silently re-enabled button looked exactly like a successful save,
@@ -348,7 +381,7 @@ export function RecipeEditor() {
     setSaveErr(null)
     try {
       await mealsApi.deleteRecipe(id!)
-      navigate('/meals/recipes')
+      onDeleted?.()
     } catch (e) {
       // The confirm dialog closes either way, so a delete that failed looked exactly
       // like one that worked. Close it and say what happened, where it can be seen.
@@ -770,7 +803,7 @@ export function RecipeEditor() {
       <div className="re-actions">
         {isEdit && <button type="button" className="pill re-delete-btn" onClick={() => setConfirmDelete(true)}>🗑 Delete recipe</button>}
         <div className="re-actions-right">
-          <button type="button" className="pill" onClick={() => navigate(-1)}>Cancel</button>
+          <button type="button" className="pill" onClick={onCancel}>Cancel</button>
           <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={!title.trim() || saving} onClick={save}>
             {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create recipe'}
           </button>

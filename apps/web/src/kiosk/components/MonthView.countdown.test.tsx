@@ -10,6 +10,7 @@ const cd: Countdown = {
 function renderMonth(onCountdownTap: (cds: Countdown[]) => void, onSelectDay: (d: string) => void) {
   return render(
     <MonthView
+      firstDay={0}
       year={2026}
       month={6}
       events={[]}
