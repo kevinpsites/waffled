@@ -1,6 +1,6 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { EntryModal } from './components/EntryModal'
-import { api } from '../lib/api'
+import { EntryModal } from './EntryModal'
+import { api } from '../../lib/api'
 
 // An entry that counted itself — a checklist tick, a confirmed calendar event, an Apple
 // Health sync — comes back with `editable: false`: the server keeps its amount, day and

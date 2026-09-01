@@ -265,11 +265,15 @@ export function GoalDetail() {
           <div className="card detail-card">
             <div className="card-h" style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
               <span>Recent activity</span>
-              {canEdit && !isChecklist && goal.recent.length > 0 && <span className="tiny muted" style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>tap to edit</span>}
+              {canEdit && goal.recent.length > 0 && <span className="tiny muted" style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>tap to edit</span>}
             </div>
             {goal.recent.length === 0 && <div className="tiny muted" style={{ fontWeight: 600, padding: '8px 0' }}>No activity yet — log some progress.</div>}
             {goal.recent.map((r: GoalLogEntry) => {
-              const editable = canEdit && !isChecklist
+              // Every row opens the sheet, checklist ticks included — an entry the server
+              // owns still takes a note, and the sheet locks the fields it won't accept.
+              // (iOS has always opened it for those; web used to refuse the tap outright,
+              // back when every edit to such an entry was refused anyway.)
+              const editable = canEdit
               return (
               <div
                 key={r.id}
