@@ -15,6 +15,10 @@ struct CookDish: Identifiable, Equatable {
     let ingredients: [WaffledAPI.RecipeIngredientDTO]
     /// Where this dish is in its own method — kept while another dish is on screen.
     var index: Int = 0
+    /// Which of this dish's ingredients have gone in. Per dish for the same reason
+    /// `index` is: bringing the side forward must not tick anything off the main.
+    /// Session-only — nothing about a tick is written to the server.
+    var ticked: Set<String> = []
 
     /// Clamp a step to one this dish actually has.
     func clamp(_ i: Int) -> Int { steps.isEmpty ? 0 : min(max(0, i), steps.count - 1) }
@@ -74,6 +78,53 @@ struct CookSession: Equatable {
     var index: Int {
         get { activeDish?.index ?? 0 }
         set { if let i = activeSlot { dishes[i].index = dishes[i].clamp(newValue) } }
+    }
+
+    // MARK: ticking ingredients off
+
+    /// Has this ingredient gone in? Reads the dish on screen, like `index`.
+    func isTicked(_ key: String) -> Bool { activeDish?.ticked.contains(key) ?? false }
+
+    /// Tick an ingredient off, or put it back.
+    mutating func toggleTick(_ key: String) {
+        guard let i = activeSlot else { return }
+        if dishes[i].ticked.remove(key) == nil { dishes[i].ticked.insert(key) }
+    }
+
+    /// How many of the dish's OWN listed ingredients are ticked. A tick on something a
+    /// step named but the list never held doesn't count towards the list.
+    var tickedCount: Int { ingredients.filter { isTicked($0.id) }.count }
+
+    /// A step names its ingredients as free text ("4 cloves garlic"); the recipe's list
+    /// holds them as rows with ids. Tie the two together by the longest ingredient name
+    /// the text actually contains — the same longest-name-wins rule the recipe editor
+    /// uses when it parses a pasted recipe. Text matching no row ("a pinch of salt")
+    /// keys off itself, so it can still be ticked, just not tied to a row.
+    /// Mirrors `ingredientKey` in the web app's CookMode.tsx — keep the two in step.
+    static func ingredientKey(_ chip: String, in ingredients: [WaffledAPI.RecipeIngredientDTO]) -> String {
+        let text = chip.trimmingCharacters(in: .whitespaces).lowercased()
+        let match = ingredients
+            .map { (ing: $0, name: $0.name.trimmingCharacters(in: .whitespaces).lowercased()) }
+            .filter { !$0.name.isEmpty && namesWordIn(text, $0.name) }
+            .max { $0.name.count < $1.name.count }
+        return match?.ing.id ?? "text:\(text)"
+    }
+
+    /// Does `name` appear in `text` starting where a word starts? Plain containment was
+    /// too eager: it matched a name buried inside a longer word — "oil" inside "boiling",
+    /// "ice" inside "rice" — so a chip struck an ingredient the step never named. The END
+    /// is deliberately left unchecked, which is what keeps a plural matching its singular
+    /// ("onion" in "2 onions"). Both sides are already lowercased.
+    /// Mirrored by `nameStartsAWord` in the web app's CookMode.tsx.
+    static func namesWordIn(_ text: String, _ name: String) -> Bool {
+        var from = text.startIndex
+        while let r = text.range(of: name, range: from..<text.endIndex) {
+            if r.lowerBound == text.startIndex { return true }
+            let prev = text[text.index(before: r.lowerBound)]
+            if !prev.isLetter && !prev.isNumber { return true }
+            from = text.index(after: r.lowerBound)
+        }
+        return false
     }
 
     func contains(_ dishId: String) -> Bool { dishes.contains { $0.id == dishId } }

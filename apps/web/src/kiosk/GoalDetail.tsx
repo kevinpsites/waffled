@@ -5,6 +5,7 @@ import { EntryModal } from './components/EntryModal'
 import { EventModal } from './components/EventModal'
 import { ReviewList } from './components/GoalRecap'
 import { useGoalDetail, useHousehold, can, api, fmtGoalNum, type GoalMilestone, type GoalLogEntry } from '../lib/api'
+import { parseGoalDate } from '../lib/goalStats'
 import { useTopbarFull } from './topbar-slot'
 import { CATEGORIES } from './categories'
 import { GoalDataViews } from './goalViews/GoalDataViews'
@@ -27,7 +28,10 @@ function fmtDay(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { weekday: 'short' })
 }
 function fmtMonthDay(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  // Takes both kinds of goal date: `createdAt` (an instant) and `deadline` (a bare
+  // day). `parseGoalDate` tells them apart so the day one isn't read as UTC midnight
+  // and shown a day early.
+  return parseGoalDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 function Ring({ value, children }: { value: number; children: ReactNode }) {

@@ -18,16 +18,12 @@ import {
 } from '../lib/api'
 import { useTopbarRight } from './topbar-slot'
 import '../styles/lists.css'
+import { CHECK } from './components/CheckGlyph'
 
 // "Waffled suggests" chips are static in the handoff (no suggestion engine yet) —
 // they add their label to the list when tapped. Called out in the summary.
 const SUGGESTIONS = ['Bug spray', 'Phone chargers', 'Snacks for the drive', 'Trash bags']
 
-const CHECK = (
-  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" strokeWidth="3">
-    <path d="M5 12l5 5 9-10" />
-  </svg>
-)
 
 // Pluralized summary line under the list name: "12 items · 2 done". The headline
 // count is the active (unchecked) items only — completed items don't pad the total.

@@ -10,7 +10,7 @@ import { AgendaView } from './components/AgendaView'
 import { PeopleView } from './components/PeopleView'
 import { useTopbarRight } from './topbar-slot'
 import { useEventsRange, useHousehold, useCountdowns, usePersons, type AgendaEvent, type Countdown } from '../lib/api'
-import { MONTHS, MONTHS_SHORT, DOW_FULL, ymd, addDays, startOfWeek, eventDetailPath } from './components/cal-utils'
+import { MONTHS, MONTHS_SHORT, DOW_FULL, ymd, addDays, startOfWeek, monthGridStart, eventDetailPath } from './components/cal-utils'
 
 type View = 'month' | 'week' | 'day' | 'people' | 'agenda'
 
@@ -33,9 +33,9 @@ function defaultDayForMonth(d: Date): string {
 }
 
 // The [from,to] date window to fetch for a given view/anchor.
-function rangeFor(view: View, anchor: Date): { from: string; to: string } {
+function rangeFor(view: View, anchor: Date, firstDay: number): { from: string; to: string } {
   if (view === 'week') {
-    const ws = startOfWeek(anchor)
+    const ws = startOfWeek(anchor, firstDay)
     return { from: ymd(ws), to: ymd(addDays(ws, 6)) }
   }
   // 'people' is the same single day as 'day', just split into per-person columns.
@@ -47,18 +47,19 @@ function rangeFor(view: View, anchor: Date): { from: string; to: string } {
     const start = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     return { from: ymd(start), to: ymd(addDays(start, 44)) }
   }
-  // month: the full 6-week grid, including spill days
-  const startWeekday = new Date(anchor.getFullYear(), anchor.getMonth(), 1).getDay()
-  const gridStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1 - startWeekday)
+  // month: the full 6-week grid, including spill days. Uses the SAME helper as
+  // MonthView's grid — these were separate copies of the formula, and a grid cut one
+  // day off from its fetch window loses the events on its last row.
+  const gridStart = monthGridStart(anchor.getFullYear(), anchor.getMonth(), firstDay)
   return { from: ymd(gridStart), to: ymd(addDays(gridStart, 41)) }
 }
 
 // The label between the nav arrows for the current view.
-function periodLabel(view: View, anchor: Date): string {
+function periodLabel(view: View, anchor: Date, firstDay: number): string {
   if (view === 'month') return `${MONTHS[anchor.getMonth()]} ${anchor.getFullYear()}`
   if (view === 'day' || view === 'people')
     return `${DOW_FULL[anchor.getDay()]}, ${MONTHS[anchor.getMonth()]} ${anchor.getDate()}`
-  const ws = startOfWeek(anchor)
+  const ws = startOfWeek(anchor, firstDay)
   const we = addDays(ws, 6)
   const start = `${MONTHS_SHORT[ws.getMonth()]} ${ws.getDate()}`
   const end = ws.getMonth() === we.getMonth() ? `${we.getDate()}` : `${MONTHS_SHORT[we.getMonth()]} ${we.getDate()}`
@@ -92,11 +93,16 @@ export function Calendar() {
     lastCalState.anchorTime = anchor.getTime()
   }, [view, anchor])
 
-  const { from, to } = useMemo(() => rangeFor(view, anchor), [view, anchor])
+  // Read before the range memo below: the fetch window is cut on this day, so it has
+  // to be known when the window is computed. Sunday until the household resolves —
+  // the screen's long-standing assumption, so a sunday household never shifts.
+  const { household } = useHousehold()
+  const firstDay = household?.weekStart === 'monday' ? 1 : 0
+  const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+
+  const { from, to } = useMemo(() => rangeFor(view, anchor, firstDay), [view, anchor, firstDay])
   const { events, refetch } = useEventsRange(from, to)
 
-  const { household } = useHousehold()
-  const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   // The roster drives the People view's columns (one per person, in roster order).
   const { persons, loading: personsLoading } = usePersons()
 
@@ -165,7 +171,7 @@ export function Calendar() {
               <Icon name="cl" />
             </button>
             <button type="button" className="pill cal-period" onClick={goToday}>
-              {periodLabel(view, anchor)}
+              {periodLabel(view, anchor, firstDay)}
             </button>
             <button type="button" className="icon-btn" aria-label={`Next ${navLabel}`} onClick={() => shift(1)}>
               <Icon name="cr" />
@@ -174,7 +180,12 @@ export function Calendar() {
         )}
       </div>
     ),
-    [view, anchor.getTime()]
+    // `firstDay` is in here because this node is FROZEN until a dep changes, and
+    // `useHousehold` has no cache: it is 0 on every first mount, and the calendar
+    // mounts straight into week view whenever you return to it or follow a
+    // `?view=week` link. Leave it out and the pill keeps naming the Sunday-cut week
+    // while the heading right below it names the Monday-cut one.
+    [view, anchor.getTime(), firstDay]
   )
 
   // Is the anchor inside the period the user is actually living in? Drives the
@@ -183,8 +194,8 @@ export function Calendar() {
     const now = new Date()
     if (view === 'month') return anchor.getFullYear() === now.getFullYear() && anchor.getMonth() === now.getMonth()
     if (view === 'day' || view === 'people') return ymd(anchor) === ymd(now)
-    return ymd(startOfWeek(anchor)) === ymd(startOfWeek(now))
-  }, [view, anchor])
+    return ymd(startOfWeek(anchor, firstDay)) === ymd(startOfWeek(now, firstDay))
+  }, [view, anchor, firstDay])
 
   return (
     <div className="cal-screen">
@@ -194,7 +205,7 @@ export function Calendar() {
       {view !== 'agenda' && (
         <div className="cal-period-head">
           <h2 className="wf-serif cal-period-title" data-testid="cal-period-heading">
-            {periodLabel(view, anchor)}
+            {periodLabel(view, anchor, firstDay)}
           </h2>
           {!isCurrentPeriod && (
             <button type="button" className="pill cal-period-back" onClick={goToday}>
@@ -207,6 +218,7 @@ export function Calendar() {
         <MonthView
           year={anchor.getFullYear()}
           month={anchor.getMonth()}
+          firstDay={firstDay}
           events={events}
           tz={tz}
           countdownsByDate={countdownsByDate}
@@ -224,7 +236,7 @@ export function Calendar() {
       )}
       {view === 'week' && (
         <WeekView
-          weekStart={startOfWeek(anchor)}
+          weekStart={startOfWeek(anchor, firstDay)}
           events={events}
           tz={tz}
           countdownsByDate={countdownsByDate}

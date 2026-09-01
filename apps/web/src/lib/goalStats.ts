@@ -32,6 +32,15 @@ export function parseLocalDateKey(key: string): Date {
   return new Date(y, m - 1, d)
 }
 
+// A goal carries two kinds of date: `deadline` is a bare calendar day, `createdAt` is
+// a real instant. `new Date('2026-09-30')` reads a bare day as UTC *midnight*, which
+// then renders as the day BEFORE anywhere behind UTC — a Sep 30 deadline read "by
+// Sep 29" across the goals screens. Pin a bare day to local midnight; leave a real
+// timestamp alone, since it already carries its own zone.
+export function parseGoalDate(iso: string): Date {
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? parseLocalDateKey(iso) : new Date(iso)
+}
+
 // Adds n calendar days (n may be negative) by nudging the Date's day field and
 // letting the Date constructor normalize month/year rollover — never `+n*86400000`,
 // which drifts across a DST transition.
@@ -41,10 +50,17 @@ export function addDaysKey(key: string, n: number): string {
   return toLocalDateKey(d)
 }
 
-// The Sunday that starts the week containing `key` (local). Anchors the week
-// heatmap to a fixed Sun–Sat calendar week instead of a rolling 7-day window.
-export function startOfWeekKey(key: string): string {
-  return addDaysKey(key, -parseLocalDateKey(key).getDay())
+// The day that starts the week containing `key` (local), cut on the household's own
+// first day (0 = Sunday, 1 = Monday). Anchors the week heatmap to a fixed calendar
+// week rather than a rolling 7-day window. Mirrored by `GoalDateKey.startOfWeek` on
+// iOS — keep the two in step.
+export function startOfWeekKey(key: string, firstDay: number): string {
+  return addDaysKey(key, -((parseLocalDateKey(key).getDay() - firstDay + 7) % 7))
+}
+
+// Leading blank cells before the 1st in a month grid cut on `firstDay`.
+export function monthLeadCells(year: number, month: number, firstDay: number): number {
+  return (new Date(year, month, 1).getDay() - firstDay + 7) % 7
 }
 
 // Whole calendar days between two keys (a - b). Safe across DST because both sides

@@ -32,7 +32,7 @@ struct WeekHeatmapView: View {
     private var today: String { ctx.stats.today }
     // Anchor to the fixed calendar week (Sun–Sat) containing today (± weekOffset
     // weeks), NOT a rolling 7-day window ending today.
-    private var weekStart: String { GoalDateKey.startOfWeek(GoalDateKey.addDays(today, weekOffset * 7)) }
+    private var weekStart: String { GoalDateKey.startOfWeek(GoalDateKey.addDays(today, weekOffset * 7), ctx.firstDay) }
     private var weekEnd: String { GoalDateKey.addDays(weekStart, 6) }
     private var weekKeys: [String] { (0..<7).map { GoalDateKey.addDays(weekStart, $0) } }
     private var canGoForward: Bool { weekOffset < 0 }

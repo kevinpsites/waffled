@@ -131,6 +131,17 @@ describe('account API', () => {
     expect(after.colorHex).toBe('#ff0088')
   })
 
+  it('gives a birthday back as the day it is, not an instant', async () => {
+    // `birthday` is a `date` column — a bare day. Some endpoints cast it and some read
+    // it straight, so the same field went out in two different shapes depending on who
+    // you asked; read as an instant it also drifts by the API server's own timezone.
+    const set = await call('PUT', '/api/account/profile', admin, { name: 'Kevin S', birthday: '1986-03-14' })
+    expect(set.statusCode).toBe(200)
+
+    const after = JSON.parse((await call('GET', '/api/account', admin)).body)
+    expect(after.birthday).toBe('1986-03-14')
+  })
+
   it('PUT /api/account/profile rejects a colorHex that is not a #RRGGBB hex (400)', async () => {
     for (const colorHex of ['hotpink', '#ff08', 'ff0088']) {
       const res = await call('PUT', '/api/account/profile', admin, { colorHex })

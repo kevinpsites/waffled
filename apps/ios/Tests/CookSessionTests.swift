@@ -385,3 +385,102 @@ struct CookSessionStoreTests {
         #expect(store.isPlate)
     }
 }
+
+// MARK: - ticking ingredients off
+
+// Cooking is a checklist, so the ingredients are one. A step names its ingredients as
+// free text ("4 cloves garlic") while the recipe's list holds rows with ids, so the two
+// have to resolve to the same tick — and on a plate a tick belongs to its dish, exactly
+// like the step position does.
+@Suite("Cook mode — ticking ingredients off")
+struct CookIngredientTickTests {
+    private func garlicDish(_ id: String = "main") -> CookDish {
+        CookDish(id: id, title: "Ragu", role: nil,
+                 steps: [step(1, "Sweat the garlic"), step(2, "Add the wine")],
+                 ingredients: [ingredient("garlic"), ingredient("onion")])
+    }
+
+    @Test("a tick goes on and comes back off")
+    func ticksToggle() {
+        var s = soloSession(garlicDish())
+        #expect(s.isTicked("ing-garlic") == false)
+        s.toggleTick("ing-garlic")
+        #expect(s.isTicked("ing-garlic"))
+        s.toggleTick("ing-garlic")
+        #expect(s.isTicked("ing-garlic") == false)
+    }
+
+    @Test("a step's free-text ingredient resolves to the recipe's own row")
+    func chipResolvesToRow() {
+        let ings = [ingredient("garlic"), ingredient("onion")]
+        #expect(CookSession.ingredientKey("4 cloves garlic", in: ings) == "ing-garlic")
+        // Longest name wins, so a row whose name is contained in another's can't steal
+        // the tick.
+        let both = [ingredient("olive oil"), ingredient("oil")]
+        #expect(CookSession.ingredientKey("3 tbsp olive oil", in: both) == "ing-olive oil")
+    }
+
+    @Test("an ingredient the recipe never listed is still tickable on its own")
+    func unlistedChipKeysOffItsText() {
+        let ings = [ingredient("garlic")]
+        let key = CookSession.ingredientKey("a pinch of salt", in: ings)
+        #expect(key != "ing-garlic")
+
+        var s = soloSession(garlicDish())
+        s.toggleTick(key)
+        #expect(s.isTicked(key))
+        // ...and it ticked nothing on the real list.
+        #expect(s.isTicked("ing-garlic") == false)
+    }
+
+    @Test("each dish keeps its own ticks across a switch")
+    func ticksArePerDish() {
+        var s = plateSession([garlicDish("main"), dish("side", "Potato Salad")])
+        s.toggleTick("ing-garlic")
+
+        s.activate("side")
+        #expect(s.isTicked("ing-garlic") == false)
+        s.toggleTick("ing-Potato Salad")
+        #expect(s.isTicked("ing-Potato Salad"))
+
+        // Back to the main: its own tick is untouched.
+        s.activate("main")
+        #expect(s.isTicked("ing-garlic"))
+        #expect(s.isTicked("ing-Potato Salad") == false)
+    }
+
+    @Test("how many of this dish's ingredients are gathered")
+    func ticksCount() {
+        var s = soloSession(garlicDish())
+        #expect(s.tickedCount == 0)
+        s.toggleTick("ing-garlic")
+        // A tick on something the list doesn't hold doesn't inflate the count.
+        s.toggleTick(CookSession.ingredientKey("a pinch of salt", in: s.ingredients))
+        #expect(s.tickedCount == 1)
+        #expect(s.ingredients.count == 2)
+    }
+
+    // A chip is free text and the list holds rows, so the two are tied together by the
+    // ingredient name the chip contains. Plain containment is too eager: it matches a
+    // name buried inside a longer word — "oil" in "boiling", "ice" in "rice" — so a
+    // chip struck an ingredient the step never named. The name has to start where a
+    // word starts; the END is left unchecked, which is what keeps plurals matching.
+    // Mirrors `ingredientKey` in the web app's CookMode.tsx — keep the two in step.
+    @Test("an ingredient name has to start where a word starts")
+    func ingredientKeyStartsAWord() {
+        let rows = [ingredient("oil"), ingredient("ice"), ingredient("onion"),
+                    ingredient("olive oil"), ingredient("egg")]
+
+        // Buried inside a longer word — matches nothing, so it keys off its own text.
+        #expect(CookSession.ingredientKey("2 cups boiling water", in: rows) == "text:2 cups boiling water")
+        #expect(CookSession.ingredientKey("1 cup rice", in: rows) == "text:1 cup rice")
+
+        // A plural still finds its singular.
+        #expect(CookSession.ingredientKey("2 large onions", in: rows) == "ing-onion")
+        #expect(CookSession.ingredientKey("3 eggs, beaten", in: rows) == "ing-egg")
+
+        // The longest matching name still wins, and a name may start the chip.
+        #expect(CookSession.ingredientKey("2 tbsp olive oil", in: rows) == "ing-olive oil")
+        #expect(CookSession.ingredientKey("oil for frying", in: rows) == "ing-oil")
+    }
+}

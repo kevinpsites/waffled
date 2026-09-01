@@ -2,7 +2,7 @@
 // any date — with prev/next week navigation so a meal can be planned weeks
 // ahead (decision 7). Confirm stays disabled until a day is picked.
 import { useState } from 'react'
-import { mealBuilderApi, type Meal } from '../../lib/api'
+import { mealBuilderApi, useHousehold, type Meal } from '../../lib/api'
 
 const SLOTS = [
   { key: 'breakfast', label: 'Breakfast' },
@@ -28,14 +28,20 @@ export function MealBuilderScheduleModal({
   const [picked, setPicked] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  const sunday = (() => {
+  // "This week" has to mean the same seven days the planner is showing, so the week
+  // is cut on the household's own first day. Sunday until the setting arrives, which
+  // is what this picker always assumed.
+  const { household } = useHousehold()
+  const firstDay = household?.weekStart === 'monday' ? 1 : 0
+
+  const weekStart = (() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
-    d.setDate(d.getDate() - d.getDay() + weekOffset * 7)
+    d.setDate(d.getDate() - ((d.getDay() - firstDay + 7) % 7) + weekOffset * 7)
     return d
   })()
   const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(sunday)
+    const d = new Date(weekStart)
     d.setDate(d.getDate() + i)
     return d
   })
@@ -44,7 +50,7 @@ export function MealBuilderScheduleModal({
       ? 'This week'
       : weekOffset === 1
         ? 'Next week'
-        : `Week of ${sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+        : `Week of ${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
 
   async function confirm() {
     if (!picked || saving) return

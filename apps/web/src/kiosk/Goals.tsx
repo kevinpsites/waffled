@@ -4,6 +4,7 @@ import { Icon } from './icons'
 import { LogModal } from './components/LogModal'
 import { ListModal } from './components/ListModal'
 import { api, useGoalLists, useGoals, useHousehold, can, goalDisplayProgress as dispProgress, goalDisplayTarget as dispTarget, fmtGoalNum, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
+import { parseGoalDate } from '../lib/goalStats'
 import { CATEGORIES } from './categories'
 import '../styles/goals.css'
 
@@ -25,7 +26,9 @@ function ringNumFont(s: string, base: number): number {
   return Math.round(base * scale)
 }
 function fmtDeadline(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  // A deadline is a bare calendar day — see `parseGoalDate`, which keeps it off the
+  // UTC-midnight reading that showed it a day early behind UTC.
+  return parseGoalDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 function firstName(name: string): string {
   return name.split(' ')[0]
