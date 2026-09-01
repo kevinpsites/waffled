@@ -53,10 +53,15 @@ export interface RhythmWithPeriod extends Rhythm {
    * Whether a live recurring event still exists for this rhythm.
    *
    * Only meaningful on an auto-scheduled one, where it separates two situations that
-   * otherwise look identical from an empty period: the series is **gone** (deleted, or
-   * the recurrence ran out) and needs putting back, versus the series is **alive** and a
-   * single instance was cancelled. Different sentences, different buttons — and only the
-   * server can see the difference.
+   * otherwise look identical from an empty period: the series is **gone** and needs
+   * putting back, versus the series is **alive** and a single instance was cancelled.
+   * Different sentences, different buttons — and only the server can see the difference.
+   *
+   * "Gone" means deleted **or capped**: "delete this and all following" sets
+   * `recurrence_end_at` and deliberately leaves the master row alive with its rrule, so
+   * testing `rrule is not null` alone reports a series that will never fire again. A rule
+   * that ends *inside the string* (COUNT/UNTIL) would be a third way, invisible to SQL —
+   * which is why the write paths refuse one on a rhythm.
    */
   hasSeries: boolean
 }
@@ -162,6 +167,14 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
             exists (
               select 1 from events e
                where e.rhythm_id = b.id and e.deleted_at is null and e.rrule is not null
+                 -- Capped counts as gone. "Delete this and all following" sets
+                 -- recurrence_end_at and leaves the master alive with its rrule, so rrule
+                 -- alone reports a series that will never fire again. Alive means there is
+                 -- still an occurrence to come: the cap has to be both in the future AND
+                 -- at or after the series' own start, since capping from the FIRST
+                 -- occurrence ends it before it ever began — a date still years away.
+                 and (e.recurrence_end_at is null
+                      or (e.recurrence_end_at > now() and e.recurrence_end_at >= e.starts_at))
             ) as has_series,
             case
               -- Completion shape has no period grid at all: its clock restarts from
@@ -384,6 +397,16 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
   // the same failure was swallowed, leaving a rhythm that can never book.
   if (rrule && !isValidRrule(rrule)) {
     throw new InvalidReferenceError('rrule is not a recurrence rule this calendar can expand')
+  }
+  // A rhythm is perpetual by definition — the cadence says how often, and this rule only
+  // says WHICH DAY inside each period. A rule that stops of its own accord contradicts the
+  // thing it is attached to, and it fails silently: once the last occurrence passes, every
+  // later period surfaces as empty while the master row still carries an rrule, so the
+  // register goes on offering "book this one" and never puts the series back. Refusing it
+  // here is also what lets `hasSeries` mean what its doc comment says it means, since
+  // COUNT and UNTIL live inside the rule string where no SQL predicate can see them.
+  if (rrule && /(^|;)\s*(COUNT|UNTIL)=/i.test(rrule)) {
+    throw new InvalidReferenceError('rrule must not end on its own (no COUNT or UNTIL) — a rhythm repeats for as long as it is active, and you stop it by pausing or retiring it')
   }
 
   const { rows } = await query<Row>(
@@ -713,6 +736,8 @@ export async function listAttention(householdId: string, horizon: string): Promi
             exists (
               select 1 from events e
                where e.rhythm_id = p.id and e.deleted_at is null and e.rrule is not null
+                 and (e.recurrence_end_at is null
+                      or (e.recurrence_end_at > now() and e.recurrence_end_at >= e.starts_at))
             ) as has_series
        from periods p
       where (p.period_start + p.every)::date - p.lead_time <= $2::date
@@ -923,6 +948,8 @@ export async function scheduleRhythm(
   const live = await query<{ id: string }>(
     `select id from events
       where rhythm_id = $1 and household_id = $2 and deleted_at is null and rrule is not null
+        and (recurrence_end_at is null
+             or (recurrence_end_at > now() and recurrence_end_at >= starts_at))
       limit 1`,
     [rhythm.id, tenant.householdId]
   )

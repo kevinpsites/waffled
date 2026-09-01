@@ -294,6 +294,22 @@ describe('a cadence the period grid cannot be built from', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  // A rhythm is perpetual — the cadence says how often, and the rule only says which day
+  // inside each period. A rule that stops on its own contradicts that, and fails silently:
+  // once the last occurrence passes, every later period looks empty while the master row
+  // still carries an rrule, so the register keeps offering "book this one" and the series
+  // is never put back. COUNT and UNTIL live inside the rule string, where no SQL predicate
+  // can see them — so unlike a capped series, this one can only be caught at the door.
+  it('refuses a recurrence rule that ends on its own', async () => {
+    for (const rrule of ['FREQ=WEEKLY;COUNT=4', 'FREQ=WEEKLY;UNTIL=20270101T000000Z']) {
+      const res = await call('POST', '/api/rhythms', kevin, {
+        title: `Ends itself ${rrule}`, satisfiedBy: 'scheduling', every: '1 week',
+        startsOn: '2026-01-01', autoSchedule: true, rrule,
+      })
+      expect(res.statusCode).toBe(400)
+    }
+  })
+
   it('refuses a first due date that is not a date, the way the edit path already does', async () => {
     const res = await call('POST', '/api/rhythms', kevin, {
       title: 'Bad date', satisfiedBy: 'completion', every: '3 months', nextDueAt: 'garbage',
@@ -826,6 +842,56 @@ describe('an auto-scheduled rhythm lands on the calendar at creation', () => {
     await withClient((c) =>
       c.query(`update events set deleted_at = now() where rhythm_id = $1`, [id])
     )
+    expect((await find()).hasSeries).toBe(false)
+  })
+
+  // Deleted is not the only way a series ends. "Delete this and all following" caps it with
+  // recurrence_end_at and DELIBERATELY leaves the master row alive with its rrule set — so a
+  // test for `rrule is not null` still says the series is there while no occurrence ever
+  // comes again. Every later period then surfaces as unscheduled-with-a-series, the clients
+  // offer "book this one" instead of "put it back", and scheduleRhythm's own liveness probe
+  // is blind the same way, so it books a one-off and the series is never restored. The user
+  // re-books by hand, forever.
+  it('stops claiming a series that was capped by "delete this and all following"', async () => {
+    const created = await call('POST', '/api/rhythms', kevin, {
+      title: 'Capped bin day',
+      satisfiedBy: 'scheduling',
+      every: '1 week',
+      startsOn: '2027-03-01',
+      autoSchedule: true,
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+    })
+    const id = JSON.parse(created.body).rhythm.id
+    const find = async () => {
+      const list = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+      return list.find((r: { id: string }) => r.id === id)
+    }
+    expect((await find()).hasSeries).toBe(true)
+
+    const master = await withClient((c) =>
+      c.query<{ id: string; starts_at: Date }>(
+        `select id, starts_at from events where rhythm_id = $1 and rrule is not null and deleted_at is null`,
+        [id]
+      )
+    )
+    expect(master.rowCount).toBe(1)
+    const seriesId = master.rows[0]!.id
+
+    // Cap it from its very first occurrence: nothing recurring survives.
+    const del = await call(
+      'DELETE',
+      `/api/events/${seriesId}?scope=following&occurrenceStart=${master.rows[0]!.starts_at.toISOString()}`,
+      kevin
+    )
+    expect(del.statusCode).toBe(204)
+
+    // The master row is still there with its rrule — that is the point of capping.
+    const still = await withClient((c) =>
+      c.query(`select 1 from events where id = $1 and deleted_at is null and rrule is not null`, [seriesId])
+    )
+    expect(still.rowCount).toBe(1)
+
+    // ...but there is no series left to speak of, and the register must say so.
     expect((await find()).hasSeries).toBe(false)
   })
 
