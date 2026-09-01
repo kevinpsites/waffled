@@ -98,6 +98,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   retiring against a server that refused the change left the row exactly as it was and said
   nothing, which is indistinguishable from a tap that missed — so the natural response was
   to press it again. Each now reports that it didn't go through.
+- **The Rhythms card is visible on the wall iPad.** It had been added under the pantry, in
+  a column that was already three cards deep — and the dashboard is a fixed height, so the
+  fourth card wasn't squeezed to fit, it was cut off the bottom with no way to scroll to
+  it. It now sits with the chores, above the grocery list that gives up the room.
+- **Booking a rhythm says which days actually count.** The date picker was already limited
+  to the period, but it never said so, and it opens on the month holding today — so on the
+  last day of a weekly period the six other days you could have picked sat in the previous
+  month, out of sight. It now names the window, and says plainly when today is the last day
+  the period will take.
 - **Pull-to-refresh on Today refreshes the whole screen on iPhone**, and the wall iPad can
   refresh its cards at all. Countdowns, pantry, Family Night, Lists and Rhythms all read
   from the server rather than the offline copy, and were quietly holding whatever they had

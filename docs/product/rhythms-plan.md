@@ -27,6 +27,13 @@ everywhere, plus a swipe on iPhone and iPad — sending today-or-the-due-date-wh
 later plus seven days to `PATCH /api/rhythms/:id`, which takes `nextDueAt` for a completion
 rhythm only and refuses it on a scheduling one, whose periods *are* its anchor.
 
+It is deliberately **not on every row**: only a *completion* rhythm that is active and
+already inside its lead time (Needs-you-now or Coming-up) offers it. A scheduling rhythm
+has no `nextDueAt` to move and Skip is its equivalent; a Steady row has nothing to push
+away from, and a control that does nothing you can feel teaches people the menu is noise.
+So a register where nothing is due shows the verb nowhere — that is the gate working, not
+a missing control.
+
 The list carries `bookedAt` / `bookedAllDay`, and **both clients now read it**: a period
 settled with no time is a **skip**, and says so ("Skipped", "skipped this one") rather than
 claiming a calendar entry that the act of skipping exists to avoid inventing.
