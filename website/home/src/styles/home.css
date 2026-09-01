@@ -571,3 +571,60 @@ img { max-width: 100%; display: block; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
   .footer-bottom { flex-direction: column; }
 }
+
+/* ── Legal pages (privacy, terms) ─────────────────────────────────────────
+   Plain long-form prose on the cream canvas. Narrow measure, generous
+   leading — these are read, not skimmed. */
+.legal { padding: 64px 0 88px; }
+.legal .wrap { max-width: 760px; }
+.legal-head { margin-bottom: 40px; }
+.legal-head h1 { font-family: var(--wf-serif); font-size: clamp(34px, 5vw, 46px); margin: 14px 0 0; line-height: 1.15; }
+.legal-head .updated { margin-top: 14px; color: var(--wf-ink-2); font-size: 15px; }
+.legal-body { font-size: 17px; }
+.legal-body h2 {
+  font-family: var(--wf-serif);
+  font-size: 26px;
+  margin: 44px 0 12px;
+  padding-top: 24px;
+  border-top: 1px solid var(--wf-hairline-soft);
+}
+.legal-body h3 { font-size: 18px; margin: 26px 0 8px; }
+.legal-body p { margin: 0 0 14px; }
+.legal-body ul { margin: 0 0 16px; padding-left: 22px; }
+.legal-body li { margin-bottom: 8px; }
+.legal-body a { color: var(--wf-coral-d); }
+.legal-body code {
+  font-family: var(--wf-mono);
+  font-size: 14px;
+  background: var(--wf-panel);
+  border: 1px solid var(--wf-hairline-soft);
+  border-radius: 6px;
+  padding: 1px 5px;
+}
+.legal-callout {
+  background: var(--wf-card);
+  border: 1px solid var(--wf-hairline);
+  border-left: 3px solid var(--wf-coral);
+  border-radius: var(--wf-radius);
+  padding: 20px 24px;
+  margin: 0 0 28px;
+  box-shadow: var(--wf-shadow-sm);
+}
+.legal-callout p:last-child { margin-bottom: 0; }
+.legal-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 20px;
+  font-size: 15px;
+}
+.legal-body th, .legal-body td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--wf-hairline-soft);
+  vertical-align: top;
+}
+.legal-body th { font-weight: 600; background: var(--wf-panel); }
+@media (max-width: 640px) {
+  .legal { padding: 40px 0 64px; }
+  .legal-body table { display: block; overflow-x: auto; }
+}

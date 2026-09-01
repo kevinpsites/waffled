@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A privacy policy and terms of service on waffled.app.** Two new pages —
+  [waffled.app/privacy](https://waffled.app/privacy) and
+  [waffled.app/terms](https://waffled.app/terms) — spelling out what a self-hosted install
+  actually stores, that none of it ever reaches the maintainers, and exactly which Google
+  account data the optional calendar integration reads, why it needs write access, how the
+  tokens are encrypted, and how to revoke it. Linked from the site footer. Google requires
+  both before it will verify the OAuth consent screen's branding.
+
 ### Changed
 
 ### Fixed
