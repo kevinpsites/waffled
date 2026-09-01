@@ -176,4 +176,19 @@ import Testing
         // ...and what a save sends back for an untouched picker.
         #expect(GoalDateKey.toKey(d) == key)
     }
+
+    // `parse` indexed `parts[0...2]` and force-unwrapped the result, which is fine for
+    // the keys GoalStats builds itself but not for one straight off the wire — the goal
+    // entry sheet now seeds its picker from a server-sent `dateKey`. A short or
+    // unparseable key has to degrade to something, not trap the app. Reaching the end
+    // of this test without a crash IS the assertion.
+    @Test func aMalformedDayKeyDegradesInsteadOfTrapping() {
+        _ = GoalDateKey.parse("")
+        _ = GoalDateKey.parse("2026")
+        _ = GoalDateKey.parse("2026-09")
+        _ = GoalDateKey.parse("not-a-date")
+
+        // ...and a well-formed key still round-trips untouched.
+        #expect(GoalDateKey.toKey(GoalDateKey.parse("2026-09-30")) == "2026-09-30")
+    }
 }

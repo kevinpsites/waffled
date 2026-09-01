@@ -2334,8 +2334,14 @@ struct GoalCreateSheet: View {
         if let t = g.healthDailyTarget { healthDailyTarget = goalFmt(t) }
     }
 
+    /// A deadline is a bare calendar day, and the DatePicker that shows it renders in
+    /// the DEVICE's zone — so it is read in that zone too. Read as UTC it became an
+    /// instant, and behind UTC that instant is the previous day: a goal due Sep 30
+    /// opened the sheet showing Sep 29, and "correcting" it back to Sep 30 saved Oct 1.
+    /// Optional-returning on purpose: `deadline` is optional on the wire, and a
+    /// malformed one should leave the field unset rather than blow up.
     private static func parseDay(_ iso: String) -> Date? {
-        DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc)
+        DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", .current)
     }
 
     private func submit() {
@@ -2401,7 +2407,8 @@ struct GoalCreateSheet: View {
         dismiss()
     }
 
-    private func isoDay(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", DateFmt.utc) }
+    /// Formatted in the same zone the picker showed the day in — see `parseDay`.
+    private func isoDay(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", .current) }
 }
 
 // MARK: - Goal detail
@@ -2999,8 +3006,10 @@ struct GoalDetailView: View {
     private func fmtDate(_ iso: String, _ fmt: String) -> String {
         let date = Self.isoFracDF.date(from: iso) ?? Self.isoDF.date(from: iso)
         guard let date else {
-            // Fall back to a plain yyyy-MM-dd date string.
-            guard let parsed = DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc) else { return "" }
+            // Fall back to a plain yyyy-MM-dd date string. Read in the same zone it is
+            // formatted in below — parsing a bare day as UTC and then rendering it
+            // locally is how a day string comes out as the day before behind UTC.
+            guard let parsed = DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", .current) else { return "" }
             return DateFmt.string(parsed, fmt, .current)
         }
         return DateFmt.string(date, fmt, .current)

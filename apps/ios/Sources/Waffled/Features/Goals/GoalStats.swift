@@ -33,11 +33,16 @@ enum GoalDateKey {
         return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
     }
 
+    /// Keys this module builds itself are always well-formed, but this is also reached
+    /// with one straight off the wire — the goal entry sheet seeds its picker from a
+    /// server-sent `dateKey`. A short or unparseable key must degrade to today rather
+    /// than index past the end of `parts` and trap the whole app.
     static func parse(_ key: String) -> Date {
         let parts = key.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return calendar.startOfDay(for: Date()) }
         var c = DateComponents()
         c.year = parts[0]; c.month = parts[1]; c.day = parts[2]
-        return calendar.date(from: c)!
+        return calendar.date(from: c) ?? calendar.startOfDay(for: Date())
     }
 
     static func addDays(_ key: String, _ n: Int) -> String {
