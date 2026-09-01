@@ -53,8 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   but every grid in the app was hard-coded to Sunday, so you'd change it and watch
   nothing happen. Now it moves all of them — the meal planner's weekly and monthly
   grids and the "Plan my week / Plan my month" review, the calendar's month and week
-  views (down to the agenda's mini-month and its "whose week is busy" summary), and the
-  goal heatmaps — on the web and on iPhone/iPad. That also closes a quieter problem: a
+  views (down to the agenda's mini-month and its "whose week is busy" summary), the
+  "This week / Next week" pickers you get when scheduling straight from a recipe or a
+  saved meal, and the goal heatmaps — on the web and on iPhone/iPad. That also closes a
+  quieter problem: a
   Sunday-cut week in a Monday household spanned two of the household's grocery weeks,
   so planning it only ever built the shopping for one of them.
 
