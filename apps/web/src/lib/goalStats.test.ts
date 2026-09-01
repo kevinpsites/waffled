@@ -11,6 +11,7 @@ import {
   heat,
   startOfWeekKey,
   monthLeadCells,
+  parseGoalDate,
   type DayEntry,
 } from './goalStats'
 
@@ -200,5 +201,30 @@ describe('week bucketing follows the household', () => {
     // September 2026 starts on a Tuesday.
     expect(monthLeadCells(2026, 8, 1)).toBe(1) // Monday-led: one blank (Mon)
     expect(monthLeadCells(2026, 8, 0)).toBe(2) // Sunday-led: two blanks (Sun, Mon)
+  })
+})
+
+// A goal carries two different kinds of date: `deadline` is a bare calendar day
+// ("2026-09-30") while `createdAt` is a real instant. `new Date()` reads a bare day
+// as UTC midnight, so rendering it in the viewer's zone showed the day BEFORE
+// everywhere behind UTC — a deadline of Sep 30 read "by Sep 29" across the goals
+// screens. A real timestamp already carries its own zone and must be left alone.
+describe('parseGoalDate — a bare day is a day, a timestamp is an instant', () => {
+  it('reads a bare yyyy-MM-dd as local midnight, not UTC midnight', () => {
+    const d = parseGoalDate('2026-09-30')
+    expect(d.getFullYear()).toBe(2026)
+    expect(d.getMonth()).toBe(8)
+    expect(d.getDate()).toBe(30)
+    expect(d.getHours()).toBe(0)
+  })
+
+  it('renders the day it was given, whatever the viewer\'s zone', () => {
+    expect(parseGoalDate('2026-09-30').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })).toBe('Sep 30')
+    expect(parseGoalDate('2026-01-01').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })).toBe('Jan 1')
+  })
+
+  it('leaves a full timestamp to be read as the instant it is', () => {
+    const iso = '2026-09-30T18:30:00.000Z'
+    expect(parseGoalDate(iso).getTime()).toBe(new Date(iso).getTime())
   })
 })

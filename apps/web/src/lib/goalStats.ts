@@ -32,6 +32,15 @@ export function parseLocalDateKey(key: string): Date {
   return new Date(y, m - 1, d)
 }
 
+// A goal carries two kinds of date: `deadline` is a bare calendar day, `createdAt` is
+// a real instant. `new Date('2026-09-30')` reads a bare day as UTC *midnight*, which
+// then renders as the day BEFORE anywhere behind UTC — a Sep 30 deadline read "by
+// Sep 29" across the goals screens. Pin a bare day to local midnight; leave a real
+// timestamp alone, since it already carries its own zone.
+export function parseGoalDate(iso: string): Date {
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? parseLocalDateKey(iso) : new Date(iso)
+}
+
 // Adds n calendar days (n may be negative) by nudging the Date's day field and
 // letting the Date constructor normalize month/year rollover — never `+n*86400000`,
 // which drifts across a DST transition.
