@@ -457,7 +457,7 @@ async function streaksFor(householdId: string, goalIds: string[]): Promise<Map<s
 export async function listGoals(householdId: string, listId?: string | null) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
-            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.participant_mode, g.target_basis, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
+            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.participant_mode, g.target_basis, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline::text as deadline,
             g.is_featured, g.is_spotlight, g.has_rewards, g.created_at,
             coalesce((select sum(amount)::float from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null and gl.counts_total), 0) as total_progress,
@@ -632,7 +632,7 @@ export async function goalParticipantIds(householdId: string, goalId: string): P
 export async function goalDetail(householdId: string, id: string) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
-            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.participant_mode, g.target_basis, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
+            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.participant_mode, g.target_basis, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline::text as deadline,
             g.is_featured, g.is_spotlight, g.has_rewards, g.created_at,
             coalesce((select sum(amount)::float from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null and gl.counts_total), 0) as total_progress,

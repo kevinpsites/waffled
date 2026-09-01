@@ -729,6 +729,27 @@ describe('goal input validation (hardening)', () => {
     expect((await call('POST', '/api/goals', kevin, { ...base, goalType: 'total', targetValue: 10, milestones: [{ threshold: 'lots' }] })).statusCode).toBe(400)
   })
 
+  it('hands a deadline back as the plain day it was given', async () => {
+    // Every client treats `deadline` as a bare calendar day: the web binds it straight
+    // into an <input type="date">, iOS parses it as yyyy-MM-dd, and the goal stats do
+    // day-key arithmetic on it. A `date` column that came back as a timestamp instead
+    // would be read as an instant and land a day off for anyone behind UTC — so the
+    // wire shape is the contract, not an implementation detail.
+    const add = await call('POST', '/api/goals', kevin, { ...base, goalType: 'total', targetValue: 10, deadline: '2026-09-30' })
+    expect(add.statusCode).toBe(201)
+    const id = JSON.parse(add.body).goal.id
+
+    const list = JSON.parse((await call('GET', '/api/goals', kevin)).body).goals
+    expect(list.find((g: { id: string }) => g.id === id).deadline).toBe('2026-09-30')
+
+    const one = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(one.deadline).toBe('2026-09-30')
+
+    // The activity endpoint feeds the heatmaps' endDate off the same column.
+    const act = JSON.parse((await call('GET', `/api/goals/${id}/activity`, kevin)).body)
+    expect(act.endDate).toBe('2026-09-30')
+  })
+
   it('rejects a malformed field on PATCH too', async () => {
     const add = await call('POST', '/api/goals', kevin, { ...base, goalType: 'total', targetValue: 10 })
     const id = JSON.parse(add.body).goal.id
