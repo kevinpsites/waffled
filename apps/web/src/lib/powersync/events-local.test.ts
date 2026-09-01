@@ -74,6 +74,14 @@ describe('rowToAgenda', () => {
     expect(a.seriesId).toBe('master-1') // the master/series handle
     expect(a.occurrenceStart).toBe('2026-09-08T14:00:00Z') // the edit-scope slot
   })
+
+  // A scheduling-shape rhythm books an ordinary event carrying rhythm_id, so the
+  // offline read has to carry the back-reference through — otherwise the calendar's
+  // rhythm marker vanishes the moment the kiosk reads locally instead of over REST.
+  it('carries the rhythm back-reference, defaulting to null', () => {
+    expect(rowToAgenda(row({ rhythm_id: 'rh-1' })).rhythmId).toBe('rh-1')
+    expect(rowToAgenda(row({})).rhythmId).toBeNull()
+  })
 })
 
 describe('eventsForDay', () => {

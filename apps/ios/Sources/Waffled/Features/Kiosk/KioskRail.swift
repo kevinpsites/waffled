@@ -20,7 +20,7 @@ enum KioskRail {
     /// The destinations the user may pin — the rail/More universe minus the fixed
     /// Today/Calendar (always top) and More/Settings (always bottom). familyNight is
     /// intentionally absent: it has no standalone iPad page, only a Today card.
-    static let choosable: [KioskNav] = [.meals, .tasks, .rewards, .goals, .lists, .pantry, .family, .photos]
+    static let choosable: [KioskNav] = [.meals, .tasks, .rewards, .goals, .lists, .pantry, .rhythms, .family, .photos]
 
     /// The out-of-the-box rail so a fresh install looks like the old fixed rail
     /// (`[.today, .calendar, .meals, .family, .more]`): Meals + Family pinned.
@@ -61,6 +61,7 @@ enum KioskRail {
         case .meals: return sync.module(.meals)
         case .lists: return sync.module(.lists)
         case .pantry: return sync.module(.pantry)
+        case .rhythms: return sync.module(.rhythms)
         default: return true
         }
     }

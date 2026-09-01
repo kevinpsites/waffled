@@ -3761,7 +3761,9 @@ struct WaffledAPI: Sendable {
         let title: String
         let date: String            // YYYY-MM-DD
         let daysLeft: Int
-        let source: String          // standalone | event | birthday
+        // Deliberately a String, not an enum: a strict Decodable enum would fail the
+        // WHOLE list the moment the server grows a new kind (as it did with 'rhythm').
+        let source: String          // standalone | event | birthday | rhythm
         let emoji: String?
         let color: String?
         let personId: String?
@@ -3958,6 +3960,211 @@ struct WaffledAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(["ops": ops])
         let (data, resp) = try await perform(req)
         try check(resp, data)
+    }
+
+    // MARK: - Rhythms (the things that should keep happening)
+    //
+    // A rhythm is a standing intention with a cadence — trash weekly, the air filter every
+    // three months, a temple visit each quarter. Two shapes, and the difference is what
+    // closes out a period:
+    //
+    //   .completion — you did the thing. Surfaces as `kind: .due`.
+    //   .scheduling — a calendar event exists for the period. Surfaces as
+    //                 `kind: .unscheduled`. We never ask whether it happened; getting the
+    //                 opportunity onto the calendar IS the outcome.
+    //
+    // That second sentence is the whole line between a rhythm and a goal, and it is a copy
+    // rule as much as a data one — see `RhythmFormat`. REST-only in v1 (the table is
+    // deliberately not on PowerSync); the events a booking creates sync as usual.
+    // Mirrors apps/web/src/lib/api/rhythms.ts 1:1.
+
+    /// What closes out a period.
+    ///
+    /// `unknown` is the forward-compatibility valve, not a state the server sends: a
+    /// strict Decodable enum fails the WHOLE response the moment the server grows a third
+    /// shape, and this one sits on every row of the register — so one unrecognised value
+    /// emptied the screen and reported it as "couldn't reach the server", which sends
+    /// someone to check their wifi over an additive server change. `CountdownSource` was
+    /// softened for exactly this reason; these two were missed.
+    enum RhythmShape: String, Codable, Sendable {
+        case completion, scheduling, unknown
+
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = RhythmShape(rawValue: raw) ?? .unknown
+        }
+    }
+
+    struct Rhythm: Codable, Identifiable, Hashable, Sendable {
+        let id: String
+        let title: String
+        let emoji: String?
+        let notes: String?
+        let personId: String?
+        let satisfiedBy: RhythmShape
+        /// Postgres interval text — "7 days", "3 mons". Render via `RhythmFormat`.
+        let every: String
+        /// scheduling only: the anchor the period grid is measured from (YYYY-MM-DD).
+        let startsOn: String?
+        let autoSchedule: Bool
+        let rrule: String?
+        /// Postgres interval text, clamped server-side to at most half of `every`.
+        let leadTime: String
+        let lastCompletedAt: String?
+        let nextDueAt: String?
+        let isActive: Bool
+        // Only `GET /api/rhythms` carries current-period state (the server's
+        // `RhythmWithPeriod`); every single-row read omits it. Optional rather than a
+        // second near-identical type — and decoding must tolerate their absence, which is
+        // exactly the asymmetry the kiosk-claim decode bug shipped on.
+        let currentPeriodStart: String?
+        let currentPeriodEnd: String?
+        let satisfied: Bool?
+        /// Whether a live recurring event still exists for this rhythm.
+        ///
+        /// Only meaningful on an auto-scheduled one, where it separates two situations an
+        /// empty period cannot tell apart: the series is **gone** and wants putting back,
+        /// versus the series is **alive** and this one period has nothing in it. Optional
+        /// for the same reason as `satisfied` — single-row reads don't carry it.
+        let hasSeries: Bool?
+        /// When the event that settles this period starts, or nil.
+        ///
+        /// Nil is NOT "unsettled". A **skip** settles a period and has no time and never
+        /// will, so on a scheduling rhythm `satisfied == true` with a nil `bookedAt` is
+        /// exactly "skipped" — the one distinction that stops a row claiming a calendar
+        /// entry the user chose specifically not to create. Optional for the same reason
+        /// as the two above.
+        let bookedAt: String?
+        /// Whether that booking is an all-day event.
+        ///
+        /// The server has always sent this and nothing read it, so a settled row said
+        /// "Booked" and left you to open the calendar for the when. It matters for more
+        /// than completeness: an all-day event is stored at LOCAL MIDNIGHT, so printing a
+        /// time for one shows "12:00 AM" — an hour nobody chose and the row's only
+        /// falsehood. This is what says to stop at the date.
+        let bookedAllDay: Bool?
+    }
+
+    /// Why a rhythm is on the attention feed. `unknown` is the same forward-compatibility
+    /// valve as `RhythmShape.unknown`; the model drops those rows rather than drawing a
+    /// row it has no words for.
+    enum RhythmAttentionKind: String, Codable, Sendable {
+        case due, unscheduled, unknown
+
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = RhythmAttentionKind(rawValue: raw) ?? .unknown
+        }
+    }
+
+    /// One row of `GET /api/rhythms/attention` — the single question every surface asks.
+    /// The fields are per-kind: `dueAt`/`overdue` for `.due`, `periodStart`/`periodEnd`
+    /// for `.unscheduled`.
+    struct RhythmAttentionItem: Codable, Identifiable, Sendable {
+        let kind: RhythmAttentionKind
+        let rhythm: Rhythm
+        let dueAt: String?
+        let overdue: Bool?
+        let periodStart: String?
+        let periodEnd: String?
+        /// `.unscheduled` only — see `Rhythm.hasSeries`.
+        let hasSeries: Bool?
+        var id: String { rhythm.id }
+    }
+
+    /// The whole register, each row with its current-period state.
+    func rhythms() async throws -> [Rhythm] {
+        struct Resp: Decodable { let rhythms: [Rhythm] }
+        return try await getJSON("/api/rhythms", as: Resp.self).rhythms
+    }
+
+    /// What needs attention by `to`. Both surfaces pass a one-day window on purpose: `to`
+    /// is the horizon AND the date that decides WHICH period a scheduling rhythm reports
+    /// on, so widening it silently answers about a later period.
+    func rhythmAttention(from: String, to: String) async throws -> [RhythmAttentionItem] {
+        struct Resp: Decodable { let items: [RhythmAttentionItem] }
+        return try await getJSON("/api/rhythms/attention?from=\(from)&to=\(to)", as: Resp.self).items
+    }
+
+    @discardableResult
+    func createRhythm(_ body: [String: JSONValue]) async throws -> Rhythm {
+        struct Resp: Decodable { let rhythm: Rhythm }
+        return try await sendReturning("POST", "/api/rhythms", body: body, as: Resp.self).rhythm
+    }
+
+    /// Edit. The server accepts only title/emoji/notes/personId/every/leadTime/isActive —
+    /// re-anchoring a live rhythm would re-interpret its skips and bookings.
+    @discardableResult
+    func updateRhythm(id: String, _ body: [String: JSONValue]) async throws -> Rhythm {
+        struct Resp: Decodable { let rhythm: Rhythm }
+        return try await sendReturning("PATCH", "/api/rhythms/\(id)", body: body, as: Resp.self).rhythm
+    }
+
+    /// Retire one for good (soft server-side, so its completion history survives).
+    func deleteRhythm(id: String) async throws {
+        try await delete("/api/rhythms/\(id)")
+    }
+
+    /// "I did the filter today" — logs it and re-anchors the clock to when it was actually
+    /// done. Only a completion rhythm can be completed.
+    @discardableResult
+    /// `completedAt` nil means "now" and lets the server stamp it. An explicit instant
+    /// backdates the completion — the completion shape re-anchors its clock to when the
+    /// thing was ACTUALLY done, so logging it late has to be able to say when.
+    func completeRhythm(id: String, completedAt: String? = nil) async throws -> Rhythm {
+        struct Resp: Decodable { let rhythm: Rhythm }
+        let body: [String: JSONValue] = completedAt.map { ["completedAt": .string($0)] } ?? [:]
+        return try await sendReturning("POST", "/api/rhythms/\(id)/complete", body: body, as: Resp.self).rhythm
+    }
+
+    /// Book a period into a REAL calendar event. Title and assignee come from the rhythm,
+    /// so a booking UI needs a time picker and nothing else — retyping the title is
+    /// precisely the friction that keeps these things off the calendar.
+    @discardableResult
+    /// `periodStart` names the period this booking is meant to fill.
+    ///
+    /// Any booking is legal — satisfaction is derived, so it settles whichever period it
+    /// lands in — which is exactly why the server cannot tell an intended booking from a
+    /// mistaken one. Sending the period we are SHOWING lets it refuse the mismatch rather
+    /// than return 201 for a booking that leaves the card still asking.
+    func scheduleRhythm(id: String, startsAt: String, allDay: Bool,
+                        periodStart: String? = nil) async throws -> String {
+        struct Resp: Decodable { let event: Ev; struct Ev: Decodable { let id: String } }
+        var body: [String: JSONValue] = ["startsAt": .string(startsAt), "allDay": .bool(allDay)]
+        if let periodStart { body["periodStart"] = .string(periodStart) }
+        return try await sendReturning("POST", "/api/rhythms/\(id)/schedule",
+                                       body: body, as: Resp.self).event.id
+    }
+
+    /// How a period goes quiet without inventing a calendar entry for something that
+    /// genuinely isn't happening this time round.
+    func skipRhythmPeriod(id: String, periodStart: String) async throws {
+        try await send("POST", "/api/rhythms/\(id)/skip", body: ["periodStart": .string(periodStart)])
+    }
+
+    /// One completion in a rhythm's history.
+    struct RhythmCompletion: Decodable, Identifiable, Sendable {
+        let id: String
+        let personId: String?
+        let completedAt: String
+        let notes: String?
+    }
+
+    /// A rhythm's history, and how often it REALLY happens.
+    ///
+    /// `averageIntervalDays` is deliberately not derivable from `completions`: the list is
+    /// a page and the average is over all of them, so computing it here would be a
+    /// different number wearing the same label. Null below two completions — one date is
+    /// not an interval.
+    struct RhythmHistory: Decodable, Sendable {
+        let completions: [RhythmCompletion]
+        let total: Int
+        let averageIntervalDays: Double?
+    }
+
+    func rhythmCompletions(id: String, limit: Int? = nil) async throws -> RhythmHistory {
+        let q = limit.map { "?limit=\($0)" } ?? ""
+        return try await getJSON("/api/rhythms/\(id)/completions\(q)", as: RhythmHistory.self)
     }
 
     // MARK: Photos (the family photo wall)

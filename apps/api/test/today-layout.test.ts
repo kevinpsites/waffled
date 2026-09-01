@@ -1,6 +1,7 @@
 // Pure unit tests for the Today-layout normalization (no DB needed).
 import { describe, it, expect } from 'vitest'
 import { reconcileLayout, TODAY_CARDS } from '../src/modules/layout/today-layout'
+import { reconcileMobileLayout, MOBILE_TODAY_CARDS } from '../src/modules/layout/mobile-today-layout'
 
 const DEFAULT = [['agenda', 'countdowns'], ['tonight', 'week'], ['chores', 'grocery']]
 
@@ -31,8 +32,8 @@ describe('reconcileLayout', () => {
   it('merges overflow columns (past the 3rd) into the last column', () => {
     const out = reconcileLayout([['agenda'], ['tonight'], ['week'], ['chores'], ['grocery']])
     // cols past the 3rd merge in; unplaced cards (countdowns, lists, pantry, familyNight,
-    // goals — in TODAY_CARDS order) are appended to the last column.
-    expect(out.cols[2]).toEqual(['week', 'chores', 'grocery', 'countdowns', 'lists', 'pantry', 'familyNight', 'goals'])
+    // goals, rhythms — in TODAY_CARDS order) are appended to the last column.
+    expect(out.cols[2]).toEqual(['week', 'chores', 'grocery', 'countdowns', 'lists', 'pantry', 'familyNight', 'goals', 'rhythms'])
   })
 
   // --- Hidden cards -------------------------------------------------------
@@ -73,5 +74,30 @@ describe('reconcileLayout', () => {
     expect(out.hidden).toEqual([])
     expect(out.cols[0]).toEqual(['agenda', 'countdowns']) // given columns preserved
     expect([...out.cols.flat()].sort()).toEqual([...TODAY_CARDS].sort()) // module cards appended
+  })
+})
+
+// The rhythms card is registered here in phase 1 rather than alongside the card UI: the
+// web card and the iOS card get built in parallel, and both would be adding this same key
+// to these same two lines. Landing it once up front is what keeps them from conflicting.
+describe('the rhythms card', () => {
+  it('is a canonical card on the kiosk grid', () => {
+    expect(TODAY_CARDS).toContain('rhythms')
+  })
+
+  it('is a canonical card on mobile Today', () => {
+    expect(MOBILE_TODAY_CARDS).toContain('rhythms')
+  })
+
+  it('survives both reconcilers instead of being dropped as an unknown key', () => {
+    expect(reconcileLayout([['rhythms', 'agenda'], [], []]).cols[0]).toEqual(['rhythms', 'agenda'])
+    expect(reconcileMobileLayout({ order: ['rhythms'], hidden: [] }).order[0]).toBe('rhythms')
+  })
+
+  it('stays hidden on either surface once hidden', () => {
+    // The two surfaces model "hidden" differently: web drops the card out of `cols`
+    // entirely, while mobile keeps every card in `order` and flags it in `hidden`.
+    expect(reconcileLayout({ cols: [[], [], []], hidden: ['rhythms'] }).cols.flat()).not.toContain('rhythms')
+    expect(reconcileMobileLayout({ order: [], hidden: ['rhythms'] }).hidden).toContain('rhythms')
   })
 })

@@ -138,6 +138,8 @@ struct AppRoot: View {
             // Headless pantry verification: land on the Family hub already pushed into
             // the Pantry; `PantryView` opens the item itself once its list has loaded.
             if DemoHooks.pantryItem != nil { tab = .family; familyPath = [.pantry] }
+            // The same, for any hub screen: land on the Family tab already pushed into it.
+            if let route = DemoHooks.hubRoute { tab = .family; familyPath = [route] }
         }
         // Local event reminders (6.7-ios): keep the schedule in step with the synced
         // events, the signed-in person, and permission changes.

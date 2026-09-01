@@ -146,6 +146,21 @@ struct WaffledEmptyState: View {
     }
 }
 
+extension View {
+    /// A `List` row carrying no list chrome: no card background, no separator, no inset.
+    ///
+    /// The shape every in-list loading / empty / spacer row wants, and which was being
+    /// spelled out by hand (`.listRowBackground(Color.clear).listRowSeparator(.hidden)…`)
+    /// wherever one appeared. Worth a name mostly because forgetting a piece of it is
+    /// invisible until it renders — an empty state that keeps its inset sits in an
+    /// indented card instead of filling the page.
+    func plainRow() -> some View {
+        listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets())
+    }
+}
+
 /// A dismissible inline error banner — ⚠️ + a short message + an ✕ that clears it.
 /// The shared surface for "this action didn't stick" errors shown in place (chore
 /// proof uploads, meal-planner drops), mirroring the web's inline error rows.

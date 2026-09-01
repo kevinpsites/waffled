@@ -106,7 +106,7 @@ export function Calendar() {
   // The roster drives the People view's columns (one per person, in roster order).
   const { persons, loading: personsLoading } = usePersons()
 
-  // Countdown badges on the calendar (all three sources, keyed by target day).
+  // Countdown badges on the calendar (all four sources, keyed by target day).
   const { countdowns } = useCountdowns()
   const countdownsByDate = useMemo(() => {
     const m: Record<string, Countdown[]> = {}
@@ -134,9 +134,10 @@ export function Calendar() {
   const openEvent = (e: AgendaEvent) => navigate(eventDetailPath(e))
   // Tapping a countdown routes by source: an event-sourced one deep-links to that
   // event's detail page (rename + a "Show a countdown" toggle); a standalone one opens
-  // the inline editor (rename/move/remove); a birthday has no editing surface here (it
-  // comes from the person's profile), so it jumps to its day for context (parity with the
-  // Today card, which also navigates a birthday tap to the calendar day).
+  // the inline editor (rename/move/remove); a birthday or a rhythm has no editing surface
+  // here (they come from the person's profile / the rhythms screen), so they jump to their
+  // day for context (parity with the Today card, which also navigates a birthday tap to the
+  // calendar day).
   const openCountdown = (c: Countdown) => {
     if (c.source === 'event') navigate(`/calendar/event/${c.id}`)
     else if (c.source === 'standalone') setEditCountdown(c)

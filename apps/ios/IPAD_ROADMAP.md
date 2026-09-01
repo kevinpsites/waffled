@@ -268,6 +268,16 @@ ephemeral session, auto-logs-out on idle. The **web kiosk already does this** �
       `KioskDashboard` (open `ApprovalsView` / `ReviewEventsView`).
 - [ ] Per-card customize / reorder on **iPad** Today (iPhone + web have draggable cards;
       iPad currently uses fixed layout presets).
+- [ ] **Rhythms register: two panes on iPad.** `RhythmsView` renders unchanged on both
+      idioms — reached via the Family tab on iPhone, via the kiosk rail on iPad — so the
+      iPad shows one narrow column and a lot of empty width. Wanted: the list on the left,
+      the selected rhythm's detail on the right (its history, the real average, notes, and
+      the controls that are behind the ⋯ menu today), so someone standing at the display
+      can read and act without a modal over the top.
+      *Design it as a kiosk pane, not a `NavigationSplitView`* — per "Decisions locked in",
+      the iPad is the family display and not a bigger iPhone, so this is read-from-across-
+      the-room, not a lap layout. iPhone keeps the single column, which is correct there.
+      Context: `docs/product/rhythms-plan.md` § Still open.
 - [x] **Recurring events** — full picker in `EventEditSheet` (Daily / Weekdays / Weekly +
       day chips / Monthly / Custom "every N"), per-occurrence scope chooser on edit + delete
       (this / following / all), an end condition (never / on a date / after N), and any

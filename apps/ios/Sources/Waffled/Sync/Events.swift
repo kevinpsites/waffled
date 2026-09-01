@@ -29,9 +29,20 @@ struct SyncedEvent: Identifiable, Sendable, Equatable {
     /// owner sees it). Denormalized from the event's calendar; filtered per-viewer.
     var visibility: String = "family"
     var ownerPersonId: String? = nil
+    /// The rhythm this slot was booked for, if any (`events.rhythm_id`).
+    ///
+    /// A scheduling-shape rhythm has no calendar entity of its own — it books an
+    /// ordinary event and points it back at itself — so this is the only thing that
+    /// tells a calendar surface "this slot is somebody's rhythm". For a recurring
+    /// series the link lives on the master and is inherited by every occurrence.
+    var rhythmId: String? = nil
 
     /// Is this somebody else's event, that we can show but never change?
     var isReadOnly: Bool { EventOrigin.isReadOnly(origin) }
+
+    /// Does this slot belong to a rhythm? Note this means *rhythm*, never *recurring* —
+    /// a repeating standup is not a rhythm, and a one-off booked temple visit is.
+    var isRhythm: Bool { rhythmId != nil }
 }
 
 /// Which event origins Waffled may edit.
@@ -71,6 +82,51 @@ enum EventOrigin {
         guard let event else { return false }
         return event.isReadOnly
     }
+}
+
+/// The agenda read against the local mirror.
+///
+/// Lives here rather than inline in `SyncManager.watchEvents` so a test can read it: the
+/// query only *runs* against a live PowerSync database, and its easiest mistake — adding
+/// a column to one branch of the UNION and not the other — is invisible until someone
+/// looks at a real calendar. See `RhythmMarkTests`.
+enum EventQuery {
+    /// UNION of single/Google events (rrule IS NULL — recurring masters are filtered
+    /// out, their occurrences render instead) and materialized occurrences joined to
+    /// their master. Mirrors the web's `AGENDA_SQL`
+    /// (apps/web/src/lib/powersync/events-local.ts). The watch derives its tracked
+    /// tables from this SQL, so `event_occurrences` is picked up too.
+    ///
+    /// Every column an occurrence doesn't own is taken from its master `m` — including
+    /// `rhythm_id`, which only ever lives on the series row.
+    static let agenda = """
+        SELECT e.id AS id, e.id AS series_id, NULL AS occurrence_start,
+               e.title, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.location, e.person_id,
+               e.visibility, e.owner_person_id, e.origin, e.rhythm_id,
+               p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
+               (SELECT group_concat(ep.person_id) FROM event_participants ep
+                 WHERE ep.event_id = e.id) AS participant_ids
+          FROM events e
+          LEFT JOIN persons p ON p.id = e.person_id
+         WHERE e.rrule IS NULL
+        UNION ALL
+        SELECT o.id AS id, m.id AS series_id, o.original_start AS occurrence_start,
+               coalesce(o.title, m.title) AS title, o.starts_at, o.ends_at, o.all_day, m.is_countdown,
+               coalesce(o.location, m.location) AS location, o.person_id,
+               o.visibility, o.owner_person_id,
+               -- an occurrence is as read-only as the series it belongs to
+               m.origin AS origin,
+               -- ...and belongs to the same rhythm as the series it belongs to. An
+               -- auto-scheduled rhythm renders ONLY through this branch, so dropping
+               -- this is how the marker silently disappears from the common case.
+               m.rhythm_id AS rhythm_id,
+               p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
+               (SELECT group_concat(ep.person_id) FROM event_participants ep
+                 WHERE ep.event_id = m.id) AS participant_ids
+          FROM event_occurrences o
+          JOIN events m ON m.id = o.event_id
+          LEFT JOIN persons p ON p.id = o.person_id
+        """
 }
 
 /// Timestamp handling that mirrors the web client (`events-local.ts`): server-

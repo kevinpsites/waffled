@@ -82,6 +82,7 @@ export interface LocalEventRow {
   person_id: string | null
   goal_id?: string | null
   goal_step_id?: string | null
+  rhythm_id?: string | null
   origin: string | null
   origin_ref_id: string | null
   visibility?: string | null // 'family' | 'personal'
@@ -143,6 +144,7 @@ export function rowToAgenda(r: LocalEventRow): AgendaEvent {
     personId: r.person_id,
     goalId: r.goal_id ?? null,
     goalStepId: r.goal_step_id ?? null,
+    rhythmId: r.rhythm_id ?? null,
     origin: r.origin,
     originRefId: r.origin_ref_id,
     personName: r.person_name,
@@ -193,7 +195,7 @@ const participantsJson = (idExpr: string) => `
 // Single events (and Google-expanded instances). Also the detail-by-id source.
 const SINGLE_SELECT = `
   select e.id as id, e.id as series_id, null as occurrence_start,
-         e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.person_id, e.goal_id, e.goal_step_id,
+         e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.person_id, e.goal_id, e.goal_step_id, e.rhythm_id,
          e.origin, e.origin_ref_id, e.visibility, e.owner_person_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsJson('e.id')}
@@ -201,11 +203,11 @@ const SINGLE_SELECT = `
     left join persons p on p.id = e.person_id`
 
 // Materialized occurrences of a recurring master (m) — inherits the master's
-// participants/goal; o carries the (possibly overridden) time/title/location/owner.
+// participants/goal/rhythm; o carries the (possibly overridden) time/title/location/owner.
 const OCC_SELECT = `
   select o.id as id, m.id as series_id, o.original_start as occurrence_start,
          coalesce(o.title, m.title) as title, m.description, coalesce(o.location, m.location) as location,
-         o.starts_at, o.ends_at, o.all_day, m.is_countdown, o.person_id, m.goal_id, m.goal_step_id,
+         o.starts_at, o.ends_at, o.all_day, m.is_countdown, o.person_id, m.goal_id, m.goal_step_id, m.rhythm_id,
          m.origin, m.origin_ref_id, o.visibility, o.owner_person_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsJson('m.id')}

@@ -8,6 +8,10 @@ struct TodayView: View {
     @Environment(CookSessionStore.self) private var cook
     @Environment(\.scenePhase) private var scenePhase
     @State private var dash = DashboardModel()
+    /// The Rhythms card's data lives here rather than inside the card — see the note on
+    /// `RhythmsTodayCard.model`. A card that renders nothing when it has nothing can't be
+    /// trusted to fetch its own contents.
+    @State private var rhythms = RhythmsModel()
     @State private var recipes = RecipesModel()   // backs a recipe pushed from tonight's card
     @State private var detailEvent: SyncedEvent?
     @State private var showCapture = false
@@ -95,15 +99,31 @@ struct TodayView: View {
             }
             .refreshable {
                 // Independent endpoint batches — fetch them concurrently.
+                //
+                // `refreshRestSurfaces` is what makes the gesture mean what it looks like
+                // it means: the cards that own their own REST fetch (countdowns, pantry,
+                // rhythms, family night, lists) load once on appear and never again, so
+                // without it a pull-down refreshed only the two batches below and left
+                // every one of those cards — and the module flags — on launch-time data.
+                async let r: () = sync.refreshRestSurfaces()
                 async let d: () = dash.load(todayKey: Agenda.todayKey(sync.householdTz))
                 async let g: () = dash.loadGoals()
-                _ = await (d, g)
+                _ = await (r, d, g)
+                // The card set itself can change when a module is toggled elsewhere.
+                await loadLayout()
             }
             // Reload when the tz is known and whenever a capture commit bumps a domain.
             .task(id: "\(sync.householdTz.identifier)|\(sync.choresRev)|\(sync.groceryRev)|\(sync.mealsRev)") {
                 await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
             }
             .task { weather = try? await WaffledAPI().weather() }
+            // Lives on the page, which always renders, rather than on the card, which
+            // does not — the card is `EmptyView` until it has something to show, and a
+            // `.task` on `EmptyView` never runs.
+            .task(id: "\(sync.refreshRev)|\(sync.modulesRev)") {
+                guard sync.module(.rhythms) else { return }
+                await rhythms.loadAttention()
+            }
             .task { await sync.loadIdentity() }
             .task { await loadLayout() }
             // Goals card + the goal-calendar review queues (refresh whenever a
@@ -123,9 +143,13 @@ struct TodayView: View {
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 Task {
+                    // Same reasoning as the pull-to-refresh above, and the same reach:
+                    // someone turns a module off on the web, picks the phone back up, and
+                    // the card for it has to be gone.
+                    async let r: () = sync.refreshRestSurfaces()
                     async let d: () = dash.load(todayKey: Agenda.todayKey(sync.householdTz))
                     async let g: () = dash.loadGoals()
-                    _ = await (d, g)
+                    _ = await (r, d, g)
                 }
             }
             // Day rollover while the screen stays open: at (household-tz) midnight
@@ -408,7 +432,7 @@ struct TodayView: View {
     static let cardLabels = [
         "agenda": "Agenda", "countdowns": "Countdowns", "tonight": "Tonight's dinner",
         "chores": "Chores", "grocery": "Grocery", "lists": "Lists", "goals": "Goals",
-        "pantry": "Pantry", "familyNight": "Family Night",
+        "pantry": "Pantry", "familyNight": "Family Night", "rhythms": "Rhythms",
     ]
     private static let smallCards: Set<String> = ["chores", "grocery"]
 
@@ -431,6 +455,7 @@ struct TodayView: View {
         case "lists": return sync.module(.lists)
         case "goals": return sync.module(.goals)
         case "pantry": return sync.module(.pantry)
+        case "rhythms": return sync.module(.rhythms)
         case "familyNight": return sync.module(.familyNight)
         default: return true
         }
@@ -460,6 +485,7 @@ struct TodayView: View {
         case "grocery": Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
         case "lists": TodayListCard { path.append(.list($0)) }
         case "pantry": PantryTodayCard { path.append(.pantry) }
+        case "rhythms": RhythmsTodayCard(model: rhythms) { path.append(.rhythms) }
         case "familyNight": FamilyNightCard()
         case "goals": goalsCard
         default: EmptyView()
@@ -483,6 +509,11 @@ struct TodayView: View {
         // Same fallback for Family Night (a server predating the mobile card omits it).
         if !order.contains("familyNight"), !resp.resolved.hidden.contains("familyNight") {
             order.append("familyNight")
+        }
+        // …and for Rhythms. It hides itself when nothing needs attention, so appending it
+        // costs a quiet card at worst.
+        if !order.contains("rhythms"), !resp.resolved.hidden.contains("rhythms") {
+            order.append("rhythms")
         }
         cardOrder = order
         hiddenCards = Set(resp.resolved.hidden)

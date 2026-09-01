@@ -202,7 +202,44 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Reward **categories** are settable on iOS (editor chip-picker), and the **Countdown tweaks**
   `birthdayHorizonDays` control shipped in Settings → Calendars — so the July-batch iOS parity is
   now **complete**. Per-surface (iPhone / iPad)
-  status — and the remaining mobile gaps — live in the [feature matrix](./features.md).
+  status — and the remaining mobile gaps — live in the [feature matrix](../../website/docs/src/content/docs/reference/features.md).
+
+- **Rhythms — the things that should keep happening.** A new optional module (`rhythms`,
+  default **off**) for the standing intentions with a cadence: "trash out weekly", "air
+  filter every 3 months", "book a temple visit each quarter", "a self-care day every other
+  month", "family outing on the third weekend". Deliberately *not* chores (no reward, no
+  approval, no photo proof — and `ensureTodayInstances` can't express these schedules
+  anyway: only `FREQ=DAILY` and `FREQ=WEEKLY`+`BYDAY`, matched by SQL substring, so there is
+  no `MONTHLY` and no `INTERVAL`) and deliberately *not* goals: goals are about
+  **follow-through**, while a rhythm is about the **opportunity existing** — getting a time
+  set aside is the whole outcome, and whether it happened is never asked. One `rhythms` row
+  (mig `0098_rhythms.sql`) carries the cadence, a `person_id` assignee and a `satisfied_by`
+  discriminator: `'completion'` items are completion-anchored (due N months after you
+  *actually* last did it, so being late shifts the next one), `'scheduling'` items are
+  satisfied when a calendar event exists for the period. The three-state machine — **needs
+  scheduling → scheduled → the period rolls over** — is served by one window query,
+  `GET /api/rhythms/attention`, which is also the contract a future weekly-plan module reads.
+  Booking a period creates a **real `events` row** carrying `rhythm_id` (mirroring
+  `events.goal_id` from `0033_event_goal`) rather than a read-only chip, so it inherits
+  recurrence, Google/Outlook sync, visibility, participants, the existing editor and local
+  reminders for free; those events wear a 🔁 marker in every calendar view, on
+  Today's agenda card and on the event detail, on every surface.
+  A **Today card** (silent on quiet days) and a **register
+  screen** cover completing, booking, skipping, editing, pausing and retiring — on all three
+  surfaces — and completion-shape rhythms join
+  countdowns as a fourth source ("18 days until the air filter"). `leadTime` is clamped
+  to half the cadence so a runway can never outlive its cycle, and the shape/anchor fields
+  are immutable after creation because re-anchoring would re-interpret existing skips. REST-only
+  by design (the booked events sync; the register doesn't). Design and schema:
+  [Rhythms plan](./rhythms-plan.md); how to use it:
+  [docs → Rhythms](https://docs.waffled.app/features/rhythms/). Per-surface status lives in
+  the [feature matrix](../../website/docs/src/content/docs/reference/features.md).
+  **Two pieces of UI shape are deliberately still open** — neither is a missing capability,
+  and both are recorded in the plan doc under *Still open*: the **iPad two-pane register**
+  (tracked in [`apps/ios/IPAD_ROADMAP.md`](../../apps/ios/IPAD_ROADMAP.md) § Backlog B), and
+  a **browsable completion history** — today the record and the real average appear when you
+  edit a rhythm, which is where you already go to ask about one, but it is not a record you
+  can page through.
 
 ## Partial / in progress 🟡
 
@@ -239,29 +276,19 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
-- **Upkeep — recurring household maintenance as its own module.** Where "air filter every
-  3 months", "toothbrush heads", and "trash out weekly" live. Deliberately *not* chores:
-  no reward, no approval, no photo proof, no assignee — and chores can't express these
-  schedules anyway (`ensureTodayInstances` matches only `FREQ=DAILY` and `FREQ=WEEKLY` +
-  `BYDAY`, by SQL substring; there is no `MONTHLY` and no `INTERVAL`). The decided model is
-  **completion-anchored** — due N months after you *actually last did it*, so being late
-  shifts the next one — which `chore_instances` (one materialized row per `due_on` on a
-  calendar grid) structurally cannot represent. One `upkeep_items` row carrying
-  `every` / `last_completed_at` / `next_due_at`, plus an `upkeep_completions` log so
-  "filter last changed Mar 12" is answerable; items surface on Today/Calendar only inside a
-  lead-time window. Reuses the countdowns presentation for "N days until Y" — whether that
-  aggregator is source-pluggable is the main open question. Full design, schema sketch and
-  sizing: [Upkeep plan](./upkeep-plan.md).
-
-- **Calendar as the all-in-one dated view.** Overlay the dated non-events — `chore_instances.due_on`
-  and (once built) `upkeep_items.next_due_at` — onto the calendar as read-only all-day chips,
-  tapping through to the chore/upkeep rather than the event editor. Deliberately chips, not
-  time-grid blocks: a chore's `due_time` is a soft target, not an appointment. `list_items`
-  stays out — it has no due column and lists shouldn't become a half-built task manager. Two
-  seams to settle first: chores/upkeep have no visibility concept under
+- **Chore due-dates on the calendar.** The last piece of "the calendar as the all-in-one
+  dated view": overlay `chore_instances.due_on` onto the calendar as read-only all-day chips,
+  tapping through to the chore rather than the event editor. Deliberately chips, not
+  time-grid blocks — a chore's `due_time` is a soft target, not an appointment. The other two
+  sources are already handled and should **not** be built again: scheduling-shape rhythms
+  *are* events, so they render natively with real recurrence, Google sync and visibility,
+  and completion-shape rhythms flow in as a `source: 'rhythm'` countdown (month-grid badge +
+  week/day chip). `list_items` stays out — it has no due column and lists shouldn't become a
+  half-built task manager. Two seams to settle first: chores have no visibility concept under
   `0074_calendar_visibility` (simplest rule: treat them as `family`), and on iOS events come
   from PowerSync while chores are REST-only, so an offline phone renders events and silently
-  drops the overlay. See [Upkeep plan](./upkeep-plan.md#how-this-lands-on-the-calendar-item-3).
+  drops the overlay. See
+  [Rhythms plan](./rhythms-plan.md#how-this-lands-on-the-calendar).
 
 - **Smarter goal-note suggestions (Tier 2).** Tier 1 shipped (see **Done**): the Log
   sheet's "What did you do?" chips now suggest the notes actually logged against that

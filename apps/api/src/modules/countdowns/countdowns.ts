@@ -1,17 +1,19 @@
 // Countdowns — "N days until X" to build anticipation. A core Calendar feature (not a
-// gated module). Three sources merged into one sorted list: standalone countdown items
-// (this table), calendar events flagged is_countdown, and each member's next birthday
-// (derived from persons.birthday). Read-only surfaces: a Today card + a calendar badge.
+// gated module). Four sources merged into one sorted list: standalone countdown items
+// (this table), calendar events flagged is_countdown, each member's next birthday
+// (derived from persons.birthday), and completion-shape rhythms counting down to their
+// next due date. Read-only surfaces: a Today card + a calendar badge.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
 import { tenantRoute } from '../../platform/route-guards'
+import { moduleEnabled } from '../../platform/modules'
 import type { Tenant } from '../households/households'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
-export type CountdownSource = 'standalone' | 'event' | 'birthday'
+export type CountdownSource = 'standalone' | 'event' | 'birthday' | 'rhythm'
 export interface Countdown {
   id: string
   title: string
@@ -52,6 +54,17 @@ async function readSleeps(householdId: string): Promise<boolean> {
     [householdId]
   )
   return rows[0]?.sleeps === 'true'
+}
+
+// Rhythms is an optional module, off by default; countdowns is not. So the fourth
+// source opts in on the household's module setting rather than a route guard — same
+// shape as the pantry's cross-module reads.
+async function readRhythmsEnabled(householdId: string): Promise<boolean> {
+  const { rows } = await query<{ settings: unknown }>(
+    `select settings from households where id = $1`,
+    [householdId]
+  )
+  return moduleEnabled(rows[0]?.settings, 'rhythms')
 }
 
 // How far ahead a birthday is allowed to surface on the list (days). Past this it's just
@@ -110,6 +123,25 @@ async function listCountdowns(householdId: string, viewerPersonId: string | null
     // now-far-off) birthdays off the list.
     if (daysBetween(today, date) > horizonDays) continue
     out.push({ id: `birthday:${p.id}`, title: `${p.name}'s birthday`, date, daysLeft: daysBetween(today, date), source: 'birthday', emoji: '🎂', color: null, personId: p.id })
+  }
+
+  // Completion-shape rhythms — "N days until the filter is due". Only this shape: a
+  // scheduling-shape rhythm IS a calendar event, so the is_countdown flag above already
+  // covers it and repeating it here would list the same thing twice.
+  if (await readRhythmsEnabled(householdId)) {
+    const rhythms = await query<{ id: string; title: string; date: string; emoji: string | null; person_id: string | null }>(
+      `select r.id, r.title, (r.next_due_at at time zone h.timezone)::date::text as date, r.emoji, r.person_id
+         from rhythms r join households h on h.id = r.household_id
+        where r.household_id = $1 and r.deleted_at is null and r.is_active
+          and r.satisfied_by = 'completion' and r.next_due_at is not null
+          and (r.next_due_at at time zone h.timezone)::date >= $2::date`,
+      [householdId, today]
+    )
+    for (const r of rhythms.rows) {
+      // Prefixed like a birthday's synthetic id: the row isn't a `countdowns` row, so
+      // the editing surfaces must never mistake it for one.
+      out.push({ id: `rhythm:${r.id}`, title: r.title, date: r.date, daysLeft: daysBetween(today, r.date), source: 'rhythm', emoji: r.emoji ?? '🔁', color: null, personId: r.person_id })
+    }
   }
 
   out.sort((a, b) => a.daysLeft - b.daysLeft || a.title.localeCompare(b.title))

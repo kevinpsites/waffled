@@ -217,6 +217,9 @@ export function EventDetail() {
               {view.personEmoji ?? '🙂'} {view.personName}
             </span>
           )}
+          {/* Booking-shaped on purpose: a rhythm is satisfied by this slot existing,
+              so there is nothing here to mark done and no streak to keep. */}
+          {view.rhythmId && <span className="ed-hero-who ed-hero-rhythm">🔁 This slot keeps a rhythm</span>}
           <div className="ed-hero-title wf-serif">{view.title}</div>
           <div className="ed-hero-when">
             {view.allDay ? (

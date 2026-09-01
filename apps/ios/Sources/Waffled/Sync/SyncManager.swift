@@ -101,6 +101,17 @@ final class SyncManager {
     /// Nudge the goals refresh bus (call after logging/review changes goal progress).
     func touchGoals() { goalsRev += 1 }
 
+    /// Bumped when something that FEEDS a countdown changes — today, a rhythm.
+    ///
+    /// A completion rhythm is a countdown source, and both cards sit on the same screen,
+    /// so marking one done left the countdown chip beside it still counting to the old
+    /// date until a manual refresh. Web has wired this from the start
+    /// (`useRefetchOn(['countdowns', 'rhythms'])`); this is the iOS half.
+    private(set) var countdownsRev = 0
+
+    /// Nudge the countdowns bus (call after a rhythm mutation).
+    func touchCountdowns() { countdownsRev &+= 1 }
+
     /// The logged-in person — id plus household role & capabilities (so "my" goals
     /// respect who's signed in, and management/approval controls only show when the
     /// server would allow the action). Loaded once.
@@ -124,6 +135,33 @@ final class SyncManager {
     private(set) var rewardsSubEnabled = true
     /// Bumped after a module toggle so nav rails / Today re-evaluate live.
     private(set) var modulesRev = 0
+
+    /// Bumped when the person explicitly asks for fresh data — a pull-to-refresh, or a
+    /// return to the foreground.
+    ///
+    /// Several Today cards own their own REST fetch (countdowns, pantry, rhythms, family
+    /// night, the list card) because none of those tables are on PowerSync. Each loaded
+    /// itself with a bare `.task { … }`, which SwiftUI runs once when the view appears and
+    /// never again — so pulling down on Today refreshed the two things the screen fetched
+    /// directly and silently left every one of those cards on whatever it read at launch.
+    /// A rhythm completed on the web, a countdown that moved, a module switched off: none
+    /// of it arrived until the tab was left and re-entered, which is exactly what "I'm not
+    /// sure pull-to-refresh does anything" looks like from the outside.
+    ///
+    /// Cards key their load on this (`.task(id: sync.refreshRev)`) so one signal wakes all
+    /// of them, instead of Today having to know each card's model.
+    private(set) var refreshRev = 0
+
+    /// Everything a deliberate refresh has to cover that isn't a synced table: the module
+    /// flags (so a module toggled off elsewhere actually disappears) and every self-loading
+    /// REST card. Awaited, so a pull-to-refresh spinner is held by a real round-trip rather
+    /// than snapping back before anything has arrived.
+    func refreshRestSurfaces() async {
+        // Bump first: the cards start their reloads while the module read is in flight,
+        // rather than after it.
+        refreshRev &+= 1
+        await reloadModules()
+    }
 
     /// Whether an optional module is enabled for this household — mirrors the server's
     /// `moduleEnabled()`: available modules read `settings.modules[key]` with the catalog
@@ -911,36 +949,10 @@ final class SyncManager {
     private func watchEvents() {
         eventsTask = Task { [db] in
             do {
-                // UNION of single/Google events (rrule IS NULL — recurring masters are
-                // filtered out, their occurrences render instead) and materialized
-                // occurrences joined to their master. Mirrors the web's AGENDA_SQL
-                // (apps/web/src/lib/powersync/events-local.ts). The watch derives its
-                // tracked tables from this SQL, so `event_occurrences` is picked up too.
+                // The query lives in `EventQuery.agenda` (Sync/Events.swift) so a test
+                // can read it — see RhythmMarkTests.
                 let stream = try db.watch(
-                    sql: """
-                    SELECT e.id AS id, e.id AS series_id, NULL AS occurrence_start,
-                           e.title, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.location, e.person_id,
-                           e.visibility, e.owner_person_id, e.origin,
-                           p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
-                           (SELECT group_concat(ep.person_id) FROM event_participants ep
-                             WHERE ep.event_id = e.id) AS participant_ids
-                      FROM events e
-                      LEFT JOIN persons p ON p.id = e.person_id
-                     WHERE e.rrule IS NULL
-                    UNION ALL
-                    SELECT o.id AS id, m.id AS series_id, o.original_start AS occurrence_start,
-                           coalesce(o.title, m.title) AS title, o.starts_at, o.ends_at, o.all_day, m.is_countdown,
-                           coalesce(o.location, m.location) AS location, o.person_id,
-                           o.visibility, o.owner_person_id,
-                           -- an occurrence is as read-only as the series it belongs to
-                           m.origin AS origin,
-                           p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
-                           (SELECT group_concat(ep.person_id) FROM event_participants ep
-                             WHERE ep.event_id = m.id) AS participant_ids
-                      FROM event_occurrences o
-                      JOIN events m ON m.id = o.event_id
-                      LEFT JOIN persons p ON p.id = o.person_id
-                    """,
+                    sql: EventQuery.agenda,
                     parameters: [],
                     mapper: { cursor in
                         let raw = try cursor.getStringOptional(name: "starts_at")
@@ -965,7 +977,8 @@ final class SyncManager {
                             seriesId: (try cursor.getStringOptional(name: "series_id")) ?? id,
                             occurrenceStart: try cursor.getStringOptional(name: "occurrence_start"),
                             visibility: (try cursor.getStringOptional(name: "visibility")) ?? "family",
-                            ownerPersonId: try cursor.getStringOptional(name: "owner_person_id")
+                            ownerPersonId: try cursor.getStringOptional(name: "owner_person_id"),
+                            rhythmId: try cursor.getStringOptional(name: "rhythm_id")
                         )
                     }
                 )
@@ -1033,7 +1046,7 @@ final class SyncManager {
 enum WaffledModule: String, CaseIterable, Identifiable {
     // Declaration order drives the Settings → Modules list; keep it in step with the
     // Settings → Family feature rows so the two screens read the same.
-    case chores, goals, meals, lists, pantry, familyNight, waffledBites, quotes
+    case chores, goals, meals, lists, pantry, rhythms, familyNight, waffledBites, quotes
     var id: String { rawValue }
 
     var isAvailable: Bool {
@@ -1042,12 +1055,14 @@ enum WaffledModule: String, CaseIterable, Identifiable {
         default: return true
         }
     }
-    /// Opt-in modules default off (pantry, familyNight, waffledBites); the rest default on.
-    var defaultOn: Bool { self != .pantry && self != .familyNight && self != .waffledBites }
+    /// Opt-in modules default off (pantry, rhythms, familyNight, waffledBites); the rest
+    /// default on.
+    var defaultOn: Bool { self != .pantry && self != .rhythms && self != .familyNight && self != .waffledBites }
 
     var name: String {
         switch self {
         case .pantry: return "Pantry"
+        case .rhythms: return "Rhythms"
         case .chores: return "Chores & Tasks"
         case .goals: return "Goals"
         case .meals: return "Meals & Recipes"
@@ -1060,6 +1075,7 @@ enum WaffledModule: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .pantry: return "🥫"
+        case .rhythms: return "🔁"
         case .chores: return "✅"
         case .goals: return "🎯"
         case .meals: return "🍽️"
@@ -1072,6 +1088,7 @@ enum WaffledModule: String, CaseIterable, Identifiable {
     var summary: String {
         switch self {
         case .pantry: return "Track what's on hand (freezer/fridge/pantry) and feed meal planning."
+        case .rhythms: return "The things that should keep happening — the air filter, trash night, a quarterly self-care day — with a place to confirm each one is actually handled."
         case .chores: return "The Tasks board — assignable chores, photo proof, approvals, and stars."
         case .goals: return "Personal and family goals with progress, streaks, and checklists."
         case .meals: return "Recipe library, weekly meal planning, and meals on the calendar."

@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// Calendar countdowns — "N days until X" from three sources (a flagged event, a
-/// standalone item, or a member's next birthday), merged + sorted server-side by
-/// `GET /api/countdowns`. A core Calendar feature (never gated). Surfaced as a Today
-/// card, month-grid badges, and an "is countdown" toggle in the event editor. Only
-/// standalone items are editable from here; events/birthdays are managed at their source.
+/// Calendar countdowns — "N days until X" from four sources (a flagged event, a
+/// standalone item, a member's next birthday, or a completion-shape rhythm counting
+/// down to when it's next due), merged + sorted server-side by `GET /api/countdowns`.
+/// A core Calendar feature (never gated). Surfaced as a Today card, month-grid badges,
+/// and an "is countdown" toggle in the event editor. Only standalone items are editable
+/// from here; the other three are managed at their source — `source` is decoded as a
+/// plain String precisely so a new kind can't break decoding for the whole list.
 
 // MARK: - Formatting
 
@@ -114,6 +116,7 @@ final class CountdownsModel {
 /// screens get add / rename-move (tap a standalone row) / remove without re-wiring.
 struct CountdownsCard: View {
     var kiosk = false
+    @Environment(SyncManager.self) private var sync
     @State private var model = CountdownsModel()
     @State private var adding = false
     @State private var editing: WaffledAPI.Countdown?
@@ -124,7 +127,10 @@ struct CountdownsCard: View {
         Group {
             if kiosk { KioskCard { inner } } else { WaffledCard(padding: 15) { inner } }
         }
-        .task { await model.load() }
+        // Keyed on the refresh signal, not a bare `.task`: SwiftUI runs a bare one
+        // once per appearance, so this card sat on launch-time data through every
+        // pull-to-refresh. See SyncManager.refreshRev.
+        .task(id: "\(sync.refreshRev)|\(sync.countdownsRev)") { await model.load() }
         .sheet(isPresented: $adding) {
             AddCountdownSheet { title, date, emoji in
                 try await model.add(title: title, date: date, emoji: emoji)

@@ -14,6 +14,7 @@ everything a family coordinates day to day:
 - 🍽️ **Meals & recipes** with a step-by-step cook mode and an auto-built grocery list
 - 🧺 **Lists & groceries** (aisle-grouped, meal-aware, saveable as templates)
 - 🥫 **Pantry** with a barcode scanner, low-stock/expiry nudges, and allergen warnings *(optional module)*
+- 🔁 **Rhythms** — the things that should keep happening (the air filter, trash night, a quarterly visit), with one place to confirm each is handled *(optional module)*
 - 🖼️ **Photos & memories** with an ambient screensaver
 - ✨ An **AI "Add anything" capture bar** that routes natural language to the right place
 

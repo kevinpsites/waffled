@@ -162,6 +162,23 @@ capability X · **module(X)** = requires module X enabled · **device** = kiosk 
 | GET · POST · PATCH · DELETE | `/api/pantry[/:id]` · `/scan` · `/consume` · PUT `/config` | Pantry inventory | tenant |
 | GET | `/api/pantry/lookup/:barcode` · `/cookable` · `/for-recipe/:id` · `/:id/recipes` | Barcode & recipe lookups | tenant |
 
+### Rhythms — `module(rhythms)`
+
+| Method | Path | Purpose | Auth |
+|---|---|---|---|
+| GET · POST | `/api/rhythms` | List (with current-period state) / create | module(rhythms) tenant |
+| PATCH · DELETE | `/api/rhythms/:id` | Edit the safe-to-change fields / retire (soft) | module(rhythms) tenant |
+| GET | `/api/rhythms/attention?to=&from=` | What needs attention by a horizon (`to` required, `YYYY-MM-DD`) | module(rhythms) tenant |
+| POST | `/api/rhythms/:id/complete` · `/skip` | Mark done / skip one period | module(rhythms) tenant |
+| POST | `/api/rhythms/:id/schedule` | Book a period into a real calendar event | module(rhythms) tenant |
+| GET | `/api/rhythms/:id/completions` | Completion history | module(rhythms) tenant |
+
+`PATCH` covers `title`, `emoji`, `notes`, `personId`, `every`, `leadTime` and `isActive`
+only — **not** `satisfiedBy`, `startsOn`, `autoSchedule` or `rrule`. Re-anchoring a live
+rhythm would re-interpret the periods it has already skipped and point its bookings at
+periods that no longer exist. `leadTime` is clamped to at most half of `every`, on create
+and on every edit.
+
 ### Family Night — `module(familyNight)`
 
 | Method | Path | Purpose | Auth |

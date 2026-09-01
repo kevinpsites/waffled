@@ -4,7 +4,7 @@ import SwiftUI
 /// tab's NavigationStack — Lists is built out; the rest are live-summary
 /// placeholders until their screens land.
 enum HubRoute: Hashable {
-    case chores, goals, rewards, lists, photos, settings, pantry
+    case chores, goals, rewards, lists, photos, settings, pantry, rhythms
     case list(WaffledAPI.ListSummary)   // a specific list pushed from the Lists index
     case goal(WaffledAPI.Goal)          // a specific goal pushed from the Goals screen
     case person(String)              // a person spotlight pushed from the people row
@@ -34,6 +34,22 @@ enum HubRoute: Hashable {
     case approvals                   // Today → pending reward purchases + chore check-offs
 }
 
+extension DemoHooks {
+    /// `WAFFLED_HUB_PAGE` as a route, for the headless verification described on it.
+    static var hubRoute: HubRoute? {
+        switch hubPage {
+        case "rhythms": return .rhythms
+        case "pantry": return .pantry
+        case "chores": return .chores
+        case "goals": return .goals
+        case "lists": return .lists
+        case "rewards": return .rewards
+        case "photos": return .photos
+        default: return nil
+        }
+    }
+}
+
 /// Renders a `HubRoute` destination. Shared by the Family hub and the Today tab so
 /// drilling into a person/chores/grocery/recipe stays on whichever tab you started
 /// from — Back returns there instead of switching tabs. `hub` is optional: only the
@@ -56,6 +72,7 @@ struct HubDestination: View {
         case let .meal(m):      MealDetailView(summary: m, recipes: recipes)
         case .chores:           ChoresView()
         case .pantry:           PantryView()
+        case .rhythms:          RhythmsView()
         case .goals:            GoalsView(path: $path)
         case let .goal(goal):   GoalDetailView(goal: goal, path: $path)
         case let .person(id):   PersonView(personId: id, path: $path)

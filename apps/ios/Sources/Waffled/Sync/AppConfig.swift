@@ -131,6 +131,18 @@ enum AppConfig {
 enum DemoHooks {
     /// Initial tab: today | calendar | meals | family.
     static var startTab: String? { AppConfig.env("WAFFLED_START_TAB") }
+    /// A Family-hub screen to push on launch: rhythms | pantry | chores | goals |
+    /// lists | rewards | photos. The iPhone counterpart of `kioskPage` — those screens
+    /// are otherwise only reachable by tapping, and the simulator has no tap API, so
+    /// without this the phone rendering of any of them can't be looked at headlessly.
+    static var hubPage: String? { AppConfig.env("WAFFLED_HUB_PAGE") }
+    /// Open the rhythm editor on the register as soon as it appears: `new` for a blank
+    /// one, or a rhythm's title to edit that one. Same reason as `cookPlate` — a sheet
+    /// behind a toolbar button can't be reached without a tap, and there is no tap API.
+    static var rhythmEditor: String? { AppConfig.env("WAFFLED_RHYTHM_EDITOR") }
+    /// Open that editor with More options already expanded — the disclosure is behind a
+    /// tap like everything else here.
+    static var rhythmEditorMore: Bool { AppConfig.env("WAFFLED_RHYTHM_MORE") == "1" }
     /// Initial iPad kiosk page (rail selection): today | calendar | tasks | goals |
     /// family | meals | lists | photos | settings. No effect on iPhone.
     static var kioskPage: String? { AppConfig.env("WAFFLED_KIOSK_PAGE") }

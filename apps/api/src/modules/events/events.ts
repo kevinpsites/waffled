@@ -19,6 +19,7 @@ import {
   assertGoalInHousehold,
   assertGoalStepInHousehold,
   assertPersonsInHousehold,
+  assertRhythmInHousehold,
 } from '../../platform/household-refs'
 import { registerEventCaptureTarget } from './events-capture'
 
@@ -99,6 +100,7 @@ const UPDATABLE: Record<string, string> = {
   personId: 'person_id',
   goalId: 'goal_id',
   goalStepId: 'goal_step_id',
+  rhythmId: 'rhythm_id',
   rrule: 'rrule',
   recurrenceEndAt: 'recurrence_end_at',
   isCountdown: 'is_countdown',
@@ -126,6 +128,7 @@ export interface EventRow extends QueryResultRow {
   is_countdown?: boolean
   person_id: string | null
   goal_id?: string | null
+  rhythm_id?: string | null
   goal_step_id?: string | null
   ical_uid?: string | null
   rrule?: string | null
@@ -159,6 +162,9 @@ export interface CreateEventInput {
   // Calendar → goal bridge: tag this event so its completion counts toward a goal
   // (the goal must have auto_from_calendar on). null/omitted = not linked.
   goalId?: string | null
+  // Back-reference to the rhythm this event satisfies. A rhythm and a goal can both
+  // ride one event, so this is independent of goalId.
+  rhythmId?: string | null
   // For a checklist goal, which step this event is meant to complete; confirming
   // the recap ticks it. Only meaningful alongside a checklist goalId.
   goalStepId?: string | null
@@ -207,6 +213,10 @@ export async function assertEventReferences(
     if (typeof input.calendarId !== 'string') throw new InvalidReferenceError('invalid calendar id')
     await assertCalendarInHousehold(householdId, input.calendarId)
   }
+  if (input.rhythmId != null) {
+    if (typeof input.rhythmId !== 'string') throw new InvalidReferenceError('invalid rhythm id')
+    await assertRhythmInHousehold(householdId, input.rhythmId)
+  }
 }
 
 // Replace an event's participants with the given (deduped) people.
@@ -244,11 +254,11 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
     const ins = await client.query<EventRow>(
       `insert into events
          (household_id, calendar_id, title, description, location, starts_at, ends_at, all_day, timezone,
-          person_id, goal_id, goal_step_id, rrule, rdate, exdate, recurrence_end_at, origin, sync_state, is_countdown,
+          person_id, goal_id, goal_step_id, rhythm_id, rrule, rdate, exdate, recurrence_end_at, origin, sync_state, is_countdown,
           visibility, owner_person_id)
        values ($1,$2,$3,$4,$5,$6,$7, coalesce($8,false),
-               coalesce($9, (select timezone from households where id=$1)), $10, $11, $12,
-               $13, $14::timestamptz[], $15::timestamptz[], $16, 'manual', $17, coalesce($18,false),
+               coalesce($9, (select timezone from households where id=$1)), $10, $11, $12, $13,
+               $14, $15::timestamptz[], $16::timestamptz[], $17, 'manual', $18, coalesce($19,false),
                -- visibility/owner follow the destination calendar; local-only (null) ⇒ family
                coalesce((select visibility from calendars where id=$2 and deleted_at is null), 'family'),
                (select person_id from calendars where id=$2 and deleted_at is null))
@@ -266,6 +276,7 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
         primary,
         input.goalId ?? null,
         input.goalStepId ?? null,
+        input.rhythmId ?? null,
         input.rrule ?? null,
         input.rdate ?? null,
         input.exdate ?? null,
@@ -311,7 +322,7 @@ function participantsSub(idExpr: string): string {
 
 const SINGLE_SELECT = `
   select e.id as id, e.id as series_id, null::timestamptz as occurrence_start,
-         e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.person_id, e.goal_id, e.goal_step_id,
+         e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.person_id, e.goal_id, e.goal_step_id, e.rhythm_id,
          e.rrule, e.recurrence_end_at, e.sync_state, e.origin, e.origin_ref_id, c.summary as calendar_name,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsSub('e.id')}
@@ -326,7 +337,7 @@ const OCC_SELECT = `
          coalesce(o.title, m.title) as title,
          nullif(coalesce(ov.description, m.description), '') as description,
          nullif(coalesce(o.location, m.location), '') as location,
-         o.starts_at, o.ends_at, o.all_day, m.is_countdown, o.person_id, m.goal_id, m.goal_step_id,
+         o.starts_at, o.ends_at, o.all_day, m.is_countdown, o.person_id, m.goal_id, m.goal_step_id, m.rhythm_id,
          m.rrule, m.recurrence_end_at, m.sync_state, m.origin, m.origin_ref_id, c.summary as calendar_name,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsSub('m.id')}
@@ -773,6 +784,7 @@ export function presentEvent(e: EventRow) {
     isCountdown: e.is_countdown ?? false,
     personId: e.person_id,
     goalId: e.goal_id ?? null,
+    rhythmId: e.rhythm_id ?? null,
     goalStepId: e.goal_step_id ?? null,
     rrule: e.rrule ?? null,
     recurrenceEndAt: e.recurrence_end_at ?? null,

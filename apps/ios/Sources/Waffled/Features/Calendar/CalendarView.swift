@@ -414,7 +414,10 @@ struct CalendarView: View {
                 HStack(spacing: 7) {
                     RoundedRectangle(cornerRadius: 99).fill(paint.color).frame(width: 3)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
+                        HStack(spacing: 3) {
+                            RhythmEventMark(event: ev, size: 11)
+                            Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(paint.foreground).lineLimit(1)
+                        }
                         if height > 40 {
                             Text(EventTime.timeLabel(start, tz)).font(.system(size: 10.5, weight: .medium))
                                 .foregroundStyle(paint.foreground.opacity(0.75))
@@ -548,6 +551,7 @@ struct EventCard: View {
                     .frame(width: 72, alignment: .leading)
                 RoundedRectangle(cornerRadius: 99).fill(sync.eventPalette.color(for: event))
                     .frame(width: 4, height: 34)
+                RhythmEventMark(event: event, size: 13)
                 Text(event.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 Spacer(minLength: 8)
                 if let emoji = event.emoji {

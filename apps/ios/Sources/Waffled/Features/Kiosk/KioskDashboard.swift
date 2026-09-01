@@ -8,6 +8,7 @@ import SwiftUI
 /// open as sheets. See `apps/ios/IPAD_ROADMAP.md`.
 struct KioskDashboard: View {
     @Environment(SyncManager.self) private var sync
+    @Environment(\.scenePhase) private var scenePhase
     /// Cook Mode is presented app-level (from `RootView`) off this store. Because this
     /// page opens the recipe as a `.fullScreenCover`, that root cover would otherwise
     /// queue behind it — so we dismiss the recipe cover the moment a cook starts.
@@ -21,6 +22,10 @@ struct KioskDashboard: View {
     var openGoal: (WaffledAPI.Goal) -> Void = { _ in }
 
     @State private var model = KioskTodayModel()
+    /// The Rhythms card's data lives here rather than inside the card — see the note on
+    /// `RhythmsTodayCard.model`. A card that renders nothing when it has nothing can't be
+    /// trusted to fetch its own contents.
+    @State private var rhythms = RhythmsModel()
     @State private var recipes = RecipesModel()
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
@@ -97,6 +102,11 @@ struct KioskDashboard: View {
         .task(id: "\(tz.identifier)|\(sync.mealsRev)") { await model.loadMeals(todayKey: todayKey) }
         .task(id: "\(tz.identifier)|\(sync.groceryRev)") { await model.loadGrocery() }
         .task(id: tz.identifier) { await model.loadWeather() }
+        // Lives on the page, which always renders, rather than on the card, which does not.
+        .task(id: "\(sync.refreshRev)|\(sync.modulesRev)") {
+            guard sync.module(.rhythms) else { return }
+            await rhythms.loadAttention()
+        }
         .task(id: sync.goalsRev) {
             await model.loadGoals()
             // Headless check of the card-tap wiring: launched onto Today with
@@ -114,6 +124,14 @@ struct KioskDashboard: View {
         // Day rollover on the always-on display: sleep to just past each
         // household-tz midnight, then refetch the day-scoped domains so the wall
         // iPad doesn't keep showing yesterday's dinner and chores.
+        //
+        // This is the wall's *only* unattended refresh, so it has to cover everything a
+        // pull-to-refresh covers on the phone — hence `refreshRestSurfaces`. The page has
+        // no pull gesture and can't have one: it's three side-by-side columns, each
+        // owning its own scroll, so there's no single container for `.refreshable` to
+        // hang off. Without this the self-loading REST cards (countdowns, pantry,
+        // rhythms, family night) held launch-time data until someone restarted the app —
+        // a rhythm completed on a phone in the morning still read as due that evening.
         .task(id: tz.identifier) {
             while !Task.isCancelled {
                 let wait = Agenda.secondsUntilNextDay(after: Date(), tz: tz)
@@ -121,7 +139,21 @@ struct KioskDashboard: View {
                 guard !Task.isCancelled else { return }
                 async let c: () = model.loadChores()
                 async let m: () = model.loadMeals(todayKey: todayKey)
-                _ = await (c, m)
+                async let r: () = sync.refreshRestSurfaces()
+                _ = await (c, m, r)
+            }
+        }
+        // A wall iPad does get woken — the screen locks, someone taps it, the app comes
+        // back to active. That's the closest thing to a deliberate refresh anyone can
+        // perform here, so treat it like the phone's: reload the REST cards and the
+        // module flags, not just the day-scoped domains.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task {
+                async let c: () = model.loadChores()
+                async let m: () = model.loadMeals(todayKey: todayKey)
+                async let r: () = sync.refreshRestSurfaces()
+                _ = await (c, m, r)
             }
         }
         // Pinned-banner queues: approvals refresh on chore/reward actions; the review
@@ -290,9 +322,19 @@ struct KioskDashboard: View {
     // Chores sized to content; the grocery card fills the rest and scrolls its own
     // (full) list internally so it stays reachable. Grocery must be the *last* fill
     // element here — the pantry card lives in the agenda column so it can't crush it.
+    //
+    // Rhythms sits here rather than under pantry, where it first went. The dashboard is a
+    // fixed-height GeometryReader and every column is an unbounded VStack, so a card that
+    // doesn't fit isn't squeezed — it's clipped, off the bottom, with no scroll to reach
+    // it. The agenda column was already three self-sizing cards deep and had no room to
+    // give; this one is built around a fill element that yields, and chores + rhythms are
+    // the same kind of thing anyway: the recurring work of the house.
     private var choreGroceryCol: some View {
         VStack(spacing: 22) {
             choresCard
+            // Renders nothing when the register is quiet, which is most days — same rule
+            // as the web card, so on a normal morning this column is exactly as it was.
+            if sync.module(.rhythms) { RhythmsTodayCard(kiosk: true, model: rhythms) { navigate(.rhythms) } }
             groceryCard
         }
     }
@@ -462,7 +504,10 @@ struct KioskDashboard: View {
             // The iPad twin of EventRow's bar — family-aware; the avatar keeps the owner's color.
             RoundedRectangle(cornerRadius: 99).fill(sync.eventPalette.color(for: ev)).frame(width: 5, height: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text(ev.title).font(.system(size: 21, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                HStack(spacing: 6) {
+                    RhythmEventMark(event: ev, size: 17)
+                    Text(ev.title).font(.system(size: 21, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                }
                 Text(timeText(ev)).font(.system(size: 15)).foregroundStyle(WF.ink3)
             }
             Spacer(minLength: 8)

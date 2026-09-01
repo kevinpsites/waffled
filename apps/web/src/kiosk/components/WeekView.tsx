@@ -3,6 +3,7 @@ import { usePersons, type AgendaEvent, type Countdown } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
 import { DOW, ymd, addDays, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, eventPeople, packLanes } from './cal-utils'
 import { CountdownChip } from './CountdownChip'
+import { RhythmMark } from './RhythmMark'
 
 const DAY_START = 0 // midnight — top of the grid (full day so early events are reachable)
 const DAY_END = 23 // 11 PM — bottom
@@ -140,6 +141,7 @@ export function WeekView({
                       style={evVars(color)}
                       onClick={() => onOpenEvent(e)}
                     >
+                      <RhythmMark event={e} />
                       {e.title}
                     </div>
                   )
@@ -195,7 +197,7 @@ export function WeekView({
                         }}
                       >
                         <div className="wk-ev-t">{fmtTime(e)}</div>
-                        <div className="wk-ev-title">{e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}{e.title}</div>
+                        <div className="wk-ev-title">{e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}<RhythmMark event={e} />{e.title}</div>
                       </div>
                     )
                   })}

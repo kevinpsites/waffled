@@ -15,6 +15,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Rhythms — the things that should keep happening.** A new optional module for the
+  standing intentions with a cadence: trash out weekly, the air filter every three months,
+  a temple visit each quarter, a self-care day every other month, a family outing on the
+  third weekend. It is deliberately neither a chore list (no stars, no approval, nobody
+  earns anything for changing the furnace filter) nor a goal: with a goal you want to
+  **follow through**, while a rhythm is about the **opportunity existing**. Each one is
+  either something **you do** — where the clock restarts from when you *actually* did it,
+  so being late shifts the next one instead of stacking up missed ones — or something that
+  **gets scheduled**, where a calendar event existing for the period is the whole outcome
+  and Waffled never asks whether it happened. Booking one puts a **real event** on the
+  calendar (with its title and the right person already filled in), so it gets recurrence,
+  colors, reminders and Google/Outlook sync like anything else, and wears a small 🔁 so you
+  can tell it apart; a period you can't make can simply be **skipped** without inventing an
+  entry for something that isn't happening. The register itself is sorted by **when, not by
+  kind** — *Needs you now*, *Coming up*, *Steady*, with the paused ones named in a single
+  line at the bottom — and every row is anchored by a countdown (*6 days late*, *3 months*,
+  or **Booked**) above a hairline showing how much of the cycle is already spent, so the top
+  of the page is always the thing most worth your attention. The **Today card** is a countdown block:
+  *"3 want attention"* on one side and *"All 10 →"* on the other, so you see both what is
+  being asked of you and how much isn't; each row leads with its countdown (*7 days late ·
+  every 3 months*) and the filled button is kept for the things that are actually late,
+  since a card where everything shouts says nothing. It stays invisible on the many quiet
+  days, and the things you do yourself turn into countdowns ("18 days until the air
+  filter"). Turning on **Put it on the calendar
+  automatically** books the series there and then, so the thing is on the calendar from the
+  moment you create it; the day it lands on is picked with the same weekday control the
+  calendar uses, rather than by typing a repeat rule. When a self-booking rhythm does come up
+  empty, the row now says which kind of empty it is: **nothing on the calendar this time**
+  when the series is fine and one occurrence is missing, and **the series needs putting
+  back** only when there is no recurrence left. Booking the first kind adds the one missing
+  event — where it used to create a **second** series beside the live one and quietly double
+  every occurrence from then on. Something you did but forgot to log
+  can be recorded for **the day it actually happened**, which matters for the shapes whose
+  clock restarts from that date. Making one is a **sentence you edit in place** — *Air
+  filter every 3 months, counted when I mark it done, on Kevin* — with everything else
+  folded away behind More options, and Waffled states the consequence underneath before you
+  commit to it: the day the next one lands, the day it starts appearing on Today, and the
+  promise that doing it late moves the next one instead of stacking a miss. A new rhythm is
+  due **one full cadence out** rather than immediately, so it doesn't arrive already
+  overdue, and the warning runway sizes itself to the cadence instead of always starting at
+  a fortnight. Off by default — turn **Rhythms** on in Settings → Modules. Everything ships
+  on web, kiosk, iPhone and iPad — the regrouped register, the new Today card, and making
+  one by **saying it as a sentence**: *🌬 Air filter, every 3 months, counted when I mark
+  it done, on Kevin*, with a card underneath naming the two dates that are the whole
+  promise — when the first one lands, and when it starts asking. Both are the dates you
+  will actually get rather than the ones you typed, so a weekly rhythm asked for a
+  fortnight's notice says plainly that it is keeping three days. A new rhythm now starts
+  one full cadence out instead of due today, so nothing you create arrives already
+  overdue. And when something is asking and today isn't the day, **push it out a week** —
+  in the row's ⋯ menu everywhere, and on a swipe on the phone. It moves the clock without
+  claiming you did the thing, and it buys a full week of quiet even from something already
+  late; doing it for real still restarts the count from the day you actually did it.
 - **Write a new recipe without leaving the meal you're planning.** Filling a night on
   the weekly or monthly plan opens your recipe list — and if what you wanted to cook
   isn't in it yet, that used to be a dead end: back out of the planner, go to Recipes,
@@ -48,6 +100,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A skipped period no longer claims to be on the calendar.** Skipping exists to send one
+  period quiet *without* inventing an entry for something that isn't going to happen — and
+  the row then reported it as booked anyway, which was the one thing the choice was made to
+  avoid saying. A skipped period now reads **Skipped**, and only a real booking reads
+  **Booked**. Web, kiosk, iPhone and iPad.
+- **A cancelled instance of a self-booking rhythm brings the period back.** Cancelling one
+  occurrence of an automatic series left the rhythm insisting the period was still handled,
+  with nothing on the calendar to show for it, and it never resurfaced to be rebooked. It
+  now goes back to asking — while still knowing the series itself is fine, so it offers the
+  ordinary **Book a time** rather than proposing to rebuild the whole recurrence.
+- **A rhythm action that fails now says so.** Skipping, completing, pausing, pushing out or
+  retiring against a server that refused the change left the row exactly as it was and said
+  nothing, which is indistinguishable from a tap that missed — so the natural response was
+  to press it again. Each now reports that it didn't go through.
+- **The Rhythms card is visible on the wall iPad.** It had been added under the pantry, in
+  a column that was already three cards deep — and the dashboard is a fixed height, so the
+  fourth card wasn't squeezed to fit, it was cut off the bottom with no way to scroll to
+  it. It now sits with the chores, above the grocery list that gives up the room.
+- **A booked rhythm says when it's booked for** — "Booked · Aug 19, 6:00 PM" rather than
+  just "Booked", which left you opening the calendar to find out. An all-day booking gives
+  its date and no invented time.
+- **You can see how often something really happens.** Editing a rhythm you mark done shows
+  what it has kept — "Done 6 times · about every 123 days, against every 3 months" — so a
+  cadence that doesn't match reality says so instead of quietly drifting.
+- **On iPhone and iPad you can pick the day an automatic booking lands on** — the weekday
+  chips, "the last Saturday of the month", and a box for writing the repeat rule yourself.
+  Before, the day came from the start date, so a rhythm you wanted on Wednesdays had to
+  begin on a Wednesday.
+- **"Push it out a week" only appears when something is actually asking.** On anything
+  repeating fortnightly or sooner it used to be offered permanently, including the moment
+  after you'd just done it.
+- **A rhythm that repeats on a schedule keeps its cadence.** Changing it would have
+  re-read every period you'd already skipped or booked, so it's now fixed once the rhythm
+  exists — retire it and make a new one. Rhythms you mark done are unaffected.
+- **A future update to Waffled can't blank the rhythms screen on an older phone.** One
+  unfamiliar value used to empty the whole list and report it as a connection problem.
+- **A rhythm is no longer called late just because you looked further ahead.** The weekly
+  planner asks a week out, and everything due inside that week came back marked late — sorted
+  to the top and shown in red. Lateness is now measured against the actual moment, and the
+  runway that decides when something first appears is worked out in the household's own
+  timezone rather than UTC, which had been hiding some rhythms for their whole first day.
+- **A repeat deleted with "this and all following" stops being treated as still running.**
+  The rhythm went on saying its series was on the calendar when nothing was left of it, so it
+  kept offering to fill in single dates instead of offering to put the series back — and never
+  did put it back. Relatedly, a repeat rule that stops on its own (after N times, or on a set
+  date) is now refused when you set it: a rhythm runs for as long as it's active, and you stop
+  it by pausing or retiring it.
+- **Booking a rhythm for a time outside its period is refused, instead of quietly doing
+  nothing.** It used to put a real event on your calendar and leave the card still asking, with
+  nothing to explain why.
+- **Skipping now has to name a real period.** A skip aimed at a date that wasn't the start of
+  one reported success and silenced nothing.
+- **Two people marking the same thing done on the same day no longer overwrite each other.**
+  The two taps still fold into one entry, but it stays credited to whoever actually did it —
+  and a tap from the wall display no longer erases the name entirely.
+- **The Today rhythms card no longer disappears when the connection wobbles.** Marking
+  something done during a blip removed the whole card; it now keeps showing what it had and
+  says so.
+- **A rhythm that hasn't started yet says when it begins**, instead of claiming nothing is on
+  the calendar — which was wrong for one that had already booked itself.
+- **On iPhone and iPad, a countdown updates when its rhythm does.** Marking something done left
+  the countdown beside it counting to the old date until you refreshed.
+- **Clearer errors instead of failures.** A few settings — the runway, the start date, and the
+  dates behind the Today card — could fail in a way that just broke, rather than explaining what
+  was wrong.
+- **Logging a rhythm "on another day" works in the morning.** Choosing today — which is
+  what the button opens on — was refused until midday, and the row could only say the tap
+  didn't go through, so trying again failed the same way. Backdating to an earlier day
+  worked, which made it look arbitrary rather than broken.
+- **The booking sheet no longer says a period has closed when it hasn't.** A display or
+  phone whose clock is a day ahead of the household's could be told the window had shut
+  while the button beside it was still live and the booking would still have counted.
+- **One unusual repeat setting could stop the whole household's rhythms loading.** A cadence
+  mixing months and days — the sort nothing in the app offers, but the API accepted — could
+  describe a cycle that steps backwards, which left the list building forever rather than
+  answering. Enough of them could tie up a self-hosted server for everyone on it. Such a
+  cadence is now refused when it's set, with an explanation, and so is one shorter than a
+  day (periods are whole days, so several would land on the same one).
+- **Booking a rhythm says which days actually count.** The date picker was already limited
+  to the period, but it never said so, and it opens on the month holding today — so on the
+  last day of a weekly period the six other days you could have picked sat in the previous
+  month, out of sight. It now names the window, and says plainly when today is the last day
+  the period will take.
+- **Pull-to-refresh on Today refreshes the whole screen on iPhone**, and the wall iPad can
+  refresh its cards at all. Countdowns, pantry, Family Night, Lists and Rhythms all read
+  from the server rather than the offline copy, and were quietly holding whatever they had
+  loaded when the app started.
+- **The month view can add an event again.** On a day that already had something on it,
+  there was no way to create a second one: the grid's cells only select a day, and the
+  "＋" in the day panel beside them had been invisible since 0.13.1 — the tap-to-add empty
+  state it fell back to only appears on a day with nothing on it. Both routes are back.
 - **"Week starts on Monday" now actually starts your week on Monday.** The setting
   quietly did nothing you could see: it cut the grocery list's weeks behind the scenes,
   but every grid in the app was hard-coded to Sunday, so you'd change it and watch
@@ -153,13 +296,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pick any color for a person, not just the eight presets.** The color row in the member
   editor (and in My Profile, and the new family color) now ends with a ninth "custom"
   swatch that opens your device's color picker, so everyone can have exactly the shade
-  they want. The server only accepts full `#RRGGBB` hex values for a new color — a
-  member still holding an older, odder value keeps it, so they can always be saved.
-  editor (and in the new family color) now ends with a ninth "custom" swatch that opens
-  your device's color picker, so everyone can have exactly the shade they want. The server
-  only accepts full `#RRGGBB` hex values. On the web that's the member editor and My
-  Profile; on iPhone/iPad it's the member editor, and **Settings → Households** now lets
-  you pick your own color even if you're not an admin.
+  they want. The server only accepts full `#RRGGBB` hex values for a new color — a member
+  still holding an older, odder value keeps it, so they can always be saved. On the web
+  that's the member editor and My Profile; on iPhone/iPad it's the member editor, and
+  **Settings → Households** now lets you pick your own color even if you're not an admin.
 - **A color of your own for whole-family events.** Events that involve every member of the
   household now paint in a household-level **family color** instead of borrowing whichever
   person happened to own the event — so the calendar reads at a glance: everyone, some of

@@ -185,7 +185,7 @@ struct KioskShell: View {
         case .family:   familyPath = []
         case .settings: settingsPath = []
         case .meals:    mealsPath = []
-        case .today, .calendar, .tasks, .lists, .pantry, .photos, .more: navReset &+= 1
+        case .today, .calendar, .tasks, .lists, .pantry, .rhythms, .photos, .more: navReset &+= 1
         }
     }
 
@@ -347,6 +347,11 @@ struct KioskShell: View {
                 PantryView()
             }
             .id(navReset)
+        case .rhythms:
+            NavigationStack {
+                RhythmsView()
+            }
+            .id(navReset)
         case .photos:
             NavigationStack {
                 PhotosView()
@@ -364,7 +369,7 @@ struct KioskShell: View {
 /// always pinned at the top and More/Settings at the bottom; the middle is
 /// user-customizable per device — see `KioskRail`.
 enum KioskNav: String, CaseIterable, Identifiable {
-    case today, calendar, tasks, rewards, goals, family, meals, lists, pantry, photos, more, settings
+    case today, calendar, tasks, rewards, goals, family, meals, lists, pantry, rhythms, photos, more, settings
     var id: String { rawValue }
 
     var label: String {
@@ -378,6 +383,7 @@ enum KioskNav: String, CaseIterable, Identifiable {
         case .meals: return "Meals"
         case .lists: return "Lists"
         case .pantry: return "Pantry"
+        case .rhythms: return "Rhythms"
         case .photos: return "Photos"
         case .more: return "More"
         case .settings: return "Settings"
@@ -395,6 +401,7 @@ enum KioskNav: String, CaseIterable, Identifiable {
         case .meals: return "fork.knife"
         case .lists: return "list.bullet"
         case .pantry: return "shippingbox.fill"
+        case .rhythms: return "arrow.triangle.2.circlepath"
         case .photos: return "photo"
         case .more: return "square.grid.2x2"
         case .settings: return "gearshape.fill"

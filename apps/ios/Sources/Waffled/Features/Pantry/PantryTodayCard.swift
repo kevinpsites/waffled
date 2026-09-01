@@ -9,6 +9,7 @@ import SwiftUI
 /// list view exactly (no re-doing date math per render).
 struct PantryTodayCard: View {
     var kiosk = false
+    @Environment(SyncManager.self) private var sync
     @State private var model = PantryModel()
     var onOpen: () -> Void = {}
     private let cap = 5
@@ -33,7 +34,10 @@ struct PantryTodayCard: View {
                 card
             }
         }
-        .task { await model.load() }
+        // Keyed on the refresh signal, not a bare `.task`: SwiftUI runs a bare one
+        // once per appearance, so this card sat on launch-time data through every
+        // pull-to-refresh. See SyncManager.refreshRev.
+        .task(id: sync.refreshRev) { await model.load() }
     }
 
     private var card: some View {

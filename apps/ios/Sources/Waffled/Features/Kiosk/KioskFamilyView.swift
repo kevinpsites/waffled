@@ -86,6 +86,7 @@ struct KioskFamilyView: View {
                                 Text(ev.allDay ? "All day" : (ev.startsAt.map { EventTime.timeLabel($0, sync.householdTz) } ?? ""))
                                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                                     .frame(width: 62, alignment: .leading)
+                                RhythmEventMark(event: ev, size: 11)
                                 Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                                 Spacer(minLength: 0)
                             }

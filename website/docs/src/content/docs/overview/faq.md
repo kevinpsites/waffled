@@ -94,10 +94,10 @@ live only on the server. See [AI providers](/administration/ai-providers/).
 Yes — point `OLLAMA_HOST` at a local Ollama and pick it per household. A 7–8B model is
 meaningfully better than a 3B one. See [AI providers](/administration/ai-providers/).
 
-### What's a "module"? Why is Pantry (or Family Night) missing?
+### What's a "module"? Why is Pantry (or Family Night, or Rhythms) missing?
 Optional features ship **off by default** and are toggled per household in Settings → Modules.
-Pantry and Family Night are opt-in; Calendar and Today are always on. See
-[Modules](/administration/modules/).
+Pantry, Family Night and [Rhythms](/features/rhythms/) are opt-in; Calendar and Today are
+always on. See [Modules](/administration/modules/).
 
 ### Does the iOS app work offline?
 The **calendar** does — it mirrors to on-device SQLite via PowerSync and queues writes. Other

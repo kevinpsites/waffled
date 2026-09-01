@@ -29,6 +29,7 @@ const RecipesLibrary = lazy(() => import('./RecipesLibrary').then((m) => ({ defa
 const MealBuilder = lazy(() => import('./MealBuilder').then((m) => ({ default: m.MealBuilder })))
 const Lists = lazy(() => import('./Lists').then((m) => ({ default: m.Lists })))
 const Pantry = lazy(() => import('./Pantry').then((m) => ({ default: m.Pantry })))
+const Rhythms = lazy(() => import('./Rhythms').then((m) => ({ default: m.Rhythms })))
 const Photos = lazy(() => import('./Photos').then((m) => ({ default: m.Photos })))
 const Settings = lazy(() => import('./Settings').then((m) => ({ default: m.Settings })))
 
@@ -91,6 +92,9 @@ export function KioskRoutes() {
         </Route>
         <Route element={<ModuleGate module="pantry" />}>
           <Route path="pantry" element={<Pantry />} />
+        </Route>
+        <Route element={<ModuleGate module="rhythms" />}>
+          <Route path="rhythms" element={<Rhythms />} />
         </Route>
         <Route path="photos" element={<Photos />} />
         <Route path="settings" element={<Settings />} />

@@ -83,6 +83,7 @@ final class FamilyNightModel {
 /// date, its optional theme, and a per-part person picker that overrides this week's rotation.
 struct FamilyNightCard: View {
     var kiosk = false
+    @Environment(SyncManager.self) private var sync
     @State private var model = FamilyNightModel()
     @State private var busy = false
     @State private var errorMessage: String?
@@ -91,7 +92,10 @@ struct FamilyNightCard: View {
         Group {
             if kiosk { KioskCard { inner } } else { WaffledCard(padding: 15) { inner } }
         }
-        .task { await model.load() }
+        // Keyed on the refresh signal, not a bare `.task`: SwiftUI runs a bare one
+        // once per appearance, so this card sat on launch-time data through every
+        // pull-to-refresh. See SyncManager.refreshRev.
+        .task(id: sync.refreshRev) { await model.load() }
         .alert("Family Night unchanged", isPresented: errorPresented) {
             Button("OK") { errorMessage = nil }
         } message: {

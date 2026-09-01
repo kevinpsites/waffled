@@ -3,6 +3,7 @@ import { type AgendaEvent, type Countdown } from '../../lib/api'
 import { evVars, useEventColor } from '../../lib/event-color'
 import { DOW_FULL, MONTHS, ymd, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, packLanes } from './cal-utils'
 import { CountdownChip } from './CountdownChip'
+import { RhythmMark } from './RhythmMark'
 
 const DAY_START = 0 // midnight — top of the grid (full day so early events are reachable)
 const DAY_END = 23 // 11 PM — bottom
@@ -74,6 +75,7 @@ export function DayView({
               const color = colorOf(e)
               return (
                 <div key={e.id} className="dv-allday-ev ev-tint" style={evVars(color)} onClick={() => onOpenEvent(e)}>
+                  <RhythmMark event={e} />
                   {e.title}
                 </div>
               )
@@ -118,7 +120,7 @@ export function DayView({
                   onClick={(ev) => { ev.stopPropagation(); onOpenEvent(e) }}
                 >
                   <div className="dv-ev-t">{fmtTime(e)}</div>
-                  <div className="dv-ev-title">{e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}{e.title}</div>
+                  <div className="dv-ev-title">{e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}<RhythmMark event={e} />{e.title}</div>
                   {e.location && <div className="dv-ev-loc">📍 {e.location}</div>}
                 </div>
               )
