@@ -150,9 +150,19 @@ export async function listRhythms(householdId: string): Promise<RhythmWithPeriod
                 -- rolls over at UTC midnight, so a household in Los Angeles watched its
                 -- period advance at 5pm — while the evening it was still meant to be
                 -- booking in was, locally, not over.
-                (select max(gs)::date
-                   from generate_series(r.starts_on::timestamp,
-                                        (now() at time zone hh.timezone), r.every) gs)
+                -- Each boundary is computed FROM THE ANCHOR (starts_on + n × every),
+                -- not by stepping from the previous one. generate_series with an interval
+                -- step feeds each result into the next addition, so a single short month
+                -- poisons the rest: Jan 31 → Feb 28 → Mar *28* → Apr 28, and a rhythm
+                -- anchored on a month end silently becomes a 28th-of-the-month rhythm
+                -- forever. From the anchor it is Jan 31 → Feb 28 → Mar 31 → Apr 30, which
+                -- is what "monthly from the 31st" means to whoever set it.
+                --
+                -- n is bounded by the elapsed DAYS, which is safe because a cadence is
+                -- refused below one day — so the series is never longer than the old one.
+                (select max((r.starts_on + (n * r.every))::date)
+                   from generate_series(0, greatest(0, ((now() at time zone hh.timezone)::date - r.starts_on))) n
+                  where (r.starts_on + (n * r.every)) <= (now() at time zone hh.timezone))
               end as period_start
          from rhythms r, hh
         where r.household_id = $1 and r.deleted_at is null
@@ -688,8 +698,9 @@ export async function skipPeriod(
   // Tiling up to the offered date, the last boundary at or before it IS that date only if
   // the date is itself a boundary.
   const { rows: grid } = await query<{ ok: boolean }>(
-    `select (select max(gs)::date
-               from generate_series(r.starts_on::timestamp, $2::timestamp, r.every) gs) = $2::date
+    `select (select max((r.starts_on + (n * r.every))::date)
+               from generate_series(0, greatest(0, ($2::date - r.starts_on))) n
+              where (r.starts_on + (n * r.every)) <= $2::timestamp) = $2::date
               as ok
        from rhythms r where r.id = $1`,
     [id, periodStart]
@@ -773,9 +784,9 @@ export async function listAttention(householdId: string, horizon: string): Promi
           periods as (
        select r.*,
               -- The period covering the window: the latest boundary at or before its end.
-              -- generate_series with an interval step tiles TRUE calendar periods, so
-              -- '3 months' lands on real month boundaries. Doing this by epoch division
-              -- would treat a month as 30 days and drift a little further every quarter.
+              -- Interval addition tiles TRUE calendar periods, so '3 months' steps by real
+              -- months. Doing it by epoch division would treat a month as 30 days and drift
+              -- a little further every quarter.
               --
               -- Tiled to the LATER of the horizon and the household's own now. The horizon
               -- has to stay authoritative for looking ahead — that is what makes a weekly
@@ -784,11 +795,12 @@ export async function listAttention(householdId: string, horizon: string): Promi
               -- register (which tiles to household-now) could disagree about which period
               -- a rhythm is in. The server owns the period; a client may only ask it to
               -- look further forward, never further back.
-              (select max(gs)::date
-                 from generate_series(
-                        r.starts_on::timestamp,
-                        greatest($2::timestamp, (now() at time zone hh.timezone)),
-                        r.every) gs
+              -- Anchored, not cumulative — see the note in listRhythms.
+              (select max((r.starts_on + (n * r.every))::date)
+                 from generate_series(0, greatest(0,
+                        (greatest($2::timestamp, (now() at time zone hh.timezone))::date - r.starts_on))) n
+                where (r.starts_on + (n * r.every))
+                        <= greatest($2::timestamp, (now() at time zone hh.timezone))
               ) as period_start
          from rhythms r, hh
         where r.household_id = $1
