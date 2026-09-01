@@ -342,6 +342,43 @@ async function assertUsableCadence(every: string): Promise<void> {
   }
 }
 
+/**
+ * The runway, validated the same way the cadence is.
+ *
+ * It lands in `least($n::interval, every/2)` and was the one interval on these paths that
+ * nothing checked — so `'soon'` came back as a 500 and a stack trace while `every: 'soon'`
+ * came back as a sentence. Negative is refused too, and that one is a behaviour change
+ * rather than a status-code change: `next_due_at - lead_time` with a negative runway moves
+ * LATER than the due date, so the rhythm first asks for attention days after it was
+ * already due. Zero is fine — it means "tell me on the day".
+ */
+async function assertUsableLeadTime(leadTime: string): Promise<void> {
+  let nonNegative = false
+  try {
+    const { rows } = await query<{ ok: boolean }>(
+      `select ($1::interval >= interval '0') as ok`, [leadTime]
+    )
+    nonNegative = rows[0]?.ok === true
+  } catch {
+    throw new InvalidReferenceError(`leadTime must be an interval such as '14 days' — got '${leadTime}'`)
+  }
+  if (!nonNegative) {
+    throw new InvalidReferenceError('leadTime cannot be negative — the runway opens before the due date, never after it')
+  }
+}
+
+/** A real calendar date, not merely something shaped like one. */
+function assertRealDate(value: string, field: string): void {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  const d = m ? new Date(`${value}T00:00:00Z`) : null
+  if (!m || !d || Number.isNaN(d.getTime()) ||
+      d.getUTCFullYear() !== Number(m[1]) ||
+      d.getUTCMonth() + 1 !== Number(m[2]) ||
+      d.getUTCDate() !== Number(m[3])) {
+    throw new InvalidReferenceError(`${field} must be a real date as YYYY-MM-DD — got '${value}'`)
+  }
+}
+
 export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Promise<Rhythm> {
   const householdId = tenant.householdId
   const title = typeof input.title === 'string' ? input.title.trim() : ''
@@ -365,6 +402,7 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
   // Stored rather than applied on read so the API echoes back what will actually happen;
   // an update path that changes `every` has to re-apply this.
   const leadTime = typeof input.leadTime === 'string' && input.leadTime.trim() ? input.leadTime.trim() : '14 days'
+  await assertUsableLeadTime(leadTime)
 
   if (satisfiedBy === 'completion') {
     // A never-done item still needs a first due date, so the caller seeds it.
@@ -388,6 +426,7 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
   // has no answer, and both the attention query and rhythm_skips depend on one.
   const startsOn = typeof input.startsOn === 'string' ? input.startsOn : null
   if (!startsOn) throw new InvalidReferenceError('startsOn is required for a scheduling rhythm')
+  assertRealDate(startsOn, 'startsOn')
   const autoSchedule = input.autoSchedule === true
   const rrule = typeof input.rrule === 'string' && input.rrule.trim() ? input.rrule.trim() : null
   if (autoSchedule && !rrule) throw new InvalidReferenceError('rrule is required when autoSchedule is true')
@@ -848,6 +887,9 @@ export async function updateRhythm(
   // The edit path can poison the register exactly as the create path could.
   if (typeof input.every === 'string' && input.every.trim()) {
     await assertUsableCadence(input.every.trim())
+  }
+  if (typeof input.leadTime === 'string' && input.leadTime.trim()) {
+    await assertUsableLeadTime(input.leadTime.trim())
   }
 
   const { rows } = await query<Row>(

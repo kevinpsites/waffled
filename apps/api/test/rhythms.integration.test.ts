@@ -300,6 +300,59 @@ describe('a cadence the period grid cannot be built from', () => {
   // still carries an rrule, so the register keeps offering "book this one" and the series
   // is never put back. COUNT and UNTIL live inside the rule string, where no SQL predicate
   // can see them — so unlike a capped series, this one can only be caught at the door.
+  // `every`, `nextDueAt` and `rrule` are all validated at the door on these same paths, so
+  // the values that reach ::interval and ::date unchecked are the asymmetry — a 500 and a
+  // stack trace where the field beside them gets a sentence and a 400.
+  it('refuses an unparseable lead time with a 400 rather than a 500', async () => {
+    const create = await call('POST', '/api/rhythms', kevin, {
+      title: 'Bad runway', satisfiedBy: 'completion', every: '1 month',
+      nextDueAt: '2027-01-01T00:00:00Z', leadTime: 'soon',
+    })
+    expect(create.statusCode).toBe(400)
+
+    const ok = await call('POST', '/api/rhythms', kevin, {
+      title: 'Good runway', satisfiedBy: 'completion', every: '1 month',
+      nextDueAt: '2027-01-01T00:00:00Z',
+    })
+    const id = JSON.parse(ok.body).rhythm.id
+    const patch = await call('PATCH', `/api/rhythms/${id}`, kevin, { leadTime: 'whenever' })
+    expect(patch.statusCode).toBe(400)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  // A negative runway inverts it: next_due_at - lead_time moves LATER than the due date,
+  // so the rhythm first asks for attention days after it was already due.
+  it('refuses a negative lead time, which would open the runway after the due date', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Backwards runway', satisfiedBy: 'completion', every: '1 month',
+      nextDueAt: '2027-01-01T00:00:00Z', leadTime: '-5 days',
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuses an unparseable start date with a 400 rather than a 500', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Bad anchor', satisfiedBy: 'scheduling', every: '1 week', startsOn: 'not-a-date',
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  // The shape regex passes anything with the right digits, so an impossible date sails
+  // through the 400 check and then fails inside Postgres as "date/time field value out of
+  // range" — the exact 500 the check exists to prevent.
+  it('refuses an impossible date on the window and on skip', async () => {
+    const attention = await call('GET', '/api/rhythms/attention?from=2026-01-01&to=2026-13-45', kevin)
+    expect(attention.statusCode).toBe(400)
+
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Skip target', satisfiedBy: 'scheduling', every: '1 week', startsOn: '2026-01-01',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+    const skip = await call('POST', `/api/rhythms/${id}/skip`, kevin, { periodStart: '2026-13-45' })
+    expect(skip.statusCode).toBe(400)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
   it('refuses a recurrence rule that ends on its own', async () => {
     for (const rrule of ['FREQ=WEEKLY;COUNT=4', 'FREQ=WEEKLY;UNTIL=20270101T000000Z']) {
       const res = await call('POST', '/api/rhythms', kevin, {

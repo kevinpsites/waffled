@@ -20,7 +20,19 @@ type Api = ReturnType<typeof createAPI>
 // Every route here is gated by the optional `rhythms` module (403 when off).
 const { tenantRoute } = moduleRoutes('rhythms')
 
+// Shape AND reality. The regex alone passes 2026-13-45, which then fails inside Postgres
+// as "date/time field value out of range" — a 500 from the very check meant to prevent one.
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function isRealDate(value: string): boolean {
+  const m = DATE_RE.exec(value)
+  if (!m) return false
+  const d = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(d.getTime()) &&
+    d.getUTCFullYear() === Number(m[0].slice(0, 4)) &&
+    d.getUTCMonth() + 1 === Number(m[0].slice(5, 7)) &&
+    d.getUTCDate() === Number(m[0].slice(8, 10))
+}
 
 function badRequest(res: Response, message: string) {
   return res.status(400).json({ error: 'BadRequest', message })
@@ -37,12 +49,12 @@ export function registerRhythmRoutes(api: Api): void {
   api.get('/api/rhythms/attention', tenantRoute(async (tenant, req: Request, res: Response) => {
     const from = String(req.query?.from ?? '')
     const to = String(req.query?.to ?? '')
-    if (!DATE_RE.test(to)) return badRequest(res, 'to is required as YYYY-MM-DD')
+    if (!isRealDate(to)) return badRequest(res, 'to is required as YYYY-MM-DD')
     // `from` is optional: the horizon is the only bound listAttention uses, so requiring
     // it would mean demanding a value we then discard. Still checked when supplied, so a
     // caller sending a window learns it's malformed instead of being quietly ignored.
     if (from) {
-      if (!DATE_RE.test(from)) return badRequest(res, 'from must be YYYY-MM-DD')
+      if (!isRealDate(from)) return badRequest(res, 'from must be YYYY-MM-DD')
       if (to < from) return badRequest(res, 'to must not precede from')
     }
     return { items: await listAttention(tenant.householdId, to) }
@@ -118,7 +130,7 @@ export function registerRhythmRoutes(api: Api): void {
   api.post('/api/rhythms/:id/skip', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { periodStart?: unknown }
     const periodStart = typeof body.periodStart === 'string' ? body.periodStart : ''
-    if (!DATE_RE.test(periodStart)) return badRequest(res, 'periodStart is required as YYYY-MM-DD')
+    if (!isRealDate(periodStart)) return badRequest(res, 'periodStart is required as YYYY-MM-DD')
     try {
       const ok = await skipPeriod(tenant.householdId, req.params.id!, periodStart, tenant.personId ?? null)
       if (!ok) return res.status(404).json({ error: 'NotFound', message: 'rhythm not found' })
