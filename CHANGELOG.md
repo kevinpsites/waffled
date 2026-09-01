@@ -100,6 +100,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A monthly rhythm anchored at the end of a month stays at the end of the month.** One
+  starting on the 31st drifted to the 28th after its first February and stayed there for
+  good — so "the last day of the month" quietly became "the 28th", and nothing said so.
 - **A skipped period no longer claims to be on the calendar.** Skipping exists to send one
   period quiet *without* inventing an entry for something that isn't going to happen — and
   the row then reported it as booked anyway, which was the one thing the choice was made to

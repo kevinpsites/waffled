@@ -546,6 +546,54 @@ describe('a cadence the period grid cannot be built from', () => {
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
+  // Period boundaries are computed from the ANCHOR each time, not by stepping from the
+  // previous boundary. Stepping cumulatively passes each result into the next addition, so
+  // one short month poisons the sequence permanently: Jan 31 → Feb 28 → Mar **28** → Apr 28,
+  // and a rhythm anchored on a month end quietly becomes a 28th-of-the-month rhythm and
+  // never recovers. From the anchor it is Jan 31 → Feb 28 → Mar 31 → Apr 30, which is what
+  // "monthly from the 31st" means to the person who set it.
+  //
+  // Skip is the deterministic way to pin this: it takes an explicit date and validates it
+  // against the grid, so the assertion doesn't move as the wall clock does.
+  it('tiles a month-end anchor onto real month ends, not the 28th forever', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Month end', satisfiedBy: 'scheduling', every: '1 mon', startsOn: '2026-01-31',
+    })
+    expect(made.statusCode).toBe(201)
+    const id = JSON.parse(made.body).rhythm.id
+
+    // Real boundaries: the anchor, February's short month, then back to the month ends.
+    for (const day of ['2026-02-28', '2026-03-31', '2026-04-30', '2026-05-31']) {
+      const res = await call('POST', `/api/rhythms/${id}/skip`, kevin, { periodStart: day })
+      expect([day, res.statusCode]).toEqual([day, 200])
+    }
+    // The 28th of a 31-day month is a boundary ONLY under cumulative stepping.
+    for (const day of ['2026-03-28', '2026-04-28', '2026-05-28']) {
+      const res = await call('POST', `/api/rhythms/${id}/skip`, kevin, { periodStart: day })
+      expect([day, res.statusCode]).toEqual([day, 400])
+    }
+
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('reports a current period that is a real month end', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Month end current', satisfiedBy: 'scheduling', every: '1 mon', startsOn: '2026-01-31',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+    const listed = JSON.parse((await call('GET', '/api/rhythms', kevin)).body).rhythms
+      .find((r: { id: string }) => r.id === id)
+
+    // Whenever this runs, the current period must start on the last day of some month —
+    // which stays true as the clock moves, unlike pinning a literal date.
+    const start = listed.currentPeriodStart as string
+    const next = new Date(`${start}T00:00:00Z`)
+    next.setUTCDate(next.getUTCDate() + 1)
+    expect([start, next.getUTCDate()]).toEqual([start, 1])
+
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
   it('refuses to skip a date that is not one of the rhythm periods', async () => {
     const made = await call('POST', '/api/rhythms', kevin, {
       title: 'Off-boundary skip', satisfiedBy: 'scheduling', every: '1 week', startsOn: '2026-01-01',
