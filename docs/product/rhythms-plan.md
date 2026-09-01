@@ -66,9 +66,14 @@ every completion rather than over the returned page.
   way. Leaving the chips alone still follows the anchor, which is the sane default and was
   previously the only option.
 
-Still open, and both are UI shape rather than capability:
+Still open, and both are UI shape rather than capability. Tracked outside this doc too, so
+they are findable: the roadmap's Rhythms entry names both, and the iPad one has a backlog
+item with resume context in `apps/ios/IPAD_ROADMAP.md` § Backlog B.
 
-- the **iPad list+detail split** — the register is one column on iPad as on iPhone.
+- the **iPad two-pane register** — `RhythmsView` renders unchanged on both idioms, so the
+  iPad shows one narrow column and a lot of empty width. Worth designing as a *kiosk* pane
+  rather than a `NavigationSplitView`: `DeviceExperience` makes the iPad the family display
+  rather than a bigger iPhone, so it is a read-from-across-the-room layout.
 - a **history view of its own**: the panel above lives in the edit sheet, which is where
   someone already goes to ask about a rhythm, but it is not a browsable record.
 

@@ -234,6 +234,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   [Rhythms plan](./rhythms-plan.md); how to use it:
   [docs → Rhythms](https://docs.waffled.app/features/rhythms/). Per-surface status lives in
   the [feature matrix](../../website/docs/src/content/docs/reference/features.md).
+  **Two pieces of UI shape are deliberately still open** — neither is a missing capability,
+  and both are recorded in the plan doc under *Still open*: the **iPad two-pane register**
+  (tracked in [`apps/ios/IPAD_ROADMAP.md`](../../apps/ios/IPAD_ROADMAP.md) § Backlog B), and
+  a **browsable completion history** — today the record and the real average appear when you
+  edit a rhythm, which is where you already go to ask about one, but it is not a record you
+  can page through.
 
 ## Partial / in progress 🟡
 
