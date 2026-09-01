@@ -915,6 +915,23 @@ export async function updateRhythm(
   // The edit path can poison the register exactly as the create path could.
   if (typeof input.every === 'string' && input.every.trim()) {
     await assertUsableCadence(input.every.trim())
+    // ...and on a scheduling rhythm it can do the OTHER harm this function already
+    // refuses `startsOn` for. Its periods are generate_series(starts_on, …, every), so a
+    // new cadence re-reads every boundary: rhythm_skips rows are keyed on period_start and
+    // silently stop matching, and existing bookings get re-attributed. Skip September on a
+    // monthly rhythm, change it to quarterly, and the period you deliberately silenced
+    // starts nagging again.
+    //
+    // Split by shape, like nextDueAt below: a completion rhythm has no grid and nothing
+    // keyed on one, so moving its cadence just moves the next due date.
+    //
+    // Restating the same cadence is not a change — clients send the whole form back on
+    // save, and refusing an unchanged field would make every edit a 400.
+    if (existing.satisfiedBy === 'scheduling' && input.every.trim() !== existing.every) {
+      throw new InvalidReferenceError(
+        "a scheduling rhythm's cadence is its period grid, and changing it would re-read every period — including the ones already skipped or booked. Retire it and make a new one."
+      )
+    }
   }
   if (typeof input.leadTime === 'string' && input.leadTime.trim()) {
     await assertUsableLeadTime(input.leadTime.trim())

@@ -46,6 +46,9 @@ struct RhythmEditorSheet: View {
     }
 
     private var isNew: Bool { form.editingId == nil }
+    /// Editable on a completion rhythm — that just moves the next due date. Not on a
+    /// scheduling one, whose periods are generated from it.
+    private var cadenceFixed: Bool { !isNew && form.shape == .scheduling }
 
     /// Named for what it decides, not for the column it is stored in.
     private static let modes: [(shape: WaffledAPI.RhythmShape, label: String, why: String)] = [
@@ -136,26 +139,38 @@ struct RhythmEditorSheet: View {
 
             HStack(spacing: 8) {
                 fixed("every")
-                TextField("1", value: $form.count, format: .number)
-                    .font(.system(size: 17, weight: .semibold))
-                    .multilineTextAlignment(.center)
-                    .keyboardType(.numberPad)
-                    .frame(width: 56)
-                    .padding(.vertical, 9)
-                    .wfField(radius: WF.rSM, fill: WF.panel)
-                    .accessibilityLabel("How often")
-                // The comma hangs off the token it follows rather than sitting a whole
-                // word-space away from it, which read as a stray mark on its own.
-                HStack(spacing: 1) {
-                    Menu {
-                        ForEach(RhythmForm.Unit.allCases) { u in
-                            Button(u.label) { form.unit = u }
-                        }
-                    } label: { WaffledMenuPill(text: form.unit.label) }
-                        .accessibilityLabel("Unit")
-                    fixed(",")
+                if cadenceFixed {
+                    // A scheduling rhythm's cadence IS its period grid: periods are tiled
+                    // from the anchor by this interval, so a new one re-reads every period
+                    // already skipped or booked. Same reason "counted when" is fixed below,
+                    // and stated the same way rather than left to fail on save.
+                    HStack(spacing: 1) {
+                        fixedToken("\(form.count) \(form.unit.label)")
+                        fixed(",")
+                    }
+                    Spacer(minLength: 0)
+                } else {
+                    TextField("1", value: $form.count, format: .number)
+                        .font(.system(size: 17, weight: .semibold))
+                        .multilineTextAlignment(.center)
+                        .keyboardType(.numberPad)
+                        .frame(width: 56)
+                        .padding(.vertical, 9)
+                        .wfField(radius: WF.rSM, fill: WF.panel)
+                        .accessibilityLabel("How often")
+                    // The comma hangs off the token it follows rather than sitting a whole
+                    // word-space away from it, which read as a stray mark on its own.
+                    HStack(spacing: 1) {
+                        Menu {
+                            ForEach(RhythmForm.Unit.allCases) { u in
+                                Button(u.label) { form.unit = u }
+                            }
+                        } label: { WaffledMenuPill(text: form.unit.label) }
+                            .accessibilityLabel("Unit")
+                        fixed(",")
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {

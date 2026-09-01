@@ -118,6 +118,31 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('Rhythms — where each one stands', () => {
+  // A scheduling rhythm's cadence IS its period grid — periods are tiled from the anchor
+  // by it — so changing it re-reads every period already skipped or booked. The server
+  // refuses it; the form must not offer it and then fail on save. Same treatment as the
+  // shape, which is fixed for the same reason.
+  it('does not offer to change a scheduling rhythm\'s cadence while editing', async () => {
+    mockApi([temple])
+    renderScreen()
+    await screen.findByText('Temple visit')
+    openMenu('Temple visit')
+    fireEvent.click(screen.getByRole('button', { name: /edit temple visit/i }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).queryByLabelText(/how often/i)).toBeNull()
+    expect(within(dialog).queryByLabelText(/^unit$/i)).toBeNull()
+  })
+
+  it('still offers it on a completion rhythm, which has no period grid', async () => {
+    mockApi([filter])
+    renderScreen()
+    await screen.findByText('Air filter')
+    openMenu('Air filter')
+    fireEvent.click(screen.getByRole('button', { name: /edit air filter/i }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText(/how often/i)).toBeInTheDocument()
+  })
+
   it('says a period is handled even when the rhythm is nowhere near its runway', async () => {
     mockApi([temple])
     renderScreen()

@@ -500,6 +500,47 @@ describe('a cadence the period grid cannot be built from', () => {
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
+  // Scheduling periods are generate_series(starts_on, …, every), so changing `every`
+  // re-reads every boundary — exactly the harm the same function gives as its reason for
+  // refusing startsOn. rhythm_skips rows are keyed on period_start, so they silently stop
+  // matching: skip the September period on a monthly rhythm, change it to quarterly, and
+  // the period you deliberately silenced starts nagging again.
+  //
+  // Split by SHAPE, like nextDueAt in the same function. A completion rhythm has no grid
+  // and nothing keyed on one — changing its cadence just moves the next due date, which is
+  // a useful edit and stays allowed.
+  it('refuses a cadence change that would re-tile a scheduling rhythm', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Retileable', satisfiedBy: 'scheduling', every: '1 mon', startsOn: '2026-01-01',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+    const skipped = await call('POST', `/api/rhythms/${id}/skip`, kevin, { periodStart: '2026-09-01' })
+    expect(skipped.statusCode).toBeLessThan(300)
+
+    const res = await call('PATCH', `/api/rhythms/${id}`, kevin, { every: '3 mons' })
+    expect(res.statusCode).toBe(400)
+
+    // Everything else about it is still editable.
+    expect((await call('PATCH', `/api/rhythms/${id}`, kevin, { title: 'Renamed' })).statusCode).toBe(200)
+    // Restating the SAME cadence is not a change, so it must not be refused — clients send
+    // the whole form back on save.
+    expect((await call('PATCH', `/api/rhythms/${id}`, kevin, { every: '1 mon' })).statusCode).toBe(200)
+
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('still lets a completion rhythm change its cadence', async () => {
+    const made = await call('POST', '/api/rhythms', kevin, {
+      title: 'Recadenceable', satisfiedBy: 'completion', every: '1 mon',
+      nextDueAt: '2027-01-01T00:00:00Z',
+    })
+    const id = JSON.parse(made.body).rhythm.id
+    const res = await call('PATCH', `/api/rhythms/${id}`, kevin, { every: '3 mons' })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).rhythm.every).toContain('3 mons')
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
   it('refuses to skip a date that is not one of the rhythm periods', async () => {
     const made = await call('POST', '/api/rhythms', kevin, {
       title: 'Off-boundary skip', satisfiedBy: 'scheduling', every: '1 week', startsOn: '2026-01-01',

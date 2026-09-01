@@ -374,9 +374,17 @@ to at most half of `every` — ask for 14 days on a weekly rhythm and you get `3
 leave the list; `PATCH` re-clamps against the *new* cadence for the same reason. `/schedule`
 fills title and assignee from the rhythm, so a booking UI needs a time picker and nothing
 else; the friction this shape exists to remove is retyping. And `PATCH` deliberately can't
-change `satisfiedBy`, `startsOn`, `autoSchedule` or `rrule` — re-anchoring a live rhythm
-would silently re-interpret its existing skips (keyed on `period_start`) and point its
-bookings at periods that no longer exist. Retire it and make a new one.
+change `satisfiedBy`, `startsOn`, `autoSchedule` or `rrule` — nor `every` **on a scheduling
+rhythm**, whose periods are `generate_series(starts_on, …, every)`, so a new cadence
+re-reads every boundary just as a new anchor would. Re-anchoring a live rhythm silently
+re-interprets its existing skips (keyed on `period_start`) and points its bookings at
+periods that no longer exist. Retire it and make a new one.
+
+`every` stays editable on a *completion* rhythm — it has no grid and nothing keyed on one,
+so changing it just moves the next due date. The split is by shape, exactly like
+`nextDueAt`. Restating the same cadence is not a change and is not refused, since both
+clients send the whole form back on save; and both render the cadence as a fixed token when
+editing a scheduling rhythm, the way they already render the shape.
 
 `/complete` is **idempotent per day**, judged on the household's clock. A repeat on the
 same date updates the existing completion instead of appending another. This was not a

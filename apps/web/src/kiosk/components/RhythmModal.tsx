@@ -90,6 +90,9 @@ export function RhythmModal({
   onSaved?: () => void
 }) {
   const editing = !!rhythm
+  // Editable on a completion rhythm — that just moves the next due date. Not on a
+  // scheduling one, whose periods are generated from it.
+  const cadenceFixed = editing && rhythm!.satisfiedBy === 'scheduling'
   const seed = splitCadence(rhythm?.every ?? '')
   const { persons } = usePersons()
   const [shape, setShape] = useState<SatisfiedBy>(rhythm?.satisfiedBy ?? 'completion')
@@ -252,20 +255,30 @@ export function RhythmModal({
             />
             <br />
             <span className="rhy-fix">every</span>
-            <input
-              className="rhy-tok rhy-tok-num"
-              type="number"
-              min={1}
-              value={count}
-              onChange={(e) => setCount(e.target.value)}
-              aria-label="How often"
-            />
-            <span className="rhy-tok rhy-tok-sel">
-              <select value={unit} onChange={(e) => setUnit(e.target.value as Unit)} aria-label="Unit">
-                {UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
-              </select>
-              {chev}
-            </span>
+            {cadenceFixed ? (
+              // A scheduling rhythm's cadence IS its period grid: periods are tiled from
+              // the anchor by this interval, so a new one re-reads every period it has
+              // already skipped or booked. Same reason the shape below is fixed, and said
+              // the same way rather than left to fail on save.
+              <span className="rhy-tok rhy-tok-fixed">{count} {UNITS.find((u) => u.value === unit)?.label ?? unit}</span>
+            ) : (
+              <>
+                <input
+                  className="rhy-tok rhy-tok-num"
+                  type="number"
+                  min={1}
+                  value={count}
+                  onChange={(e) => setCount(e.target.value)}
+                  aria-label="How often"
+                />
+                <span className="rhy-tok rhy-tok-sel">
+                  <select value={unit} onChange={(e) => setUnit(e.target.value as Unit)} aria-label="Unit">
+                    {UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+                  </select>
+                  {chev}
+                </span>
+              </>
+            )}
             <span className="rhy-fix">,</span>
             <br />
             <span className="rhy-fix">counted when</span>
