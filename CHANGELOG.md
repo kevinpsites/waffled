@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.14.0] - 2026-09-01
+
+### Added
+
 - **Rhythms — the things that should keep happening.** A new optional module for the
   standing intentions with a cadence: trash out weekly, the air filter every three months,
   a temple visit each quarter, a self-care day every other month, a family outing on the
@@ -2227,7 +2235,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/kevinpsites/waffled/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/kevinpsites/waffled/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/kevinpsites/waffled/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/kevinpsites/waffled/compare/v0.11.0...v0.12.0
