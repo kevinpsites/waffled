@@ -309,7 +309,11 @@ struct RhythmsView: View {
     /// the server refuses the field outright, and Skip is that shape's version of this.
     private func canPush(_ r: WaffledAPI.Rhythm, urgency: RhythmFormat.Urgency) -> Bool {
         r.satisfiedBy == .completion && r.isActive && r.nextDueAt != nil
-            && (urgency == .now || urgency == .soon)
+            // Needs-you-now and nothing wider. Coming up is a flat fortnight-wide peek at
+            // the horizon, not a statement about nudging, so counting it meant anything on
+            // a cadence of a fortnight or less was never Steady and offered Push forever —
+            // including seconds after it was completed. Nothing to push away from.
+            && urgency == .now
     }
 
     /// The register endpoint carries a person id and no name, so the names are joined on

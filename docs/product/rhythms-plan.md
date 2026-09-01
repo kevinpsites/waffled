@@ -28,18 +28,19 @@ later plus seven days to `PATCH /api/rhythms/:id`, which takes `nextDueAt` for a
 rhythm only and refuses it on a scheduling one, whose periods *are* its anchor.
 
 It is deliberately **not on every row**: only a *completion* rhythm that is active, has a
-`nextDueAt`, and is banded **Needs-you-now or Coming-up** offers it. A scheduling rhythm
-has no `nextDueAt` to move and Skip is its equivalent; a Steady row has nothing to push
+`nextDueAt`, and is banded **Needs-you-now** offers it. A scheduling rhythm has no
+`nextDueAt` to move and Skip is its equivalent; a row that isn't asking has nothing to push
 away from, and a control that does nothing you can feel teaches people the menu is noise.
 
-The band is the gate, and the band is **not** the rhythm's lead time — it is a flat
-`COMING_UP_DAYS = 14` on both clients (`lib/api/rhythms.ts`, `Rhythms.swift`), so
-Coming-up means "due within a fortnight" regardless of the `leadTime` the server clamps to
-`least(leadTime, every/2)`. One consequence is worth knowing before it reads as a bug: any
-completion rhythm with a cadence of **two weeks or shorter is never Steady**, so it always
-offers Push — including the moment after it was completed, when the next one is a full
-cycle away. Whether that is right is a design question this plan hasn't settled; it is at
-least not the lead time doing it.
+**Needs-you-now, and nothing wider.** That band is the server's own `/attention` list plus
+a locally-detected overdue date — i.e. exactly "this rhythm is asking". Coming-up used to
+count too, and that was the bug: Coming-up is a flat `COMING_UP_DAYS = 14` on both clients,
+a fortnight-wide *peek at the horizon* on a page you deliberately opened, deliberately not
+a statement about nudging (its own test says so). Gating a verb on it meant any completion
+rhythm with a cadence of **a fortnight or shorter was never Steady**, so it offered Push
+permanently — including the moment after it was completed, a full cycle from being due,
+with nothing to push away from. The band is right for what it does; it was the wrong gate
+for this verb, and the verb is what moved.
 
 The list carries `bookedAt` / `bookedAllDay`, and **both clients now read it**: a period
 settled with no time is a **skip**, and says so ("Skipped", "skipped this one") rather than

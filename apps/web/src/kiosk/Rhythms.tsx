@@ -292,8 +292,15 @@ function RhythmRow({
               actually asking — there is nothing to push a Steady row away from, and a
               control that does nothing you can feel is a control that teaches people the
               menu is noise. Scheduling rhythms are excluded by the server too: their
-              periods ARE their anchor, so Skip is their version of this. */}
-          {!paused && !scheduling && (urgency === 'now' || urgency === 'soon') && rhythm.nextDueAt && (
+              periods ARE their anchor, so Skip is their version of this.
+
+              "Asking" is Needs-you-now and nothing wider. Coming up used to count as well,
+              and that band is a flat fortnight-wide peek at the horizon rather than a
+              statement about nudging — so anything on a cadence of a fortnight or less was
+              never Steady and offered Push permanently, including the moment after it was
+              completed, a full cycle from being due. There was nothing to push. The band is
+              right for what it does; it was the wrong gate for this verb. */}
+          {!paused && !scheduling && urgency === 'now' && rhythm.nextDueAt && (
             <button
               type="button"
               aria-label={`Push ${rhythm.title} out a week`}

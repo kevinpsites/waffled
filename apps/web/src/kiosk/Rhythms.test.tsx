@@ -467,6 +467,33 @@ describe('Rhythms screen', () => {
     expect(screen.queryByText(/the series needs putting back/i)).toBeNull()
   })
 
+  // "Push it out a week" answers "it's asking and I can't do it today". The gate was the
+  // BAND, which also contains Coming up — a fortnight-wide peek at the horizon that is
+  // deliberately not about nudging. Anything with a cadence of a fortnight or less is
+  // therefore never Steady, so a weekly rhythm offered Push permanently, including the
+  // moment after it was completed and a full cycle away from being due. Nothing to push.
+  //
+  // The band stays as it is: it answers "what's on the horizon", and its own test says so.
+  // The verb is what was wrong, so the verb is what moved.
+  it('offers "push it out" only while the rhythm is actually asking', async () => {
+    // Ten days out with nothing nudging: Coming up, but not asking.
+    const soon = { ...filter, id: 'r-soon', title: 'Soon filter', nextDueAt: '2026-08-28T09:00:00.000Z' }
+    mockApi([soon])
+    renderScreen()
+    await screen.findByText('Soon filter')
+    openMenu('Soon filter')
+    expect(screen.queryByRole('button', { name: /push soon filter out a week/i })).toBeNull()
+  })
+
+  it('does offer it once the rhythm is late', async () => {
+    // `filter` is due 2026-08-16 against a frozen 08-18, so it is two days late.
+    mockApi([filter], [{ kind: 'due', rhythm: filter, dueAt: filter.nextDueAt, overdue: true }])
+    renderScreen()
+    await screen.findByText('Air filter')
+    openMenu('Air filter')
+    expect(screen.getByRole('button', { name: /push air filter out a week/i })).toBeInTheDocument()
+  })
+
   it('refuses a completion dated in the future', async () => {
     mockApi([filter])
     renderScreen()
