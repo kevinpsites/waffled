@@ -66,3 +66,45 @@ describe('EntryModal — a note edit stays on its own day', () => {
     expect(patch.body.loggedOn).toBe('2026-08-31')
   })
 })
+
+// The date cap is the BROWSER's local today, but the field is seeded from `dateKey`
+// — the HOUSEHOLD's day. A household ahead of the device (a kiosk in Chicago on a
+// household set to Tokyo, or a traveller) has already turned the page, so the seeded
+// day is later than the cap. The input is then :invalid, and because Save is a submit
+// button inside a <form>, native validation swallows the submit: the user edits the
+// note, presses Save, and nothing happens — the very "the note didn't save" symptom
+// this modal was fixed to stop, coming back through a different door.
+describe('EntryModal — the date cap can never block the entry it was opened on', () => {
+  const dayFromToday = (days: number) => {
+    const d = new Date()
+    d.setDate(d.getDate() + days)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  // An entry whose household day is already tomorrow as far as this browser knows.
+  const aheadEntry: GoalLogEntry = { ...entry, dateKey: dayFromToday(1) }
+
+  it('never caps below the day the entry belongs to', () => {
+    render(<EntryModal goal={goal} entry={aheadEntry} onClose={() => {}} onSaved={() => {}} />)
+    const date = screen.getByLabelText(/Date this happened/i) as HTMLInputElement
+    expect(date.value).toBe(dayFromToday(1))
+    expect(date.max >= date.value).toBe(true)
+  })
+
+  it('leaves the field valid, so Save still submits', async () => {
+    render(<EntryModal goal={goal} entry={aheadEntry} onClose={() => {}} onSaved={() => {}} />)
+    const date = screen.getByLabelText(/Date this happened/i) as HTMLInputElement
+    expect(date.validity.rangeOverflow).toBe(false)
+
+    fireEvent.change(screen.getByPlaceholderText(/What happened/i), { target: { value: 'late night' } })
+    fireEvent.click(screen.getByRole('button', { name: /Save/i }))
+    await waitFor(() => expect(sent.some((s) => s.method === 'PATCH')).toBe(true))
+    expect(sent.find((s) => s.method === 'PATCH')!.body.loggedOn).toBe(dayFromToday(1))
+  })
+
+  it('still caps an ordinary entry at today', () => {
+    render(<EntryModal goal={goal} entry={entry} onClose={() => {}} onSaved={() => {}} />)
+    const date = screen.getByLabelText(/Date this happened/i) as HTMLInputElement
+    expect(date.max).toBe(dayFromToday(0))
+  })
+})

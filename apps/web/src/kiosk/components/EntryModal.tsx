@@ -120,8 +120,12 @@ export function EntryModal({
 
           <div className="flabel" style={{ marginTop: 16 }}>When?</div>
           {/* Capped at today, same as the log modal — you can catch a log up, not
-              schedule one in the future. */}
-          <input className="log-note" type="date" max={localToday()} value={loggedOn} onChange={(e) => setLoggedOn(e.target.value || loggedOn)} aria-label="Date this happened" />
+              schedule one in the future. Never below the day already in the field,
+              though: `loggedOn` is the HOUSEHOLD's day and the cap is the BROWSER's,
+              and a household ahead of the device has already turned the page. A cap
+              under the seeded value makes the input :invalid, and since Save is a
+              submit button, native validation would swallow the save silently. */}
+          <input className="log-note" type="date" max={loggedOn > localToday() ? loggedOn : localToday()} value={loggedOn} onChange={(e) => setLoggedOn(e.target.value || loggedOn)} aria-label="Date this happened" />
 
           <div className="flabel" style={{ marginTop: 16 }}>Note <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600, color: 'var(--ink-3)' }}>· optional</span></div>
           <input className="log-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What happened" />
