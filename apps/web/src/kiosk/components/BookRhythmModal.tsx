@@ -20,6 +20,35 @@ function lastDayOfPeriod(periodEnd: string): string {
   return ymd(d)
 }
 
+function day(value: string): string {
+  return new Date(`${value}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function daysApart(from: string, to: string): number {
+  const a = new Date(`${from}T00:00:00`).getTime()
+  const b = new Date(`${to}T00:00:00`).getTime()
+  return Math.round((b - a) / 86_400_000)
+}
+
+// What the clamp actually allows, said out loud.
+//
+// The date input already carries min/max, so an impossible day cannot be picked — but a
+// native picker opens on the month holding TODAY and greys everything outside the range.
+// On the last day of a weekly period that puts the six other legal days in the previous
+// month, one back-arrow away and invisible, and the screen reads as "today only". The
+// window was only ever stated in a hint gated behind an out-of-range value, which a
+// clamped picker makes almost unreachable.
+//
+// Past days inside the window are legal but rarely the point, so once the period is
+// underway this leads with the deadline rather than the span.
+function windowNote(periodStart: string, last: string, today: string): string {
+  if (today < periodStart) return `Counts on any day from ${day(periodStart)} to ${day(last)}.`
+  if (today > last) return `This period closed on ${day(last)}.`
+  if (today === last) return `Today is the last day that counts for this period.`
+  const left = daysApart(today, last) + 1
+  return `Counts on any day up to ${day(last)} — ${left} days including today.`
+}
+
 export function BookRhythmModal({
   item,
   onClose,
@@ -102,11 +131,11 @@ export function BookRhythmModal({
             <span className="tiny" style={{ fontWeight: 600 }}>All day</span>
           </label>
 
-          {outside && (
-            <div className="tiny muted" style={{ marginBottom: 10 }}>
-              That's outside this period — pick a day between {periodStart} and {last} for it to count.
-            </div>
-          )}
+          <div className="tiny muted" style={{ marginBottom: 10 }}>
+            {outside
+              ? `That's outside this period — pick a day between ${day(periodStart)} and ${day(last)} for it to count.`
+              : windowNote(periodStart, last, today)}
+          </div>
           {failed && <div className="tiny muted" style={{ marginBottom: 10 }}>Couldn't book it — try again.</div>}
 
           <button type="submit" className="btn btn-primary" disabled={busy || outside} style={{ width: '100%', justifyContent: 'center' }}>
