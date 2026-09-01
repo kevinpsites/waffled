@@ -69,6 +69,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The edit box now shows and keeps the day the entry actually belongs to, and won't
   let you date an entry into the future. Fixed on the web and on iPhone/iPad.
 
+- **A goal's deadline is the day you picked.** Goals showed their deadline a day early
+  for anyone living behind UTC — a goal due Sep 30 read "by Sep 29" on the goals list
+  and the goal page — and on iPhone/iPad the deadline picker opened on that same wrong
+  day, so nudging it back to the day you meant saved a day *later* than you wanted. The
+  cause sat under all of it: a deadline is a plain calendar day, but the server was
+  handing it out as a precise moment in time, which every screen then re-read in its own
+  timezone. Editing a goal on the web also left the deadline box empty for the same
+  reason; it now shows the deadline that's set. Fixed on the web and on iPhone/iPad.
+
 - **A kiosk's offline copy now follows the version you upgraded to.** The wall display
   keeps its own copy of the app so a dropped connection doesn't blank the screen, but it
   only ever refreshed that copy when Waffled's offline component itself changed — which
