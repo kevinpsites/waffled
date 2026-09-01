@@ -56,4 +56,50 @@ struct PlannerWeekStartTests {
         #expect(Cal.weekdaySymbols(from: .sunday) == ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"])
         #expect(Cal.weekdaySymbols(from: .monday) == ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"])
     }
+
+    @Test("any weekday row rotates, whatever its label width")
+    func rowsRotate() {
+        // The grids draw different widths — one letter on a phone month, three on the
+        // kiosk — so only the ORDER is shared.
+        #expect(Cal.rotated(["S", "M", "T", "W", "T", "F", "S"], from: .monday) == ["M", "T", "W", "T", "F", "S", "S"])
+        #expect(Cal.rotated(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], from: .monday)
+                == ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+        #expect(Cal.rotated(["S", "M", "T", "W", "T", "F", "S"], from: .sunday) == ["S", "M", "T", "W", "T", "F", "S"])
+    }
+
+    @Test("a month grid's leading blanks count from the household's first day")
+    func leadCells() {
+        // September 2026 starts on a Tuesday.
+        let sept = day("2026-09-01")
+        #expect(Cal.monthLeadCells(sept, tz, .monday) == 1)   // Mon only
+        #expect(Cal.monthLeadCells(sept, tz, .sunday) == 2)   // Sun, Mon
+    }
+}
+
+// The goal heatmaps bucket by calendar week too, and their logic is mirrored 1:1 with
+// the web's `goalStats.ts` — these assertions match `goalStats.test.ts` exactly so the
+// two platforms can't drift apart.
+@Suite("Goal heatmaps cut the week where the household does")
+struct GoalWeekStartTests {
+    @Test("a monday household's week starts on the Monday before")
+    func mondayCut() {
+        #expect(GoalDateKey.startOfWeek("2026-08-19", .monday) == "2026-08-17")
+    }
+
+    @Test("a sunday household's week starts on the Sunday before")
+    func sundayCut() {
+        #expect(GoalDateKey.startOfWeek("2026-08-19", .sunday) == "2026-08-16")
+    }
+
+    @Test("the first day is its own week start")
+    func firstDayIsOwnStart() {
+        #expect(GoalDateKey.startOfWeek("2026-08-17", .monday) == "2026-08-17")
+        #expect(GoalDateKey.startOfWeek("2026-08-16", .sunday) == "2026-08-16")
+    }
+
+    @Test("a monday household's Sunday belongs to the week that just ended")
+    func sundayClosesTheWeek() {
+        #expect(GoalDateKey.startOfWeek("2026-08-23", .monday) == "2026-08-17")
+        #expect(GoalDateKey.startOfWeek("2026-08-23", .sunday) == "2026-08-23")
+    }
 }

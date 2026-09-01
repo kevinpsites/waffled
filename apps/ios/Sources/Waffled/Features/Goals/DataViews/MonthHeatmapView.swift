@@ -25,7 +25,7 @@ struct MonthHeatmapView: View {
     private var year: Int { GoalDateKey.calendar.component(.year, from: shown) }
     private var month: Int { GoalDateKey.calendar.component(.month, from: shown) - 1 } // 0-indexed
     private var daysInMonth: Int { GoalDateKey.calendar.range(of: .day, in: .month, for: shown)!.count }
-    private var lead: Int { GoalDateKey.calendar.component(.weekday, from: shown) - 1 }
+    private var lead: Int { GoalDateKey.monthLeadCells(shown, ctx.firstDay) }
     private var canGoForward: Bool { monthOffset < 0 }
 
     private struct DayInfo { let day: Int; let dateKey: String; let future: Bool; let total: Double; let perMember: [String: Double] }
@@ -62,7 +62,7 @@ struct MonthHeatmapView: View {
 
             LazyVGrid(columns: Self.columns, spacing: 6) {
                 ForEach(Self.weekdayHeads.indices, id: \.self) { i in
-                    Text(Self.weekdayHeads[i]).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3)
+                    Text(GoalDateKey.rotate(Self.weekdayHeads, ctx.firstDay)[i]).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3)
                         .frame(maxWidth: .infinity)
                 }
             }

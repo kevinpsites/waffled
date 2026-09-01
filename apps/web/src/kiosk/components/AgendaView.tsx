@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { usePersons, eventsApi, type AgendaEvent } from '../../lib/api'
+import { usePersons, useHousehold, eventsApi, type AgendaEvent } from '../../lib/api'
 import { useEventColor } from '../../lib/event-color'
 import { Icon } from '../icons'
 import {
-  MONTHS, ymd, addDays, startOfWeek, localDate, fmtTime, eventPeople,
+  MONTHS, ymd, addDays, startOfWeek, monthGridStart, dowFrom, localDate, fmtTime, eventPeople,
 } from './cal-utils'
 
 // A day's worth of upcoming events, with a friendly header.
@@ -46,16 +46,15 @@ export function AgendaRow({ event, past = false, color: colorProp, onClick }: { 
 
 // Small month grid in the sidebar with per-day event dots; clicking a day jumps
 // the calendar to that week.
-function MiniMonth({ events, tz, colorOf, onPickDate }: { events: AgendaEvent[]; tz: string; colorOf: (e: AgendaEvent) => string; onPickDate: (d: Date) => void }) {
+function MiniMonth({ events, tz, colorOf, onPickDate, firstDay }: { events: AgendaEvent[]; tz: string; colorOf: (e: AgendaEvent) => string; onPickDate: (d: Date) => void; firstDay: number }) {
   const today = new Date()
   const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() })
   const todayKey = ymd(today)
 
-  const cells = useMemo(() => {
-    const startWeekday = new Date(view.year, view.month, 1).getDay()
-    const gridStart = new Date(view.year, view.month, 1 - startWeekday)
-    return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
-  }, [view])
+  const cells = useMemo(
+    () => Array.from({ length: 42 }, (_, i) => addDays(monthGridStart(view.year, view.month, firstDay), i)),
+    [view, firstDay]
+  )
 
   const dots = useMemo(() => {
     const map: Record<string, Set<string>> = {}
@@ -83,7 +82,7 @@ function MiniMonth({ events, tz, colorOf, onPickDate }: { events: AgendaEvent[];
         </div>
       </div>
       <div className="ag-mini-dow">
-        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <div key={i}>{d}</div>)}
+        {dowFrom(['S', 'M', 'T', 'W', 'T', 'F', 'S'], firstDay).map((d, i) => <div key={i}>{d}</div>)}
       </div>
       <div className="ag-mini-grid">
         {cells.map((d) => {
@@ -116,18 +115,18 @@ function MiniMonth({ events, tz, colorOf, onPickDate }: { events: AgendaEvent[];
 // "Heads up this week" — a real digest from the household's AI provider (with a
 // deterministic server-side fallback, so it always says something useful). Shows a
 // gentle placeholder while the first response lands.
-function HeadsUpCard({ refreshKey }: { refreshKey: number }) {
+function HeadsUpCard({ refreshKey, firstDay }: { refreshKey: number; firstDay: number }) {
   const [card, setCard] = useState<{ headline: string; body: string } | null>(null)
 
   useEffect(() => {
     let alive = true
-    const ws = startOfWeek(new Date())
+    const ws = startOfWeek(new Date(), firstDay)
     eventsApi
       .headsUp(ymd(ws), ymd(addDays(ws, 6)))
       .then((d) => alive && setCard({ headline: d.headline, body: d.body }))
       .catch(() => {})
     return () => { alive = false }
-  }, [refreshKey])
+  }, [refreshKey, firstDay])
 
   return (
     <div className="ag-ai">
@@ -161,6 +160,10 @@ export function AgendaView({
   onCreate: (date: string) => void
 }) {
   const { persons = [] } = usePersons()
+  // The agenda's week-shaped bits (heads-up window, "whose week is busy", the mini
+  // month) follow the household's own week, same as the grids.
+  const { household } = useHousehold()
+  const firstDay = household?.weekStart === 'monday' ? 1 : 0
   // The agenda surfaces use a lighter unassigned grey than the calendar grids.
   const colorOf = useEventColor('#A6A29B')
   const today = new Date()
@@ -187,9 +190,9 @@ export function AgendaView({
     return keys.map((k) => ({ key: k, date: new Date(`${k}T00:00:00`), events: map[k] }))
   }, [events, tz, todayKey])
 
-  // "Whose week is busy?" — event counts this week (Sun–Sat) per person.
+  // "Whose week is busy?" — event counts for the household's own week, per person.
   const busy = useMemo(() => {
-    const ws = startOfWeek(today)
+    const ws = startOfWeek(today, firstDay)
     const weStart = ymd(ws)
     const weEnd = ymd(addDays(ws, 6))
     const counts = new Map<string, number>()
@@ -204,7 +207,7 @@ export function AgendaView({
       .sort((a, b) => b.count - a.count)
     const max = rows.reduce((m, r) => Math.max(m, r.count), 1)
     return { rows, max }
-  }, [events, persons, tz, today])
+  }, [events, persons, tz, today, firstDay])
 
   return (
     <div className="ag-screen">
@@ -232,9 +235,9 @@ export function AgendaView({
       </div>
 
       <div className="ag-side">
-        <MiniMonth events={events} tz={tz} colorOf={colorOf} onPickDate={onPickDate} />
+        <MiniMonth events={events} tz={tz} colorOf={colorOf} onPickDate={onPickDate} firstDay={firstDay} />
 
-        <HeadsUpCard refreshKey={events.length} />
+        <HeadsUpCard refreshKey={events.length} firstDay={firstDay} />
 
         {busy.rows.length > 0 && (
           <div className="card ag-busy">

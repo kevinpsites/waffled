@@ -131,7 +131,8 @@ the household's week, so the planner and the list have to agree on where a week 
 if they don't, a planned week straddles two grocery weeks and only one of them gets
 built. Change the setting and the planner re-cuts immediately on every device.
 
-The **calendar** is deliberately unaffected: its month and week grids stay Sunday-led.
+The setting is household-wide, not per-device: the [calendar](/features/calendar/)
+grids and the goal heatmaps follow it too, on every screen.
 
 ## Settings
 

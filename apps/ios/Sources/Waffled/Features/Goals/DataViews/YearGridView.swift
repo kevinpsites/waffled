@@ -18,13 +18,11 @@ struct YearGridView: View {
         GoalDateKey.toKey(GoalDateKey.calendar.date(from: DateComponents(year: GoalDateKey.calendar.component(.year, from: GoalDateKey.parse(today)), month: 1, day: 1))!)
     }
     private var viewStart: String { ctx.stats.startDate > jan1Key ? ctx.stats.startDate : jan1Key }
-    private var startSun: String {
-        let weekday = GoalDateKey.calendar.component(.weekday, from: GoalDateKey.parse(jan1Key)) // 1 = Sunday
-        return GoalDateKey.addDays(jan1Key, -(weekday - 1))
-    }
+    /// The week rows are cut on the household's own first day.
+    private var gridStart: String { GoalDateKey.startOfWeek(jan1Key, ctx.firstDay) }
     private var weeks: [[String]] {
         var result: [[String]] = []
-        var cursor = startSun
+        var cursor = gridStart
         while cursor <= today {
             result.append((0..<7).map { GoalDateKey.addDays(cursor, $0) })
             cursor = GoalDateKey.addDays(cursor, 7)

@@ -23,7 +23,7 @@ describe('PaceChart (fixed end date)', () => {
   const stats = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: '2026-12-31', target: 1000, days })
 
   it('shows the "vs pace" pill with the signed delta', () => {
-    render(<PaceChart goal={goal} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<PaceChart goal={goal} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(stats.pace).not.toBeNull()
     const sign = stats.pace!.delta >= 0 ? '\\+' : ''
     expect(screen.getByText(new RegExp(`${sign}${Math.abs(stats.pace!.delta)}`))).toBeInTheDocument()
@@ -31,13 +31,13 @@ describe('PaceChart (fixed end date)', () => {
   })
 
   it('labels the pace line with the goal end date and shows a projected finish', () => {
-    render(<PaceChart goal={goal} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<PaceChart goal={goal} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(screen.getByText(/Pace to hit/)).toBeInTheDocument()
     expect(screen.getByText(/Projected finish/)).toBeInTheDocument()
   })
 
   it('shows today\'s cumulative total on the chart', () => {
-    render(<PaceChart goal={goal} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<PaceChart goal={goal} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(screen.getByText(/560/)).toBeInTheDocument()
   })
 })
@@ -55,7 +55,7 @@ describe('PaceChart (long sparse history)', () => {
     ]
     const goal = makeGoal({ deadline: null, target: 1000 })
     const stats = computeGoalStats({ today: '2026-01-20', startDate: '2025-01-01', endDate: null, target: 1000, days })
-    const { container } = render(<PaceChart goal={goal} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    const { container } = render(<PaceChart goal={goal} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     const linePath = container.querySelector('path[stroke="#1c9160"]')
     const commandCount = (linePath?.getAttribute('d') ?? '').match(/[ML]/g)?.length ?? 0
     // 3 logged days -> at most ~8 vertices (start + before/after each jump + today),
@@ -74,7 +74,7 @@ describe('PaceChart (open-ended)', () => {
     }))
     const goal = makeGoal({ deadline: null })
     const stats = computeGoalStats({ today: '2026-07-10', startDate: '2026-07-01', endDate: null, target: 1000, days })
-    render(<PaceChart goal={goal} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} />)
+    render(<PaceChart goal={goal} stats={stats} personMap={personMap} onDayClick={() => {}} onMonthClick={() => {}} firstDay={0} />)
     expect(screen.queryByText(/vs pace/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Pace to hit/)).not.toBeInTheDocument()
     expect(screen.getByText(/On track to finish|Keep going/)).toBeInTheDocument()

@@ -134,8 +134,23 @@ enum Cal {
 
     /// The two-letter weekday headings for a grid, read from the household's first day.
     static func weekdaySymbols(from firstDay: HouseholdWeekStart) -> [String] {
-        let base = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+        rotated(["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"], from: firstDay)
+    }
+
+    /// Any 7-item weekday row, rotated to start on the household's first day. The grids
+    /// use different label widths (one letter on a phone month, three on the kiosk), so
+    /// only the ORDER is shared — pass whichever labels that grid draws.
+    static func rotated<T>(_ labels: [T], from firstDay: HouseholdWeekStart) -> [T] {
+        guard labels.count == 7 else { return labels }
         let offset = firstDay == .monday ? 1 : 0
-        return (0..<7).map { base[($0 + offset) % 7] }
+        return (0..<7).map { labels[($0 + offset) % 7] }
+    }
+
+    /// Leading blank cells before the 1st in a month grid cut on `firstDay`.
+    static func monthLeadCells(_ monthStart: Date, _ tz: TimeZone, _ firstDay: HouseholdWeekStart) -> Int {
+        let cal = gregorian(tz)
+        let weekday = cal.component(.weekday, from: monthStart) - 1   // 0 = Sunday
+        let offset = firstDay == .monday ? 1 : 0
+        return (weekday - offset + 7) % 7
     }
 }

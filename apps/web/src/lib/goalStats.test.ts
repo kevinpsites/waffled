@@ -9,6 +9,8 @@ import {
   defaultView,
   computeGoalStats,
   heat,
+  startOfWeekKey,
+  monthLeadCells,
   type DayEntry,
 } from './goalStats'
 
@@ -168,5 +170,35 @@ describe('computeGoalStats', () => {
     const s = computeGoalStats({ today: '2026-07-17', startDate: '2026-01-01', endDate: null, target: 1000, days })
     expect(s.byMonthPerMember[6]).toEqual({ wally: 4 + 5.9 + 1.5 + 1.9 + 2.5, kevin: 4.3, kelly: 2 }) // July (index 6)
     expect(s.byMonthPerMember[0]).toEqual({}) // January had no logs
+  })
+})
+
+// The goal views bucket by calendar week, so they follow the household's own first
+// day rather than a fixed Sunday. Mirrored by `GoalDateKey.startOfWeek` on iOS.
+describe('week bucketing follows the household', () => {
+  // Wednesday 2026-08-19.
+  it('cuts a monday household on the Monday before', () => {
+    expect(startOfWeekKey('2026-08-19', 1)).toBe('2026-08-17')
+  })
+
+  it('cuts a sunday household on the Sunday before', () => {
+    expect(startOfWeekKey('2026-08-19', 0)).toBe('2026-08-16')
+  })
+
+  it('leaves the first day as its own week start', () => {
+    expect(startOfWeekKey('2026-08-17', 1)).toBe('2026-08-17')
+    expect(startOfWeekKey('2026-08-16', 0)).toBe('2026-08-16')
+  })
+
+  it('puts a monday household\'s Sunday in the week that just ended', () => {
+    // The trap: Sunday closes a monday household's week, it doesn't open a new one.
+    expect(startOfWeekKey('2026-08-23', 1)).toBe('2026-08-17')
+    expect(startOfWeekKey('2026-08-23', 0)).toBe('2026-08-23')
+  })
+
+  it('counts month-grid lead cells from the household\'s first day', () => {
+    // September 2026 starts on a Tuesday.
+    expect(monthLeadCells(2026, 8, 1)).toBe(1) // Monday-led: one blank (Mon)
+    expect(monthLeadCells(2026, 8, 0)).toBe(2) // Sunday-led: two blanks (Sun, Mon)
   })
 })

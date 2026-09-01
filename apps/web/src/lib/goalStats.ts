@@ -41,10 +41,17 @@ export function addDaysKey(key: string, n: number): string {
   return toLocalDateKey(d)
 }
 
-// The Sunday that starts the week containing `key` (local). Anchors the week
-// heatmap to a fixed Sun–Sat calendar week instead of a rolling 7-day window.
-export function startOfWeekKey(key: string): string {
-  return addDaysKey(key, -parseLocalDateKey(key).getDay())
+// The day that starts the week containing `key` (local), cut on the household's own
+// first day (0 = Sunday, 1 = Monday). Anchors the week heatmap to a fixed calendar
+// week rather than a rolling 7-day window. Mirrored by `GoalDateKey.startOfWeek` on
+// iOS — keep the two in step.
+export function startOfWeekKey(key: string, firstDay: number): string {
+  return addDaysKey(key, -((parseLocalDateKey(key).getDay() - firstDay + 7) % 7))
+}
+
+// Leading blank cells before the 1st in a month grid cut on `firstDay`.
+export function monthLeadCells(year: number, month: number, firstDay: number): number {
+  return (new Date(year, month, 1).getDay() - firstDay + 7) % 7
 }
 
 // Whole calendar days between two keys (a - b). Safe across DST because both sides

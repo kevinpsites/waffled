@@ -6,6 +6,9 @@ import SwiftUI
 /// the goal-detail body in place of the old flat "by person" card.
 struct GoalDataViewSwitcher: View {
     let goal: WaffledAPI.GoalDetail
+    /// The week/month/consistency/year views bucket by calendar week, so they follow
+    /// the household's own first day rather than a fixed Sunday.
+    @Environment(SyncManager.self) private var sync
     @State private var activity: WaffledAPI.GoalActivity?
     @State private var loading = true
     @State private var view: GoalViewKey?
@@ -60,7 +63,8 @@ struct GoalDataViewSwitcher: View {
         let ctx = GoalDataContext(
             goal: goal, stats: stats!, personMap: personMap,
             onDayTap: { selectedDay = DayItem(dateKey: $0) },
-            onMonthTap: { y, m in selectedMonth = MonthItem(year: y, month: m) }
+            onMonthTap: { y, m in selectedMonth = MonthItem(year: y, month: m) },
+            firstDay: sync.householdWeekStart ?? .sunday
         )
         VStack(alignment: .leading, spacing: 12) {
             switch view! {

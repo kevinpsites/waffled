@@ -2,22 +2,23 @@
 // calendar year so far: every day Jan 1 -> today gets a square, even the ones
 // before a mid-year-created goal existed (those just sit empty). `viewStart`
 // (the goal's own start) is used only to scope the "% of days" denominator.
-import { addDaysKey, diffDaysKey, heat, parseLocalDateKey, toLocalDateKey } from '../../lib/goalStats'
+import { addDaysKey, diffDaysKey, heat, parseLocalDateKey, startOfWeekKey, toLocalDateKey } from '../../lib/goalStats'
 import type { DataViewProps } from './types'
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const CELL = 13
 const GAP = 3.5
 
-export function YearGrid({ goal, stats, onDayClick, headerRight }: DataViewProps) {
+export function YearGrid({ goal, stats, onDayClick, headerRight, firstDay }: DataViewProps) {
   const today = stats.today
   const todayDate = parseLocalDateKey(today)
   const jan1 = toLocalDateKey(new Date(todayDate.getFullYear(), 0, 1))
   const viewStart = stats.startDate > jan1 ? stats.startDate : jan1
-  const startSun = addDaysKey(jan1, -parseLocalDateKey(jan1).getDay())
+  // The column grid runs in week rows cut on the household's first day.
+  const gridStart = startOfWeekKey(jan1, firstDay)
 
   const weeks: string[][] = []
-  let cursor = startSun
+  let cursor = gridStart
   while (cursor <= today) {
     weeks.push(Array.from({ length: 7 }, (_, r) => addDaysKey(cursor, r)))
     cursor = addDaysKey(cursor, 7)

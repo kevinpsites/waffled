@@ -48,11 +48,25 @@ enum GoalDateKey {
         calendar.dateComponents([.day], from: parse(b), to: parse(a)).day!
     }
 
-    /// The Sunday that starts the week containing `key`. Anchors the week heatmap to
-    /// a fixed Sun–Sat calendar week instead of a rolling 7-day window.
-    static func startOfWeek(_ key: String) -> String {
-        let weekday = calendar.component(.weekday, from: parse(key)) // 1 = Sunday
-        return addDays(key, -(weekday - 1))
+    /// The day that starts the week containing `key`, cut on the household's own first
+    /// day. Anchors the week heatmap to a fixed calendar week instead of a rolling
+    /// 7-day window. Mirrors the web `startOfWeekKey` — keep the two in step.
+    static func startOfWeek(_ key: String, _ firstDay: HouseholdWeekStart) -> String {
+        let weekday = calendar.component(.weekday, from: parse(key)) - 1  // 0 = Sunday
+        let offset = firstDay == .monday ? 1 : 0
+        return addDays(key, -((weekday - offset + 7) % 7))
+    }
+
+    /// A 7-item weekday header row, rotated to start on the household's first day.
+    static func rotate<T>(_ labels: [T], _ firstDay: HouseholdWeekStart) -> [T] {
+        Cal.rotated(labels, from: firstDay)
+    }
+
+    /// Leading blank cells before the 1st in a month grid cut on `firstDay`.
+    static func monthLeadCells(_ monthStart: Date, _ firstDay: HouseholdWeekStart) -> Int {
+        let weekday = calendar.component(.weekday, from: monthStart) - 1  // 0 = Sunday
+        let offset = firstDay == .monday ? 1 : 0
+        return (weekday - offset + 7) % 7
     }
 }
 
