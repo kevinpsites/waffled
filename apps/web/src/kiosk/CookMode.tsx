@@ -38,11 +38,24 @@ export function CookMode() {
 // matches no row ("a pinch of salt") keys off its own text: still tickable, just not
 // tied to a row. Ticks are for the session only — like step position, nothing is
 // written to the server.
+// Does `name` appear in `text` starting where a word starts? Plain containment was
+// too eager: it matched a name buried inside a longer word — "oil" inside "boiling",
+// "ice" inside "rice" — so a step chip struck an ingredient the step never named.
+// The END is deliberately left unchecked, which is what keeps a plural matching its
+// singular ("onion" in "2 onions"). Both sides are already lowercased.
+// Mirrored by `namesWordIn` in CookSession.swift — keep the two in step.
+function nameStartsAWord(text: string, name: string): boolean {
+  for (let i = text.indexOf(name); i !== -1; i = text.indexOf(name, i + 1)) {
+    if (i === 0 || !/[\p{L}\p{N}]/u.test(text[i - 1])) return true
+  }
+  return false
+}
+
 export function ingredientKey(chip: string, ingredients: RecipeIngredient[]): string {
   const lc = chip.trim().toLowerCase()
   const match = ingredients
     .map((ing) => ({ ing, name: ing.name.trim().toLowerCase() }))
-    .filter(({ name }) => name && lc.includes(name))
+    .filter(({ name }) => name && nameStartsAWord(lc, name))
     .sort((a, b) => b.name.length - a.name.length)[0]
   return match ? match.ing.id : `text:${lc}`
 }

@@ -105,9 +105,26 @@ struct CookSession: Equatable {
         let text = chip.trimmingCharacters(in: .whitespaces).lowercased()
         let match = ingredients
             .map { (ing: $0, name: $0.name.trimmingCharacters(in: .whitespaces).lowercased()) }
-            .filter { !$0.name.isEmpty && text.contains($0.name) }
+            .filter { !$0.name.isEmpty && namesWordIn(text, $0.name) }
             .max { $0.name.count < $1.name.count }
         return match?.ing.id ?? "text:\(text)"
+    }
+
+    /// Does `name` appear in `text` starting where a word starts? Plain containment was
+    /// too eager: it matched a name buried inside a longer word — "oil" inside "boiling",
+    /// "ice" inside "rice" — so a chip struck an ingredient the step never named. The END
+    /// is deliberately left unchecked, which is what keeps a plural matching its singular
+    /// ("onion" in "2 onions"). Both sides are already lowercased.
+    /// Mirrored by `nameStartsAWord` in the web app's CookMode.tsx.
+    static func namesWordIn(_ text: String, _ name: String) -> Bool {
+        var from = text.startIndex
+        while let r = text.range(of: name, range: from..<text.endIndex) {
+            if r.lowerBound == text.startIndex { return true }
+            let prev = text[text.index(before: r.lowerBound)]
+            if !prev.isLetter && !prev.isNumber { return true }
+            from = text.index(after: r.lowerBound)
+        }
+        return false
     }
 
     func contains(_ dishId: String) -> Bool { dishes.contains { $0.id == dishId } }

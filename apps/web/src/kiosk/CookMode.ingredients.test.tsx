@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router'
-import { CookMode } from './CookMode'
+import { CookMode, ingredientKey } from './CookMode'
 import { TopbarSlotProvider } from './topbar-slot'
 
 // Cooking is a checklist you work through, so the ingredients are one: tick each off
@@ -155,5 +155,33 @@ describe('CookMode — ingredients you can tick off', () => {
     expect(list().getByText('0 of 3')).toBeInTheDocument()
     fireEvent.click(list().getByRole('checkbox', { name: /onion/i }))
     expect(list().getByText('1 of 3')).toBeInTheDocument()
+  })
+})
+
+// A step's chip is free text and the list holds rows, so they're tied together by the
+// ingredient name the chip contains. Plain substring containment is too eager: it
+// matches names that merely sit INSIDE a longer word — "oil" in "boiling", "ice" in
+// "rice" — so ticking a step's chip strikes an ingredient the step never mentioned.
+// The name has to start where a word starts. It can still end mid-word, which is what
+// keeps plurals working ("onion" in "2 onions").
+describe('ingredientKey — a name has to start where a word starts', () => {
+  const rows = [ing('i1', 'oil'), ing('i2', 'ice'), ing('i3', 'onion'), ing('i4', 'olive oil'), ing('i5', 'egg')]
+
+  it('does not match a name buried inside a longer word', () => {
+    expect(ingredientKey('2 cups boiling water', rows)).toBe('text:2 cups boiling water')
+    expect(ingredientKey('1 cup rice', rows)).toBe('text:1 cup rice')
+  })
+
+  it('still matches a plural', () => {
+    expect(ingredientKey('2 large onions', rows)).toBe('i3')
+    expect(ingredientKey('3 eggs, beaten', rows)).toBe('i5')
+  })
+
+  it('still prefers the longest name that matches', () => {
+    expect(ingredientKey('2 tbsp olive oil', rows)).toBe('i4')
+  })
+
+  it('still matches a name at the very start of the chip', () => {
+    expect(ingredientKey('oil for frying', rows)).toBe('i1')
   })
 })

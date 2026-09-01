@@ -459,4 +459,28 @@ struct CookIngredientTickTests {
         #expect(s.tickedCount == 1)
         #expect(s.ingredients.count == 2)
     }
+
+    // A chip is free text and the list holds rows, so the two are tied together by the
+    // ingredient name the chip contains. Plain containment is too eager: it matches a
+    // name buried inside a longer word — "oil" in "boiling", "ice" in "rice" — so a
+    // chip struck an ingredient the step never named. The name has to start where a
+    // word starts; the END is left unchecked, which is what keeps plurals matching.
+    // Mirrors `ingredientKey` in the web app's CookMode.tsx — keep the two in step.
+    @Test("an ingredient name has to start where a word starts")
+    func ingredientKeyStartsAWord() {
+        let rows = [ingredient("oil"), ingredient("ice"), ingredient("onion"),
+                    ingredient("olive oil"), ingredient("egg")]
+
+        // Buried inside a longer word — matches nothing, so it keys off its own text.
+        #expect(CookSession.ingredientKey("2 cups boiling water", in: rows) == "text:2 cups boiling water")
+        #expect(CookSession.ingredientKey("1 cup rice", in: rows) == "text:1 cup rice")
+
+        // A plural still finds its singular.
+        #expect(CookSession.ingredientKey("2 large onions", in: rows) == "ing-onion")
+        #expect(CookSession.ingredientKey("3 eggs, beaten", in: rows) == "ing-egg")
+
+        // The longest matching name still wins, and a name may start the chip.
+        #expect(CookSession.ingredientKey("2 tbsp olive oil", in: rows) == "ing-olive oil")
+        #expect(CookSession.ingredientKey("oil for frying", in: rows) == "ing-oil")
+    }
 }
