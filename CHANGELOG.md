@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Write a new recipe without leaving the meal you're planning.** Filling a night on
+  the weekly or monthly plan opens your recipe list — and if what you wanted to cook
+  isn't in it yet, that used to be a dead end: back out of the planner, go to Recipes,
+  write it, then find your way back to the same night. The picker now has a **New
+  recipe** button of its own. Write it there and it goes straight into the slot you
+  opened, with the plan behind it untouched. On the web and on iPhone/iPad.
+
 ### Changed
 
 - **Opening the web app downloads about a third of what it used to.** Waffled handed

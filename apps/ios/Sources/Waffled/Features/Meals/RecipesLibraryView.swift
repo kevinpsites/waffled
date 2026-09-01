@@ -86,6 +86,9 @@ struct RecipesLibraryView: View {
     @Environment(SyncManager.self) private var sync
     @State private var f = LibraryFilters()
     @State private var creating = false
+    /// A recipe just written from inside the picker, held until the editor's cover has
+    /// finished dismissing — then handed to `onPick`.
+    @State private var createdForPick: WaffledAPI.RecipeSummary?
     /// Non-nil ⇒ the Meal Builder is up. Presented (not pushed) because this screen is
     /// hosted by four different navigation stacks, only one of which knows MealsRoute.
     @State private var building: MealBuilderStart?
@@ -131,6 +134,21 @@ struct RecipesLibraryView: View {
             content
         }
         .background(WF.canvas)
+        // Picking, and the recipe you want isn't written yet: write it here and it fills
+        // the slot you opened. This lives in the nav bar rather than beside the filter
+        // chips — a fourth chip overflowed the row on a phone and wrapped its label mid-
+        // word, and "+" in the bar is where iOS puts "make a new one" anyway. Both hosts
+        // (the planner's picker sheet and the Meal Builder's add-a-dish sheet) use only
+        // `.cancellationAction`, so this can't collide. Only a recipe — a plate inside a
+        // plate isn't something the picker's callers can take.
+        .toolbar {
+            if onPick != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { creating = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("New recipe")
+                }
+            }
+        }
         // `.onAppear`, not `.task`: this has to re-run when the library is returned
         // TO — popping back from a recipe is what makes that recipe the newest entry
         // in the rail. `.onAppear` fires on every appearance by contract; `.task`'s
@@ -138,8 +156,16 @@ struct RecipesLibraryView: View {
         .onAppear { Task { await loadRecent() } }
         .onChange(of: recentScope) { _, _ in Task { await loadRecent() } }
         .refreshable { await model.load(); await loadRecent() }
-        .fullScreenCover(isPresented: $creating) {
-            RecipeEditorView(mode: .create) { _ in Task { await model.load() } }
+        .fullScreenCover(isPresented: $creating, onDismiss: {
+            // Hand a just-written recipe back only once the editor is fully gone:
+            // picking dismisses the picker sheet this library sits in, and tearing
+            // down two presentations in the same frame drops the animation.
+            if let saved = createdForPick { createdForPick = nil; onPick?(saved) }
+        }) {
+            RecipeEditorView(mode: .create) { saved in
+                Task { await model.load() }
+                if onPick != nil { createdForPick = saved }
+            }
         }
         .fullScreenCover(item: $building) { start in
             NavigationStack { MealBuilderView(start: start, recipes: model) }

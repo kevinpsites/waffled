@@ -309,6 +309,25 @@
 .picker-search {
   padding: 0 30px 10px;
   display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.picker-new {
+  flex: none;
+  white-space: nowrap;
+}
+/* The full recipe editor, hosted over the picker. It's a tall screen, so the card
+   takes most of the viewport and scrolls inside itself rather than growing past it. */
+.picker-new-card {
+  width: min(920px, 94vw);
+  max-width: none;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.picker-new-h {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 12px;
 }
 .picker-filters {
   padding: 0 30px 12px;
