@@ -65,16 +65,6 @@ struct WaffledAPI: Sendable {
             if case let .http(code, _) = self { return code == 422 }
             return false
         }
-        /// The server's own sentence for a refusal — every API error answers
-        /// `{ error, message }`, and a sheet that just says "something went wrong"
-        /// hides the one thing the user needs (e.g. why a derived entry won't move).
-        var serverMessage: String? {
-            guard case let .http(_, body) = self,
-                  let data = body.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let msg = obj["message"] as? String, !msg.isEmpty else { return nil }
-            return msg
-        }
     }
 
     /// One shared decoder (default config) — JSONDecoder is reusable and decoding is

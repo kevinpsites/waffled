@@ -2647,12 +2647,12 @@ final class GoalDetailModel {
         do {
             try await api.editGoalLog(goalId: goal.id, logId: logId, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn)
             await load()
-        } catch { entryError = (error as? WaffledAPI.APIError)?.serverMessage ?? "Could not save this change." }
+        } catch { entryError = APIErrorText.message(for: error, fallback: "Could not save this change.") }
     }
 
     func deleteEntry(_ logId: String) async {
         do { try await api.deleteGoalLog(goalId: goal.id, logId: logId); await load() }
-        catch { entryError = (error as? WaffledAPI.APIError)?.serverMessage ?? "Could not delete this entry." }
+        catch { entryError = APIErrorText.message(for: error, fallback: "Could not delete this entry.") }
     }
 
     func clearEntryError() { entryError = nil }
