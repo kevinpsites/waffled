@@ -441,6 +441,32 @@ describe('Rhythms screen', () => {
     expect(sent.getHours()).toBe(12)
   })
 
+  // A rhythm anchored in the FUTURE has no current period: the server tiles periods from
+  // startsOn up to now, so the grid hasn't started. Web fell straight through to "not on
+  // the calendar yet" — in bold, and flatly wrong for an auto-scheduled one whose series
+  // was booked the moment it was created. iOS has always had this branch.
+  it('says when a not-yet-started rhythm begins, rather than blaming the calendar', async () => {
+    const future = {
+      ...temple,
+      id: 'r-future',
+      title: 'Spring clean',
+      startsOn: '2026-11-03',
+      autoSchedule: true,
+      rrule: 'FREQ=MONTHLY',
+      hasSeries: true,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      satisfied: false,
+    }
+    mockApi([future])
+    renderScreen()
+    await screen.findByText('Spring clean')
+
+    expect(screen.getByText(/periods start/i)).toBeInTheDocument()
+    expect(screen.queryByText(/not on the calendar yet/i)).toBeNull()
+    expect(screen.queryByText(/the series needs putting back/i)).toBeNull()
+  })
+
   it('refuses a completion dated in the future', async () => {
     mockApi([filter])
     renderScreen()

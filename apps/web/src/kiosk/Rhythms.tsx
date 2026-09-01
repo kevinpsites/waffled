@@ -195,7 +195,15 @@ function RhythmRow({
               with it — so "not on the calendar yet" would be a complaint about a
               situation we have deliberately stopped caring about. */}
           {paused ? <> · <b>paused</b></> : scheduling ? (
-            rhythm.satisfied
+            // No current period means the grid hasn't started: the server tiles periods
+            // from startsOn up to now, so a rhythm anchored in the future has none yet.
+            // Falling through to "not on the calendar yet" was flatly wrong for an
+            // auto-scheduled one, whose series was booked the moment it was made — and it
+            // was said in bold, about a rhythm sitting on the calendar. iOS already had
+            // this branch; web dropped straight past it.
+            !rhythm.currentPeriodStart && rhythm.startsOn
+              ? <> · periods start <b>{shortDate(rhythm.startsOn)}</b></>
+            : rhythm.satisfied
               // Two ways to be settled, and only one of them involves the calendar.
               ? rhythm.bookedAt
                 ? <> · on the calendar for this one</>
