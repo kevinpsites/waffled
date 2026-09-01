@@ -311,6 +311,50 @@ describe('countdown', () => {
     expect(countdown(booked, 'steady', NOW)?.num).toBe('Booked')
   })
 
+  // The whole reason bookedAt is carried: a settled row said "Booked · this period" and
+  // made you open the calendar to find out WHEN. The field was used only to tell a booking
+  // from a skip, and the unit line — which had nothing to say — said "this period" twice
+  // over, once in the countdown and once in the meta.
+  it('says when the booking is, not merely that there is one', () => {
+    const booked = rhythm({
+      satisfiedBy: 'scheduling', satisfied: true, bookedAt: '2026-08-19T18:00:00.000Z',
+      currentPeriodStart: '2026-08-17', currentPeriodEnd: '2026-08-23',
+    })
+    const cd = countdown(booked, 'steady', NOW)
+    expect(cd?.num).toBe('Booked')
+    expect(cd?.unit).toMatch(/Aug 19/)
+    // A clock time of some kind — the exact hour depends on the runner's zone, and
+    // pinning it would only test where this machine happens to be.
+    expect(cd?.unit).toMatch(/\d{1,2}:\d{2}/)
+    expect(cd?.unit).not.toBe('this period')
+  })
+
+  it('leaves the time off an all-day booking, which has none', () => {
+    const allDay = rhythm({
+      satisfiedBy: 'scheduling', satisfied: true,
+      // LOCAL midnight, which is how an all-day booking is stored — the same instant the
+      // booking sheet sends. A UTC-midnight fixture is a different day west of Greenwich,
+      // and would be testing the fixture rather than the code.
+      bookedAt: new Date('2026-08-19T00:00:00').toISOString(),
+      bookedAllDay: true, currentPeriodStart: '2026-08-17', currentPeriodEnd: '2026-08-23',
+    })
+    const cd = countdown(allDay, 'steady', NOW)
+    expect(cd?.unit).toMatch(/Aug 19/)
+    // "12:00 AM" on an all-day event is a time nobody chose.
+    expect(cd?.unit).not.toMatch(/12:00|AM|PM/i)
+  })
+
+  // A skip has no time and never will, so it must not grow one.
+  it('still says nothing about time for a skipped period', () => {
+    const skipped = rhythm({
+      satisfiedBy: 'scheduling', satisfied: true, bookedAt: null,
+      currentPeriodStart: '2026-08-17', currentPeriodEnd: '2026-08-23',
+    })
+    expect(countdown(skipped, 'steady', NOW)).toEqual({
+      num: 'Skipped', unit: 'this period', tone: 'done',
+    })
+  })
+
   it('takes its colour from the group, so one row never argues with its own heading', () => {
     const r = rhythm({ nextDueAt: at(8, 25) })
     expect(countdown(r, 'now', NOW)?.tone).toBe('late')

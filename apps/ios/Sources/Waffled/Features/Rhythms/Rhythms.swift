@@ -347,6 +347,23 @@ enum RhythmFormat {
         let tone: Tone
     }
 
+    /// When the booking is, for the line under "Booked".
+    ///
+    /// The point of carrying `bookedAt` at all — it was used only to tell a booking from a
+    /// skip, so a settled row said "Booked · this period" and you had to open the calendar
+    /// to find out when. An all-day booking is stored at local midnight, so printing its
+    /// time would show "12:00 AM", an hour nobody chose; `bookedAllDay` is what says to
+    /// stop at the date. An unparseable instant falls back to the old wording rather than
+    /// printing something broken.
+    static func bookedWhen(_ bookedAt: String, allDay: Bool, calendar: Calendar) -> String {
+        guard let d = EventTime.parse(bookedAt) else { return "this period" }
+        // Month and day, no year: a booking sits inside the current period, so the year is
+        // noise on a line meant to be read from across a room. (shortDate carries it,
+        // which is right where it is used — for a last-done date that may be years back.)
+        let date = DateFmt.localizedString(d, "MMM d", calendar.timeZone)
+        return allDay ? date : "\(date), \(EventTime.timeLabel(d, calendar.timeZone))"
+    }
+
     /// The row's anchor — the one thing worth reading from across a kitchen.
     ///
     /// Days collapse into weeks and then months past a fortnight: "97 days" is a number
@@ -358,10 +375,12 @@ enum RhythmFormat {
             // Settled, but not necessarily booked: a skip settles a period and has no
             // time, so saying "Booked" there claims the very calendar entry that skipping
             // exists to avoid inventing.
-            guard r.bookedAt != nil else {
+            guard let at = r.bookedAt else {
                 return Countdown(number: "Skipped", unit: "this period", tone: .done)
             }
-            return Countdown(number: "Booked", unit: "this period", tone: .done)
+            return Countdown(number: "Booked",
+                             unit: bookedWhen(at, allDay: r.bookedAllDay ?? false, calendar: calendar),
+                             tone: .done)
         }
         guard let days = daysToGo(r, now: now, calendar: calendar) else { return nil }
         let tone: Countdown.Tone = urgency == .now ? .late : (urgency == .soon ? .near : .soft)
@@ -775,8 +794,12 @@ final class RhythmsModel {
                         parts.append("periods start \(RhythmFormat.shortDate(start, calendar: calendar))")
                     } else if r.satisfied ?? false {
                         // Two ways to be settled, and only one of them is the calendar.
-                        parts.append(r.bookedAt == nil ? "skipped this one"
-                                                       : "on the calendar for this one")
+                        if let at = r.bookedAt {
+                            parts.append("on the calendar for "
+                                         + RhythmFormat.bookedWhen(at, allDay: r.bookedAllDay ?? false, calendar: calendar))
+                        } else {
+                            parts.append("skipped this one")
+                        }
                     } else if r.autoSchedule {
                         // Two ways a self-booking rhythm comes up empty, and they are not
                         // the same problem. A live series missing ONE period is missing one

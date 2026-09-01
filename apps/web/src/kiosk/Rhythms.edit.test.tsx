@@ -149,7 +149,7 @@ describe('Rhythms — where each one stands', () => {
     await screen.findByText('Temple visit')
     // Said in the language of the shape rather than as a status badge: for a booking
     // rhythm, "handled" only ever meant "something is on the calendar for it".
-    expect(screen.getByText(/on the calendar for this one/i)).toBeInTheDocument()
+    expect(screen.getByText((_t, el) => el?.className === 'rhy-meta' && /on the calendar for /i.test(el.textContent ?? ''))).toBeInTheDocument()
     // Nothing here may read as follow-through — we never asked whether they went.
     expect(screen.queryByText(/streak|on track|completed/i)).toBeNull()
   })

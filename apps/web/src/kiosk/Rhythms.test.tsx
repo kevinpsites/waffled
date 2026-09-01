@@ -81,6 +81,17 @@ function renderScreen() {
 // Each row carries one primary verb; everything else lives behind its ··· menu, so
 // most of these have to open it first. The menu is per-row and only one is ever open,
 // which is why the assertions below can go straight to the item by name.
+// The meta line bolds the part that varies (a date, a state), so it is several text nodes
+// and getByText cannot see across the boundary. Read the whole line instead of reshaping
+// the DOM to suit the assertion — same approach as statusLine in RhythmsCard.test.tsx.
+function metaLine(re: RegExp) {
+  return screen.getByText((_t, el) => el?.className === 'rhy-meta' && re.test(el.textContent ?? ''))
+}
+
+function queryMetaLine(re: RegExp) {
+  return screen.queryByText((_t, el) => el?.className === 'rhy-meta' && re.test(el.textContent ?? ''))
+}
+
 function openMenu(title: string) {
   fireEvent.click(screen.getByRole('button', { name: new RegExp(`^more for ${title}$`, 'i') }))
 }
@@ -193,7 +204,7 @@ describe('Rhythms screen', () => {
     }])
     renderScreen()
     await screen.findByText('Auto temple')
-    expect(screen.getByText(/on the calendar for this one/i)).toBeInTheDocument()
+    expect(metaLine(/on the calendar for /i)).toBeInTheDocument()
     expect(screen.queryByText(/needs putting back/i)).toBeNull()
   })
 
@@ -208,7 +219,7 @@ describe('Rhythms screen', () => {
     renderScreen()
     await screen.findByText('Skipped temple')
     expect(screen.getByText(/skipped this one/i)).toBeInTheDocument()
-    expect(screen.queryByText(/on the calendar for this one/i)).toBeNull()
+    expect(queryMetaLine(/on the calendar for /i)).toBeNull()
     expect(screen.queryByLabelText(/on the calendar/i)).toBeNull()
   })
 

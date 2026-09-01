@@ -40,7 +40,8 @@ private func rhythm(
     currentPeriodEnd: String? = nil,
     satisfied: Bool? = nil,
     hasSeries: Bool? = nil,
-    bookedAt: String? = nil
+    bookedAt: String? = nil,
+    bookedAllDay: Bool? = nil
 ) -> WaffledAPI.Rhythm {
     WaffledAPI.Rhythm(
         id: id, title: title, emoji: emoji, notes: notes, personId: personId,
@@ -48,7 +49,7 @@ private func rhythm(
         autoSchedule: autoSchedule, rrule: rrule, leadTime: leadTime,
         lastCompletedAt: lastCompletedAt, nextDueAt: nextDueAt, isActive: isActive,
         currentPeriodStart: currentPeriodStart, currentPeriodEnd: currentPeriodEnd,
-        satisfied: satisfied, hasSeries: hasSeries, bookedAt: bookedAt)
+        satisfied: satisfied, hasSeries: hasSeries, bookedAt: bookedAt, bookedAllDay: bookedAllDay)
 }
 
 private func due(_ r: WaffledAPI.Rhythm, at dueAt: String, overdue: Bool) -> WaffledAPI.RhythmAttentionItem {
@@ -457,7 +458,7 @@ struct RhythmsModelTests {
         // whether it happened is deliberately not tracked.
         #expect(model.detailLines["a"]?.contains("last done") == true)
         #expect(model.detailLines["b"]?.contains("last done") == false)
-        #expect(model.detailLines["b"]?.contains("on the calendar for this one") == true)
+        #expect(model.detailLines["b"]?.contains("on the calendar for ") == true)
     }
 
     @Test("Pausing a rhythm is a PATCH of isActive, not a delete")
@@ -812,8 +813,9 @@ struct RhythmRegisterFailureTests {
         let booked = rhythm(id: "u", title: "Temple visit", satisfiedBy: .scheduling, every: "7 days",
                             currentPeriodStart: "2026-08-19", currentPeriodEnd: "2026-08-27",
                             satisfied: true, bookedAt: "2026-08-20T18:00:00Z")
+        // Says WHEN, not merely that there is one — the whole reason bookedAt is carried.
         #expect(RhythmsModel.detailLines(for: [booked], now: now, calendar: utcCal)["u"]
-                == "Every week · on the calendar for this one")
+                == "Every week · on the calendar for Aug 20, 6:00 PM")
     }
 
     @Test("A settled period says whether it was booked or skipped, never both")
@@ -834,7 +836,7 @@ struct RhythmRegisterFailureTests {
                             satisfied: true, bookedAt: "2026-08-19T18:00:00Z")
         #expect(RhythmFormat.countdown(booked, urgency: .steady)?.number == "Booked")
         #expect(RhythmsModel.detailLines(for: [booked], now: at("2026-08-20T09:00:00"),
-                                        calendar: utcCal)["r1"]?.contains("on the calendar for this one") == true)
+                                        calendar: utcCal)["r1"]?.contains("on the calendar for ") == true)
     }
 
     @Test("A self-booking row separates one empty period from a series that is gone")
@@ -876,7 +878,7 @@ struct RhythmRegisterFailureTests {
                              currentPeriodStart: "2026-08-26", currentPeriodEnd: "2026-09-02",
                              satisfied: true, hasSeries: true, bookedAt: "2026-08-26T18:00:00Z")
         #expect(RhythmsModel.detailLines(for: [healthy], now: now, calendar: utcCal)["b"]
-                == "Every week · on the calendar for this one")
+                == "Every week · on the calendar for Aug 26, 6:00 PM")
     }
 
     @Test("A completion row says when it last happened, and admits when it never has")
@@ -1204,6 +1206,30 @@ struct RhythmCountdownTests {
                        satisfied: true, bookedAt: "2026-08-19T18:00:00Z")
         let cd = RhythmFormat.countdown(r, urgency: .steady, now: now, calendar: utcCal)
         #expect(cd?.number == "Booked")
+        // And WHEN — a row that said "Booked · this period" made you open the calendar to
+        // find out, which is the one question a settled row is there to answer.
+        #expect(cd?.unit == "Aug 19, 6:00 PM")
+    }
+
+    @Test("An all-day booking gives its date and no invented time")
+    func bookedAllDay() {
+        // All-day events are stored at local midnight, so printing a time shows 12:00 AM —
+        // an hour nobody chose. bookedAllDay is what says to stop at the date.
+        let r = rhythm(satisfiedBy: .scheduling, every: "7 days",
+                       currentPeriodStart: "2026-08-17", currentPeriodEnd: "2026-08-24",
+                       satisfied: true, bookedAt: "2026-08-19T00:00:00Z", bookedAllDay: true)
+        let cd = RhythmFormat.countdown(r, urgency: .steady, now: now, calendar: utcCal)
+        #expect(cd?.number == "Booked")
+        #expect(cd?.unit == "Aug 19")
+    }
+
+    @Test("A skipped period still says nothing about time, because it has none")
+    func skippedHasNoTime() {
+        let r = rhythm(satisfiedBy: .scheduling, every: "7 days",
+                       currentPeriodStart: "2026-08-17", currentPeriodEnd: "2026-08-24",
+                       satisfied: true, bookedAt: nil)
+        let cd = RhythmFormat.countdown(r, urgency: .steady, now: now, calendar: utcCal)
+        #expect(cd?.number == "Skipped")
         #expect(cd?.unit == "this period")
     }
 

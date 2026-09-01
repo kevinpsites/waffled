@@ -4,6 +4,7 @@ import {
   useRhythms,
   useRhythmAttention,
   usePersons,
+  bookedWhen,
   cadenceLabel,
   countdown,
   daysToGo,
@@ -206,7 +207,7 @@ function RhythmRow({
             : rhythm.satisfied
               // Two ways to be settled, and only one of them involves the calendar.
               ? rhythm.bookedAt
-                ? <> · on the calendar for this one</>
+                ? <> · on the calendar for <b>{bookedWhen(rhythm.bookedAt, rhythm.bookedAllDay)}</b></>
                 : <> · <b>skipped this one</b></>
               // Three different empty periods, and they are not the same problem.
               // A live series with one gap is missing ONE event, exactly like a

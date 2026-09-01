@@ -454,6 +454,24 @@ export interface RhythmCountdown {
  * is read at a glance: "7 months" is a fact you can act on, "213 days" is one you have
  * to convert first.
  */
+/**
+ * When the booking is, for the line under "Booked".
+ *
+ * The point of carrying `bookedAt` at all — it was used only to tell a booking from a
+ * skip, so a settled row said "Booked · this period" and you had to open the calendar to
+ * find out when. An all-day booking is stored at local midnight, so printing its time
+ * would show "12:00 AM", an hour nobody chose; `bookedAllDay` is what tells us to stop at
+ * the date. Falls back to the old wording if the instant won't parse, since a row that
+ * says slightly less is better than one that says "Invalid Date".
+ */
+export function bookedWhen(bookedAt: string, allDay: boolean | null): string {
+  const d = new Date(bookedAt)
+  if (Number.isNaN(d.getTime())) return 'this period'
+  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  if (allDay) return date
+  return `${date}, ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+}
+
 export function countdown(
   r: RhythmWithPeriod,
   urgency: Urgency,
@@ -465,7 +483,7 @@ export function countdown(
     // saying "Booked" there claims the very calendar entry that skipping exists to
     // avoid inventing.
     if (!r.bookedAt) return { num: 'Skipped', unit: 'this period', tone: 'done' }
-    return { num: 'Booked', unit: 'this period', tone: 'done' }
+    return { num: 'Booked', unit: bookedWhen(r.bookedAt, r.bookedAllDay), tone: 'done' }
   }
   const days = daysToGo(r, now)
   if (days === null) return null

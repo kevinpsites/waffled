@@ -4035,6 +4035,14 @@ struct WaffledAPI: Sendable {
         /// entry the user chose specifically not to create. Optional for the same reason
         /// as the two above.
         let bookedAt: String?
+        /// Whether that booking is an all-day event.
+        ///
+        /// The server has always sent this and nothing read it, so a settled row said
+        /// "Booked" and left you to open the calendar for the when. It matters for more
+        /// than completeness: an all-day event is stored at LOCAL MIDNIGHT, so printing a
+        /// time for one shows "12:00 AM" — an hour nobody chose and the row's only
+        /// falsehood. This is what says to stop at the date.
+        let bookedAllDay: Bool?
     }
 
     /// Why a rhythm is on the attention feed. `unknown` is the same forward-compatibility
