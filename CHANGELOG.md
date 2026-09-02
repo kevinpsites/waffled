@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.14.3] - 2026-09-02
+
+### Added
+
 - **Search a list on the web — including the grocery board.** A long packing list or a
   week's groceries is now searchable from its header: type and it filters down to
   matching items by name, section or aisle, quantity, and the store a grocery row is
@@ -2354,7 +2362,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.14.2...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.14.3...HEAD
+[0.14.3]: https://github.com/kevinpsites/waffled/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/kevinpsites/waffled/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/kevinpsites/waffled/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/kevinpsites/waffled/compare/v0.13.1...v0.14.0
