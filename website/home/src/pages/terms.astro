@@ -1,0 +1,105 @@
+---
+import Base from '../layouts/Base.astro';
+import { LINKS } from '../consts';
+
+// Terms of service. Paired with /privacy — Google's OAuth branding form asks for
+// both, on the same host as the home page. Waffled is AGPL-3.0 software, not a
+// hosted service, so these terms defer to the licence for the software itself and
+// cover the website + the iOS app distribution.
+const updated = 'September 1, 2026';
+---
+
+<Base
+	title="Terms of service — Waffled"
+	description="The terms that apply to the Waffled website, the Waffled iOS app, and the self-hosted Waffled software, which is licensed under the AGPL-3.0."
+>
+	<section class="legal">
+		<div class="wrap">
+			<div class="legal-head">
+				<span class="eyebrow">Legal</span>
+				<h1>Terms of service</h1>
+				<p class="updated">Last updated {updated}</p>
+			</div>
+
+			<div class="legal-body">
+				<div class="legal-callout">
+					<p><strong>The short version.</strong> Waffled is free, open-source software you run yourself.
+					We publish it; you host it. The software is covered by the AGPL-3.0 licence, it comes with no
+					warranty, and because your installation is yours, you are responsible for how it is run and for
+					the data in it.</p>
+				</div>
+
+				<h2>1. What these terms cover</h2>
+				<p>These terms apply to the Waffled website (waffled.app and docs.waffled.app), the Waffled iOS
+				app distributed through the App Store, and your use of the Waffled software. By using any of them
+				you agree to these terms. If you do not agree, do not use them.</p>
+				<p>We do not currently operate a hosted version of Waffled. If we offer one in the future, it will
+				come with its own additional terms.</p>
+
+				<h2>2. The software licence</h2>
+				<p>The Waffled software is licensed under the
+				<a href={LINKS.license} rel="noopener">GNU Affero General Public License v3.0</a>. That licence —
+				not this page — governs your rights to use, modify and redistribute the source code, including the
+				obligation to make your modifications available if you offer Waffled to others over a network.
+				Where these terms and the AGPL-3.0 conflict on anything concerning the software itself, the
+				licence wins.</p>
+
+				<h2>3. Your installation is your responsibility</h2>
+				<p>Waffled is self-hosted. When you install it you become the operator of that instance, which
+				means you are responsible for:</p>
+				<ul>
+					<li>the server, network and storage it runs on, and the cost of them;</li>
+					<li>securing it — HTTPS, strong credentials, keeping it updated, controlling who can reach
+					it;</li>
+					<li>backing up your data, and being able to restore it;</li>
+					<li>the content your household puts into it, and complying with any laws that apply to you for
+					handling that content — including data about children and any other people in your
+					household.</li>
+				</ul>
+				<p>We have no access to your instance and cannot recover data, reset credentials, or restore
+				backups for you.</p>
+
+				<h2>4. Third-party services</h2>
+				<p>Waffled can optionally connect to third-party services — Google Calendar, Microsoft Outlook
+				calendar, Apple Health, Open Food Facts, and an AI model provider of your choosing. Those
+				connections are yours: you authorise them, they are governed by that provider's own terms and
+				privacy policy, and you must comply with those terms. We are not responsible for a third-party
+				service changing, restricting or discontinuing its API. How Waffled handles data from these
+				services is described in our <a href="/privacy">privacy policy</a>.</p>
+
+				<h2>5. Acceptable use</h2>
+				<p>Do not use the Waffled website or the iOS app to break the law, to attack or disrupt our
+				infrastructure or anyone else's, or to gain unauthorised access to a Waffled instance you are not
+				entitled to use. Do not represent modified versions of Waffled as being the official project.</p>
+
+				<h2>6. Trademarks</h2>
+				<p>The AGPL-3.0 grants you rights to the code; it does not grant rights to the Waffled name or
+				logo. You may use them to refer to the project accurately. You may not use them in a way that
+				suggests a modified or third-party version is the official Waffled, or that we endorse your
+				product.</p>
+
+				<h2>7. No warranty</h2>
+				<p>Waffled, the website and the iOS app are provided <strong>"as is", without warranty of any
+				kind</strong>, express or implied, including any warranty of merchantability, fitness for a
+				particular purpose, or non-infringement. We do not warrant that the software will be
+				uninterrupted, error-free, or that it will never lose data. This mirrors the disclaimer in the
+				AGPL-3.0.</p>
+
+				<h2>8. Limitation of liability</h2>
+				<p>To the maximum extent permitted by law, the maintainers of Waffled are not liable for any
+				indirect, incidental, special or consequential damages, or for any loss of data, profits or
+				goodwill, arising out of your use of the software, the website or the app — even if we have been
+				advised of the possibility. Some jurisdictions do not allow these exclusions, in which case they
+				apply to you only as far as the law permits.</p>
+
+				<h2>9. Changes</h2>
+				<p>We may update these terms. Material changes will be reflected in the date at the top of this
+				page. Continuing to use Waffled after a change means you accept the updated terms.</p>
+
+				<h2>10. Contact</h2>
+				<p>Questions about these terms can be raised as an issue at
+				<a href={LINKS.issues} rel="noopener">github.com/kevinpsites/waffled/issues</a>.</p>
+			</div>
+		</div>
+	</section>
+</Base>

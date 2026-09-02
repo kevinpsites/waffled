@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rhythm went on asking you to book the thing already sitting on the calendar. The
   event editor on both phone and web now has a "Keeps a rhythm" picker, so an event you
   made any other way can settle the period it belongs to.
+- **A privacy policy and terms of service on waffled.app.** Two new pages —
+  [waffled.app/privacy](https://waffled.app/privacy) and
+  [waffled.app/terms](https://waffled.app/terms) — spelling out what a self-hosted install
+  actually stores, that none of it ever reaches the maintainers, and exactly which Google
+  account data the optional calendar integration reads, why it needs write access, how the
+  tokens are encrypted, and how to revoke it. Linked from the site footer. Google requires
+  both before it will verify the OAuth consent screen's branding.
 
 ### Changed
 
@@ -57,6 +64,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settled, so it asked to be booked while the outing sat right there on the calendar.
   Both apps now line these rhythms up with calendar months automatically, and the server
   refuses a repeat rule that would skip a period, explaining how to fix it.
+- **Habit goals on iPhone/iPad now count the current week, not every log you have ever
+  made.** A "5× a week" habit was showing its lifetime completions on the iOS goal cards,
+  hero and detail — log once last week and once this week and it read "2 of 5" instead of
+  resetting to "1 of 5". The count now rolls over with the habit's own period (day / week
+  / month), the ring says which window it covers ("of 5 this week"), and the Log sheet
+  shows where the cadence stands. The web app was already correct.
+- **A weekly habit now resets on your household's own start-of-week day.** Habit periods
+  were cut on Monday no matter what **Settings → Family & People → Week starts on** said —
+  and that setting defaults to Sunday, so for most households Sunday's completion counted
+  toward the week that was ending instead of the one beginning. Weekly habits (and the
+  goal detail's "this week" total, which also ignored your timezone) now use the same
+  week as the meal planner, the calendar and the goal heatmaps. Existing history re-reads
+  itself against the new boundary — nothing to migrate, and changing the setting later
+  fixes past weeks too.
+- **iPhone/iPad now say when a habit is already done for today.** A habit counts once
+  per day per person, and the server has always quietly dropped a second tap — but iOS
+  gave no sign, so "Mark done for today" looked like it worked and did nothing. The
+  button now reads "Done for today ✓" and steps aside, pointing you at the date picker
+  if you meant to catch up a missed day. The web already behaved this way.
+- **Milestones on iPhone/iPad count what the goal itself counts.** A habit's milestones
+  are streak days ("🔥 7 days") and a checklist's are percent complete, but the iOS
+  milestone track measured every goal by its lifetime total — so a habit with 99 logs and
+  a 3-day streak claimed its 7-day milestone was long past. Each milestone now reads the
+  same axis the server used to award it, and says so: "4-day streak to go", "15% to go".
+- **"Each" goals on iPhone/iPad measure against everyone's target, not one person's.**
+  A goal set as a per-person amount ("read 12 books each") compared the whole family's
+  pooled progress to the single-person number, so four members who had read 30 between
+  them showed "30 / 12". The target now grows with the household — "30 / 48" — as it
+  always has on the web.
+- **Checklist goals on iPhone/iPad show steps done, not an empty ring.** A checklist has
+  no numeric target, so its iOS cards and detail hero were stuck at an empty ring with no
+  figure to measure against; they now read steps done over steps total, matching the web.
+
+### Security
+
+- **Disconnecting a calendar account now destroys its stored tokens.** Disconnecting a Google
+  or Outlook account hid it from the app but left the encrypted refresh token sitting in the
+  database indefinitely — a working credential for an account you had explicitly disconnected.
+  It's now wiped as part of the disconnect. Events already imported still stay on your family
+  calendar, as before.
 
 ## [0.14.1] - 2026-09-01
 

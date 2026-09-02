@@ -89,17 +89,17 @@ struct GoalHeroCard: View {
     }
 
     private func body(_ g: WaffledAPI.Goal) -> some View {
-        let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
+        let frac = GoalDisplay.fraction(g)
         let maxProg = max(1, g.participants.map(\.progress).max() ?? 1)
         let ring: CGFloat = kiosk ? 116 : 78
         return VStack(alignment: .leading, spacing: kiosk ? 18 : 13) {
             HStack(alignment: .center, spacing: kiosk ? 18 : 13) {
                 GoalRing(value: frac, size: ring, lineWidth: kiosk ? 10 : 8, stroke: .white, track: .white.opacity(0.25)) {
                     VStack(spacing: 1) {
-                        Text(goalFmt(g.totalProgress)).font(.system(size: kiosk ? 24 : 17, weight: .heavy)).foregroundStyle(.white)
+                        Text(goalFmt(GoalDisplay.progress(g))).font(.system(size: kiosk ? 24 : 17, weight: .heavy)).foregroundStyle(.white)
                             .lineLimit(1).minimumScaleFactor(0.5)
-                        if g.target != nil {
-                            Text("of \(goalFmt(g.target))\(g.unit.map { " \($0)" } ?? "")")
+                        if GoalDisplay.target(g) != nil {
+                            Text(GoalDisplay.targetCaption(g, unit: g.unit, fmt: goalFmt))
                                 .font(.system(size: kiosk ? 11 : 9, weight: .bold)).foregroundStyle(.white.opacity(0.85))
                                 .lineLimit(1).minimumScaleFactor(0.7)
                         }

@@ -251,4 +251,38 @@ describe('calendar mapping + reconnect', () => {
     expect(after.connected).toBe(false)
     expect(after.calendars).toHaveLength(0)
   })
+
+  // Disconnect soft-deletes the row (events keep their FK), but the stored Google
+  // credentials must not survive it: a disconnected account that still holds a
+  // usable refresh token is a credential we have no remaining reason to keep, and
+  // our privacy policy tells people disconnecting deletes it.
+  it('destroys the stored Google tokens on disconnect', async () => {
+    // Reconnect — the previous test disconnected the account this suite set up.
+    const state = stateFrom(JSON.parse((await call('POST', '/api/calendar/google/connect', kevin, {})).body).url)
+    expect((await call('GET', `/auth/google/calendar/callback?code=auth-code-4&state=${state}`)).statusCode).toBe(200)
+    const accountId = JSON.parse((await call('GET', '/api/calendar/google/status', kevin)).body).accounts[0].id
+
+    const client = new Client({ connectionString: dbUrl })
+    await client.connect()
+    const before = await client.query(
+      `select refresh_token_encrypted, access_token_encrypted from calendar_accounts where id = $1`,
+      [accountId]
+    )
+    // Guard the guard: the token really is there before we disconnect.
+    expect(before.rows[0].refresh_token_encrypted).toBeTruthy()
+
+    expect((await call('DELETE', `/api/calendar/google/accounts/${accountId}`, kevin)).statusCode).toBe(204)
+
+    const after = await client.query(
+      `select refresh_token_encrypted, access_token_encrypted, access_token_expires_at, deleted_at
+         from calendar_accounts where id = $1`,
+      [accountId]
+    )
+    await client.end()
+    expect(after.rows[0].refresh_token_encrypted).toBe('')
+    expect(after.rows[0].access_token_encrypted).toBeNull()
+    expect(after.rows[0].access_token_expires_at).toBeNull()
+    // Still soft-deleted, not row-deleted — synced events reference this account.
+    expect(after.rows[0].deleted_at).not.toBeNull()
+  })
 })
