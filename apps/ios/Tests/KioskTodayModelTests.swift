@@ -79,6 +79,7 @@ private func goal(_ title: String) -> WaffledAPI.Goal {
                     habitTargetPerPeriod: nil, trackingMode: "shared", participantMode: nil,
                     targetBasis: nil, deadline: nil, isFeatured: false, isSpotlight: nil,
                     target: 10, totalProgress: 2, milestoneTotal: 0, milestoneReached: 0,
+                    periodDone: nil, stepTotal: nil, stepDone: nil,
                     streakDays: 0, autoFromCalendar: false, healthMetric: nil,
                     createdAt: nil, participants: [])
 }

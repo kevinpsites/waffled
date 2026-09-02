@@ -27,6 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Habit goals on iPhone/iPad now count the current week, not every log you have ever
+  made.** A "5× a week" habit was showing its lifetime completions on the iOS goal cards,
+  hero and detail — log once last week and once this week and it read "2 of 5" instead of
+  resetting to "1 of 5". The count now rolls over with the habit's own period (day / week
+  / month), the ring says which window it covers ("of 5 this week"), and the Log sheet
+  shows where the cadence stands. The web app was already correct.
+- **Checklist goals on iPhone/iPad show steps done, not an empty ring.** A checklist has
+  no numeric target, so its iOS cards and detail hero were stuck at an empty ring with no
+  figure to measure against; they now read steps done over steps total, matching the web.
+
 ### Security
 
 - **Disconnecting a calendar account now destroys its stored tokens.** Disconnecting a Google

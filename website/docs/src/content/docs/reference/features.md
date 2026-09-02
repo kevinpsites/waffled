@@ -153,6 +153,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
 | Goal types: count / total / habit / checklist | ✅ | ✅ | ✅ | ✅ Done |
+| **Every type reads on its own axis** — a habit counts the days you logged **in the current period** against its cadence ("2 of 5 this week") and starts over when the period rolls round; a checklist counts steps done; count/total keep a running lifetime total | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | Goal **lists** + membership (shared lists / individual) | ✅ | ✅ | ✅ | ✅ Done |
 | Shared-pool vs each-tracks goals | ✅ | ✅ | ✅ | ✅ Done |
 | **Goal tiers** — Spotlight (one hero per list) / Pinned band / More (A–Z), Spotlight-Pinned-Normal picker, one-tap pin/unpin, Today card → Spotlight | ✅ | ✅ | ✅ | ✅ Done (web + iOS); **Today card also pins a specific goal** (My/Family spotlight or a chosen goal). Only Pinned-band drag-reorder remains on roadmap |

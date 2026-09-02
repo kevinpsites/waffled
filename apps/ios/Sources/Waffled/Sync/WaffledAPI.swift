@@ -2713,14 +2713,32 @@ struct WaffledAPI: Sendable {
             let progress, target: Double?
             let pct: Int?            // null for target-less goals (no computable %)
             let streakDays: Int
+            /// The overview already measures each goal on its own axis, so `progress`
+            /// above is a habit's THIS-PERIOD count. These carry the cadence through to
+            /// the goal detail we push, so the hero doesn't flash a lifetime total (or a
+            /// bare 0) before the full detail loads.
+            let periodDone: Double?
+            let habitPeriod: String?
+            let habitTargetPerPeriod: Int?
 
             /// A full `WaffledAPI.Goal` for navigating to the goal detail (which reloads
             /// the rest by id); the missing fields get harmless defaults.
             var asGoal: Goal2 {
                 Goal2(id: id, goalListId: nil, title: title, emoji: emoji, category: category,
-                      goalType: goalType ?? "total", unit: unit, habitPeriod: nil, habitTargetPerPeriod: nil,
+                      goalType: goalType ?? "total", unit: unit, habitPeriod: habitPeriod,
+                      habitTargetPerPeriod: habitTargetPerPeriod,
                       trackingMode: "shared_total", participantMode: nil, targetBasis: nil, deadline: nil, isFeatured: false, isSpotlight: nil, target: target,
-                      totalProgress: progress ?? 0, milestoneTotal: 0, milestoneReached: 0,
+                      // `progress`/`target` here are ALREADY on the goal's own axis, so a
+                      // habit's is its period count and a checklist's is its step count.
+                      // Put them back where GoalDisplay looks for them, and leave a
+                      // habit's `totalProgress` at 0 rather than passing off the period
+                      // count as a lifetime total (the detail's milestone ladder reads
+                      // that field until the full detail loads a moment later).
+                      totalProgress: goalType == "habit" ? 0 : (progress ?? 0),
+                      milestoneTotal: 0, milestoneReached: 0,
+                      periodDone: goalType == "habit" ? (periodDone ?? progress) : periodDone,
+                      stepTotal: goalType == "checklist" ? target.map { Int($0) } : nil,
+                      stepDone: goalType == "checklist" ? progress.map { Int($0) } : nil,
                       streakDays: streakDays, autoFromCalendar: false, healthMetric: nil, createdAt: nil, participants: [])
             }
         }
@@ -3272,6 +3290,15 @@ struct WaffledAPI: Sendable {
         let totalProgress: Double
         let milestoneTotal: Int
         let milestoneReached: Int
+        /// Habit only: distinct days logged in the CURRENT period (day/week/month, in the
+        /// household's timezone). This — not `totalProgress` — is what a habit displays,
+        /// so the count resets when the period rolls over. Optional so an older/cached
+        /// response still decodes. Read it through `GoalDisplay`, never inline.
+        let periodDone: Double?
+        /// Checklist only: steps done / steps total, the axis a checklist displays on.
+        /// Optional for the same reason as `periodDone`.
+        let stepTotal: Int?
+        let stepDone: Int?
         let streakDays: Int
         /// Goal opted in to count matching calendar events (drives "Plan time").
         let autoFromCalendar: Bool
@@ -3311,6 +3338,11 @@ struct WaffledAPI: Sendable {
         let isSpotlight: Bool?
         let hasRewards: Bool
         let totalProgress: Double
+        /// See `Goal.periodDone` / `Goal.stepTotal` — the detail carries the same axes so
+        /// the detail hero agrees with the card the user tapped.
+        let periodDone: Double?
+        let stepTotal: Int?
+        let stepDone: Int?
         let streakDays: Int
         let deadline: String?
         let createdAt: String
