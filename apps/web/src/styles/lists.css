@@ -114,6 +114,44 @@
   background: var(--primary);
   color: var(--on-accent);
 }
+/* Search this list — the pantry/recipes search pill, sized to sit in the 36px
+   header action row beside the filter pills, with an inline × to clear. */
+.lists-search-wrap {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+.lists-search {
+  width: 190px;
+  height: 36px;
+  font: inherit;
+  font-size: 13px;
+  padding: 0 30px 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+  color: var(--ink);
+}
+.lists-search:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.lists-search-clear {
+  position: absolute;
+  right: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 17px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.lists-search-clear:hover {
+  color: var(--ink);
+}
 .lists-hint {
   font-weight: 600;
   margin-bottom: 10px;

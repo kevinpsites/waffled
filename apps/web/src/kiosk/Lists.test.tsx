@@ -351,6 +351,102 @@ describe('Lists screen', () => {
     await waitFor(() => expect(screen.queryByText('Swimsuits')).toBeNull())
   })
 
+  it('filters the list as you type in the search box, and clears back to everything', async () => {
+    mockApi({ lists: [grocery, packing], items: packItems })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'sun' } })
+    await waitFor(() => expect(screen.queryByText('Swimsuits')).toBeNull())
+    expect(screen.getByText('Sunscreen')).toBeInTheDocument()
+    // the header count still describes the whole list, not the search result
+    expect(screen.getByText('2 items · 1 done')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+    await waitFor(() => expect(screen.getByText('Swimsuits')).toBeInTheDocument())
+  })
+
+  it('surfaces matches hiding in a collapsed section and in Completed', async () => {
+    mockApi({ lists: [grocery, packing], items: packItems })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    // collapse Clothes, so Swimsuits is hidden the way a user might have left it
+    const header = screen.getByText('Clothes', { selector: '.lists-section-name' }).closest('button') as HTMLElement
+    fireEvent.click(header)
+    await waitFor(() => expect(screen.queryByText('Swimsuits')).toBeNull())
+
+    // a search still finds it — a collapsed section must not swallow results
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'swim' } })
+    await waitFor(() => expect(screen.getByText('Swimsuits')).toBeInTheDocument())
+
+    // and a checked item matches too, without having to open Completed first
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'pjs' } })
+    await waitFor(() => expect(screen.getByText('PJs & socks')).toBeInTheDocument())
+
+    // clicking the force-opened Completed header while searching must not quietly
+    // rewrite the state the user gets back afterwards
+    fireEvent.click(screen.getByRole('button', { name: /Completed/i }))
+
+    // clearing puts both back the way the user left them: Clothes collapsed again,
+    // Completed tucked away again
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+    await waitFor(() => expect(screen.queryByText('Swimsuits')).toBeNull())
+    expect(screen.getByText('Sunscreen')).toBeInTheDocument()
+    expect(screen.queryByText('PJs & socks')).toBeNull()
+  })
+
+  it('ignores a section-header click while searching, so nothing collapses behind the user', async () => {
+    mockApi({ lists: [grocery, packing], items: packItems })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    // search down to the Gear section, then click its header — the search forces
+    // every section open, so this click has no visible effect and must not be
+    // remembered: clearing would otherwise hide a section the user never collapsed.
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'sun' } })
+    await waitFor(() => expect(screen.queryByText('Swimsuits')).toBeNull())
+    fireEvent.click(screen.getByText('Gear', { selector: '.lists-section-name' }).closest('button') as HTMLElement)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+    await waitFor(() => expect(screen.getByText('Swimsuits')).toBeInTheDocument())
+    expect(screen.getByText('Sunscreen')).toBeInTheDocument()
+  })
+
+  it("counts the whole Completed group, since Clear sweeps all of it", async () => {
+    // Two checked items, one of which matches the search: the count beside Clear
+    // must describe what Clear deletes (both), not the filtered slice (one).
+    const twoDone = [
+      packItems[0],
+      { ...packItems[1], id: 'd1', name: 'PJs & socks' },
+      { ...packItems[1], id: 'd2', name: 'Beach towels' },
+    ]
+    mockApi({ lists: [grocery, packing], items: twoDone })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+    expect(screen.getByRole('button', { name: /Completed/i })).toHaveTextContent('2')
+
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'towels' } })
+    await waitFor(() => expect(screen.getByText('Beach towels')).toBeInTheDocument())
+    expect(screen.queryByText('PJs & socks')).toBeNull()
+    expect(screen.getByRole('button', { name: /Completed/i })).toHaveTextContent('2')
+  })
+
+  it('says nothing matched when the search comes up empty', async () => {
+    mockApi({ lists: [grocery, packing], items: packItems })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'kayak' } })
+    await waitFor(() => expect(screen.getByText(/No items match/i)).toBeInTheDocument())
+    expect(screen.getByText(/kayak/)).toBeInTheDocument()
+  })
+
   it('bulk-edits selected items via the Select toolbar (PATCH /api/list-items/bulk)', async () => {
     const sent: Sent[] = []
     mockApi({ lists: [grocery, packing], items: packItems, sent })
