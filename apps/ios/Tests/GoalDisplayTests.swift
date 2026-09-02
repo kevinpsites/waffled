@@ -175,6 +175,33 @@ private func goal(
         #expect(GoalDisplay.progress(g) == 2)
     }
 
+    @Test func anOverviewHabitCarriesItsPeriodCountIntoTheGoalItPushes() throws {
+        // The overview measures each goal on its own axis, so `progress` here IS the
+        // period count. Tapping the row pushes a goal detail; its hero must open on the
+        // same number the row showed, not a blank ring.
+        let json = """
+        {"id":"g1","title":"Move","emoji":null,"category":null,"unit":null,
+         "goalType":"habit","progress":2,"target":5,"pct":40,"streakDays":3,
+         "periodDone":2,"habitPeriod":"week","habitTargetPerPeriod":5}
+        """
+        let row = try JSONDecoder().decode(WaffledAPI.PersonOverview.Goal.self, from: Data(json.utf8))
+        #expect(GoalDisplay.progress(row.asGoal) == 2)
+        #expect(GoalDisplay.target(row.asGoal) == 5)
+    }
+
+    @Test func anOverviewHabitFromAnOlderServerDoesNotPassOffALifetimeTotal() throws {
+        // No `periodDone` means an older server, where `progress` was the LIFETIME count.
+        // Carrying it over would put the original bug back on the pushed detail ("99 of 5
+        // this week"), so the period axis stays unknown here.
+        let json = """
+        {"id":"g1","title":"Move","emoji":null,"category":null,"unit":null,
+         "goalType":"habit","progress":99,"target":5,"pct":100,"streakDays":3}
+        """
+        let row = try JSONDecoder().decode(WaffledAPI.PersonOverview.Goal.self, from: Data(json.utf8))
+        #expect(row.asGoal.periodDone == nil)
+        #expect(GoalDisplay.progress(row.asGoal) == 0)
+    }
+
     @Test func decodesAnOlderGoalPayloadWithoutTheNewFields() throws {
         // A response from an older server (or a cached one) must still decode — a strict
         // Decodable failure surfaces to the user as a bogus "couldn't reach server".

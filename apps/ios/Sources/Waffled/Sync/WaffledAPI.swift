@@ -2731,11 +2731,16 @@ struct WaffledAPI: Sendable {
                       // `progress`/`target` here are ALREADY on the goal's own axis, so a
                       // habit's is its period count and a checklist's is its step count.
                       // Put them back where GoalDisplay looks for them, and leave a
-                      // habit's `totalProgress` at 0 rather than passing off the period
-                      // count as a lifetime total it isn't.
+                      // habit's `totalProgress` at 0 — this payload does not carry a
+                      // lifetime figure, and 0 is honest where the period count would be
+                      // a lie. (A checklist's step count IS its total: each tick logs 1.)
                       totalProgress: goalType == "habit" ? 0 : (progress ?? 0),
                       milestoneTotal: 0, milestoneReached: 0,
-                      periodDone: goalType == "habit" ? (periodDone ?? progress) : periodDone,
+                      // Never fall back to `progress` when the server sent no
+                      // `periodDone`: on a server old enough to omit it, `progress` was
+                      // the LIFETIME count, and carrying that over is the very bug this
+                      // helper exists to stop. Unknown stays unknown.
+                      periodDone: periodDone,
                       stepTotal: goalType == "checklist" ? target.map { Int($0) } : nil,
                       stepDone: goalType == "checklist" ? progress.map { Int($0) } : nil,
                       streakDays: streakDays, autoFromCalendar: false, healthMetric: nil, createdAt: nil, participants: [])
