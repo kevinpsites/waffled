@@ -694,6 +694,10 @@ export function Lists() {
   // checked match behind a count.
   const sectionCollapsed = (key: string) => !searching && collapsedSections.has(key)
   const doneOpen = showDone || searching
+  // The whole Completed group, ignoring both narrowing controls. Clear deletes every
+  // checked item on the list, so the number printed beside it has to be that number —
+  // "Completed 1 · Clear" that deletes thirty is a trap, not a count.
+  const allCompleted = items.filter((i) => i.checked && !recent.has(i.id))
   const sections = groupBySection(activeItems)
   const [leftCol, rightCol] = splitColumns(sections)
   // Flattened, highest-priority-first view (stable — ties keep manual order).
@@ -1078,7 +1082,7 @@ export function Lists() {
                     >
                       <span className={`cal-chev ${doneOpen ? 'open' : ''}`} aria-hidden>›</span>
                       <span>Completed</span>
-                      <span className="ga-n">{completedItems.length}</span>
+                      <span className="ga-n">{allCompleted.length}</span>
                       {!isTemplate && (
                         <button
                           type="button"

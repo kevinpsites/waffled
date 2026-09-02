@@ -826,7 +826,9 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
                 >
                   <span className={`cal-chev ${doneOpen ? 'open' : ''}`}>›</span>
                   <span>Completed</span>
-                  <span className="ga-n">{completedItems.length}</span>
+                  {/* Clear deletes every checked row, so this counts the whole group,
+                      not the filtered slice — see allCompleted. */}
+                  <span className="ga-n">{allCompleted.length}</span>
                   <button type="button" className="linkbtn" style={{ marginLeft: 'auto' }} onClick={(e) => { e.stopPropagation(); clearCompleted() }}>
                     Clear
                   </button>

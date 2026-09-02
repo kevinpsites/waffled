@@ -29,6 +29,7 @@ const items = [
   row('i2', 'Kale', { aisle: 'Produce' }),
   row('i3', 'Milk', { aisle: 'Dairy & Chilled', store: 'Costco' }),
   row('i4', 'Toothpaste', { checked: true, checkedAt: '2026-06-07T00:00:00Z' }),
+  row('i5', 'Sponges', { checked: true, checkedAt: '2026-06-07T00:00:00Z' }),
 ]
 
 const ok = (body: unknown) => ({ ok: true, json: async () => body })
@@ -110,6 +111,22 @@ describe('GroceryBoard search', () => {
 
     fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'tooth' } })
     await waitFor(() => expect(screen.getByText('Toothpaste')).toBeInTheDocument())
+  })
+
+  it('counts the whole Completed group, since Clear sweeps all of it', async () => {
+    mockBoard()
+    renderBoard()
+    await screen.findByText('Tomatoes')
+
+    // two checked rows; searching down to one must not make Clear look like it
+    // will delete one — it deletes every checked row on the board
+    const done = () => screen.getByText('Completed').closest('.grocery-done-h') as HTMLElement
+    expect(done()).toHaveTextContent('2')
+
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'tooth' } })
+    await waitFor(() => expect(screen.getByText('Toothpaste')).toBeInTheDocument())
+    expect(screen.queryByText('Sponges')).toBeNull()
+    expect(done()).toHaveTextContent('2')
   })
 
   it('says nothing matched when the search comes up empty', async () => {

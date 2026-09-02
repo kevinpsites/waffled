@@ -416,6 +416,26 @@ describe('Lists screen', () => {
     expect(screen.getByText('Sunscreen')).toBeInTheDocument()
   })
 
+  it("counts the whole Completed group, since Clear sweeps all of it", async () => {
+    // Two checked items, one of which matches the search: the count beside Clear
+    // must describe what Clear deletes (both), not the filtered slice (one).
+    const twoDone = [
+      packItems[0],
+      { ...packItems[1], id: 'd1', name: 'PJs & socks' },
+      { ...packItems[1], id: 'd2', name: 'Beach towels' },
+    ]
+    mockApi({ lists: [grocery, packing], items: twoDone })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+    expect(screen.getByRole('button', { name: /Completed/i })).toHaveTextContent('2')
+
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'towels' } })
+    await waitFor(() => expect(screen.getByText('Beach towels')).toBeInTheDocument())
+    expect(screen.queryByText('PJs & socks')).toBeNull()
+    expect(screen.getByRole('button', { name: /Completed/i })).toHaveTextContent('2')
+  })
+
   it('says nothing matched when the search comes up empty', async () => {
     mockApi({ lists: [grocery, packing], items: packItems })
     renderScreen()
