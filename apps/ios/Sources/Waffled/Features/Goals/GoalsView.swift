@@ -446,11 +446,6 @@ struct GoalsView: View {
     private func eachHero(_ g: WaffledAPI.Goal) -> some View {
         let summed = g.participants.reduce(0.0) { $0 + ($1.target ?? 0) }
         let summedTarget = summed > 0 ? summed : (g.target ?? 0)
-        // A numeric goal pools everyone's targets ("12 books EACH" × 4 = 48). A habit or
-        // checklist has no per-person axis on the server, so it keeps its own — this
-        // period's count against the cadence, or steps done over steps total.
-        let onOwnAxis = g.goalType == "habit" || g.goalType == "checklist"
-        let axisTarget = onOwnAxis ? GoalDisplay.target(g) : summedTarget
         return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 14) {
                 Text(g.emoji ?? "🎯").font(.system(size: 38))
@@ -465,10 +460,13 @@ struct GoalsView: View {
                 }
             }
             HStack {
-                Text(GoalDisplay.periodLabel(g)?.uppercased() ?? "TOGETHER")
-                    .font(.system(size: 10, weight: .heavy)).tracking(0.6).foregroundStyle(.white.opacity(0.8))
+                Text("TOGETHER").font(.system(size: 10, weight: .heavy)).tracking(0.6).foregroundStyle(.white.opacity(0.8))
                 Spacer()
-                Text("\(goalFmt(GoalDisplay.progress(g)))/\(goalFmt(axisTarget))")
+                // Deliberately the POOLED lifetime pair, matching the web's EachHero: the
+                // server's period count has no `person_id` filter (it counts days ANYONE
+                // logged), so pairing it with a per-person cadence would mix scopes and
+                // could read "6/5". Each person's own axis lives in the rows below.
+                Text("\(goalFmt(g.totalProgress))/\(goalFmt(summedTarget))")
                     .font(.system(size: 15, weight: .heavy)).foregroundStyle(.white)
             }
             if !g.participants.isEmpty {
