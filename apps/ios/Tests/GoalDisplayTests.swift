@@ -19,16 +19,22 @@ private func goal(
     periodDone: Double? = nil,
     stepTotal: Int? = nil,
     stepDone: Int? = nil,
-    streakDays: Int = 0
+    streakDays: Int = 0,
+    targetBasis: String? = nil,
+    people: Int = 0
 ) -> WaffledAPI.Goal {
     WaffledAPI.Goal(id: "g", goalListId: nil, title: "G", emoji: nil, category: nil,
                     goalType: goalType, unit: nil, habitPeriod: habitPeriod,
                     habitTargetPerPeriod: habitTargetPerPeriod, trackingMode: "shared_total",
-                    participantMode: nil, targetBasis: nil, deadline: nil, isFeatured: false,
+                    participantMode: nil, targetBasis: targetBasis, deadline: nil, isFeatured: false,
                     isSpotlight: nil, target: target, totalProgress: totalProgress,
                     milestoneTotal: 0, milestoneReached: 0, periodDone: periodDone,
                     stepTotal: stepTotal, stepDone: stepDone, streakDays: streakDays,
-                    autoFromCalendar: false, healthMetric: nil, createdAt: nil, participants: [])
+                    autoFromCalendar: false, healthMetric: nil, createdAt: nil,
+                    participants: (0..<people).map {
+                        .init(personId: "p\($0)", name: "P\($0)", colorHex: nil,
+                              avatarEmoji: nil, target: target, progress: 0)
+                    })
 }
 
 @Suite struct GoalDisplayTests {
@@ -91,6 +97,25 @@ private func goal(
         #expect(GoalDisplay.progress(g) == 312)
         #expect(GoalDisplay.target(g) == 1000)
         #expect(abs(GoalDisplay.fraction(g) - 0.312) < 0.0001)
+    }
+
+    @Test func perPersonTargetIsThePerPersonNumberTimesTheMembers() {
+        // "read 12 books EACH", 2 people, both read 12 → 24 of 24, not 24 of 12.
+        // Mirrors goals-display.test.ts's per_person case.
+        let g = goal(goalType: "count", target: 12, totalProgress: 24, targetBasis: "per_person", people: 2)
+        #expect(GoalDisplay.target(g) == 24)
+        #expect(GoalDisplay.progress(g) == 24)
+        #expect(GoalDisplay.fraction(g) == 1) // full, not overflowing past 100%
+    }
+
+    @Test func perPersonWithNoMembersYetKeepsTheFlatTarget() {
+        let g = goal(goalType: "count", target: 12, totalProgress: 0, targetBasis: "per_person", people: 0)
+        #expect(GoalDisplay.target(g) == 12)
+    }
+
+    @Test func familyBasisTargetIsTheFlatNumber() {
+        let g = goal(goalType: "total", target: 1000, totalProgress: 312, targetBasis: "family", people: 4)
+        #expect(GoalDisplay.target(g) == 1000)
     }
 
     @Test func fractionClampsAtFullAndSurvivesAMissingTarget() {

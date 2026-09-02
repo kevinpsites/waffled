@@ -15,6 +15,11 @@ protocol GoalDisplayable {
     var stepDone: Int? { get }
     /// Consecutive days logged — a habit's milestone axis, not just a badge.
     var streakDays: Int { get }
+    /// family (a flat target) | per_person (the target is PER member, so the ring's is
+    /// that number × the members).
+    var targetBasis: String? { get }
+    /// How many people are on the goal — the multiplier for a per_person target.
+    var participantCount: Int { get }
 }
 
 /// Which number a goal shows, and what it is measured against.
@@ -50,7 +55,12 @@ enum GoalDisplay {
         case "checklist":
             let total = g.stepTotal ?? 0
             return total > 0 ? Double(total) : nil
-        default: return g.target
+        default:
+            // A per_person target is stated PER member ("read 12 books each"), so the
+            // figure to measure the pooled progress against grows with the household:
+            // 12 each × 4 = 48. It grows as people join, matching the web.
+            guard g.targetBasis == "per_person", let t = g.target else { return g.target }
+            return t * Double(max(1, g.participantCount))
         }
     }
 
@@ -108,5 +118,9 @@ enum GoalDisplay {
     }
 }
 
-extension WaffledAPI.Goal: GoalDisplayable {}
-extension WaffledAPI.GoalDetail: GoalDisplayable {}
+extension WaffledAPI.Goal: GoalDisplayable {
+    var participantCount: Int { participants.count }
+}
+extension WaffledAPI.GoalDetail: GoalDisplayable {
+    var participantCount: Int { participants.count }
+}
