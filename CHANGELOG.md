@@ -15,9 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A privacy policy and terms of service on waffled.app.** Two new pages —
+  [waffled.app/privacy](https://waffled.app/privacy) and
+  [waffled.app/terms](https://waffled.app/terms) — spelling out what a self-hosted install
+  actually stores, that none of it ever reaches the maintainers, and exactly which Google
+  account data the optional calendar integration reads, why it needs write access, how the
+  tokens are encrypted, and how to revoke it. Linked from the site footer. Google requires
+  both before it will verify the OAuth consent screen's branding.
+
 ### Changed
 
 ### Fixed
+
+### Security
+
+- **Disconnecting a calendar account now destroys its stored tokens.** Disconnecting a Google
+  or Outlook account hid it from the app but left the encrypted refresh token sitting in the
+  database indefinitely — a working credential for an account you had explicitly disconnected.
+  It's now wiped as part of the disconnect. Events already imported still stay on your family
+  calendar, as before.
 
 ## [0.14.1] - 2026-09-01
 
