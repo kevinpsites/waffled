@@ -689,8 +689,9 @@ export async function goalDetail(householdId: string, id: string) {
   // row groups by its own id, so it stays one entry exactly as before. Grouping (not the
   // raw rows) is limited to 12 so a split action counts as one line.
   const recent = (
-    await query<{ id: string; amount: string; loggedAt: string; dateKey: string; note: string | null; participants: Array<{ personId: string | null; name: string | null; avatarEmoji: string | null; colorHex: string | null }> }>(
+    await query<{ id: string; source: string; amount: string; loggedAt: string; dateKey: string; note: string | null; participants: Array<{ personId: string | null; name: string | null; avatarEmoji: string | null; colorHex: string | null }> }>(
       `select coalesce(gl.batch_id, gl.id)::text as id,
+              min(gl.source) as source,
               coalesce(sum(gl.amount) filter (where gl.counts_total), 0) as amount,
               min(gl.logged_at) as "loggedAt",
               -- Household-timezone day, matching goalActivity's bucketing exactly —
@@ -713,7 +714,10 @@ export async function goalDetail(householdId: string, id: string) {
         order by min(gl.logged_at) desc limit 12`,
       [id, householdId]
     )
-  ).rows.map((r) => ({ ...r, amount: Number(r.amount) }))
+    // `editable` is what the edit sheets gate on: false means the entry is owned by its
+    // source (a checklist tick, a calendar confirm, a Health sync), so only its note can
+    // be changed and it cannot be deleted here. `source` itself stays server-side.
+  ).rows.map(({ source, ...r }) => ({ ...r, amount: Number(r.amount), editable: EDITABLE_LOG_SOURCES.has(source) }))
 
   const thisWeek = Number(
     (
@@ -1283,12 +1287,35 @@ export async function editGoalLog(
     const group = await loadLogGroup(client, tenant.householdId, goalId, logId)
     if (group.length === 0) { await client.query('rollback'); return 'not_found' }
     const source = group[0].source
-    if (!EDITABLE_LOG_SOURCES.has(source)) { await client.query('rollback'); return 'not_editable' }
 
     const enteredAmount = group.filter((r) => r.counts_total).reduce((s, r) => s + Number(r.amount), 0)
-    const participants = patch.personIds != null
-      ? [...new Set(patch.personIds)]
-      : [...new Set(group.map((r) => r.person_id).filter((p): p is string => p != null))]
+    const current = [...new Set(group.map((r) => r.person_id).filter((p): p is string => p != null))]
+    const participants = patch.personIds != null ? [...new Set(patch.personIds)] : current
+
+    if (!EDITABLE_LOG_SOURCES.has(source)) {
+      // A derived entry (checklist tick, calendar confirm, Health sync) is owned by the
+      // thing that wrote it: its amount, day and participants belong there, and other
+      // tables (event_goal_logs, health_goal_logs) key off these exact row ids. The note
+      // is the user's own text, though, so a note-only change is allowed — applied IN
+      // PLACE, never through the re-plan below, which would soft-delete these rows and
+      // re-insert new ones, orphaning those links. Both edit sheets re-send the entry's
+      // current amount/day/people on every save, so "unchanged" still counts as
+      // note-only; only a real change to a source-owned field is refused.
+      const movesDay = patch.loggedOn != null && patch.loggedOn !== group[0].day
+      const changesAmount = patch.amount != null && Math.abs(patch.amount - enteredAmount) > 1e-9
+      const changesWho = patch.personIds != null &&
+        (participants.length !== current.length || participants.some((p) => !current.includes(p)))
+      if (movesDay || changesAmount || changesWho) { await client.query('rollback'); return 'not_editable' }
+      if (patch.note !== undefined) {
+        await client.query(
+          `update goal_logs set note=$4, updated_at=now()
+            where household_id=$1 and goal_id=$2 and deleted_at is null and coalesce(batch_id, id) = $3`,
+          [tenant.householdId, goalId, logId, patch.note]
+        )
+      }
+      await client.query('commit')
+      return 'ok'
+    }
     const newAmount = patch.amount != null ? patch.amount : enteredAmount
     const newNote = patch.note !== undefined ? patch.note : group[0].note
     const newDay = patch.loggedOn != null ? patch.loggedOn : group[0].day

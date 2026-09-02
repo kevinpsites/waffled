@@ -162,6 +162,36 @@ describe('calendar → goal recap', () => {
     expect(detail.totalProgress).toBe(1) // not 2
   })
 
+  it('editing the note on a confirmed entry keeps the event link intact', async () => {
+    // The recap's idempotency is keyed on (event, occurrence, goal) via event_goal_logs,
+    // which points at the goal_logs row it wrote. A note edit must update that row in
+    // place — re-planning it (soft-delete + re-insert under new ids) would leave the link
+    // dangling and let the same occurrence be confirmed a second time.
+    const goalId = await makeGoal({ title: 'Note on a confirmed entry' })
+    const eventId = await linkedEvent(goalId, 60, [kevinId])
+    const occ = (await recap(goalId))[0].occurrenceDate as string
+    await call('POST', '/api/goal-calendar/recap/confirm', kevin, { eventId, occurrenceDate: occ, amount: 1, personIds: [kevinId] })
+    const entry = JSON.parse((await call('GET', `/api/goals/${goalId}`, kevin)).body).goal.recent[0]
+    expect(entry.editable).toBe(false)
+
+    const res = await call('PATCH', `/api/goals/${goalId}/logs/${entry.id}`, kevin, { amount: entry.amount, note: 'good session', loggedOn: entry.dateKey })
+    expect(res.statusCode).toBe(200)
+
+    const after = JSON.parse((await call('GET', `/api/goals/${goalId}`, kevin)).body).goal
+    expect(after.recent[0]).toMatchObject({ id: entry.id, note: 'good session' })
+    expect(after.totalProgress).toBe(1)
+    // The bridge row still points at a live log, so the occurrence stays resolved.
+    const link = await withClient((cl) =>
+      cl.query(`select egl.goal_log_id, gl.deleted_at from event_goal_logs egl
+                  join goal_logs gl on gl.id = egl.goal_log_id
+                 where egl.goal_id=$1`, [goalId])
+    )
+    expect(link.rows.length).toBe(1)
+    expect(link.rows[0].deleted_at).toBeNull()
+    const again = await call('POST', '/api/goal-calendar/recap/confirm', kevin, { eventId, occurrenceDate: occ, amount: 1, personIds: [kevinId] })
+    expect(JSON.parse(again.body).status).toBe('duplicate')
+  })
+
   it('skip records resolution without writing progress', async () => {
     const goalId = await makeGoal({ title: 'Skip' })
     const eventId = await linkedEvent(goalId, 60, [kevinId])

@@ -2,8 +2,10 @@ import { useState, type FormEvent } from 'react'
 import { api, localToday, type Goal, type GoalLogEntry } from '../../lib/api'
 
 // Edit or remove a single logged entry from a goal's Recent activity. Amount is
-// editable for numeric goals (total/count); habits just carry a note + date. A
-// derived entry (calendar/Health) is refused server-side — we surface that.
+// editable for numeric goals (total/count); habits just carry a note + date. An entry
+// the server owns (`editable: false` — a checklist tick, a calendar confirm, a Health
+// sync) collapses to note-only: its amount/day/people belong to that source, and it
+// can't be deleted here, so we don't offer fields the save would be refused for.
 export function EntryModal({
   goal,
   entry,
@@ -16,7 +18,11 @@ export function EntryModal({
   onSaved: () => void
 }) {
   const isCount = goal.goalType === 'count'
-  const numeric = goal.goalType === 'total' || isCount
+  // An entry the server owns (checklist tick, calendar confirm, Health sync) keeps its
+  // amount, day and people — the thing that wrote it is the source of truth, and other
+  // rows point at it. The note is still the user's own text, so we show just that.
+  const locked = entry.editable === false
+  const numeric = !locked && (goal.goalType === 'total' || isCount)
   const [amount, setAmount] = useState<number>(entry.amount)
   const [note, setNote] = useState(entry.note ?? '')
   // The day this entry belongs to is `dateKey` — the household's own day, the same
@@ -27,7 +33,7 @@ export function EntryModal({
   const [loggedOn, setLoggedOn] = useState<string>(entry.dateKey || new Date(entry.loggedAt).toISOString().slice(0, 10))
   // Who took part — editable when the goal has more than one member. Prefilled from the
   // people this entry currently credits.
-  const showWho = goal.participants.length > 1
+  const showWho = !locked && goal.participants.length > 1
   const [who, setWho] = useState<string[]>((entry.participants ?? []).map((p) => p.personId).filter((id): id is string => !!id))
   const toggleWho = (id: string) => setWho((w) => (w.includes(id) ? w.filter((x) => x !== id) : [...w, id]))
   const [saving, setSaving] = useState(false)
@@ -42,12 +48,14 @@ export function EntryModal({
     setSaving(true)
     setError(null)
     try {
-      await api.editGoalLog(goal.id, entry.id, {
-        ...(numeric ? { amount: logAmount } : {}),
-        ...(showWho ? { personIds: who } : {}),
-        note: note.trim() || null,
-        loggedOn,
-      })
+      await api.editGoalLog(goal.id, entry.id, locked
+        ? { note: note.trim() || null }
+        : {
+            ...(numeric ? { amount: logAmount } : {}),
+            ...(showWho ? { personIds: who } : {}),
+            note: note.trim() || null,
+            loggedOn,
+          })
       onSaved()
       onClose()
     } catch (err) {
@@ -118,6 +126,13 @@ export function EntryModal({
             </>
           )}
 
+          {locked ? (
+            <div className="tiny muted" style={{ marginTop: 16 }}>
+              This entry came from a checklist tick, a calendar event or Apple Health — its
+              amount and date are kept in step with that. You can still leave a note.
+            </div>
+          ) : (
+            <>
           <div className="flabel" style={{ marginTop: 16 }}>When?</div>
           {/* Capped at today, same as the log modal — you can catch a log up, not
               schedule one in the future. Never below the day already in the field,
@@ -126,6 +141,8 @@ export function EntryModal({
               under the seeded value makes the input :invalid, and since Save is a
               submit button, native validation would swallow the save silently. */}
           <input className="log-note" type="date" max={loggedOn > localToday() ? loggedOn : localToday()} value={loggedOn} onChange={(e) => setLoggedOn(e.target.value || loggedOn)} aria-label="Date this happened" />
+            </>
+          )}
 
           <div className="flabel" style={{ marginTop: 16 }}>Note <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600, color: 'var(--ink-3)' }}>· optional</span></div>
           <input className="log-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What happened" />
@@ -136,14 +153,14 @@ export function EntryModal({
             {saving ? 'Saving…' : 'Save changes'}
           </button>
         </form>
-        <button
+        {!locked && <button
           type="button"
           onClick={del}
           disabled={saving}
           style={{ display: 'block', margin: '14px auto 0', border: 0, background: 'none', color: confirmDelete ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
         >
           {confirmDelete ? 'Tap again to delete this entry' : 'Delete entry'}
-        </button>
+        </button>}
       </div>
     </div>
   )
