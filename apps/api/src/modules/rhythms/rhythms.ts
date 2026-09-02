@@ -1033,7 +1033,22 @@ export async function listAttention(householdId: string, horizon: string): Promi
       -- exists. Measured from the period's end instead, a monthly rhythm could not be
       -- asked about before mid-month (the runway is clamped to half the cycle), so "book
       -- it in the first week" could not be asked about during the week it means.
+      --
+      -- ...and it CLOSES there too. Note this is an upper bound on an otherwise unbounded
+      -- feed: the completion shape deliberately has none, because an overdue item can
+      -- still be done and should keep asking however late it is. A closed booking window
+      -- is not that. The week is over; there is nothing left to book, and asking about it
+      -- for the remaining three weeks of the month is precisely the nagging that trains
+      -- someone to stop reading this list.
+      --
+      -- It changes nothing for a rhythm without a window, which is all of them before this
+      -- column: the window ends where the period does, and the horizon is always inside
+      -- the period it was tiled from, so the bound is true by construction. What is missed
+      -- is still visible — the register reads listRhythms, not this, and reports the period
+      -- unsatisfied and late for as long as it stays that way. This list is for what can be
+      -- acted on now; that one is for what is true.
       where (p.period_start + coalesce(p.book_within, p.every))::date - p.lead_time <= $2::date
+        and $2::date < (p.period_start + coalesce(p.book_within, p.every))::date
         and not exists (
           select 1 from rhythm_skips s
            where s.rhythm_id = p.id and s.period_start = p.period_start

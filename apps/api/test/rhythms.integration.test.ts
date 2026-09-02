@@ -1702,12 +1702,13 @@ describe('a booking window narrower than the period', () => {
 
   it('is settled by a booking inside the window and not by one merely inside the period', async () => {
     const id = await makeRhythm({ title: 'First week only', bookWithin: '7 days', leadTime: '7 days' })
-    // Deep inside the period, three weeks past the window.
+    // Deep inside the period, three weeks past the window. Asked from inside the window,
+    // where the rhythm is genuinely still asking.
     await bookOn(id, '2027-03-20T23:00:00Z')
-    expect(await unscheduledIds('2027-03-25')).toContain(id)
+    expect(await unscheduledIds('2027-03-05')).toContain(id)
     // ...and now inside it.
     await bookOn(id, '2027-03-03T23:00:00Z')
-    expect(await unscheduledIds('2027-03-25')).not.toContain(id)
+    expect(await unscheduledIds('2027-03-05')).not.toContain(id)
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
@@ -1716,7 +1717,7 @@ describe('a booking window narrower than the period', () => {
     // start of the month, because that is where its window closes.
     const windowed = await makeRhythm({ title: 'Windowed', bookWithin: '7 days', leadTime: '7 days' })
     const plain = await makeRhythm({ title: 'Plain', leadTime: '7 days' })
-    const open = await unscheduledIds('2027-03-10')
+    const open = await unscheduledIds('2027-03-05')
     expect(open).toContain(windowed)
     expect(open).not.toContain(plain)
     await call('DELETE', `/api/rhythms/${windowed}`, kevin)
@@ -1771,6 +1772,63 @@ describe('a booking window narrower than the period', () => {
     expect(row.bookWithin).toMatch(/3 days/)
     expect(row.leadTime).toMatch(/3 days/)
     await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('goes quiet once its window has closed, rather than nagging out the month', async () => {
+    // The completion shape has no upper bound on purpose — an overdue thing can still be
+    // done. A closed window is not that: the week is over, so asking about it for the
+    // remaining three weeks is what teaches someone to stop reading the list. The register
+    // still reports the period unsatisfied and late; this list is for what can be acted on.
+    const id = await makeRhythm({ title: 'First week only, again', bookWithin: '7 days', leadTime: '7 days' })
+    expect(await unscheduledIds('2027-03-05')).toContain(id)   // inside the window
+    expect(await unscheduledIds('2027-03-20')).not.toContain(id) // window closed, period runs on
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('stays quiet in the period before the window it belongs to', async () => {
+    // The runway opens at window_end − lead_time, and lead_time is capped at the window's
+    // width, so the earliest it can open is exactly period_start. If it opened any earlier
+    // it would land inside the PREVIOUS period, and the two would be asking at once —
+    // about different periods, in one list, with no way for a reader to tell them apart.
+    const id = await makeRhythm({ title: 'Quiet until it starts', bookWithin: '7 days', leadTime: '7 days' })
+    // The last day of the period before the one starting 2027-03-01.
+    expect(await unscheduledIds('2027-02-28')).not.toContain(id)
+    // ...and the first day of its own.
+    expect(await unscheduledIds('2027-03-01')).toContain(id)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('accepts a null window from a client that sends the field either way', async () => {
+    // iOS sends `bookWithin` on every patch — null included — because an absent key means
+    // "leave it alone". That null reaches the write on shapes that can never carry a
+    // window, so the new CHECK has to pass for them rather than turning an ordinary rename
+    // into a 500.
+    const completion = await call('POST', '/api/rhythms', kevin, {
+      title: 'Air filter', satisfiedBy: 'completion', every: '3 months',
+      nextDueAt: '2027-01-01T09:00:00Z',
+    })
+    expect(completion.statusCode).toBe(201)
+    const completionId = JSON.parse(completion.body).rhythm.id
+    const renamed = await call('PATCH', `/api/rhythms/${completionId}`, kevin, {
+      title: 'Furnace filter', bookWithin: null,
+    })
+    expect(renamed.statusCode).toBe(200)
+    expect(JSON.parse(renamed.body).rhythm.title).toBe('Furnace filter')
+
+    // Same for a rhythm that books itself, which the constraint forbids a window on.
+    const auto = await call('POST', '/api/rhythms', kevin, {
+      title: 'Bins out', satisfiedBy: 'scheduling', every: '1 week',
+      startsOn: '2026-01-05', autoSchedule: true, rrule: 'FREQ=WEEKLY;BYDAY=MO',
+    })
+    expect(auto.statusCode).toBe(201)
+    const autoId = JSON.parse(auto.body).rhythm.id
+    const patched = await call('PATCH', `/api/rhythms/${autoId}`, kevin, {
+      title: 'Bins', bookWithin: null,
+    })
+    expect(patched.statusCode).toBe(200)
+
+    await call('DELETE', `/api/rhythms/${completionId}`, kevin)
+    await call('DELETE', `/api/rhythms/${autoId}`, kevin)
   })
 
   it('refuses a window wider than the cadence it sits inside', async () => {
