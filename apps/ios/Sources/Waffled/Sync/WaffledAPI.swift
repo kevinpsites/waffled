@@ -2732,8 +2732,7 @@ struct WaffledAPI: Sendable {
                       // habit's is its period count and a checklist's is its step count.
                       // Put them back where GoalDisplay looks for them, and leave a
                       // habit's `totalProgress` at 0 rather than passing off the period
-                      // count as a lifetime total (the detail's milestone ladder reads
-                      // that field until the full detail loads a moment later).
+                      // count as a lifetime total it isn't.
                       totalProgress: goalType == "habit" ? 0 : (progress ?? 0),
                       milestoneTotal: 0, milestoneReached: 0,
                       periodDone: goalType == "habit" ? (periodDone ?? progress) : periodDone,

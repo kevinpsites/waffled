@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resetting to "1 of 5". The count now rolls over with the habit's own period (day / week
   / month), the ring says which window it covers ("of 5 this week"), and the Log sheet
   shows where the cadence stands. The web app was already correct.
+- **Milestones on iPhone/iPad count what the goal itself counts.** A habit's milestones
+  are streak days ("🔥 7 days") and a checklist's are percent complete, but the iOS
+  milestone track measured every goal by its lifetime total — so a habit with 99 logs and
+  a 3-day streak claimed its 7-day milestone was long past. Each milestone now reads the
+  same axis the server used to award it, and says so: "4-day streak to go", "15% to go".
 - **Checklist goals on iPhone/iPad show steps done, not an empty ring.** A checklist has
   no numeric target, so its iOS cards and detail hero were stuck at an empty ring with no
   figure to measure against; they now read steps done over steps total, matching the web.

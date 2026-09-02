@@ -2735,9 +2735,9 @@ struct GoalDetailView: View {
     private var target: Double? { model.detail?.target ?? goal.target }
     private var progress: Double { model.detail?.totalProgress ?? goal.totalProgress }
     private var participants: [WaffledAPI.Goal.Participant] { model.detail?.participants ?? goal.participants }
-    /// What the hero ring reads off — a habit's this-period count, a checklist's steps,
-    /// else the cumulative total. `progress` above stays the LIFETIME figure, which is
-    /// the axis the milestone ladder is measured on.
+    /// What every measured line on this screen reads off — the hero ring, the percentage
+    /// and the milestone ladder, each on the goal's own axis. `progress` above stays the
+    /// raw LIFETIME figure, handed to the Log sheet as-is.
     private var displayed: GoalDisplayable { model.detail.map { $0 as GoalDisplayable } ?? goal }
     private var pct: Int { Int(GoalDisplay.fraction(displayed) * 100) }
 
@@ -2985,7 +2985,7 @@ struct GoalDetailView: View {
                             .foregroundStyle(m.reached || isNow ? WF.ink : WF.ink2)
                         Spacer(minLength: 6)
                         Text(m.reached ? "reached"
-                                : isNow ? "\(goalFmt(m.threshold - progress)) to go"
+                                : isNow ? GoalDisplay.milestoneToGo(displayed, threshold: m.threshold, fmt: goalFmt)
                                 : (m.rewardText ?? "—"))
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(m.reached ? FamilyColor.person3.solid : (isNow ? WF.primary : WF.ink3))

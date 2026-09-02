@@ -13,6 +13,8 @@ protocol GoalDisplayable {
     var periodDone: Double? { get }
     var stepTotal: Int? { get }
     var stepDone: Int? { get }
+    /// Consecutive days logged — a habit's milestone axis, not just a badge.
+    var streakDays: Int { get }
 }
 
 /// Which number a goal shows, and what it is measured against.
@@ -67,6 +69,32 @@ enum GoalDisplay {
         case "day": return "today"
         case "month": return "this month"
         default: return "this week"
+        }
+    }
+
+    /// The value a milestone's threshold is measured against — the SAME axis the server
+    /// used to decide `reached` (`goalDetail`'s `milestoneAxis`): **streak days** for a
+    /// habit, **percent complete** for a checklist, the cumulative total otherwise. A
+    /// milestone measures whatever the goal itself measures, so a habit's "🔥 7 days"
+    /// counts days in a row — never how many times it has ever been logged.
+    static func milestoneAxis(_ g: GoalDisplayable) -> Double {
+        switch g.goalType {
+        case "habit": return Double(g.streakDays)
+        case "checklist":
+            let total = g.stepTotal ?? 0
+            return total > 0 ? Double(g.stepDone ?? 0) / Double(total) * 100 : 0
+        default: return g.totalProgress
+        }
+    }
+
+    /// How far the next milestone is, in the goal's own units: "4-day streak to go",
+    /// "15% to go", "188 to go". Never negative.
+    static func milestoneToGo(_ g: GoalDisplayable, threshold: Double, fmt: (Double?) -> String) -> String {
+        let toGo = max(0, threshold - milestoneAxis(g))
+        switch g.goalType {
+        case "habit": return "\(fmt(toGo))-day streak to go"
+        case "checklist": return "\(Int(toGo.rounded(.up)))% to go"
+        default: return "\(fmt(toGo)) to go"
         }
     }
 

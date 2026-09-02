@@ -18,7 +18,8 @@ private func goal(
     habitTargetPerPeriod: Int? = nil,
     periodDone: Double? = nil,
     stepTotal: Int? = nil,
-    stepDone: Int? = nil
+    stepDone: Int? = nil,
+    streakDays: Int = 0
 ) -> WaffledAPI.Goal {
     WaffledAPI.Goal(id: "g", goalListId: nil, title: "G", emoji: nil, category: nil,
                     goalType: goalType, unit: nil, habitPeriod: habitPeriod,
@@ -26,7 +27,7 @@ private func goal(
                     participantMode: nil, targetBasis: nil, deadline: nil, isFeatured: false,
                     isSpotlight: nil, target: target, totalProgress: totalProgress,
                     milestoneTotal: 0, milestoneReached: 0, periodDone: periodDone,
-                    stepTotal: stepTotal, stepDone: stepDone, streakDays: 0,
+                    stepTotal: stepTotal, stepDone: stepDone, streakDays: streakDays,
                     autoFromCalendar: false, healthMetric: nil, createdAt: nil, participants: [])
 }
 
@@ -96,6 +97,40 @@ private func goal(
         #expect(GoalDisplay.fraction(goal(goalType: "count", target: 10, totalProgress: 25)) == 1)
         #expect(GoalDisplay.fraction(goal(goalType: "count", target: nil, totalProgress: 25)) == 0)
         #expect(GoalDisplay.fraction(goal(goalType: "count", target: 0, totalProgress: 25)) == 0)
+    }
+
+    // MARK: milestones — the axis the SERVER used to decide `reached`
+
+    @Test func habitMilestonesAreMeasuredInStreakDays() {
+        // A habit's milestones are streak days server-side ("🔥 7 days"), so a lifetime
+        // log count would mark them reached far too early — and 99 logs would claim a
+        // 7-day milestone was long past when the streak is only 3.
+        let g = goal(goalType: "habit", target: 5, totalProgress: 99,
+                     habitPeriod: "week", habitTargetPerPeriod: 5, periodDone: 2, streakDays: 3)
+        #expect(GoalDisplay.milestoneAxis(g) == 3)
+        #expect(GoalDisplay.milestoneToGo(g, threshold: 7, fmt: goalFmt) == "4-day streak to go")
+    }
+
+    @Test func checklistMilestonesAreMeasuredInPercentComplete() {
+        let g = goal(goalType: "checklist", totalProgress: 3, stepTotal: 5, stepDone: 3)
+        #expect(GoalDisplay.milestoneAxis(g) == 60)
+        #expect(GoalDisplay.milestoneToGo(g, threshold: 75, fmt: goalFmt) == "15% to go")
+    }
+
+    @Test func emptyChecklistIsZeroPercentNotADivideByZero() {
+        let g = goal(goalType: "checklist", stepTotal: 0, stepDone: 0)
+        #expect(GoalDisplay.milestoneAxis(g) == 0)
+    }
+
+    @Test func numericMilestonesStayOnTheCumulativeTotal() {
+        let g = goal(goalType: "total", target: 1000, totalProgress: 312)
+        #expect(GoalDisplay.milestoneAxis(g) == 312)
+        #expect(GoalDisplay.milestoneToGo(g, threshold: 500, fmt: goalFmt) == "188 to go")
+    }
+
+    @Test func aPassedMilestoneNeverReadsNegative() {
+        let g = goal(goalType: "total", target: 1000, totalProgress: 900)
+        #expect(GoalDisplay.milestoneToGo(g, threshold: 500, fmt: goalFmt) == "0 to go")
     }
 
     // MARK: decoding — the new fields must be optional
