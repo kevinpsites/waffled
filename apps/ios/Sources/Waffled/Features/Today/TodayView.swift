@@ -682,7 +682,7 @@ struct TodayGoalPickerSheet: View {
 
     private func goalRow(_ g: WaffledAPI.Goal) -> some View {
         let col = GoalStyle.color(g.category)
-        let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
+        let frac = GoalDisplay.fraction(g)
         return Button { onSelect(g.id); dismiss() } label: {
             HStack(spacing: 12) {
                 Text(g.emoji ?? GoalStyle.emoji(g.category)).font(.system(size: 20)).frame(width: 42, height: 42)

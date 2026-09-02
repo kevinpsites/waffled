@@ -317,6 +317,25 @@ const PARTICIPANTS_SUBQUERY = `coalesce((
    where pa.goal_id = g.id and pa.deleted_at is null
 ), '[]'::json)`
 
+// The first day of the goal's CURRENT habit period, as a household-local DATE.
+//
+// A week follows the HOUSEHOLD's `week_start` (sunday | monday) — the same rule as
+// `snapToWeekStart` in lists.service.ts and `Cal.weekStart` on iOS — not Postgres's
+// `date_trunc('week')`, which is always Monday. The default household is a *sunday* one,
+// so Monday-based truncation put Sunday's completion in the week that was ending: log on
+// Sunday and again on Monday and a "5× a week" habit read 2, having reset nothing.
+//
+// `extract(dow)` is 0=Sunday..6=Saturday; subtracting the household's start day (mod 7,
+// kept positive) walks back to it. Day and month have no such preference and fall through
+// to date_trunc. `h` is the households row every caller already joins.
+const PERIOD_START_SQL = `case
+  when g.habit_period = 'week' then
+    (now() at time zone h.timezone)::date
+      - ((extract(dow from (now() at time zone h.timezone))::int
+          - case when h.week_start = 'monday' then 1 else 0 end + 7) % 7)
+  else date_trunc(g.habit_period, (now() at time zone h.timezone))::date
+end`
+
 // Habit goals are about consistency, not a grand total: how many distinct days
 // have been logged in the CURRENT period (day/week/month, household timezone).
 // 0 for non-habit goals, which display the cumulative total instead.
@@ -324,8 +343,7 @@ const PERIOD_DONE_SUBQUERY = `case when g.goal_type = 'habit' then (
   select count(distinct (gl.logged_at at time zone h.timezone)::date)
     from goal_logs gl, households h
    where h.id = g.household_id and gl.goal_id = g.id and gl.deleted_at is null
-     and (gl.logged_at at time zone h.timezone)
-         >= date_trunc(g.habit_period, (now() at time zone h.timezone))
+     and (gl.logged_at at time zone h.timezone)::date >= (${PERIOD_START_SQL})
 ) else 0 end`
 
 // Who has already logged this goal TODAY (household timezone), as an array of
@@ -719,13 +737,20 @@ export async function goalDetail(householdId: string, id: string) {
     // be changed and it cannot be deleted here. `source` itself stays server-side.
   ).rows.map(({ source, ...r }) => ({ ...r, amount: Number(r.amount), editable: EDITABLE_LOG_SOURCES.has(source) }))
 
+  // The hero's "THIS WEEK" line. Same week as everything else the household sees: its
+  // own first-day-of-week AND its timezone — this used to truncate in the SERVER's
+  // timezone on a fixed Monday, so it could disagree with the habit count right beside it.
   const thisWeek = Number(
     (
       await query<{ sum: string }>(
-        `select coalesce(sum(amount),0) as sum from goal_logs
-          where goal_id=$1 and deleted_at is null and counts_total
-            and logged_at >= date_trunc('week', now())`,
-        [id]
+        `select coalesce(sum(gl.amount),0) as sum
+           from goal_logs gl join households h on h.id = gl.household_id
+          where gl.goal_id=$1 and gl.household_id=$2 and gl.deleted_at is null and gl.counts_total
+            and (gl.logged_at at time zone h.timezone)::date >=
+                (now() at time zone h.timezone)::date
+                  - ((extract(dow from (now() at time zone h.timezone))::int
+                      - case when h.week_start = 'monday' then 1 else 0 end + 7) % 7)`,
+        [id, householdId]
       )
     ).rows[0].sum
   )
