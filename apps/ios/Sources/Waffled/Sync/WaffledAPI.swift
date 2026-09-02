@@ -2743,7 +2743,12 @@ struct WaffledAPI: Sendable {
                       periodDone: periodDone,
                       stepTotal: goalType == "checklist" ? target.map { Int($0) } : nil,
                       stepDone: goalType == "checklist" ? progress.map { Int($0) } : nil,
-                      streakDays: streakDays, autoFromCalendar: false, healthMetric: nil, createdAt: nil, participants: [])
+                      streakDays: streakDays,
+                      // The overview doesn't say who logged today; the goal detail loads
+                      // that a moment later, and until then the server's own dedupe is
+                      // the guard. nil gates nothing.
+                      loggedTodayBy: nil,
+                      autoFromCalendar: false, healthMetric: nil, createdAt: nil, participants: [])
             }
         }
         /// Alias so `asGoal` can name the outer `WaffledAPI.Goal` from inside this nested type.
@@ -3304,6 +3309,11 @@ struct WaffledAPI: Sendable {
         let stepTotal: Int?
         let stepDone: Int?
         let streakDays: Int
+        /// Who has already logged this goal TODAY (household timezone) — person ids, with
+        /// `__family__` standing in for a no-person (shared) log. A habit is once per day
+        /// per person, so the Log sheet reads this to say so before you tap. Optional: an
+        /// older/cached response simply gates nothing (the server dedupes regardless).
+        let loggedTodayBy: [String]?
         /// Goal opted in to count matching calendar events (drives "Plan time").
         let autoFromCalendar: Bool
         /// Apple Health metric this goal auto-fills from (nil = manual). See HealthKitBridge.
@@ -3347,6 +3357,7 @@ struct WaffledAPI: Sendable {
         let periodDone: Double?
         let stepTotal: Int?
         let stepDone: Int?
+        let loggedTodayBy: [String]?
         let streakDays: Int
         let deadline: String?
         let createdAt: String

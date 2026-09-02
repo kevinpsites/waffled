@@ -16,7 +16,7 @@ private func goal(_ id: String, spotlight: Bool = false, featured: Bool = false,
                     targetBasis: nil, deadline: nil, isFeatured: featured, isSpotlight: spotlight,
                     target: 10, totalProgress: 2, milestoneTotal: 0, milestoneReached: 0,
                     periodDone: nil, stepTotal: nil, stepDone: nil,
-                    streakDays: 0, autoFromCalendar: false, healthMetric: nil,
+                    streakDays: 0, loggedTodayBy: nil, autoFromCalendar: false, healthMetric: nil,
                     createdAt: nil,
                     participants: participants.map {
                         .init(personId: $0, name: $0, colorHex: nil, avatarEmoji: nil,

@@ -20,6 +20,8 @@ protocol GoalDisplayable {
     var targetBasis: String? { get }
     /// How many people are on the goal — the multiplier for a per_person target.
     var participantCount: Int { get }
+    /// Who already logged TODAY — person ids plus the `__family__` sentinel.
+    var loggedTodayBy: [String]? { get }
 }
 
 /// Which number a goal shows, and what it is measured against.
@@ -106,6 +108,19 @@ enum GoalDisplay {
         case "checklist": return "\(Int(toGo.rounded(.up)))% to go"
         default: return "\(fmt(toGo)) to go"
         }
+    }
+
+    /// Whether a habit is already marked done today for everyone currently picked.
+    ///
+    /// A habit is once per day PER PERSON — `logProgress` silently skips a same-day
+    /// duplicate, so without this the Log sheet's button looks like it worked and did
+    /// nothing. `who` holds the ids the sheet has selected, including the `__family__`
+    /// sentinel a no-person (shared) log uses. Nobody picked, a non-habit, or a response
+    /// too old to carry `loggedTodayBy` all gate nothing — the server still dedupes.
+    static func doneToday(_ g: GoalDisplayable, who: Set<String>) -> Bool {
+        guard g.goalType == "habit", !who.isEmpty, let logged = g.loggedTodayBy else { return false }
+        let done = Set(logged)
+        return who.allSatisfy { done.contains($0) }
     }
 
     /// The ring caption under the progress number: "of 5 this week" for a habit, "of 5

@@ -21,7 +21,8 @@ private func goal(
     stepDone: Int? = nil,
     streakDays: Int = 0,
     targetBasis: String? = nil,
-    people: Int = 0
+    people: Int = 0,
+    loggedTodayBy: [String]? = nil
 ) -> WaffledAPI.Goal {
     WaffledAPI.Goal(id: "g", goalListId: nil, title: "G", emoji: nil, category: nil,
                     goalType: goalType, unit: nil, habitPeriod: habitPeriod,
@@ -30,6 +31,7 @@ private func goal(
                     isSpotlight: nil, target: target, totalProgress: totalProgress,
                     milestoneTotal: 0, milestoneReached: 0, periodDone: periodDone,
                     stepTotal: stepTotal, stepDone: stepDone, streakDays: streakDays,
+                    loggedTodayBy: loggedTodayBy,
                     autoFromCalendar: false, healthMetric: nil, createdAt: nil,
                     participants: (0..<people).map {
                         .init(personId: "p\($0)", name: "P\($0)", colorHex: nil,
@@ -156,6 +158,42 @@ private func goal(
     @Test func aPassedMilestoneNeverReadsNegative() {
         let g = goal(goalType: "total", target: 1000, totalProgress: 900)
         #expect(GoalDisplay.milestoneToGo(g, threshold: 500, fmt: goalFmt) == "0 to go")
+    }
+
+    // MARK: "already done today" — a habit is once per day PER PERSON
+
+    @Test func aHabitIsDoneTodayWhenEveryonePickedHasAlreadyLogged() {
+        let g = goal(goalType: "habit", habitTargetPerPeriod: 5, periodDone: 1, loggedTodayBy: ["p0"])
+        #expect(GoalDisplay.doneToday(g, who: ["p0"]))
+    }
+
+    @Test func aHabitIsNotDoneTodayWhileSomeonePickedStillOwesToday() {
+        // Two people picked, only one has logged — the other's completion is still live,
+        // and the server will write it (it dedupes per person, not per goal).
+        let g = goal(goalType: "habit", habitTargetPerPeriod: 5, periodDone: 1, loggedTodayBy: ["p0"])
+        #expect(!GoalDisplay.doneToday(g, who: ["p0", "p1"]))
+    }
+
+    @Test func aFamilyLogCountsUnderItsOwnSentinel() {
+        // A no-person (shared) log comes back as "__family__", not a person id.
+        let g = goal(goalType: "habit", habitTargetPerPeriod: 5, periodDone: 1,
+                     loggedTodayBy: ["__family__"])
+        #expect(GoalDisplay.doneToday(g, who: ["__family__"]))
+        #expect(!GoalDisplay.doneToday(g, who: ["p0"]))
+    }
+
+    @Test func nothingIsBlockedWithNobodyPickedOrOnANonHabit() {
+        let habit = goal(goalType: "habit", habitTargetPerPeriod: 5, loggedTodayBy: ["p0"])
+        #expect(!GoalDisplay.doneToday(habit, who: []))
+        // Only habits are once-a-day; a count goal can be logged all day long.
+        let count = goal(goalType: "count", target: 20, loggedTodayBy: ["p0"])
+        #expect(!GoalDisplay.doneToday(count, who: ["p0"]))
+    }
+
+    @Test func anOlderResponseWithoutLoggedTodayByBlocksNothing() {
+        // Missing the field must not gate the button shut — the server still dedupes.
+        let g = goal(goalType: "habit", habitTargetPerPeriod: 5, loggedTodayBy: nil)
+        #expect(!GoalDisplay.doneToday(g, who: ["p0"]))
     }
 
     // MARK: decoding — the new fields must be optional

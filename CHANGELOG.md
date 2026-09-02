@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resetting to "1 of 5". The count now rolls over with the habit's own period (day / week
   / month), the ring says which window it covers ("of 5 this week"), and the Log sheet
   shows where the cadence stands. The web app was already correct.
+- **iPhone/iPad now say when a habit is already done for today.** A habit counts once
+  per day per person, and the server has always quietly dropped a second tap — but iOS
+  gave no sign, so "Mark done for today" looked like it worked and did nothing. The
+  button now reads "Done for today ✓" and steps aside, pointing you at the date picker
+  if you meant to catch up a missed day. The web already behaved this way.
 - **Milestones on iPhone/iPad count what the goal itself counts.** A habit's milestones
   are streak days ("🔥 7 days") and a checklist's are percent complete, but the iOS
   milestone track measured every goal by its lifetime total — so a habit with 99 logs and

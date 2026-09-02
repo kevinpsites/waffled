@@ -687,7 +687,16 @@ struct GoalLogSheet: View {
     private var eachAdds: Bool { goal.trackingMode == "each_tracks" }
     private var isSplit: Bool { goal.trackingMode == "shared_total" && (goal.participantMode ?? "count_once") == "split" }
     private var whoLabel: String { eachAdds ? "Who took part?" : isSplit ? "Split between" : "Who was there?" }
-    private var confirmLabel: String { isHabit ? "Mark done for today" : isTime ? "Log \(durationLabel)" : "Log \(goalFmt(logAmount))\(unitSuffix)" }
+    /// Everyone picked has already ticked this habit off today, and the entry is dated
+    /// today — the server would silently drop it. Blocks the save, but only for TODAY:
+    /// backdating to catch up a missed day stays open (matching the web Log modal).
+    private var blockedToday: Bool {
+        GoalDisplay.doneToday(goal, who: who) && Cal.current.isDateInToday(loggedOn)
+    }
+    private var confirmLabel: String {
+        if isHabit { return blockedToday ? "Done for today ✓" : "Mark done for today" }
+        return isTime ? "Log \(durationLabel)" : "Log \(goalFmt(logAmount))\(unitSuffix)"
+    }
     private var chips: [GoalLogChips.Chip] { GoalLogChips.chips(isHours: isHours, unit: goal.unit) }
 
     init(goal: WaffledAPI.Goal, onChanged: (() -> Void)? = nil, onSave: @escaping (Double, Int?, Int?, [String], String, String?) -> Void) {
@@ -806,7 +815,7 @@ struct GoalLogSheet: View {
                             dismiss()
                         }
                         .fontWeight(.semibold)
-                        .disabled(logAmount == 0 || whoMissing)
+                        .disabled(logAmount == 0 || whoMissing || blockedToday)
                     }
                 }
             }
@@ -821,8 +830,11 @@ struct GoalLogSheet: View {
             VStack(alignment: .leading, spacing: 9) {
                 SectionLabel(text: "Mark it done")
                 HStack(spacing: 11) {
-                    Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(WF.primary)
-                    Text("One tap logs today’s completion — keep the streak going.")
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 22))
+                        .foregroundStyle(blockedToday ? WF.success : WF.primary)
+                    Text(blockedToday
+                         ? "Already marked done today — pick another day to catch one up."
+                         : "One tap logs today’s completion — keep the streak going.")
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
                     Spacer(minLength: 0)
                     // Where the cadence stands right now, matching the web log modal:
@@ -2756,6 +2768,9 @@ struct GoalDetailView: View {
                      stepTotal: model.detail?.stepTotal ?? goal.stepTotal,
                      stepDone: model.detail?.stepDone ?? goal.stepDone,
                      streakDays: goal.streakDays,
+                     // Prefer the freshly-loaded detail: it knows who has ticked this
+                     // habit off today, which is what greys out "Mark done for today".
+                     loggedTodayBy: model.detail?.loggedTodayBy ?? goal.loggedTodayBy,
                      autoFromCalendar: goal.autoFromCalendar, healthMetric: goal.healthMetric,
                      createdAt: goal.createdAt, participants: participants)
     }
@@ -2879,16 +2894,28 @@ struct GoalDetailView: View {
         }
     }
 
+    /// Every person on this habit has already ticked it off today, so the button says so
+    /// rather than promising a completion the server would drop. The web makes its
+    /// version non-clickable; this one still opens, deliberately — the sheet is where you
+    /// backdate a *missed* day, and dead-ending that is the worse trade.
+    private var habitDoneToday: Bool {
+        let ids = participants.map(\.personId)
+        guard !ids.isEmpty else { return false }
+        return GoalDisplay.doneToday(displayed, who: Set(ids))
+    }
+
     private var logActionButton: some View {
         Button { logging = true } label: {
             HStack(spacing: 7) {
-                Image(systemName: "plus.circle.fill").font(.system(size: 15, weight: .bold))
-                Text("Log progress").font(.system(size: 14.5, weight: .bold))
+                Image(systemName: habitDoneToday ? "checkmark.circle.fill" : "plus.circle.fill")
+                    .font(.system(size: 15, weight: .bold))
+                Text(habitDoneToday ? "Done for today" : "Log progress").font(.system(size: 14.5, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity).padding(.vertical, 13)
             .background(Self.heroGreen)
             .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .opacity(habitDoneToday ? 0.65 : 1)
         }
         .buttonStyle(.plain)
     }
