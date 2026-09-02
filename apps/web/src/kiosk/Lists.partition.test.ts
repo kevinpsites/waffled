@@ -1,4 +1,4 @@
-import { partitionListItems, groupBySection, filterListItems } from './Lists'
+import { partitionListItems, groupBySection } from './Lists'
 import type { ListItem } from '../lib/api'
 
 const item = (id: string, checked: boolean): ListItem => ({
@@ -46,39 +46,5 @@ describe('groupBySection', () => {
     const groups = groupBySection([it_('b', 'beta'), it_('A', 'Alpha'), it_('b2', 'beta')])
     expect(groups.map((g) => g.title)).toEqual(['Alpha', 'beta'])
     expect(groups[1].items.map((i) => i.id)).toEqual(['b', 'b2'])
-  })
-})
-
-// Free-text search over a list — same three fields iOS matches on (name, section,
-// quantity) so a search means the same thing on both platforms.
-describe('filterListItems', () => {
-  const it_ = (id: string, name: string, section: string | null, quantity: string | null): ListItem => ({
-    id, name, quantity, checked: false, checkedAt: null, section, sortOrder: 0, assignee: null,
-  })
-  const items = [
-    it_('a', 'Swimsuits', 'Clothes', '×4'),
-    it_('b', 'Sunscreen', 'Gear', null),
-    it_('c', 'Bug spray', null, '2 cans'),
-  ]
-
-  it('returns every item for an empty or whitespace-only query', () => {
-    expect(filterListItems(items, '').map((i) => i.id)).toEqual(['a', 'b', 'c'])
-    expect(filterListItems(items, '   ').map((i) => i.id)).toEqual(['a', 'b', 'c'])
-  })
-
-  it('matches on the item name, case-insensitively', () => {
-    expect(filterListItems(items, 'SWIM').map((i) => i.id)).toEqual(['a'])
-  })
-
-  it('matches on the section name', () => {
-    expect(filterListItems(items, 'gear').map((i) => i.id)).toEqual(['b'])
-  })
-
-  it('matches on the quantity', () => {
-    expect(filterListItems(items, 'cans').map((i) => i.id)).toEqual(['c'])
-  })
-
-  it('drops items that match nothing', () => {
-    expect(filterListItems(items, 'kayak')).toEqual([])
   })
 })

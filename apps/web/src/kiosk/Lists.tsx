@@ -6,6 +6,7 @@ import { PriorityFlag } from './components/priority'
 import { GroceryBoard } from './components/GroceryBoard'
 import { ShareListModal } from './components/ShareListModal'
 import type { ShareListItem } from './components/share-list'
+import { filterListItems } from './components/list-search'
 import {
   groceryApi,
   useLists,
@@ -218,21 +219,6 @@ export function partitionListItems(
     else active.push(it)
   }
   return { active, completed }
-}
-
-// Free-text search over a list. Matches the same three fields iOS does (name,
-// section, quantity) so "search this list" means the same thing on both platforms
-// — see `ListDetailModel.matches` in ListDetailView.swift. A blank/whitespace
-// query is "no filter" rather than "match nothing".
-export function filterListItems(items: ListItem[], query: string): ListItem[] {
-  const q = query.trim().toLowerCase()
-  if (!q) return items
-  return items.filter(
-    (i) =>
-      i.name.toLowerCase().includes(q) ||
-      (i.section ?? '').toLowerCase().includes(q) ||
-      (i.quantity ?? '').toLowerCase().includes(q)
-  )
 }
 
 // Group items into sections (null section → "Items"), keeping the API's order

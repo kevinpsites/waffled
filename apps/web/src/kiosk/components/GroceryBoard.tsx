@@ -8,6 +8,7 @@ import { ShareListModal } from './ShareListModal'
 // The canonical aisle walking order lives with the share formatter, which needs
 // the same order to group the shared text the way the board reads top-to-bottom.
 import { AISLE_ORDER } from './share-list'
+import { filterListItems } from './list-search'
 import '../../styles/grocery.css'
 import { CHECK } from './CheckGlyph'
 
@@ -345,6 +346,9 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const [recent, setRecent] = useState<Set<string>>(new Set()) // just-checked, still lingering in the active list
   const [showDone, setShowDone] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set()) // collapsed aisle/meal sections
+  // Free-text filter over the board (name / aisle / quantity / store) — the same
+  // search the custom-list view runs, on a list that's usually longer.
+  const [query, setQuery] = useState('')
   const toggleSection = (key: string) =>
     setCollapsed((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
   const [railMeal, setRailMeal] = useState<string>('dinner') // which meal type the rail shows
@@ -447,8 +451,18 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
 
   // Active = unchecked, or checked within the grace window (still shown in place).
   // Completed = checked and past the grace window (tucked into the Completed section).
-  const activeItems = board.items.filter((i) => !i.checked || recent.has(i.id))
-  const completedItems = board.items.filter((i) => i.checked && !recent.has(i.id))
+  // Both are narrowed by the search box first, so a query filters the aisle/store/meal
+  // views and the Completed group alike — the same filter the custom-list view runs.
+  const searching = query.trim().length > 0
+  const found = filterListItems(board.items, query)
+  const activeItems = found.filter((i) => !i.checked || recent.has(i.id))
+  const completedItems = found.filter((i) => i.checked && !recent.has(i.id))
+  const doneOpen = showDone || searching
+  // The whole board, ignoring the search: the header count reports the list you have
+  // rather than the slice you're looking at, and Clear sweeps every checked item —
+  // a destructive action must not silently change scope with what's typed in a box.
+  const allActive = board.items.filter((i) => !i.checked || recent.has(i.id))
+  const allCompleted = board.items.filter((i) => i.checked && !recent.has(i.id))
 
   // Plates added to the list without ever being scheduled. Their dishes render as
   // the plate's child rows, so a dish must never ALSO show up as a loose
@@ -480,8 +494,8 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     refetch()
   }
   async function clearCompleted() {
-    if (completedItems.length === 0) return
-    await Promise.all(completedItems.map((i) => groceryApi.deleteItem(i.id)))
+    if (allCompleted.length === 0) return
+    await Promise.all(allCompleted.map((i) => groceryApi.deleteItem(i.id)))
     refetch()
   }
   // Undo an off-plan "add recipe to grocery" — removes that recipe's items (keeping
@@ -634,11 +648,24 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   // and the collapse key, namespaced by view.
   const renderSection = (sec: BoardSection) => {
     const key = `${view}|${sec.key}`
-    const isCollapsed = !!sec.aisle && collapsed.has(key)
+    // A running search renders every section open: a match inside an aisle the
+    // shopper collapsed on their way round would otherwise show as a header with a
+    // count and no rows, which reads as a broken search. Their collapse choices are
+    // suspended, not forgotten — clearing the search puts them back.
+    const isCollapsed = !!sec.aisle && !searching && collapsed.has(key)
     return (
       <div key={key} className="grocery-section">
         {sec.aisle && (
-          <div className="grocery-section-h" role="button" tabIndex={0} onClick={() => toggleSection(key)}>
+          <div
+            className="grocery-section-h"
+            role="button"
+            tabIndex={0}
+            aria-disabled={searching}
+            // Inert while searching: the search forces the section open, so a click
+            // here would flip a state with no visible effect and quietly change what
+            // the shopper gets back when they clear the box.
+            onClick={() => { if (!searching) toggleSection(key) }}
+          >
             <span className={`cal-chev ${isCollapsed ? '' : 'open'}`}>›</span>
             {view === 'aisle' && AISLE_EMOJI[sec.aisle] && <span className="ga-emo">{AISLE_EMOJI[sec.aisle]}</span>}
             {view === 'store' && <span className="ga-emo">{sec.store ? '🏬' : '🛒'}</span>}
@@ -710,9 +737,29 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
         <div className="grocery-head">
           <div className="card-h wf-serif grocery-title">Grocery list</div>
           <div className="muted grocery-count" style={{ fontWeight: 600 }}>
-            {activeItems.length} to get{completedItems.length > 0 ? ` · ${completedItems.length} done` : ''}
+            {allActive.length} to get{allCompleted.length > 0 ? ` · ${allCompleted.length} done` : ''}
           </div>
-          <div className="seg" style={{ marginLeft: 'auto' }}>
+          {/* Same search control as the custom-list header (classes defined in
+              lists.css) — one definition so the two list surfaces don't drift. */}
+          <div className="lists-search-wrap" style={{ marginLeft: 'auto' }}>
+            <input
+              className="lists-search"
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setQuery('') }}
+              placeholder="Search this list…"
+              aria-label="Search this list"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {query !== '' && (
+              <button type="button" className="lists-search-clear" aria-label="Clear search" onClick={() => setQuery('')}>
+                ×
+              </button>
+            )}
+          </div>
+          <div className="seg">
             <button className={view === 'aisle' ? 'on' : ''} onClick={() => setView('aisle')}>By aisle</button>
             <button className={view === 'store' ? 'on' : ''} onClick={() => setView('store')}>By store</button>
             <button className={view === 'meal' ? 'on' : ''} onClick={() => setView('meal')}>By meal</button>
@@ -746,7 +793,14 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           </div>
         ) : (
           <>
-            {activeItems.length === 0 && (
+            {/* A dry search says so in the search's own words — "all done" would be
+                a lie about a list that's merely filtered. */}
+            {activeItems.length === 0 && searching && completedItems.length === 0 && (
+              <div className="muted" style={{ padding: '20px 2px', fontWeight: 600 }}>
+                No items match “{query.trim()}”.
+              </div>
+            )}
+            {activeItems.length === 0 && !searching && (
               <div className="muted" style={{ padding: '20px 2px', fontWeight: 600 }}>
                 All done — everything’s in the cart. 🎉
               </div>
@@ -761,15 +815,23 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
             {/* Completed — checked items tuck here; collapsible, un-check to restore. */}
             {completedItems.length > 0 && (
               <div className="grocery-done">
-                <div className="grocery-done-h" role="button" tabIndex={0} onClick={() => setShowDone((v) => !v)}>
-                  <span className={`cal-chev ${showDone ? 'open' : ''}`}>›</span>
+                <div
+                  className="grocery-done-h"
+                  role="button"
+                  tabIndex={0}
+                  aria-disabled={searching}
+                  // Forced open (and inert) while searching, for the same reason the
+                  // aisle headers are: a checked match must not hide behind a count.
+                  onClick={() => { if (!searching) setShowDone((v) => !v) }}
+                >
+                  <span className={`cal-chev ${doneOpen ? 'open' : ''}`}>›</span>
                   <span>Completed</span>
                   <span className="ga-n">{completedItems.length}</span>
                   <button type="button" className="linkbtn" style={{ marginLeft: 'auto' }} onClick={(e) => { e.stopPropagation(); clearCompleted() }}>
                     Clear
                   </button>
                 </div>
-                {showDone && (
+                {doneOpen && (
                   <div className="grocery-done-list">
                     {completedItems.map((it) => (
                       <div key={it.id} className="gitem done" onClick={() => toggle(it)} role="button" tabIndex={0} title="Tap to un-check">

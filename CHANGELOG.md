@@ -15,13 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Search a list on the web.** A long packing or shopping list is now searchable from
-  its header: type and the list filters down to matching items by name, section or
-  quantity — the same match the phone app has always done, so a search means the same
-  thing wherever you run it. Matches hiding inside a section you'd collapsed, or in the
-  Completed group, are surfaced while you're searching and tuck back the way you left
-  them once you clear it. The header count and Share list still hand over the whole
-  list, not whatever you happened to have typed.
+- **Search a list on the web — including the grocery board.** A long packing list or a
+  week's groceries is now searchable from its header: type and it filters down to
+  matching items by name, section or aisle, quantity, and the store a grocery row is
+  tagged with — the same match the phone app has always done, so a search means the same
+  thing wherever you run it. On the grocery board it works the same in By aisle, By store
+  and By meal. Matches hiding inside a section you'd collapsed, or in the Completed group,
+  are surfaced while you're searching and tuck back exactly the way you left them once you
+  clear it. The header count, Share list and Clear still act on the whole list, not
+  whatever you happened to have typed.
 
 ### Changed
 
