@@ -351,6 +351,53 @@ describe('Lists screen', () => {
     await waitFor(() => expect(screen.queryByText('Swimsuits')).toBeNull())
   })
 
+  it('filters the list as you type in the search box, and clears back to everything', async () => {
+    mockApi({ lists: [grocery, packing], items: packItems })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'sun' } })
+    await waitFor(() => expect(screen.queryByText('Swimsuits')).toBeNull())
+    expect(screen.getByText('Sunscreen')).toBeInTheDocument()
+    // the header count still describes the whole list, not the search result
+    expect(screen.getByText('2 items · 1 done')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+    await waitFor(() => expect(screen.getByText('Swimsuits')).toBeInTheDocument())
+  })
+
+  it('surfaces matches hiding in a collapsed section and in Completed', async () => {
+    mockApi({ lists: [grocery, packing], items: packItems })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    // collapse Clothes, so Swimsuits is hidden the way a user might have left it
+    const header = screen.getByText('Clothes', { selector: '.lists-section-name' }).closest('button') as HTMLElement
+    fireEvent.click(header)
+    await waitFor(() => expect(screen.queryByText('Swimsuits')).toBeNull())
+
+    // a search still finds it — a collapsed section must not swallow results
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'swim' } })
+    await waitFor(() => expect(screen.getByText('Swimsuits')).toBeInTheDocument())
+
+    // and a checked item matches too, without having to open Completed first
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'pjs' } })
+    await waitFor(() => expect(screen.getByText('PJs & socks')).toBeInTheDocument())
+  })
+
+  it('says nothing matched when the search comes up empty', async () => {
+    mockApi({ lists: [grocery, packing], items: packItems })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'kayak' } })
+    await waitFor(() => expect(screen.getByText(/No items match/i)).toBeInTheDocument())
+    expect(screen.getByText(/kayak/)).toBeInTheDocument()
+  })
+
   it('bulk-edits selected items via the Select toolbar (PATCH /api/list-items/bulk)', async () => {
     const sent: Sent[] = []
     mockApi({ lists: [grocery, packing], items: packItems, sent })

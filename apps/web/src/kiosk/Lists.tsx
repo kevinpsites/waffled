@@ -220,6 +220,21 @@ export function partitionListItems(
   return { active, completed }
 }
 
+// Free-text search over a list. Matches the same three fields iOS does (name,
+// section, quantity) so "search this list" means the same thing on both platforms
+// — see `ListDetailModel.matches` in ListDetailView.swift. A blank/whitespace
+// query is "no filter" rather than "match nothing".
+export function filterListItems(items: ListItem[], query: string): ListItem[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return items
+  return items.filter(
+    (i) =>
+      i.name.toLowerCase().includes(q) ||
+      (i.section ?? '').toLowerCase().includes(q) ||
+      (i.quantity ?? '').toLowerCase().includes(q)
+  )
+}
+
 // Group items into sections (null section → "Items"), keeping the API's order
 // (unchecked first, then checked) WITHIN each section. Sections themselves are
 // ordered A–Z by name so they hold a fixed position — the API's item order isn't
@@ -358,6 +373,9 @@ export function Lists() {
   const addInputRef = useRef<HTMLInputElement>(null)
   const [filterPerson, setFilterPerson] = useState<string | null>(null)
   const [filterMenu, setFilterMenu] = useState(false)
+  // Free-text search over the selected list (name / section / quantity), matching
+  // iOS. Purely local — the whole list is already in memory.
+  const [query, setQuery] = useState('')
   // Opt-in "By priority" view. Off by default so changing an item's priority never
   // reorders the list (the manual/section order is preserved); on, it flattens the
   // sections into one list ordered highest-priority first.
@@ -449,6 +467,13 @@ export function Lists() {
   }, [lists, templates, selectedId])
   const isTemplate = selected?.listType === 'template'
   const { items, loading: itemsLoading, setItems, refetch: refetchItems } = useListDetail(selected?.id ?? null)
+
+  // A search belongs to the list it was typed on — switching lists starts fresh
+  // rather than showing the next list already filtered by a stale query.
+  const selectedListId = selected?.id ?? null
+  useEffect(() => {
+    setQuery('')
+  }, [selectedListId])
 
   // Stable so GroceryBoard's topbar effect (deps: [onBack]) doesn't re-fire every
   // render — an inline lambda here caused an infinite setState loop.
@@ -669,8 +694,20 @@ export function Lists() {
     return <GroceryBoard onBack={closeGrocery} />
   }
 
-  const visibleItems = filterPerson ? items.filter((i) => i.assignee?.personId === filterPerson) : items
+  // Person filter and search stack: both narrow what's on screen, and the search
+  // applies to completed items too (same as iOS) because it flows through
+  // partitionListItems below.
+  const byPerson = filterPerson ? items.filter((i) => i.assignee?.personId === filterPerson) : items
+  const searching = query.trim().length > 0
+  const visibleItems = filterListItems(byPerson, query)
   const { active: activeItems, completed: completedItems } = partitionListItems(visibleItems, recent)
+  // While a search is running every section renders open: a match hiding inside a
+  // section the user collapsed yesterday reads as "search is broken". Their collapse
+  // choices are suspended, not forgotten — clearing the search puts them back. Same
+  // for Completed, which is collapsed by default and would otherwise hide every
+  // checked match behind a count.
+  const sectionCollapsed = (key: string) => !searching && collapsedSections.has(key)
+  const doneOpen = showDone || searching
   const sections = groupBySection(activeItems)
   const [leftCol, rightCol] = splitColumns(sections)
   // Flattened, highest-priority-first view (stable — ties keep manual order).
@@ -755,6 +792,32 @@ export function Lists() {
                 {isTemplate ? `${items.length} item${items.length === 1 ? '' : 's'}` : summaryLine(items)}
               </div>
               <div className="lists-head-actions">
+              {/* Search sits first in the action group, ahead of the filter pills —
+                  it narrows the same view they do. Local only; the list is already
+                  loaded. */}
+              <div className="lists-search-wrap">
+                <input
+                  className="lists-search"
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Escape') setQuery('') }}
+                  placeholder="Search this list…"
+                  aria-label="Search this list"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                {query !== '' && (
+                  <button
+                    type="button"
+                    className="lists-search-clear"
+                    aria-label="Clear search"
+                    onClick={() => setQuery('')}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
               <div className="filter-wrap" onClick={(e) => e.stopPropagation()}>
                 <button type="button" className="pill filter-pill" onClick={() => setFilterMenu((v) => !v)}>
                   <Icon name="filter" />
@@ -926,7 +989,14 @@ export function Lists() {
             {items.length === 0 && !itemsLoading ? (
               <div className="lists-empty">This list is empty — add something above.</div>
             ) : visibleItems.length === 0 ? (
-              <div className="lists-empty">Nothing assigned to {persons.find((p) => p.id === filterPerson)?.name ?? 'them'} here.</div>
+              // A search that comes up dry says so in the search's own words — the
+              // person-filter message only fits when the person filter is what
+              // emptied the view.
+              searching ? (
+                <div className="lists-empty">No items match “{query.trim()}”.</div>
+              ) : (
+                <div className="lists-empty">Nothing assigned to {persons.find((p) => p.id === filterPerson)?.name ?? 'them'} here.</div>
+              )
             ) : (
               <>
                 {activeItems.length > 0 && sortByPriority && (
@@ -968,14 +1038,14 @@ export function Lists() {
                             <button
                               type="button"
                               className="lists-section-title lists-section-toggle"
-                              aria-expanded={!collapsedSections.has(sec.key)}
+                              aria-expanded={!sectionCollapsed(sec.key)}
                               onClick={() => toggleSectionCollapse(sec.key)}
                             >
-                              <span className={`cal-chev ${collapsedSections.has(sec.key) ? '' : 'open'}`} aria-hidden>›</span>
+                              <span className={`cal-chev ${sectionCollapsed(sec.key) ? '' : 'open'}`} aria-hidden>›</span>
                               <span className="lists-section-name">{sec.title}</span>
                               <span className="ga-n">{sec.items.length}</span>
                             </button>
-                            {!collapsedSections.has(sec.key) && sec.items.map((it) => (
+                            {!sectionCollapsed(sec.key) && sec.items.map((it) => (
                               <ItemRow
                                 key={it.id}
                                 item={it}
@@ -1007,10 +1077,10 @@ export function Lists() {
                       className="lists-completed-h"
                       role="button"
                       tabIndex={0}
-                      aria-expanded={showDone}
+                      aria-expanded={doneOpen}
                       onClick={() => setShowDone((v) => !v)}
                     >
-                      <span className={`cal-chev ${showDone ? 'open' : ''}`} aria-hidden>›</span>
+                      <span className={`cal-chev ${doneOpen ? 'open' : ''}`} aria-hidden>›</span>
                       <span>Completed</span>
                       <span className="ga-n">{completedItems.length}</span>
                       {!isTemplate && (
@@ -1023,7 +1093,7 @@ export function Lists() {
                         </button>
                       )}
                     </div>
-                    {showDone && (
+                    {doneOpen && (
                       <div className="lists-completed-list">
                         {completedItems.map((it) => (
                           <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} onEdit={(i) => setItemModal({ item: i })} onDelete={remove} />
