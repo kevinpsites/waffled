@@ -3351,6 +3351,11 @@ struct WaffledAPI: Sendable {
             /// Split-pool logs collapse to one entry: `amount` is the summed total and
             /// `participants` lists everyone credited (empty for a family/shared log).
             let participants: [Participant]
+            /// False when the entry belongs to its source (a checklist tick, a calendar
+            /// confirm, an Apple Health sync): only its note can be edited, and it can't
+            /// be deleted from the entry sheet. Optional so a server too old to send it
+            /// still decodes — and reads as fully editable, exactly as it behaved before.
+            let editable: Bool?
             struct Participant: Decodable, Identifiable, Sendable {
                 let personId: String?
                 let name: String?

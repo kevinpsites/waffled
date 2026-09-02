@@ -887,6 +887,58 @@ describe('editing and deleting logged entries', () => {
     expect((await call('PATCH', `/api/goals/${id}/logs/${tick.id}`, kevin, { amount: 2 })).statusCode).toBe(400)
   })
 
+  it('saves a note on a derived (checklist-tick) entry, in place', async () => {
+    // Both edit sheets re-send the entry's own amount + day alongside the note, so
+    // "just fixing the note" arrives as a full body. On a derived entry that has to be
+    // allowed — and applied IN PLACE. The calendar bridge and Health sync key their own
+    // tables off goal_logs.id, so re-planning the batch (soft-delete + re-insert, as an
+    // ordinary edit does) would leave those links pointing at deleted rows.
+    const add = await call('POST', '/api/goals', kevin, { title: 'Trip prep', goalType: 'checklist', trackingMode: 'shared_total', participantIds: [kevinId], steps: [{ label: 'Pack' }] })
+    const id = JSON.parse(add.body).goal.id
+    const steps = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.steps
+    await call('PATCH', `/api/goals/${id}/steps/${steps[0].id}`, kevin, { done: true })
+    const tick = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.recent[0]
+    const before = await withClient((c) => c.query<{ id: string }>(`select id from goal_logs where goal_id=$1 and deleted_at is null order by id`, [id]))
+
+    const res = await call('PATCH', `/api/goals/${id}/logs/${tick.id}`, kevin, { amount: tick.amount, note: 'packed the rain gear', loggedOn: tick.dateKey })
+    expect(res.statusCode).toBe(200)
+
+    const after = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.recent[0]
+    expect(after).toMatchObject({ id: tick.id, note: 'packed the rain gear', amount: tick.amount, dateKey: tick.dateKey })
+    const rows = await withClient((c) => c.query<{ id: string; source: string }>(`select id, source from goal_logs where goal_id=$1 and deleted_at is null order by id`, [id]))
+    expect(rows.rows.map((r) => r.id)).toEqual(before.rows.map((r) => r.id))
+    expect(rows.rows[0].source).toBe('checklist_item')
+  })
+
+  it('refuses to move a derived entry to another day (400)', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Trip prep 2', goalType: 'checklist', trackingMode: 'shared_total', participantIds: [kevinId], steps: [{ label: 'Pack' }] })
+    const id = JSON.parse(add.body).goal.id
+    const steps = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.steps
+    await call('PATCH', `/api/goals/${id}/steps/${steps[0].id}`, kevin, { done: true })
+    const tick = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.recent[0]
+
+    const res = await call('PATCH', `/api/goals/${id}/logs/${tick.id}`, kevin, { note: 'moved?', loggedOn: '2026-01-02' })
+    expect(res.statusCode).toBe(400)
+    const after = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.recent[0]
+    expect(after.dateKey).toBe(tick.dateKey)
+    expect(after.note).toBeNull()
+  })
+
+  it('flags which entries are fully editable so the clients can lock the rest', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Editable flags', goalType: 'checklist', trackingMode: 'shared_total', participantIds: [kevinId], steps: [{ label: 'Pack' }] })
+    const id = JSON.parse(add.body).goal.id
+    const steps = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.steps
+    await call('PATCH', `/api/goals/${id}/steps/${steps[0].id}`, kevin, { done: true })
+    const derived = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.recent[0]
+    expect(derived.editable).toBe(false)
+
+    const hours = await call('POST', '/api/goals', kevin, { title: 'Editable flags 2', goalType: 'total', unit: 'hours', targetValue: 10, trackingMode: 'shared_total', participantIds: [kevinId] })
+    const hoursId = JSON.parse(hours.body).goal.id
+    await call('POST', `/api/goals/${hoursId}/log`, kevin, { amount: 1, personId: kevinId })
+    const own = JSON.parse((await call('GET', `/api/goals/${hoursId}`, kevin)).body).goal.recent[0]
+    expect(own.editable).toBe(true)
+  })
+
   it('404s editing/deleting an unknown entry', async () => {
     const add = await call('POST', '/api/goals', kevin, { title: 'X', goalType: 'count', trackingMode: 'shared_total', targetValue: 5 })
     const id = JSON.parse(add.body).goal.id
