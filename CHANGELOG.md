@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.14.1] - 2026-09-01
+
+### Added
+
+### Changed
+
+### Fixed
+
 - **Notes can now be added to entries that counted themselves.** A goal entry that came
   from a checklist tick, a confirmed calendar event, or an Apple Health sync used to
   refuse every edit — on iPhone it failed with no explanation at all. You can now leave
@@ -2242,7 +2250,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/kevinpsites/waffled/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/kevinpsites/waffled/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/kevinpsites/waffled/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/kevinpsites/waffled/compare/v0.12.0...v0.13.0
