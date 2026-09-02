@@ -263,6 +263,10 @@ export interface EventDraft {
   personIds: string[]
   goalId?: string | null // calendar→goal link; null = not linked
   goalStepId?: string | null // for a checklist goal, which step this event completes
+  // Which rhythm this event settles; null = not linked. Written on BOTH paths on purpose:
+  // the upload sink treats an absent rhythm_id on a PUT as "leave it alone", so the only
+  // thing that can unlink is an UPDATE that names the column and sets it null.
+  rhythmId?: string | null
   calendarId?: string | null // create only; null = let the server auto-route
 }
 
@@ -284,9 +288,9 @@ export async function createEventLocal(draft: EventDraft): Promise<boolean> {
   await db.execute(
     `insert into events
        (id, household_id, title, description, location, starts_at, ends_at, all_day, is_countdown, timezone,
-        person_id, goal_id, goal_step_id, calendar_id, origin)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
-    [id, hh, draft.title, null, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, tz, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, draft.calendarId ?? null]
+        person_id, goal_id, goal_step_id, rhythm_id, calendar_id, origin)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
+    [id, hh, draft.title, null, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, tz, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, draft.rhythmId ?? null, draft.calendarId ?? null]
   )
   for (const pid of [...new Set(draft.personIds)]) {
     await db.execute(`insert into event_participants (id, household_id, event_id, person_id) values (?, ?, ?, ?)`, [
@@ -304,8 +308,8 @@ export async function updateEventLocal(id: string, draft: EventDraft): Promise<b
   if (!db) return false
   const hh = await householdRowId()
   const res = await db.execute(
-    `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, is_countdown = ?, person_id = ?, goal_id = ?, goal_step_id = ? where id = ?`,
-    [draft.title, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, id]
+    `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, is_countdown = ?, person_id = ?, goal_id = ?, goal_step_id = ?, rhythm_id = ? where id = ?`,
+    [draft.title, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, draft.rhythmId ?? null, id]
   )
   // Row not in the local DB yet (PowerSync hasn't synced it) → the update matched
   // nothing and would never upload. Bail so the caller saves via REST instead.
