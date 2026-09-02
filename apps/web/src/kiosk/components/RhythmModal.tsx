@@ -160,7 +160,24 @@ export function RhythmModal({
   // field under More options — adding something you're already behind on is a real
   // case — but it follows the cadence until it's actually touched.
   const firstDue = nextDue ?? ymd(addCadence(new Date(), every))
-  const anchor = shape === 'scheduling' ? startsOn : firstDue
+
+  // "The third Saturday of the month" asks `startsOn` to do two jobs that disagree.
+  //
+  // It anchors the period grid — boundaries are startsOn + n × every — and it is also
+  // where the rule reads its ordinal from. Anchored on a third Saturday, the periods run
+  // 19th to 19th while third Saturdays wander over the 15th to the 21st: [Sep 19, Oct 19)
+  // holds two of them and [Oct 19, Nov 19) holds none. A period with nothing in it can
+  // never be satisfied, so the register asks you to book it while the series sits on the
+  // calendar in plain sight, and it asks forever. (The server refuses this outright now;
+  // this is what keeps the friendly path from building it in the first place.)
+  //
+  // So the two jobs are split: the grid anchors on the first of the month, which makes
+  // every period a calendar month and every calendar month hold exactly one of any nth
+  // weekday, while the rule keeps reading its ordinal off the date actually picked.
+  const monthlyNthWeekday = shape === 'scheduling' && autoSchedule && unit === 'months' && monthlyMode !== 'day'
+  const periodAnchor = monthlyNthWeekday ? `${startsOn.slice(0, 7)}-01` : startsOn
+
+  const anchor = shape === 'scheduling' ? periodAnchor : firstDue
   const plan = consequence({ satisfiedBy: shape, every, leadDays: leadNum, anchor })
   const clamp = nudgePlan(every, leadNum)
 
@@ -216,7 +233,7 @@ export function RhythmModal({
         // date; the server's shape constraint rejects a row carrying both.
         ...(shape === 'completion'
           ? { nextDueAt: new Date(`${firstDue}T09:00`).toISOString() }
-          : { startsOn, autoSchedule, rrule: autoSchedule ? rrule : null }),
+          : { startsOn: periodAnchor, autoSchedule, rrule: autoSchedule ? rrule : null }),
       })
       onSaved?.()
       onClose()
@@ -511,6 +528,12 @@ export function RhythmModal({
                             <option value="lastWeekday">The last of that weekday</option>
                           </select>
                         </label>
+                      )}
+                      {monthlyNthWeekday && (
+                        <div className="tiny muted" style={{ marginTop: -6, marginBottom: 10 }}>
+                          Periods run in calendar months so exactly one of these falls in each — the
+                          date above just picks which weekday it is.
+                        </div>
                       )}
                       {/* Kept for imported rules and cadences the builder can't express, but
                           behind a disclosure and named exactly as it is on the calendar —

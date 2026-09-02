@@ -189,6 +189,65 @@ describe('New rhythm — what gets created', () => {
     expect(body).not.toHaveProperty('startsOn')
   })
 
+  // `startsOn` does two jobs that quietly disagree. It anchors the period grid —
+  // boundaries are startsOn + n × every — and it also decides WHICH nth weekday the rule
+  // means. Left as the date the person picked, a "third Saturday" rhythm anchored on the
+  // 19th tiles its periods on the 19th, while third Saturdays wander over the 15th to the
+  // 21st: one period gets two of them and the next gets none, and a period with nothing
+  // in it can never be booked and asks forever.
+  //
+  // The two jobs are therefore separated here: the grid is anchored on the first of the
+  // month, so every period is a calendar month and holds exactly one of any nth weekday,
+  // while the rule still reads its ordinal off the date that was actually picked.
+  it('anchors a monthly nth-weekday rhythm on the first, so no period comes up empty', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Family outing' } })
+    openMode()
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(/it's on the calendar/i))
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    fireEvent.click(within(dialog).getByRole('switch', { name: /on the calendar automatically/i }))
+    fireEvent.change(within(dialog).getByLabelText(/which day of the month/i), { target: { value: 'weekday' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    const body = posts()[0].body!
+    // Today is 2026-08-19 — the third Wednesday of August.
+    expect(body.startsOn).toBe('2026-08-01')
+    expect(body.rrule).toBe('FREQ=MONTHLY;BYDAY=3WE')
+  })
+
+  it('leaves the anchor alone when the rule is the same date each month', async () => {
+    // "The 19th of every month" needs no snapping: the boundaries and the occurrences
+    // are the same day by construction.
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Rent' } })
+    openMode()
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(/it's on the calendar/i))
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    fireEvent.click(within(dialog).getByRole('switch', { name: /on the calendar automatically/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    expect(posts()[0].body!.startsOn).toBe('2026-08-19')
+  })
+
+  it('leaves a weekly cadence alone — its grid and its rule already step together', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Every third weekend' } })
+    openMode()
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(/it's on the calendar/i))
+    fireEvent.change(within(dialog).getByLabelText(/how often/i), { target: { value: '3' } })
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'weeks' } })
+    fireEvent.click(moreOptions())
+    fireEvent.click(within(dialog).getByRole('switch', { name: /on the calendar automatically/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    expect(posts()[0].body!.startsOn).toBe('2026-08-19')
+  })
+
   it('anchors a booking rhythm at the period start instead', async () => {
     const dialog = openCreate()
     fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Date night' } })

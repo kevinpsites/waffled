@@ -10,7 +10,7 @@ import { query, getPool } from '../../platform/db'
 import { log } from '../../platform/logger'
 import { InvalidReferenceError } from '../../platform/household-refs'
 import { createEvent, type EventRow } from '../events/events'
-import { firstSlotOnOrAfter, isValidRrule } from '../calendar/recurrence'
+import { firstSlotOnOrAfter, isValidRrule, slotsBetween } from '../calendar/recurrence'
 import { type Tenant } from '../households/households'
 
 export type SatisfiedBy = 'completion' | 'scheduling'
@@ -377,6 +377,89 @@ async function assertUsableLeadTime(leadTime: string): Promise<void> {
   }
 }
 
+/**
+ * How many periods ahead the anchor check looks. A year of monthly periods, and rather
+ * more of anything shorter — long enough for the drift below to show up, short enough
+ * that the check is one query and one rule walk.
+ */
+const PERIODS_CHECKED = 12
+
+/**
+ * Refuse an auto-schedule rule that leaves a period with nothing in it.
+ *
+ * `starts_on` does double duty, and the two jobs quietly disagree. It anchors the period
+ * grid — boundaries are `starts_on + n × every` — and it is also where the generated
+ * series starts, which for a rule like `FREQ=MONTHLY;BYDAY=3SA` decides nothing at all
+ * about where later occurrences fall. Third Saturdays wander over the 15th to the 21st,
+ * so a rhythm anchored on the 19th tiles periods on the 19th: [Sep 19, Oct 19) holds two
+ * of them and [Oct 19, Nov 19) holds none.
+ *
+ * A period with no occurrence can never be satisfied. Satisfaction is derived per period
+ * from "does an event with this rhythm_id fall inside it?", so the register asks you to
+ * book a period while the series sits on the calendar in plain sight, booking by hand
+ * settles only the period the booking lands in, and the next empty period asks again. It
+ * nags forever with nothing anywhere saying why — which is exactly the failure the whole
+ * scheduling shape exists to prevent.
+ *
+ * Only EMPTINESS is refused, not doubling up. A rule that fires more than once a period
+ * over-books but always settles it, and a household that writes one by hand in the raw
+ * RRULE box may well mean it. An empty period is the one that cannot be recovered from.
+ *
+ * Create-only, which is complete coverage rather than a shortcut: `startsOn`, `rrule`,
+ * `autoSchedule` are not editable, and a scheduling rhythm refuses a change to `every`.
+ * A stored rhythm's grid and rule can never drift apart after this check passes.
+ */
+async function assertRuleFillsEveryPeriod(
+  householdId: string,
+  startsOn: string,
+  every: string,
+  rrule: string
+): Promise<void> {
+  // The true boundaries, from Postgres, for the same reason the list query computes them
+  // there: interval addition tiles real calendar periods and is anchored rather than
+  // cumulative, and re-deriving that in JS is how the check would come to disagree with
+  // the queries it is protecting. Their local instants come back too — a boundary is a
+  // date, and which side of it an evening booking falls on is a household-timezone
+  // question, exactly as it is in listAttention.
+  const { rows } = await query<{ boundary: string; at: Date; tz: string }>(
+    `select (g.starts_on + (n * g.every))::date as boundary,
+            ((g.starts_on + (n * g.every))::date::timestamp at time zone h.timezone) as at,
+            h.timezone as tz
+       from (select $2::date as starts_on, $3::interval as every) g,
+            households h,
+            generate_series(0, $4::int) n
+      where h.id = $1
+      order by n`,
+    [householdId, startsOn, every, PERIODS_CHECKED]
+  )
+  if (rows.length < 2) return
+  const tz = rows[0].tz || 'UTC'
+
+  // The same DTSTART the booking will actually use, so the check and the series can't
+  // answer differently. anchorInstant advances the anchor to the first slot the rule
+  // allows, which is what a rhythm anchored on the 1st under BYDAY=3SA depends on.
+  const dtstart = new Date(await anchorInstant(householdId, startsOn, rrule))
+  const slots = slotsBetween(rrule, dtstart, tz, rows[0].at, rows[rows.length - 1].at)
+
+  for (let i = 0; i < rows.length - 1; i++) {
+    const from = rows[i].at
+    const to = rows[i + 1].at
+    if (slots.some((d) => d >= from && d < to)) continue
+    const empty = dateText(rows[i].boundary)
+    // Naming the fix matters as much as refusing: "the third Saturday of the month" is a
+    // perfectly reasonable thing to want, and a bare "invalid" would read as the product
+    // not supporting it. Anchoring on the 1st makes the periods calendar months, and each
+    // calendar month holds exactly one of any nth weekday.
+    const hint = /FREQ=MONTHLY/i.test(rrule)
+      ? ' Start the first period on the first of the month and each period will hold exactly one.'
+      : ' Move the first period so that each one contains a single occurrence of the rule.'
+    throw new InvalidReferenceError(
+      `that repeat rule skips whole periods — nothing it generates falls in the period beginning ${empty}, ` +
+      `so that period could never be booked and would keep asking forever.${hint}`
+    )
+  }
+}
+
 /** A real calendar date, not merely something shaped like one. */
 function assertRealDate(value: string, field: string): void {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
@@ -456,6 +539,13 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
   // COUNT and UNTIL live inside the rule string where no SQL predicate can see them.
   if (rrule && /(^|;)\s*(COUNT|UNTIL)=/i.test(rrule)) {
     throw new InvalidReferenceError('rrule must not end on its own (no COUNT or UNTIL) — a rhythm repeats for as long as it is active, and you stop it by pausing or retiring it')
+  }
+  // Last, because it walks the rule: everything above has already established that this
+  // one parses, is open-ended, and belongs to a scheduling rhythm with a real anchor.
+  // Only when a series will actually be generated — a rhythm booked by hand has no rule
+  // to disagree with its grid, and its anchor is nobody's business but the person's.
+  if (autoSchedule && rrule) {
+    await assertRuleFillsEveryPeriod(householdId, startsOn, every, rrule)
   }
 
   const { rows } = await query<Row>(

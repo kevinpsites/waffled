@@ -608,6 +608,79 @@ struct RhythmEditorTests {
         #expect(form.createBody(calendar: utcCal)["rrule"] == .string("FREQ=MONTHLY;BYDAY=-1SA"))
     }
 
+    // `startsOn` does two jobs that disagree with each other. It anchors the period grid
+    // — boundaries are startsOn + n × every — and it also seeds the generated series. For
+    // "the third Saturday of the month" those two want different dates: anchored on a
+    // third Saturday the periods run 19th to 19th, while third Saturdays wander over the
+    // 15th to the 21st, so one period holds two of them and the next holds none. A period
+    // with nothing in it can never be satisfied — the register asks you to book it while
+    // the series sits on the calendar in plain sight, and it asks forever.
+    //
+    // Anchoring on the first makes every period a calendar month, and a calendar month
+    // holds exactly one of any nth weekday. The rule is untouched: its ordinal is picked
+    // explicitly here and its weekday still comes from the date chosen.
+    @Test("A monthly nth-weekday rhythm anchors its periods on the first of the month")
+    func monthlyNthWeekdayAnchorsOnTheFirst() {
+        var form = RhythmForm()
+        form.title = "Family outing"
+        form.shape = .scheduling
+        form.count = 1
+        form.unit = .months
+        form.startsOn = at("2026-09-19T00:00:00")   // a third Saturday
+        form.autoSchedule = true
+        form.monthlyMode = .nthWeekday
+        form.monthlyOrdinal = 3
+
+        let body = form.createBody(calendar: utcCal)
+        #expect(body["startsOn"] == .string("2026-09-01"))
+        #expect(body["rrule"] == .string("FREQ=MONTHLY;BYDAY=3SA"))
+    }
+
+    @Test("The same date each month keeps the anchor it was given")
+    func monthlyByDateKeepsItsAnchor() {
+        // "The 19th of every month" needs no snapping — boundaries and occurrences are
+        // the same day by construction, and moving the anchor would change what it means.
+        var form = RhythmForm()
+        form.title = "Rent"
+        form.shape = .scheduling
+        form.count = 1
+        form.unit = .months
+        form.startsOn = at("2026-09-19T00:00:00")
+        form.autoSchedule = true
+
+        #expect(form.createBody(calendar: utcCal)["startsOn"] == .string("2026-09-19"))
+    }
+
+    @Test("A weekly cadence keeps its anchor — grid and rule already step together")
+    func weeklyKeepsItsAnchor() {
+        var form = RhythmForm()
+        form.title = "Every third weekend"
+        form.shape = .scheduling
+        form.count = 3
+        form.unit = .weeks
+        form.startsOn = at("2026-09-05T00:00:00")   // a Saturday
+        form.autoSchedule = true
+
+        #expect(form.createBody(calendar: utcCal)["startsOn"] == .string("2026-09-05"))
+    }
+
+    @Test("A rhythm booked by hand keeps its anchor whatever the monthly mode says")
+    func manualBookingKeepsItsAnchor() {
+        // No rule is generated, so there is nothing for the grid to disagree with, and the
+        // anchor is nobody's business but the person who picked it.
+        var form = RhythmForm()
+        form.title = "Booked by hand"
+        form.shape = .scheduling
+        form.count = 1
+        form.unit = .months
+        form.startsOn = at("2026-09-19T00:00:00")
+        form.autoSchedule = false
+        form.monthlyMode = .nthWeekday
+        form.monthlyOrdinal = 3
+
+        #expect(form.createBody(calendar: utcCal)["startsOn"] == .string("2026-09-19"))
+    }
+
     // The escape hatch: anything the builder cannot say, said directly. Web has had it;
     // iOS carried the field and never showed it.
     @Test("A raw rule overrides the builder entirely")

@@ -936,6 +936,33 @@ struct RhythmForm {
             start: startsOn, calendar)
     }
 
+    /// The date the PERIOD GRID is anchored on, which is not always the date in the picker.
+    ///
+    /// `startsOn` is asked to do two jobs that disagree. It anchors the grid — boundaries
+    /// are startsOn + n × every — and it is also where the generated series starts. For
+    /// "the third Saturday of the month" those want different dates: anchored on a third
+    /// Saturday the periods run 19th to 19th, while third Saturdays wander over the 15th
+    /// to the 21st, so [Sep 19, Oct 19) holds two of them and [Oct 19, Nov 19) holds none.
+    ///
+    /// A period with nothing in it can never be satisfied — satisfaction is derived from
+    /// "does an event with this rhythm_id fall inside the period?", so the register asks
+    /// you to book a period while the series sits on the calendar in plain sight, and
+    /// booking by hand only ever settles the period the booking lands in. The server
+    /// refuses this shape outright now; this is what keeps the friendly path from
+    /// building it. Anchoring on the first makes every period a calendar month, and a
+    /// calendar month holds exactly one of any nth weekday.
+    ///
+    /// Only when a series is actually generated: a rhythm booked by hand has no rule to
+    /// disagree with its grid. The rule itself is untouched — its ordinal is picked
+    /// explicitly and its weekday still comes from the date chosen.
+    func periodAnchor(calendar: Calendar = Cal.current) -> Date {
+        guard shape == .scheduling, autoSchedule, unit == .months, monthlyMode == .nthWeekday else {
+            return startsOn
+        }
+        let parts = calendar.dateComponents([.year, .month], from: startsOn)
+        return calendar.date(from: parts) ?? startsOn
+    }
+
     func createBody(now: Date = Date(), calendar: Calendar = Cal.current) -> [String: JSONValue] {
         var body: [String: JSONValue] = [
             "title": .string(trimmedTitle),
@@ -956,7 +983,7 @@ struct RhythmForm {
             body["nextDueAt"] = .string(RhythmFormat.isoInstant(
                 calendar.date(bySettingHour: 9, minute: 0, second: 0, of: day) ?? day))
         case .scheduling:
-            body["startsOn"] = .string(RhythmFormat.ymd(startsOn, calendar: calendar))
+            body["startsOn"] = .string(RhythmFormat.ymd(periodAnchor(calendar: calendar), calendar: calendar))
             body["autoSchedule"] = .bool(autoSchedule)
             body["rrule"] = autoSchedule ? (rrule(calendar: calendar).map(JSONValue.string) ?? .null) : .null
         // Not reachable: `shape` is chosen in this form, never decoded from the server.

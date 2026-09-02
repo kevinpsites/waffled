@@ -620,6 +620,61 @@ describe('a cadence the period grid cannot be built from', () => {
     }
   })
 
+  // The period grid and the repeat rule are two different answers to two different
+  // questions, and nothing made them agree about HOW MANY occurrences land in a period.
+  //
+  // A monthly rhythm anchored on a third Saturday tiles its periods on that day of the
+  // month — the 19th, say — while third Saturdays wander over the 15th to the 21st. So
+  // [Sep 19, Oct 19) holds two of them and [Oct 19, Nov 19) holds none. A period with no
+  // occurrence can never be satisfied: the register asks you to book it, the series is
+  // sitting right there on the calendar, and booking by hand only settles the period the
+  // booking lands in. It nags forever, and nothing anywhere says why.
+  //
+  // This is reachable from the friendly editor, not just the raw-RRULE box, which is what
+  // makes it worth refusing at the door rather than documenting.
+  it('refuses an auto-schedule rule that leaves a period with nothing in it', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Family outing', satisfiedBy: 'scheduling', every: '1 month',
+      startsOn: '2026-09-19', autoSchedule: true, rrule: 'FREQ=MONTHLY;BYDAY=3SA',
+    })
+    expect(res.statusCode).toBe(400)
+    // The sentence has to name the fix, or it is just a door slammed on a reasonable
+    // thing to want — "third Saturday of the month" is the whole point of the rule.
+    expect(JSON.parse(res.body).message).toMatch(/first of the month|start of the month/i)
+  })
+
+  it('accepts the same rule once the periods are calendar months', async () => {
+    // Anchored on the 1st, every month holds exactly one third Saturday.
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Family outing, fixed', satisfiedBy: 'scheduling', every: '1 month',
+      startsOn: '2026-09-01', autoSchedule: true, rrule: 'FREQ=MONTHLY;BYDAY=3SA',
+    })
+    expect(res.statusCode).toBe(201)
+    await call('DELETE', `/api/rhythms/${JSON.parse(res.body).rhythm.id}`, kevin)
+  })
+
+  it('leaves a rule whose boundaries and occurrences step together alone', async () => {
+    // Every third weekend: both the grid and the rule advance 21 days from the same
+    // Saturday, so they stay in lockstep for good.
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Every third weekend', satisfiedBy: 'scheduling', every: '3 weeks',
+      startsOn: '2026-09-05', autoSchedule: true, rrule: 'FREQ=WEEKLY;INTERVAL=3;BYDAY=SA',
+    })
+    expect(res.statusCode).toBe(201)
+    await call('DELETE', `/api/rhythms/${JSON.parse(res.body).rhythm.id}`, kevin)
+  })
+
+  it('says nothing about an anchor when there is no rule to disagree with it', async () => {
+    // Not auto-scheduled: there is no series, every period is filled by hand, and the
+    // anchor is nobody's business but the person who chose it.
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Booked by hand', satisfiedBy: 'scheduling', every: '1 month',
+      startsOn: '2026-09-19', autoSchedule: false,
+    })
+    expect(res.statusCode).toBe(201)
+    await call('DELETE', `/api/rhythms/${JSON.parse(res.body).rhythm.id}`, kevin)
+  })
+
   it('refuses a first due date that is not a date, the way the edit path already does', async () => {
     const res = await call('POST', '/api/rhythms', kevin, {
       title: 'Bad date', satisfiedBy: 'completion', every: '3 months', nextDueAt: 'garbage',
