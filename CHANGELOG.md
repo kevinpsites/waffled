@@ -15,9 +15,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A rhythm can now ask for a booking window narrower than its cadence.** "Date night,
+  in the first week of the month" used to be unsayable: a rhythm's cadence was both how
+  often it should happen and how wide a span a booking could land in, and the nudge could
+  only be set counting backwards from the end of the period. You can now say that only
+  the first N days of each period count — Waffled asks you at the start of the window,
+  the date picker offers only the days that settle the period, and a booking later in the
+  month leaves it still asking. Leave it blank and a booking anywhere in the period
+  counts, exactly as before.
+- **Calendar events you booked yourself can now be tied to a rhythm.** Plenty of family
+  outings get planned in the Calendar screen rather than from the rhythms register, and
+  the rhythm went on asking you to book the thing already sitting on the calendar. The
+  event editor on both phone and web now has a "Keeps a rhythm" picker, so an event you
+  made any other way can settle the period it belongs to.
+
 ### Changed
 
 ### Fixed
+
+- **A "third Saturday of the month" rhythm no longer nags forever.** Anchored on a date
+  after the 15th, its periods and its repeating event drifted apart — some months ended
+  up with two of the bookings and others with none, and a month with none could never be
+  settled, so it asked to be booked while the outing sat right there on the calendar.
+  Both apps now line these rhythms up with calendar months automatically, and the server
+  refuses a repeat rule that would skip a period, explaining how to fix it.
 
 ## [0.14.1] - 2026-09-01
 

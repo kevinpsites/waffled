@@ -66,6 +66,58 @@ every completion rather than over the returned page.
   way. Leaving the chips alone still follows the anchor, which is the sane default and was
   previously the only option.
 
+**Phase 5 closed the two shape gaps the design had, and one bug the design created.**
+
+- **A booking window narrower than the period** (`book_within`, mig `0099`). `every` was
+  doing two jobs: how often the thing should happen, and how wide a span a booking may land
+  in. For most rhythms those coincide; for *"date night, in the first week of the month"*
+  they do not, and there was no way to say so — the runway is measured back from the
+  period's **end** and clamped to half the cycle, so a monthly rhythm could not be asked
+  about before mid-month and *"the first two weeks of the quarter"* had no expressible form
+  at all. Relaxing the clamp is not the fix: a runway as long as the cycle never closes, so
+  the rhythm would never go quiet, which is precisely what the clamp guarantees.
+
+  So the jobs are split. The period keeps the grid — it still says how often, still tiles
+  the same boundaries, still owns `rhythm_skips`' keys — and the window says how much of it
+  a booking counts in, measured from the period's start. Null is the whole period, which is
+  what every rhythm written before the column has, so none of them change by a byte.
+  Head-anchored with no separate offset, because `starts_on` already phases the grid: *"the
+  last week of the month"* is an anchor on the 25th with a 7-day window, and two ways to
+  phase one window is how they come to disagree. Every place a period bound was
+  load-bearing now uses the window bound — satisfaction in both queries, the runway that
+  opens `/attention`, the claimed-period check on `POST /:id/schedule`, the picker's
+  min/max, and every "how long have I got" line on both clients.
+
+  Refused alongside `auto_schedule`, in the CHECK constraint and with a sentence at the
+  door. They answer the same question and the rule wins, because it is what creates the
+  event; allowed together, the rule may generate its occurrence outside the window and
+  **every** period becomes unsatisfiable — the failure below, arriving through a different
+  door. It is also the one part of *when* that is editable in place: it moves no boundary
+  and re-keys no skip, and the worst it does is put a period back to asking.
+
+- **Linking an event you already put on the calendar** to a rhythm. `events.rhythm_id` was
+  writable end to end from the very first migration and **no client ever set it**, so the
+  only event that could settle a period was one the rhythm booked itself. A family outing
+  planned in the Calendar screen — which is where these things actually get planned — left
+  the rhythm asking you to book what was already on the calendar. Both event editors now
+  carry a *"Keeps a rhythm"* picker over the household's active scheduling rhythms.
+  Unlinking is an **explicit null**, because every write path treats an absent `rhythm_id`
+  as "leave it alone" so a client predating the column cannot blank a link by omission.
+
+- **A repeat rule that skips a period is refused.** `starts_on` does two jobs that quietly
+  disagree: it anchors the grid *and* seeds the series. For `FREQ=MONTHLY;BYDAY=3SA` those
+  want different dates — third Saturdays wander over the 15th to the 21st, so a rhythm
+  anchored on the 19th tiles periods on the 19th and `[Oct 19, Nov 19)` holds no third
+  Saturday at all. A period with nothing in it can never be satisfied, so the register asks
+  forever while the series sits on the calendar in plain sight. Reachable from the friendly
+  editor, not merely the raw-RRULE box — and *"family outing on the third weekend of the
+  month"* is one of this doc's own examples. The API now walks the rule across the first
+  twelve periods on create and refuses one that skips a period, naming the empty period and
+  the fix; both editors anchor a monthly nth-weekday rhythm on the first of the month, which
+  makes every period a calendar month and every calendar month hold exactly one. Only
+  emptiness is refused: a rule firing more than once a period over-books but always settles
+  it, and a household writing one by hand may well mean it.
+
 Still open, and both are UI shape rather than capability. Tracked outside this doc too, so
 they are findable: the roadmap's Rhythms entry names both, and the iPad one has a backlog
 item with resume context in `apps/ios/IPAD_ROADMAP.md` § Backlog B.
@@ -385,7 +437,9 @@ AttentionItem { kind: 'due',         rhythm, dueAt, overdue }
 ```
 
 Three behaviours worth knowing before designing against them. `leadTime` comes back clamped
-to at most half of `every` — ask for 14 days on a weekly rhythm and you get `3 days
+to at most half of `every` (or to `book_within`, where a booking window is set — the window
+is the span it exists to ask in, so halving it would go quiet mid-window) — ask for 14 days
+on a weekly rhythm and you get `3 days
 12:00:00`, because a runway longer than the cycle never closes and the item would never
 leave the list; `PATCH` re-clamps against the *new* cadence for the same reason. `/schedule`
 fills title and assignee from the rhythm, so a booking UI needs a time picker and nothing

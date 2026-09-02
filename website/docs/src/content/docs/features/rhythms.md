@@ -71,12 +71,23 @@ You then choose whether Waffled can pick the time itself:
   One day at a time, deliberately — a rule that fired twice inside one period would claim
   something the cadence never said, and one booking settles the period either way.
 
+  For **the same weekday** and **the last of that weekday**, Waffled quietly lines the
+  periods up with calendar months, so each month holds exactly one of them. It has to:
+  third Saturdays wander between the 15th and the 21st, so periods anchored on the 19th
+  would put two in one month and none in the next — and a period with none can never be
+  settled, so it would ask forever with the outing sitting right there on the calendar.
+  The start date still picks *which* weekday you mean. If you write a rule by hand under
+  **Advanced** that would skip a period like this, Waffled refuses it and says which
+  period came up empty.
+
   The first event goes in at **6pm on the first day the rule allows, on or after the start
   date** — anchor a weekly rhythm on a Wednesday but choose Monday, and it starts the
   following Monday rather than landing on a day its own rule excludes. Move it like any
   other event; dragging it doesn't unlink it from the rhythm.
 - **Off** — the cadence is known but *when* is an open decision every period. Waffled will
-  ask you to pick a time as each period's deadline approaches.
+  ask you to pick a time as each period's deadline approaches. This is also the branch that
+  can carry a **booking window** — see More options below — for the rhythms where *how
+  often* and *when inside that* are two different answers.
 
 ### "I mark it done"
 
@@ -116,9 +127,9 @@ Two things worth knowing about those dates:
 - **A new rhythm is due one full cadence out, not today.** "Every 3 months, starting now"
   means the first one lands in three months. If you're adding something you're already
   behind on, set **First one due** under More options.
-- **The date is the one you'll really get.** The runway is capped at half the cadence (see
-  below), and the card quotes the capped number, so it never promises a nudge on a day
-  nothing is going to happen.
+- **The date is the one you'll really get.** The runway is capped at half the cadence — or
+  at the booking window, where you've set one (see below) — and the card quotes the capped
+  number, so it never promises a nudge on a day nothing is going to happen.
 
 ### More options
 
@@ -127,13 +138,33 @@ Folded away, because each has a default worth having:
 - **First one due** *(I-mark-it-done)* or **First period starts** *(it's-on-the-calendar)* —
   the anchor. For a scheduled rhythm this is what makes "which period are we in?"
   answerable: period *N* runs from the start date plus *N* cadences.
+- **Only the first … days of each period count** *(it's-on-the-calendar, booked by hand)* —
+  the booking window, when it isn't the whole period. Leave it blank and a booking anywhere
+  in the period counts, which is how every rhythm behaved before this existed.
+
+  Use it when *how often* and *when inside that* are two different answers. "Date night
+  once a month" is a monthly cadence; "and it needs to be in the first week" is a 7-day
+  window inside it. Set both and Waffled asks you on the 1st, the date picker offers only
+  the 1st to the 7th, and a dinner booked on the 20th leaves the period still asking —
+  it's a real event on your calendar, it just isn't the thing this rhythm wanted.
+
+  The window is measured from the **start** of each period, so put it at the other end by
+  moving the anchor instead: **First period starts** on the 25th with a 7-day window is
+  "the last week of the month". And it is the one part of *when* you can change your mind
+  about later — the cadence and the anchor are fixed once a rhythm exists, but the window
+  can be edited in place at any time.
+
+  Not offered on a rhythm that puts itself on the calendar: its repeat rule already picks
+  the day, so there's nothing left for you to choose.
 - **Start nudging me** — how many days of warning you want. For an I-mark-it-done rhythm
   that's "this many days early"; for a scheduled one it's "this many days before the
-  **booking window** closes". The booking window is simply one cadence: a weekly rhythm
-  opens a fresh one every week, and the runway is the tail of it.
+  **booking window** closes". Without a window that's the whole period: a weekly rhythm
+  opens a fresh one every week, and the runway is the tail of it. With one, it's the tail
+  of the window, and the default is the whole window — "book it this week" means being
+  asked all week.
 
   It **follows the cadence** unless you set it — up to 14 days, and never more than half the
-  cycle. That cap is the real rule: a runway longer than the cycle never closes, so the item
+  cycle (or, where there's a booking window, never more than the window). That cap is the real rule: a runway longer than the cycle never closes, so the item
   would nag forever and you'd learn to ignore it. Ask for 14 days on a weekly rhythm and
   you'll get three, and the form says so rather than letting a trimmed number become a
   mystery later. This is also why a weekly rhythm set to one day's warning shows nothing on
@@ -218,14 +249,31 @@ rhythm, because that isn't a question rhythms ask.
 switch. The title and the assignee come from the rhythm itself — retyping "Temple visit" is
 precisely the friction that keeps these things off the calendar.
 
-The date picker is clamped to the current period, because a booking outside it satisfies the
-wrong period. Confirm and you get an **ordinary calendar event**: real recurrence, colors,
+The date picker is clamped to the period's **booking window**, because a booking outside it
+settles the wrong period — or, where the window is narrower than the period, settles nothing
+at all. Most rhythms have no window and the two are the same span. Confirm and you get an **ordinary calendar event**: real recurrence, colors,
 participants, reminders, Google/Outlook sync, the usual editor. It just carries a link back
 to the rhythm, which is what closes the period out.
 
 Rhythm-linked events wear a small **🔁** before the title in Month, Week, Day, Agenda and
 People views and on Today's agenda card, and the event's detail page says **"This slot keeps
 a rhythm"** — so a booked rhythm doesn't look identical to every other event.
+
+### Counting an event you already put on the calendar
+
+Booking from the register isn't the only way a period gets settled. Plenty of family outings
+get planned in the Calendar screen, from a message someone sent, or as part of a longer day —
+and a rhythm has no way of knowing that's what it was.
+
+So the event editor carries a **Keeps a rhythm** picker, on both the phone and the web. Pick
+one and that event settles the period it falls in, exactly as a booking made from the register
+would; pick **No rhythm** to unlink it again. Only *it's-on-the-calendar* rhythms are offered —
+an I-mark-it-done rhythm closes its period when you say you did the thing, so an event
+pointing at one would settle nothing.
+
+Worth knowing: the event has to fall inside the period's booking window to count. If a rhythm
+only accepts the first week of the month and the outing is on the 20th, linking it won't
+silence the card — which is the window doing its job rather than the link failing.
 
 ### Marking a completion done
 

@@ -230,7 +230,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   countdowns as a fourth source ("18 days until the air filter"). `leadTime` is clamped
   to half the cadence so a runway can never outlive its cycle, and the shape/anchor fields
   are immutable after creation because re-anchoring would re-interpret existing skips. REST-only
-  by design (the booked events sync; the register doesn't). Design and schema:
+  by design (the booked events sync; the register doesn't).
+  A **booking window** (`book_within`, mig `0099`) splits the two jobs `every` was doing —
+  how often, and how wide a span a booking may land in — so *"date night, in the first week
+  of the month"* is sayable at all: the period keeps the grid and the skips, the window says
+  how much of it counts, and null (every rhythm predating the column) means the whole
+  period. It is the one part of *when* that is editable in place, since it moves no boundary
+  and re-keys no skip; it is refused alongside auto-schedule, whose rule already picks the
+  day. The **event editor links an existing event to a rhythm** ("Keeps a rhythm"), so an
+  outing planned in the Calendar screen settles the period instead of leaving the rhythm
+  asking for something already booked. Design and schema:
   [Rhythms plan](./rhythms-plan.md); how to use it:
   [docs → Rhythms](https://docs.waffled.app/features/rhythms/). Per-surface status lives in
   the [feature matrix](../../website/docs/src/content/docs/reference/features.md).
