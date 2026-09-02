@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   milestone track measured every goal by its lifetime total — so a habit with 99 logs and
   a 3-day streak claimed its 7-day milestone was long past. Each milestone now reads the
   same axis the server used to award it, and says so: "4-day streak to go", "15% to go".
+- **"Each" goals on iPhone/iPad measure against everyone's target, not one person's.**
+  A goal set as a per-person amount ("read 12 books each") compared the whole family's
+  pooled progress to the single-person number, so four members who had read 30 between
+  them showed "30 / 12". The target now grows with the household — "30 / 48" — as it
+  always has on the web.
 - **Checklist goals on iPhone/iPad show steps done, not an empty ring.** A checklist has
   no numeric target, so its iOS cards and detail hero were stuck at an empty ring with no
   figure to measure against; they now read steps done over steps total, matching the web.
