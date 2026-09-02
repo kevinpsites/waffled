@@ -129,6 +129,22 @@ describe('GroceryBoard search', () => {
     expect(done()).toHaveTextContent('2')
   })
 
+  it('clears the search when the shopper moves to another week', async () => {
+    mockBoard()
+    renderBoard()
+    await screen.findByText('Tomatoes')
+
+    const box = screen.getByLabelText('Search this list') as HTMLInputElement
+    fireEvent.change(box, { target: { value: 'kale' } })
+    await waitFor(() => expect(screen.queryByText('Tomatoes')).toBeNull())
+
+    // a query belongs to the week it was typed on — carrying it over makes the
+    // next week look empty rather than filtered
+    fireEvent.click(screen.getByRole('button', { name: 'Next week' }))
+    await waitFor(() => expect(box.value).toBe(''))
+    expect(screen.getByText('Tomatoes')).toBeInTheDocument()
+  })
+
   it('says nothing matched when the search comes up empty', async () => {
     mockBoard()
     renderBoard()

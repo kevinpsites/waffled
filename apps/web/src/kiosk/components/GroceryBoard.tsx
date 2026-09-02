@@ -349,6 +349,10 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   // Free-text filter over the board (name / aisle / quantity / store) — the same
   // search the custom-list view runs, on a list that's usually longer.
   const [query, setQuery] = useState('')
+  // A search belongs to the week it was typed on (the list view does the same when you
+  // switch lists). Carrying it into next week's board would show "No items match" over
+  // a week that's actually full — a filter reading as an empty list.
+  useEffect(() => { setQuery('') }, [weekStart])
   const toggleSection = (key: string) =>
     setCollapsed((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
   const [railMeal, setRailMeal] = useState<string>('dinner') // which meal type the rail shows
