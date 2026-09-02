@@ -562,10 +562,16 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
   const personId = typeof input.personId === 'string' ? input.personId : null
   if (personId) await assertPersonInHousehold(householdId, personId)
 
-  // The runway is clamped to half the cycle at insert time (`least(lead_time, every/2)`,
-  // below) — a 14-day default on a 7-day cadence would put `next_due_at - lead_time`
-  // permanently in the past, so weekly trash would never leave the attention list. Half a
-  // period is the guarantee: every rhythm gets a stretch where it is genuinely quiet.
+  // The runway is clamped at insert time, and the ceiling differs by shape — see the two
+  // inserts below.
+  //
+  // A COMPLETION rhythm keeps half the cycle. Its feed has no upper bound, deliberately:
+  // an overdue thing can still be done, so it keeps asking however late it is. Give it a
+  // runway as long as its cycle and `next_due_at - lead_time` lands on the moment it was
+  // last completed — it surfaces the instant you finish it and never goes quiet again,
+  // which is exactly what this clamp was written to prevent. Half a period is what
+  // guarantees every such rhythm a stretch of genuine quiet.
+  //
   // Stored rather than applied on read so the API echoes back what will actually happen;
   // an update path that changes `every` has to re-apply this.
   // scheduling only, and validated before the shape branch so a completion rhythm
@@ -653,14 +659,24 @@ export async function createRhythm(tenant: Tenant, input: CreateRhythmInput): Pr
   }
 
   const { rows } = await query<Row>(
-    // The runway is clamped to the WINDOW where there is one, and to half the cycle where
-    // there isn't. Half a period is the guarantee that a rhythm without a window gets a
-    // stretch of quiet; with a window, the window IS the stretch it is meant to ask in,
-    // so clamping that to half would make "book it this week" go quiet mid-week.
+    // The runway is clamped to the WINDOW where there is one, and to the whole cycle where
+    // there isn't — not to half of it, as the completion shape still is.
+    //
+    // The two shapes can afford different ceilings because only one of them has a floor.
+    // A scheduling rhythm's feed is bounded above: it stops asking when the window closes,
+    // so a runway equal to the cycle opens on the period's first day and shuts on its
+    // last. That is what makes "remind me at the start of the month to plan the outing,
+    // and I'll book it for whenever suits" sayable at all — under a half-cycle cap a
+    // monthly rhythm could not be asked before the 16th, and the booking window is the
+    // wrong tool for it (it moves when a booking COUNTS, so an outing late in the month
+    // would stop settling the period).
+    //
+    // Longer than the cycle is still refused, and that is the real rule: a runway that
+    // outlives its own period never closes, and the thing is learned as noise.
     `insert into rhythms (household_id, title, emoji, notes, person_id, satisfied_by, every, lead_time,
                           starts_on, auto_schedule, rrule, book_within)
      values ($1,$2,$3,$4,$5,'scheduling',$6::interval,
-             least($7::interval, coalesce($11::interval, $6::interval / 2)),$8::date,$9,$10,$11::interval)
+             least($7::interval, coalesce($11::interval, $6::interval)),$8::date,$9,$10,$11::interval)
      returning id, title, emoji, notes, person_id, satisfied_by, every::text as every,
                starts_on, auto_schedule, rrule, book_within::text as book_within, lead_time::text as lead_time,
                last_completed_at, next_due_at, is_active`,
@@ -1229,12 +1245,19 @@ export async function updateRhythm(
        -- AFTER this update. Shortening a six-month rhythm to weekly would otherwise leave
        -- it a 14-day runway it can never close; narrowing a fortnight-long window to three
        -- days would leave a runway that opens before the period it belongs to.
+       --
+       -- Split by shape for the reason the inserts are: a scheduling rhythm's feed closes
+       -- when its window does, so it can afford a runway as long as its cycle; a
+       -- completion rhythm's never closes on its own, so it keeps half.
        lead_time  = least(
                       coalesce($11::interval, lead_time),
-                      coalesce(
-                        case when $14::boolean then $15::interval else book_within end,
-                        coalesce($10::interval, every) / 2
-                      )
+                      case when satisfied_by = 'scheduling'
+                           then coalesce(
+                                  case when $14::boolean then $15::interval else book_within end,
+                                  coalesce($10::interval, every)
+                                )
+                           else coalesce($10::interval, every) / 2
+                      end
                     ),
        is_active  = coalesce($12::boolean, is_active),
        -- Guarded above: only ever non-null for a completion rhythm, whose shape CHECK

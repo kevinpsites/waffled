@@ -176,8 +176,13 @@ capability X · **module(X)** = requires module X enabled · **device** = kiosk 
 `PATCH` covers `title`, `emoji`, `notes`, `personId`, `every`, `leadTime`, `bookWithin`
 and `isActive` only — **not** `satisfiedBy`, `startsOn`, `autoSchedule` or `rrule`.
 Re-anchoring a live rhythm would re-interpret the periods it has already skipped and point
-its bookings at periods that no longer exist. `leadTime` is clamped to at most half of
-`every` — or to `bookWithin` where there is one — on create and on every edit.
+its bookings at periods that no longer exist. `leadTime` is clamped on create and on every edit, to a ceiling that differs by shape: the
+**whole** of `every` on a scheduling rhythm, **half** of it on a completion one, and
+`bookWithin` wherever a booking window is set. Only the completion shape needs halving —
+its attention feed has no upper bound (an overdue thing can still be done and should keep
+asking), so a runway as long as its cycle would surface it the instant it was completed and
+never let it go quiet. A scheduling rhythm's feed closes when its window does, so a
+full-cycle runway opens on the period's first day and shuts on its last.
 
 `bookWithin` (scheduling shape only) is the **booking window**: how much of each period a
 booking counts in, measured from the period's start. Null, the default and what every

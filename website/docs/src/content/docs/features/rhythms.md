@@ -127,9 +127,10 @@ Two things worth knowing about those dates:
 - **A new rhythm is due one full cadence out, not today.** "Every 3 months, starting now"
   means the first one lands in three months. If you're adding something you're already
   behind on, set **First one due** under More options.
-- **The date is the one you'll really get.** The runway is capped at half the cadence — or
-  at the booking window, where you've set one (see below) — and the card quotes the capped
-  number, so it never promises a nudge on a day nothing is going to happen.
+- **The date is the one you'll really get.** The runway is capped — at the whole cadence on
+  an it's-on-the-calendar rhythm, at half of it on one you mark done, or at the booking
+  window where you've set one (see below) — and the card quotes the capped number, so it
+  never promises a nudge on a day nothing is going to happen.
 
 ### More options
 
@@ -163,8 +164,22 @@ Folded away, because each has a default worth having:
   of the window, and the default is the whole window — "book it this week" means being
   asked all week.
 
-  It **follows the cadence** unless you set it — up to 14 days, and never more than half the
-  cycle (or, where there's a booking window, never more than the window). That cap is the real rule: a runway longer than the cycle never closes, so the item
+  It **follows the cadence** unless you set it — up to 14 days. The ceiling depends on the
+  shape, and the difference is worth knowing because one of them is how you say *"remind me
+  at the start of the month to plan this"*:
+
+  - **it's on the calendar** — up to the **whole cadence**. Ask for a month's notice on a
+    monthly rhythm and it opens on the period's first day and closes on its last. This is
+    the setting for something that takes planning: you're asked on the 1st, and you can
+    still book it for the 20th.
+  - **I mark it done** — never more than **half** the cycle. This one keeps asking however
+    late it is, by design, so a runway as long as its cycle would surface it the moment you
+    finished it and never let it go quiet.
+  - With a **booking window**, the window is the ceiling either way — it's the stretch the
+    runway exists to ask in.
+
+  Longer than the ceiling is refused in every case, which is the real rule: a runway that
+  outlives its own period never closes, and you learn to ignore it. That cap is the real rule: a runway longer than the cycle never closes, so the item
   would nag forever and you'd learn to ignore it. Ask for 14 days on a weekly rhythm and
   you'll get three, and the form says so rather than letting a trimmed number become a
   mystery later. This is also why a weekly rhythm set to one day's warning shows nothing on

@@ -203,6 +203,40 @@ describe('New rhythm — what gets created', () => {
   // window inside it. Before the window existed, `every` had to be both, and the runway —
   // measured back from the period's end and capped at half the cycle — could not open at
   // the start of a month. The two are separate now, and this is where you say so.
+  // "Remind me on the 1st to plan the family outing; I'll book it for whenever suits."
+  //
+  // The runway has to be sent as the CADENCE, not as a day count. "30 days" is a month
+  // only in a 30-day month — in August it opens on the 2nd and in February a day before
+  // the period even starts — so a rhythm asked to open on the first of every month would
+  // visibly miss it most months.
+  it('sends the cadence itself when the nudge covers the whole cycle', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Family outing' } })
+    openMode()
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(/it's on the calendar/i))
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    fireEvent.change(within(dialog).getByLabelText(/start nudging/i), { target: { value: '30' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    expect(posts()[0].body!.leadTime).toBe('1 months')
+  })
+
+  it('still sends a day count for a runway that is genuinely a tail', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Temple visit' } })
+    openMode()
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(/it's on the calendar/i))
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    fireEvent.change(within(dialog).getByLabelText(/start nudging/i), { target: { value: '5' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    expect(posts()[0].body!.leadTime).toBe('5 days')
+  })
+
   it('sends the booking window when only part of the period should count', async () => {
     const dialog = openCreate()
     fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Date night' } })

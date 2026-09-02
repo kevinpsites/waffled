@@ -1774,6 +1774,61 @@ describe('a booking window narrower than the period', () => {
     await call('DELETE', `/api/rhythms/${id}`, kevin)
   })
 
+  // "Remind me at the start of the month to plan the family outing, and I'll book it for
+  // whenever suits — the third Saturday, probably."
+  //
+  // That was unsayable. The runway is measured back from the end of the period and was
+  // clamped to HALF the cadence, so a monthly rhythm could not be asked before the 16th.
+  // The narrow window is no help either — it is the wrong tool: it moves when a booking
+  // COUNTS, so an outing on the third Saturday would fall outside it and the month would
+  // read as unbooked.
+  //
+  // What is needed is only the clamp. A runway equal to the cycle still closes: it opens
+  // on the period's first day and shuts on its last, because the feed is bounded above by
+  // the window's end. Longer than the cycle is the thing that never closes, and that is
+  // still refused.
+  it('can be asked on the first day of the period, not merely halfway through', async () => {
+    const id = await makeRhythm({ title: 'Family outing', leadTime: '1 month' })
+    // The period beginning 2027-03-01 — asked from its very first day.
+    expect(await unscheduledIds('2027-03-01')).toContain(id)
+    // ...and the day before belongs to February's period, which is asking about itself.
+    const feb = await call('GET', '/api/rhythms/attention?to=2027-02-28', kevin)
+    const item = JSON.parse(feb.body).items.find(
+      (i: { rhythm: { id: string } }) => i.rhythm.id === id
+    )
+    expect(item.periodStart).toBe('2027-02-01')
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('still refuses a runway longer than the cycle it belongs to', async () => {
+    // The pathology the clamp exists for. Equal is fine; longer never closes.
+    const id = await makeRhythm({ title: 'Greedy', every: '1 week', startsOn: '2026-01-05', leadTime: '30 days' })
+    const res = await call('GET', '/api/rhythms', kevin)
+    const row = JSON.parse(res.body).rhythms.find((r: { id: string }) => r.id === id)
+    expect(row.leadTime).toMatch(/7 days|1 mon|7:/)
+    expect(row.leadTime).not.toMatch(/30 days/)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('keeps the half-cadence cap on a rhythm you mark done', async () => {
+    // The scheduling shape is saved by an upper bound — its feed stops asking once the
+    // window closes. The completion shape has none on purpose, because an overdue thing
+    // can still be done and should keep asking however late it is. Give THAT a runway as
+    // long as its cycle and it surfaces the instant it is completed and never goes quiet
+    // again, which is exactly what the clamp was written to prevent.
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Trash', satisfiedBy: 'completion', every: '1 week',
+      nextDueAt: '2027-01-08T09:00:00Z', leadTime: '7 days',
+    })
+    expect(res.statusCode).toBe(201)
+    const id = JSON.parse(res.body).rhythm.id
+    const list = await call('GET', '/api/rhythms', kevin)
+    const row = JSON.parse(list.body).rhythms.find((r: { id: string }) => r.id === id)
+    // Half a week, not a week.
+    expect(row.leadTime).toMatch(/3 days|3:/)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
   it('goes quiet once its window has closed, rather than nagging out the month', async () => {
     // The completion shape has no upper bound on purpose — an overdue thing can still be
     // done. A closed window is not that: the week is over, so asking about it for the

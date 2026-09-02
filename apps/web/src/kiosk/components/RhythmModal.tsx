@@ -191,9 +191,19 @@ export function RhythmModal({
   const monthlyNthWeekday = shape === 'scheduling' && autoSchedule && unit === 'months' && monthlyMode !== 'day'
   const periodAnchor = monthlyNthWeekday ? `${startsOn.slice(0, 7)}-01` : startsOn
 
+  // The runway to send.
+  //
+  // A day count is exact for days and weeks and wrong for anything longer: "30 days" is a
+  // month only in a 30-day month, so a monthly rhythm asked to open on the 1st opened on
+  // the 2nd in a 31-day one and a day early in February. When the ask covers the whole
+  // cycle, send the cadence itself and let Postgres do real calendar arithmetic — that is
+  // what makes "from the first day of each period" land on the first day of every period.
+  const wantsWholeCycle = shape === 'scheduling' && !bookWithin && leadNum >= intervalDays(every)
+  const leadTimeToSend = wantsWholeCycle ? every : `${leadNum} days`
+
   const anchor = shape === 'scheduling' ? periodAnchor : firstDue
   const plan = consequence({ satisfiedBy: shape, every, leadDays: leadNum, anchor })
-  const clamp = nudgePlan(every, leadNum)
+  const clamp = nudgePlan(every, leadNum, shape, bookWithin)
 
   // The rule is DERIVED from the cadence rather than asked for again: an rrule that
   // disagrees with `every` would put the generated event outside the period it is
@@ -229,7 +239,7 @@ export function RhythmModal({
           notes: notes.trim() || null,
           personId: personId || null,
           every,
-          leadTime: `${leadNum} days`,
+          leadTime: leadTimeToSend,
           // Sent as an explicit null when cleared: an absent key means "leave it alone",
           // so widening back to the whole period has to be stated. Only for the shape
           // that can carry one at all.
@@ -246,7 +256,7 @@ export function RhythmModal({
         personId: personId || null,
         satisfiedBy: shape,
         every,
-        leadTime: `${leadNum} days`,
+        leadTime: leadTimeToSend,
         // A completion rhythm has no period grid and a scheduling one has no due
         // date; the server's shape constraint rejects a row carrying both.
         ...(shape === 'completion'
@@ -426,7 +436,7 @@ export function RhythmModal({
                 )}
                 {plan.capped && (
                   <div className="rhy-conseq-cap">
-                    {`${leadNum} days' notice won't fit in ${cadenceLabel(every).replace(/^every /, 'a ')}, so it's trimmed to ${clamp.effectiveDays} — a runway longer than the cycle never goes quiet.`}
+                    {`${leadNum} days' notice won't fit in ${bookWithin ? 'that booking window' : cadenceLabel(every).replace(/^every /, 'a ')}, so it's trimmed to ${clamp.effectiveDays} — a runway longer than the stretch it belongs to never goes quiet.`}
                   </div>
                 )}
               </div>
@@ -490,8 +500,8 @@ export function RhythmModal({
                   quietly gets 3, and nothing said so. */}
               <div className="tiny muted" style={{ marginTop: -6, marginBottom: 12 }}>
                 {shape === 'completion'
-                  ? 'Capped at half the cadence — a runway longer than the cycle never closes, so it would never go quiet.'
-                  : nudgeExplainer(every, leadNum)}
+                  ? 'Capped at half the cadence — a rhythm you mark done keeps asking however late it is, so a longer runway would never let it go quiet.'
+                  : nudgeExplainer(every, leadNum, bookWithin)}
               </div>
 
               {/* The anchors are create-only: see the note at the top of this file. */}

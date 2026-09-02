@@ -732,6 +732,75 @@ struct RhythmEditorTests {
         #expect(form.createBody(calendar: utcCal)["startsOn"] == .string("2026-09-19"))
     }
 
+    // "Remind me on the 1st to plan the family outing; I'll book it for whenever suits."
+    //
+    // Two things had to change for that. The ceiling on the runway was half the cadence,
+    // so a monthly rhythm could not be asked before the 16th — and the booking window is
+    // the wrong tool for it, because that moves when a booking COUNTS, so an outing on the
+    // third Saturday would stop settling the month.
+    //
+    // The ceiling can differ by shape because only one shape has a floor: a booking
+    // rhythm's feed stops asking when its window closes, so a runway as long as the cycle
+    // opens on the period's first day and shuts on its last. A rhythm you mark done has no
+    // such bound — an overdue thing keeps asking — so it keeps half.
+    @Test("A booking rhythm can be nudged from the first day of its period")
+    func bookingRhythmMayUseTheWholeCycle() {
+        let plan = RhythmFormat.nudgePlan(every: "1 mon", leadDays: 30, satisfiedBy: .scheduling)
+        #expect(plan.effectiveDays == 30)
+        #expect(plan.capped == false)
+    }
+
+    @Test("A runway longer than the cycle is still refused")
+    func longerThanTheCycleIsStillCapped() {
+        let plan = RhythmFormat.nudgePlan(every: "7 days", leadDays: 30, satisfiedBy: .scheduling)
+        #expect(plan.effectiveDays == 7)
+        #expect(plan.capped == true)
+    }
+
+    @Test("A rhythm you mark done keeps the half-cadence ceiling")
+    func completionKeepsHalf() {
+        let plan = RhythmFormat.nudgePlan(every: "7 days", leadDays: 14, satisfiedBy: .completion)
+        #expect(plan.effectiveDays == 3)
+        #expect(plan.capped == true)
+    }
+
+    @Test("A booking window is the ceiling when there is one")
+    func windowIsTheCeiling() {
+        let plan = RhythmFormat.nudgePlan(every: "1 mon", leadDays: 30,
+                                          satisfiedBy: .scheduling, bookWithin: "7 days")
+        #expect(plan.effectiveDays == 7)
+        #expect(plan.capped == true)
+    }
+
+    // The runway has to travel as the CADENCE, not as a day count. "30 days" is a month
+    // only in a 30-day month — in August it opens on the 2nd — so a rhythm asked to open on
+    // the first of every month would visibly miss it most months.
+    @Test("Asking for the whole cycle sends the cadence, not a day count")
+    func wholeCycleRunwaySendsTheCadence() {
+        var form = RhythmForm()
+        form.title = "Family outing"
+        form.shape = .scheduling
+        form.count = 1
+        form.unit = .months
+        form.startsOn = at("2026-09-01T00:00:00")
+        form.leadDays = 30
+
+        #expect(form.createBody(calendar: utcCal)["leadTime"] == .string("1 months"))
+    }
+
+    @Test("A runway that is genuinely a tail still travels as days")
+    func tailRunwayStaysInDays() {
+        var form = RhythmForm()
+        form.title = "Temple visit"
+        form.shape = .scheduling
+        form.count = 1
+        form.unit = .months
+        form.startsOn = at("2026-09-01T00:00:00")
+        form.leadDays = 5
+
+        #expect(form.createBody(calendar: utcCal)["leadTime"] == .string("5 days"))
+    }
+
     // A booking window narrower than the period.
     //
     // `every` used to do two jobs: how often the thing should happen, and how wide a span
@@ -971,13 +1040,15 @@ struct RhythmEditorTests {
     @Test("The consequence block promises the dates the server will actually use")
     func consequenceUsesTheClampedRunway() {
         let now = at("2026-08-26T00:00:00")
-        // Built through nudgePlan, never from the typed runway: a weekly rhythm asked for
-        // 14 days' notice keeps 3, so a promise built from 14 would name a day nothing is
-        // ever going to happen on.
+        // Built through nudgePlan, never from the typed runway: 14 days' notice does not
+        // fit in a week, so a promise built from 14 would name a day nothing is ever going
+        // to happen on. A BOOKING rhythm's ceiling is the whole cycle rather than half of
+        // it, so what it keeps is 7 — and a 7-day runway on a weekly period opens on the
+        // period's own first day, which is the point of the raised ceiling.
         let booking = RhythmFormat.consequence(shape: .scheduling, every: "1 weeks", leadDays: 14,
                                                anchor: now, calendar: utcCal)
         #expect(RhythmFormat.ymd(booking!.landsOn, calendar: utcCal) == "2026-09-02")
-        #expect(RhythmFormat.ymd(booking!.nudgeFrom, calendar: utcCal) == "2026-08-30")
+        #expect(RhythmFormat.ymd(booking!.nudgeFrom, calendar: utcCal) == "2026-08-26")
         #expect(booking!.capped)
 
         // A completion rhythm's anchor IS the due date — the cadence has already been
@@ -1299,7 +1370,23 @@ struct RhythmNudgeCopyTests {
 
     @Test("It states what the clamp actually did")
     func statesTheClamp() {
-        #expect(RhythmFormat.nudgeExplainer(every: "7 days", leadDays: 14).contains("last 3 days"))
+        // A booking rhythm's ceiling is the whole cycle, so 14 days on a weekly cadence is
+        // trimmed to 7 — and 7 of 7 is the whole week, which reads as "from its first day"
+        // rather than as a tail.
+        let text = RhythmFormat.nudgeExplainer(every: "7 days", leadDays: 14)
+        #expect(text.contains("from its first day"))
+        #expect(text.contains("trimmed to 7 days"))
+    }
+
+    @Test("It still says 'the last N days' while the runway is genuinely a tail")
+    func statesATail() {
+        #expect(RhythmFormat.nudgeExplainer(every: "1 mon", leadDays: 5).contains("last 5 days"))
+    }
+
+    @Test("It clamps to the booking window rather than the cadence when there is one")
+    func clampsToTheWindow() {
+        #expect(RhythmFormat.nudgeExplainer(every: "1 mon", leadDays: 30, bookWithin: "7 days")
+            .contains("trimmed to 7 days"))
     }
 
     @Test("A zero runway nudges only on the final day")

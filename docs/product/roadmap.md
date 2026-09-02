@@ -228,7 +228,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   screen** cover completing, booking, skipping, editing, pausing and retiring — on all three
   surfaces — and completion-shape rhythms join
   countdowns as a fourth source ("18 days until the air filter"). `leadTime` is clamped
-  to half the cadence so a runway can never outlive its cycle, and the shape/anchor fields
+  so a runway can never outlive its cycle — to the whole cadence on a scheduling rhythm
+  (whose feed closes when its window does) and to half of it on a completion rhythm (whose
+  feed never closes on its own) — and the shape/anchor fields
   are immutable after creation because re-anchoring would re-interpret existing skips. REST-only
   by design (the booked events sync; the register doesn't).
   A **booking window** (`book_within`, mig `0099`) splits the two jobs `every` was doing —

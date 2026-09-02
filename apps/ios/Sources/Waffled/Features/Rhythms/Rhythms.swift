@@ -174,17 +174,38 @@ enum RhythmFormat {
 
     /// What the nudge runway will ACTUALLY be, once the server has had it.
     ///
-    /// It is stored as `least(leadTime, every / 2)` — a warning window longer than the
-    /// cycle never closes, so the item would nag forever and get learned as noise. The
-    /// form showed the number that was typed, so a weekly rhythm asked for 14 days'
-    /// notice, quietly got 3, and nothing on screen explained the difference.
-    static func nudgePlan(every: String, leadDays: Int) -> (effectiveDays: Int, capped: Bool) {
+    /// The form used to show the number that was typed, so a weekly rhythm asked for 14
+    /// days' notice quietly got 3 and nothing on screen explained the difference. This is
+    /// the same arithmetic the server does.
+    ///
+    /// The ceiling depends on the shape, because only one of the two has a floor:
+    ///
+    /// - **scheduling** — the whole cycle, or the booking window where there is one. Its
+    ///   feed stops asking once the window closes, so a runway equal to the cycle opens on
+    ///   the period's first day and shuts on its last. That is what makes "remind me on the
+    ///   1st to plan the outing, I'll book it for whenever suits" sayable; under a half cap
+    ///   a monthly rhythm could not be asked before the 16th.
+    /// - **completion** — half the cycle, still. Its feed has no upper bound on purpose (an
+    ///   overdue thing can still be done and should keep asking), so a runway as long as
+    ///   the cycle would surface it the instant it was completed and never let it go quiet.
+    ///
+    /// Longer than the ceiling is refused either way, which is the real rule: a runway that
+    /// outlives its own period never closes.
+    static func nudgePlan(
+        every: String,
+        leadDays: Int,
+        satisfiedBy: WaffledAPI.RhythmShape = .completion,
+        bookWithin: String? = nil
+    ) -> (effectiveDays: Int, capped: Bool) {
         let asked = max(0, leadDays)
-        let half = days(fromInterval: every) / 2
+        let cycle = days(fromInterval: every)
+        let cap: Int = satisfiedBy == .scheduling
+            ? (bookWithin.map { days(fromInterval: $0) } ?? cycle)
+            : cycle / 2
         // An unreadable cadence gives no cap to apply — echoing the request beats
         // inventing a clamp out of a number we couldn't parse.
-        guard half > 0 else { return (asked, false) }
-        return (min(asked, half), asked > half)
+        guard cap > 0 else { return (asked, false) }
+        return (min(asked, cap), asked > cap)
     }
 
     /// One cadence on from `from`, through `Calendar` rather than by hand: adding a month
@@ -217,8 +238,9 @@ enum RhythmFormat {
     /// `least(leadTime, every / 2)`, so a weekly rhythm asked for 14 days' notice would
     /// otherwise be promised a nudge on a day nothing is ever going to happen.
     static func consequence(shape: WaffledAPI.RhythmShape, every: String, leadDays: Int,
-                            anchor: Date, calendar: Calendar = Cal.current) -> Consequence? {
-        let plan = nudgePlan(every: every, leadDays: leadDays)
+                            anchor: Date, calendar: Calendar = Cal.current,
+                            bookWithin: String? = nil) -> Consequence? {
+        let plan = nudgePlan(every: every, leadDays: leadDays, satisfiedBy: shape, bookWithin: bookWithin)
         // A booking rhythm's anchor is where the period grid STARTS, so its first window
         // closes one cadence later. A completion rhythm's anchor is the due date itself —
         // the cadence has already been added to reach it, and adding it twice would
@@ -260,12 +282,16 @@ enum RhythmFormat {
     ///
     /// Both numbers appear together on purpose: the whole failure was a field showing 14
     /// and a server delivering 3, with the two never once in the same sentence.
-    static func capNote(every: String, leadDays: Int) -> String? {
-        let plan = nudgePlan(every: every, leadDays: leadDays)
+    static func capNote(every: String, leadDays: Int,
+                        satisfiedBy: WaffledAPI.RhythmShape = .completion,
+                        bookWithin: String? = nil) -> String? {
+        let plan = nudgePlan(every: every, leadDays: leadDays, satisfiedBy: satisfiedBy, bookWithin: bookWithin)
         guard plan.capped else { return nil }
-        let window = cadenceLabel(every).replacingOccurrences(of: "every ", with: "a ")
+        let window = bookWithin != nil
+            ? "that booking window"
+            : cadenceLabel(every).replacingOccurrences(of: "every ", with: "a ")
         return "\(plural(max(0, leadDays), "day"))’ notice won’t fit in \(window), so it’s trimmed"
-            + " to \(plan.effectiveDays) — a runway longer than the cycle never goes quiet."
+            + " to \(plan.effectiveDays) — a runway longer than the stretch it belongs to never goes quiet."
     }
 
     /// "November 19" — inside a sentence, where the year is noise.
@@ -277,15 +303,24 @@ enum RhythmFormat {
     /// period ends" assumed you knew what the period was, which was fairly answered with
     /// "what period? I'm scheduling it every week". For a scheduling rhythm the period IS
     /// one cadence: each is a fresh window to get it booked, and the runway is its tail.
-    static func nudgeExplainer(every: String, leadDays: Int) -> String {
-        let plan = nudgePlan(every: every, leadDays: leadDays)
+    static func nudgeExplainer(every: String, leadDays: Int, bookWithin: String? = nil) -> String {
+        // Always the scheduling shape: this sentence is only shown on a booking rhythm, and
+        // its ceiling is the whole cycle (or the window) rather than half of it.
+        let plan = nudgePlan(every: every, leadDays: leadDays, satisfiedBy: .scheduling, bookWithin: bookWithin)
         let window = cadenceLabel(every).isEmpty ? "every period" : cadenceLabel(every)
+        let span = bookWithin.map { days(fromInterval: $0) } ?? days(fromInterval: every)
+        // Asking for the whole span is worth naming rather than describing as a tail —
+        // "the last 30 days of every month" is a riddle; "from its first day" is the thing
+        // that was actually asked for.
         let tail = plan.effectiveDays <= 0
             ? "on its last day"
-            : "for the last \(plural(plan.effectiveDays, "day")) of it"
+            : (span > 0 && plan.effectiveDays >= span
+                ? "from its first day"
+                : "for the last \(plural(plan.effectiveDays, "day")) of it")
         var line = "A fresh window to book it opens \(window). You’ll be nudged \(tail), and only while nothing’s on the calendar for it"
         if plan.capped {
-            line += " (\(plural(max(0, leadDays), "day")) won’t fit in \(window.replacingOccurrences(of: "every ", with: "a ")), so it’s trimmed to half the cycle — a runway longer than the cycle never goes quiet)"
+            let fits = bookWithin != nil ? "that window" : window.replacingOccurrences(of: "every ", with: "a ")
+            line += " (\(plural(max(0, leadDays), "day")) won’t fit in \(fits), so it’s trimmed to \(plural(plan.effectiveDays, "day")) — a runway longer than the stretch it belongs to never goes quiet)"
         }
         return line + "."
     }
@@ -983,6 +1018,20 @@ struct RhythmForm {
         return "\(d) days"
     }
 
+    /// The runway to send.
+    ///
+    /// A day count is exact for days and weeks and wrong for anything longer: "30 days" is
+    /// a month only in a 30-day month, so a monthly rhythm asked to open on the 1st opened
+    /// on the 2nd in a 31-day one. When the ask covers the whole cycle, send the cadence
+    /// itself and let Postgres do real calendar arithmetic — that is what makes "from the
+    /// first day of each period" land on the first day of every period.
+    var leadTimeToSend: String {
+        let wholeCycle = shape == .scheduling
+            && bookWithinInterval == nil
+            && effectiveLeadDays >= RhythmFormat.days(fromInterval: every)
+        return wholeCycle ? every : "\(effectiveLeadDays) days"
+    }
+
     func createBody(now: Date = Date(), calendar: Calendar = Cal.current) -> [String: JSONValue] {
         var body: [String: JSONValue] = [
             "title": .string(trimmedTitle),
@@ -991,7 +1040,7 @@ struct RhythmForm {
             "personId": personId.map(JSONValue.string) ?? .null,
             "satisfiedBy": .string(shape.rawValue),
             "every": .string(every),
-            "leadTime": .string("\(effectiveLeadDays) days"),
+            "leadTime": .string(leadTimeToSend),
         ]
         // A completion rhythm has no period grid and a scheduling one has no due date; the
         // server's shape constraint rejects a row carrying both.
@@ -1026,7 +1075,7 @@ struct RhythmForm {
             "notes": notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .null : .string(notes.trimmingCharacters(in: .whitespacesAndNewlines)),
             "personId": personId.map(JSONValue.string) ?? .null,
             "every": .string(every),
-            "leadTime": .string("\(effectiveLeadDays) days"),
+            "leadTime": .string(leadTimeToSend),
             // The one part of WHEN that is editable in place. The cadence and the anchor
             // ARE the period grid — moving either re-reads every boundary, so skips (keyed
             // on period_start) stop matching and bookings get re-attributed. A window

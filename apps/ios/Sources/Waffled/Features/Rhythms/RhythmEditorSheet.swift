@@ -268,7 +268,8 @@ struct RhythmEditorSheet: View {
     @ViewBuilder private var consequence: some View {
         let anchor = form.shape == .scheduling ? form.startsOn : form.firstDue()
         if let plan = RhythmFormat.consequence(shape: form.shape, every: form.every,
-                                               leadDays: form.effectiveLeadDays, anchor: anchor) {
+                                               leadDays: form.effectiveLeadDays, anchor: anchor,
+                                               bookWithin: form.bookWithinInterval) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: form.shape == .completion ? "checkmark.circle.fill" : "calendar")
                     .font(.system(size: 15, weight: .bold))
@@ -278,7 +279,9 @@ struct RhythmEditorSheet: View {
                     promise(plan)
                         .font(.system(size: 13.5)).foregroundStyle(WF.ink)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let cap = RhythmFormat.capNote(every: form.every, leadDays: form.effectiveLeadDays) {
+                    if let cap = RhythmFormat.capNote(every: form.every, leadDays: form.effectiveLeadDays,
+                                                      satisfiedBy: form.shape,
+                                                      bookWithin: form.bookWithinInterval) {
                         Text(cap).font(.system(size: 12)).foregroundStyle(WF.ink3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -426,8 +429,9 @@ struct RhythmEditorSheet: View {
                 // period", which was reasonably read as "what period? I'm scheduling it
                 // every week".
                 Text(form.shape == .completion
-                     ? "Capped at half the cadence — a runway longer than the cycle never closes, so it would never go quiet."
-                     : RhythmFormat.nudgeExplainer(every: form.every, leadDays: form.effectiveLeadDays))
+                     ? "Capped at half the cadence — a rhythm you mark done keeps asking however late it is, so a longer runway would never let it go quiet."
+                     : RhythmFormat.nudgeExplainer(every: form.every, leadDays: form.effectiveLeadDays,
+                                                   bookWithin: form.bookWithinInterval))
                     .font(.system(size: 12)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }

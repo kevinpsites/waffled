@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the date picker offers only the days that settle the period, and a booking later in the
   month leaves it still asking. Leave it blank and a booking anywhere in the period
   counts, exactly as before.
+- **A rhythm that's on the calendar can now nudge you from the first day of its period.**
+  Some things need *planning* rather than a fixed slot — "remind me at the start of the
+  month to sort out a family outing, and I'll book it for whenever suits." That couldn't be
+  asked for: the reminder counted backwards from the end of the period and was capped at
+  half the cadence, so a monthly rhythm could never speak up before the 16th. You can now
+  ask to be nudged for the whole cycle. Rhythms you mark done are unchanged — they keep
+  asking however late they are, so they'd never go quiet with a runway that long.
 - **Calendar events you booked yourself can now be tied to a rhythm.** Plenty of family
   outings get planned in the Calendar screen rather than from the rhythms register, and
   the rhythm went on asking you to book the thing already sitting on the calendar. The

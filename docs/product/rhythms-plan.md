@@ -71,11 +71,10 @@ every completion rather than over the returned page.
 - **A booking window narrower than the period** (`book_within`, mig `0099`). `every` was
   doing two jobs: how often the thing should happen, and how wide a span a booking may land
   in. For most rhythms those coincide; for *"date night, in the first week of the month"*
-  they do not, and there was no way to say so — the runway is measured back from the
+  they do not, and there was no way to say so — the runway was measured back from the
   period's **end** and clamped to half the cycle, so a monthly rhythm could not be asked
   about before mid-month and *"the first two weeks of the quarter"* had no expressible form
-  at all. Relaxing the clamp is not the fix: a runway as long as the cycle never closes, so
-  the rhythm would never go quiet, which is precisely what the clamp guarantees.
+  at all.
 
   So the jobs are split. The period keeps the grid — it still says how often, still tiles
   the same boundaries, still owns `rhythm_skips`' keys — and the window says how much of it
@@ -94,6 +93,27 @@ every completion rather than over the returned page.
   **every** period becomes unsatisfiable — the failure below, arriving through a different
   door. It is also the one part of *when* that is editable in place: it moves no boundary
   and re-keys no skip, and the worst it does is put a period back to asking.
+
+- **A runway as long as the cycle, on the scheduling shape.** The window above answers
+  *"the thing must HAPPEN early"*; this answers the different question underneath it,
+  *"ASK me early, the thing happens whenever"* — "remind me at the start of the month to
+  plan the family outing, and I'll book it for the third Saturday." Pointing `book_within`
+  at that would be actively wrong: it moves when a booking COUNTS, so the third-Saturday
+  outing would fall outside the window and the month would read as unbooked.
+
+  What blocked it was only the clamp, and the clamp was stricter than its own reasoning.
+  The rule that matters is that a runway must not outlive its period: *longer* than the
+  cycle never closes. **Equal** to the cycle closes fine — it opens on the period's first
+  day and shuts on its last — but only for the scheduling shape, whose attention feed is
+  bounded above (it stops asking when the window closes). The completion shape keeps half,
+  because its feed deliberately has no upper bound: an overdue thing can still be done and
+  should keep asking, so a full-cycle runway would surface it the instant it was completed
+  and never let it go quiet again. Two shapes, two ceilings, and the asymmetry is the
+  presence of a floor.
+
+  Both clients send the **cadence interval** rather than a day count when the ask covers
+  the whole cycle. `30 days` is a month only in a 30-day month, so a monthly rhythm asked
+  to open on the 1st opened on the 2nd in a 31-day one — visible, and wrong, most months.
 
 - **Linking an event you already put on the calendar** to a rhythm. `events.rhythm_id` was
   writable end to end from the very first migration and **no client ever set it**, so the
@@ -437,9 +457,14 @@ AttentionItem { kind: 'due',         rhythm, dueAt, overdue }
 ```
 
 Three behaviours worth knowing before designing against them. `leadTime` comes back clamped
-to at most half of `every` (or to `book_within`, where a booking window is set — the window
-is the span it exists to ask in, so halving it would go quiet mid-window) — ask for 14 days
-on a weekly rhythm and you get `3 days
+to a ceiling that differs by shape — the whole of `every` on a scheduling rhythm, half of
+it on a completion one, and `book_within` wherever a booking window is set. Only the
+completion shape needs halving: its feed has no upper bound (an overdue thing can still be
+done and should keep asking), so a runway as long as its cycle would surface it the instant
+it was completed. A scheduling rhythm's feed closes when its window does, so a full-cycle
+runway opens on the period's first day and shuts on its last — which is how *"remind me on
+the 1st to plan the outing, I'll book it for whenever suits"* is said. Ask for 14 days
+on a weekly rhythm you mark done and you get `3 days
 12:00:00`, because a runway longer than the cycle never closes and the item would never
 leave the list; `PATCH` re-clamps against the *new* cadence for the same reason. `/schedule`
 fills title and assignee from the rhythm, so a booking UI needs a time picker and nothing
