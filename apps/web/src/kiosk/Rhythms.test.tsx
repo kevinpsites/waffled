@@ -154,7 +154,7 @@ describe('Rhythms screen', () => {
     await screen.findByText('Temple visit')
     expect(screen.getByText(/not on the calendar yet/i)).toBeInTheDocument()
     openMenu('Temple visit')
-    fireEvent.click(screen.getByRole('button', { name: /skip this period for temple visit/i }))
+    fireEvent.click(screen.getByRole('button', { name: /mark this period handled for temple visit/i }))
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/rhythms/r-temple/skip'))).toBe(true))
   })
 
@@ -220,7 +220,7 @@ describe('Rhythms screen', () => {
     }])
     renderScreen()
     await screen.findByText('Skipped temple')
-    expect(screen.getByText(/skipped this one/i)).toBeInTheDocument()
+    expect(screen.getByText(/handled without a booking/i)).toBeInTheDocument()
     expect(queryMetaLine(/on the calendar for /i)).toBeNull()
     expect(screen.queryByLabelText(/on the calendar/i)).toBeNull()
   })
@@ -236,7 +236,7 @@ describe('Rhythms screen', () => {
     renderScreen()
     await screen.findByText('Temple visit')
     openMenu('Temple visit')
-    fireEvent.click(screen.getByRole('button', { name: /skip this period/i }))
+    fireEvent.click(screen.getByRole('button', { name: /mark this period handled/i }))
     expect(await screen.findByText(/didn't go through/i)).toBeInTheDocument()
   })
 

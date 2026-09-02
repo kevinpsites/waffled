@@ -414,7 +414,9 @@ enum RhythmFormat {
             // time, so saying "Booked" there claims the very calendar entry that skipping
             // exists to avoid inventing.
             guard let at = r.bookedAt else {
-                return Countdown(number: "Skipped", unit: "this period", tone: .done)
+                // "Handled", not "Skipped" — the row is settled without a booking, and
+                // which of the two reasons applied is not something the register knows.
+                return Countdown(number: "Handled", unit: "this period", tone: .done)
             }
             return Countdown(number: "Booked",
                              unit: bookedWhen(at, allDay: r.bookedAllDay ?? false, calendar: calendar),
@@ -838,7 +840,7 @@ final class RhythmsModel {
                             parts.append("on the calendar for "
                                          + RhythmFormat.bookedWhen(at, allDay: r.bookedAllDay ?? false, calendar: calendar))
                         } else {
-                            parts.append("skipped this one")
+                            parts.append("handled without a booking")
                         }
                     } else if r.autoSchedule {
                         // Two ways a self-booking rhythm comes up empty, and they are not

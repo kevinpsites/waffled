@@ -1180,9 +1180,9 @@ struct RhythmRegisterFailureTests {
         let skipped = rhythm(satisfiedBy: .scheduling, startsOn: "2026-08-17",
                              currentPeriodStart: "2026-08-17", currentPeriodEnd: "2026-08-24",
                              satisfied: true, bookedAt: nil)
-        #expect(RhythmFormat.countdown(skipped, urgency: .steady)?.number == "Skipped")
+        #expect(RhythmFormat.countdown(skipped, urgency: .steady)?.number == "Handled")
         #expect(RhythmsModel.detailLines(for: [skipped], now: at("2026-08-20T09:00:00"),
-                                        calendar: utcCal)["r1"]?.contains("skipped this one") == true)
+                                        calendar: utcCal)["r1"]?.contains("handled without a booking") == true)
 
         let booked = rhythm(satisfiedBy: .scheduling, startsOn: "2026-08-17",
                             currentPeriodStart: "2026-08-17", currentPeriodEnd: "2026-08-24",
@@ -1598,7 +1598,7 @@ struct RhythmCountdownTests {
                        currentPeriodStart: "2026-08-17", currentPeriodEnd: "2026-08-24",
                        satisfied: true, bookedAt: nil)
         let cd = RhythmFormat.countdown(r, urgency: .steady, now: now, calendar: utcCal)
-        #expect(cd?.number == "Skipped")
+        #expect(cd?.number == "Handled")
         #expect(cd?.unit == "this period")
     }
 

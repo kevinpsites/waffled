@@ -152,16 +152,25 @@ function UnscheduledRow({
         >
           {series ? 'Put it back' : 'Book'}
         </button>
-        {/* Not in the redesign's sketch of this card, and kept anyway: skipping is
-            the one thing here you can't otherwise do without leaving Today. */}
+        {/* Not in the redesign's sketch of this card, and kept anyway: settling a period
+            without booking is the one thing here you can't otherwise do without leaving
+            Today.
+
+            "Handled", not "Skip". The action is unchanged — it settles the period, writes
+            no completion and records no history — but "Skip" named only one reason for
+            pressing it (this one isn't happening) and hid the commoner one (it IS sorted,
+            just not as a calendar entry). Deliberately vague about whether the thing
+            happened: a scheduling rhythm never asks that, and a word like "Done" would
+            claim an answer we don't have. */}
         <button
           type="button"
           className="rhy-skip"
-          aria-label={`Skip this period for ${item.rhythm.title}`}
+          aria-label={`Mark this period handled for ${item.rhythm.title}`}
+          title="Settles this period without putting anything on the calendar — whether you sorted it another way or it simply isn't happening."
           disabled={busy}
           onClick={skip}
         >
-          Skip
+          Handled
         </button>
       </div>
     </div>

@@ -38,6 +38,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **"Skip a period" is now "Mark handled".** The button always settled the period without
+  putting anything on the calendar — but it was named for only one reason you'd press it
+  ("this one isn't happening") and hid the commoner one ("it's sorted, just not as a
+  calendar entry"). Same action, same result, clearer name; a settled period now reads
+  *handled without a booking* rather than *skipped this one*. It still records nothing
+  about whether the thing actually happened, because a scheduled rhythm never asks that.
+- **The booking-window field asks its question as a sentence.** It read "Only the first …
+  days of each period count", which stated the rule inside-out and leaned on a word the
+  form never explains. It now reads *"It must be booked in the first ⟨7⟩ days of each
+  month"*, naming the cadence you just chose.
+
 ### Fixed
 
 - **A "third Saturday of the month" rhythm no longer nags forever.** Anchored on a date

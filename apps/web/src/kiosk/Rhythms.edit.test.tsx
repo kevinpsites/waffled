@@ -168,7 +168,7 @@ describe('Rhythms — where each one stands', () => {
     // capability has to survive the quietening. It moves into the menu, not away.
     openMenu('Self-care day')
     expect(screen.getByRole('button', { name: /book a time for self-care day/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /skip this period for self-care day/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /mark this period handled for self-care day/i })).toBeInTheDocument()
   })
 
   it('does not offer to skip a period that is already handled', async () => {
@@ -176,7 +176,7 @@ describe('Rhythms — where each one stands', () => {
     renderScreen()
     await screen.findByText('Temple visit')
     openMenu('Temple visit')
-    expect(screen.queryByRole('button', { name: /skip this period/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /mark this period handled/i })).toBeNull()
   })
 
   it('lets attention override the list: a due item is not also "handled"', async () => {
@@ -210,7 +210,7 @@ describe('Rhythms — pausing', () => {
     await expandPaused()
     openMenu('Gutter check')
     expect(screen.queryByRole('button', { name: /book a time/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: /skip this period/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /mark this period handled/i })).toBeNull()
     expect(screen.queryByText(/not on the calendar yet/i)).toBeNull()
   })
 

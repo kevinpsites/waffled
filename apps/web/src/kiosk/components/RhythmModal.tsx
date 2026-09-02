@@ -156,6 +156,12 @@ export function RhythmModal({
   // A window and "put it on the calendar automatically" answer the same question — when
   // inside the period does this happen — and the rule wins, because it is what creates
   // the event. The server refuses the pair; the form simply stops offering it.
+  // "each month" / "each week" / "every 2 weeks" — the sentence below reads as the rhythm
+  // being described rather than as a setting, so it has to name the cadence the person
+  // just chose instead of falling back on "period", which was fairly answered with "what
+  // period? I'm scheduling it every week."
+  const cycleNoun = n === 1 ? `each ${unit.replace(/s$/, '')}` : `every ${n} ${unit}`
+
   const booksItself = editing ? !!rhythm?.autoSchedule : autoSchedule
   const windowNum = Math.max(0, Math.round(Number(windowDays) || 0))
   const showWindow = shape === 'scheduling' && !booksItself
@@ -602,20 +608,29 @@ export function RhythmModal({
                   refuses the pair. */}
               {showWindow && (
                 <>
-                  <label className="field">
-                    <span>Only the first … days of each period count (optional)</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={windowDays}
-                      placeholder="the whole period"
-                      onChange={(e) => setWindowDays(e.target.value)}
-                    />
-                  </label>
+                  {/* Said as a sentence, like the rest of this form. The label used to read
+                      "Only the first … days of each period count", which stated the rule
+                      inside-out and leaned on a word ("period") the form never taught. */}
+                  <div className="field">
+                    <span>Deadline inside each cycle</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontWeight: 600 }}>
+                      <span>It must be booked in the first</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={windowDays}
+                        placeholder="—"
+                        aria-label={`It must be booked in the first how many days of ${cycleNoun}`}
+                        onChange={(e) => setWindowDays(e.target.value)}
+                        style={{ width: 72 }}
+                      />
+                      <span>days of {cycleNoun}.</span>
+                    </div>
+                  </div>
                   <div className="tiny muted" style={{ marginTop: -6, marginBottom: 12 }}>
                     {bookWithin
-                      ? `You'll be asked at the start of each period, and a booking counts for ${windowNum} ${windowNum === 1 ? 'day' : 'days'} — after that the period goes unbooked.`
-                      : 'Leave it blank and a booking anywhere in the period counts.'}
+                      ? `Leave it blank and any day counts. Set to ${windowNum}, a booking later than that leaves ${cycleNoun.replace(/^each |^every /, '')} unbooked.`
+                      : `Leave it blank and any day in ${cycleNoun.replace(/^each /, 'the ')} counts — most rhythms want that.`}
                   </div>
                 </>
               )}

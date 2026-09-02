@@ -212,7 +212,7 @@ struct RhythmsTodayCard: View {
                 // Skipping is the quiet way out of a period; tucked in a menu so the booking
                 // action stays the obvious one.
                 Menu {
-                    Button("Skip this period") {
+                    Button("Mark handled") {
                         run(item.rhythm.id) { try await model.skipPeriod(item) }
                     }
                 } label: {

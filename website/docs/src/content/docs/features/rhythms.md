@@ -204,8 +204,8 @@ you'd have to open to make sense of.
 Every row is anchored by a **countdown** on the right — *6 days late*, *5 days*, *3 months*,
 or **Booked · Aug 19, 6:00 PM** in green once a scheduled period has an event, so you can see
 *when* without opening the calendar. (An all-day booking gives its date and no time, because
-it hasn't got one.) A period you skipped reads **Skipped** instead — skipping exists to send
-one period quiet without inventing a calendar entry, so it never claims one. Under the name,
+it hasn't got one.) A period you settled by hand reads **Handled** instead — that action
+exists to send one period quiet without inventing a calendar entry, so it never claims one. Under the name,
 a hairline shows how much of the current cycle is already spent. Rows are ordered soonest-first inside
 each group, so the top of the page is always the thing most worth your attention.
 
@@ -213,7 +213,7 @@ You won't see the two shapes named anywhere on this page, and that's deliberate 
 difference shows up where it changes what you'd do. An I-mark-it-done rhythm reads *"last done
 Aug 19"* and offers **I did it**; a scheduled one reads *"not on the calendar yet"* and
 offers **Book a time**. Steady rows offer no button at all; everything else — backdating,
-skipping, pushing it out a week, editing and pausing — lives in the row's **⋯** menu.
+marking one handled, pushing it out a week, editing and pausing — lives in the row's **⋯** menu.
 **Push it out a week** only appears while a rhythm is actually asking — on a Steady row
 there is nothing to push away from, and a control that does nothing you can feel just teaches
 you the menu is noise.
@@ -254,7 +254,7 @@ primary button on every row would make none of them mean anything; the filled bu
 kept for what is actually late, or a booking window with a day left in it.
 
 Each row gets the verb its shape deserves: an I-mark-it-done rhythm offers **I did it**, a
-scheduled one offers **Book** — with **Skip** beside it on the web and in the row's **⋯**
+scheduled one offers **Book** — with **Mark handled** beside it on the web and in the row's **⋯**
 menu on iPhone and iPad, where there isn't width for two. There is no "done" on a scheduled
 rhythm, because that isn't a question rhythms ask.
 
@@ -314,11 +314,17 @@ rhythm you set to every 3 months that really runs at five is the cadence telling
 wrong, and worth changing to what actually happens. The average needs at least two
 completions, because one date isn't an interval.
 
-### Skipping a period
+### Marking a period handled
 
-Sometimes a period genuinely isn't happening — you're away, the quarter got eaten. **Skip**
-sends that period quiet without inventing a calendar entry for something that isn't going to
-take place. Only that one period is skipped; the next one comes round as normal.
+Not everything ends up on the calendar. Sometimes you sorted it another way; sometimes the
+period genuinely isn't happening — you're away, the quarter got eaten. **Mark handled** sends
+that one period quiet without inventing a calendar entry for it either way.
+
+It's deliberately vague about whether the thing *happened*, because a scheduled rhythm never
+asks that — it would be claiming an answer Waffled doesn't have. So it records no completion
+and adds nothing to any history; it just settles the period. Only that one; the next comes
+round as normal. (It was called **Skip**, which named only the second reason and hid the
+commoner one.)
 
 ### Pushing one out a week
 
@@ -339,7 +345,7 @@ count from the day you actually did it, so the push is forgotten rather than com
 
 It's offered only while the rhythm is actually asking — *Needs you now* or *Coming up* —
 because there's nothing to defer on a Steady row. It's for the I-mark-it-done shape only: a
-scheduled rhythm's periods *are* its anchor, so **Skip** is that shape's version of this.
+scheduled rhythm's periods *are* its anchor, so **Mark handled** is that shape's version of this.
 
 ### Pausing vs retiring
 
@@ -372,7 +378,7 @@ The **regrouped register** described above — Needs you now / Coming up / Stead
 What differs is mostly room rather than features. On the web a row's verb lives in a column
 at the right; on iPhone and iPad it sits on its own line beneath the row, because a title, a
 countdown and a verb don't fit across one phone line. For the same reason the Today card's
-**Skip** is a button beside **Book** on the web and an item in the row's **⋯** menu on the
+**Handled** is a button beside **Book** on the web and an item in the row's **⋯** menu on the
 phone, and that card shows its first four rows there with a **+N more** line rather than the
 full list.
 

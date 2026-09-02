@@ -352,7 +352,9 @@ struct RhythmsView: View {
                 // the two answers and the one you can't take back, so it doesn't get to
                 // sit at thumb height next to the one you meant to press.
                 Button { run(r.id) { try await model.skipPeriod(item) } } label: {
-                    Label("Skip this period", systemImage: "forward.end")
+                    // checkmark rather than the skip-forward chevron: the period ends up
+                    // settled either way, and the old glyph read as "push this aside".
+                    Label("Mark handled", systemImage: "checkmark.circle")
                 }
             }
             Button { editing = r } label: { Label("Edit", systemImage: "pencil") }

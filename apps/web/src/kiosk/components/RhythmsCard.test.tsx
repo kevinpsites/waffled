@@ -177,7 +177,7 @@ describe('RhythmsCard', () => {
   it('skips a period without inventing a calendar entry for it', async () => {
     mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01', hasSeries: false }])
     render()
-    fireEvent.click(await screen.findByRole('button', { name: /skip this period for temple visit/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /mark this period handled for temple visit/i }))
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/api/rhythms/r-temple/skip'))).toBe(true))
     expect(calls.find((c) => c.url.endsWith('/api/rhythms/r-temple/skip'))!.body).toEqual({ periodStart: '2026-07-01' })
   })
@@ -254,6 +254,6 @@ describe('RhythmsCard', () => {
     // one thing here you cannot otherwise do without leaving Today.
     mockAttention([{ kind: 'unscheduled', rhythm: temple, periodStart: '2026-07-01', periodEnd: '2026-10-01', hasSeries: false }], ten)
     render()
-    expect(await screen.findByRole('button', { name: /skip this period for temple visit/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /mark this period handled for temple visit/i })).toBeInTheDocument()
   })
 })

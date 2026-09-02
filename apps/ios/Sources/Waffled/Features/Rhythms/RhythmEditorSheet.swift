@@ -91,12 +91,22 @@ struct RhythmEditorSheet: View {
             set: { form.windowDays = Int($0.filter(\.isNumber)).flatMap { $0 > 0 ? $0 : nil } })
     }
 
+    /// "each month" / "every 2 weeks" — the sentence above reads as the rhythm being
+    /// described rather than as a setting, so it names the cadence just chosen instead of
+    /// falling back on "period", which was fairly answered with "what period?".
+    private var cycleNoun: String {
+        let n = max(1, form.count)
+        return n == 1
+            ? "each \(form.unit.rawValue.replacingOccurrences(of: "s", with: "", options: .backwards, range: nil))"
+            : "every \(n) \(form.unit.rawValue)"
+    }
+
     private var windowExplainer: String {
         guard let d = form.windowDays, d > 0 else {
-            return "Leave it blank and a booking anywhere in the period counts."
+            return "Leave it blank and any day in \(cycleNoun.replacingOccurrences(of: "each ", with: "the ")) counts — most rhythms want that."
         }
-        return "You’ll be asked at the start of each period, and a booking counts for "
-            + "\(d) \(d == 1 ? "day" : "days") — after that the period goes unbooked."
+        return "Leave it blank and any day counts. Set to \(d), a booking later than that leaves "
+            + "\(cycleNoun.replacingOccurrences(of: "each ", with: "").replacingOccurrences(of: "every ", with: "")) unbooked."
     }
 
     var body: some View {
@@ -487,13 +497,25 @@ struct RhythmEditorSheet: View {
         // Hidden when the rhythm books itself: the rule already decides which day inside
         // the period, so there is nothing left to pick, and the server refuses the pair.
         if form.shape == .scheduling, !form.autoSchedule {
-            WaffledFieldCard(title: "Only the first … days of each period count") {
+            // Said as a sentence, like the rest of this form. The title used to read "Only
+            // the first … days of each period count", which stated the rule inside-out and
+            // leaned on a word ("period") the form never taught.
+            WaffledFieldCard(title: "Deadline inside each cycle") {
                 VStack(alignment: .leading, spacing: 8) {
-                    TextField("the whole period", text: windowBinding)
-                        .keyboardType(.numberPad)
-                        .font(.system(size: 15))
-                        .padding(.horizontal, 12).padding(.vertical, 11)
-                        .wfField(radius: WF.rSM, fill: WF.panel)
+                    HStack(spacing: 8) {
+                        Text("It must be booked in the first")
+                            .font(.system(size: 15, weight: .semibold))
+                        TextField("—", text: windowBinding)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.center)
+                            .font(.system(size: 15, weight: .semibold))
+                            .frame(width: 56)
+                            .padding(.vertical, 9)
+                            .wfField(radius: WF.rSM, fill: WF.panel)
+                        Text("days of \(cycleNoun).")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
                     Text(windowExplainer)
                         .font(.system(size: 12)).foregroundStyle(WF.ink3)
                         .fixedSize(horizontal: false, vertical: true)
