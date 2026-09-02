@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resetting to "1 of 5". The count now rolls over with the habit's own period (day / week
   / month), the ring says which window it covers ("of 5 this week"), and the Log sheet
   shows where the cadence stands. The web app was already correct.
+- **A weekly habit now resets on your household's own start-of-week day.** Habit periods
+  were cut on Monday no matter what **Settings → Family & People → Week starts on** said —
+  and that setting defaults to Sunday, so for most households Sunday's completion counted
+  toward the week that was ending instead of the one beginning. Weekly habits (and the
+  goal detail's "this week" total, which also ignored your timezone) now use the same
+  week as the meal planner, the calendar and the goal heatmaps. Existing history re-reads
+  itself against the new boundary — nothing to migrate, and changing the setting later
+  fixes past weeks too.
 - **iPhone/iPad now say when a habit is already done for today.** A habit counts once
   per day per person, and the server has always quietly dropped a second tap — but iOS
   gave no sign, so "Mark done for today" looked like it worked and did nothing. The
