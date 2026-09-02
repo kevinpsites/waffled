@@ -385,6 +385,17 @@ describe('Lists screen', () => {
     // and a checked item matches too, without having to open Completed first
     fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'pjs' } })
     await waitFor(() => expect(screen.getByText('PJs & socks')).toBeInTheDocument())
+
+    // clicking the force-opened Completed header while searching must not quietly
+    // rewrite the state the user gets back afterwards
+    fireEvent.click(screen.getByRole('button', { name: /Completed/i }))
+
+    // clearing puts both back the way the user left them: Clothes collapsed again,
+    // Completed tucked away again
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+    await waitFor(() => expect(screen.queryByText('Swimsuits')).toBeNull())
+    expect(screen.getByText('Sunscreen')).toBeInTheDocument()
+    expect(screen.queryByText('PJs & socks')).toBeNull()
   })
 
   it('says nothing matched when the search comes up empty', async () => {

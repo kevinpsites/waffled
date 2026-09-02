@@ -1078,7 +1078,12 @@ export function Lists() {
                       role="button"
                       tabIndex={0}
                       aria-expanded={doneOpen}
-                      onClick={() => setShowDone((v) => !v)}
+                      aria-disabled={searching}
+                      // Inert while searching: the search forces this group open, so a
+                      // click here would flip a state with no visible effect — and the
+                      // user would find Completed mysteriously re-collapsed (or opened)
+                      // once they cleared the search.
+                      onClick={() => { if (!searching) setShowDone((v) => !v) }}
                     >
                       <span className={`cal-chev ${doneOpen ? 'open' : ''}`} aria-hidden>›</span>
                       <span>Completed</span>
