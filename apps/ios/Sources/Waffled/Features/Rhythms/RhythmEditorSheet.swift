@@ -79,6 +79,36 @@ struct RhythmEditorSheet: View {
         Binding(get: { form.firstDue() }, set: { form.nextDue = $0 })
     }
 
+    /// The booking window as editable text.
+    ///
+    /// Text rather than an Int binding because "no window" has to be expressible: an
+    /// empty field means the whole period counts, which is what `every` meant on its own
+    /// and what every rhythm made before the column has. A number binding would have to
+    /// pick some sentinel for that, and zero reads as "no days count at all".
+    private var windowBinding: Binding<String> {
+        Binding(
+            get: { form.windowDays.map(String.init) ?? "" },
+            set: { form.windowDays = Int($0.filter(\.isNumber)).flatMap { $0 > 0 ? $0 : nil } })
+    }
+
+    /// "each month" / "every 2 weeks" — the sentence above reads as the rhythm being
+    /// described rather than as a setting, so it names the cadence just chosen instead of
+    /// falling back on "period", which was fairly answered with "what period?".
+    private var cycleNoun: String {
+        let n = max(1, form.count)
+        return n == 1
+            ? "each \(form.unit.rawValue.replacingOccurrences(of: "s", with: "", options: .backwards, range: nil))"
+            : "every \(n) \(form.unit.rawValue)"
+    }
+
+    private var windowExplainer: String {
+        guard let d = form.windowDays, d > 0 else {
+            return "Leave it blank and any day in \(cycleNoun.replacingOccurrences(of: "each ", with: "the ")) counts — most rhythms want that."
+        }
+        return "Leave it blank and any day counts. Set to \(d), a booking later than that leaves "
+            + "\(cycleNoun.replacingOccurrences(of: "each ", with: "").replacingOccurrences(of: "every ", with: "")) unbooked."
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -248,7 +278,8 @@ struct RhythmEditorSheet: View {
     @ViewBuilder private var consequence: some View {
         let anchor = form.shape == .scheduling ? form.startsOn : form.firstDue()
         if let plan = RhythmFormat.consequence(shape: form.shape, every: form.every,
-                                               leadDays: form.effectiveLeadDays, anchor: anchor) {
+                                               leadDays: form.effectiveLeadDays, anchor: anchor,
+                                               bookWithin: form.bookWithinInterval) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: form.shape == .completion ? "checkmark.circle.fill" : "calendar")
                     .font(.system(size: 15, weight: .bold))
@@ -258,7 +289,9 @@ struct RhythmEditorSheet: View {
                     promise(plan)
                         .font(.system(size: 13.5)).foregroundStyle(WF.ink)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let cap = RhythmFormat.capNote(every: form.every, leadDays: form.effectiveLeadDays) {
+                    if let cap = RhythmFormat.capNote(every: form.every, leadDays: form.effectiveLeadDays,
+                                                      satisfiedBy: form.shape,
+                                                      bookWithin: form.bookWithinInterval) {
                         Text(cap).font(.system(size: 12)).foregroundStyle(WF.ink3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -406,8 +439,9 @@ struct RhythmEditorSheet: View {
                 // period", which was reasonably read as "what period? I'm scheduling it
                 // every week".
                 Text(form.shape == .completion
-                     ? "Capped at half the cadence — a runway longer than the cycle never closes, so it would never go quiet."
-                     : RhythmFormat.nudgeExplainer(every: form.every, leadDays: form.effectiveLeadDays))
+                     ? "Capped at half the cadence — a rhythm you mark done keeps asking however late it is, so a longer runway would never let it go quiet."
+                     : RhythmFormat.nudgeExplainer(every: form.every, leadDays: form.effectiveLeadDays,
+                                                   bookWithin: form.bookWithinInterval))
                     .font(.system(size: 12)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -449,6 +483,42 @@ struct RhythmEditorSheet: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
+                }
+            }
+        }
+
+        // The booking window — the one part of WHEN that is editable in place, so unlike
+        // the anchor block above it is not gated on `isNew`. The cadence and the anchor
+        // ARE the period grid: moving either re-reads every boundary, so skips (keyed on
+        // period_start) stop matching and bookings get re-attributed. A window moves no
+        // boundary and re-keys no skip — narrowing one can put a period back to asking,
+        // which is visible and undone by widening it again.
+        //
+        // Hidden when the rhythm books itself: the rule already decides which day inside
+        // the period, so there is nothing left to pick, and the server refuses the pair.
+        if form.shape == .scheduling, !form.autoSchedule {
+            // Said as a sentence, like the rest of this form. The title used to read "Only
+            // the first … days of each period count", which stated the rule inside-out and
+            // leaned on a word ("period") the form never taught.
+            WaffledFieldCard(title: "Deadline inside each cycle") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text("It must be booked in the first")
+                            .font(.system(size: 15, weight: .semibold))
+                        TextField("—", text: windowBinding)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.center)
+                            .font(.system(size: 15, weight: .semibold))
+                            .frame(width: 56)
+                            .padding(.vertical, 9)
+                            .wfField(radius: WF.rSM, fill: WF.panel)
+                        Text("days of \(cycleNoun).")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    Text(windowExplainer)
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

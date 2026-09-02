@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { api, usePersons, useGoals, goalsApi, goalCalendarApi, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink, type GoalStep } from '../../lib/api'
+import { api, usePersons, useGoals, useRhythms, goalsApi, goalCalendarApi, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink, type GoalStep } from '../../lib/api'
 import { suggestGoalForEvent } from '../../lib/goal-match'
 import { Icon } from '../icons'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
@@ -97,6 +97,7 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?
       // prefill (e.g. "Link" on a suggestion) seeds the suggested goal.
       goalId: event.goalId ?? prefill?.goalId ?? '',
       goalStepId: event.goalStepId ?? prefill?.goalStepId ?? '',
+      rhythmId: event.rhythmId ?? '',
     }
   }
   return {
@@ -110,6 +111,7 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?
     location: '',
     goalId: prefill?.goalId ?? '',
     goalStepId: prefill?.goalStepId ?? '',
+    rhythmId: '',
   }
 }
 
@@ -133,6 +135,14 @@ export function EventModal({
   const editing = !!event
   const navigate = useNavigate()
   const { persons } = usePersons()
+  // Rhythms this event can settle. Scheduling-shape only: a completion rhythm closes its
+  // period on "I did it", so an event pointing at one would satisfy nothing. Retired and
+  // paused ones are left out for the same reason a picker never offers a dead end.
+  // useRhythms swallows the 403 the module gate returns when rhythms are switched off, so
+  // this is simply empty there and the picker never renders.
+  const { rhythms } = useRhythms()
+  const linkableRhythms = rhythms.filter((r) => r.satisfiedBy === 'scheduling' && r.isActive)
+
   // Goals that opted into calendar auto-counting (the "Counts toward" picker).
   // total/count/habit add an amount; a checklist instead ticks a chosen step.
   const { goals } = useGoals()
@@ -228,6 +238,7 @@ export function EventModal({
     !sameIds(form.participantIds, originalParticipantIds) ||
     form.goalId !== (event.goalId ?? '') ||
     form.goalStepId !== (event.goalStepId ?? '') ||
+    form.rhythmId !== (event.rhythmId ?? '') ||
     rrule !== originalRrule ||
     !sameInstant(recurrenceEndAt, originalRecurrenceEndAt)
   )
@@ -476,6 +487,10 @@ export function EventModal({
       goalId: form.goalId || null,
       // Only a checklist link carries a step; clear it otherwise.
       goalStepId: isChecklistGoal ? form.goalStepId || null : null,
+      // Always sent, null included. Both write paths treat an ABSENT rhythm_id as "leave
+      // it alone" — deliberately, so an older client can't blank a link it doesn't know
+      // about — which makes an explicit null the only way to unlink.
+      rhythmId: form.rhythmId || null,
     }
     const { personIds, ...eventDraft } = draft
     const restPayload = { ...eventDraft, participantIds: personIds }
@@ -955,6 +970,30 @@ export function EventModal({
                   <option key={s.id} value={s.id}>
                     {s.done ? '✓ ' : ''}
                     {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {/* Rhythm ← event: the reverse of booking. A rhythm is settled by an event
+              landing in its period, and plenty of them get onto the calendar the ordinary
+              way — someone plans the family outing in the Calendar screen, not from the
+              register. Without this the rhythm went on asking to book the outing that was
+              already there. */}
+          {linkableRhythms.length > 0 && (
+            <label className="field">
+              <span>Keeps a rhythm (optional)</span>
+              <select
+                value={form.rhythmId}
+                onChange={(e) => set('rhythmId', e.target.value)}
+                style={{ width: '100%' }}
+              >
+                <option value="">No rhythm</option>
+                {linkableRhythms.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.emoji ? `${r.emoji} ` : ''}
+                    {r.title}
                   </option>
                 ))}
               </select>

@@ -12,10 +12,15 @@ function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-// The last day still inside the period — periodEnd is the exclusive next boundary,
-// so a booking on that date lands in the NEXT period and satisfies the wrong one.
-function lastDayOfPeriod(periodEnd: string): string {
-  const d = new Date(`${periodEnd}T00:00:00`)
+// The last day a booking still counts — `windowEnd` is the exclusive boundary, so a
+// booking on that date settles nothing this period was asking for.
+//
+// It is the WINDOW's end, not the period's. Most rhythms have no window and the two are
+// the same date; a rhythm that does ("date night, in the first week") has a period that
+// runs on for weeks after it stops accepting bookings, and offering those days would take
+// a booking and leave the card still asking.
+function lastBookableDay(windowEnd: string): string {
+  const d = new Date(`${windowEnd}T00:00:00`)
   d.setDate(d.getDate() - 1)
   return ymd(d)
 }
@@ -69,12 +74,12 @@ export function BookRhythmModal({
   onClose: () => void
   onBooked?: () => void
 }) {
-  const { rhythm, periodStart, periodEnd } = item
+  const { rhythm, periodStart, windowEnd } = item
   // Only when there is no recurrence left. Booking a period whose series is alive adds
   // one event to that period; the server refuses to clone the rule a second time, and the
   // copy here must not promise otherwise.
   const series = rhythm.autoSchedule && !item.hasSeries
-  const last = lastDayOfPeriod(periodEnd)
+  const last = lastBookableDay(windowEnd)
   const today = ymd(new Date())
   // Default to today when today is inside the period (the common case — the runway
   // only opens near the end), otherwise the first day it could go.

@@ -134,6 +134,12 @@ export function RhythmModal({
   const [startsOn, setStartsOn] = useState(today)
   const [autoSchedule, setAutoSchedule] = useState(false)
   const [monthlyMode, setMonthlyMode] = useState<MonthlyMode>('day')
+  // How many days from the start of each period a booking still counts. Empty string is
+  // the default and means the whole period — which is what `every` meant on its own, so
+  // an untouched form creates exactly what it used to.
+  const [windowDays, setWindowDays] = useState(
+    editing && rhythm?.bookWithin ? String(intervalDays(rhythm.bookWithin)) : ''
+  )
   const [customRule, setCustomRule] = useState('')
   const [modeOpen, setModeOpen] = useState(false)
   const [advanced, setAdvanced] = useState(false)
@@ -146,6 +152,20 @@ export function RhythmModal({
 
   const n = Math.max(1, Math.round(Number(count) || 1))
   const every = `${n} ${unit}`
+
+  // A window and "put it on the calendar automatically" answer the same question — when
+  // inside the period does this happen — and the rule wins, because it is what creates
+  // the event. The server refuses the pair; the form simply stops offering it.
+  // "each month" / "each week" / "every 2 weeks" — the sentence below reads as the rhythm
+  // being described rather than as a setting, so it has to name the cadence the person
+  // just chose instead of falling back on "period", which was fairly answered with "what
+  // period? I'm scheduling it every week."
+  const cycleNoun = n === 1 ? `each ${unit.replace(/s$/, '')}` : `every ${n} ${unit}`
+
+  const booksItself = editing ? !!rhythm?.autoSchedule : autoSchedule
+  const windowNum = Math.max(0, Math.round(Number(windowDays) || 0))
+  const showWindow = shape === 'scheduling' && !booksItself
+  const bookWithin = showWindow && windowNum > 0 ? `${windowNum} days` : null
 
   // A fixed 14-day default runway is wrong for most cadences: on anything up to a
   // fortnight the server trims it to half the cycle, so an untouched form would open
@@ -160,9 +180,36 @@ export function RhythmModal({
   // field under More options — adding something you're already behind on is a real
   // case — but it follows the cadence until it's actually touched.
   const firstDue = nextDue ?? ymd(addCadence(new Date(), every))
-  const anchor = shape === 'scheduling' ? startsOn : firstDue
+
+  // "The third Saturday of the month" asks `startsOn` to do two jobs that disagree.
+  //
+  // It anchors the period grid — boundaries are startsOn + n × every — and it is also
+  // where the rule reads its ordinal from. Anchored on a third Saturday, the periods run
+  // 19th to 19th while third Saturdays wander over the 15th to the 21st: [Sep 19, Oct 19)
+  // holds two of them and [Oct 19, Nov 19) holds none. A period with nothing in it can
+  // never be satisfied, so the register asks you to book it while the series sits on the
+  // calendar in plain sight, and it asks forever. (The server refuses this outright now;
+  // this is what keeps the friendly path from building it in the first place.)
+  //
+  // So the two jobs are split: the grid anchors on the first of the month, which makes
+  // every period a calendar month and every calendar month hold exactly one of any nth
+  // weekday, while the rule keeps reading its ordinal off the date actually picked.
+  const monthlyNthWeekday = shape === 'scheduling' && autoSchedule && unit === 'months' && monthlyMode !== 'day'
+  const periodAnchor = monthlyNthWeekday ? `${startsOn.slice(0, 7)}-01` : startsOn
+
+  // The runway to send.
+  //
+  // A day count is exact for days and weeks and wrong for anything longer: "30 days" is a
+  // month only in a 30-day month, so a monthly rhythm asked to open on the 1st opened on
+  // the 2nd in a 31-day one and a day early in February. When the ask covers the whole
+  // cycle, send the cadence itself and let Postgres do real calendar arithmetic — that is
+  // what makes "from the first day of each period" land on the first day of every period.
+  const wantsWholeCycle = shape === 'scheduling' && !bookWithin && leadNum >= intervalDays(every)
+  const leadTimeToSend = wantsWholeCycle ? every : `${leadNum} days`
+
+  const anchor = shape === 'scheduling' ? periodAnchor : firstDue
   const plan = consequence({ satisfiedBy: shape, every, leadDays: leadNum, anchor })
-  const clamp = nudgePlan(every, leadNum)
+  const clamp = nudgePlan(every, leadNum, shape, bookWithin)
 
   // The rule is DERIVED from the cadence rather than asked for again: an rrule that
   // disagrees with `every` would put the generated event outside the period it is
@@ -198,7 +245,11 @@ export function RhythmModal({
           notes: notes.trim() || null,
           personId: personId || null,
           every,
-          leadTime: `${leadNum} days`,
+          leadTime: leadTimeToSend,
+          // Sent as an explicit null when cleared: an absent key means "leave it alone",
+          // so widening back to the whole period has to be stated. Only for the shape
+          // that can carry one at all.
+          ...(shape === 'scheduling' && !booksItself ? { bookWithin } : {}),
         })
         onSaved?.()
         onClose()
@@ -211,12 +262,17 @@ export function RhythmModal({
         personId: personId || null,
         satisfiedBy: shape,
         every,
-        leadTime: `${leadNum} days`,
+        leadTime: leadTimeToSend,
         // A completion rhythm has no period grid and a scheduling one has no due
         // date; the server's shape constraint rejects a row carrying both.
         ...(shape === 'completion'
           ? { nextDueAt: new Date(`${firstDue}T09:00`).toISOString() }
-          : { startsOn, autoSchedule, rrule: autoSchedule ? rrule : null }),
+          : {
+              startsOn: periodAnchor,
+              autoSchedule,
+              rrule: autoSchedule ? rrule : null,
+              ...(bookWithin ? { bookWithin } : {}),
+            }),
       })
       onSaved?.()
       onClose()
@@ -386,7 +442,7 @@ export function RhythmModal({
                 )}
                 {plan.capped && (
                   <div className="rhy-conseq-cap">
-                    {`${leadNum} days' notice won't fit in ${cadenceLabel(every).replace(/^every /, 'a ')}, so it's trimmed to ${clamp.effectiveDays} — a runway longer than the cycle never goes quiet.`}
+                    {`${leadNum} days' notice won't fit in ${bookWithin ? 'that booking window' : cadenceLabel(every).replace(/^every /, 'a ')}, so it's trimmed to ${clamp.effectiveDays} — a runway longer than the stretch it belongs to never goes quiet.`}
                   </div>
                 )}
               </div>
@@ -450,8 +506,8 @@ export function RhythmModal({
                   quietly gets 3, and nothing said so. */}
               <div className="tiny muted" style={{ marginTop: -6, marginBottom: 12 }}>
                 {shape === 'completion'
-                  ? 'Capped at half the cadence — a runway longer than the cycle never closes, so it would never go quiet.'
-                  : nudgeExplainer(every, leadNum)}
+                  ? 'Capped at half the cadence — a rhythm you mark done keeps asking however late it is, so a longer runway would never let it go quiet.'
+                  : nudgeExplainer(every, leadNum, bookWithin)}
               </div>
 
               {/* The anchors are create-only: see the note at the top of this file. */}
@@ -512,6 +568,12 @@ export function RhythmModal({
                           </select>
                         </label>
                       )}
+                      {monthlyNthWeekday && (
+                        <div className="tiny muted" style={{ marginTop: -6, marginBottom: 10 }}>
+                          Periods run in calendar months so exactly one of these falls in each — the
+                          date above just picks which weekday it is.
+                        </div>
+                      )}
                       {/* Kept for imported rules and cadences the builder can't express, but
                           behind a disclosure and named exactly as it is on the calendar —
                           an RRULE text box is not a reasonable first thing to ask anyone. */}
@@ -531,6 +593,45 @@ export function RhythmModal({
                       When it happens is an open decision every period, so it'll ask you to pick a time.
                     </div>
                   )}
+                </>
+              )}
+
+              {/* The booking window — the one part of WHEN that is editable in place, so it
+                  sits outside the create-only anchor block above. The cadence and the
+                  anchor ARE the period grid, and moving either re-reads every boundary
+                  (skips stop matching, bookings get re-attributed). A window moves no
+                  boundary and re-keys no skip; narrowing one can put a period back to
+                  asking, which is visible and undone by widening it again.
+
+                  Not offered when the rhythm books itself: the rule already decides which
+                  day inside the period, so there is nothing left to pick, and the server
+                  refuses the pair. */}
+              {showWindow && (
+                <>
+                  {/* Said as a sentence, like the rest of this form. The label used to read
+                      "Only the first … days of each period count", which stated the rule
+                      inside-out and leaned on a word ("period") the form never taught. */}
+                  <div className="field">
+                    <span>Deadline inside each cycle</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontWeight: 600 }}>
+                      <span>It must be booked in the first</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={windowDays}
+                        placeholder="—"
+                        aria-label={`It must be booked in the first how many days of ${cycleNoun}`}
+                        onChange={(e) => setWindowDays(e.target.value)}
+                        style={{ width: 72 }}
+                      />
+                      <span>days of {cycleNoun}.</span>
+                    </div>
+                  </div>
+                  <div className="tiny muted" style={{ marginTop: -6, marginBottom: 12 }}>
+                    {bookWithin
+                      ? `Leave it blank and any day counts. Set to ${windowNum}, a booking later than that leaves ${cycleNoun.replace(/^each |^every /, '')} unbooked.`
+                      : `Leave it blank and any day in ${cycleNoun.replace(/^each /, 'the ')} counts — most rhythms want that.`}
+                  </div>
                 </>
               )}
 

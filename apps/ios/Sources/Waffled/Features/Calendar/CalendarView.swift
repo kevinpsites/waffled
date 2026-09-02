@@ -722,6 +722,14 @@ struct EventEditSheet: View {
     // stays until the person overrides the picker (mirrors the web's userTouchedGoal).
     @State private var autoLinkedId: String?
     @State private var userTouchedGoal = false
+    // Rhythm linking — the reverse of booking from the register. A scheduling rhythm is
+    // settled by an event landing in its period, and most of those get onto the calendar
+    // from here rather than from the rhythm. `originalRhythmId` is what decides whether a
+    // save touches the link at all: an edit that never opened this picker must leave the
+    // column out entirely, since a missing rhythm_id means "leave it alone" upstream.
+    @State private var rhythmId: String?
+    @State private var originalRhythmId: String?
+    @State private var linkableRhythms: [WaffledAPI.Rhythm] = []
     @FocusState private var titleFocused: Bool
 
     private static let iso = ISO8601DateFormatter()
@@ -754,6 +762,8 @@ struct EventEditSheet: View {
         _location = State(initialValue: event?.location ?? "")
         _goalId = State(initialValue: prefillGoalId)
         _goalStepId = State(initialValue: prefillGoalStepId)
+        _rhythmId = State(initialValue: event?.rhythmId)
+        _originalRhythmId = State(initialValue: event?.rhythmId)
     }
 
     private var editing: Bool { event != nil }
@@ -869,6 +879,7 @@ struct EventEditSheet: View {
                     }
 
                     goalSection
+                    rhythmSection
 
                     if showCalendarPicker {
                         group("Calendar") {
@@ -998,6 +1009,40 @@ struct EventEditSheet: View {
         }
     }
     private var selectedGoal: WaffledAPI.Goal? { eligibleGoals.first { $0.id == goalId } }
+
+    /// "Keeps a rhythm" — mirrors the web EventModal picker, and reuses the same menu
+    /// shape as "Counts toward" above so the two links read as siblings rather than as
+    /// two unrelated ideas.
+    @ViewBuilder private var rhythmSection: some View {
+        if !linkableRhythms.isEmpty {
+            group("Keeps a rhythm · optional") {
+                Menu {
+                    Button("No rhythm") { rhythmId = nil }
+                    ForEach(linkableRhythms) { r in
+                        Button(Self.rhythmLabel(r)) { rhythmId = r.id }
+                    }
+                } label: {
+                    HStack {
+                        Text(rhythmMenuLabel).font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(rhythmId == nil ? WF.ink3 : WF.ink).lineLimit(1)
+                        Spacer()
+                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+                    }
+                    .padding(.horizontal, 13).padding(.vertical, 11).innerField()
+                }
+            }
+        }
+    }
+
+    private static func rhythmLabel(_ r: WaffledAPI.Rhythm) -> String {
+        if let e = r.emoji, !e.isEmpty { return e + " " + r.title }
+        return r.title
+    }
+
+    private var rhythmMenuLabel: String {
+        guard let id = rhythmId, let r = linkableRhythms.first(where: { $0.id == id }) else { return "No rhythm" }
+        return Self.rhythmLabel(r)
+    }
 
     @ViewBuilder private var goalSection: some View {
         let options = eligibleGoalsForAttendees
@@ -1170,6 +1215,13 @@ struct EventEditSheet: View {
         // Goals power the "Counts toward" picker on both create and edit.
         if eligibleGoals.isEmpty {
             eligibleGoals = (try? await WaffledAPI().goalsIn(listId: nil)) ?? []
+        }
+        // Scheduling-shape rhythms only: a completion rhythm closes its period on "I did
+        // it", so an event pointing at one would settle nothing. The call 403s when the
+        // rhythms module is off, which leaves this empty and hides the picker.
+        if linkableRhythms.isEmpty {
+            linkableRhythms = ((try? await WaffledAPI().rhythms()) ?? [])
+                .filter { $0.satisfiedBy == .scheduling && $0.isActive }
         }
         // The local mirror doesn't carry the rule; load it from the master so the
         // "Repeats" picker reflects the current cadence when editing a recurring event.
@@ -1491,6 +1543,14 @@ struct EventEditSheet: View {
         if mode == .delete { performDelete(scope: scope) } else { performSave(scope: scope) }
     }
 
+    /// Whether this save should say anything about the rhythm link.
+    ///
+    /// Only when it actually changed. Every write path treats an absent rhythm_id as
+    /// "leave it alone" — deliberately, so a client that predates the picker can't blank
+    /// a link by omission — which means an unchanged link must stay off the wire, and an
+    /// unlink has to be stated as a null rather than inferred from a missing value.
+    private var rhythmLinkChanged: Bool { rhythmId != originalRhythmId }
+
     private func performSave(scope: String?) {
         let d = buildDraft()
         let tz = sync.householdTz.identifier
@@ -1505,6 +1565,8 @@ struct EventEditSheet: View {
                             id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
                             allDay: allDay, location: d.loc, personIds: d.ids,
                             goalId: goalId, goalStepId: goalStepId,
+                            rhythmId: rhythmLinkChanged ? rhythmId : nil,
+                            clearRhythmId: rhythmLinkChanged && rhythmId == nil,
                             rrule: appliesToSeries ? d.rrule : nil,
                             clearRrule: appliesToSeries && d.rrule == nil,
                             recurrenceEndAt: appliesToSeries ? d.recurrenceEndAt : nil,
@@ -1517,15 +1579,21 @@ struct EventEditSheet: View {
                         try await WaffledAPI().updateEvent(
                             id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
                             allDay: allDay, location: d.loc, personIds: d.ids,
-                            goalId: goalId, goalStepId: goalStepId, rrule: rrule,
+                            goalId: goalId, goalStepId: goalStepId,
+                            rhythmId: rhythmLinkChanged ? rhythmId : nil,
+                            clearRhythmId: rhythmLinkChanged && rhythmId == nil,
+                            rrule: rrule,
                             recurrenceEndAt: d.recurrenceEndAt, isCountdown: isCountdown)
                         sync.touchGoals()
-                    } else if goalId != nil || prefillGoalId != nil {
-                        // A goal link was set, changed, or removed → PATCH the rich REST
-                        // route (the local mirror has no goal columns); PowerSync re-syncs.
+                    } else if goalId != nil || prefillGoalId != nil || rhythmLinkChanged {
+                        // A goal or rhythm link was set, changed, or removed → PATCH the
+                        // rich REST route (the local mirror has no goal columns, and an
+                        // unlink has to carry an explicit null); PowerSync re-syncs.
                         try await WaffledAPI().updateEvent(
                             id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
                             allDay: allDay, location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId,
+                            rhythmId: rhythmLinkChanged ? rhythmId : nil,
+                            clearRhythmId: rhythmLinkChanged && rhythmId == nil,
                             isCountdown: isCountdown)
                         sync.touchGoals()
                     } else {

@@ -163,7 +163,7 @@ struct RhythmsTodayCard: View {
     /// window with a day left in it.
     private func urgent(_ item: WaffledAPI.RhythmAttentionItem) -> Bool {
         if overdue(item) { return true }
-        guard item.kind == .unscheduled, let end = item.periodEnd,
+        guard item.kind == .unscheduled, let end = item.bookableUntil,
               let date = RhythmFormat.moment(end, Cal.current) else { return false }
         return RhythmFormat.dayDiff(date, Date(), Cal.current) <= 1
     }
@@ -212,7 +212,7 @@ struct RhythmsTodayCard: View {
                 // Skipping is the quiet way out of a period; tucked in a menu so the booking
                 // action stays the obvious one.
                 Menu {
-                    Button("Skip this period") {
+                    Button("Mark handled") {
                         run(item.rhythm.id) { try await model.skipPeriod(item) }
                     }
                 } label: {

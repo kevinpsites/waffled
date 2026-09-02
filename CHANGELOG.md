@@ -15,6 +15,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A rhythm can now ask for a booking window narrower than its cadence.** "Date night,
+  in the first week of the month" used to be unsayable: a rhythm's cadence was both how
+  often it should happen and how wide a span a booking could land in, and the nudge could
+  only be set counting backwards from the end of the period. You can now say that only
+  the first N days of each period count — Waffled asks you at the start of the window,
+  the date picker offers only the days that settle the period, and a booking later in the
+  month leaves it still asking. Leave it blank and a booking anywhere in the period
+  counts, exactly as before.
+- **A rhythm that's on the calendar can now nudge you from the first day of its period.**
+  Some things need *planning* rather than a fixed slot — "remind me at the start of the
+  month to sort out a family outing, and I'll book it for whenever suits." That couldn't be
+  asked for: the reminder counted backwards from the end of the period and was capped at
+  half the cadence, so a monthly rhythm could never speak up before the 16th. You can now
+  ask to be nudged for the whole cycle. Rhythms you mark done are unchanged — they keep
+  asking however late they are, so they'd never go quiet with a runway that long.
+- **Calendar events you booked yourself can now be tied to a rhythm.** Plenty of family
+  outings get planned in the Calendar screen rather than from the rhythms register, and
+  the rhythm went on asking you to book the thing already sitting on the calendar. The
+  event editor on both phone and web now has a "Keeps a rhythm" picker, so an event you
+  made any other way can settle the period it belongs to.
 - **A privacy policy and terms of service on waffled.app.** Two new pages —
   [waffled.app/privacy](https://waffled.app/privacy) and
   [waffled.app/terms](https://waffled.app/terms) — spelling out what a self-hosted install
@@ -25,8 +45,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **"Skip a period" is now "Mark handled".** The button always settled the period without
+  putting anything on the calendar — but it was named for only one reason you'd press it
+  ("this one isn't happening") and hid the commoner one ("it's sorted, just not as a
+  calendar entry"). Same action, same result, clearer name; a settled period now reads
+  *handled without a booking* rather than *skipped this one*. It still records nothing
+  about whether the thing actually happened, because a scheduled rhythm never asks that.
+- **The booking-window field asks its question as a sentence.** It read "Only the first …
+  days of each period count", which stated the rule inside-out and leaned on a word the
+  form never explains. It now reads *"It must be booked in the first ⟨7⟩ days of each
+  month"*, naming the cadence you just chose.
+
 ### Fixed
 
+- **A "third Saturday of the month" rhythm no longer nags forever.** Anchored on a date
+  after the 15th, its periods and its repeating event drifted apart — some months ended
+  up with two of the bookings and others with none, and a month with none could never be
+  settled, so it asked to be booked while the outing sat right there on the calendar.
+  Both apps now line these rhythms up with calendar months automatically, and the server
+  refuses a repeat rule that would skip a period, explaining how to fix it.
 - **Habit goals on iPhone/iPad now count the current week, not every log you have ever
   made.** A "5× a week" habit was showing its lifetime completions on the iOS goal cards,
   hero and detail — log once last week and once this week and it read "2 of 5" instead of

@@ -3656,6 +3656,7 @@ struct WaffledAPI: Sendable {
     /// Returns the new event id; PowerSync down-syncs it for display.
     func createEvent(title: String, startsAtISO: String, endsAtISO: String?, allDay: Bool,
                      location: String?, personIds: [String], goalId: String?, goalStepId: String?,
+                     rhythmId: String? = nil,
                      calendarId: String?, timezone: String?, rrule: String? = nil,
                      recurrenceEndAt: String? = nil, isCountdown: Bool = false) async throws -> String {
         var body: [String: JSONValue] = [
@@ -3670,6 +3671,7 @@ struct WaffledAPI: Sendable {
         if !personIds.isEmpty { body["participantIds"] = .array(personIds.map(JSONValue.string)) }
         if let g = goalId { body["goalId"] = .string(g) }
         if let s = goalStepId { body["goalStepId"] = .string(s) }
+        if let rh = rhythmId { body["rhythmId"] = .string(rh) }
         if let c = calendarId { body["calendarId"] = .string(c) }
         if let tz = timezone { body["timezone"] = .string(tz) }
         if let rr = rrule, !rr.isEmpty { body["rrule"] = .string(rr) }
@@ -3693,6 +3695,11 @@ struct WaffledAPI: Sendable {
         personIds: [String],
         goalId: String?,
         goalStepId: String?,
+        // Which rhythm this event settles. Absent means "leave it alone" — the upload
+        // sink coalesces a missing rhythm_id on purpose, so a client that predates the
+        // picker can't blank a link it never showed. Unlinking is therefore stated.
+        rhythmId: String? = nil,
+        clearRhythmId: Bool = false,
         rrule: String?,
         clearRrule: Bool,
         recurrenceEndAt: String?,
@@ -3719,6 +3726,8 @@ struct WaffledAPI: Sendable {
             body["goalId"] = goalId.map(JSONValue.string) ?? .null
             body["goalStepId"] = goalStepId.map(JSONValue.string) ?? .null
             body["isCountdown"] = .bool(isCountdown)
+            if let rh = rhythmId { body["rhythmId"] = .string(rh) }
+            else if clearRhythmId { body["rhythmId"] = .null }
             if let rr = rrule { body["rrule"] = .string(rr) }
             else if clearRrule { body["rrule"] = .null }
             if let end = recurrenceEndAt { body["recurrenceEndAt"] = .string(end) }
@@ -3730,6 +3739,7 @@ struct WaffledAPI: Sendable {
     func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
                      allDay: Bool, location: String?, personIds: [String],
                      goalId: String?, goalStepId: String?,
+                     rhythmId: String? = nil, clearRhythmId: Bool = false,
                      rrule: String? = nil, clearRrule: Bool = false, recurrenceEndAt: String? = nil,
                      clearRecurrenceEndAt: Bool = false,
                      scope: String? = nil, occurrenceStart: String? = nil, isCountdown: Bool = false) async throws {
@@ -3742,6 +3752,8 @@ struct WaffledAPI: Sendable {
             personIds: personIds,
             goalId: goalId,
             goalStepId: goalStepId,
+            rhythmId: rhythmId,
+            clearRhythmId: clearRhythmId,
             rrule: rrule,
             clearRrule: clearRrule,
             recurrenceEndAt: recurrenceEndAt,
@@ -4060,7 +4072,19 @@ struct WaffledAPI: Sendable {
         let startsOn: String?
         let autoSchedule: Bool
         let rrule: String?
-        /// Postgres interval text, clamped server-side to at most half of `every`.
+        /// How much of each period a booking counts in, from the period's start.
+        ///
+        /// Postgres interval text; nil means the whole period, which is what `every` meant
+        /// on its own and what every rhythm made before this column has. It exists because
+        /// `every` was doing two jobs — how often, and how wide a span a booking may land
+        /// in — and "date night, in the first week of the month" needs them separated. The
+        /// period still owns the grid and the skips; this owns where a booking settles
+        /// anything.
+        ///
+        /// Optional so a server that predates it still decodes.
+        let bookWithin: String?
+        /// Postgres interval text, clamped server-side to the booking window where there
+        /// is one and to half of `every` where there isn't.
         let leadTime: String
         let lastCompletedAt: String?
         let nextDueAt: String?
@@ -4071,6 +4095,12 @@ struct WaffledAPI: Sendable {
         // exactly the asymmetry the kiosk-claim decode bug shipped on.
         let currentPeriodStart: String?
         let currentPeriodEnd: String?
+        /// Where the current period stops accepting bookings.
+        ///
+        /// Read it through `windowEnd`, never directly: a server without the column sends
+        /// nothing here, and the period's end is then the right answer rather than a guess
+        /// — without a window the two ARE the same date.
+        let currentWindowEnd: String?
         let satisfied: Bool?
         /// Whether a live recurring event still exists for this rhythm.
         ///
@@ -4095,6 +4125,13 @@ struct WaffledAPI: Sendable {
         /// time for one shows "12:00 AM" — an hour nobody chose and the row's only
         /// falsehood. This is what says to stop at the date.
         let bookedAllDay: Bool?
+
+        /// The deadline a person is actually working against: where bookings stop counting.
+        ///
+        /// Every "how long have I got" line wants this one — a card saying "12 days left"
+        /// beside a picker that refuses day 8 reads as a broken picker. `currentPeriodEnd`
+        /// is only for talking about the cadence and for keying the grid.
+        var windowEnd: String? { currentWindowEnd ?? currentPeriodEnd }
     }
 
     /// Why a rhythm is on the attention feed. `unknown` is the same forward-compatibility
@@ -4118,10 +4155,17 @@ struct WaffledAPI: Sendable {
         let dueAt: String?
         let overdue: Bool?
         let periodStart: String?
+        /// The next period's start — the grid boundary, and what a skip is keyed on.
         let periodEnd: String?
+        /// Where this period stops accepting bookings. See `Rhythm.windowEnd`; read it
+        /// through `bookableUntil`, which falls back for a server without the column.
+        let windowEnd: String?
         /// `.unscheduled` only — see `Rhythm.hasSeries`.
         let hasSeries: Bool?
         var id: String { rhythm.id }
+
+        /// The last boundary a booking still counts against — the window's, not the grid's.
+        var bookableUntil: String? { windowEnd ?? periodEnd }
     }
 
     /// The whole register, each row with its current-period state.

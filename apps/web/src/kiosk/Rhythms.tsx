@@ -122,11 +122,12 @@ function RhythmRow({
   const cd = paused ? null : countdown(rhythm, urgency, new Date())
   const pct = paused ? null : periodProgress(rhythm)
   const period: RhythmPeriod | null =
-    rhythm.currentPeriodStart && rhythm.currentPeriodEnd
+    rhythm.currentPeriodStart && rhythm.currentPeriodEnd && rhythm.currentWindowEnd
       ? {
           rhythm,
           periodStart: rhythm.currentPeriodStart,
           periodEnd: rhythm.currentPeriodEnd,
+          windowEnd: rhythm.currentWindowEnd,
           hasSeries: rhythm.hasSeries,
         }
       : null
@@ -185,7 +186,7 @@ function RhythmRow({
               though: a skip settles a period and has no time, so the label follows
               `bookedAt` rather than announcing a calendar entry that isn't there. */}
           {scheduling && rhythm.satisfied && !paused && (
-            <span className="rhy-tick" aria-label={rhythm.bookedAt ? 'on the calendar' : 'skipped'}>✓</span>
+            <span className="rhy-tick" aria-label={rhythm.bookedAt ? 'on the calendar' : 'handled without a booking'}>✓</span>
           )}
           {personColor && <i className="rhy-dot" style={{ background: personColor }} aria-hidden />}
         </div>
@@ -208,7 +209,7 @@ function RhythmRow({
               // Two ways to be settled, and only one of them involves the calendar.
               ? rhythm.bookedAt
                 ? <> · on the calendar for <b>{bookedWhen(rhythm.bookedAt, rhythm.bookedAllDay)}</b></>
-                : <> · <b>skipped this one</b></>
+                : <> · <b>handled without a booking</b></>
               // Three different empty periods, and they are not the same problem.
               // A live series with one gap is missing ONE event, exactly like a
               // hand-booked row is — so it gets the same offer, and only the sentence
@@ -330,11 +331,12 @@ function RhythmRow({
           {needsBooking && period && (
             <button
               type="button"
-              aria-label={`Skip this period for ${rhythm.title}`}
+              aria-label={`Mark this period handled for ${rhythm.title}`}
+              title="Settles this period without putting anything on the calendar — whether you sorted it another way or it simply isn't happening."
               disabled={busy}
               onClick={() => run(() => rhythmsApi.skip(rhythm.id, period.periodStart))}
             >
-              Skip this period
+              Mark handled
             </button>
           )}
           <button type="button" aria-label={`Edit ${rhythm.title}`} onClick={() => { setMenu(false); onEdit() }}>

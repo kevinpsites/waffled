@@ -147,6 +147,35 @@ describe('nudgePlan', () => {
   })
 })
 
+// The two shapes can afford different ceilings because only one of them has a floor.
+//
+// A scheduling rhythm's attention feed stops asking when its booking window closes, so a
+// runway as long as the cycle opens on the period's first day and shuts on its last. A
+// completion rhythm's feed has no upper bound on purpose — an overdue thing can still be
+// done — so the same runway would surface it the instant it was completed and never let
+// it go quiet again.
+describe('nudgePlan — the ceiling depends on the shape', () => {
+  it('lets a booking rhythm be asked from the first day of its period', () => {
+    // "Remind me on the 1st to plan the family outing" — unsayable under a half cap,
+    // which could not open a monthly rhythm before the 16th.
+    expect(nudgePlan('1 mon', 30, 'scheduling')).toEqual({ effectiveDays: 30, capped: false })
+  })
+
+  it('still refuses a booking rhythm a runway longer than its cycle', () => {
+    // Equal closes; longer never does. That is the whole rule.
+    expect(nudgePlan('7 days', 30, 'scheduling')).toEqual({ effectiveDays: 7, capped: true })
+  })
+
+  it('holds a rhythm you mark done to half its cycle', () => {
+    expect(nudgePlan('7 days', 14, 'completion')).toEqual({ effectiveDays: 3, capped: true })
+  })
+
+  it('clamps a booking rhythm to its window when it has one', () => {
+    // With a window the runway is the span it exists to ask in, so the window is the cap.
+    expect(nudgePlan('1 mon', 30, 'scheduling', '7 days')).toEqual({ effectiveDays: 7, capped: true })
+  })
+})
+
 describe('nudgeExplainer', () => {
   it('names the window instead of saying "the period"', () => {
     const text = nudgeExplainer('7 days', 1)
@@ -155,7 +184,21 @@ describe('nudgeExplainer', () => {
   })
 
   it('states what the clamp actually did, in days', () => {
-    expect(nudgeExplainer('7 days', 14)).toMatch(/last 3 days/i)
+    // A booking rhythm's ceiling is the WHOLE cycle now, not half of it, so 14 days on a
+    // weekly cadence trims to 7 rather than 3 — and 7 of 7 is the whole week, which the
+    // sentence names as "from its first day" rather than as "the last 7 days of it".
+    const text = nudgeExplainer('7 days', 14)
+    expect(text).toMatch(/from its first day/i)
+    expect(text).toMatch(/trimmed to 7 days/i)
+  })
+
+  it('says "the last N days" while the runway is genuinely a tail', () => {
+    expect(nudgeExplainer('1 mon', 5)).toMatch(/last 5 days/i)
+  })
+
+  it('clamps to the booking window rather than the cadence when there is one', () => {
+    // The window is the stretch the runway exists to ask in, so it is the ceiling.
+    expect(nudgeExplainer('1 mon', 30, '7 days')).toMatch(/trimmed to 7 days/i)
   })
 
   it('says a zero runway nudges only on the final day', () => {
@@ -187,14 +230,17 @@ const at = (month: number, day: number) => new Date(2026, month - 1, day).toISOS
 const NOW = new Date(2026, 7, 20)
 
 function rhythm(over: Partial<RhythmWithPeriod> = {}): RhythmWithPeriod {
-  return {
+  const base: RhythmWithPeriod = {
     id: 'r1', title: 'Air filter', emoji: '🌬', notes: null, personId: null,
     satisfiedBy: 'completion', every: '3 mons', startsOn: null, autoSchedule: false,
-    rrule: null, leadTime: '14 days', lastCompletedAt: null, nextDueAt: null,
-    isActive: true, currentPeriodStart: null, currentPeriodEnd: null, satisfied: true,
-    bookedAt: null, bookedAllDay: null, hasSeries: false,
+    rrule: null, bookWithin: null, leadTime: '14 days', lastCompletedAt: null, nextDueAt: null,
+    isActive: true, currentPeriodStart: null, currentPeriodEnd: null, currentWindowEnd: null,
+    satisfied: true, bookedAt: null, bookedAllDay: null, hasSeries: false,
     ...over,
   }
+  // Without a booking window the server sends these two as the same date, so a fixture
+  // that names only the period end still describes a payload the server could produce.
+  return { ...base, currentWindowEnd: over.currentWindowEnd ?? base.currentPeriodEnd }
 }
 
 const due = (dueAt: string, overdue = false): AttentionItem =>

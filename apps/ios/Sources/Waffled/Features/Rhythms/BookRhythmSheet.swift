@@ -60,7 +60,7 @@ struct BookRhythmSheet: View {
                         }
                     }
 
-                    if let end = item.periodEnd {
+                    if let end = item.bookableUntil {
                         Text("It counts for this period as long as it lands on or before \(RhythmFormat.shortDate(RhythmFormat.lastDayOfPeriod(end))).")
                             .font(.system(size: 12)).foregroundStyle(WF.ink3)
                             .fixedSize(horizontal: false, vertical: true)
@@ -94,7 +94,7 @@ struct BookRhythmSheet: View {
     private func seed() {
         let cal = Cal.current
         guard let start = item.periodStart.flatMap({ DateFmt.date($0, "yyyy-MM-dd", cal.timeZone) }),
-              let end = item.periodEnd.flatMap({ DateFmt.date(RhythmFormat.lastDayOfPeriod($0), "yyyy-MM-dd", cal.timeZone) })
+              let end = item.bookableUntil.flatMap({ DateFmt.date(RhythmFormat.lastDayOfPeriod($0), "yyyy-MM-dd", cal.timeZone) })
         else { return }
         let last = cal.date(bySettingHour: 23, minute: 59, second: 0, of: end) ?? end
         guard start <= last else { return }

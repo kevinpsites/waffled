@@ -173,11 +173,45 @@ capability X · **module(X)** = requires module X enabled · **device** = kiosk 
 | POST | `/api/rhythms/:id/schedule` | Book a period into a real calendar event | module(rhythms) tenant |
 | GET | `/api/rhythms/:id/completions` | Completion history | module(rhythms) tenant |
 
-`PATCH` covers `title`, `emoji`, `notes`, `personId`, `every`, `leadTime` and `isActive`
-only — **not** `satisfiedBy`, `startsOn`, `autoSchedule` or `rrule`. Re-anchoring a live
-rhythm would re-interpret the periods it has already skipped and point its bookings at
-periods that no longer exist. `leadTime` is clamped to at most half of `every`, on create
-and on every edit.
+`PATCH` covers `title`, `emoji`, `notes`, `personId`, `every`, `leadTime`, `bookWithin`
+and `isActive` only — **not** `satisfiedBy`, `startsOn`, `autoSchedule` or `rrule`.
+Re-anchoring a live rhythm would re-interpret the periods it has already skipped and point
+its bookings at periods that no longer exist. `leadTime` is clamped on create and on every edit, to a ceiling that differs by shape: the
+**whole** of `every` on a scheduling rhythm, **half** of it on a completion one, and
+`bookWithin` wherever a booking window is set. Only the completion shape needs halving —
+its attention feed has no upper bound (an overdue thing can still be done and should keep
+asking), so a runway as long as its cycle would surface it the instant it was completed and
+never let it go quiet. A scheduling rhythm's feed closes when its window does, so a
+full-cycle runway opens on the period's first day and shuts on its last.
+
+`bookWithin` (scheduling shape only) is the **booking window**: how much of each period a
+booking counts in, measured from the period's start. Null, the default and what every
+rhythm predating it carries, means the whole period. The period still owns the grid and
+`rhythm_skips`' keys; the window decides satisfaction, when the runway opens, and what
+`POST /:id/schedule` accepts for a claimed `periodStart`. It must be at least a day and no
+longer than `every`, and it is **refused alongside `autoSchedule`** — the rule already
+decides which day inside the period, and allowing both lets the rule generate its
+occurrence outside the window, leaving every period unsatisfiable. Unlike the cadence and
+the anchor it is editable in place: it moves no boundary and re-keys no skip.
+
+`GET /api/rhythms` returns `currentWindowEnd` beside `currentPeriodEnd`, and the
+`unscheduled` rows of `/attention` return `windowEnd` beside `periodEnd`. They differ only
+when a window is set: the period end is where the **next** period starts (what the grid and
+skips are keyed against), while the window end is the last moment a booking still settles
+this one.
+
+A rhythm with `autoSchedule` is refused at create if its `rrule` **skips a period** —
+checked by walking the rule across the first twelve periods. `starts_on` anchors the grid
+*and* seeds the series, and for a rule like `FREQ=MONTHLY;BYDAY=3SA` those disagree: third
+Saturdays fall between the 15th and the 21st, so periods anchored on the 19th leave some
+months with two occurrences and others with none. A period with none can never be satisfied.
+Only emptiness is refused; a rule firing more than once a period over-books but always
+settles it.
+
+`POST`/`PATCH /api/events` accept `rhythmId`, which is how an event created any other way
+settles a period. An **absent** `rhythm_id` always means "leave it alone" (so a client that
+predates the column cannot blank a link by omission), which makes an explicit `null` the
+only way to unlink.
 
 ### Family Night — `module(familyNight)`
 

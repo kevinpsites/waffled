@@ -29,7 +29,20 @@ export interface Rhythm {
   startsOn: string | null
   autoSchedule: boolean
   rrule: string | null
-  /** Postgres interval text, clamped server-side to at most half of `every`. */
+  /**
+   * How much of each period a booking counts in, measured from the period's start.
+   * Postgres interval text; null means the whole period.
+   *
+   * `every` used to do two jobs — how often, and how wide a span a booking may land in.
+   * For "date night, in the first week of the month" those differ, and the runway (which
+   * is measured back from the end and capped at half the cycle) could not express it. The
+   * period still owns the grid and the skips; this owns where a booking settles anything.
+   */
+  bookWithin: string | null
+  /**
+   * Postgres interval text, clamped server-side to the booking window where there is one
+   * and to half of `every` where there isn't.
+   */
   leadTime: string
   lastCompletedAt: string | null
   nextDueAt: string | null
@@ -43,6 +56,12 @@ export interface Rhythm {
 export interface RhythmWithPeriod extends Rhythm {
   currentPeriodStart: string | null
   currentPeriodEnd: string | null
+  /**
+   * Where this period stops accepting bookings — the period's own end when there is no
+   * window. Every "how long have I got" line wants this one; `currentPeriodEnd` is only
+   * for talking about the cadence and for keying the grid.
+   */
+  currentWindowEnd: string | null
   satisfied: boolean
   /**
    * When the event that settles this period starts, or null.
@@ -70,7 +89,10 @@ export interface RhythmWithPeriod extends Rhythm {
 export interface RhythmPeriod {
   rhythm: Rhythm
   periodStart: string
+  /** The next period's start — the grid boundary, and what a skip is keyed on. */
   periodEnd: string
+  /** Where bookings stop counting; equal to `periodEnd` when there is no window. */
+  windowEnd: string
   /** See RhythmWithPeriod.hasSeries. Decides whether booking restores the recurrence. */
   hasSeries: boolean
 }
@@ -82,6 +104,8 @@ export type AttentionItem =
       rhythm: Rhythm
       periodStart: string
       periodEnd: string
+      /** See RhythmPeriod.windowEnd. */
+      windowEnd: string
       /** See RhythmWithPeriod.hasSeries. */
       hasSeries: boolean
     }
@@ -284,19 +308,40 @@ export function intervalDays(leadTime: string): number {
 /**
  * What the nudge runway will ACTUALLY be, once the server has had it.
  *
- * The runway is stored as `least(leadTime, every / 2)`: a warning window longer than the
- * cycle never closes, so the item would nag forever and be learned as noise. The form,
- * though, showed the number that was typed — so a weekly rhythm asked for 14 days' notice,
- * was quietly given 3, and the person who set it had no way to know why nothing appeared
- * when they expected it.
+ * The form used to show the number that was typed, so a weekly rhythm asked for 14 days'
+ * notice was quietly given 3 and the person who set it had no way to know why nothing
+ * appeared when they expected it. This is the same arithmetic the server does.
+ *
+ * The ceiling depends on the shape, because only one of the two has a floor:
+ *
+ * - **scheduling** — the whole cycle, or the booking window where there is one. Its feed
+ *   stops asking when the window closes, so a runway equal to the cycle opens on the
+ *   period's first day and shuts on its last. This is what makes "remind me on the 1st to
+ *   plan the outing, I'll book it for whenever suits" sayable; under a half cap a monthly
+ *   rhythm could not be asked before the 16th.
+ * - **completion** — half the cycle, still. Its feed has no upper bound on purpose (an
+ *   overdue thing can still be done, and should keep asking), so a runway as long as the
+ *   cycle would surface it the instant it was completed and never let it go quiet.
+ *
+ * Longer than the ceiling is refused in both cases, which is the real rule: a runway that
+ * outlives its own period never closes.
  */
-export function nudgePlan(every: string, leadDays: number): { effectiveDays: number; capped: boolean } {
+export function nudgePlan(
+  every: string,
+  leadDays: number,
+  satisfiedBy: SatisfiedBy = 'completion',
+  bookWithin?: string | null
+): { effectiveDays: number; capped: boolean } {
   const asked = Math.max(0, Math.round(leadDays || 0))
-  const half = Math.floor(intervalDays(every) / 2)
+  const cycle = intervalDays(every)
+  const cap =
+    satisfiedBy === 'scheduling'
+      ? (bookWithin ? intervalDays(bookWithin) : cycle)
+      : Math.floor(cycle / 2)
   // An unreadable cadence gives no cap to apply — better to echo the request than to
   // invent a clamp from a number we couldn't parse.
-  if (half <= 0) return { effectiveDays: asked, capped: false }
-  return { effectiveDays: Math.min(asked, half), capped: asked > half }
+  if (cap <= 0) return { effectiveDays: asked, capped: false }
+  return { effectiveDays: Math.min(asked, cap), capped: asked > cap }
 }
 
 /**
@@ -307,14 +352,22 @@ export function nudgePlan(every: string, leadDays: number): { effectiveDays: num
  * a scheduling rhythm the period IS one cadence: each one is a fresh window to get the
  * thing booked, and the runway is its tail.
  */
-export function nudgeExplainer(every: string, leadDays: number): string {
-  const { effectiveDays, capped } = nudgePlan(every, leadDays)
+export function nudgeExplainer(every: string, leadDays: number, bookWithin?: string | null): string {
+  // Always the scheduling shape: this sentence is only ever shown on a booking rhythm, and
+  // its ceiling is the whole cycle (or the window) rather than half of it.
+  const { effectiveDays, capped } = nudgePlan(every, leadDays, 'scheduling', bookWithin)
   const window = cadenceLabel(every) || 'every period'
+  const span = bookWithin ? intervalDays(bookWithin) : intervalDays(every)
+  // Asking for the whole span is the case worth naming rather than describing as "the last
+  // N days of it" — "the last 30 days of every month" is a riddle; "from the first day" is
+  // the thing the person actually asked for.
   const tail = effectiveDays <= 0
     ? 'on its last day'
-    : `for the last ${plural(effectiveDays, 'day')} of it`
+    : effectiveDays >= span && span > 0
+      ? 'from its first day'
+      : `for the last ${plural(effectiveDays, 'day')} of it`
   const clamp = capped
-    ? ` (${plural(Math.max(0, Math.round(leadDays || 0)), 'day')} won't fit in ${window.replace(/^every /, 'a ')}, so it's trimmed to half the cycle — a runway longer than the cycle never goes quiet)`
+    ? ` (${plural(Math.max(0, Math.round(leadDays || 0)), 'day')} won't fit in ${bookWithin ? 'that window' : window.replace(/^every /, 'a ')}, so it's trimmed to ${plural(effectiveDays, 'day')} — a runway longer than the stretch it belongs to never goes quiet)`
     : ''
   return `A fresh window to book it opens ${window}. You'll be nudged ${tail}, and only while nothing's on the calendar for it${clamp}.`
 }
@@ -404,7 +457,10 @@ function asMoment(value: string): Date {
  * count toward, which the callers render as no countdown rather than as a zero.
  */
 export function daysToGo(r: RhythmWithPeriod, now: Date = new Date()): number | null {
-  const target = r.satisfiedBy === 'scheduling' ? r.currentPeriodEnd : r.nextDueAt
+  // The WINDOW's end on a scheduling rhythm — the deadline a person is actually working
+  // against. "12 days left" beside a picker that refuses day 8 reads as a broken picker.
+  // Equal to the period's end whenever there is no window, which is most rhythms.
+  const target = r.satisfiedBy === 'scheduling' ? r.currentWindowEnd : r.nextDueAt
   if (!target) return null
   const d = asMoment(target)
   return Number.isNaN(d.getTime()) ? null : dayDiff(d, now)
@@ -524,9 +580,11 @@ export function periodProgress(r: RhythmWithPeriod, now: Date = new Date()): num
   let start: Date
   let end: Date
   if (r.satisfiedBy === 'scheduling') {
-    if (!r.currentPeriodStart || !r.currentPeriodEnd) return null
+    if (!r.currentPeriodStart || !r.currentWindowEnd) return null
     start = asMoment(r.currentPeriodStart)
-    end = asMoment(r.currentPeriodEnd)
+    // The bar fills toward the moment bookings stop counting, not the next boundary —
+    // otherwise a first-week rhythm shows a quarter-full track on the day it goes late.
+    end = asMoment(r.currentWindowEnd)
   } else {
     if (!r.nextDueAt) return null
     end = asMoment(r.nextDueAt)
