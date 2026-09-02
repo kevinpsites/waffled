@@ -4025,7 +4025,19 @@ struct WaffledAPI: Sendable {
         let startsOn: String?
         let autoSchedule: Bool
         let rrule: String?
-        /// Postgres interval text, clamped server-side to at most half of `every`.
+        /// How much of each period a booking counts in, from the period's start.
+        ///
+        /// Postgres interval text; nil means the whole period, which is what `every` meant
+        /// on its own and what every rhythm made before this column has. It exists because
+        /// `every` was doing two jobs — how often, and how wide a span a booking may land
+        /// in — and "date night, in the first week of the month" needs them separated. The
+        /// period still owns the grid and the skips; this owns where a booking settles
+        /// anything.
+        ///
+        /// Optional so a server that predates it still decodes.
+        let bookWithin: String?
+        /// Postgres interval text, clamped server-side to the booking window where there
+        /// is one and to half of `every` where there isn't.
         let leadTime: String
         let lastCompletedAt: String?
         let nextDueAt: String?
@@ -4036,6 +4048,12 @@ struct WaffledAPI: Sendable {
         // exactly the asymmetry the kiosk-claim decode bug shipped on.
         let currentPeriodStart: String?
         let currentPeriodEnd: String?
+        /// Where the current period stops accepting bookings.
+        ///
+        /// Read it through `windowEnd`, never directly: a server without the column sends
+        /// nothing here, and the period's end is then the right answer rather than a guess
+        /// — without a window the two ARE the same date.
+        let currentWindowEnd: String?
         let satisfied: Bool?
         /// Whether a live recurring event still exists for this rhythm.
         ///
@@ -4060,6 +4078,13 @@ struct WaffledAPI: Sendable {
         /// time for one shows "12:00 AM" — an hour nobody chose and the row's only
         /// falsehood. This is what says to stop at the date.
         let bookedAllDay: Bool?
+
+        /// The deadline a person is actually working against: where bookings stop counting.
+        ///
+        /// Every "how long have I got" line wants this one — a card saying "12 days left"
+        /// beside a picker that refuses day 8 reads as a broken picker. `currentPeriodEnd`
+        /// is only for talking about the cadence and for keying the grid.
+        var windowEnd: String? { currentWindowEnd ?? currentPeriodEnd }
     }
 
     /// Why a rhythm is on the attention feed. `unknown` is the same forward-compatibility
@@ -4083,10 +4108,17 @@ struct WaffledAPI: Sendable {
         let dueAt: String?
         let overdue: Bool?
         let periodStart: String?
+        /// The next period's start — the grid boundary, and what a skip is keyed on.
         let periodEnd: String?
+        /// Where this period stops accepting bookings. See `Rhythm.windowEnd`; read it
+        /// through `bookableUntil`, which falls back for a server without the column.
+        let windowEnd: String?
         /// `.unscheduled` only — see `Rhythm.hasSeries`.
         let hasSeries: Bool?
         var id: String { rhythm.id }
+
+        /// The last boundary a booking still counts against — the window's, not the grid's.
+        var bookableUntil: String? { windowEnd ?? periodEnd }
     }
 
     /// The whole register, each row with its current-period state.

@@ -199,6 +199,49 @@ describe('New rhythm — what gets created', () => {
   // The two jobs are therefore separated here: the grid is anchored on the first of the
   // month, so every period is a calendar month and holds exactly one of any nth weekday,
   // while the rule still reads its ordinal off the date that was actually picked.
+  // "Date night, in the first week of the month" is a monthly cadence with a seven-day
+  // window inside it. Before the window existed, `every` had to be both, and the runway —
+  // measured back from the period's end and capped at half the cycle — could not open at
+  // the start of a month. The two are separate now, and this is where you say so.
+  it('sends the booking window when only part of the period should count', async () => {
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Date night' } })
+    openMode()
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(/it's on the calendar/i))
+    fireEvent.change(within(dialog).getByLabelText(/^unit$/i), { target: { value: 'months' } })
+    fireEvent.click(moreOptions())
+    fireEvent.change(within(dialog).getByLabelText(/first .* days/i), { target: { value: '7' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    expect(posts()[0].body!.bookWithin).toBe('7 days')
+  })
+
+  it('leaves the window out entirely when the whole period counts', async () => {
+    // Null is what every rhythm before this column had, and it must stay the default —
+    // a window nobody asked for would narrow when a booking still counts.
+    const dialog = openCreate()
+    fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Temple visit' } })
+    openMode()
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(/it's on the calendar/i))
+    fireEvent.click(within(dialog).getByRole('button', { name: /add rhythm/i }))
+
+    await waitFor(() => expect(posts().length).toBe(1))
+    expect(posts()[0].body!.bookWithin ?? null).toBeNull()
+  })
+
+  it('stops offering a window once the rhythm books itself', async () => {
+    // The rule already decides which day inside the period; there is nothing left to
+    // pick, and the server refuses the pair outright.
+    const dialog = openCreate()
+    openMode()
+    fireEvent.click(within(screen.getByRole('listbox')).getByText(/it's on the calendar/i))
+    fireEvent.click(moreOptions())
+    expect(within(dialog).getByLabelText(/first .* days/i)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('switch', { name: /on the calendar automatically/i }))
+    expect(within(dialog).queryByLabelText(/first .* days/i)).toBeNull()
+  })
+
   it('anchors a monthly nth-weekday rhythm on the first, so no period comes up empty', async () => {
     const dialog = openCreate()
     fireEvent.change(within(dialog).getByLabelText(/^what$/i), { target: { value: 'Family outing' } })

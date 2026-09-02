@@ -390,9 +390,11 @@ struct RhythmsView: View {
 
     private func period(_ r: WaffledAPI.Rhythm) -> WaffledAPI.RhythmAttentionItem? {
         guard r.satisfiedBy == .scheduling, r.isActive, r.satisfied != true,
-              let start = r.currentPeriodStart, let end = r.currentPeriodEnd else { return nil }
+              let start = r.currentPeriodStart, let end = r.currentPeriodEnd,
+              let window = r.windowEnd else { return nil }
         return WaffledAPI.RhythmAttentionItem(kind: .unscheduled, rhythm: r, dueAt: nil,
                                               overdue: nil, periodStart: start, periodEnd: end,
+                                              windowEnd: window,
                                               hasSeries: r.hasSeries)
     }
 

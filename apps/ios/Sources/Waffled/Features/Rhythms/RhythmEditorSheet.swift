@@ -79,6 +79,26 @@ struct RhythmEditorSheet: View {
         Binding(get: { form.firstDue() }, set: { form.nextDue = $0 })
     }
 
+    /// The booking window as editable text.
+    ///
+    /// Text rather than an Int binding because "no window" has to be expressible: an
+    /// empty field means the whole period counts, which is what `every` meant on its own
+    /// and what every rhythm made before the column has. A number binding would have to
+    /// pick some sentinel for that, and zero reads as "no days count at all".
+    private var windowBinding: Binding<String> {
+        Binding(
+            get: { form.windowDays.map(String.init) ?? "" },
+            set: { form.windowDays = Int($0.filter(\.isNumber)).flatMap { $0 > 0 ? $0 : nil } })
+    }
+
+    private var windowExplainer: String {
+        guard let d = form.windowDays, d > 0 else {
+            return "Leave it blank and a booking anywhere in the period counts."
+        }
+        return "You’ll be asked at the start of each period, and a booking counts for "
+            + "\(d) \(d == 1 ? "day" : "days") — after that the period goes unbooked."
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -449,6 +469,30 @@ struct RhythmEditorSheet: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
+                }
+            }
+        }
+
+        // The booking window — the one part of WHEN that is editable in place, so unlike
+        // the anchor block above it is not gated on `isNew`. The cadence and the anchor
+        // ARE the period grid: moving either re-reads every boundary, so skips (keyed on
+        // period_start) stop matching and bookings get re-attributed. A window moves no
+        // boundary and re-keys no skip — narrowing one can put a period back to asking,
+        // which is visible and undone by widening it again.
+        //
+        // Hidden when the rhythm books itself: the rule already decides which day inside
+        // the period, so there is nothing left to pick, and the server refuses the pair.
+        if form.shape == .scheduling, !form.autoSchedule {
+            WaffledFieldCard(title: "Only the first … days of each period count") {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("the whole period", text: windowBinding)
+                        .keyboardType(.numberPad)
+                        .font(.system(size: 15))
+                        .padding(.horizontal, 12).padding(.vertical, 11)
+                        .wfField(radius: WF.rSM, fill: WF.panel)
+                    Text(windowExplainer)
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

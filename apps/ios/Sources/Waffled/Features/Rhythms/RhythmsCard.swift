@@ -163,7 +163,7 @@ struct RhythmsTodayCard: View {
     /// window with a day left in it.
     private func urgent(_ item: WaffledAPI.RhythmAttentionItem) -> Bool {
         if overdue(item) { return true }
-        guard item.kind == .unscheduled, let end = item.periodEnd,
+        guard item.kind == .unscheduled, let end = item.bookableUntil,
               let date = RhythmFormat.moment(end, Cal.current) else { return false }
         return RhythmFormat.dayDiff(date, Date(), Cal.current) <= 1
     }

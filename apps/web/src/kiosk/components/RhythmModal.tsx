@@ -134,6 +134,12 @@ export function RhythmModal({
   const [startsOn, setStartsOn] = useState(today)
   const [autoSchedule, setAutoSchedule] = useState(false)
   const [monthlyMode, setMonthlyMode] = useState<MonthlyMode>('day')
+  // How many days from the start of each period a booking still counts. Empty string is
+  // the default and means the whole period — which is what `every` meant on its own, so
+  // an untouched form creates exactly what it used to.
+  const [windowDays, setWindowDays] = useState(
+    editing && rhythm?.bookWithin ? String(intervalDays(rhythm.bookWithin)) : ''
+  )
   const [customRule, setCustomRule] = useState('')
   const [modeOpen, setModeOpen] = useState(false)
   const [advanced, setAdvanced] = useState(false)
@@ -146,6 +152,14 @@ export function RhythmModal({
 
   const n = Math.max(1, Math.round(Number(count) || 1))
   const every = `${n} ${unit}`
+
+  // A window and "put it on the calendar automatically" answer the same question — when
+  // inside the period does this happen — and the rule wins, because it is what creates
+  // the event. The server refuses the pair; the form simply stops offering it.
+  const booksItself = editing ? !!rhythm?.autoSchedule : autoSchedule
+  const windowNum = Math.max(0, Math.round(Number(windowDays) || 0))
+  const showWindow = shape === 'scheduling' && !booksItself
+  const bookWithin = showWindow && windowNum > 0 ? `${windowNum} days` : null
 
   // A fixed 14-day default runway is wrong for most cadences: on anything up to a
   // fortnight the server trims it to half the cycle, so an untouched form would open
@@ -216,6 +230,10 @@ export function RhythmModal({
           personId: personId || null,
           every,
           leadTime: `${leadNum} days`,
+          // Sent as an explicit null when cleared: an absent key means "leave it alone",
+          // so widening back to the whole period has to be stated. Only for the shape
+          // that can carry one at all.
+          ...(shape === 'scheduling' && !booksItself ? { bookWithin } : {}),
         })
         onSaved?.()
         onClose()
@@ -233,7 +251,12 @@ export function RhythmModal({
         // date; the server's shape constraint rejects a row carrying both.
         ...(shape === 'completion'
           ? { nextDueAt: new Date(`${firstDue}T09:00`).toISOString() }
-          : { startsOn: periodAnchor, autoSchedule, rrule: autoSchedule ? rrule : null }),
+          : {
+              startsOn: periodAnchor,
+              autoSchedule,
+              rrule: autoSchedule ? rrule : null,
+              ...(bookWithin ? { bookWithin } : {}),
+            }),
       })
       onSaved?.()
       onClose()
@@ -554,6 +577,36 @@ export function RhythmModal({
                       When it happens is an open decision every period, so it'll ask you to pick a time.
                     </div>
                   )}
+                </>
+              )}
+
+              {/* The booking window — the one part of WHEN that is editable in place, so it
+                  sits outside the create-only anchor block above. The cadence and the
+                  anchor ARE the period grid, and moving either re-reads every boundary
+                  (skips stop matching, bookings get re-attributed). A window moves no
+                  boundary and re-keys no skip; narrowing one can put a period back to
+                  asking, which is visible and undone by widening it again.
+
+                  Not offered when the rhythm books itself: the rule already decides which
+                  day inside the period, so there is nothing left to pick, and the server
+                  refuses the pair. */}
+              {showWindow && (
+                <>
+                  <label className="field">
+                    <span>Only the first … days of each period count (optional)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={windowDays}
+                      placeholder="the whole period"
+                      onChange={(e) => setWindowDays(e.target.value)}
+                    />
+                  </label>
+                  <div className="tiny muted" style={{ marginTop: -6, marginBottom: 12 }}>
+                    {bookWithin
+                      ? `You'll be asked at the start of each period, and a booking counts for ${windowNum} ${windowNum === 1 ? 'day' : 'days'} — after that the period goes unbooked.`
+                      : 'Leave it blank and a booking anywhere in the period counts.'}
+                  </div>
                 </>
               )}
 

@@ -187,14 +187,17 @@ const at = (month: number, day: number) => new Date(2026, month - 1, day).toISOS
 const NOW = new Date(2026, 7, 20)
 
 function rhythm(over: Partial<RhythmWithPeriod> = {}): RhythmWithPeriod {
-  return {
+  const base: RhythmWithPeriod = {
     id: 'r1', title: 'Air filter', emoji: '🌬', notes: null, personId: null,
     satisfiedBy: 'completion', every: '3 mons', startsOn: null, autoSchedule: false,
-    rrule: null, leadTime: '14 days', lastCompletedAt: null, nextDueAt: null,
-    isActive: true, currentPeriodStart: null, currentPeriodEnd: null, satisfied: true,
-    bookedAt: null, bookedAllDay: null, hasSeries: false,
+    rrule: null, bookWithin: null, leadTime: '14 days', lastCompletedAt: null, nextDueAt: null,
+    isActive: true, currentPeriodStart: null, currentPeriodEnd: null, currentWindowEnd: null,
+    satisfied: true, bookedAt: null, bookedAllDay: null, hasSeries: false,
     ...over,
   }
+  // Without a booking window the server sends these two as the same date, so a fixture
+  // that names only the period end still describes a payload the server could produce.
+  return { ...base, currentWindowEnd: over.currentWindowEnd ?? base.currentPeriodEnd }
 }
 
 const due = (dueAt: string, overdue = false): AttentionItem =>

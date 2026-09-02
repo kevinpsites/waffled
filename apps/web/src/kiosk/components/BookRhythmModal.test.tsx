@@ -25,7 +25,15 @@ const temple = {
 }
 
 // periodEnd is the EXCLUSIVE next boundary, so the last day that counts is Sep 1.
-const period = { rhythm: temple, periodStart: '2026-08-26', periodEnd: '2026-09-02', hasSeries: false }
+// No booking window, so the window closes where the period does — which is what the
+// server sends for a rhythm without one.
+const period = {
+  rhythm: { ...temple, bookWithin: null },
+  periodStart: '2026-08-26',
+  periodEnd: '2026-09-02',
+  windowEnd: '2026-09-02',
+  hasSeries: false,
+}
 
 const open = (item = period) =>
   render(<BookRhythmModal item={item} onClose={() => {}} />)

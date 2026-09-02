@@ -32,6 +32,7 @@ const temple = {
   personId: 'p1',
   currentPeriodStart: '2026-07-01',
   currentPeriodEnd: '2026-10-01',
+  currentWindowEnd: '2026-10-01',
   satisfied: true,
   // A period settled by a BOOKING carries the booking's time; only a skip settles one
   // without a time. Leaving this out made the fixture indistinguishable from a skipped
@@ -51,6 +52,7 @@ const selfCare = {
   startsOn: '2026-07-01',
   currentPeriodStart: '2026-10-01',
   currentPeriodEnd: '2027-01-01',
+  currentWindowEnd: '2027-01-01',
   satisfied: false,
 }
 
@@ -64,6 +66,7 @@ const paused = {
   isActive: false,
   currentPeriodStart: '2026-07-01',
   currentPeriodEnd: '2027-01-01',
+  currentWindowEnd: '2027-01-01',
   satisfied: false,
 }
 
@@ -77,6 +80,7 @@ const filter = {
   nextDueAt: '2026-11-01T09:00:00.000Z',
   currentPeriodStart: null,
   currentPeriodEnd: null,
+  currentWindowEnd: null,
   satisfied: true,
 }
 
@@ -252,6 +256,46 @@ describe('Rhythms — editing', () => {
     fireEvent.click(screen.getByRole('button', { name: new RegExp(`^edit ${title}$`, 'i') }))
     return screen.getByRole('dialog')
   }
+
+  // The one part of WHEN that is editable in place.
+  //
+  // The cadence and the anchor are refused because they ARE the period grid: moving
+  // either re-reads every boundary, so skips (keyed on period_start) stop matching and
+  // bookings get re-attributed. A window moves no boundary and re-keys no skip — the
+  // worst it does is put a period back to asking, which is visible and reversible. So
+  // "actually, the first ten days" is a thing you can change your mind about without
+  // retiring the rhythm and losing everything it has booked.
+  it('lets the booking window be changed in place, unlike the anchor', async () => {
+    mockApi([temple])
+    renderScreen()
+    const dialog = await openEditor()
+    fireEvent.click(within(dialog).getByRole('button', { name: /more options/i }))
+    fireEvent.change(within(dialog).getByLabelText(/first .* days/i), { target: { value: '10' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /save changes/i }))
+
+    await waitFor(() => expect(patches().length).toBe(1))
+    const body = patches()[0].body!
+    expect(body.bookWithin).toBe('10 days')
+    // …and still none of the things that would re-read the grid.
+    expect(body).not.toHaveProperty('startsOn')
+    expect(body).not.toHaveProperty('autoSchedule')
+  })
+
+  it('seeds the window from the rhythm and clears it back to the whole period', async () => {
+    mockApi([{ ...temple, bookWithin: '7 days' }])
+    renderScreen()
+    const dialog = await openEditor()
+    fireEvent.click(within(dialog).getByRole('button', { name: /more options/i }))
+    const field = within(dialog).getByLabelText(/first .* days/i) as HTMLInputElement
+    expect(field.value).toBe('7')
+    fireEvent.change(field, { target: { value: '' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /save changes/i }))
+
+    await waitFor(() => expect(patches().length).toBe(1))
+    // Explicit null, not an omission: the server reads an absent key as "leave it alone",
+    // so widening back to the whole period has to be said.
+    expect(patches()[0].body!).toHaveProperty('bookWithin', null)
+  })
 
   it('sends only the fields that are safe to change in place', async () => {
     mockApi([temple])

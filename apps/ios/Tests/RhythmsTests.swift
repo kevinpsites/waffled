@@ -36,8 +36,10 @@ private func rhythm(
     lastCompletedAt: String? = nil,
     nextDueAt: String? = nil,
     isActive: Bool = true,
+    bookWithin: String? = nil,
     currentPeriodStart: String? = nil,
     currentPeriodEnd: String? = nil,
+    currentWindowEnd: String? = nil,
     satisfied: Bool? = nil,
     hasSeries: Bool? = nil,
     bookedAt: String? = nil,
@@ -46,21 +48,26 @@ private func rhythm(
     WaffledAPI.Rhythm(
         id: id, title: title, emoji: emoji, notes: notes, personId: personId,
         satisfiedBy: satisfiedBy, every: every, startsOn: startsOn,
-        autoSchedule: autoSchedule, rrule: rrule, leadTime: leadTime,
+        autoSchedule: autoSchedule, rrule: rrule, bookWithin: bookWithin, leadTime: leadTime,
         lastCompletedAt: lastCompletedAt, nextDueAt: nextDueAt, isActive: isActive,
         currentPeriodStart: currentPeriodStart, currentPeriodEnd: currentPeriodEnd,
+        // Without a window the server sends these as the same date, so a fixture naming
+        // only the period end still describes a payload the server could produce.
+        currentWindowEnd: currentWindowEnd ?? currentPeriodEnd,
         satisfied: satisfied, hasSeries: hasSeries, bookedAt: bookedAt, bookedAllDay: bookedAllDay)
 }
 
 private func due(_ r: WaffledAPI.Rhythm, at dueAt: String, overdue: Bool) -> WaffledAPI.RhythmAttentionItem {
     WaffledAPI.RhythmAttentionItem(kind: .due, rhythm: r, dueAt: dueAt, overdue: overdue,
-                                  periodStart: nil, periodEnd: nil, hasSeries: nil)
+                                  periodStart: nil, periodEnd: nil, windowEnd: nil, hasSeries: nil)
 }
 
 private func unscheduled(_ r: WaffledAPI.Rhythm, start: String, end: String,
+                         windowEnd: String? = nil,
                          hasSeries: Bool? = nil) -> WaffledAPI.RhythmAttentionItem {
     WaffledAPI.RhythmAttentionItem(kind: .unscheduled, rhythm: r, dueAt: nil, overdue: nil,
-                                  periodStart: start, periodEnd: end, hasSeries: hasSeries)
+                                  periodStart: start, periodEnd: end,
+                                  windowEnd: windowEnd ?? end, hasSeries: hasSeries)
 }
 
 // MARK: - interval rendering
@@ -133,6 +140,50 @@ struct RhythmStatusLineTests {
 }
 
 // MARK: - attention ordering
+
+@Suite("Rhythm booking windows")
+struct RhythmWindowDecodeTests {
+    // The two dates answer different questions and both are carried: `currentPeriodEnd` is
+    // where the NEXT period starts (what the grid and the skips are keyed against), while
+    // the window end is the last moment a booking still settles this one.
+    //
+    // A server that predates the column sends neither `bookWithin` nor `currentWindowEnd`,
+    // and it must keep working — the same asymmetry the kiosk-claim decode bug shipped on.
+    // Falling back to the period end is not a guess: without a window the two ARE equal.
+    private func decode(_ json: String) throws -> WaffledAPI.Rhythm {
+        try JSONDecoder().decode(WaffledAPI.Rhythm.self, from: Data(json.utf8))
+    }
+
+    @Test("A row with a window reports where bookings stop counting")
+    func windowEndIsCarried() throws {
+        let r = try decode("""
+        {"id":"a","title":"Date night","emoji":null,"notes":null,"personId":null,
+         "satisfiedBy":"scheduling","every":"1 mon","startsOn":"2026-09-01",
+         "autoSchedule":false,"rrule":null,"bookWithin":"7 days","leadTime":"7 days",
+         "lastCompletedAt":null,"nextDueAt":null,"isActive":true,
+         "currentPeriodStart":"2026-09-01","currentPeriodEnd":"2026-10-01",
+         "currentWindowEnd":"2026-09-08","satisfied":false,"hasSeries":false,
+         "bookedAt":null,"bookedAllDay":null}
+        """)
+        #expect(r.bookWithin == "7 days")
+        #expect(r.windowEnd == "2026-09-08")
+        #expect(r.currentPeriodEnd == "2026-10-01")
+    }
+
+    @Test("A row from a server that has never heard of windows still decodes")
+    func windowEndFallsBackToThePeriodEnd() throws {
+        let r = try decode("""
+        {"id":"a","title":"Temple visit","emoji":null,"notes":null,"personId":null,
+         "satisfiedBy":"scheduling","every":"3 mons","startsOn":"2026-07-01",
+         "autoSchedule":false,"rrule":null,"leadTime":"14 days",
+         "lastCompletedAt":null,"nextDueAt":null,"isActive":true,
+         "currentPeriodStart":"2026-07-01","currentPeriodEnd":"2026-10-01",
+         "satisfied":false,"hasSeries":false,"bookedAt":null,"bookedAllDay":null}
+        """)
+        #expect(r.bookWithin == nil)
+        #expect(r.windowEnd == "2026-10-01")
+    }
+}
 
 @Suite("Rhythm attention ordering")
 struct RhythmAttentionSortTests {
@@ -679,6 +730,79 @@ struct RhythmEditorTests {
         form.monthlyOrdinal = 3
 
         #expect(form.createBody(calendar: utcCal)["startsOn"] == .string("2026-09-19"))
+    }
+
+    // A booking window narrower than the period.
+    //
+    // `every` used to do two jobs: how often the thing should happen, and how wide a span
+    // a booking may land in. For "date night, in the first week of the month" those are
+    // different spans, and the runway — measured back from the period's end and capped at
+    // half the cycle — could not open at the start of a month. `bookWithin` splits them.
+    @Test("A booking window is sent alongside the cadence it sits inside")
+    func createCarriesTheBookingWindow() {
+        var form = RhythmForm()
+        form.title = "Date night"
+        form.shape = .scheduling
+        form.count = 1
+        form.unit = .months
+        form.startsOn = at("2026-09-01T00:00:00")
+        form.windowDays = 7
+
+        #expect(form.createBody(calendar: utcCal)["bookWithin"] == .string("7 days"))
+    }
+
+    @Test("No window means the whole period counts, as it always did")
+    func createOmitsTheWindowByDefault() {
+        // Every rhythm made before the column had this, and an untouched form has to keep
+        // making exactly what it used to.
+        var form = RhythmForm()
+        form.title = "Temple visit"
+        form.shape = .scheduling
+        form.count = 3
+        form.unit = .months
+        form.startsOn = at("2026-09-01T00:00:00")
+
+        #expect(form.createBody(calendar: utcCal)["bookWithin"] == .null)
+    }
+
+    @Test("A rhythm that books itself sends no window — its rule already picks the day")
+    func autoScheduledRhythmSendsNoWindow() {
+        // The two answer the same question and the rule wins, because it is what creates
+        // the event. Sent together the server refuses the pair outright.
+        var form = RhythmForm()
+        form.title = "Both"
+        form.shape = .scheduling
+        form.count = 1
+        form.unit = .months
+        form.startsOn = at("2026-09-01T00:00:00")
+        form.autoSchedule = true
+        form.windowDays = 7
+
+        #expect(form.createBody(calendar: utcCal)["bookWithin"] == .null)
+    }
+
+    @Test("The window is the one part of WHEN that can be edited in place")
+    func patchBodyCarriesTheWindow() {
+        // The cadence and the anchor ARE the period grid — moving either re-reads every
+        // boundary, so skips stop matching and bookings get re-attributed. A window moves
+        // no boundary and re-keys no skip, so changing your mind about it is allowed.
+        var form = RhythmForm(editing: rhythm(id: "a", title: "Date night", satisfiedBy: .scheduling,
+                                              every: "1 mon", startsOn: "2026-09-01"))
+        form.windowDays = 10
+        let body = form.patchBody()
+        #expect(body["bookWithin"] == .string("10 days"))
+        #expect(body["startsOn"] == nil)
+        #expect(body["autoSchedule"] == nil)
+    }
+
+    @Test("Clearing the window says so, rather than leaving it out")
+    func patchBodyClearsTheWindowExplicitly() {
+        // An absent key means "leave it alone" upstream, so widening back to the whole
+        // period has to be an explicit null.
+        var form = RhythmForm(editing: rhythm(id: "a", title: "Date night", satisfiedBy: .scheduling,
+                                              every: "1 mon", startsOn: "2026-09-01"))
+        form.windowDays = nil
+        #expect(form.patchBody()["bookWithin"] == .null)
     }
 
     // The escape hatch: anything the builder cannot say, said directly. Web has had it;

@@ -1638,3 +1638,166 @@ describe('completion history is paged, and its average is not', () => {
     expect(JSON.parse(res.body).completions.length).toBeLessThanOrEqual(200)
   })
 })
+
+// A booking window narrower than the period.
+//
+// `every` was doing two jobs: how often the thing should happen, AND how wide the span is
+// that a booking may land in. For most rhythms those are the same span. For "date night,
+// in the first week of the month" they are not, and there was no way to say so — the
+// runway is measured back from the period's end and clamped to half the cycle, so a
+// monthly rhythm could not be asked about before mid-month and a quarterly one not before
+// mid-quarter. "First two weeks of the quarter" had no expressible form at all.
+//
+// `bookWithin` splits them. The period still says how often (and still owns skips and the
+// grid); the window says where inside it a booking counts. Null means the window is the
+// whole period, which is what every rhythm created before this had.
+describe('a booking window narrower than the period', () => {
+  async function makeRhythm(body: Record<string, unknown>): Promise<string> {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      satisfiedBy: 'scheduling', every: '1 month', startsOn: '2026-01-01', ...body,
+    })
+    expect(res.statusCode).toBe(201)
+    return JSON.parse(res.body).rhythm.id
+  }
+
+  async function bookOn(rhythmId: string, startsAt: string): Promise<void> {
+    const res = await call('POST', '/api/events', kevin, {
+      title: 'Dinner out', startsAt, allDay: false, rhythmId,
+    })
+    expect(res.statusCode).toBeLessThan(300)
+  }
+
+  const unscheduledIds = async (to: string): Promise<string[]> => {
+    const res = await call('GET', `/api/rhythms/attention?to=${to}`, kevin)
+    expect(res.statusCode).toBe(200)
+    return JSON.parse(res.body).items
+      .filter((i: { kind: string }) => i.kind === 'unscheduled')
+      .map((i: { rhythm: { id: string } }) => i.rhythm.id)
+  }
+
+  const days = (from: string, to: string) =>
+    Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
+
+  it('reports the window alongside the period it sits in', async () => {
+    const id = await makeRhythm({ title: 'Date night', bookWithin: '7 days' })
+    const res = await call('GET', '/api/rhythms', kevin)
+    const row = JSON.parse(res.body).rhythms.find((r: { id: string }) => r.id === id)
+    expect(row.bookWithin).toMatch(/7 days/)
+    // The period is still a month — it owns the grid and the skips. The window is the
+    // part of it a booking counts in.
+    expect(days(row.currentPeriodStart, row.currentPeriodEnd)).toBeGreaterThan(27)
+    expect(days(row.currentPeriodStart, row.currentWindowEnd)).toBe(7)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('leaves the window as the whole period when none was asked for', async () => {
+    // Every rhythm that existed before this column, unchanged.
+    const id = await makeRhythm({ title: 'No window' })
+    const res = await call('GET', '/api/rhythms', kevin)
+    const row = JSON.parse(res.body).rhythms.find((r: { id: string }) => r.id === id)
+    expect(row.bookWithin).toBeNull()
+    expect(row.currentWindowEnd).toBe(row.currentPeriodEnd)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('is settled by a booking inside the window and not by one merely inside the period', async () => {
+    const id = await makeRhythm({ title: 'First week only', bookWithin: '7 days', leadTime: '7 days' })
+    // Deep inside the period, three weeks past the window.
+    await bookOn(id, '2027-03-20T23:00:00Z')
+    expect(await unscheduledIds('2027-03-25')).toContain(id)
+    // ...and now inside it.
+    await bookOn(id, '2027-03-03T23:00:00Z')
+    expect(await unscheduledIds('2027-03-25')).not.toContain(id)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('opens the runway against the window’s end rather than the period’s', async () => {
+    // The whole point. Both ask for a week's notice; only one of them can be asked at the
+    // start of the month, because that is where its window closes.
+    const windowed = await makeRhythm({ title: 'Windowed', bookWithin: '7 days', leadTime: '7 days' })
+    const plain = await makeRhythm({ title: 'Plain', leadTime: '7 days' })
+    const open = await unscheduledIds('2027-03-10')
+    expect(open).toContain(windowed)
+    expect(open).not.toContain(plain)
+    await call('DELETE', `/api/rhythms/${windowed}`, kevin)
+    await call('DELETE', `/api/rhythms/${plain}`, kevin)
+  })
+
+  it('refuses to book a period at a time outside its window', async () => {
+    // The claimed-period check exists so a booking cannot succeed while leaving the period
+    // it was meant to settle still asking. A window makes that possible again unless the
+    // check narrows with it.
+    const id = await makeRhythm({ title: 'Window check', bookWithin: '7 days' })
+    const outside = await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: '2027-03-20T23:00:00Z', periodStart: '2027-03-01',
+    })
+    expect(outside.statusCode).toBe(400)
+    const inside = await call('POST', `/api/rhythms/${id}/schedule`, kevin, {
+      startsAt: '2027-03-03T23:00:00Z', periodStart: '2027-03-01',
+    })
+    expect(inside.statusCode).toBe(201)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('runs the whole window by default, rather than the flat fortnight', async () => {
+    // "Book it in the first week" means asking for that week — all of it. A 14-day default
+    // trimmed to half the period would be a runway that opens mid-month, which is the
+    // thing this column exists to stop.
+    const id = await makeRhythm({ title: 'Default runway', bookWithin: '7 days' })
+    const res = await call('GET', '/api/rhythms', kevin)
+    const row = JSON.parse(res.body).rhythms.find((r: { id: string }) => r.id === id)
+    expect(row.leadTime).toMatch(/7 days/)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('clamps the runway to the window instead of to half the period', async () => {
+    // Unclamped, a 30-day runway on a 7-day window opens three weeks before the period it
+    // belongs to even starts — inside the PREVIOUS period, asking about the wrong one.
+    const id = await makeRhythm({ title: 'Greedy runway', bookWithin: '7 days', leadTime: '30 days' })
+    const res = await call('GET', '/api/rhythms', kevin)
+    const row = JSON.parse(res.body).rhythms.find((r: { id: string }) => r.id === id)
+    expect(row.leadTime).toMatch(/7 days/)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('re-clamps the runway when the window is narrowed in place', async () => {
+    // Unlike the cadence, a window can be edited: it moves no boundary and re-keys no
+    // skip. But it does bound the runway, so the clamp has to be re-applied against the
+    // window as it will be AFTER the edit.
+    const id = await makeRhythm({ title: 'Narrowing', bookWithin: '14 days', leadTime: '14 days' })
+    const patch = await call('PATCH', `/api/rhythms/${id}`, kevin, { bookWithin: '3 days' })
+    expect(patch.statusCode).toBe(200)
+    const row = JSON.parse(patch.body).rhythm
+    expect(row.bookWithin).toMatch(/3 days/)
+    expect(row.leadTime).toMatch(/3 days/)
+    await call('DELETE', `/api/rhythms/${id}`, kevin)
+  })
+
+  it('refuses a window wider than the cadence it sits inside', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Overrun', satisfiedBy: 'scheduling', every: '1 week',
+      startsOn: '2026-01-01', bookWithin: '10 days',
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuses a window on a rhythm whose rule already picks the day', async () => {
+    // "Put it on the calendar automatically" and "ask me to pick a time in this window"
+    // are answers to the same question. Allowed together, the rule can generate its
+    // occurrence outside the window and every period is unsatisfiable — the exact failure
+    // the anchor guard exists to prevent, reintroduced through a different door.
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Both', satisfiedBy: 'scheduling', every: '1 month', startsOn: '2026-01-01',
+      autoSchedule: true, rrule: 'FREQ=MONTHLY', bookWithin: '7 days',
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuses a window on a completion rhythm, which has no periods to sit in', async () => {
+    const res = await call('POST', '/api/rhythms', kevin, {
+      title: 'Wrong shape', satisfiedBy: 'completion', every: '1 month',
+      nextDueAt: '2027-01-01T09:00:00Z', bookWithin: '7 days',
+    })
+    expect(res.statusCode).toBe(400)
+  })
+})

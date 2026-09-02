@@ -109,7 +109,9 @@ function UnscheduledRow({
   // offering to put back a series that is already there built a SECOND one beside it,
   // doubling every future occurrence, permanently.
   const series = item.rhythm.autoSchedule && !item.hasSeries
-  const left = daysLeft(item.periodEnd)
+  // The window's end, not the period's — the deadline the person is working against.
+  // Equal to the period's end on every rhythm without a booking window.
+  const left = daysLeft(item.windowEnd)
 
   async function skip() {
     if (busy) return
@@ -134,7 +136,7 @@ function UnscheduledRow({
             distinguished nothing. The deadline is what differs — and for the series
             anomaly, the explanation is worth the words. */}
         <div className="rhy-sub tiny muted">
-          <span className={left <= 1 ? 'rhy-late' : ''}>{periodLabel(item.periodEnd)}</span>
+          <span className={left <= 1 ? 'rhy-late' : ''}>{periodLabel(item.windowEnd)}</span>
           {series ? ' · the series needs putting back' : ''}
         </div>
         {failed && (

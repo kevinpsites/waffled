@@ -29,7 +29,20 @@ export interface Rhythm {
   startsOn: string | null
   autoSchedule: boolean
   rrule: string | null
-  /** Postgres interval text, clamped server-side to at most half of `every`. */
+  /**
+   * How much of each period a booking counts in, measured from the period's start.
+   * Postgres interval text; null means the whole period.
+   *
+   * `every` used to do two jobs — how often, and how wide a span a booking may land in.
+   * For "date night, in the first week of the month" those differ, and the runway (which
+   * is measured back from the end and capped at half the cycle) could not express it. The
+   * period still owns the grid and the skips; this owns where a booking settles anything.
+   */
+  bookWithin: string | null
+  /**
+   * Postgres interval text, clamped server-side to the booking window where there is one
+   * and to half of `every` where there isn't.
+   */
   leadTime: string
   lastCompletedAt: string | null
   nextDueAt: string | null
@@ -43,6 +56,12 @@ export interface Rhythm {
 export interface RhythmWithPeriod extends Rhythm {
   currentPeriodStart: string | null
   currentPeriodEnd: string | null
+  /**
+   * Where this period stops accepting bookings — the period's own end when there is no
+   * window. Every "how long have I got" line wants this one; `currentPeriodEnd` is only
+   * for talking about the cadence and for keying the grid.
+   */
+  currentWindowEnd: string | null
   satisfied: boolean
   /**
    * When the event that settles this period starts, or null.
@@ -70,7 +89,10 @@ export interface RhythmWithPeriod extends Rhythm {
 export interface RhythmPeriod {
   rhythm: Rhythm
   periodStart: string
+  /** The next period's start — the grid boundary, and what a skip is keyed on. */
   periodEnd: string
+  /** Where bookings stop counting; equal to `periodEnd` when there is no window. */
+  windowEnd: string
   /** See RhythmWithPeriod.hasSeries. Decides whether booking restores the recurrence. */
   hasSeries: boolean
 }
@@ -82,6 +104,8 @@ export type AttentionItem =
       rhythm: Rhythm
       periodStart: string
       periodEnd: string
+      /** See RhythmPeriod.windowEnd. */
+      windowEnd: string
       /** See RhythmWithPeriod.hasSeries. */
       hasSeries: boolean
     }
@@ -404,7 +428,10 @@ function asMoment(value: string): Date {
  * count toward, which the callers render as no countdown rather than as a zero.
  */
 export function daysToGo(r: RhythmWithPeriod, now: Date = new Date()): number | null {
-  const target = r.satisfiedBy === 'scheduling' ? r.currentPeriodEnd : r.nextDueAt
+  // The WINDOW's end on a scheduling rhythm — the deadline a person is actually working
+  // against. "12 days left" beside a picker that refuses day 8 reads as a broken picker.
+  // Equal to the period's end whenever there is no window, which is most rhythms.
+  const target = r.satisfiedBy === 'scheduling' ? r.currentWindowEnd : r.nextDueAt
   if (!target) return null
   const d = asMoment(target)
   return Number.isNaN(d.getTime()) ? null : dayDiff(d, now)
@@ -524,9 +551,11 @@ export function periodProgress(r: RhythmWithPeriod, now: Date = new Date()): num
   let start: Date
   let end: Date
   if (r.satisfiedBy === 'scheduling') {
-    if (!r.currentPeriodStart || !r.currentPeriodEnd) return null
+    if (!r.currentPeriodStart || !r.currentWindowEnd) return null
     start = asMoment(r.currentPeriodStart)
-    end = asMoment(r.currentPeriodEnd)
+    // The bar fills toward the moment bookings stop counting, not the next boundary —
+    // otherwise a first-week rhythm shows a quarter-full track on the day it goes late.
+    end = asMoment(r.currentWindowEnd)
   } else {
     if (!r.nextDueAt) return null
     end = asMoment(r.nextDueAt)

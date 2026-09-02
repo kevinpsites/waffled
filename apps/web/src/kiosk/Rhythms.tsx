@@ -122,11 +122,12 @@ function RhythmRow({
   const cd = paused ? null : countdown(rhythm, urgency, new Date())
   const pct = paused ? null : periodProgress(rhythm)
   const period: RhythmPeriod | null =
-    rhythm.currentPeriodStart && rhythm.currentPeriodEnd
+    rhythm.currentPeriodStart && rhythm.currentPeriodEnd && rhythm.currentWindowEnd
       ? {
           rhythm,
           periodStart: rhythm.currentPeriodStart,
           periodEnd: rhythm.currentPeriodEnd,
+          windowEnd: rhythm.currentWindowEnd,
           hasSeries: rhythm.hasSeries,
         }
       : null

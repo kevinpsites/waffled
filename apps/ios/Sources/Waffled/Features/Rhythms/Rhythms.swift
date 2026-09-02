@@ -314,7 +314,10 @@ enum RhythmFormat {
     /// day its booking window closes. Negative means it has already gone past.
     static func daysToGo(_ r: WaffledAPI.Rhythm, now: Date = Date(),
                          calendar: Calendar = Cal.current) -> Int? {
-        let target = r.satisfiedBy == .scheduling ? r.currentPeriodEnd : r.nextDueAt
+        // The WINDOW's end on a scheduling rhythm — the deadline a person is working
+        // against. "12 days left" beside a picker that refuses day 8 reads as a broken
+        // picker. Equal to the period's end on every rhythm without a window.
+        let target = r.satisfiedBy == .scheduling ? r.windowEnd : r.nextDueAt
         guard let target, let date = moment(target, calendar) else { return nil }
         return dayDiff(date, now, calendar)
     }
@@ -411,7 +414,9 @@ enum RhythmFormat {
         var start: Date
         var end: Date
         if r.satisfiedBy == .scheduling {
-            guard let s = r.currentPeriodStart, let e = r.currentPeriodEnd,
+            // Fills toward the moment bookings stop counting, not the next boundary —
+            // otherwise a first-week rhythm shows a quarter-full track the day it goes late.
+            guard let s = r.currentPeriodStart, let e = r.windowEnd,
                   let sd = moment(s, calendar), let ed = moment(e, calendar) else { return nil }
             start = sd
             end = ed
@@ -741,7 +746,7 @@ final class RhythmsModel {
                 out[item.rhythm.id] = RhythmFormat.dueLabel(item.dueAt ?? "", overdue: item.overdue ?? false,
                                                             now: now, calendar: calendar)
             case .unscheduled:
-                out[item.rhythm.id] = RhythmFormat.periodLabel(item.periodEnd ?? "", now: now, calendar: calendar)
+                out[item.rhythm.id] = RhythmFormat.periodLabel(item.bookableUntil ?? "", now: now, calendar: calendar)
             case .unknown:
                 continue
             }
@@ -874,6 +879,14 @@ struct RhythmForm {
     /// For "the Nth <weekday> of the month": 1…5, or -1 for last. Only read when
     /// `monthlyMode == .nthWeekday`.
     var monthlyOrdinal = 1
+    /// How many days from the start of each period a booking still counts, or nil for the
+    /// whole period — which is what `every` meant on its own, and what every rhythm made
+    /// before this column has.
+    ///
+    /// Not offered alongside `autoSchedule`: the two answer the same question ("when
+    /// inside the period does this happen?") and the rule wins, because it is what creates
+    /// the event. Sent together the server refuses the pair.
+    var windowDays: Int?
     var customRule = ""
 
     init() { editingId = nil }
@@ -896,6 +909,7 @@ struct RhythmForm {
         customRule = r.rrule ?? ""
         if let due = r.nextDueAt, let d = EventTime.parse(due) { nextDue = d }
         if let start = r.startsOn, let d = DateFmt.date(start, "yyyy-MM-dd", calendar.timeZone) { startsOn = d }
+        if let w = r.bookWithin { windowDays = RhythmFormat.days(fromInterval: w) }
     }
 
     var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -963,6 +977,12 @@ struct RhythmForm {
         return calendar.date(from: parts) ?? startsOn
     }
 
+    /// The window as the server wants it, or nil when the whole period counts.
+    var bookWithinInterval: String? {
+        guard shape == .scheduling, !autoSchedule, let d = windowDays, d > 0 else { return nil }
+        return "\(d) days"
+    }
+
     func createBody(now: Date = Date(), calendar: Calendar = Cal.current) -> [String: JSONValue] {
         var body: [String: JSONValue] = [
             "title": .string(trimmedTitle),
@@ -986,6 +1006,7 @@ struct RhythmForm {
             body["startsOn"] = .string(RhythmFormat.ymd(periodAnchor(calendar: calendar), calendar: calendar))
             body["autoSchedule"] = .bool(autoSchedule)
             body["rrule"] = autoSchedule ? (rrule(calendar: calendar).map(JSONValue.string) ?? .null) : .null
+            body["bookWithin"] = bookWithinInterval.map(JSONValue.string) ?? .null
         // Not reachable: `shape` is chosen in this form, never decoded from the server.
         // Total anyway, so a third shape has to be handled here rather than compiling.
         case .unknown:
@@ -1006,6 +1027,15 @@ struct RhythmForm {
             "personId": personId.map(JSONValue.string) ?? .null,
             "every": .string(every),
             "leadTime": .string("\(effectiveLeadDays) days"),
+            // The one part of WHEN that is editable in place. The cadence and the anchor
+            // ARE the period grid — moving either re-reads every boundary, so skips (keyed
+            // on period_start) stop matching and bookings get re-attributed. A window
+            // moves no boundary and re-keys no skip; the worst it does is put a period
+            // back to asking, which is visible and undone by widening it again.
+            //
+            // Always sent, null included: an absent key means "leave it alone", so
+            // widening back to the whole period has to be stated.
+            "bookWithin": bookWithinInterval.map(JSONValue.string) ?? .null,
         ]
     }
 

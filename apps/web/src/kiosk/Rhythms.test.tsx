@@ -23,6 +23,7 @@ const filter = {
   isActive: true,
   currentPeriodStart: null,
   currentPeriodEnd: null,
+  currentWindowEnd: null,
   satisfied: false,
 }
 
@@ -43,6 +44,7 @@ const temple = {
   isActive: true,
   currentPeriodStart: '2026-07-01',
   currentPeriodEnd: '2026-10-01',
+  currentWindowEnd: '2026-10-01',
   satisfied: false,
   hasSeries: false,
 }
@@ -467,6 +469,7 @@ describe('Rhythms screen', () => {
       hasSeries: true,
       currentPeriodStart: null,
       currentPeriodEnd: null,
+      currentWindowEnd: null,
       satisfied: false,
     }
     mockApi([future])
