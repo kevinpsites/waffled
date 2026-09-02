@@ -2421,9 +2421,13 @@ struct GoalEntryEditSheet: View {
     let participants: [WaffledAPI.Goal.Participant]
     let goalType: String
     let unit: String?
-    /// (amount?, personIds?, note, loggedOn as YYYY-MM-DD)
-    let onSave: (Double?, [String]?, String, String) -> Void
-    let onDelete: () -> Void
+    /// (amount?, personIds?, note, loggedOn as YYYY-MM-DD) — returns the server's reason
+    /// when it refuses, or nil on success. The sheet stays open on a refusal so the note
+    /// you typed is still there to retry with, the way the web modal has always behaved;
+    /// dismissing first and raising an alert behind the sheet raced its own dismissal
+    /// animation, which is how a refusal came to show nothing at all.
+    let onSave: @MainActor (Double?, [String]?, String, String) async -> String?
+    let onDelete: @MainActor () async -> String?
 
     @State private var amount: Double
     @State private var amountText: String
@@ -2431,6 +2435,8 @@ struct GoalEntryEditSheet: View {
     @State private var note: String
     @State private var loggedOn: Date
     @State private var confirmDelete = false
+    @State private var saving = false
+    @State private var error: String?
 
     private var isCount: Bool { goalType == "count" }
     /// An entry the server owns (checklist tick, calendar confirm, Health sync) keeps its
@@ -2445,7 +2451,8 @@ struct GoalEntryEditSheet: View {
 
     init(entry: WaffledAPI.GoalDetail.LogEntry, participants: [WaffledAPI.Goal.Participant],
          goalType: String, unit: String?,
-         onSave: @escaping (Double?, [String]?, String, String) -> Void, onDelete: @escaping () -> Void) {
+         onSave: @escaping @MainActor (Double?, [String]?, String, String) async -> String?,
+         onDelete: @escaping @MainActor () async -> String?) {
         self.entry = entry; self.participants = participants; self.goalType = goalType; self.unit = unit
         self.onSave = onSave; self.onDelete = onDelete
         _amount = State(initialValue: entry.amount)
@@ -2535,9 +2542,13 @@ struct GoalEntryEditSheet: View {
                             .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                     }
+                    if let error {
+                        Text(error).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     if !locked {
                         Button {
-                            if confirmDelete { onDelete(); dismiss() } else { withAnimation { confirmDelete = true } }
+                            if confirmDelete { Task { await remove() } } else { withAnimation { confirmDelete = true } }
                         } label: {
                             Text(confirmDelete ? "Tap again to delete this entry" : "Delete entry")
                                 .font(.system(size: 13, weight: .bold)).foregroundStyle(confirmDelete ? WF.primary : WF.ink3)
@@ -2553,23 +2564,41 @@ struct GoalEntryEditSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        onSave(numeric ? logAmount : nil,
-                               showWho ? Array(who) : nil,
-                               note.trimmingCharacters(in: .whitespacesAndNewlines),
-                               // Formatted in the same zone the picker showed it in, or
-                               // the day the user picked is sent back off by one. A locked
-                               // entry has no picker: send its own key back untouched, so a
-                               // note edit can never read as "move this to another day".
-                               locked ? String(entry.dateKey.prefix(10)) : GoalDateKey.toKey(loggedOn))
-                        dismiss()
-                    }.fontWeight(.semibold)
+                    Button("Save") { Task { await save() } }.fontWeight(.semibold)
                     // A cleared amount is 0 — block saving it rather than writing a 0 entry.
-                    .disabled(numeric && logAmount == 0)
+                    .disabled(saving || (numeric && logAmount == 0))
                 }
             }
         }
         .modifier(KioskSheetPresentation(kiosk: isKiosk))
+    }
+
+    private func save() async {
+        guard !saving else { return }
+        saving = true
+        error = nil
+        let refusal = await onSave(numeric ? logAmount : nil,
+                                   showWho ? Array(who) : nil,
+                                   note.trimmingCharacters(in: .whitespacesAndNewlines),
+                                   // Formatted in the same zone the picker showed it in, or
+                                   // the day the user picked is sent back off by one. A locked
+                                   // entry has no picker: send its own key back untouched, so a
+                                   // note edit can never read as "move this to another day".
+                                   locked ? String(entry.dateKey.prefix(10)) : GoalDateKey.toKey(loggedOn))
+        if let refusal { error = refusal; saving = false } else { dismiss() }
+    }
+
+    private func remove() async {
+        guard !saving else { return }
+        saving = true
+        error = nil
+        if let refusal = await onDelete() {
+            error = refusal
+            saving = false
+            confirmDelete = false
+        } else {
+            dismiss()
+        }
     }
 
     private func stepBtn(_ icon: String, disabled: Bool, _ action: @escaping () -> Void) -> some View {
@@ -2588,8 +2617,6 @@ final class GoalDetailModel {
     private(set) var lists: [WaffledAPI.GoalList] = []
     private(set) var loading = true
     private(set) var error = false
-    /// The server's explanation for a refused entry edit/delete, shown as an alert.
-    private(set) var entryError: String?
     private let api = WaffledAPI()
 
     init(goal: WaffledAPI.Goal) { self.goal = goal }
@@ -2640,22 +2667,20 @@ final class GoalDetailModel {
         catch { self.error = true }
     }
 
-    // The entry sheet dismisses itself on Save, so a refusal has nowhere to land there —
-    // it surfaces as an alert on the detail behind it, carrying the server's own sentence
-    // (the web modal has always shown it; iOS used to swallow it into a generic flag).
-    func editEntry(_ logId: String, amount: Double?, personIds: [String]?, note: String?, loggedOn: String?) async {
+    // Both return the server's own sentence when it refuses, so the sheet can keep itself
+    // open and show it (iOS used to swallow it into a generic flag), and nil on success.
+    func editEntry(_ logId: String, amount: Double?, personIds: [String]?, note: String?, loggedOn: String?) async -> String? {
         do {
             try await api.editGoalLog(goalId: goal.id, logId: logId, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn)
             await load()
-        } catch { entryError = APIErrorText.message(for: error, fallback: "Could not save this change.") }
+            return nil
+        } catch { return APIErrorText.message(for: error, fallback: "Could not save this change.") }
     }
 
-    func deleteEntry(_ logId: String) async {
-        do { try await api.deleteGoalLog(goalId: goal.id, logId: logId); await load() }
-        catch { entryError = APIErrorText.message(for: error, fallback: "Could not delete this entry.") }
+    func deleteEntry(_ logId: String) async -> String? {
+        do { try await api.deleteGoalLog(goalId: goal.id, logId: logId); await load(); return nil }
+        catch { return APIErrorText.message(for: error, fallback: "Could not delete this entry.") }
     }
-
-    func clearEntryError() { entryError = nil }
 }
 
 /// One goal's detail: hero (ring + started/streak/this-week), the milestone ladder,
@@ -2783,18 +2808,10 @@ struct GoalDetailView: View {
                 goalType: model.detail?.goalType ?? goal.goalType,
                 unit: unit,
                 onSave: { amount, ids, note, day in
-                    Task { await model.editEntry(entry.id, amount: amount, personIds: ids, note: note, loggedOn: day) }
+                    await model.editEntry(entry.id, amount: amount, personIds: ids, note: note, loggedOn: day)
                 },
-                onDelete: { Task { await model.deleteEntry(entry.id) } }
+                onDelete: { await model.deleteEntry(entry.id) }
             )
-        }
-        .alert("Couldn’t save that change", isPresented: Binding(
-            get: { model.entryError != nil },
-            set: { if !$0 { model.clearEntryError() } }
-        )) {
-            Button("OK", role: .cancel) { model.clearEntryError() }
-        } message: {
-            Text(model.entryError ?? "")
         }
     }
 
