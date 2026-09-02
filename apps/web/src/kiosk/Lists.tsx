@@ -1025,7 +1025,12 @@ export function Lists() {
                               type="button"
                               className="lists-section-title lists-section-toggle"
                               aria-expanded={!sectionCollapsed(sec.key)}
-                              onClick={() => toggleSectionCollapse(sec.key)}
+                              aria-disabled={searching}
+                              // Inert while searching, like the Completed header: the
+                              // search forces the section open, so a click here would
+                              // be remembered with no visible effect and hide a section
+                              // the user never chose to collapse once they cleared.
+                              onClick={() => { if (!searching) toggleSectionCollapse(sec.key) }}
                             >
                               <span className={`cal-chev ${sectionCollapsed(sec.key) ? '' : 'open'}`} aria-hidden>›</span>
                               <span className="lists-section-name">{sec.title}</span>

@@ -398,6 +398,24 @@ describe('Lists screen', () => {
     expect(screen.queryByText('PJs & socks')).toBeNull()
   })
 
+  it('ignores a section-header click while searching, so nothing collapses behind the user', async () => {
+    mockApi({ lists: [grocery, packing], items: packItems })
+    renderScreen()
+    await exitBoard()
+    await screen.findByText('Swimsuits')
+
+    // search down to the Gear section, then click its header — the search forces
+    // every section open, so this click has no visible effect and must not be
+    // remembered: clearing would otherwise hide a section the user never collapsed.
+    fireEvent.change(screen.getByLabelText('Search this list'), { target: { value: 'sun' } })
+    await waitFor(() => expect(screen.queryByText('Swimsuits')).toBeNull())
+    fireEvent.click(screen.getByText('Gear', { selector: '.lists-section-name' }).closest('button') as HTMLElement)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+    await waitFor(() => expect(screen.getByText('Swimsuits')).toBeInTheDocument())
+    expect(screen.getByText('Sunscreen')).toBeInTheDocument()
+  })
+
   it('says nothing matched when the search comes up empty', async () => {
     mockApi({ lists: [grocery, packing], items: packItems })
     renderScreen()
