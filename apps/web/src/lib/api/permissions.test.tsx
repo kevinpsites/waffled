@@ -8,11 +8,11 @@ const ok = (body: unknown) => ({ ok: true, json: async () => body })
 // Permissions grid) renders, then drive /api/permissions for the grid itself.
 function mockApi(onPut: (body: unknown) => void) {
   const matrix = {
-    adult: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': true, 'reward.approve': true },
-    caregiver: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': false, 'reward.approve': true },
-    guest: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false },
-    teen: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false },
-    kid: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false },
+    adult: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': true, 'reward.approve': true, 'reward.grant': true, 'reward.correct': true, 'goal.manage': true },
+    caregiver: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': false, 'reward.approve': true, 'reward.grant': false, 'reward.correct': false, 'goal.manage': false },
+    guest: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'reward.correct': false, 'goal.manage': false },
+    teen: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'reward.correct': false, 'goal.manage': false },
+    kid: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'reward.correct': false, 'goal.manage': false },
   }
   globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const u = String(url)

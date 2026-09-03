@@ -207,6 +207,8 @@ describe('Settings screen', () => {
     // Toggling Teen's Manage goals checkbox PUTs the matrix with it flipped on.
     fireEvent.click(screen.getByRole('checkbox', { name: 'Teen: Manage goals' }))
     await waitFor(() => expect(puts.some((m) => m.teen['goal.manage'] === true)).toBe(true))
+    expect(screen.getByRole('checkbox', { name: 'Guest: Correct reward history' })).toBeDisabled()
+    expect(matrix.caregiver['reward.correct']).toBe(false)
   })
 
   it('plumbs the Countdowns config (sleeps toggle + birthday horizon) under Calendars', async () => {

@@ -804,6 +804,8 @@ describe('chore capability gating (non-admin members)', () => {
     const seeded = await call('PUT', '/api/permissions', kevin, {
       permissions: {
         adult: { 'reward.correct': false },
+        caregiver: { 'reward.correct': true },
+        guest: { 'reward.correct': true },
         teen: { 'reward.correct': true },
         kid: { 'reward.correct': true },
       },
@@ -834,6 +836,8 @@ describe('chore capability gating (non-admin members)', () => {
     const updated = await call('PUT', '/api/permissions', kevin, {
       permissions: {
         adult: legacyAdult,
+        caregiver: legacyRestricted,
+        guest: { ...legacyRestricted, 'reward.correct': true },
         teen: legacyRestricted,
         kid: legacyRestricted,
         futureRole: { 'reward.correct': true },
@@ -844,6 +848,8 @@ describe('chore capability gating (non-admin members)', () => {
     const permissions = JSON.parse(updated.body).permissions
     expect(permissions.adult['chore.manage']).toBe(false)
     expect(permissions.adult['reward.correct']).toBe(false)
+    expect(permissions.caregiver['reward.correct']).toBe(true)
+    expect(permissions.guest['reward.correct']).toBe(false)
     expect(permissions.teen['reward.correct']).toBe(true)
     expect(permissions.kid['reward.correct']).toBe(true)
     expect(permissions.adult['future.unknown']).toBeUndefined()
@@ -852,6 +858,8 @@ describe('chore capability gating (non-admin members)', () => {
     await call('PUT', '/api/permissions', kevin, {
       permissions: {
         adult: { 'chore.manage': true, 'reward.correct': true },
+        caregiver: { 'reward.correct': false },
+        guest: { 'reward.correct': true },
         teen: { 'reward.correct': false },
         kid: { 'reward.correct': false },
       },

@@ -2,7 +2,8 @@
 // rewards with a configurable per-role matrix stored in households.settings.permissions.
 // Admins always have every capability; the matrix only governs non-admin members
 // (typically the second adult, or teens given a longer leash). The defaults are
-// conservative: only adults manage/approve out of the box.
+// conservative: adults have full access, caregivers get routine chore/redemption
+// approval duties, and guests remain hard read-only.
 import { AuthError } from './auth'
 import { query } from './db'
 import type { Tenant } from '../modules/households/households'

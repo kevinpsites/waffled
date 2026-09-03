@@ -26,6 +26,7 @@ describe('DEFAULT_PERMISSIONS', () => {
       'reward.manage': false,
       'reward.approve': true,
       'reward.grant': false,
+      'reward.correct': false,
       'goal.manage': false,
     })
   })
@@ -41,6 +42,8 @@ describe('DEFAULT_PERMISSIONS', () => {
       'goal.manage',
     ])
     expect(DEFAULT_PERMISSIONS.adult['goal.manage']).toBe(true)
+    expect(DEFAULT_PERMISSIONS.caregiver['reward.correct']).toBe(false)
+    expect(DEFAULT_PERMISSIONS.guest['reward.correct']).toBe(false)
     expect(DEFAULT_PERMISSIONS.teen['goal.manage']).toBe(false)
     expect(DEFAULT_PERMISSIONS.kid['goal.manage']).toBe(false)
   })

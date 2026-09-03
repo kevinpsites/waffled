@@ -7,6 +7,7 @@ import { getPool, query } from '../../platform/db'
 import { adminRoute } from '../../platform/route-guards'
 import {
   getPermissions,
+  DEFAULT_PERMISSIONS,
   CAPABILITIES,
   ROLES,
 } from '../../platform/permissions'
@@ -45,6 +46,9 @@ export function registerPermissionRoutes(api: Api): void {
       )
       const merged = getPermissions(current.rows[0]?.settings)
       for (const role of ROLES) {
+        // Guests are a hard read-only role. Do not persist even an admin-supplied
+        // `true` cell: the PUT response and stored matrix must agree with later reads.
+        if (role === 'guest') continue
         const row = incoming[role]
         if (typeof row !== 'object' || row === null) continue
         const cells = row as Record<string, unknown>
@@ -52,6 +56,7 @@ export function registerPermissionRoutes(api: Api): void {
           if (typeof cells[cap] === 'boolean') merged[role][cap] = cells[cap]
         }
       }
+      merged.guest = { ...DEFAULT_PERMISSIONS.guest }
       await client.query(
         `update households set settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{permissions}', $2::jsonb) where id = $1`,
         [tenant.householdId, JSON.stringify(merged)]

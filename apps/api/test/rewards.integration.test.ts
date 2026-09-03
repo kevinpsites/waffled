@@ -979,6 +979,32 @@ describe('append-only reward corrections and reversals', () => {
       reason: 'Not permitted to refund',
       idempotencyKey: '56565656-5656-4656-8656-565656565656',
     })).statusCode).toBe(403)
+
+    const caregiverId = await addMember('Correction caregiver', 'caregiver', false, 'dev|correction-caregiver')
+    const caregiver = mint('dev|correction-caregiver')
+    const firstCaregiverEntry = JSON.parse((await call(
+      'POST', `/api/persons/${caregiverId}/award`, kevin, { amount: 3 }
+    )).body).id
+    expect((await call('POST', `/api/ledger-entries/${firstCaregiverEntry}/correct`, caregiver, {
+      reason: 'Default caregiver denial',
+      idempotencyKey: '57575757-5757-4757-8757-575757575757',
+    })).statusCode).toBe(403)
+
+    const grantCorrection = await call('PUT', '/api/permissions', kevin, {
+      permissions: { caregiver: { 'reward.correct': true } },
+    })
+    expect(grantCorrection.statusCode).toBe(200)
+    const secondCaregiverEntry = JSON.parse((await call(
+      'POST', `/api/persons/${caregiverId}/award`, kevin, { amount: 2 }
+    )).body).id
+    expect((await call('POST', `/api/ledger-entries/${secondCaregiverEntry}/correct`, caregiver, {
+      reason: 'Explicitly granted caregiver correction',
+      idempotencyKey: '58585858-5858-4858-8858-585858585858',
+    })).statusCode).toBe(201)
+
+    await call('PUT', '/api/permissions', kevin, {
+      permissions: { caregiver: { 'reward.correct': false } },
+    })
   })
 
   it('does not allow a one-sided correction of a paired currency conversion', async () => {
