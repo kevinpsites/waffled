@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Permission saves from older clients now preserve newer capability choices they
+  do not know how to send, preventing unrelated settings changes from silently
+  resetting who can correct reward history.
+
 - **Simultaneous reward spending cannot overdraw a balance.** Reward redemptions and
   currency conversions now share a household-member balance lock, so overlapping
   requests are applied one at a time and recheck the latest balance before spending.
