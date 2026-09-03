@@ -31,8 +31,7 @@ struct KioskRoot: View {
                         onRetry: { bootStalled = false; Task { await sync.start() } },
                         onSignOut: {
                             Task {
-                                await session.signOut()
-                                await sync.signOut()
+                                await session.signOut(sync: sync)
                             }
                         }
                     )

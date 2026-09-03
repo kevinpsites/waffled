@@ -51,6 +51,12 @@ struct WaffledApp: App {
             .tint(WF.primary)
             .preferredColorScheme(theme.colorScheme)   // light / dark / follow-device (Settings → Appearance)
             .task { await session.bootstrap() }    // read the Keychain / probe auth status
+            // One coordinator owns an expired credential boundary. Session gates the
+            // login UI until SyncManager has invalidated REST state and disconnected,
+            // avoiding two unordered notification observers racing a new login.
+            .onReceive(NotificationCenter.default.publisher(for: .waffledAuthExpired)) { _ in
+                Task { await session.signOut(sync: sync) }
+            }
             .task {
                 // Headless-verification rotation (see DemoHooks.forceOrientation). The
                 // request is a preference the system can ignore while the scene is still

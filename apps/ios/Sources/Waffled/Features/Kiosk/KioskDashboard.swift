@@ -158,8 +158,12 @@ struct KioskDashboard: View {
         }
         // Pinned-banner queues: approvals refresh on chore/reward actions; the review
         // queue refreshes whenever a review/goal action bumps the goals bus.
-        .task(id: "\(sync.choresRev)|\(sync.rewardsRev)") {
-            await approvals.load(scope: sync.restDataScopeKey)
+        .task(id: "\(sync.choresRev)|\(sync.rewardsRev)|\(sync.modulesRev)") {
+            await approvals.load(
+                scope: sync.restDataScopeKey,
+                choresEnabled: sync.module(.chores),
+                rewardsEnabled: sync.rewardsOn
+            )
         }
         .task(id: sync.goalsRev) {
             let api = WaffledAPI()

@@ -43,6 +43,7 @@ private actor DeferredRestValue<Value: Sendable> {
         result?.resume(returning: value)
         result = nil
     }
+
 }
 
 private final class RestResponse<Value: Sendable>: @unchecked Sendable {
@@ -270,6 +271,65 @@ private let fixtureRestScope = RestDataScopeKey(
 
         #expect(model.isEmpty)
         #expect(model.state.isAuthoritative)
+    }
+
+    @Test func disabledApprovalModulesAreNotFetchedAndHideRetainedRows() async {
+        let calls = RestFetchCalls()
+        let redemption = WaffledAPI.RewardRedemption(
+            id: "redemption-1", rewardId: "reward-1", personId: "person-1",
+            personName: "Maya", personAvatar: nil, personColor: nil,
+            title: "Movie night", emoji: "🎬", cost: 5, currency: "stars",
+            status: "pending", decidedAt: nil, createdAt: "2026-09-03T12:00:00Z"
+        )
+        let chore = try! JSONDecoder().decode(
+            WaffledAPI.ChoreInstanceDTO.self,
+            from: Data(#"""
+            {
+                "id":"chore-1","choreId":"template-1","choreTitle":"Dishes",
+                "emoji":"🍽️","personId":"person-1","personName":"Maya",
+                "status":"awaiting","rewardAmount":0,"requiresApproval":true,
+                "streak":0,"requiresPhoto":false,"hadProof":false
+            }
+            """#.utf8)
+        )
+        let model = ApprovalsModel(
+            fetchRedemptions: { await calls.record("rewards"); return [redemption] },
+            fetchChores: { await calls.record("chores"); return [chore] }
+        )
+        await model.load(scope: fixtureRestScope)
+        #expect(model.total == 2)
+
+        await model.load(scope: fixtureRestScope, choresEnabled: false, rewardsEnabled: false)
+
+        #expect(await calls.count("rewards") == 1)
+        #expect(await calls.count("chores") == 1)
+        #expect(model.redemptions.isEmpty)
+        #expect(model.chores.isEmpty)
+        #expect(model.total == 0)
+        #expect(model.state.isAuthoritative)
+    }
+
+    @Test func disabledApprovalFailureIsExcludedFromTheVisibleState() async {
+        let calls = RestFetchCalls()
+        let model = ApprovalsModel(
+            fetchRedemptions: {
+                await calls.record("rewards")
+                throw RestFixtureFailure.rejected
+            },
+            fetchChores: { await calls.record("chores"); return [] }
+        )
+
+        await model.load(
+            scope: fixtureRestScope,
+            choresEnabled: true,
+            rewardsEnabled: false
+        )
+
+        #expect(await calls.count("rewards") == 0)
+        #expect(await calls.count("chores") == 1)
+        #expect(model.state.isAuthoritative)
+        if case .empty = model.state { /* expected */ }
+        else { Issue.record("Expected only the enabled empty chore feed to count") }
     }
 
     @Test func failedPhotoRefreshKeepsThePreviouslyLoadedWall() async {
@@ -598,6 +658,35 @@ private let fixtureRestScope = RestDataScopeKey(
         #expect(moduleCalls == 1)
         #expect(!sync.module(.chores))
         #expect(!sync.rewardsOn)
+    }
+
+    @Test func olderSameScopeModuleResponseCannotOverwriteANewerOne() async {
+        let oldModules = DeferredRestValue<WaffledAPI.HouseholdModules>()
+        let moduleCalls = RestFetchCalls()
+        let sync = SyncManager()
+        let person = WaffledAPI.CurrentPerson(
+            id: "person-a", memberType: "adult", isAdmin: true, capabilities: []
+        )
+        let fetchModules: @Sendable () async throws -> WaffledAPI.HouseholdModules = {
+            await moduleCalls.record("modules")
+            if await moduleCalls.count("modules") == 1 {
+                return try await oldModules.fetch()
+            }
+            return .init(modules: ["chores": true], rewards: true)
+        }
+        let oldLoad = Task {
+            await sync.loadIdentity(fetchCurrentPerson: { person }, fetchModules: fetchModules)
+        }
+        await oldModules.waitUntilStarted()
+
+        await sync.loadIdentity(fetchCurrentPerson: { person }, fetchModules: fetchModules)
+        await oldModules.succeed(.init(modules: ["chores": false], rewards: false))
+        await oldLoad.value
+
+        let calls = await moduleCalls.count("modules")
+        #expect(calls == 2)
+        #expect(sync.module(.chores))
+        #expect(sync.rewardsOn)
     }
 }
 

@@ -222,8 +222,12 @@ struct AccountSettingsView: View {
         defer { switchingTo = nil }
         do {
             let r = try await api.switchHousehold(householdId: m.householdId)
-            session.enterClaimedSession(access: r.accessToken, refresh: r.refreshToken)
-            await sync.reauthenticate(clearLocal: true)   // household changed → wipe + re-pull
+            guard await sync.reauthenticate(clearLocal: true, adoptCredentials: {
+                session.enterClaimedSession(access: r.accessToken, refresh: r.refreshToken)
+            }) else {
+                actionError = sync.lastError ?? "Couldn’t safely clear the previous household’s local data."
+                return
+            }
             await load()
         } catch let WaffledAPI.APIError.http(code, _) {
             actionError = code == 403

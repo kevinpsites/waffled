@@ -18,6 +18,13 @@ struct SyncedMember: Identifiable, Sendable {
 @Observable
 final class SyncManager {
     enum Status: String { case idle, connecting, connected, offline }
+    enum ConnectionUpdateResult: Equatable {
+        case updated
+        case invalidURL
+        case pendingUploads(Int)
+        case transitionInProgress
+        case teardownFailed
+    }
 
     private(set) var status: Status = .idle
     /// Changes synchronously whenever credentials are torn down. REST models include
@@ -127,6 +134,8 @@ final class SyncManager {
     /// already have installed `currentPerson`; its replacement must still finish the
     /// module read instead of treating that partial identity as complete.
     private var identityModulesScope: RestDataScopeKey?
+    /// Reject an older same-scope module response when a newer refresh finishes first.
+    private var moduleLoadGeneration = 0
     /// The logged-in person's id (convenience; nil until identity loads).
     var currentPersonId: String? { currentPerson?.id }
     func loadIdentity() async {
@@ -218,8 +227,11 @@ final class SyncManager {
         requestedScope: RestDataScopeKey,
         fetch: @escaping @Sendable () async throws -> WaffledAPI.HouseholdModules
     ) async {
+        moduleLoadGeneration &+= 1
+        let generation = moduleLoadGeneration
         guard let m = try? await fetch(),
               !Task.isCancelled,
+              generation == moduleLoadGeneration,
               requestedScope == restDataScopeKey else { return }
         moduleFlags = m.modules
         rewardsSubEnabled = m.rewards
@@ -249,6 +261,7 @@ final class SyncManager {
 
     /// The household's reward currencies, loaded once (for chore/goal reward symbols).
     private(set) var currencies: [WaffledAPI.Currency] = []
+    private var currencyLoadGeneration = 0
     /// The symbol for a currency key (defaults to ⭐ / the household default).
     func currencySymbol(_ key: String?) -> String {
         if let key, let c = currencies.first(where: { $0.key == key }) { return c.symbol }
@@ -259,12 +272,32 @@ final class SyncManager {
         currencies.first(where: { $0.key == key })?.color
     }
     func loadCurrencies() async {
+        let api = api
+        await loadCurrencies(fetch: { try await api.currencies() })
+    }
+    func loadCurrencies(
+        fetch: @escaping @Sendable () async throws -> [WaffledAPI.Currency]
+    ) async {
         guard currencies.isEmpty else { return }
-        currencies = (try? await api.currencies()) ?? []
+        await replaceCurrencies(fetch: fetch)
     }
     /// Re-fetch the currency catalog (after an edit), ignoring the once-only guard.
     func refreshCurrencies() async {
-        if let fresh = try? await api.currencies() { currencies = fresh }
+        let api = api
+        await replaceCurrencies(fetch: { try await api.currencies() })
+    }
+
+    private func replaceCurrencies(
+        fetch: @escaping @Sendable () async throws -> [WaffledAPI.Currency]
+    ) async {
+        currencyLoadGeneration &+= 1
+        let generation = currencyLoadGeneration
+        let requestedScope = restDataScopeKey
+        guard let fresh = try? await fetch(),
+              !Task.isCancelled,
+              generation == currencyLoadGeneration,
+              requestedScope == restDataScopeKey else { return }
+        currencies = fresh
     }
 
     private let db: PowerSyncDatabaseProtocol
@@ -275,14 +308,10 @@ final class SyncManager {
     private var watchTask: Task<Void, Never>?
     private var eventsTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
+    private var connectionTransitionInProgress = false
 
     init() {
         db = PowerSyncDatabase(schema: SyncSchema.schema, dbFilename: "waffled.sqlite")
-        // A dead refresh token (caught mid-request) tears the sync session down too,
-        // so we don't keep retrying with a token that will never be accepted.
-        NotificationCenter.default.addObserver(forName: .waffledAuthExpired, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.signOut() }
-        }
     }
 
     /// Stand up watchers once, then connect. Safe to call on every app launch.
@@ -312,11 +341,67 @@ final class SyncManager {
         lastError = failure.map { "Couldn't open the local database: \($0)" }
     }
 
-    /// (Re)connect with fresh credentials — used by the Settings "Reconnect" button
-    /// after pasting a token or changing the API URL. Either change can cross a
-    /// household/server boundary, so take the same clearing path as account switching.
-    func reconnect() async {
-        await reauthenticate(clearLocal: true)
+    /// Reconnect transport without changing credentials. Connection-setting screens
+    /// use `updateConnection` below so config changes happen only after the old
+    /// connection is fully stopped.
+    @discardableResult
+    func reconnect() async -> Bool {
+        guard !connectionTransitionInProgress else { return false }
+        connectionTransitionInProgress = true
+        defer { connectionTransitionInProgress = false }
+        guard pendingUploads == 0 else {
+            let n = pendingUploads
+            lastError = "Wait for \(n) pending change\(n == 1 ? "" : "s") to sync before reconnecting."
+            return false
+        }
+        guard await stopSync(clearLocal: false) else { return false }
+        await start()
+        return true
+    }
+
+    /// Atomically move the live client to a new server and/or developer token. The old
+    /// connection is stopped before global AppConfig changes, queued writes block the
+    /// operation, and only a real principal/server boundary clears the local mirror and
+    /// rotates REST state. Saving unchanged settings is a plain reconnect, so offline
+    /// PowerSync data and same-principal REST values remain available.
+    func updateConnection(
+        apiBaseURL rawBaseURL: String? = nil,
+        devToken rawDevToken: String? = nil
+    ) async -> ConnectionUpdateResult {
+        guard !connectionTransitionInProgress else { return .transitionInProgress }
+        connectionTransitionInProgress = true
+        defer { connectionTransitionInProgress = false }
+
+        let normalizedBaseURL: String?
+        if let rawBaseURL {
+            let trimmed = rawBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                normalizedBaseURL = AppConfig.defaultBaseURL
+            } else if let normalized = AppConfig.normalizedApiBaseURL(trimmed) {
+                normalizedBaseURL = normalized
+            } else {
+                return .invalidURL
+            }
+        } else {
+            normalizedBaseURL = nil
+        }
+
+        guard pendingUploads == 0 else { return .pendingUploads(pendingUploads) }
+
+        let normalizedToken = rawDevToken?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let serverChanged = normalizedBaseURL.map { $0 != AppConfig.apiBaseURL } ?? false
+        let tokenChanged = normalizedToken.map { $0 != AppConfig.storedDevToken } ?? false
+        // A stored dev token is dormant while a Keychain session is active.
+        let crossesPrincipalBoundary = serverChanged || (AuthTokens.accessToken == nil && tokenChanged)
+
+        guard await stopSync(clearLocal: crossesPrincipalBoundary) else {
+            return .teardownFailed
+        }
+        if let rawBaseURL { _ = AppConfig.setApiBaseURL(rawBaseURL) }
+        if let rawDevToken { AppConfig.setDevToken(rawDevToken) }
+        if crossesPrincipalBoundary { invalidateRestDataScope() }
+        await start()
+        return .updated
     }
 
     /// Re-scope the live sync after the active session changed — a kiosk profile claim
@@ -329,9 +414,20 @@ final class SyncManager {
     /// `households LIMIT 1` write path picking the wrong one) until PowerSync reconciles
     /// buckets. The kiosk person-switch keeps the default (`false`): same household, so
     /// the cheap disconnect is correct.
-    func reauthenticate(clearLocal: Bool = false) async {
-        await signOut(clearLocal: clearLocal)
+    @discardableResult
+    func reauthenticate(
+        clearLocal: Bool = false,
+        adoptCredentials: (() -> Void)? = nil
+    ) async -> Bool {
+        // Stop with the old credentials still installed. Only after teardown succeeds
+        // do we rotate the UI/REST scope and adopt the replacement tokens. This keeps
+        // an old uploader from consulting new credentials and keeps a failed clear on
+        // the still-live settings screen, where the user can retry safely.
+        guard await stopSync(clearLocal: clearLocal) else { return false }
+        invalidateRestDataScope()
+        adoptCredentials?()
         await start()
+        return true
     }
 
     /// Tear down the sync session on sign-out: stop the live queries, disconnect
@@ -344,21 +440,39 @@ final class SyncManager {
     /// buckets to the new token, the same as the web. Keeping teardown light also avoids
     /// a memory/Keychain spike at sign-out. A **household switch** passes `clearLocal:
     /// true` so the previous household's rows can't linger in the shared SQLite file.
-    func signOut(clearLocal: Bool = false) async {
+    @discardableResult
+    func signOut(clearLocal: Bool = false) async -> Bool {
         // Invalidate REST-backed screens before the first suspension point. An old
         // request may still finish while PowerSync disconnects; the new scope makes
         // model generations reject it and rebuilds the authenticated view subtree.
         invalidateRestDataScope()
+        return await stopSync(clearLocal: clearLocal)
+    }
+
+    /// Stop PowerSync without deciding whether credentials/REST scope changed. This is
+    /// shared by sign-out and the atomic connection-settings handoff above.
+    private func stopSync(clearLocal: Bool) async -> Bool {
         // Stop consuming the live queries BEFORE disconnecting so a watcher can't
         // race the teardown.
         watchTask?.cancel(); eventsTask?.cancel(); statusTask?.cancel()
         watchTask = nil; eventsTask = nil; statusTask = nil
-        if clearLocal { try? await db.disconnectAndClear() } else { try? await db.disconnect() }
+        var clearFailed = false
+        if clearLocal {
+            do { try await db.disconnectAndClear() }
+            catch {
+                clearFailed = true
+                lastError = "Couldn’t clear the previous account’s local data."
+            }
+        } else {
+            try? await db.disconnect()
+        }
         members = []; allEvents = []
         personCount = 0; eventCount = 0; pendingUploads = 0
-        lastSyncedAt = nil; lastError = nil
-        status = .idle
+        lastSyncedAt = nil
+        if !clearFailed { lastError = nil }
+        status = clearFailed ? .offline : .idle
         started = false
+        return !clearFailed
     }
 
     /// Synchronous half of credential teardown. Keeping it free of database work
@@ -367,8 +481,12 @@ final class SyncManager {
         restDataScope = RestDataScope()
         currentPerson = nil
         identityModulesScope = nil
+        moduleLoadGeneration &+= 1
         moduleFlags = [:]
         rewardsSubEnabled = true
+        eventStyle = .solid
+        familyColorHex = EventPalette.defaultFamilyHex
+        currencyLoadGeneration &+= 1
         currencies = []
         modulesRev &+= 1
     }

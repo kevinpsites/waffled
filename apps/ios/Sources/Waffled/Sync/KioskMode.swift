@@ -83,8 +83,11 @@ final class KioskMode {
     func claim(_ profile: WaffledAPI.KioskProfile, pin: String?, sync: SyncManager, session: Session) async -> ClaimOutcome {
         do {
             let claim = try await api.claimProfile(personId: profile.id, pin: pin)
-            session.enterClaimedSession(access: claim.accessToken, refresh: claim.refreshToken)
-            await sync.reauthenticate()
+            guard await sync.reauthenticate(adoptCredentials: {
+                session.enterClaimedSession(access: claim.accessToken, refresh: claim.refreshToken)
+            }) else {
+                return .failed("Couldn’t safely finish switching profiles. Try again.")
+            }
             hasProfile = true
             return .ok
         } catch let e as WaffledAPI.KioskClaimError {
@@ -120,8 +123,8 @@ final class KioskMode {
     func unpair(sync: SyncManager, session: Session) async {
         KioskDeviceStore.clear()
         isShared = false
-        await dropToPicker(sync: sync)
-        await session.signOut()
+        hasProfile = false
+        await session.signOut(sync: sync)
     }
 
     /// Drop the per-person session + tear down the live sync (no server revoke — the

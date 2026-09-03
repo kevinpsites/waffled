@@ -83,7 +83,14 @@ struct FamilyView: View {
         }
         .background(WF.canvas)
         .toolbar(.hidden, for: .navigationBar)   // the screen draws its own "Family" header
-        .refreshable { await loadHub(); await approvals.load(scope: sync.restDataScopeKey) }
+        .refreshable {
+            await loadHub()
+            await approvals.load(
+                scope: sync.restDataScopeKey,
+                choresEnabled: sync.module(.chores),
+                rewardsEnabled: sync.rewardsOn
+            )
+        }
         .task(id: loadKey) { await loadHub() }
         .sheet(isPresented: $showSync) { SyncStatusView() }
         .onAppear(perform: runDemoHooksIfSet)
