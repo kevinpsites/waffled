@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reward activity stays inside your family.** Redeeming or granting a reward now
+  rejects people and currencies from another household, and a family member can only
+  redeem for someone else when their role can manage rewards. Pending redemptions also
+  stop safely if their currency is later disabled, while earn-only currencies still work
+  for spot awards.
+
 ## [0.14.3] - 2026-09-02
 
 ### Added

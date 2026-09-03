@@ -39,6 +39,7 @@ const kevin = mint('dev|kevin')
 let householdId = ''
 let kevinId = ''
 let foreignPersonId = ''
+const foreignCurrencyKey = 'outsider-coins'
 
 async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: url })
@@ -80,6 +81,11 @@ beforeAll(async () => {
     const person = await c.query<{ id: string }>(
       `insert into persons (household_id, name, member_type) values ($1,'Outsider','adult') returning id`,
       [household.rows[0].id]
+    )
+    await c.query(
+      `insert into currencies (household_id, key, label, spendable, is_default)
+       values ($1,$2,'Outsider Coins',true,true)`,
+      [household.rows[0].id, foreignCurrencyKey]
     )
     return person.rows[0].id
   })
@@ -217,7 +223,7 @@ describe('reward approval — per-reward flag + household default', () => {
     const res = await call('POST', '/api/rewards', kevin, {
       title: 'Unknown currency reward',
       cost: 1,
-      currency: 'other-household-coins',
+      currency: foreignCurrencyKey,
     })
 
     expect(res.statusCode).toBe(404)
@@ -226,6 +232,138 @@ describe('reward approval — per-reward flag + household default', () => {
       [householdId]
     ))
     expect(writes.rowCount).toBe(0)
+  })
+
+  it('rejects moving an existing reward onto another household’s currency', async () => {
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Keep my currency local',
+      cost: 1,
+    })).body).reward
+
+    const res = await call('PATCH', `/api/rewards/${reward.id}`, kevin, {
+      currency: foreignCurrencyKey,
+    })
+
+    expect(res.statusCode).toBe(404)
+    const stored = await withClient(async (c) => {
+      const { rows } = await c.query<{ currency: string }>(
+        `select currency from rewards where id=$1`,
+        [reward.id]
+      )
+      return rows[0]
+    })
+    expect(stored.currency).toBe('stars')
+  })
+
+  it('does not expose a legacy redemption whose person belongs to another household', async () => {
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Legacy list boundary',
+      cost: 1,
+      requiresApproval: true,
+    })).body).reward
+    const redemptionId = await withClient(async (c) => {
+      const { rows } = await c.query<{ id: string }>(
+        `insert into reward_redemptions
+           (household_id, reward_id, person_id, title, cost, currency, status, requested_by)
+         values ($1,$2,$3,'Legacy list boundary',1,'stars','pending',$4) returning id`,
+        [householdId, reward.id, foreignPersonId, kevinId]
+      )
+      return rows[0].id
+    })
+
+    const listed = JSON.parse((await call('GET', '/api/redemptions?status=pending', kevin)).body).redemptions
+    expect(listed.some((r: { id: string }) => r.id === redemptionId)).toBe(false)
+  })
+
+  it('can deny, but not approve, a pending redemption after its local person is deleted', async () => {
+    const personId = await addMember('Archived redeemer', 'kid', false, 'dev|archived-redeemer')
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Archived redeemer reward',
+      cost: 1,
+      requiresApproval: true,
+    })).body).reward
+    const redemption = JSON.parse((await call(
+      'POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId }
+    )).body).redemption
+    await withClient((c) => c.query(`update persons set deleted_at=now() where id=$1`, [personId]))
+
+    const listed = JSON.parse((await call('GET', '/api/redemptions?status=pending', kevin)).body).redemptions
+    expect(listed.some((r: { id: string }) => r.id === redemption.id)).toBe(true)
+    expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, kevin)).statusCode).toBe(404)
+    const denied = await call('POST', `/api/redemptions/${redemption.id}/deny`, kevin)
+    expect(denied.statusCode).toBe(200)
+    expect(JSON.parse(denied.body).redemption.status).toBe('denied')
+  })
+
+  it('cannot decide a legacy redemption for a person in another household', async () => {
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Legacy approval boundary',
+      cost: 1,
+      requiresApproval: true,
+    })).body).reward
+    const redemptionId = await withClient(async (c) => {
+      // Model data that could have been written before the request boundary was
+      // enforced. The forged active-household balance makes the old approval
+      // path exploitable instead of merely returning "not enough stars".
+      await c.query(
+        `insert into ledger_entries (household_id, person_id, currency, amount, reason, created_by)
+         values ($1,$2,'stars',5,'legacy_seed',$3)`,
+        [householdId, foreignPersonId, kevinId]
+      )
+      const { rows } = await c.query<{ id: string }>(
+        `insert into reward_redemptions
+           (household_id, reward_id, person_id, title, cost, currency, status, requested_by)
+         values ($1,$2,$3,'Legacy approval boundary',1,'stars','pending',$4) returning id`,
+        [householdId, reward.id, foreignPersonId, kevinId]
+      )
+      return rows[0].id
+    })
+
+    expect((await call('POST', `/api/redemptions/${redemptionId}/approve`, kevin)).statusCode).toBe(404)
+    expect((await call('POST', `/api/redemptions/${redemptionId}/deny`, kevin)).statusCode).toBe(404)
+    const stored = await withClient(async (c) => {
+      const redemption = await c.query<{ status: string }>(
+        `select status from reward_redemptions where id=$1`,
+        [redemptionId]
+      )
+      const debit = await c.query(
+        `select 1 from ledger_entries
+          where household_id=$1 and person_id=$2 and reason='reward_redeemed' and ref_id=$3`,
+        [householdId, foreignPersonId, redemptionId]
+      )
+      return { status: redemption.rows[0].status, debitCount: debit.rowCount }
+    })
+    expect(stored).toEqual({ status: 'pending', debitCount: 0 })
+  })
+
+  it('cannot approve a redemption after its currency becomes non-spendable', async () => {
+    const currency = JSON.parse((await call('POST', '/api/currencies', kevin, {
+      label: 'Tickets',
+      spendable: true,
+    })).body).currency
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Ticket prize',
+      cost: 2,
+      currency: currency.key,
+      requiresApproval: true,
+    })).body).reward
+    await withClient((c) => c.query(
+      `insert into ledger_entries (household_id, person_id, currency, amount, reason, created_by)
+       values ($1,$2,$3,5,'legacy_seed',$2)`,
+      [householdId, kevinId, currency.key]
+    ))
+    const redemption = JSON.parse((await call(
+      'POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId: kevinId }
+    )).body).redemption
+    expect((await call('PATCH', `/api/currencies/${currency.id}`, kevin, { spendable: false })).statusCode).toBe(200)
+
+    expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, kevin)).statusCode).toBe(409)
+    const stored = await withClient(async (c) => {
+      const row = await c.query<{ status: string }>(`select status from reward_redemptions where id=$1`, [redemption.id])
+      const debit = await c.query(`select 1 from ledger_entries where ref_id=$1 and reason='reward_redeemed'`, [redemption.id])
+      return { status: row.rows[0].status, debitCount: debit.rowCount }
+    })
+    expect(stored).toEqual({ status: 'pending', debitCount: 0 })
   })
 
   it('new rewards inherit the household default (default true)', async () => {
@@ -338,6 +476,18 @@ describe('reward capability gating (non-admin members)', () => {
     expect((await call('POST', `/api/rewards/${reward.id}/redeem`, adultToken, { personId: kidId })).statusCode).toBe(201)
   })
 
+  it('treats an uppercase UUID spelling as the same self redemption subject', async () => {
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Canonical self identity',
+      cost: 1,
+      requiresApproval: true,
+    })).body).reward
+
+    expect((await call('POST', `/api/rewards/${reward.id}/redeem`, kidToken, {
+      personId: kidId.toUpperCase(),
+    })).statusCode).toBe(201)
+  })
+
   it('exposes capabilities on /api/household', async () => {
     const kid = JSON.parse((await call('GET', '/api/household', kidToken)).body).person
     expect(kid.capabilities).toEqual([])
@@ -381,10 +531,41 @@ describe('spot-award stars', () => {
     const res = await call('POST', `/api/persons/${foreignPersonId}/award`, kevin, { amount: 2 })
     expect(res.statusCode).toBe(404)
     const writes = await withClient((c) => c.query(
-      `select 1 from ledger_entries where household_id=$1 and person_id=$2`,
+      `select 1 from ledger_entries where household_id=$1 and person_id=$2 and reason='spot_award'`,
       [householdId, foreignPersonId]
     ))
     expect(writes.rowCount).toBe(0)
+  })
+
+  it('can award an active earn-only currency but not another household’s currency', async () => {
+    const currency = JSON.parse((await call('POST', '/api/currencies', kevin, {
+      label: 'Practice Points',
+      spendable: false,
+    })).body).currency
+
+    expect((await call('POST', `/api/persons/${kidId}/award`, kevin, {
+      amount: 2,
+      currency: currency.key,
+    })).statusCode).toBe(201)
+    expect((await call('POST', `/api/persons/${kidId}/award`, kevin, {
+      amount: 2,
+      currency: foreignCurrencyKey,
+    })).statusCode).toBe(404)
+
+    const amounts = await withClient(async (c) => {
+      const local = await c.query<{ total: string }>(
+        `select coalesce(sum(amount),0) as total from ledger_entries
+          where household_id=$1 and person_id=$2 and currency=$3 and reason='spot_award'`,
+        [householdId, kidId, currency.key]
+      )
+      const foreign = await c.query(
+        `select 1 from ledger_entries
+          where household_id=$1 and person_id=$2 and currency=$3 and reason='spot_award'`,
+        [householdId, kidId, foreignCurrencyKey]
+      )
+      return { local: Number(local.rows[0].total), foreignCount: foreign.rowCount }
+    })
+    expect(amounts).toEqual({ local: 2, foreignCount: 0 })
   })
 
   it('stores the note on the ledger entry', async () => {
