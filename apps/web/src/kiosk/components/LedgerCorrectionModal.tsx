@@ -35,7 +35,7 @@ export function LedgerCorrectionModal({ target, onClose, onSaved }: {
       if (target.kind === 'refund') {
         await rewardsApi.refundRedemption(target.redemption.id, cleanReason, requestKey)
       } else {
-        const n = Math.round(Number(magnitude))
+        const n = Number(magnitude)
         if (mode === 'replace' && (!Number.isInteger(n) || n <= 0 || n > PG_INT_MAX || n === Math.abs(original))) {
           setError('Enter a different positive whole-number amount up to 2,147,483,647.')
           setSaving(false)

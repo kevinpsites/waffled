@@ -217,6 +217,7 @@ export function PersonProfile() {
   const { person: me, household } = useHousehold()
   // The spend side of the economy (jar + redemptions) hides when rewards is off;
   // the earn side (wallet/ledger, fed by chores) stays.
+  const choresOn = moduleEnabled(household, 'chores')
   const rewardsOn = rewardsEnabled(household)
   const waffledBitesOn = moduleEnabled(household, 'waffledBites')
   const { lists: goalLists } = useGoalLists()
@@ -227,8 +228,8 @@ export function PersonProfile() {
   // A parent can hand out ad-hoc "spot" stars (not tied to a chore) when they hold
   // reward.grant. This is an *earn* action, so it stays visible even if the rewards
   // shop is off — the wallet/ledger is always shown.
-  const canAward = can(me, 'reward.grant')
-  const canCorrect = can(me, 'reward.correct')
+  const canAward = choresOn && can(me, 'reward.grant')
+  const canCorrect = choresOn && can(me, 'reward.correct')
 
   async function cancelPendingRedemption(redemptionId: string) {
     if (!window.confirm('Cancel this pending redemption? No balance has been spent yet.')) return
@@ -393,13 +394,15 @@ export function PersonProfile() {
           ))}
         </div>
 
-        {rewardsOn && (
+        {(rewardsOn || data.redemptions.length > 0) && (
           <div className="card pp-card">
             <div className="card-h" style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
               <span>Reward redemptions</span>
-              <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => navigate('/tasks?tab=rewards')}>🎁 Shop</button>
+              {rewardsOn && (
+                <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => navigate('/tasks?tab=rewards')}>🎁 Shop</button>
+              )}
             </div>
-            {data.redemptions.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>None yet — earn {(defaultCur?.label ?? 'stars').toLowerCase()}, then redeem in Tasks → Rewards.</div>}
+            {rewardsOn && data.redemptions.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>None yet — earn {(defaultCur?.label ?? 'stars').toLowerCase()}, then redeem in Tasks → Rewards.</div>}
             {rewardActionError && <div role="alert" className="tiny" style={{ color: 'var(--primary)', fontWeight: 700, marginBottom: 8 }}>{rewardActionError}</div>}
             {data.redemptions.map((r) => (
               <div key={r.id} className="pp-redeem">

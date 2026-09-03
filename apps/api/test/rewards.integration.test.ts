@@ -173,6 +173,58 @@ async function runBehindLedgerLock<T>(personId: string, start: () => Promise<T>[
   return results
 }
 
+// Hold the same household-scoped advisory key used by correction/refund requests
+// until every competing transaction is visibly queued behind it. This proves the
+// test actually overlaps at the serialization point instead of merely firing two
+// promises that might run one after the other on a busy machine.
+async function runBehindCorrectionKeyLock<T>(idempotencyKey: string, start: () => Promise<T>[]): Promise<T[]> {
+  const blocker = new Client({ connectionString: url })
+  const observer = new Client({ connectionString: url })
+  await Promise.all([blocker.connect(), observer.connect()])
+  await blocker.query('begin')
+  await blocker.query(
+    `select pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
+    [`reward-correction:${householdId}:${idempotencyKey.toLowerCase()}`]
+  )
+  const pending = start()
+  let barrierError: unknown
+  try {
+    await waitForLockWaiters(observer, pending.length, ['%pg_advisory_xact_lock%'])
+  } catch (err) {
+    barrierError = err
+  } finally {
+    await blocker.query('commit')
+    await Promise.all([blocker.end(), observer.end()])
+  }
+  const results = await Promise.all(pending)
+  if (barrierError) throw barrierError
+  return results
+}
+
+async function runBehindLedgerEntryLock<T>(entryId: string, start: () => Promise<T>[]): Promise<T[]> {
+  const blocker = new Client({ connectionString: url })
+  const observer = new Client({ connectionString: url })
+  await Promise.all([blocker.connect(), observer.connect()])
+  await blocker.query('begin')
+  await blocker.query(
+    `select id from ledger_entries where household_id=$1 and id=$2 for update`,
+    [householdId, entryId]
+  )
+  const pending = start()
+  let barrierError: unknown
+  try {
+    await waitForLockWaiters(observer, pending.length, ['%from ledger_entries%', '%for update%'])
+  } catch (err) {
+    barrierError = err
+  } finally {
+    await blocker.query('commit')
+    await Promise.all([blocker.end(), observer.end()])
+  }
+  const results = await Promise.all(pending)
+  if (barrierError) throw barrierError
+  return results
+}
+
 async function runAfterConcurrentCurrencyDisable<T>(currencyId: string, start: () => Promise<T>): Promise<T> {
   const blocker = new Client({ connectionString: url })
   const observer = new Client({ connectionString: url })
@@ -688,7 +740,8 @@ describe('append-only reward corrections and reversals', () => {
       idempotencyKey: '11111111-1111-4111-8111-111111111111',
     })
     expect(corrected.statusCode).toBe(201)
-    expect(JSON.parse(corrected.body).correction).toMatchObject({
+    const correction = JSON.parse(corrected.body).correction
+    expect(correction).toMatchObject({
       originalId,
       balance: before + 6,
       replayed: false,
@@ -708,6 +761,21 @@ describe('append-only reward corrections and reversals', () => {
       expect.objectContaining({ amount: -10, reason: 'ledger_reversal', reverses_entry_id: originalId, correction_reason: 'Awarded four too many' }),
       expect.objectContaining({ amount: 6, reason: 'ledger_correction', correction_of_id: originalId, correction_reason: 'Awarded four too many' }),
     ]))
+
+    const overview = JSON.parse((await call('GET', `/api/persons/${kevinId}/overview`, kevin)).body)
+    expect(overview.recentLedger.find((entry: { id: string }) => entry.id === originalId)).toMatchObject({
+      reversedById: correction.reversalId,
+      reversible: false,
+    })
+    expect(overview.recentLedger.find((entry: { id: string }) => entry.id === correction.reversalId)).toMatchObject({
+      reason: 'ledger_reversal',
+      correctionReason: 'Awarded four too many',
+    })
+    expect(overview.recentLedger.find((entry: { id: string }) => entry.id === correction.replacementId)).toMatchObject({
+      reason: 'ledger_correction',
+      correctionOfId: originalId,
+      correctionReason: 'Awarded four too many',
+    })
   })
 
   it('replays the same correction idempotently and blocks a second reversal', async () => {
@@ -720,6 +788,18 @@ describe('append-only reward corrections and reversals', () => {
     const replay = await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, body)
     expect(replay.statusCode).toBe(200)
     expect(JSON.parse(replay.body).correction.replayed).toBe(true)
+    const changedReason = await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+      ...body,
+      reason: 'Same key but a different audit reason',
+    })
+    expect(changedReason.statusCode).toBe(409)
+    expect(JSON.parse(changedReason.body).message).toContain('different correction details')
+    const changedAmount = await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+      ...body,
+      replacementAmount: 2,
+    })
+    expect(changedAmount.statusCode).toBe(409)
+    expect(JSON.parse(changedAmount.body).message).toContain('different correction details')
     expect((await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
       reason: 'Try a second reversal',
       idempotencyKey: '33333333-3333-4333-8333-333333333333',
@@ -731,6 +811,40 @@ describe('append-only reward corrections and reversals', () => {
     expect(reversals.rowCount).toBe(1)
   })
 
+  it('normalizes UUID casing when replaying a correction request', async () => {
+    const award = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, { amount: 4 })).body)
+    const key = 'abcdefab-cdef-4abc-8def-abcdefabcdef'
+    const body = { reason: 'UUID casing retry', idempotencyKey: key }
+
+    expect((await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, body)).statusCode).toBe(201)
+    const replay = await call('POST', `/api/ledger-entries/${award.id.toUpperCase()}/correct`, kevin, {
+      ...body,
+      idempotencyKey: key.toUpperCase(),
+    })
+
+    expect(replay.statusCode).toBe(200)
+    expect(JSON.parse(replay.body).correction.replayed).toBe(true)
+  })
+
+  it('serializes different correction keys targeting the same ledger entry', async () => {
+    const award = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, { amount: 8 })).body)
+    const corrections = await runBehindLedgerEntryLock(award.id, () => [
+      call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+        reason: 'First overlapping correction',
+        replacementAmount: 6,
+        idempotencyKey: '91919191-9191-4191-8191-919191919191',
+      }),
+      call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+        reason: 'Second overlapping correction',
+        replacementAmount: 7,
+        idempotencyKey: '92929292-9292-4292-8292-929292929292',
+      }),
+    ])
+
+    expect(corrections.map((result) => result.statusCode).sort()).toEqual([201, 409])
+    expect(corrections.find((result) => result.statusCode === 409)?.body).toContain('already been corrected')
+  })
+
   it('serializes concurrent retries and rejects concurrent key reuse for another entry', async () => {
     const firstAward = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, { amount: 9 })).body)
     const retryBody = {
@@ -738,7 +852,7 @@ describe('append-only reward corrections and reversals', () => {
       replacementAmount: 7,
       idempotencyKey: '99999999-9999-4999-8999-999999999999',
     }
-    const retries = await Promise.all([
+    const retries = await runBehindCorrectionKeyLock(retryBody.idempotencyKey, () => [
       call('POST', `/api/ledger-entries/${firstAward.id}/correct`, kevin, retryBody),
       call('POST', `/api/ledger-entries/${firstAward.id}/correct`, kevin, retryBody),
     ])
@@ -748,7 +862,7 @@ describe('append-only reward corrections and reversals', () => {
     const secondAward = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, { amount: 5 })).body)
     const thirdAward = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, { amount: 6 })).body)
     const sharedKey = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
-    const collisions = await Promise.all([
+    const collisions = await runBehindCorrectionKeyLock(sharedKey, () => [
       call('POST', `/api/ledger-entries/${secondAward.id}/correct`, kevin, {
         reason: 'First use of shared key', idempotencyKey: sharedKey,
       }),
@@ -812,12 +926,47 @@ describe('append-only reward corrections and reversals', () => {
       idempotencyKey: '44444444-4444-4444-8444-444444444444',
     })).statusCode).toBe(404)
 
+    const foreignRedemption = await withClient(async (c) => {
+      const household = await c.query<{ household_id: string }>(
+        `select household_id from persons where id=$1`,
+        [foreignPersonId]
+      )
+      const reward = await c.query<{ id: string }>(
+        `insert into rewards (household_id, title, cost) values ($1,'Foreign reward',1) returning id`,
+        [household.rows[0].household_id]
+      )
+      const row = await c.query<{ id: string }>(
+        `insert into reward_redemptions
+           (household_id, reward_id, person_id, title, cost, status, requested_by)
+         values ($1,$2,$3,'Foreign reward',1,'pending',$3) returning id`,
+        [household.rows[0].household_id, reward.rows[0].id, foreignPersonId]
+      )
+      return row.rows[0].id
+    })
+    expect((await call('POST', `/api/redemptions/${foreignRedemption}/cancel`, kevin)).statusCode).toBe(404)
+    expect((await call('POST', `/api/redemptions/${foreignRedemption}/refund`, kevin, {
+      reason: 'Cross tenant refund attempt',
+      idempotencyKey: '45454545-4545-4545-8545-454545454545',
+    })).statusCode).toBe(404)
+
     const kidId = await addMember('No corrections', 'kid', false, 'dev|no-corrections')
     const kid = mint('dev|no-corrections')
     const ownEntry = JSON.parse((await call('POST', `/api/persons/${kidId}/award`, kevin, { amount: 2 })).body).id
     expect((await call('POST', `/api/ledger-entries/${ownEntry}/correct`, kid, {
       reason: 'Not permitted',
       idempotencyKey: '55555555-5555-4555-8555-555555555555',
+    })).statusCode).toBe(403)
+
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'No-cap refund', cost: 1, requiresApproval: false,
+    })).body).reward
+    await grantStars(kidId, 1)
+    const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kid, {
+      personId: kidId,
+    })).body).redemption
+    expect((await call('POST', `/api/redemptions/${redemption.id}/refund`, kid, {
+      reason: 'Not permitted to refund',
+      idempotencyKey: '56565656-5656-4656-8656-565656565656',
     })).statusCode).toBe(403)
   })
 
@@ -884,6 +1033,111 @@ describe('append-only reward corrections and reversals', () => {
     expect((await call('POST', `/api/redemptions/${selfRequested.id}/cancel`, subjectToken)).statusCode).toBe(200)
   })
 
+  it('does not acquire a second pool connection while authorizing a cancellation', async () => {
+    const approverId = await addMember('Cancellation approver', 'adult', false, 'dev|cancel-approver')
+    const approver = mint('dev|cancel-approver')
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Pool-safe cancellation', cost: 1, requiresApproval: true,
+    })).body).reward
+    const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, {
+      personId: approverId,
+    })).body).redemption
+    const pool = (await import('../src/platform/db')).getPool()
+    const held = await Promise.all(Array.from(
+      { length: (pool.options.max ?? 10) - 1 },
+      () => pool.connect()
+    ))
+    let settled = false
+    const pending = call('POST', `/api/redemptions/${redemption.id}/cancel`, approver)
+      .then((result) => { settled = true; return result })
+    const deadline = Date.now() + 2_000
+    while (!settled && pool.waitingCount === 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    const waitedForNestedConnection = pool.waitingCount > 0
+    held.forEach((client) => client.release())
+    const result = await pending
+
+    expect(waitedForNestedConnection).toBe(false)
+    expect(result.statusCode).toBe(200)
+  })
+
+  it('keeps historical cancellation and refund actions available when the rewards shop is off', async () => {
+    const pendingReward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Cancel after shop disabled', cost: 1, requiresApproval: true,
+    })).body).reward
+    const pending = JSON.parse((await call('POST', `/api/rewards/${pendingReward.id}/redeem`, kevin, {
+      personId: kevinId,
+    })).body).redemption
+    const approvedReward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Refund after shop disabled', cost: 1, requiresApproval: false,
+    })).body).reward
+    await grantStars(kevinId, 1)
+    const approved = JSON.parse((await call('POST', `/api/rewards/${approvedReward.id}/redeem`, kevin, {
+      personId: kevinId,
+    })).body).redemption
+
+    await withClient((c) => c.query(
+      `update households set settings = coalesce(settings,'{}'::jsonb)
+         || jsonb_build_object('chores', jsonb_build_object('rewards', false)) where id=$1`,
+      [householdId]
+    ))
+    let canceled: RunResult
+    let refunded: RunResult
+    try {
+      canceled = await call('POST', `/api/redemptions/${pending.id}/cancel`, kevin)
+      refunded = await call('POST', `/api/redemptions/${approved.id}/refund`, kevin, {
+        reason: 'Shop was disabled after redemption',
+        idempotencyKey: '10101010-1010-4010-8010-101010101010',
+      })
+    } finally {
+      await withClient((c) => c.query(
+        `update households set settings = coalesce(settings,'{}'::jsonb)
+           || jsonb_build_object('chores', jsonb_build_object('rewards', true)) where id=$1`,
+        [householdId]
+      ))
+    }
+
+    expect(canceled.statusCode).toBe(200)
+    expect(refunded.statusCode).toBe(200)
+  })
+
+  it('returns 400 instead of throwing when correction request fields are not strings', async () => {
+    const award = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, {
+      amount: 2,
+    })).body)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Malformed refund request', cost: 1, requiresApproval: false,
+    })).body).reward
+    await grantStars(kevinId, 1)
+    const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, {
+      personId: kevinId,
+    })).body).redemption
+
+    const requests = await Promise.all([
+      call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+        reason: 123,
+        idempotencyKey: '12121212-1212-4212-8212-121212121212',
+      }),
+      call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+        reason: 'Valid correction reason',
+        idempotencyKey: 123,
+      }),
+      call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, {
+        reason: 123,
+        idempotencyKey: '13131313-1313-4313-8313-131313131313',
+      }),
+      call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, {
+        reason: 'Valid refund reason',
+        idempotencyKey: 123,
+      }),
+      call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, 7),
+      call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, 7),
+    ])
+
+    expect(requests.map((request) => request.statusCode)).toEqual([400, 400, 400, 400, 400, 400])
+  })
+
   it('refunds an approved redemption once and restores the balance', async () => {
     const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
       title: 'Refundable reward', cost: 4, requiresApproval: false,
@@ -901,13 +1155,45 @@ describe('append-only reward corrections and reversals', () => {
     }
     const refunded = await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, body)
     expect(refunded.statusCode).toBe(200)
-    expect(JSON.parse(refunded.body).redemption.status).toBe('refunded')
+    const refundResult = JSON.parse(refunded.body)
+    expect(refundResult.redemption.status).toBe('refunded')
     expect(await starsOf(kevinId)).toBe(beforeRedeem)
+
+    const overview = JSON.parse((await call('GET', `/api/persons/${kevinId}/overview`, kevin)).body)
+    expect(overview.redemptions.find((entry: { id: string }) => entry.id === redemption.id)).toMatchObject({
+      status: 'refunded',
+      ledgerId: redemption.ledgerId,
+      refundLedgerId: refundResult.correction.reversalId,
+    })
+    expect(overview.recentLedger.find((entry: { id: string }) => entry.id === redemption.ledgerId)).toMatchObject({
+      reversedById: refundResult.correction.reversalId,
+      reversible: false,
+      redemptionId: redemption.id,
+    })
+    expect(overview.recentLedger.find((entry: { id: string }) => entry.id === refundResult.correction.reversalId)).toMatchObject({
+      reason: 'ledger_reversal',
+      correctionReason: 'Reward could not be delivered',
+      redemptionId: redemption.id,
+    })
 
     const replay = await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, body)
     expect(replay.statusCode).toBe(200)
     expect(JSON.parse(replay.body).correction.replayed).toBe(true)
     expect(await starsOf(kevinId)).toBe(beforeRedeem)
+
+    const changedReason = await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, {
+      ...body,
+      reason: 'Same key but a different refund reason',
+    })
+    expect(changedReason.statusCode).toBe(409)
+    expect(JSON.parse(changedReason.body).message).toContain('different correction details')
+
+    const differentRequest = await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, {
+      reason: 'A new request is not a retry',
+      idempotencyKey: 'f0f0f0f0-f0f0-40f0-80f0-f0f0f0f0f0f0',
+    })
+    expect(differentRequest.statusCode).toBe(409)
+    expect(JSON.parse(differentRequest.body).message).toContain('already been refunded')
   })
 
   it('serializes a refund key reused concurrently for different redemptions', async () => {
@@ -924,7 +1210,7 @@ describe('append-only reward corrections and reversals', () => {
       redemptions.push(JSON.parse(redeemed.body).redemption)
     }
     const idempotencyKey = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
-    const refunds = await Promise.all(redemptions.map((redemption) =>
+    const refunds = await runBehindCorrectionKeyLock(idempotencyKey, () => redemptions.map((redemption) =>
       call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, {
         reason: 'Concurrent refund key collision', idempotencyKey,
       })

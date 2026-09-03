@@ -5,6 +5,25 @@ enum RewardRedemptionActionPolicy {
     static func canCancel(requestedBy: String?, currentPersonId: String?, canApprove: Bool) -> Bool {
         canApprove || (requestedBy != nil && requestedBy == currentPersonId)
     }
+
+    static func canAward(choresOn: Bool, hasCapability: Bool) -> Bool {
+        choresOn && hasCapability
+    }
+
+    static func canCorrect(choresOn: Bool, hasCapability: Bool) -> Bool {
+        choresOn && hasCapability
+    }
+
+    static func canCorrectLedgerEntry(
+        choresOn: Bool,
+        hasCapability: Bool,
+        reversible: Bool,
+        reversedById: String?,
+        redemptionId: String?
+    ) -> Bool {
+        canCorrect(choresOn: choresOn, hasCapability: hasCapability)
+            && reversible && reversedById == nil && redemptionId == nil
+    }
 }
 
 /// The Family per-person spotlight — tap a kid (or anyone) on the Family hub.
@@ -67,6 +86,7 @@ struct PersonView: View {
     @State private var showAward = false
     @State private var correctionTarget: RewardCorrectionTarget?
     @State private var cancelingRedemption: WaffledAPI.PersonOverview.Redemption?
+    @State private var rewardActionError: String?
     @State private var waffledBiteDevice: WaffledAPI.WaffledBiteDevice?
     @State private var showWaffledBitePair = false
     // Collapse state for the iPad spotlight's grouped sections.
@@ -122,10 +142,12 @@ struct PersonView: View {
                 } else {
                     if let ov = model.overview {
                         let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
-                        SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
-                                         canPick: !ov.rewardShop.isEmpty,
-                                         onChange: { showSavingPicker = true },
-                                         onRedeem: redeemSaving)
+                        if sync.rewardsOn {
+                            SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
+                                             canPick: !ov.rewardShop.isEmpty,
+                                             onChange: { showSavingPicker = true },
+                                             onRedeem: redeemSaving)
+                        }
                     }
                     daySection
                     if let ov = model.overview {
@@ -166,18 +188,16 @@ struct PersonView: View {
         }
         .sheet(item: $correctionTarget) { target in
             RewardCorrectionSheet(target: target) { reason, replacement, key in
-                let ok: Bool
                 switch target {
                 case let .ledger(entry):
-                    ok = await sync.correctLedgerEntry(id: entry.id, reason: reason,
+                    try await sync.correctLedgerEntry(id: entry.id, reason: reason,
                                                        replacementAmount: replacement,
                                                        idempotencyKey: key)
                 case let .refund(redemption):
-                    ok = await sync.refundRedemption(id: redemption.id, reason: reason,
+                    try await sync.refundRedemption(id: redemption.id, reason: reason,
                                                      idempotencyKey: key)
                 }
-                if ok { await model.load() }
-                return ok
+                await model.load()
             }
         }
         .confirmationDialog(
@@ -192,12 +212,28 @@ struct PersonView: View {
                 guard let redemption = cancelingRedemption else { return }
                 cancelingRedemption = nil
                 Task {
-                    if await sync.cancelRedemption(id: redemption.id) { await model.load() }
+                    do {
+                        try await sync.cancelRedemption(id: redemption.id)
+                        await model.load()
+                    } catch {
+                        rewardActionError = APIErrorText.message(
+                            for: error,
+                            fallback: "Couldn’t cancel this redemption. Please try again."
+                        )
+                    }
                 }
             }
             Button("Keep request", role: .cancel) { cancelingRedemption = nil }
         } message: {
             Text("No balance has been spent yet.")
+        }
+        .alert("Reward request unchanged", isPresented: Binding(
+            get: { rewardActionError != nil },
+            set: { if !$0 { rewardActionError = nil } }
+        )) {
+            Button("OK") { rewardActionError = nil }
+        } message: {
+            Text(rewardActionError ?? "Couldn’t update this reward request.")
         }
     }
 
@@ -250,10 +286,12 @@ struct PersonView: View {
         HStack(alignment: .top, spacing: 16) {
             VStack(spacing: 16) {
                 let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
-                SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
-                                 canPick: !ov.rewardShop.isEmpty,
-                                 onChange: { showSavingPicker = true },
-                                 onRedeem: redeemSaving)
+                if sync.rewardsOn {
+                    SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
+                                     canPick: !ov.rewardShop.isEmpty,
+                                     onChange: { showSavingPicker = true },
+                                     onRedeem: redeemSaving)
+                }
                 if !ov.redemptions.isEmpty { redemptionsCard(ov) }
             }
             .frame(maxWidth: .infinity, alignment: .top)
@@ -554,7 +592,10 @@ struct PersonView: View {
                         }
                     }
                 }
-                if sync.can("reward.grant") {
+                if RewardRedemptionActionPolicy.canAward(
+                    choresOn: sync.module(.chores),
+                    hasCapability: sync.can("reward.grant")
+                ) {
                     Button { showAward = true } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
@@ -594,7 +635,13 @@ struct PersonView: View {
                             Spacer()
                             if e.reversedById != nil {
                                 Text("CORRECTED").font(.system(size: 9, weight: .heavy)).foregroundStyle(WF.ink3)
-                            } else if sync.can("reward.correct"), e.reversible, e.redemptionId == nil {
+                            } else if RewardRedemptionActionPolicy.canCorrectLedgerEntry(
+                                choresOn: sync.module(.chores),
+                                hasCapability: sync.can("reward.correct"),
+                                reversible: e.reversible,
+                                reversedById: e.reversedById,
+                                redemptionId: e.redemptionId
+                            ) {
                                 Button("Correct") { correctionTarget = .ledger(e) }
                                     .font(.system(size: 11, weight: .bold)).buttonStyle(.plain)
                                     .foregroundStyle(WF.ai)
@@ -634,7 +681,10 @@ struct PersonView: View {
                                 .font(.system(size: 11, weight: .bold)).buttonStyle(.plain)
                                 .foregroundStyle(WF.ink3)
                         } else if r.status == "approved", r.ledgerId != nil,
-                                  sync.can("reward.correct") {
+                                  RewardRedemptionActionPolicy.canCorrect(
+                                    choresOn: sync.module(.chores),
+                                    hasCapability: sync.can("reward.correct")
+                                  ) {
                             Button("Refund") { correctionTarget = .refund(r) }
                                 .font(.system(size: 11, weight: .bold)).buttonStyle(.plain)
                                 .foregroundStyle(WF.ai)

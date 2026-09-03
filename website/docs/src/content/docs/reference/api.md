@@ -124,15 +124,18 @@ capability X · **module(X)** = requires module X enabled · **device** = kiosk 
 | GET · POST · PATCH · DELETE | `/api/rewards[/:id]` · `/archived` · `/:id/restore` | Rewards catalog | tenant / cap:reward.manage |
 | GET | `/api/balances` · `/api/redemptions` | Balances / redemptions | tenant |
 | POST | `/api/rewards/:id/redeem` | Redeem a reward | tenant |
-| POST | `/api/persons/:id/award` | Spot-award currency | cap:reward.grant |
+| POST | `/api/persons/:id/award` | Spot-award currency | module(chores) + cap:reward.grant |
 | POST | `/api/redemptions/:id/approve` · `/deny` | Approve / deny a redemption | cap:reward.approve |
 | POST | `/api/redemptions/:id/cancel` | Cancel a pending redemption | requester or cap:reward.approve |
-| POST | `/api/redemptions/:id/refund` | Refund an approved redemption | cap:reward.correct |
-| POST | `/api/ledger-entries/:id/correct` | Append a reversal / corrected replacement | cap:reward.correct |
+| POST | `/api/redemptions/:id/refund` | Refund an approved redemption | module(chores) + cap:reward.correct |
+| POST | `/api/ledger-entries/:id/correct` | Append a reversal / corrected replacement | module(chores) + cap:reward.correct |
 | GET · PUT | `/api/rewards/settings` | Reward settings | tenant / cap:reward.manage |
 | GET · POST · PATCH · DELETE | `/api/currencies[/:id]` · `/api/conversions[/:id]` · `/:id/apply` | Currencies & conversions | tenant / admin |
 
-*Rewards routes also require the rewards sub-flag (`settings.chores.rewards`).*
+*Reward catalog, list/balance, redeem, approval/denial, and settings routes also
+require the rewards sub-flag (`settings.chores.rewards`). Award, correction, and
+refund require only the Chores module; pending-request cancellation is tenant-only
+so historical cleanup remains available after either toggle is disabled.*
 
 ### Goals — `module(goals)`
 

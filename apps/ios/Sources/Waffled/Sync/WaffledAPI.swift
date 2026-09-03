@@ -2801,15 +2801,38 @@ struct WaffledAPI: Sendable {
             let redemptionId: String?
             let createdAt: String
 
+            private enum CodingKeys: String, CodingKey {
+                case id, amount, reason, currency, detail, note, correctionReason
+                case correctionOfId, reversedById, reversible, redemptionId, createdAt
+            }
+
+            init(from decoder: Decoder) throws {
+                let values = try decoder.container(keyedBy: CodingKeys.self)
+                amount = try values.decode(Int.self, forKey: .amount)
+                reason = try values.decode(String.self, forKey: .reason)
+                currency = try values.decode(String.self, forKey: .currency)
+                detail = try values.decodeIfPresent(String.self, forKey: .detail)
+                note = try values.decodeIfPresent(String.self, forKey: .note)
+                correctionReason = try values.decodeIfPresent(String.self, forKey: .correctionReason)
+                correctionOfId = try values.decodeIfPresent(String.self, forKey: .correctionOfId)
+                reversedById = try values.decodeIfPresent(String.self, forKey: .reversedById)
+                reversible = try values.decodeIfPresent(Bool.self, forKey: .reversible) ?? false
+                redemptionId = try values.decodeIfPresent(String.self, forKey: .redemptionId)
+                createdAt = try values.decode(String.self, forKey: .createdAt)
+                id = try values.decodeIfPresent(String.self, forKey: .id)
+                    ?? "\(createdAt)\(reason)\(amount)\(detail ?? "")"
+            }
+
             /// Human label for the ledger row: a chore/reward title when present, else
             /// the humanized reason — and for a spot award, append the parent's note
             /// ("spot award — being so helpful").
             var label: String {
+                let auditReason = correctionReason.map { " · \($0)" } ?? ""
                 if reason == "ledger_reversal" {
-                    return "Reversal" + (detail.map { " · \($0)" } ?? "")
+                    return "Reversal" + (detail.map { " · \($0)" } ?? "") + auditReason
                 }
                 if reason == "ledger_correction" {
-                    return "Corrected" + (detail.map { " · \($0)" } ?? "")
+                    return "Corrected" + (detail.map { " · \($0)" } ?? "") + auditReason
                 }
                 if let d = detail, !d.isEmpty { return d }
                 let base = reason.replacingOccurrences(of: "_", with: " ")

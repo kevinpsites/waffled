@@ -1,5 +1,26 @@
 import SwiftUI
 
+enum RewardCorrectionValidation {
+    static let maxReasonLength = 500
+
+    static func reasonError(_ raw: String) -> String? {
+        let length = raw.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count
+        if length < 3 { return "Enter a reason with at least 3 characters." }
+        if length > maxReasonLength { return "Keep the reason to 500 characters or fewer." }
+        return nil
+    }
+
+    static func limitedReason(_ raw: String) -> String {
+        var result = ""
+        for character in raw {
+            let next = String(character)
+            if result.utf16.count + next.utf16.count > maxReasonLength { break }
+            result.append(character)
+        }
+        return result
+    }
+}
+
 enum RewardCorrectionTarget: Identifiable {
     case ledger(WaffledAPI.PersonOverview.LedgerEntry)
     case refund(WaffledAPI.PersonOverview.Redemption)
@@ -38,7 +59,7 @@ struct RewardCorrectionSheet: View {
     private static let maxLedgerAmount = 2_147_483_647
     @Environment(\.dismiss) private var dismiss
     let target: RewardCorrectionTarget
-    let onApply: (_ reason: String, _ replacementAmount: Int?, _ idempotencyKey: String) async -> Bool
+    let onApply: (_ reason: String, _ replacementAmount: Int?, _ idempotencyKey: String) async throws -> Void
 
     @State private var replaceAmount = false
     @State private var magnitude: String
@@ -48,7 +69,7 @@ struct RewardCorrectionSheet: View {
     @State private var idempotencyKey = UUID().uuidString
 
     init(target: RewardCorrectionTarget,
-         onApply: @escaping (_ reason: String, _ replacementAmount: Int?, _ idempotencyKey: String) async -> Bool) {
+         onApply: @escaping (_ reason: String, _ replacementAmount: Int?, _ idempotencyKey: String) async throws -> Void) {
         self.target = target
         self.onApply = onApply
         _magnitude = State(initialValue: String(abs(target.originalAmount)))
@@ -93,6 +114,13 @@ struct RewardCorrectionSheet: View {
                         .frame(minHeight: 90).padding(8)
                         .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(WF.hair))
+                        .onChange(of: reason) { _, value in
+                            if value.utf16.count > RewardCorrectionValidation.maxReasonLength {
+                                reason = RewardCorrectionValidation.limitedReason(value)
+                            }
+                        }
+                    Text("\(reason.utf16.count)/\(RewardCorrectionValidation.maxReasonLength)")
+                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
 
                     if let error {
                         Text(error).font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.primary)
@@ -108,7 +136,7 @@ struct RewardCorrectionSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(saving ? "Applying…" : target.isRefund ? "Refund" : "Apply") { apply() }
-                        .disabled(saving || reason.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
+                        .disabled(saving || RewardCorrectionValidation.reasonError(reason) != nil)
                 }
             }
         }
@@ -117,6 +145,10 @@ struct RewardCorrectionSheet: View {
 
     private func apply() {
         let cleanReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let reasonError = RewardCorrectionValidation.reasonError(cleanReason) {
+            error = reasonError
+            return
+        }
         var replacement: Int?
         if !target.isRefund, replaceAmount {
             guard let amount = Int(magnitude), amount > 0,
@@ -129,10 +161,17 @@ struct RewardCorrectionSheet: View {
         }
         Task {
             saving = true; error = nil
-            let ok = await onApply(cleanReason, replacement, idempotencyKey)
-            saving = false
-            if ok { dismiss() }
-            else { error = "Couldn’t apply this correction. Please try again." }
+            do {
+                try await onApply(cleanReason, replacement, idempotencyKey)
+                saving = false
+                dismiss()
+            } catch {
+                saving = false
+                self.error = APIErrorText.message(
+                    for: error,
+                    fallback: "Couldn’t apply this correction. Please try again."
+                )
+            }
         }
     }
 }

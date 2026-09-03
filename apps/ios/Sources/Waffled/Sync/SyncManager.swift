@@ -718,31 +718,38 @@ final class SyncManager {
     }
 
     /// Cancel a pending request (no balance mutation has happened yet).
-    @discardableResult
-    func cancelRedemption(id: String) async -> Bool {
-        let ok = await restCommit { try await api.cancelRedemption(id: id) }
-        if ok { rewardsRev += 1 }
-        return ok
+    func cancelRedemption(id: String) async throws {
+        do {
+            try await api.cancelRedemption(id: id)
+            rewardsRev += 1
+        } catch {
+            lastError = String(describing: error)
+            throw error
+        }
     }
 
     /// Refund an approved redemption through a linked compensating entry.
-    @discardableResult
-    func refundRedemption(id: String, reason: String, idempotencyKey: String) async -> Bool {
-        let ok = await restCommit { try await api.refundRedemption(id: id, reason: reason, idempotencyKey: idempotencyKey) }
-        if ok { rewardsRev += 1 }
-        return ok
+    func refundRedemption(id: String, reason: String, idempotencyKey: String) async throws {
+        do {
+            try await api.refundRedemption(id: id, reason: reason, idempotencyKey: idempotencyKey)
+            rewardsRev += 1
+        } catch {
+            lastError = String(describing: error)
+            throw error
+        }
     }
 
     /// Reverse a ledger entry and optionally replace it with the corrected amount.
-    @discardableResult
-    func correctLedgerEntry(id: String, reason: String, replacementAmount: Int?, idempotencyKey: String) async -> Bool {
-        let ok = await restCommit {
+    func correctLedgerEntry(id: String, reason: String, replacementAmount: Int?, idempotencyKey: String) async throws {
+        do {
             try await api.correctLedgerEntry(id: id, reason: reason,
                                              replacementAmount: replacementAmount,
                                              idempotencyKey: idempotencyKey)
+            rewardsRev += 1
+        } catch {
+            lastError = String(describing: error)
+            throw error
         }
-        if ok { rewardsRev += 1 }
-        return ok
     }
 
     /// Approve a chore completion that was awaiting a parent's OK (awards its stars).

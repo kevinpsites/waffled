@@ -6,7 +6,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
-import { rewardsRoutes, moduleRoutes } from '../../platform/route-guards'
+import { rewardsRoutes, moduleRoutes, tenantRoute as unrestrictedTenantRoute } from '../../platform/route-guards'
 import { assertPersonInHousehold, HouseholdReferenceError } from '../../platform/household-refs'
 import { requireCapability } from '../../platform/permissions'
 import { lockLedgerSubject } from '../../platform/ledger-lock'
@@ -131,6 +131,16 @@ function isPostgresInteger(value: unknown): value is number {
     && value <= PG_INT_MAX
 }
 
+function requestBodyObject(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function normalizedReplacementAmount(value: number | undefined): number | null {
+  return value === undefined || value === 0 ? null : value
+}
+
 async function lockCorrectionRequest(
   client: PoolClient,
   householdId: string,
@@ -245,18 +255,35 @@ export async function correctLedgerEntry(
   replacementAmount: number | undefined,
   idempotencyKey: string
 ): Promise<CorrectionResult> {
+  id = id.toLowerCase()
+  idempotencyKey = idempotencyKey.toLowerCase()
   const client = await getPool().connect()
   try {
     await client.query('begin')
     await lockCorrectionRequest(client, tenant.householdId, idempotencyKey)
-    const replay = await client.query<{ reverses_entry_id: string }>(
-      `select reverses_entry_id from ledger_entries
-        where household_id=$1 and idempotency_key=$2 and reverses_entry_id is not null`,
+    const replay = await client.query<{
+      reverses_entry_id: string
+      correction_reason: string | null
+      replacement_amount: number | null
+    }>(
+      `select reversal.reverses_entry_id, reversal.correction_reason,
+              replacement.amount as replacement_amount
+         from ledger_entries reversal
+         left join ledger_entries replacement
+           on replacement.household_id=reversal.household_id
+          and replacement.correction_group_id=reversal.correction_group_id
+          and replacement.correction_of_id=reversal.reverses_entry_id
+        where reversal.household_id=$1 and reversal.idempotency_key=$2
+          and reversal.reverses_entry_id is not null`,
       [tenant.householdId, idempotencyKey]
     )
     if (replay.rows[0]) {
       if (replay.rows[0].reverses_entry_id !== id) {
         throw new LedgerCorrectionError('idempotencyKey was already used for another correction', 409)
+      }
+      if (replay.rows[0].correction_reason !== reason
+        || replay.rows[0].replacement_amount !== normalizedReplacementAmount(replacementAmount)) {
+        throw new LedgerCorrectionError('idempotencyKey was already used with different correction details', 409)
       }
       const result = await correctionResult(client, tenant.householdId, replay.rows[0].reverses_entry_id, true)
       await client.query('commit')
@@ -300,7 +327,7 @@ export async function cancelRedemption(tenant: Tenant, id: string): Promise<Rede
     if (redemption.status !== 'pending') {
       throw new LedgerCorrectionError('only a pending redemption can be canceled', 409)
     }
-    if (redemption.requested_by !== tenant.personId) await requireCapability(tenant, 'reward.approve')
+    if (redemption.requested_by !== tenant.personId) await requireCapability(tenant, 'reward.approve', client)
     const updated = await client.query<RedemptionRow>(
       `update reward_redemptions
         set status='canceled', decided_by=$1, decided_at=now()
@@ -323,6 +350,8 @@ export async function refundRedemption(
   reason: string,
   idempotencyKey: string
 ): Promise<{ redemption: RedemptionRow; correction: CorrectionResult }> {
+  id = id.toLowerCase()
+  idempotencyKey = idempotencyKey.toLowerCase()
   const client = await getPool().connect()
   try {
     await client.query('begin')
@@ -334,18 +363,24 @@ export async function refundRedemption(
     )
     const redemption = replay.rows[0]
     if (!redemption) throw new LedgerCorrectionError('redemption not found', 404)
-    const keyUse = await client.query<{ reverses_entry_id: string }>(
-      `select reverses_entry_id from ledger_entries
+    const keyUse = await client.query<{ reverses_entry_id: string; correction_reason: string | null }>(
+      `select reverses_entry_id, correction_reason from ledger_entries
         where household_id=$1 and idempotency_key=$2 and reverses_entry_id is not null`,
       [tenant.householdId, idempotencyKey]
     )
     if (keyUse.rows[0] && keyUse.rows[0].reverses_entry_id !== redemption.ledger_id) {
       throw new LedgerCorrectionError('idempotencyKey was already used for another correction', 409)
     }
+    if (keyUse.rows[0] && keyUse.rows[0].correction_reason !== reason) {
+      throw new LedgerCorrectionError('idempotencyKey was already used with different correction details', 409)
+    }
     if (redemption.status === 'pending') {
       throw new LedgerCorrectionError('cancel a pending redemption instead of refunding it', 409)
     }
     if (redemption.status === 'refunded' && redemption.ledger_id) {
+      if (!keyUse.rows[0]) {
+        throw new LedgerCorrectionError('this redemption has already been refunded', 409)
+      }
       const result = await correctionResult(client, tenant.householdId, redemption.ledger_id, true)
       await client.query('commit')
       return { redemption, correction: result }
@@ -759,12 +794,12 @@ export function registerRewardRoutes(api: Api): void {
   api.post('/api/ledger-entries/:id/correct', choresCapRoute('reward.correct', async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'ledger entry not found' })
-    const body = (req.body ?? {}) as { reason?: string; replacementAmount?: number; idempotencyKey?: string }
-    const reason = body.reason?.trim() ?? ''
+    const body = requestBodyObject(req.body)
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : ''
     if (reason.length < 3 || reason.length > 500) {
       return res.status(400).json({ error: 'BadRequest', message: 'reason must be between 3 and 500 characters' })
     }
-    const idempotencyKey = body.idempotencyKey?.trim() ?? ''
+    const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : ''
     if (!UUID_RE.test(idempotencyKey)) {
       return res.status(400).json({ error: 'BadRequest', message: 'valid idempotencyKey required' })
     }
@@ -772,7 +807,8 @@ export function registerRewardRoutes(api: Api): void {
       return res.status(400).json({ error: 'BadRequest', message: 'replacementAmount must fit a 32-bit signed integer' })
     }
     try {
-      const correction = await correctLedgerEntry(tenant, id, reason, body.replacementAmount, idempotencyKey)
+      const replacementAmount = body.replacementAmount as number | undefined
+      const correction = await correctLedgerEntry(tenant, id, reason, replacementAmount, idempotencyKey)
       return res.status(correction.replayed ? 200 : 201).json({ correction })
     } catch (error) {
       return correctionError(error, res)
@@ -837,7 +873,9 @@ export function registerRewardRoutes(api: Api): void {
 
   // Pending requests have not touched the ledger and are canceled. Approved
   // requests are refunded through an append-only compensating ledger entry.
-  api.post('/api/redemptions/:id/cancel', tenantRoute(async (tenant, req: Request, res: Response) => {
+  // Cancellation is cleanup for an already-created pending request, not a new
+  // rewards-shop action. Keep it available after the shop or Chores is disabled.
+  api.post('/api/redemptions/:id/cancel', unrestrictedTenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'redemption not found' })
     try {
@@ -850,12 +888,12 @@ export function registerRewardRoutes(api: Api): void {
   api.post('/api/redemptions/:id/refund', choresCapRoute('reward.correct', async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'redemption not found' })
-    const body = (req.body ?? {}) as { reason?: string; idempotencyKey?: string }
-    const reason = body.reason?.trim() ?? ''
+    const body = requestBodyObject(req.body)
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : ''
     if (reason.length < 3 || reason.length > 500) {
       return res.status(400).json({ error: 'BadRequest', message: 'reason must be between 3 and 500 characters' })
     }
-    const idempotencyKey = body.idempotencyKey?.trim() ?? ''
+    const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : ''
     if (!UUID_RE.test(idempotencyKey)) {
       return res.status(400).json({ error: 'BadRequest', message: 'valid idempotencyKey required' })
     }

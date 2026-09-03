@@ -60,4 +60,18 @@ describe('LedgerCorrectionModal', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/2,147,483,647/)
     expect(calls).toHaveLength(0)
   })
+
+  it('rejects a fractional replacement instead of silently rounding it', async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = []
+    mockApi(calls)
+    render(<LedgerCorrectionModal target={{ kind: 'entry', entry }} onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Replace amount' }))
+    fireEvent.change(screen.getByLabelText(/Correct amount/), { target: { value: '6.5' } })
+    fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: 'Must remain a whole number' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply correction' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/whole-number/)
+    expect(calls).toHaveLength(0)
+  })
 })
