@@ -120,8 +120,9 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # --- Media/blob uploads (local disk): API writes, signed Caddy URLs serve.
-      # Files land in MEDIA_DIR. The API signs short-lived MEDIA_BASE_URL links and
-      # Caddy validates each link before reading its read-only volume.
+      # Files land in MEDIA_DIR. The API signs short-lived bearer links and the bundled
+      # Caddy route validates each link before reading its read-only volume. A proxy that
+      # bypasses Caddy MUST reproduce that signature check before serving this volume.
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       MEDIA_DIR: ${MEDIA_DIR:-/data/media}
       MEDIA_BASE_URL: ${MEDIA_BASE_URL:-/media}
@@ -250,7 +251,7 @@ services:
       POWERSYNC_CADDY_ADDRESS: ${POWERSYNC_CADDY_ADDRESS:-:8090}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro   # web build is baked into the image at /srv
-      - waffled_media:/data/media:ro                   # serve authorized signed blob reads
+      - waffled_media:/data/media:ro                   # serve signature-validated blob reads
       - caddy_data:/data
       - caddy_config:/config
     healthcheck:

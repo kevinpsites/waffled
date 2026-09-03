@@ -21,6 +21,7 @@ final class ScreensaverModel {
 
     private var lastActivity = Date()
     private let api = WaffledAPI()
+    private var loading = false
 
     /// A touch happened somewhere — reset the idle clock (ignored while the saver is up;
     /// the saver handles its own wake so a stray ping can't pre-empt the wake tap).
@@ -30,6 +31,9 @@ final class ScreensaverModel {
     func wake() { lastActivity = Date(); showing = false }
 
     func load() async {
+        guard !loading else { return }
+        loading = true
+        defer { loading = false }
         cfg = try? await api.displayConfig()
         weather = try? await api.weather()
         // Only fetch the wall when the saver would actually show photos, then scope it to
@@ -104,19 +108,23 @@ struct KioskScreensaverHost: ViewModifier {
                         photos: model.photos, weather: model.weather,
                         nextEvent: nextEvent, timezone: sync.householdTz,
                         dimmed: model.dimmed, interval: cfg.photoInterval,
-                        motion: motion, onWake: { wake() })
+                        motion: motion,
+                        onMediaExpired: { Task { await model.load() } },
+                        onWake: { wake() })
                         .transition(.opacity)
                         .zIndex(100)
                 }
             }
             .animation(.easeInOut(duration: 0.45), value: model.showing)
-            .task { await model.load() }
-            // Refresh photos / weather / config periodically while parked. Config rarely
-            // changes and weather is hourly at most, so 15 min is plenty — and there's
-            // nothing worth fetching overnight, so skip the poll while night-dimmed.
+            // Signed photo URLs refresh halfway through their shortest remaining lifetime.
+            // Unsigned/external photos and config/weather retain the 15-minute cadence.
             .task {
+                await model.load()
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(900))
+                    let delay = model.dimmed ? 900 : MediaURL.refreshDelaySeconds(
+                        for: model.photos.compactMap(\.imageUrl), fallback: 900)
+                    try? await Task.sleep(for: .seconds(delay))
+                    if Task.isCancelled { break }
                     if !model.dimmed { await model.load() }
                 }
             }

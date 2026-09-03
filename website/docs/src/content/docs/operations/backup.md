@@ -12,8 +12,10 @@ After `./waffled up` and during `./waffled doctor`, the CLI also warns when uplo
 media is explicitly excluded or every backup copy still lives on the Waffled host. These are
 planning warnings, not failed health checks; they disappear when the corresponding
 media and host-folder/offsite settings below are configured. When media is enabled, a missing
-media mount, failed archive, or failed offsite media upload makes the backup run fail visibly
-instead of recording an incomplete backup as successful.
+media mount, failed archive, or failed offsite media upload records a **partial/degraded** run:
+the successful database dump is retained and the command succeeds, while System Health clearly
+reports which media step needs attention. A database dump or database offsite-upload failure
+still fails the run.
 
 > **On by default, zero-config.** A fresh `./waffled up` starts nightly local backups with
 > no setup. To be safe against a lost machine, point them at a folder you control
@@ -128,9 +130,10 @@ automatic and expected; the stack returns to healthy on its own (verify with `./
 ## Monitoring
 
 The `backup` health check (in `/api/health`, `./waffled doctor`, and Settings → System Health)
-reports the most recent run and turns **degraded** if the last backup failed or the newest
-successful one is more than ~48 h old (two missed daily cycles). A failure hint points you at
-`./waffled logs backup` — usually disk space or an S3 credential/endpoint problem.
+reports the most recent run and turns **degraded** if the last backup failed, completed only
+partially because of media, or the newest successful one is more than ~48 h old (two missed daily
+cycles). The hint distinguishes a retained database dump from a full failure and points you at
+`./waffled logs backup`.
 
 ## Recommended: 3-2-1
 

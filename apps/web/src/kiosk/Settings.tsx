@@ -3073,7 +3073,7 @@ function DisplayKioskPanel() {
   // Live data for the instant preview (and what the real screensaver uses).
   const wx = useWeather()
   const { events } = useEventsToday()
-  const { photos } = usePhotos()
+  const { photos, refetch: refetchPhotos } = usePhotos()
   const { household } = useHousehold()
   const nextEvent = events.find((e) => new Date(e.startsAt).getTime() > Date.now()) ?? null
   // Distinct album names (a photo's `memory`), for the "Specific album" picker.
@@ -3257,6 +3257,7 @@ function DisplayKioskPanel() {
           nextEvent={nextEvent}
           timezone={household?.timezone}
           intervalSeconds={cfg.photoInterval}
+          onMediaExpired={refetchPhotos}
           onWake={() => setPreview(false)}
         />
       )}

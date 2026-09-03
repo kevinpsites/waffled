@@ -109,9 +109,13 @@ Independent of login. See [Google Calendar](/administration/google-calendar/) an
 |---|---|---|
 | `STORAGE_DRIVER` | Blob storage backend | `local` |
 | `MEDIA_DIR` | Where the api writes blobs (the `waffled_media` volume) | `/data/media` |
-| `MEDIA_BASE_URL` | Signed path Caddy serves blobs at | `/media` |
-| `MEDIA_URL_TTL_SECONDS` | Maximum lifetime of a signed media URL, clamped to 30–3600 seconds | `600` |
-| `MEDIA_SIGNING_KEY` | Optional dedicated HMAC key for media URLs; defaults to `LOCAL_JWT_SECRET` | empty |
+| `MEDIA_BASE_URL` | Signed bearer-URL path the bundled Caddy route validates and serves | `/media` |
+| `MEDIA_URL_TTL_SECONDS` | Lifetime granted when each media URL is minted, clamped to 30–3600 seconds | `600` |
+| `MEDIA_SIGNING_KEY` | Optional dedicated HMAC key; otherwise the required/generated `LOCAL_JWT_SECRET` is used. Media fails closed if neither is set | empty |
+
+Signed URLs limit how long a copied media link works; they do not identify the viewer or perform
+per-household authorization during that lifetime. If you replace the bundled Caddy media route,
+you must reproduce its signature check. See [Reverse proxy & TLS](/install/reverse-proxy/).
 
 ## Backups & S3
 

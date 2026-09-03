@@ -10,13 +10,13 @@ final class ImageMemoryCache: @unchecked Sendable {
     private let cache = NSCache<NSURL, UIImage>()
     private init() { cache.countLimit = 300 }
 
-    func image(for url: URL) -> UIImage? { cache.object(forKey: url as NSURL) }
+    func image(for url: URL) -> UIImage? { cache.object(forKey: MediaURL.cacheKey(for: url)) }
 
     func load(_ url: URL) async -> UIImage? {
         if let img = image(for: url) { return img }
         guard let (data, _) = try? await URLSession.shared.data(from: url),
               let img = UIImage(data: data) else { return nil }
-        cache.setObject(img, forKey: url as NSURL)
+        cache.setObject(img, forKey: MediaURL.cacheKey(for: url))
         return img
     }
 }

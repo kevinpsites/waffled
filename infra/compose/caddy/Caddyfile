@@ -32,7 +32,7 @@
 	# The route then strips /media, mapping the safe storage key under /data/media.
 	handle /media/* {
 		route {
-			# `route` preserves this order: authorization sees the original /media URI,
+			# `route` preserves this order: validation sees the original /media URI,
 			# then the prefix is stripped only for the local file lookup.
 			forward_auth api:3000 {
 				uri /api/media/authorize

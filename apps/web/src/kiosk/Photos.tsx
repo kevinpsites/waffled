@@ -301,6 +301,7 @@ export function Photos() {
           timezone={household?.timezone}
           intervalSeconds={displayCfg?.photoInterval}
           bare
+          onMediaExpired={refetch}
           onWake={() => setSaver(null)}
         />
       )}

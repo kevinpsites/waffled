@@ -45,9 +45,11 @@ function mediaUrlTtlSeconds(): number {
 // deployment's required LOCAL_JWT_SECRET. Operators can rotate media links separately
 // by setting MEDIA_SIGNING_KEY without rewriting any stored database keys.
 function mediaSigningSecret(): string {
-  return process.env.MEDIA_SIGNING_KEY?.trim()
-    || process.env.LOCAL_JWT_SECRET?.trim()
-    || 'waffled-local-dev-secret-change-me'
+  const secret = process.env.MEDIA_SIGNING_KEY?.trim() || process.env.LOCAL_JWT_SECRET?.trim()
+  if (!secret) {
+    throw new Error('media signing key is not configured (set MEDIA_SIGNING_KEY or LOCAL_JWT_SECRET)')
+  }
+  return secret
 }
 
 function mediaSignature(key: string, expires: number): string {
@@ -121,11 +123,10 @@ export function mediaUrl(key: string | null | undefined, nowMs = Date.now()): st
   if (!key || !MEDIA_KEY_RE.test(key)) return null
   const base = (process.env.MEDIA_BASE_URL || '/media').replace(/\/$/, '')
   const ttl = mediaUrlTtlSeconds()
-  // Bucket signatures so repeated API refreshes return the same image URL for about
-  // half its lifetime. This preserves browser/decoded-image caching without turning
-  // the URL back into a durable bearer credential.
-  const bucket = Math.max(30, Math.floor(ttl / 2))
-  const expires = Math.floor(Math.floor(nowMs / 1000) / bucket) * bucket + ttl
+  // Every minted URL receives the full configured lifetime. Client image caches key
+  // signed media by its stable path, so rotating signatures no longer need server-side
+  // time bucketing (which could silently cut a URL's usable life in half).
+  const expires = Math.floor(nowMs / 1000) + ttl
   const sig = mediaSignature(key, expires)
   return `${base}/${key}?expires=${expires}&sig=${sig}`
 }
@@ -142,7 +143,13 @@ export function verifyMediaUrl(
   const now = Math.floor(nowMs / 1000)
   if (!Number.isSafeInteger(expires) || expires < now || expires - now > mediaUrlTtlSeconds()) return false
 
-  const expected = Buffer.from(mediaSignature(key, expires))
+  let expected: Buffer
+  try {
+    expected = Buffer.from(mediaSignature(key, expires))
+  } catch {
+    // Missing key material is a deployment error, never permission to accept a URL.
+    return false
+  }
   const supplied = Buffer.from(signature)
   return expected.length === supplied.length && timingSafeEqual(expected, supplied)
 }

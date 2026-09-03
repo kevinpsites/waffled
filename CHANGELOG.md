@@ -19,10 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Incomplete uploaded-media backups no longer report success.** Uploaded media is included
-  when `BACKUP_INCLUDE_MEDIA` is omitted, matching the documented default, and a missing media
-  mount, failed archive, or failed offsite upload now marks the backup run as failed so System
-  Health and `./waffled doctor` can alert the household administrator.
+- **Media trouble no longer hides a usable database backup.** Uploaded media is included when
+  `BACKUP_INCLUDE_MEDIA` is omitted, matching the documented default. A missing media mount,
+  failed archive, or failed offsite media upload now records a visible partial/degraded run while
+  preserving the successful database dump; database dump or database-upload failures still fail
+  the run. Existing installs that left this setting unset will create an additional media archive
+  and, when S3 is configured, upload it—so disk use and offsite egress can increase after upgrade.
+
+### Security
+
+- **Uploaded family media now uses expiring bearer URLs.** The API validates image bytes and
+  storage keys, signs each local-media URL, and the shipped Caddy route verifies that signature
+  before serving a file. Web and iOS displays refresh credentials before expiry, reuse decoded
+  images by their stable storage path, and fetch fresh parent data after a rejected URL. These
+  URLs reduce the lifetime of a leaked link; they do not add per-viewer or per-household
+  authorization while the link remains valid.
 
 ## [0.14.3] - 2026-09-02
 

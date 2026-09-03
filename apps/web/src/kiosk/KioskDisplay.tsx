@@ -56,7 +56,7 @@ function DisplayLayer() {
   const { household } = useHousehold()
   const wx = useWeather()
   const { events } = useEventsToday()
-  const { photos } = usePhotos()
+  const { photos, refetch: refetchPhotos } = usePhotos()
   const [cfg, setCfg] = useState<DisplayConfig | null>(null)
   const saverPhotos = useMemo(() => screensaverPhotos(photos, cfg ?? {}), [photos, cfg])
   const [saver, setSaver] = useState(false)
@@ -149,6 +149,7 @@ function DisplayLayer() {
           nextEvent={nextUpcoming(events)}
           timezone={household?.timezone}
           intervalSeconds={cfg?.photoInterval}
+          onMediaExpired={refetchPhotos}
           onWake={() => setSaver(false)}
         />
       )}

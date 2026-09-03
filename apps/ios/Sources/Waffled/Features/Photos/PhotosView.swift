@@ -93,6 +93,7 @@ struct PhotosView: View {
         .fullScreenCover(isPresented: $playing) {
             ScreensaverView(content: "photos", photos: shownPhotos, weather: nil, nextEvent: nil,
                             timezone: .current, dimmed: false, bare: true, motion: motion,
+                            onMediaExpired: { Task { await model.load() } },
                             onWake: { playing = false })
         }
         .sheet(item: $detail) { photo in

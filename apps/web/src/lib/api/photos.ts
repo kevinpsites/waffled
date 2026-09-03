@@ -4,7 +4,7 @@
 //
 // A photo is EITHER an image URL OR an emoji + color tile (no blob storage yet),
 // so the UI renders <img> when imageUrl is set, else an emoji-on-gradient tile.
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
 
 export interface PhotoPerson {
@@ -68,6 +68,33 @@ export interface PhotosState {
   refetch: () => void
 }
 
+const PHOTO_REFRESH_FALLBACK_MS = 15 * 60 * 1000
+const PHOTO_REFRESH_MIN_MS = 5 * 1000
+
+// Signed media URLs are bearer credentials whose expiry travels in the URL. Refresh
+// the parent resource halfway through the shortest remaining lifetime, so a kiosk
+// always has a fresh URL ready before an uncached slide needs it. The screensaver keeps
+// already-loaded image src values stable across this rotation, avoiding re-downloads.
+export function nextMediaRefreshDelayMs(
+  photos: Array<Pick<Photo, 'imageUrl'>>,
+  nowMs = Date.now(),
+  fallbackMs = PHOTO_REFRESH_FALLBACK_MS,
+): number {
+  const remaining = photos.flatMap(({ imageUrl }) => {
+    if (!imageUrl) return []
+    try {
+      const url = new URL(imageUrl, 'http://waffled-media.local')
+      if (!url.searchParams.has('sig')) return []
+      const expires = Number(url.searchParams.get('expires'))
+      return Number.isSafeInteger(expires) ? [expires * 1000 - nowMs] : []
+    } catch {
+      return []
+    }
+  })
+  if (remaining.length === 0) return fallbackMs
+  return Math.max(PHOTO_REFRESH_MIN_MS, Math.min(fallbackMs, Math.floor(Math.min(...remaining) / 2)))
+}
+
 export function usePhotos(memory?: string | null): PhotosState {
   const [photos, setPhotos] = useState<Photo[]>([])
   const [loading, setLoading] = useState(true)
@@ -84,5 +111,13 @@ export function usePhotos(memory?: string | null): PhotosState {
       alive = false
     }
   }, [memory, nonce])
-  return { photos, loading, error, refetch: () => setNonce((n) => n + 1) }
+  // Wall displays can stay mounted for days. Rotate bearer URLs before their expiry;
+  // stable-path image caches mean this refresh does not re-download decoded photos.
+  // `nonce` re-arms the timer even when a transient fetch failure leaves `photos` unchanged.
+  useEffect(() => {
+    const timer = setTimeout(() => setNonce((n) => n + 1), nextMediaRefreshDelayMs(photos))
+    return () => clearTimeout(timer)
+  }, [photos, nonce])
+  const refetch = useCallback(() => setNonce((n) => n + 1), [])
+  return { photos, loading, error, refetch }
 }

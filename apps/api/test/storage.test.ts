@@ -99,7 +99,7 @@ describe('mediaUrl', () => {
     const key = `${HOUSEHOLD}/${'a'.repeat(32)}.jpg`
     const url = new URL(mediaUrl(key, 1_700_000_000_000)!, 'http://local.test')
     expect(url.pathname).toBe(`/media/${key}`)
-    expect(url.searchParams.get('expires')).toBe('1700000400')
+    expect(url.searchParams.get('expires')).toBe('1700000600')
     expect(url.searchParams.get('sig')).toMatch(/^[A-Za-z0-9_-]{43}$/)
   })
 
@@ -107,8 +107,20 @@ describe('mediaUrl', () => {
     process.env.MEDIA_BASE_URL = 'https://cdn.example.com/m'
     const key = `${HOUSEHOLD}/${'a'.repeat(32)}.jpg`
     expect(mediaUrl(key, 1_700_000_000_000)).toMatch(
-      new RegExp(`^https://cdn\\.example\\.com/m/${key}\\?expires=1700000400&sig=`)
+      new RegExp(`^https://cdn\\.example\\.com/m/${key}\\?expires=1700000600&sig=`)
     )
+  })
+
+  it('gives every newly minted URL its full TTL instead of shortening it to a cache bucket', () => {
+    const key = `${HOUSEHOLD}/${'a'.repeat(32)}.jpg`
+    const firstNow = 1_700_000_000_000
+    const secondNow = firstNow + 299_000
+    const first = new URL(mediaUrl(key, firstNow)!, 'http://local.test')
+    const second = new URL(mediaUrl(key, secondNow)!, 'http://local.test')
+
+    expect(Number(first.searchParams.get('expires')) - firstNow / 1000).toBe(600)
+    expect(Number(second.searchParams.get('expires')) - Math.floor(secondNow / 1000)).toBe(600)
+    expect(second.searchParams.get('sig')).not.toBe(first.searchParams.get('sig'))
   })
 
   it('validates an unmodified URL only within its short lifetime', () => {
@@ -130,8 +142,17 @@ describe('mediaUrl', () => {
     const key = `${HOUSEHOLD}/${'a'.repeat(32)}.jpg`
     const now = 1_700_000_000_000
     const url = new URL(mediaUrl(key, now)!, 'http://local.test')
-    expect(url.searchParams.get('expires')).toBe('1700002800')
+    expect(url.searchParams.get('expires')).toBe('1700003600')
     expect(verifyMediaUrl(key, url.searchParams.get('expires'), url.searchParams.get('sig'), now)).toBe(true)
+  })
+
+  it('fails closed when neither a dedicated nor application signing key is configured', () => {
+    delete process.env.MEDIA_SIGNING_KEY
+    delete process.env.LOCAL_JWT_SECRET
+    const key = `${HOUSEHOLD}/${'a'.repeat(32)}.jpg`
+
+    expect(() => mediaUrl(key, 1_700_000_000_000)).toThrow(/signing key/i)
+    expect(verifyMediaUrl(key, '1700000600', 'forged', 1_700_000_000_000)).toBe(false)
   })
 
   it('does not expose malformed stored keys', () => {

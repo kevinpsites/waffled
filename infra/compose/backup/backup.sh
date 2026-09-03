@@ -2,7 +2,7 @@
 # One backup run: pg_dump the Waffled database (gzipped, plain SQL so restore is a simple
 # `gunzip | psql`), optionally tar the media dir, optionally upload to S3, prune old
 # local files, and record the outcome in the backup_runs table so `/api/health` and
-# `./waffled doctor` can report "last backup: ok/failed, N hours ago".
+# `./waffled doctor` can report "last backup: ok/partial/failed, N hours ago".
 #
 # Intentionally NOT `set -e`: a failure must be recorded in the DB, not crash the loop.
 set -uo pipefail
@@ -21,6 +21,7 @@ mkdir -p "$BACKUP_DIR"
 TS="$(date -u +%Y%m%d-%H%M%S)"
 DUMP_FILE="$BACKUP_DIR/waffled-$TS.sql.gz"
 MEDIA_FILE=""
+MEDIA_ERROR=""
 DEST="local"; [ -n "$S3_BUCKET" ] && DEST="local+s3"
 START_MS=$(now_ms)
 
@@ -44,6 +45,20 @@ finish_ok() {
   log "OK — $file (${size} bytes, ${dur}ms, dest=$DEST)"
 }
 
+finish_partial() {
+  local size="$1" file="$2" msg="$3" dur=$(( $(now_ms) - START_MS ))
+  [ -n "${RUN_ID:-}" ] && psql_do \
+    "update backup_runs set status='partial', finished_at=now(), file_name='$(sql_str "$file")', size_bytes=$size, error='$(sql_str "$msg")', duration_ms=$dur where id='$RUN_ID'" >/dev/null 2>&1 || true
+  log "PARTIAL — database backup succeeded; $msg (${size} bytes, ${dur}ms, dest=$DEST)"
+}
+
+media_problem() {
+  local msg="$1"
+  [ -z "$MEDIA_ERROR" ] || MEDIA_ERROR="$MEDIA_ERROR; "
+  MEDIA_ERROR="${MEDIA_ERROR}${msg}"
+  log "media warning — $msg"
+}
+
 fail() {
   local msg="$1" dur=$(( $(now_ms) - START_MS ))
   log "FAILED — $msg"
@@ -65,12 +80,16 @@ SIZE="$(stat -c %s "$DUMP_FILE" 2>/dev/null || echo 0)"
 
 # --- Media archive (on by default; operators may explicitly disable it) ---------
 if [ "$INCLUDE_MEDIA" = "true" ]; then
-  [ -d "$MEDIA_DIR" ] || fail "BACKUP_INCLUDE_MEDIA=true but $MEDIA_DIR is not mounted"
-  MEDIA_FILE="$BACKUP_DIR/waffled-media-$TS.tar.gz"
-  log "archiving media → $MEDIA_FILE"
-  if ! tar -czf "$MEDIA_FILE" -C "$MEDIA_DIR" .; then
-    rm -f "$MEDIA_FILE"
-    fail "media archive failed"
+  if [ ! -d "$MEDIA_DIR" ]; then
+    media_problem "BACKUP_INCLUDE_MEDIA=true but $MEDIA_DIR is not mounted"
+  else
+    MEDIA_FILE="$BACKUP_DIR/waffled-media-$TS.tar.gz"
+    log "archiving media → $MEDIA_FILE"
+    if ! tar -czf "$MEDIA_FILE" -C "$MEDIA_DIR" .; then
+      rm -f "$MEDIA_FILE"
+      MEDIA_FILE=""
+      media_problem "media archive failed"
+    fi
   fi
 fi
 
@@ -81,7 +100,7 @@ if [ -n "$S3_BUCKET" ]; then
   aws "${aws_args[@]}" "$DUMP_FILE" "$S3_BUCKET/" || fail "S3 upload failed (check BACKUP_S3_* creds/endpoint)"
   if [ -n "$MEDIA_FILE" ]; then
     aws "${aws_args[@]}" "$MEDIA_FILE" "$S3_BUCKET/" \
-      || fail "media S3 upload failed (check BACKUP_S3_* creds/endpoint)"
+      || media_problem "media S3 upload failed (check BACKUP_S3_* creds/endpoint)"
   fi
 fi
 
@@ -89,4 +108,8 @@ fi
 find "$BACKUP_DIR" -maxdepth 1 -name 'waffled-*.sql.gz'     -type f -mtime "+$RETENTION_DAYS" -delete 2>/dev/null || true
 find "$BACKUP_DIR" -maxdepth 1 -name 'waffled-media-*.tar.gz' -type f -mtime "+$RETENTION_DAYS" -delete 2>/dev/null || true
 
-finish_ok "$SIZE" "$(basename "$DUMP_FILE")"
+if [ -n "$MEDIA_ERROR" ]; then
+  finish_partial "$SIZE" "$(basename "$DUMP_FILE")" "$MEDIA_ERROR"
+else
+  finish_ok "$SIZE" "$(basename "$DUMP_FILE")"
+fi

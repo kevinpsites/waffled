@@ -65,23 +65,26 @@ afterEach(() => {
 })
 
 describe('uploaded-media backup safety', () => {
-  it('fails the run when the enabled media mount is missing', () => {
+  it('records a partial backup without discarding the database dump when the media mount is missing', () => {
     const result = runBackup('exit 0', 'exit 0', false)
 
-    expect(result.status).toBe(1)
+    expect(result.status).toBe(0)
     expect(result.stdout).toContain('is not mounted')
-    expect(result.stdout).not.toContain('OK —')
+    expect(result.stdout).toContain('PARTIAL —')
+    expect(result.stdout).toContain('database backup succeeded')
+    expect(result.stdout).not.toContain('FAILED —')
   })
 
-  it('fails the run when the media archive cannot be created', () => {
+  it('records a partial backup when the media archive cannot be created', () => {
     const result = runBackup('exit 0', 'exit 1')
 
-    expect(result.status).toBe(1)
-    expect(result.stdout).toContain('FAILED — media archive failed')
-    expect(result.stdout).not.toContain('OK —')
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('media archive failed')
+    expect(result.stdout).toContain('PARTIAL —')
+    expect(result.stdout).not.toContain('FAILED —')
   })
 
-  it('fails the run when the offsite media upload fails', () => {
+  it('records a partial backup when the offsite media upload fails', () => {
     const result = runBackup(`
       case "$3" in
         *waffled-media-*) exit 1 ;;
@@ -89,9 +92,18 @@ describe('uploaded-media backup safety', () => {
       esac
     `)
 
-    expect(result.status).toBe(1)
-    expect(result.stdout).toContain('FAILED — media S3 upload failed')
-    expect(result.stdout).not.toContain('OK —')
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('media S3 upload failed')
+    expect(result.stdout).toContain('PARTIAL —')
+    expect(result.stdout).not.toContain('FAILED —')
+  })
+
+  it('still records a fully successful run when database and media copies succeed', () => {
+    const result = runBackup()
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('OK —')
+    expect(result.stdout).not.toContain('PARTIAL —')
   })
 
   it('uses the documented media-inclusive default in CLI warnings', () => {
