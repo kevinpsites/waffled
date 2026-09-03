@@ -27,9 +27,14 @@ end;
 $$;
 
 drop trigger if exists trg_chore_instance_snapshot on chore_instances;
+-- Application materialization supplies the complete snapshot tuple directly. The
+-- non-null title is the sentinel for that fast path; direct/legacy inserts that
+-- omit snapshots still fall back to the template lookup.
 create trigger trg_chore_instance_snapshot
   before insert on chore_instances
-  for each row execute function snapshot_chore_instance_fields();
+  for each row
+  when (new.title_snapshot is null)
+  execute function snapshot_chore_instance_fields();
 
 update chore_instances ci
    set title_snapshot = c.title,

@@ -175,10 +175,12 @@ describe('chores schema', () => {
       )
       const cid = ch.rows[0].id
 
-      await c.query(
-        `insert into chore_instances (household_id, chore_id, person_id, due_on) values ($1,$2,$3,'2026-06-08')`,
+      const inserted = await c.query<{ title_snapshot: string }>(
+        `insert into chore_instances (household_id, chore_id, person_id, due_on)
+         values ($1,$2,$3,'2026-06-08') returning title_snapshot`,
         [hid, cid, pid]
       )
+      expect(inserted.rows[0].title_snapshot).toBe('Dishes')
       await expect(
         c.query(
           `insert into chore_instances (household_id, chore_id, person_id, due_on) values ($1,$2,$3,'2026-06-08')`,
@@ -513,13 +515,19 @@ describe('recurring chore history and edit scopes', () => {
     expect(carriedOneOff[0].rrule).toBeNull()
   })
 
-  it('deleting a series removes pending work but preserves completed history', async () => {
+  it('deleting a whole series preserves the completed occurrence snapshot', async () => {
     const instance = await recurring('Keep finished sweep')
     expect((await call('POST', `/api/chore-instances/${instance.id}/complete`, kevin)).statusCode).toBe(200)
     await day(tomorrow)
 
     expect((await call('DELETE', `/api/chores/${instance.choreId}`, kevin, { scope: 'all', instanceId: instance.id })).statusCode).toBe(204)
-    expect((await day(today)).find((i) => i.id === instance.id)).toMatchObject({ choreTitle: 'Keep finished sweep', status: 'done' })
+    expect((await day(today)).find((i) => i.id === instance.id)).toMatchObject({
+      choreTitle: 'Keep finished sweep',
+      emoji: '🧹',
+      dueTime: '08:00',
+      rrule: 'FREQ=DAILY',
+      status: 'done',
+    })
     expect((await day(tomorrow)).some((i) => i.choreId === instance.choreId)).toBe(false)
   })
 
