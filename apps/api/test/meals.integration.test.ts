@@ -846,7 +846,7 @@ describe('recipe images (blob storage)', () => {
     const created = JSON.parse(
       (await call('POST', '/api/recipes', kevin, { title: 'Pho', storageKey: key, contentType: 'image/png' })).body
     ).recipe
-    expect(created.imageUrl).toBe(`/media/${key}`)
+    expect(created.imageUrl).toMatch(new RegExp(`^/media/${key}\\?expires=\\d{10}&sig=[A-Za-z0-9_-]{43}$`))
 
     const cleared = JSON.parse(
       (await call('PATCH', `/api/recipes/${created.id}`, kevin, {
