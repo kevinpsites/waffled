@@ -2,6 +2,25 @@ import Foundation
 import Observation
 import SwiftUI
 
+/// Opaque identity for one authenticated REST-data lifetime. A new value is issued
+/// when credentials are torn down, even when the next session happens to expose the
+/// same person id.
+struct RestDataScope: Hashable, Sendable {
+    private let id: UUID
+
+    init() {
+        id = UUID()
+    }
+}
+
+/// A REST cache boundary includes both the authenticated lifetime and its server.
+/// This prevents a self-hosted server switch from retaining data when identifiers
+/// happen to collide.
+struct RestDataScopeKey: Hashable, Sendable {
+    let scope: RestDataScope
+    let apiBaseURL: String
+}
+
 /// Truthful lifecycle for data that exists only behind REST. `empty` and `ready`
 /// are authoritative server responses. Every other terminal state tells the UI why
 /// the value must not be presented as an authoritative empty result.
@@ -51,31 +70,73 @@ enum RestState: Equatable, Sendable {
            case let .queued(pending, date) = queued {
             return .queued(pending: pending, updatedAt: date ?? latest)
         }
-        let offlineDates = states.compactMap { state -> Date? in
-            guard case let .offline(updatedAt) = state else { return nil }
-            return updatedAt
-        }
         if states.contains(where: { if case .offline = $0 { true } else { false } }) {
-            // A fresh sibling says nothing about when the offline domain last loaded.
-            // Preserve only timestamps carried by offline states themselves.
-            return .offline(updatedAt: offlineDates.max())
+            var failedDates: [Date] = []
+            var hasUnknownFailureDate = false
+            for state in states {
+                switch state {
+                case let .offline(updatedAt):
+                    if let updatedAt { failedDates.append(updatedAt) }
+                    else { hasUnknownFailureDate = true }
+                case let .stale(updatedAt, _):
+                    failedDates.append(updatedAt)
+                case .error:
+                    hasUnknownFailureDate = true
+                default:
+                    break
+                }
+            }
+            // Offline copy wins, but its timestamp describes every failed visible
+            // domain—not a fresh sibling and not merely the first offline one. An
+            // unknown failure age dominates; otherwise report the oldest saved value.
+            return .offline(updatedAt: hasUnknownFailureDate ? nil : failedDates.min())
         }
-        if let stale = states.first(where: { if case .stale = $0 { true } else { false } }),
-           case let .stale(date, message) = stale {
-            return .stale(updatedAt: max(date, latest ?? date), message: message)
+        let staleValues = states.compactMap { state -> (date: Date, message: String)? in
+            guard case let .stale(date, message) = state else { return nil }
+            return (date, message)
+        }
+        if let oldestStale = staleValues.min(by: { $0.date < $1.date }) {
+            let messages = Set(staleValues.map(\.message))
+            let hasBareError = states.contains { if case .error = $0 { true } else { false } }
+            let message = messages.count == 1 && !hasBareError
+                ? oldestStale.message
+                : "Some data couldn’t be refreshed."
+            // Fresh sibling timestamps cannot say how old this failed domain is.
+            // Multiple stale domains conservatively report the oldest saved value.
+            return .stale(updatedAt: oldestStale.date, message: message)
+        }
+        if states.contains(where: { if case .loading = $0 { true } else { false } }) {
+            return .loading
         }
         if let error = states.first(where: { if case .error = $0 { true } else { false } }),
            case let .error(message) = error {
             if let latest { return .stale(updatedAt: latest, message: "Some data couldn’t be refreshed.") }
             return .error(message: message)
         }
-        if states.contains(where: { if case .loading = $0 { true } else { false } }) {
-            return .loading
-        }
         let date = latest ?? Date()
         return states.contains(where: { if case .ready = $0 { true } else { false } })
             ? .ready(updatedAt: date)
             : .empty(updatedAt: date)
+    }
+}
+
+/// Runs optional fan-out requests without calling disabled feature endpoints. The
+/// result value lets screen models apply every completed response together after
+/// all active sibling requests settle.
+enum RestFetch {
+    static func result<Value: Sendable>(
+        _ fetch: @escaping @Sendable () async throws -> Value
+    ) async -> Result<Value, Error> {
+        do { return .success(try await fetch()) }
+        catch { return .failure(error) }
+    }
+
+    static func result<Value: Sendable>(
+        when enabled: Bool,
+        _ fetch: @escaping @Sendable () async throws -> Value
+    ) async -> Result<Value, Error>? {
+        guard enabled else { return nil }
+        return await result(fetch)
     }
 }
 
@@ -123,10 +184,19 @@ final class RestDomain<Value: Sendable> {
     var loaded: Bool { state.loaded }
 
     private let isEmpty: (Value) -> Bool
+    private let initialValue: Value
 
     init(_ initial: Value, isEmpty: @escaping (Value) -> Bool = { _ in false }) {
         value = initial
+        initialValue = initial
         self.isEmpty = isEmpty
+    }
+
+    /// Drop values at an authenticated/server boundary. Ordinary reloads deliberately
+    /// retain confirmed data, but it must never cross into a different household.
+    func reset() {
+        value = initialValue
+        state = .loading
     }
 
     /// Fold a fetch result in: nil (failure) keeps the prior value, non-nil applies

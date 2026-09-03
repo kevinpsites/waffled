@@ -31,10 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   order, and retrying Calendar settings clears an old connection error once it succeeds.
 
 - **Family, approvals, and Photos no longer mistake a connection failure for “nothing
-  here” on iPhone or iPad.** These screens keep their last confirmed information and
-  show an in-place loading, offline, stale-data, or error notice; empty messages such as
-  “All caught up” now appear only after a successful empty response. Offline sections
-  also report only their own saved-data time instead of borrowing one from another tile.
+  here.”** The iPhone Family hub, iPad Family kiosk, and shared Approvals and Photos
+  screens keep their last confirmed information and show an in-place loading, offline,
+  stale-data, or error notice; empty messages such as “All caught up” now appear only
+  after a successful empty response. Offline sections also report only their own
+  saved-data time instead of borrowing one from another tile. Hidden household modules
+  are excluded from loading, and saved REST values are cleared when the active account
+  or server changes so one household’s data cannot appear in another.
 
 ## [0.14.3] - 2026-09-02
 

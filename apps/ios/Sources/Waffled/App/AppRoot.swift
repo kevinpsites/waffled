@@ -170,7 +170,7 @@ struct AppRoot: View {
     /// Reload pending approvals and push the count to the app-icon badge. Kids (and the
     /// signed-out state) resolve to 0, which clears any stale badge.
     private func refreshApprovalBadge() async {
-        await approvals.load()
+        await approvals.load(scope: sync.restDataScopeKey)
         await notifications.setBadge(approvalCount)
     }
 

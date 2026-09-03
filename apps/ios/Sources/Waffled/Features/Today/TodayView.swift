@@ -132,7 +132,7 @@ struct TodayView: View {
             // Freshen the shared approvals model on each appearance (a tab switch
             // back to Today). Launch, the chore/reward buses, and foregrounding are
             // AppRoot's job — it owns the model — so no duplicate fetch per trigger.
-            .task { await approvals.load() }
+            .task { await approvals.load(scope: sync.restDataScopeKey) }
             // These cards are REST-backed (meals/chores/grocery/goals aren't synced
             // tables), so a change made elsewhere — the web app, another phone —
             // arrives silently. Refetch on return to the foreground, the same trigger

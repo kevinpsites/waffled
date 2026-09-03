@@ -29,7 +29,12 @@ struct KioskRoot: View {
                         stalled: bootStalled,
                         detail: sync.lastError,
                         onRetry: { bootStalled = false; Task { await sync.start() } },
-                        onSignOut: { Task { await session.signOut() } }
+                        onSignOut: {
+                            Task {
+                                await session.signOut()
+                                await sync.signOut()
+                            }
+                        }
                     )
                     .transition(.opacity)
                 }

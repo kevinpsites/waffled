@@ -277,7 +277,10 @@ struct ChoresView: View {
                 }
             }
         }
-        .task(id: sync.choresRev) { await model.load(); await approvals.load() }
+        .task(id: sync.choresRev) {
+            await model.load()
+            await approvals.load(scope: sync.restDataScopeKey)
+        }
         .task { await sync.loadCurrencies() }
         .sheet(item: $editor) { target in
             // Snapshot the sync-derived inputs HERE (read `sync` once) instead of letting
@@ -421,7 +424,10 @@ struct ChoresView: View {
         }
         // Bounce even when nothing's scheduled, so pull-to-refresh still triggers.
         .scrollBounceBehavior(.always)
-        .refreshable { await model.load(); await approvals.load() }
+        .refreshable {
+            await model.load()
+            await approvals.load(scope: sync.restDataScopeKey)
+        }
         // Horizontal flick steps a day (matching Calendar's day view). simultaneousGesture
         // (not gesture) so vertical scroll + drag-to-reassign still work.
         .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleDaySwipe))
@@ -634,7 +640,7 @@ struct ChoresView: View {
         approvals.drop(chore: c.id)
         Task {
             let ok = await op()
-            await approvals.load()
+            await approvals.load(scope: sync.restDataScopeKey)
             if ok { await model.load() }
         }
     }

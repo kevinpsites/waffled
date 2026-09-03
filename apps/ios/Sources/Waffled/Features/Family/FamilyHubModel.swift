@@ -1,6 +1,18 @@
 import Foundation
 import Observation
 
+/// REST feeds represented by optional Family launcher tiles. Photos is core and
+/// therefore deliberately absent: it is always loaded and aggregated.
+struct FamilyRestModules: Hashable, Sendable {
+    let chores: Bool
+    let goals: Bool
+    let rewards: Bool
+    let lists: Bool
+
+    static let all = Self(chores: true, goals: true, rewards: true, lists: true)
+    static let none = Self(chores: false, goals: false, rewards: false, lists: false)
+}
+
 /// REST-backed counts for the Family hub launcher tiles (chores, goals, rewards,
 /// lists, photos). None of these are PowerSync tables, so they load over the API —
 /// concurrently, on appear and on pull-to-refresh. Each tile's subtitle is derived
@@ -25,6 +37,9 @@ final class FamilyHubModel {
     private let fetchStars: FetchStars
     private let fetchLists: FetchLists
     private let fetchPhotos: FetchPhotos
+    private var modules: FamilyRestModules = .all
+    private var dataScope: RestDataScopeKey?
+    private var loadGeneration = 0
 
     init(
         fetchChores: FetchChores? = nil,
@@ -52,30 +67,48 @@ final class FamilyHubModel {
     var listsCount: Int { listsD.value.count }
     var photosCount: Int { photosD.value.count }
     var latestMemory: String? { photosD.value.compactMap(\.memory).first { !$0.isEmpty } }
-    var loaded: Bool {
-        choresD.loaded && goalsD.loaded && rewardsD.loaded && listsD.loaded && photosD.loaded
-    }
-    var state: RestState {
-        .combined([choresD.state, goalsD.state, rewardsD.state, listsD.state, photosD.state])
+    var loaded: Bool { activeStates.allSatisfy(\.loaded) }
+    var state: RestState { .combined(activeStates) }
+
+    private var activeStates: [RestState] {
+        var states = [photosD.state]
+        if modules.chores { states.append(choresD.state) }
+        if modules.goals { states.append(goalsD.state) }
+        if modules.rewards { states.append(rewardsD.state) }
+        if modules.lists { states.append(listsD.state) }
+        return states
     }
 
-    func load() async {
-        choresD.beginLoading()
-        goalsD.beginLoading()
-        rewardsD.beginLoading()
-        listsD.beginLoading()
+    func load(scope: RestDataScopeKey, modules: FamilyRestModules) async {
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        if dataScope != scope {
+            dataScope = scope
+            choresD.reset()
+            goalsD.reset()
+            rewardsD.reset()
+            listsD.reset()
+            photosD.reset()
+        }
+        self.modules = modules
+        if modules.chores { choresD.beginLoading() }
+        if modules.goals { goalsD.beginLoading() }
+        if modules.rewards { rewardsD.beginLoading() }
+        if modules.lists { listsD.beginLoading() }
         photosD.beginLoading()
-        async let chores = fetchChores()
-        async let goals = fetchGoals()
-        async let rewards = fetchStars()
-        async let lists = fetchLists()
-        async let photos = fetchPhotos()
+        async let chores = RestFetch.result(when: modules.chores, fetchChores)
+        async let goals = RestFetch.result(when: modules.goals, fetchGoals)
+        async let rewards = RestFetch.result(when: modules.rewards, fetchStars)
+        async let lists = RestFetch.result(when: modules.lists, fetchLists)
+        async let photos = RestFetch.result(fetchPhotos)
+        let results = await (chores, goals, rewards, lists, photos)
 
-        do { choresD.apply(.success(try await chores)) } catch { choresD.apply(.failure(error)) }
-        do { goalsD.apply(.success(try await goals)) } catch { goalsD.apply(.failure(error)) }
-        do { rewardsD.apply(.success(try await rewards)) } catch { rewardsD.apply(.failure(error)) }
-        do { listsD.apply(.success(try await lists)) } catch { listsD.apply(.failure(error)) }
-        do { photosD.apply(.success(try await photos)) } catch { photosD.apply(.failure(error)) }
+        guard !Task.isCancelled, generation == loadGeneration else { return }
+        if let chores = results.0 { choresD.apply(chores) }
+        if let goals = results.1 { goalsD.apply(goals) }
+        if let rewards = results.2 { rewardsD.apply(rewards) }
+        if let lists = results.3 { listsD.apply(lists) }
+        photosD.apply(results.4)
     }
 
     // MARK: derived tile subtitles

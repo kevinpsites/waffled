@@ -12,6 +12,8 @@ final class ApprovalsModel {
     private let choresD = RestDomain<[WaffledAPI.ChoreInstanceDTO]>([], isEmpty: \.isEmpty)
     private let fetchRedemptions: FetchRedemptions
     private let fetchChores: FetchChores
+    private var dataScope: RestDataScopeKey?
+    private var loadGeneration = 0
 
     init(fetchRedemptions: FetchRedemptions? = nil, fetchChores: FetchChores? = nil) {
         let api = WaffledAPI()
@@ -27,15 +29,23 @@ final class ApprovalsModel {
     var total: Int { redemptions.count + chores.count }
     var isEmpty: Bool { total == 0 }
 
-    func load() async {
+    func load(scope: RestDataScopeKey) async {
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        if dataScope != scope {
+            dataScope = scope
+            redemptionsD.reset()
+            choresD.reset()
+        }
         redemptionsD.beginLoading()
         choresD.beginLoading()
-        async let redemptions = fetchRedemptions()
-        async let chores = fetchChores()
-        do { redemptionsD.apply(.success(try await redemptions)) }
-        catch { redemptionsD.apply(.failure(error)) }
-        do { choresD.apply(.success(try await chores)) }
-        catch { choresD.apply(.failure(error)) }
+        async let redemptions = RestFetch.result(fetchRedemptions)
+        async let chores = RestFetch.result(fetchChores)
+        let results = await (redemptions, chores)
+
+        guard !Task.isCancelled, generation == loadGeneration else { return }
+        redemptionsD.apply(results.0)
+        choresD.apply(results.1)
     }
 
     func drop(redemption id: String) { redemptionsD.value.removeAll { $0.id == id } }
@@ -103,7 +113,9 @@ struct ApprovalsView: View {
                     if model.loading && model.isEmpty {
                         WaffledLoading()
                     } else {
-                        RestStateNotice(state: model.state, retry: { Task { await model.load() } })
+                        RestStateNotice(state: model.state, retry: {
+                            Task { await model.load(scope: sync.restDataScopeKey) }
+                        })
                         if !showRedemptions && !showChores && model.state.isAuthoritative {
                             WaffledEmptyState(emoji: "🎉", title: "All caught up",
                                            message: "No reward purchases or chores waiting on you.")
@@ -124,11 +136,11 @@ struct ApprovalsView: View {
                 .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
             }
             .scrollBounceBehavior(.always)
-            .refreshable { await model.load() }
+            .refreshable { await model.load(scope: sync.restDataScopeKey) }
         }
         .background(WF.canvas)
         .navigationTitle("Needs your OK").navigationBarTitleDisplayMode(.inline)
-        .task { await model.load() }
+        .task { await model.load(scope: sync.restDataScopeKey) }
         .sheet(item: $reviewing) { c in
             ChoreProofReview(
                 chore: c, memberColorHex: nil,
@@ -216,6 +228,10 @@ struct ApprovalsView: View {
     /// (re-fetch) if it failed.
     private func decide(_ drop: () -> Void, _ op: @escaping () async -> Bool) {
         drop()
-        Task { if await op() == false { await model.load() } }
+        Task {
+            if await op() == false {
+                await model.load(scope: sync.restDataScopeKey)
+            }
+        }
     }
 }

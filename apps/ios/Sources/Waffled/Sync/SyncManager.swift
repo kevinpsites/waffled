@@ -20,6 +20,13 @@ final class SyncManager {
     enum Status: String { case idle, connecting, connected, offline }
 
     private(set) var status: Status = .idle
+    /// Changes synchronously whenever credentials are torn down. REST models include
+    /// this opaque epoch plus the server origin in their cache key so confirmed data
+    /// can survive an ordinary refresh, but never a person/household/server boundary.
+    private(set) var restDataScope = RestDataScope()
+    var restDataScopeKey: RestDataScopeKey {
+        .init(scope: restDataScope, apiBaseURL: AppConfig.apiBaseURL)
+    }
     private(set) var members: [SyncedMember] = [] { didSet { rebuildEventPalette() } }
 
     // MARK: event coloring (settings.display)
@@ -116,12 +123,34 @@ final class SyncManager {
     /// respect who's signed in, and management/approval controls only show when the
     /// server would allow the action). Loaded once.
     private(set) var currentPerson: WaffledAPI.CurrentPerson? { didSet { rebuildEventIndex() } }
+    /// Separately tracks the module half of identity loading. A canceled task may
+    /// already have installed `currentPerson`; its replacement must still finish the
+    /// module read instead of treating that partial identity as complete.
+    private var identityModulesScope: RestDataScopeKey?
     /// The logged-in person's id (convenience; nil until identity loads).
     var currentPersonId: String? { currentPerson?.id }
     func loadIdentity() async {
-        guard currentPerson == nil else { return }
-        currentPerson = try? await api.currentPerson()
-        await reloadModules()
+        let api = api
+        await loadIdentity(
+            fetchCurrentPerson: { try await api.currentPerson() },
+            fetchModules: { try await api.householdModules() }
+        )
+    }
+
+    /// Injectable overload keeps the principal-boundary race deterministic in tests.
+    /// Both responses must still belong to the scope that initiated the request.
+    func loadIdentity(
+        fetchCurrentPerson: @escaping @Sendable () async throws -> WaffledAPI.CurrentPerson?,
+        fetchModules: @escaping @Sendable () async throws -> WaffledAPI.HouseholdModules
+    ) async {
+        let requestedScope = restDataScopeKey
+        if currentPerson == nil {
+            let person = try? await fetchCurrentPerson()
+            guard !Task.isCancelled, requestedScope == restDataScopeKey else { return }
+            currentPerson = person
+        }
+        guard identityModulesScope != requestedScope else { return }
+        await reloadModules(requestedScope: requestedScope, fetch: fetchModules)
     }
 
     // MARK: optional modules
@@ -178,17 +207,30 @@ final class SyncManager {
     /// (Re)load the module flags from the server — at identity load and after a toggle
     /// in Settings → Modules, so nav/Today reflect the change without a relaunch.
     func reloadModules() async {
-        if let m = try? await api.householdModules() {
-            moduleFlags = m.modules
-            rewardsSubEnabled = m.rewards
-            // Same `/api/household` read carries settings.display, so the calendar's
-            // event style + family color refresh with the module flags — including right
-            // after a Settings save, which is what restyles open surfaces live (the web
-            // does this via emitHouseholdChanged()).
-            eventStyle = EventStyle.resolve(m.eventStyle)
-            familyColorHex = EventPalette.normalizedFamilyHex(m.familyColorHex)
-            modulesRev += 1
-        }
+        let api = api
+        await reloadModules(
+            requestedScope: restDataScopeKey,
+            fetch: { try await api.householdModules() }
+        )
+    }
+
+    private func reloadModules(
+        requestedScope: RestDataScopeKey,
+        fetch: @escaping @Sendable () async throws -> WaffledAPI.HouseholdModules
+    ) async {
+        guard let m = try? await fetch(),
+              !Task.isCancelled,
+              requestedScope == restDataScopeKey else { return }
+        moduleFlags = m.modules
+        rewardsSubEnabled = m.rewards
+        // Same `/api/household` read carries settings.display, so the calendar's
+        // event style + family color refresh with the module flags — including right
+        // after a Settings save, which is what restyles open surfaces live (the web
+        // does this via emitHouseholdChanged()).
+        eventStyle = EventStyle.resolve(m.eventStyle)
+        familyColorHex = EventPalette.normalizedFamilyHex(m.familyColorHex)
+        identityModulesScope = requestedScope
+        modulesRev += 1
     }
 
     /// Whether the signed-in person holds a capability — mirrors the web `can()`:
@@ -271,10 +313,10 @@ final class SyncManager {
     }
 
     /// (Re)connect with fresh credentials — used by the Settings "Reconnect" button
-    /// after pasting a token or changing the API URL.
+    /// after pasting a token or changing the API URL. Either change can cross a
+    /// household/server boundary, so take the same clearing path as account switching.
     func reconnect() async {
-        try? await db.disconnect()
-        await connect()
+        await reauthenticate(clearLocal: true)
     }
 
     /// Re-scope the live sync after the active session changed — a kiosk profile claim
@@ -303,6 +345,10 @@ final class SyncManager {
     /// a memory/Keychain spike at sign-out. A **household switch** passes `clearLocal:
     /// true` so the previous household's rows can't linger in the shared SQLite file.
     func signOut(clearLocal: Bool = false) async {
+        // Invalidate REST-backed screens before the first suspension point. An old
+        // request may still finish while PowerSync disconnects; the new scope makes
+        // model generations reject it and rebuilds the authenticated view subtree.
+        invalidateRestDataScope()
         // Stop consuming the live queries BEFORE disconnecting so a watcher can't
         // race the teardown.
         watchTask?.cancel(); eventsTask?.cancel(); statusTask?.cancel()
@@ -311,9 +357,20 @@ final class SyncManager {
         members = []; allEvents = []
         personCount = 0; eventCount = 0; pendingUploads = 0
         lastSyncedAt = nil; lastError = nil
-        currentPerson = nil; currencies = []
         status = .idle
         started = false
+    }
+
+    /// Synchronous half of credential teardown. Keeping it free of database work
+    /// makes the privacy boundary immediate and directly race-testable.
+    func invalidateRestDataScope() {
+        restDataScope = RestDataScope()
+        currentPerson = nil
+        identityModulesScope = nil
+        moduleFlags = [:]
+        rewardsSubEnabled = true
+        currencies = []
+        modulesRev &+= 1
     }
 
     private func connect() async {

@@ -27,6 +27,7 @@ struct WaffledApp: App {
                 KioskGate {
                     AuthGate {
                         RootView()
+                            .id(sync.restDataScopeKey)
                             .task { await sync.start() }   // connect PowerSync once signed in
                     }
                 }
