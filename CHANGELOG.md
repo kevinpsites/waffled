@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Simultaneous reward spending cannot overdraw a balance.** Reward redemptions and
+  currency conversions now share a household-member balance lock, so overlapping
+  requests are applied one at a time and recheck the latest balance before spending.
+
 - **Reward activity stays inside your family.** Redeeming or granting a reward now
   rejects people and currencies from another household, and a family member can only
   redeem for someone else when their role can manage rewards. Pending redemptions also
