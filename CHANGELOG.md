@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Security
+
+- **OAuth callbacks now stay inside Waffled and disclose less.** Google and Outlook
+  calendar connections plus OIDC sign-in now accept only the exact Waffled web origin
+  or registered app deep link, consume one-time state before reporting provider errors,
+  and return escaped, non-cacheable result pages under a restrictive browser policy.
+
 ## [0.14.3] - 2026-09-02
 
 ### Added

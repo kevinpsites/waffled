@@ -222,10 +222,18 @@ export function registerOidcRoutes(api: Api): void {
   // back to the SPA with a one-time handoff code.
   api.get('/api/auth/oidc/callback', async (req: Request, res: Response) => {
     const q = req.query as Record<string, string | undefined>
-    if (q.error) return res.status(400).html(resultPage('Sign-in failed', q.error_description || q.error, appOrigin(req)))
-    const code = q.code
     const state = q.state
-    if (!code || !state) return res.status(400).html(resultPage('Sign-in failed', 'Missing authorization code or state.', appOrigin(req)))
+    if (!state) {
+      return failSignIn(
+        req,
+        res,
+        null,
+        400,
+        'Sign-in failed',
+        'Missing authorization state. Please try signing in again.',
+        'missing_state'
+      )
+    }
 
     // One-time consume of the state (and sweep expired ones while here).
     const { rows } = await query<{ code_verifier: string; nonce: string; redirect_to: string | null }>(
@@ -236,10 +244,45 @@ export function registerOidcRoutes(api: Api): void {
     )
     await query(`delete from oidc_login_states where created_at <= now() - interval '${STATE_TTL_MIN} minutes'`)
     const st = rows[0]
-    if (!st) return res.status(400).html(resultPage('Sign-in expired', 'This sign-in link expired. Please try again.', appOrigin(req)))
+    if (!st) {
+      return failSignIn(
+        req,
+        res,
+        null,
+        400,
+        'Sign-in expired',
+        'This sign-in link expired. Please try again.',
+        'expired_state'
+      )
+    }
     // Revalidate persisted state as well, so states created before an upgrade can
     // never send a newly-minted handoff to an old, untrusted destination.
     const redirectTo = allowedRedirect(req, st.redirect_to)
+
+    if (q.error) {
+      return failSignIn(
+        req,
+        res,
+        redirectTo,
+        400,
+        'Sign-in failed',
+        q.error_description || q.error,
+        'provider_error'
+      )
+    }
+
+    const code = q.code
+    if (!code) {
+      return failSignIn(
+        req,
+        res,
+        redirectTo,
+        400,
+        'Sign-in failed',
+        'Missing authorization code. Please try signing in again.',
+        'missing_code'
+      )
+    }
 
     try {
       const cfg = await getAuthConfig()
