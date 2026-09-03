@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Where the app points and how it authenticates — device-only settings.
@@ -8,8 +9,11 @@ import Foundation
 enum AppConfig {
     private static let urlKey = "waffled.apiBaseURL"
     private static let tokenKey = "waffled.devToken"
+    private static let memberTypeKey = "waffled.currentMemberType"
+    private static let memberTypeServerKey = "waffled.currentMemberTypeServer"
+    private static let memberTypeAuthScopeKey = "waffled.currentMemberTypeAuthScope"
+    private static let builtInMemberTypes: Set<String> = ["adult", "caregiver", "guest", "teen", "kid"]
     private static let memberTypeLock = NSLock()
-    private static var memberType: String?
 
     /// The built-in fallback server address — the compose stack's Caddy origin (serves
     /// /api + /media). Exposed so the About screen can show/reset to it.
@@ -54,15 +58,49 @@ enum AppConfig {
         AuthTokens.accessToken ?? devToken
     }
 
-    /// The active household role, loaded from `/api/household`. WaffledAPI reads
-    /// this shared value so every feature client applies the guest read-only rule,
-    /// including models that do not hold the app's SyncManager environment object.
+    /// The active household role, loaded from `/api/household`. Its last verified
+    /// built-in value survives a cold offline launch, but only for the same server.
+    /// Explicit session/profile/token changes clear it at their mutation boundary.
+    /// WaffledAPI reads this shared value so every feature client applies the guest
+    /// read-only rule, including models without the app's SyncManager environment.
     static var currentMemberType: String? {
         memberTypeLock.lock(); defer { memberTypeLock.unlock() }
+        let defaults = UserDefaults.standard
+        guard let memberType = defaults.string(forKey: memberTypeKey),
+              builtInMemberTypes.contains(memberType),
+              defaults.string(forKey: memberTypeServerKey) == apiBaseURL,
+              let authScope = memberTypeAuthScope(),
+              defaults.string(forKey: memberTypeAuthScopeKey) == authScope else {
+            defaults.removeObject(forKey: memberTypeKey)
+            defaults.removeObject(forKey: memberTypeServerKey)
+            defaults.removeObject(forKey: memberTypeAuthScopeKey)
+            return nil
+        }
         return memberType
     }
     static func setCurrentMemberType(_ value: String?) {
-        memberTypeLock.lock(); memberType = value; memberTypeLock.unlock()
+        memberTypeLock.lock(); defer { memberTypeLock.unlock() }
+        let defaults = UserDefaults.standard
+        if let value, builtInMemberTypes.contains(value), let authScope = memberTypeAuthScope() {
+            defaults.set(value, forKey: memberTypeKey)
+            defaults.set(apiBaseURL, forKey: memberTypeServerKey)
+            defaults.set(authScope, forKey: memberTypeAuthScopeKey)
+        } else {
+            defaults.removeObject(forKey: memberTypeKey)
+            defaults.removeObject(forKey: memberTypeServerKey)
+            defaults.removeObject(forKey: memberTypeAuthScopeKey)
+        }
+    }
+
+    /// A rotating real session keeps one logical scope; a pasted/launch-env dev
+    /// token gets a non-reversible fingerprint so changing it across launches also
+    /// invalidates the cached role without copying that credential into defaults.
+    private static func memberTypeAuthScope() -> String? {
+        if AuthTokens.isSignedIn { return "session" }
+        let token = devToken
+        guard !token.isEmpty else { return nil }
+        let digest = SHA256.hash(data: Data(token.utf8))
+        return "dev:" + digest.map { String(format: "%02x", $0) }.joined()
     }
 
     /// Whether the app has *any* usable token — a real session or a dev token. Used
@@ -104,21 +142,26 @@ enum AppConfig {
     /// Invalid non-empty values are rejected without replacing the current server.
     @discardableResult
     static func setApiBaseURL(_ value: String) -> Bool {
+        let previous = apiBaseURL
         let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if v.isEmpty {
             UserDefaults.standard.removeObject(forKey: urlKey)
+            if apiBaseURL != previous { setCurrentMemberType(nil) }
             return true
         }
         guard let normalized = normalizedApiBaseURL(v) else { return false }
         UserDefaults.standard.set(normalized, forKey: urlKey)
+        if apiBaseURL != previous { setCurrentMemberType(nil) }
         return true
     }
 
     /// Save the dev token, or clear it when blank.
     static func setDevToken(_ value: String) {
+        let previous = storedDevToken
         let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if v.isEmpty { UserDefaults.standard.removeObject(forKey: tokenKey) }
         else { UserDefaults.standard.set(v, forKey: tokenKey) }
+        if storedDevToken != previous { setCurrentMemberType(nil) }
     }
 
     private static let signedOutKey = "waffled.signedOut"

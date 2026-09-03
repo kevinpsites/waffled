@@ -93,6 +93,9 @@ enum AuthTokens {
         lock.lock(); cache = (nil, nil); lock.unlock()
         Keychain.set(accessKey, nil)
         Keychain.set(refreshKey, nil)
+        // Every explicit logout, expired refresh, and kiosk profile teardown uses
+        // this boundary. Do not let the durable offline role cross principals.
+        AppConfig.setCurrentMemberType(nil)
     }
 }
 

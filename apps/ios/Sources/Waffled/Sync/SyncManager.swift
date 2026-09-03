@@ -118,7 +118,10 @@ final class SyncManager {
     private(set) var currentPerson: WaffledAPI.CurrentPerson? { didSet { rebuildEventIndex() } }
     /// The logged-in person's id (convenience; nil until identity loads).
     var currentPersonId: String? { currentPerson?.id }
-    private var effectiveMemberType: String? { currentPerson?.memberType ?? AppConfig.currentMemberType }
+    // AppConfig is the session-scoped authority for local writes. `currentPerson`
+    // may still describe the old connection briefly after a server/token change,
+    // whereas AppConfig is cleared synchronously at that boundary.
+    private var effectiveMemberType: String? { AppConfig.currentMemberType }
     var isReadOnlyGuest: Bool { effectiveMemberType == "guest" }
     func loadIdentity() async {
         guard currentPerson == nil else { return }
@@ -290,7 +293,9 @@ final class SyncManager {
     /// after pasting a token or changing the API URL.
     func reconnect() async {
         try? await db.disconnect()
+        currentPerson = nil
         await connect()
+        await loadIdentity()
     }
 
     /// Re-scope the live sync after the active session changed — a kiosk profile claim

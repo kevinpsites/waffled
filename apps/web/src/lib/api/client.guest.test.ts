@@ -4,8 +4,11 @@ import {
   apiDelete,
   apiGet,
   apiSend,
+  clearProfileSession,
+  clearSession,
   guestRequestAllowed,
   powerSyncMutationAllowed,
+  setSession,
   setCurrentViewerMemberType,
 } from './client'
 
@@ -66,5 +69,53 @@ describe('guest client mutation policy', () => {
     expect(powerSyncMutationAllowed('caregiver')).toBe(true)
     expect(powerSyncMutationAllowed('teen')).toBe(true)
     expect(powerSyncMutationAllowed('kid')).toBe(true)
+  })
+
+  it('restores the last server-verified role after a cold offline restart', async () => {
+    setSession('same-access-token', 'same-refresh-token')
+    setCurrentViewerMemberType('adult')
+
+    // A fresh module graph models closing/reopening the PWA while localStorage
+    // survives and the server is unavailable, so /api/household cannot reload.
+    vi.resetModules()
+    const restarted = await import('./client')
+
+    expect(restarted.powerSyncMutationAllowed()).toBe(true)
+  })
+
+  it('does not carry a persisted role into a replacement household session', async () => {
+    setSession('original-access-token', 'original-refresh-token')
+    setCurrentViewerMemberType('adult')
+    setSession('different-access-token', 'different-refresh-token')
+
+    vi.resetModules()
+    const restarted = await import('./client')
+
+    expect(restarted.powerSyncMutationAllowed()).toBe(false)
+  })
+
+  it('does not carry a persisted role across a legacy dev-token change', async () => {
+    localStorage.setItem('waffled.token', 'first-dev-token')
+    setCurrentViewerMemberType('adult')
+    localStorage.setItem('waffled.token', 'replacement-dev-token')
+
+    vi.resetModules()
+    const restarted = await import('./client')
+
+    expect(restarted.powerSyncMutationAllowed()).toBe(false)
+  })
+
+  it.each([
+    ['sign-out', clearSession],
+    ['kiosk profile switch', clearProfileSession],
+  ])('clears the persisted role on %s', async (_label, clear) => {
+    setSession('current-access-token', 'current-refresh-token')
+    setCurrentViewerMemberType('adult')
+    clear()
+
+    vi.resetModules()
+    const restarted = await import('./client')
+
+    expect(restarted.powerSyncMutationAllowed()).toBe(false)
   })
 })

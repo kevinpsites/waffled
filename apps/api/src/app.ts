@@ -121,8 +121,9 @@ api.use(async (req: Request, res: Response, next: NextFunction) => {
 
 // A guest can inspect the household but cannot mutate shared household state.
 // Keep account/session maintenance available so a guest can update credentials,
-// accept another invite, or switch away from the read-only household.
-const GUEST_WRITE_EXEMPT = new Set(['/api/auth/switch'])
+// accept another invite, or switch away from the read-only household. The
+// PowerSync sink performs its own authenticated no-op so stale legacy queues drain.
+const GUEST_WRITE_EXEMPT = new Set(['/api/auth/switch', '/api/powersync/crud'])
 api.use(async (req: Request, _res: Response, next: NextFunction) => {
   if (req.method === 'OPTIONS' || req.method === 'GET' || req.method === 'HEAD' || PUBLIC_PATHS.has(req.path)) return next()
   if (GUEST_WRITE_EXEMPT.has(req.path) || req.path.startsWith('/api/account/') ||

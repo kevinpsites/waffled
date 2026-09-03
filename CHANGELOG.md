@@ -48,9 +48,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stop safely if their currency is later disabled, while earn-only currencies still work
   for spot awards.
 
+- Web and iOS retain the last server-verified built-in role across a cold offline
+  restart, so known members can keep working; session, profile, household, server,
+  and dev-token changes still clear that trust before another principal can use it.
+
 - Guest offline edits no longer enter or indefinitely block the PowerSync upload
-  queue. Upgrades also stop and identify unknown legacy household roles instead of
-  silently reclassifying them.
+  queue, and the API safely drains stale uploads left by older guest or expired-
+  membership clients without changing server data. Upgrades also stop and identify
+  unknown legacy household roles instead of silently reclassifying them.
 
 ## [0.14.3] - 2026-09-02
 

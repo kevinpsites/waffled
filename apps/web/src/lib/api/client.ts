@@ -5,6 +5,9 @@
 // session and signals the AuthGate to show the login screen.
 const ACCESS_KEY = 'waffled.access'
 const REFRESH_KEY = 'waffled.refresh'
+const VIEWER_MEMBER_TYPE_KEY = 'waffled.currentMemberType'
+const VIEWER_MEMBER_TYPE_SCOPE_KEY = 'waffled.currentMemberTypeScope'
+const BUILTIN_MEMBER_TYPES = new Set(['adult', 'caregiver', 'guest', 'teen', 'kid'])
 
 // ── kiosk device layer ─────────────────────────────────────────────────────────
 // A paired tablet stores a long-lived device secret (persists across profile
@@ -115,7 +118,37 @@ export function clearProfileSession(): void {
 // Kept in a module so the offline agenda reads (events-local) can filter locally
 // without every call site threading it through; useHousehold() keeps it current.
 let viewerPersonId: string | null = null
-let viewerMemberType: string | null = null
+
+// localStorage is origin-scoped, so an ordinary deployment cannot carry this
+// cache to another server. The extra scope distinguishes real sessions from the
+// legacy pasted dev-token path: session/profile/household replacements all use
+// setSession (which clears the role), while an out-of-band dev-token replacement
+// is detected by its changed value on the next launch.
+function currentMemberTypeScope(): string | null {
+  try {
+    if (localStorage.getItem(ACCESS_KEY)) return 'session'
+    const devToken = localStorage.getItem('waffled.token')
+    return devToken ? `dev:${devToken}` : null
+  } catch {
+    return null
+  }
+}
+
+function loadCurrentViewerMemberType(): string | null {
+  try {
+    const memberType = localStorage.getItem(VIEWER_MEMBER_TYPE_KEY)
+    const scope = currentMemberTypeScope()
+    if (memberType && BUILTIN_MEMBER_TYPES.has(memberType) && scope &&
+        localStorage.getItem(VIEWER_MEMBER_TYPE_SCOPE_KEY) === scope) return memberType
+    localStorage.removeItem(VIEWER_MEMBER_TYPE_KEY)
+    localStorage.removeItem(VIEWER_MEMBER_TYPE_SCOPE_KEY)
+  } catch {
+    /* localStorage unavailable */
+  }
+  return null
+}
+
+let viewerMemberType: string | null = loadCurrentViewerMemberType()
 export function currentViewerPersonId(): string | null {
   return viewerPersonId
 }
@@ -123,7 +156,20 @@ export function setCurrentViewerPersonId(id: string | null): void {
   viewerPersonId = id
 }
 export function setCurrentViewerMemberType(memberType: string | null): void {
-  viewerMemberType = memberType
+  const trusted = memberType && BUILTIN_MEMBER_TYPES.has(memberType) ? memberType : null
+  viewerMemberType = trusted
+  try {
+    const scope = currentMemberTypeScope()
+    if (trusted && scope) {
+      localStorage.setItem(VIEWER_MEMBER_TYPE_KEY, trusted)
+      localStorage.setItem(VIEWER_MEMBER_TYPE_SCOPE_KEY, scope)
+    } else {
+      localStorage.removeItem(VIEWER_MEMBER_TYPE_KEY)
+      localStorage.removeItem(VIEWER_MEMBER_TYPE_SCOPE_KEY)
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
 }
 
 // Local PowerSync writes must fail closed until /api/household has identified a
