@@ -1,4 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { PersonProfile } from './PersonProfile'
 import type { PersonOverview } from '../lib/api'
@@ -53,6 +55,12 @@ function renderProfile() {
 }
 
 describe('PersonProfile redemption cancellation gating', () => {
+  it('defines distinct treatments for the new canceled and refunded terminal statuses', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/overview.css'), 'utf8')
+    expect(css).toMatch(/\.st-canceled\s*\{[^}]*background:[^}]*color:/)
+    expect(css).toMatch(/\.st-refunded\s*\{[^}]*background:[^}]*color:/)
+  })
+
   it('does not offer Cancel to the redemption subject when somebody else requested it', async () => {
     mockApi({ id: 'subject', capabilities: [] })
     renderProfile()

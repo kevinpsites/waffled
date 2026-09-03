@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   iPhone, and iPad. Every correction records who made it and why as linked,
   append-only ledger entries; pending requests can instead be canceled by their
   requester or a reward approver before any balance is spent.
+  Refunds preserve the original approval attribution and reject mismatched or
+  corrupted redemption-to-ledger links, including during idempotent replay.
 
 ### Changed
 

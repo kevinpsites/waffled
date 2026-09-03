@@ -39,6 +39,7 @@ interface RewardRow extends QueryResultRow {
 
 interface RedemptionRow extends QueryResultRow {
   id: string
+  household_id: string
   reward_id: string
   person_id: string
   title: string
@@ -137,8 +138,49 @@ function requestBodyObject(value: unknown): Record<string, unknown> {
     : {}
 }
 
+function parseCorrectionReason(value: unknown): { reason: string } | { error: string } {
+  const reason = typeof value === 'string' ? value.trim() : ''
+  if (reason.length < 3 || reason.length > 500) {
+    return { error: 'reason must be between 3 and 500 characters' }
+  }
+  if (reason.includes('\u0000')) {
+    return { error: 'reason contains unsupported characters' }
+  }
+  return { reason }
+}
+
 function normalizedReplacementAmount(value: number | undefined): number | null {
   return value === undefined || value === 0 ? null : value
+}
+
+function assertRedemptionLedgerLink(redemption: RedemptionRow, entry: LedgerEntryRow): void {
+  if (entry.household_id !== redemption.household_id
+    || entry.person_id !== redemption.person_id
+    || entry.currency !== redemption.currency
+    || entry.amount !== -redemption.cost
+    || entry.reason !== 'reward_redeemed'
+    || entry.ref_type !== 'reward_redemption'
+    || entry.ref_id !== redemption.id) {
+    throw new LedgerCorrectionError('redemption ledger entry does not match the redemption', 409)
+  }
+}
+
+async function lockRedemptionLedgerEntry(
+  client: PoolClient,
+  redemption: RedemptionRow
+): Promise<LedgerEntryRow> {
+  if (!redemption.ledger_id) {
+    throw new LedgerCorrectionError('redemption ledger entry not found', 409)
+  }
+  const originalResult = await client.query<LedgerEntryRow>(
+    `select * from ledger_entries
+      where household_id=$1 and id=$2 and deleted_at is null for update`,
+    [redemption.household_id, redemption.ledger_id]
+  )
+  const original = originalResult.rows[0]
+  if (!original) throw new LedgerCorrectionError('redemption ledger entry not found', 409)
+  assertRedemptionLedgerLink(redemption, original)
+  return original
 }
 
 async function lockCorrectionRequest(
@@ -331,9 +373,10 @@ export async function cancelRedemption(tenant: Tenant, id: string): Promise<Rede
     const updated = await client.query<RedemptionRow>(
       `update reward_redemptions
         set status='canceled', decided_by=$1, decided_at=now()
-        where id=$2 returning *`,
-      [tenant.personId, id]
+        where household_id=$2 and id=$3 and status='pending' returning *`,
+      [tenant.personId, tenant.householdId, id]
     )
+    if (!updated.rows[0]) throw new LedgerCorrectionError('only a pending redemption can be canceled', 409)
     await client.query('commit')
     return updated.rows[0]
   } catch (error) {
@@ -363,8 +406,8 @@ export async function refundRedemption(
     )
     const redemption = replay.rows[0]
     if (!redemption) throw new LedgerCorrectionError('redemption not found', 404)
-    const keyUse = await client.query<{ reverses_entry_id: string; correction_reason: string | null }>(
-      `select reverses_entry_id, correction_reason from ledger_entries
+    const keyUse = await client.query<{ id: string; reverses_entry_id: string; correction_reason: string | null }>(
+      `select id, reverses_entry_id, correction_reason from ledger_entries
         where household_id=$1 and idempotency_key=$2 and reverses_entry_id is not null`,
       [tenant.householdId, idempotencyKey]
     )
@@ -377,30 +420,36 @@ export async function refundRedemption(
     if (redemption.status === 'pending') {
       throw new LedgerCorrectionError('cancel a pending redemption instead of refunding it', 409)
     }
-    if (redemption.status === 'refunded' && redemption.ledger_id) {
+    if (redemption.status === 'refunded') {
+      if (!redemption.ledger_id || !redemption.refund_ledger_id) {
+        throw new LedgerCorrectionError('redemption does not have a valid recorded refund', 409)
+      }
       if (!keyUse.rows[0]) {
         throw new LedgerCorrectionError('this redemption has already been refunded', 409)
       }
+      if (keyUse.rows[0].id !== redemption.refund_ledger_id) {
+        throw new LedgerCorrectionError('idempotencyKey does not match the recorded refund', 409)
+      }
+      await lockRedemptionLedgerEntry(client, redemption)
       const result = await correctionResult(client, tenant.householdId, redemption.ledger_id, true)
+      if (result.reversalId !== redemption.refund_ledger_id) {
+        throw new LedgerCorrectionError('redemption does not have a valid recorded refund', 409)
+      }
       await client.query('commit')
       return { redemption, correction: result }
     }
     if (redemption.status !== 'approved' || !redemption.ledger_id) {
       throw new LedgerCorrectionError('only an approved redemption can be refunded', 409)
     }
-    const originalResult = await client.query<LedgerEntryRow>(
-      `select * from ledger_entries
-        where household_id=$1 and id=$2 and deleted_at is null for update`,
-      [tenant.householdId, redemption.ledger_id]
-    )
-    if (!originalResult.rows[0]) throw new LedgerCorrectionError('redemption ledger entry not found', 409)
-    const correction = await correctLockedLedgerEntry(client, tenant, originalResult.rows[0], reason, undefined, idempotencyKey)
+    const original = await lockRedemptionLedgerEntry(client, redemption)
+    const correction = await correctLockedLedgerEntry(client, tenant, original, reason, undefined, idempotencyKey)
     const updated = await client.query<RedemptionRow>(
       `update reward_redemptions
-        set status='refunded', decided_by=$1, decided_at=now(), refund_ledger_id=$2
-        where id=$3 returning *`,
-      [tenant.personId, correction.reversalId, id]
+        set status='refunded', refund_ledger_id=$1
+        where household_id=$2 and id=$3 and status='approved' and ledger_id=$4 returning *`,
+      [correction.reversalId, tenant.householdId, id, redemption.ledger_id]
     )
+    if (!updated.rows[0]) throw new LedgerCorrectionError('only an approved redemption can be refunded', 409)
     await client.query('commit')
     return { redemption: updated.rows[0], correction }
   } catch (error) {
@@ -595,8 +644,8 @@ export async function requestRedemption(tenant: Tenant, rewardId: string, person
       [tenant.householdId, personId, reward.currency, -reward.cost, red.id, tenant.personId]
     )
     const upd = await client.query<RedemptionRow>(
-      `update reward_redemptions set ledger_id=$1 where id=$2 returning *`,
-      [led.rows[0].id, red.id]
+      `update reward_redemptions set ledger_id=$1 where household_id=$2 and id=$3 returning *`,
+      [led.rows[0].id, tenant.householdId, red.id]
     )
     await client.query('commit')
     return upd.rows[0]
@@ -628,8 +677,9 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
 
     if (!approve) {
       const upd = await client.query<RedemptionRow>(
-        `update reward_redemptions set status='denied', decided_by=$1, decided_at=now() where id=$2 returning *`,
-        [tenant.personId, id]
+        `update reward_redemptions set status='denied', decided_by=$1, decided_at=now()
+          where household_id=$2 and id=$3 and status='pending' returning *`,
+        [tenant.personId, tenant.householdId, id]
       )
       await client.query('commit')
       return { redemption: upd.rows[0] }
@@ -664,8 +714,9 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
       [tenant.householdId, red.person_id, red.currency, -red.cost, id, tenant.personId]
     )
     const upd = await client.query<RedemptionRow>(
-      `update reward_redemptions set status='approved', decided_by=$1, decided_at=now(), ledger_id=$2 where id=$3 returning *`,
-      [tenant.personId, led.rows[0].id, id]
+      `update reward_redemptions set status='approved', decided_by=$1, decided_at=now(), ledger_id=$2
+        where household_id=$3 and id=$4 and status='pending' returning *`,
+      [tenant.personId, led.rows[0].id, tenant.householdId, id]
     )
     await client.query('commit')
     return { redemption: upd.rows[0] }
@@ -795,10 +846,9 @@ export function registerRewardRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'ledger entry not found' })
     const body = requestBodyObject(req.body)
-    const reason = typeof body.reason === 'string' ? body.reason.trim() : ''
-    if (reason.length < 3 || reason.length > 500) {
-      return res.status(400).json({ error: 'BadRequest', message: 'reason must be between 3 and 500 characters' })
-    }
+    const parsedReason = parseCorrectionReason(body.reason)
+    if ('error' in parsedReason) return res.status(400).json({ error: 'BadRequest', message: parsedReason.error })
+    const { reason } = parsedReason
     const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : ''
     if (!UUID_RE.test(idempotencyKey)) {
       return res.status(400).json({ error: 'BadRequest', message: 'valid idempotencyKey required' })
@@ -889,10 +939,9 @@ export function registerRewardRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'redemption not found' })
     const body = requestBodyObject(req.body)
-    const reason = typeof body.reason === 'string' ? body.reason.trim() : ''
-    if (reason.length < 3 || reason.length > 500) {
-      return res.status(400).json({ error: 'BadRequest', message: 'reason must be between 3 and 500 characters' })
-    }
+    const parsedReason = parseCorrectionReason(body.reason)
+    if ('error' in parsedReason) return res.status(400).json({ error: 'BadRequest', message: parsedReason.error })
+    const { reason } = parsedReason
     const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : ''
     if (!UUID_RE.test(idempotencyKey)) {
       return res.status(400).json({ error: 'BadRequest', message: 'valid idempotencyKey required' })

@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
+import { randomUUID } from 'node:crypto'
 import { runMigrations } from '../src/migrate'
 import { lockLedgerSubject } from '../src/platform/ledger-lock'
 
@@ -129,6 +130,16 @@ async function grantStars(personId: string, amount: number) {
 async function starsOf(personId: string): Promise<number> {
   const people = JSON.parse((await call('GET', '/api/balances', kevin)).body).people
   return people.find((p: { personId: string }) => p.personId === personId)?.stars ?? 0
+}
+
+async function createApprovedRedemption(title: string, cost = 1, personId = kevinId, token = kevin) {
+  await grantStars(personId, cost)
+  const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+    title, cost, requiresApproval: false,
+  })).body).reward
+  const response = await call('POST', `/api/rewards/${reward.id}/redeem`, token, { personId })
+  expect(response.statusCode).toBe(201)
+  return JSON.parse(response.body).redemption as { id: string; ledgerId: string; cost: number }
 }
 
 // Hold the shared person-row lock until every competing HTTP transaction is
@@ -1133,9 +1144,199 @@ describe('append-only reward corrections and reversals', () => {
       }),
       call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, 7),
       call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, 7),
+      call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+        reason: 'Invalid\u0000database text',
+        idempotencyKey: '14141414-1414-4414-8414-141414141414',
+      }),
+      call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, {
+        reason: 'Invalid\u0000database text',
+        idempotencyKey: '15151515-1515-4515-8515-151515151515',
+      }),
     ])
 
-    expect(requests.map((request) => request.statusCode)).toEqual([400, 400, 400, 400, 400, 400])
+    expect(requests.map((request) => request.statusCode)).toEqual([400, 400, 400, 400, 400, 400, 400, 400])
+  })
+
+  it('refuses to refund a ledger row whose semantics do not match the redemption', async () => {
+    const otherPersonId = await addMember('Refund link mismatch', 'kid', false, 'dev|refund-link-mismatch')
+    const corruptions = [
+      { name: 'reason', sql: `update ledger_entries set reason='spot_award' where id=$1` },
+      { name: 'reference type', sql: `update ledger_entries set ref_type='chore_instance' where id=$1` },
+      { name: 'reference id', sql: `update ledger_entries set ref_id=gen_random_uuid() where id=$1` },
+      { name: 'person', sql: `update ledger_entries set person_id=$2 where id=$1` },
+      { name: 'currency', sql: `update ledger_entries set currency='mismatch-coins' where id=$1` },
+      { name: 'amount', sql: `update ledger_entries set amount=amount - 1 where id=$1` },
+    ]
+
+    for (const [index, corruption] of corruptions.entries()) {
+      const redemption = await createApprovedRedemption(`Mismatched refund ${index}`, 3)
+      const params = corruption.sql.includes('$2')
+        ? [redemption.ledgerId, otherPersonId]
+        : [redemption.ledgerId]
+      await withClient((c) => c.query(corruption.sql, params))
+
+      const response = await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, {
+        reason: `Reject mismatched ${corruption.name}`,
+        idempotencyKey: randomUUID(),
+      })
+
+      expect(response.statusCode, corruption.name).toBe(409)
+      expect(JSON.parse(response.body).message).toContain('does not match')
+      const stored = await withClient((c) => c.query<{ status: string; refund_ledger_id: string | null; reversals: number }>(
+        `select r.status, r.refund_ledger_id,
+                (select count(*)::int from ledger_entries le where le.reverses_entry_id=r.ledger_id) as reversals
+           from reward_redemptions r
+          where r.household_id=$1 and r.id=$2`,
+        [householdId, redemption.id]
+      ))
+      expect(stored.rows[0]).toMatchObject({ status: 'approved', refund_ledger_id: null, reversals: 0 })
+    }
+  })
+
+  it('preserves the original approval actor and time when recording a refund', async () => {
+    const childId = await addMember('Refund audit child', 'kid', false, 'dev|refund-audit-child')
+    const child = mint('dev|refund-audit-child')
+    const correctorId = await addMember('Refund audit corrector', 'adult', false, 'dev|refund-audit-corrector')
+    const corrector = mint('dev|refund-audit-corrector')
+    await grantStars(childId, 2)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Approval audit reward', cost: 2, requiresApproval: true,
+    })).body).reward
+    const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, child, {
+      personId: childId,
+    })).body).redemption
+    expect((await call('POST', `/api/redemptions/${redemption.id}/approve`, kevin)).statusCode).toBe(200)
+    const before = await withClient((c) => c.query<{ decided_by: string; decided_at: Date }>(
+      `select decided_by, decided_at from reward_redemptions where household_id=$1 and id=$2`,
+      [householdId, redemption.id]
+    ))
+
+    const refunded = await call('POST', `/api/redemptions/${redemption.id}/refund`, corrector, {
+      reason: 'Preserve the approval audit record',
+      idempotencyKey: randomUUID(),
+    })
+
+    expect(refunded.statusCode).toBe(200)
+    const after = await withClient((c) => c.query<{
+      decided_by: string; decided_at: Date; refunded_by: string
+    }>(
+      `select r.decided_by, r.decided_at, le.created_by as refunded_by
+         from reward_redemptions r
+         join ledger_entries le
+           on le.household_id=r.household_id and le.id=r.refund_ledger_id
+        where r.household_id=$1 and r.id=$2`,
+      [householdId, redemption.id]
+    ))
+    expect(after.rows[0].decided_by).toBe(before.rows[0].decided_by)
+    expect(after.rows[0].decided_at).toEqual(before.rows[0].decided_at)
+    expect(after.rows[0].refunded_by).toBe(correctorId)
+  })
+
+  it('rejects a refund replay when the redemption no longer links to that reversal', async () => {
+    const redemption = await createApprovedRedemption('Refund replay linkage', 2)
+    const body = {
+      reason: 'Replay must match the recorded refund',
+      idempotencyKey: randomUUID(),
+    }
+    expect((await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, body)).statusCode).toBe(200)
+    await withClient((c) => c.query(
+      `update reward_redemptions set refund_ledger_id=null where household_id=$1 and id=$2`,
+      [householdId, redemption.id]
+    ))
+
+    const replay = await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, body)
+
+    expect(replay.statusCode).toBe(409)
+    expect(JSON.parse(replay.body).message).toContain('recorded refund')
+  })
+
+  it('rejects a refund replay when the original debit no longer matches the redemption', async () => {
+    const redemption = await createApprovedRedemption('Refund replay debit', 2)
+    const body = {
+      reason: 'Replay must validate the original debit',
+      idempotencyKey: randomUUID(),
+    }
+    expect((await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, body)).statusCode).toBe(200)
+    await withClient((c) => c.query(
+      `update ledger_entries set reason='spot_award' where household_id=$1 and id=$2`,
+      [householdId, redemption.ledgerId]
+    ))
+
+    const replay = await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, body)
+
+    expect(replay.statusCode).toBe(409)
+    expect(JSON.parse(replay.body).message).toContain('does not match')
+  })
+
+  it('keeps overview detail and reversal joins inside the active household', async () => {
+    const localTarget = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, {
+      amount: 7,
+    })).body).id as string
+    const deletedReversalTarget = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, {
+      amount: 5,
+    })).body).id as string
+    const seeded = await withClient(async (c) => {
+      const foreign = await c.query<{ household_id: string }>(
+        `select household_id from persons where id=$1`,
+        [foreignPersonId]
+      )
+      const foreignHouseholdId = foreign.rows[0].household_id
+      const reward = await c.query<{ id: string }>(
+        `insert into rewards (household_id, title, cost) values ($1,'Private foreign reward',1) returning id`,
+        [foreignHouseholdId]
+      )
+      const redemption = await c.query<{ id: string }>(
+        `insert into reward_redemptions
+           (household_id, reward_id, person_id, title, cost, status, requested_by)
+         values ($1,$2,$3,'Private foreign redemption',1,'approved',$3) returning id`,
+        [foreignHouseholdId, reward.rows[0].id, foreignPersonId]
+      )
+      const chore = await c.query<{ id: string }>(
+        `insert into chores (household_id, title, person_id) values ($1,'Private foreign chore',$2) returning id`,
+        [foreignHouseholdId, foreignPersonId]
+      )
+      const instance = await c.query<{ id: string }>(
+        `insert into chore_instances (household_id, chore_id, person_id, due_on)
+         values ($1,$2,$3,current_date) returning id`,
+        [foreignHouseholdId, chore.rows[0].id, foreignPersonId]
+      )
+      await c.query(
+        `insert into ledger_entries
+           (household_id, person_id, currency, amount, reason, reverses_entry_id, created_by)
+         values ($1,$2,'stars',-7,'ledger_reversal',$3,$2)`,
+        [foreignHouseholdId, foreignPersonId, localTarget]
+      )
+      const deletedReversal = await c.query<{ id: string }>(
+        `insert into ledger_entries
+           (household_id, person_id, currency, amount, reason, reverses_entry_id, created_by, deleted_at)
+         values ($1,$2,'stars',-5,'ledger_reversal',$3,$2,now()) returning id`,
+        [householdId, kevinId, deletedReversalTarget]
+      )
+      const detailRows = await c.query<{ id: string; ref_type: string }>(
+        `insert into ledger_entries
+           (household_id, person_id, currency, amount, reason, ref_type, ref_id, created_by)
+         values
+           ($1,$2,'stars',1,'spot_award','reward_redemption',$3,$2),
+           ($1,$2,'stars',1,'spot_award','chore_instance',$4,$2)
+         returning id, ref_type`,
+        [householdId, kevinId, redemption.rows[0].id, instance.rows[0].id]
+      )
+      return {
+        deletedReversalId: deletedReversal.rows[0].id,
+        rewardDetailId: detailRows.rows.find((row) => row.ref_type === 'reward_redemption')!.id,
+        choreDetailId: detailRows.rows.find((row) => row.ref_type === 'chore_instance')!.id,
+      }
+    })
+
+    const overview = JSON.parse((await call('GET', `/api/persons/${kevinId}/overview`, kevin)).body)
+    const entry = (id: string) => overview.recentLedger.find((row: { id: string }) => row.id === id)
+    expect(entry(localTarget)).toMatchObject({ reversedById: null, reversible: true })
+    expect(entry(deletedReversalTarget)).toMatchObject({
+      reversedById: seeded.deletedReversalId,
+      reversible: false,
+    })
+    expect(entry(seeded.rewardDetailId)).toMatchObject({ detail: null, redemptionId: null })
+    expect(entry(seeded.choreDetailId)).toMatchObject({ detail: null })
   })
 
   it('refunds an approved redemption once and restores the balance', async () => {
