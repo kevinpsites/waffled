@@ -44,8 +44,11 @@ final class Session {
         guard !email.isEmpty, !password.isEmpty else { return "Enter your email and password." }
         do {
             let s = try await api.login(email: email, password: password)
-            AuthTokens.save(access: s.accessToken, refresh: s.refreshToken)
+            // Invalidate the prior principal's durable role before the replacement
+            // credentials become visible. A crash between separate stores must fail
+            // closed on the next launch, not reuse the old household's role.
             AppConfig.setCurrentMemberType(nil)
+            AuthTokens.save(access: s.accessToken, refresh: s.refreshToken)
             AppConfig.clearSignedOut()
             phase = .authed
             return nil
@@ -81,8 +84,8 @@ final class Session {
         }
         do {
             let s = try await api.oidcExchange(code: code)
-            AuthTokens.save(access: s.accessToken, refresh: s.refreshToken)
             AppConfig.setCurrentMemberType(nil)
+            AuthTokens.save(access: s.accessToken, refresh: s.refreshToken)
             AppConfig.clearSignedOut()
             phase = .authed
             return nil
@@ -113,8 +116,8 @@ final class Session {
     /// access/refresh pair carrying the target household's claim). Saves the tokens and
     /// flips/keeps the gate at authed.
     func enterClaimedSession(access: String, refresh: String) {
-        AuthTokens.save(access: access, refresh: refresh)
         AppConfig.setCurrentMemberType(nil)
+        AuthTokens.save(access: access, refresh: refresh)
         AppConfig.clearSignedOut()
         phase = .authed
     }

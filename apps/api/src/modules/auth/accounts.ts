@@ -4,6 +4,7 @@
 // Password login authenticates the account, then these helpers enumerate its
 // memberships and pick which household to land on.
 import { getPool, query } from '../../platform/db'
+import { AuthError } from '../../platform/auth'
 
 export interface Membership {
   householdId: string
@@ -136,20 +137,71 @@ export async function firstPendingInviteForEmail(
 export async function createMembershipFromInvite(
   accountId: string,
   accountEmail: string,
-  invite: { id: string; householdId: string; memberType: string; isAdmin: boolean; accessExpiresAt: Date | null }
+  invite: { id: string }
 ): Promise<{ personId: string; householdId: string; memberType: string; isAdmin: boolean; accessExpiresAt: Date | null; created: boolean }> {
   const client = await getPool().connect()
   try {
     await client.query('begin')
+    // The earlier list/read is only discovery. The locked row is the authorization
+    // decision: an admin may revoke the invite (or its deadline may pass) while a
+    // login/accept request is waiting to enter this transaction. Never trust role,
+    // household, email, or expiry values supplied by that earlier caller snapshot.
+    const invitation = await client.query<{
+      id: string
+      household_id: string
+      email: string
+      member_type: string
+      is_admin: boolean
+      access_expires_at: Date | null
+      accepted_at: Date | null
+      revoked_at: Date | null
+    }>(
+      `select id, household_id, email, member_type, is_admin, access_expires_at,
+              accepted_at, revoked_at
+         from household_invites
+        where id = $1
+        for update`,
+      [invite.id]
+    )
+    const lockedInvite = invitation.rows[0]
+    if (!lockedInvite) throw new AuthError('Invite not found.', 404)
+    if (lockedInvite.email.toLowerCase() !== accountEmail.toLowerCase()) {
+      throw new AuthError('This invite is addressed to a different email.', 403)
+    }
+    if (lockedInvite.revoked_at) throw new AuthError('This invite is no longer pending.', 403)
+    // Date.now() is evaluated after FOR UPDATE returns. PostgreSQL now() is fixed at
+    // transaction start and could otherwise bless an invite while waiting on the lock.
+    if (lockedInvite.access_expires_at && lockedInvite.access_expires_at.getTime() <= Date.now()) {
+      throw new AuthError('This invite has expired.', 403)
+    }
+
     const existing = await client.query<{ id: string; member_type: string; is_admin: boolean; access_expires_at: Date | null; has_active_access: boolean }>(
       `select id, member_type, is_admin, access_expires_at,
-              (access_expires_at is null or access_expires_at > now()) as has_active_access
+              (access_expires_at is null or access_expires_at > clock_timestamp()) as has_active_access
          from persons
         where household_id = $1 and account_id = $2 and deleted_at is null
         order by created_at limit 1
         for update`,
-      [invite.householdId, accountId]
+      [lockedInvite.household_id, accountId]
     )
+    // A concurrent duplicate that arrives after the first transaction committed may
+    // return the already-active membership. An old accepted invite must never revive
+    // a membership that subsequently expired.
+    if (lockedInvite.accepted_at) {
+      const current = existing.rows[0]
+      if (!current?.has_active_access) throw new AuthError('This invite is no longer pending.', 403)
+      await client.query('commit')
+      return {
+        personId: current.id,
+        householdId: lockedInvite.household_id,
+        memberType: current.member_type,
+        isAdmin: current.is_admin,
+        accessExpiresAt: current.access_expires_at,
+        created: false,
+      }
+    }
+
+    let result: { personId: string; memberType: string; isAdmin: boolean; accessExpiresAt: Date | null; created: boolean }
     if (existing.rows[0]) {
       const current = existing.rows[0]
       // A fresh invite restores an expired membership in place. Reusing the row
@@ -163,30 +215,54 @@ export async function createMembershipFromInvite(
                   show_on_kiosk = $6, updated_at = now()
             where household_id = $1 and account_id = $2 and deleted_at is null
             returning id, member_type, is_admin, access_expires_at, true as has_active_access`,
-          [invite.householdId, accountId, invite.memberType, invite.isAdmin,
-            invite.accessExpiresAt, !['caregiver', 'guest'].includes(invite.memberType)]
+          [lockedInvite.household_id, accountId, lockedInvite.member_type, lockedInvite.is_admin,
+            lockedInvite.access_expires_at, !['caregiver', 'guest'].includes(lockedInvite.member_type)]
         )
         membership = reactivated.rows[0]
       }
-      await client.query(`update household_invites set accepted_at = now() where id = $1`, [invite.id])
-      await client.query('commit')
       const m = membership
-      return { personId: m.id, householdId: invite.householdId, memberType: m.member_type, isAdmin: m.is_admin, accessExpiresAt: m.access_expires_at, created: false }
+      result = {
+        personId: m.id,
+        memberType: m.member_type,
+        isAdmin: m.is_admin,
+        accessExpiresAt: m.access_expires_at,
+        created: false,
+      }
+    } else {
+      const nameRow = await client.query<{ name: string }>(
+        `select name from persons where account_id = $1 and deleted_at is null order by created_at limit 1`,
+        [accountId]
+      )
+      const name = nameRow.rows[0]?.name ?? accountEmail.split('@')[0]
+      const personRow = await client.query<{ id: string }>(
+        `insert into persons (household_id, name, member_type, is_admin, account_id, show_on_kiosk, access_expires_at)
+         values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+        [lockedInvite.household_id, name, lockedInvite.member_type, lockedInvite.is_admin, accountId,
+          !['caregiver', 'guest'].includes(lockedInvite.member_type), lockedInvite.access_expires_at]
+      )
+      result = {
+        personId: personRow.rows[0].id,
+        memberType: lockedInvite.member_type,
+        isAdmin: lockedInvite.is_admin,
+        accessExpiresAt: lockedInvite.access_expires_at,
+        created: true,
+      }
     }
-    const nameRow = await client.query<{ name: string }>(
-      `select name from persons where account_id = $1 and deleted_at is null order by created_at limit 1`,
-      [accountId]
+
+    // Re-check against wall-clock time at the commit decision. If a very short
+    // deadline passed while this transaction worked, rowCount=0 and the membership
+    // insert/reactivation above is rolled back with the thrown error.
+    const accepted = await client.query(
+      `update household_invites
+          set accepted_at = clock_timestamp()
+        where id = $1 and accepted_at is null and revoked_at is null
+          and (access_expires_at is null or access_expires_at > clock_timestamp())
+        returning id`,
+      [lockedInvite.id]
     )
-    const name = nameRow.rows[0]?.name ?? accountEmail.split('@')[0]
-    const personRow = await client.query<{ id: string }>(
-      `insert into persons (household_id, name, member_type, is_admin, account_id, show_on_kiosk, access_expires_at)
-       values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-      [invite.householdId, name, invite.memberType, invite.isAdmin, accountId,
-        !['caregiver', 'guest'].includes(invite.memberType), invite.accessExpiresAt]
-    )
-    await client.query(`update household_invites set accepted_at = now() where id = $1`, [invite.id])
+    if (!accepted.rows.length) throw new AuthError('This invite has expired.', 403)
     await client.query('commit')
-    return { personId: personRow.rows[0].id, householdId: invite.householdId, memberType: invite.memberType, isAdmin: invite.isAdmin, accessExpiresAt: invite.accessExpiresAt, created: true }
+    return { ...result, householdId: lockedInvite.household_id }
   } catch (err) {
     await client.query('rollback')
     throw err

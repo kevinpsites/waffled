@@ -189,10 +189,6 @@ export function registerInviteRoutes(api: Api): void {
     // Create (or reuse) the membership + accept the invite via the shared helper.
     const result = await createMembershipFromInvite(account.id, account.email, {
       id: invite.id,
-      householdId: invite.household_id,
-      memberType: invite.member_type,
-      isAdmin: invite.is_admin,
-      accessExpiresAt: invite.access_expires_at,
     })
     return res.status(result.created ? 201 : 200).json({
       membership: {

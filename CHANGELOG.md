@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   queue, and the API safely drains stale uploads left by older guest or expired-
   membership clients without changing server data. Upgrades also stop and identify
   unknown legacy household roles instead of silently reclassifying them.
+- Invite acceptance now locks and revalidates the invitation at the membership
+  transaction boundary, so a concurrent revocation or elapsed deadline cannot
+  restore access. iOS also clears the prior offline role before storing replacement
+  login, profile, or household credentials.
 
 ## [0.14.3] - 2026-09-02
 

@@ -245,4 +245,131 @@ describe('P2.4 invite-and-accept', () => {
     const list = json(await call('GET', '/api/households/invites', kevinToken))
     expect(list.invites.find((i: { id: string }) => i.id === id)).toBeUndefined()
   })
+
+  it('revalidates a stale invite inside the membership transaction', async () => {
+    const { createMembershipFromInvite } = await import('../src/modules/auth/accounts')
+    const account = await query(
+      `insert into accounts (email, password_hash, last_household_id)
+       values ('race-helper@example.com', null, $1) returning id`,
+      [householdA]
+    )
+    const accountId = account.rows[0].id
+    const expiredPerson = await query(
+      `insert into persons (household_id, name, member_type, account_id, access_expires_at)
+       values ($1, 'Race Helper', 'caregiver', $2, clock_timestamp() - interval '1 day') returning id`,
+      [householdA, accountId]
+    )
+    const pending = await query(
+      `insert into household_invites
+         (household_id, email, member_type, is_admin, access_expires_at, invited_by)
+       values ($1, 'race-helper@example.com', 'guest', false,
+               clock_timestamp() + interval '1 day',
+               (select owner_person_id from households where id = $1))
+       returning id, household_id, member_type, is_admin, access_expires_at`,
+      [householdA]
+    )
+    const stale = pending.rows[0]
+
+    // Model the race directly: a caller loaded a valid invite, then the admin
+    // revoked it before the membership transaction acquired its decision lock.
+    await query(`update household_invites set revoked_at = clock_timestamp() where id = $1`, [stale.id])
+
+    await expect(createMembershipFromInvite(accountId, 'race-helper@example.com', {
+      id: stale.id,
+    })).rejects.toMatchObject({ statusCode: 403 })
+
+    const membership = await query(
+      `select id, member_type, access_expires_at from persons
+        where household_id = $1 and account_id = $2 and deleted_at is null`,
+      [householdA, accountId]
+    )
+    expect(membership.rows).toHaveLength(1)
+    expect(membership.rows[0].id).toBe(expiredPerson.rows[0].id)
+    expect(membership.rows[0].member_type).toBe('caregiver')
+    expect(membership.rows[0].access_expires_at.getTime()).toBeLessThan(Date.now())
+
+    const invite = await query(`select accepted_at, revoked_at from household_invites where id = $1`, [stale.id])
+    expect(invite.rows[0].accepted_at).toBeNull()
+    expect(invite.rows[0].revoked_at).not.toBeNull()
+  })
+
+  it('rejects an invite whose deadline has passed before the locked decision', async () => {
+    const { createMembershipFromInvite } = await import('../src/modules/auth/accounts')
+    const { getPool } = await import('../src/platform/db')
+    const account = await query(
+      `insert into accounts (email, password_hash, last_household_id)
+       values ('deadline-helper@example.com', null, $1) returning id`,
+      [householdA]
+    )
+    const expiredInvite = await query(
+      `insert into household_invites
+         (household_id, email, member_type, is_admin, access_expires_at, invited_by)
+       values ($1, 'deadline-helper@example.com', 'guest', false,
+               clock_timestamp() + interval '150 milliseconds',
+               (select owner_person_id from households where id = $1))
+       returning id, household_id, member_type, is_admin, access_expires_at`,
+      [householdA]
+    )
+    const stale = expiredInvite.rows[0]
+
+    // Hold the row across the deadline. The accepting transaction begins while the
+    // invite is still valid, then waits on FOR UPDATE until after it expires. A
+    // transaction-start `now()` check would incorrectly accept this invite.
+    const blocker = await getPool().connect()
+    await blocker.query('begin')
+    await blocker.query(`select id from household_invites where id = $1 for update`, [stale.id])
+    const acceptance = createMembershipFromInvite(account.rows[0].id, 'deadline-helper@example.com', {
+      id: stale.id,
+    })
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    await blocker.query('commit')
+    blocker.release()
+
+    await expect(acceptance).rejects.toMatchObject({ statusCode: 403 })
+
+    expect((await query(
+      `select 1 from persons where household_id = $1 and account_id = $2 and deleted_at is null`,
+      [householdA, account.rows[0].id]
+    )).rows).toHaveLength(0)
+    expect((await query(
+      `select accepted_at from household_invites where id = $1`,
+      [stale.id]
+    )).rows[0].accepted_at).toBeNull()
+  })
+
+  it('keeps a concurrent duplicate acceptance idempotent for the active membership', async () => {
+    const { createMembershipFromInvite } = await import('../src/modules/auth/accounts')
+    const account = await query(
+      `insert into accounts (email, password_hash, last_household_id)
+       values ('duplicate-helper@example.com', null, $1) returning id`,
+      [householdA]
+    )
+    const invitation = await query(
+      `insert into household_invites
+         (household_id, email, member_type, is_admin, invited_by)
+       values ($1, 'duplicate-helper@example.com', 'caregiver', false,
+               (select owner_person_id from households where id = $1))
+       returning id`,
+      [householdA]
+    )
+
+    const first = await createMembershipFromInvite(
+      account.rows[0].id, 'duplicate-helper@example.com', { id: invitation.rows[0].id }
+    )
+    const duplicate = await createMembershipFromInvite(
+      account.rows[0].id, 'duplicate-helper@example.com', { id: invitation.rows[0].id }
+    )
+
+    expect(first.created).toBe(true)
+    expect(duplicate).toMatchObject({
+      created: false,
+      personId: first.personId,
+      householdId: householdA,
+      memberType: 'caregiver',
+    })
+    expect((await query(
+      `select 1 from persons where household_id = $1 and account_id = $2 and deleted_at is null`,
+      [householdA, account.rows[0].id]
+    )).rows).toHaveLength(1)
+  })
 })
