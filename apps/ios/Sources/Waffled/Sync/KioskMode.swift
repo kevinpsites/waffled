@@ -1,6 +1,18 @@
 import Foundation
 import Observation
 
+/// Local credential mutations at kiosk boundaries. Injectable so tests can verify a
+/// failed database purge leaves both the profile and device identities untouched.
+struct KioskLocalCredentials {
+    let clearProfile: () -> Void
+    let clearDevice: () -> Void
+
+    static let live = KioskLocalCredentials(
+        clearProfile: { AuthTokens.clear() },
+        clearDevice: { KioskDeviceStore.clear() }
+    )
+}
+
 /// Drives whether an iPad family display is running as a **shared kiosk** (a profile
 /// picker the whole household taps into) versus the default single persistent login.
 ///
@@ -23,6 +35,7 @@ final class KioskMode {
     private(set) var deviceLabel: String?
 
     private let api = WaffledAPI()
+    private let localCredentials: KioskLocalCredentials
 
     /// Show the picker when we're a kiosk with nobody currently claimed in.
     var needsPicker: Bool { isShared && !hasProfile }
@@ -31,11 +44,19 @@ final class KioskMode {
         isShared = KioskDeviceStore.isPaired
         hasProfile = AuthTokens.isSignedIn
         deviceLabel = KioskDeviceStore.label
-        // A dead per-person refresh token on a shared kiosk should drop to the picker,
-        // not the login screen — the device stays paired.
-        NotificationCenter.default.addObserver(forName: .waffledAuthExpired, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.hasProfile = false }
-        }
+        localCredentials = .live
+    }
+
+    /// Deterministic state/side-effect seam for principal-boundary tests.
+    init(
+        testIsShared: Bool,
+        testHasProfile: Bool,
+        localCredentials: KioskLocalCredentials
+    ) {
+        isShared = testIsShared
+        hasProfile = testHasProfile
+        deviceLabel = nil
+        self.localCredentials = localCredentials
     }
 
     /// The outcome of a profile-claim attempt — surfaced to the PIN pad.
@@ -51,9 +72,14 @@ final class KioskMode {
     func enableViaPromote(label: String?, sync: SyncManager) async -> String? {
         do {
             let pairing = try await api.promoteDevice(label: label)
+            guard await clearPreviousProfile(sync: sync) else {
+                return sync.lastError ?? "Couldn’t safely clear the previous account’s local data."
+            }
+            // Persist the pairing only after the old mirror is gone. If teardown fails,
+            // a relaunch therefore cannot expose a picker backed by uncleared rows.
             KioskDeviceStore.savePaired(secret: pairing.deviceSecret, label: label)
-            await dropToPicker(sync: sync)
-            isShared = true; deviceLabel = label
+            localCredentials.clearProfile()
+            isShared = true; hasProfile = false; deviceLabel = label
             return nil
         } catch let WaffledAPI.APIError.http(code, _) {
             return code == 403 ? "Only an admin can turn this iPad into a kiosk." : "Couldn’t set up the kiosk (error \(code))."
@@ -66,10 +92,13 @@ final class KioskMode {
     func enableViaCode(_ code: String, label: String?, sync: SyncManager) async -> String? {
         do {
             let pairing = try await api.pairDevice(code: code, label: label)
+            guard await clearPreviousProfile(sync: sync) else {
+                return sync.lastError ?? "Couldn’t safely clear the previous account’s local data."
+            }
             KioskDeviceStore.savePaired(secret: pairing.deviceSecret, label: label)
+            localCredentials.clearProfile()
+            isShared = true; hasProfile = false; deviceLabel = label
             if let label, !label.isEmpty { try? await api.setKioskDeviceLabel(label) }
-            await dropToPicker(sync: sync)
-            isShared = true; deviceLabel = label
             return nil
         } catch let WaffledAPI.APIError.http(code, _) {
             return code == 401 ? "That code is invalid or expired." : "Couldn’t pair this device (error \(code))."
@@ -107,8 +136,16 @@ final class KioskMode {
 
     /// Idle-return / manual switch: drop the current person and show the picker again,
     /// keeping the device paired.
-    func returnToPicker(sync: SyncManager) async {
+    @discardableResult
+    func returnToPicker(sync: SyncManager) async -> Bool {
         await dropToPicker(sync: sync)
+    }
+
+    /// Complete an account-expiry transition after the shared database has been
+    /// cleared. The app-level session coordinator calls this only on teardown success,
+    /// so a failed purge can never expose the next profile picker.
+    func completeProfileSignOut() {
+        hasProfile = false
     }
 
     /// The device pairing was rejected by the server (revoked or unknown — e.g. an admin
@@ -116,28 +153,35 @@ final class KioskMode {
     /// normal login screen instead of a dead picker. Mirrors the web's `clearKioskDevice`
     /// on a failed device-token refresh.
     func handleDeviceRevoked() {
-        KioskDeviceStore.clear()
+        localCredentials.clearDevice()
         isShared = false
         hasProfile = AuthTokens.isSignedIn
     }
 
     /// Fully un-kiosk this iPad: forget the device identity and the person session,
     /// returning to the normal login screen (admin-confirmed in Settings).
-    func unpair(sync: SyncManager, session: Session) async {
-        KioskDeviceStore.clear()
+    @discardableResult
+    func unpair(sync: SyncManager, session: Session) async -> Bool {
+        guard await session.signOut(sync: sync) else { return false }
+        localCredentials.clearDevice()
         isShared = false
         hasProfile = false
-        await session.signOut(sync: sync)
+        return true
     }
 
     /// Drop the per-person session + tear down the live sync (no server revoke — the
     /// next claim re-scopes it). Leaves the device pairing intact.
-    private func dropToPicker(sync: SyncManager) async {
+    private func dropToPicker(sync: SyncManager) async -> Bool {
         // Clear the previous profile's mirror before exposing the shared picker or
         // accepting another profile. Same-household identities are still separate
         // privacy principals.
-        await sync.signOut()
-        AuthTokens.clear()
+        guard await clearPreviousProfile(sync: sync) else { return false }
+        localCredentials.clearProfile()
         hasProfile = false
+        return true
+    }
+
+    private func clearPreviousProfile(sync: SyncManager) async -> Bool {
+        await sync.signOut()
     }
 }

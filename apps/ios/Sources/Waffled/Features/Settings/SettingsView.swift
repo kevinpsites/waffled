@@ -57,6 +57,7 @@ struct SettingsView: View {
     @State private var didAutoPush = false
     @State private var showUnsyncedSignOutWarning = false
     @State private var busy = false
+    @State private var signOutError: String?
     private var isAdmin: Bool { sync.currentPerson?.isAdmin == true }
 
     var body: some View {
@@ -161,6 +162,12 @@ struct SettingsView: View {
                         .strokeBorder(confirmSignOut ? .clear : WF.primary.opacity(0.4), lineWidth: 1))
             }
             .buttonStyle(.plain).disabled(busy)
+            if let signOutError {
+                Text(signOutError)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(WF.danger)
+                    .multilineTextAlignment(.center)
+            }
         }
         .padding(.top, 14)
     }
@@ -171,7 +178,12 @@ struct SettingsView: View {
 
     private func signOut() async {
         busy = true
-        await session.signOut(sync: sync)
+        signOutError = nil
+        guard await session.signOut(sync: sync) else {
+            signOutError = sync.lastError ?? "Couldn’t safely clear this account’s local data. Try again."
+            busy = false
+            return
+        }
         await notifications.clearEventReminders() // drop this household's event reminders
     }
 

@@ -55,7 +55,11 @@ struct WaffledApp: App {
             // login UI until SyncManager has invalidated REST state and disconnected,
             // avoiding two unordered notification observers racing a new login.
             .onReceive(NotificationCenter.default.publisher(for: .waffledAuthExpired)) { _ in
-                Task { await session.signOut(sync: sync) }
+                Task {
+                    if await session.signOut(sync: sync) {
+                        kiosk.completeProfileSignOut()
+                    }
+                }
             }
             .task {
                 // Headless-verification rotation (see DemoHooks.forceOrientation). The

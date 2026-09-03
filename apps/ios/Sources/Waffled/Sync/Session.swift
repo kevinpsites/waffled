@@ -1,19 +1,42 @@
 import Foundation
 import Observation
 
+/// Side effects that complete a session sign-out after the local mirror is gone.
+/// Injectable so failure-path tests can prove credentials are not removed early.
+struct SessionSignOutCredentials {
+    let refreshToken: () -> String?
+    let clear: () -> Void
+    let markSignedOut: () -> Void
+
+    static let live = SessionSignOutCredentials(
+        refreshToken: { AuthTokens.refreshToken },
+        clear: { AuthTokens.clear() },
+        markSignedOut: { AppConfig.markSignedOut() }
+    )
+}
+
 /// The app's auth state machine: are we still checking, showing login, or in?
 /// Gates the whole UI from `AuthGate`. Tokens live in the Keychain (`AuthTokens`);
 /// this just drives navigation and the login/logout round-trips.
 @MainActor
 @Observable
 final class Session {
-    enum Phase { case loading, login, authed }
+    enum Phase: Equatable { case loading, login, authed }
 
-    private(set) var phase: Phase = .loading
+    private(set) var phase: Phase
     /// Server capabilities (initialized? which sign-in methods) — drives the login UI.
     private(set) var status: WaffledAPI.AuthStatus?
 
     private let api = WaffledAPI()
+    private let signOutCredentials: SessionSignOutCredentials
+
+    init(
+        initialPhase: Phase = .loading,
+        signOutCredentials: SessionSignOutCredentials = .live
+    ) {
+        phase = initialPhase
+        self.signOutCredentials = signOutCredentials
+    }
 
     /// Decide the initial screen on launch. A real session (or a dev/env token for
     /// headless demos) goes straight in; otherwise we probe `/auth/status` and show
@@ -89,13 +112,21 @@ final class Session {
     /// Tear down auth and sync as one principal boundary. The loading gate prevents a
     /// new login from starting while the previous PowerSync connection is still being
     /// disconnected; `SyncManager.signOut` rotates the REST scope before it suspends.
-    func signOut(sync: SyncManager, clearLocal: Bool = true) async {
-        guard case .authed = phase else { return }
-        let refresh = AuthTokens.refreshToken
-        AuthTokens.clear()
-        AppConfig.markSignedOut()   // else the dev-token fallback re-auths us
+    /// Credentials remain installed until the local mirror is gone so a failed purge
+    /// cannot expose either a login screen or a different principal.
+    @discardableResult
+    func signOut(sync: SyncManager) async -> Bool {
+        guard case .authed = phase else { return false }
+        let refresh = signOutCredentials.refreshToken()
         phase = .loading
-        await sync.signOut(clearLocal: clearLocal)
+        guard await sync.signOut() else {
+            // Fail closed on the previous principal. Re-entering the authenticated gate
+            // also lets a later manual/expiry attempt retry the local deletion.
+            phase = .authed
+            return false
+        }
+        signOutCredentials.clear()
+        signOutCredentials.markSignedOut() // else the dev-token fallback re-auths us
         phase = .login
 
         // Revocation/status are best-effort and must not keep the login screen gated.
@@ -107,6 +138,7 @@ final class Session {
             guard case .login = self.phase else { return }
             self.status = refreshedStatus
         }
+        return true
     }
 
     /// Adopt a freshly-minted session without a password round-trip — used by the kiosk

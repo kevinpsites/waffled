@@ -2,8 +2,8 @@ import Foundation
 
 /// Coordinates rotating-refresh so a burst of concurrent 401s triggers exactly one
 /// `/api/auth/refresh` round-trip (single-flight). On success the new pair is stored
-/// in the Keychain; on failure the session is cleared and `.waffledAuthExpired` fires so
-/// the UI returns to login.
+/// in the Keychain; on an explicitly rejected refresh, `.waffledAuthExpired` asks the
+/// app-level session coordinator to clear local data before it removes the credentials.
 actor TokenRefresher {
     static let shared = TokenRefresher()
 
@@ -37,8 +37,9 @@ actor TokenRefresher {
         }
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if code == 401 {
-            // The refresh token itself is dead — sign out for real.
-            AuthTokens.clear()
+            // The refresh token itself is dead. Keep it installed until the session
+            // coordinator has successfully purged the previous principal's mirror;
+            // that keeps account exit fail-closed, including across a relaunch.
             await MainActor.run { NotificationCenter.default.post(name: .waffledAuthExpired, object: nil) }
             return false
         }

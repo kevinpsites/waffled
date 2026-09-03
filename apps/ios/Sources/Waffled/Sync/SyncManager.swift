@@ -510,14 +510,13 @@ final class SyncManager {
     /// swaps in a different person's token. Tears the PowerSync session down and stands
     /// it back up against whatever token `AppConfig` now reports, the same path a fresh
     /// launch takes. `signOut()` resets `started`, so `start()` runs clean.
-    /// `clearLocal` wipes the on-device mirror as part of the teardown. It defaults to
-    /// true for every principal change — household switches, kiosk profile claims, and
-    /// future account switches — because a shared SQLite file must never bridge two
-    /// authenticated people, even when they belong to the same household.
+    /// Every principal change wipes the on-device mirror as part of the teardown —
+    /// household switches, kiosk profile claims, and future account switches — because
+    /// a shared SQLite file must never bridge two authenticated people, even when they
+    /// belong to the same household.
     @discardableResult
     func reauthenticate(
         expectedScope: RestDataScopeKey,
-        clearLocal: Bool = true,
         adoptCredentials: (() -> Void)? = nil
     ) async -> Bool {
         await connectionTransitions.run(
@@ -528,7 +527,7 @@ final class SyncManager {
             guard let self, self.restDataScopeKey == expectedScope else { return false }
             // Stop with the old credentials still installed. Only after teardown
             // succeeds do we rotate the UI/REST scope and adopt replacement tokens.
-            guard await self.stopSync(clearLocal: clearLocal, epoch: epoch),
+            guard await self.stopSync(clearLocal: true, epoch: epoch),
                   self.connectionTransitions.isCurrent(epoch),
                   self.restDataScopeKey == expectedScope else { return false }
             self.invalidateRestDataScope()
@@ -542,11 +541,10 @@ final class SyncManager {
     /// PowerSync, drop the observable state, and reset so the next `start()` runs
     /// fresh. Keychain tokens are cleared separately by `Session`.
     ///
-    /// Clearing is the secure default: ordinary sign-out, token expiry, household
-    /// changes, and kiosk profile changes are all principal boundaries. Same-principal
-    /// transport reconnects use `stopSync(clearLocal: false)` directly.
+    /// Clearing is mandatory: ordinary sign-out and token expiry are principal exits.
+    /// Same-principal transport reconnects use `stopSync(clearLocal: false)` directly.
     @discardableResult
-    func signOut(clearLocal: Bool = true) async -> Bool {
+    func signOut() async -> Bool {
         await connectionTransitions.run(
             preempting: true,
             busyResult: false,
@@ -556,7 +554,7 @@ final class SyncManager {
             prepare: { [weak self] in self?.invalidateRestDataScope() }
         ) { [weak self] epoch in
             guard let self else { return false }
-            return await self.stopSync(clearLocal: clearLocal, epoch: epoch)
+            return await self.stopSync(clearLocal: true, epoch: epoch)
         }
     }
 

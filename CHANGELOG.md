@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Signing out on iPhone and iPad now removes the previous person’s offline data.**
+  Ordinary sign-out, household changes, and shared-iPad profile changes clear the local
+  sync mirror before another person can sign in. If offline edits are still waiting to
+  upload, the app warns before letting you discard them.
+
 - **A failed refresh no longer makes a saved change look lost.** The web event editor
   now offers Retry when recurring-event details cannot load, and iPhone/iPad Countdowns
   and Family Night say when the server accepted a change but the screen could not

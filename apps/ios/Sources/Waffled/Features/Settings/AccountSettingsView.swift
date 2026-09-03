@@ -208,9 +208,9 @@ struct AccountSettingsView: View {
         .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
-    /// Switch the active household: mint a token for it, adopt the session, then clear +
-    /// re-pull the local mirror against the new household. Blocked while writes are still
-    /// queued — clearing the mirror would strand them (the previous household's writes).
+    /// Switch the active household: mint its token, clear the previous household's mirror
+    /// while the old credentials are still installed, then adopt + reconnect. Blocked
+    /// while writes are queued — clearing would strand the previous household's writes.
     private func switchTo(_ m: WaffledAPI.Membership) async {
         actionError = nil
         guard sync.pendingUploads == 0 else {
@@ -226,7 +226,7 @@ struct AccountSettingsView: View {
         let sourceScope = sync.restDataScopeKey
         do {
             let r = try await api.switchHousehold(householdId: m.householdId)
-            guard await sync.reauthenticate(expectedScope: sourceScope, clearLocal: true, adoptCredentials: {
+            guard await sync.reauthenticate(expectedScope: sourceScope, adoptCredentials: {
                 session.enterClaimedSession(access: r.accessToken, refresh: r.refreshToken)
             }) else {
                 actionError = sync.lastError ?? "Couldn’t safely clear the previous household’s local data."
