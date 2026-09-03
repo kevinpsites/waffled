@@ -11,6 +11,7 @@ final class PhotosModel {
     private let photosD = RestDomain<[WaffledAPI.Photo]>([], isEmpty: \.isEmpty)
     private let fetchPhotos: FetchPhotos
     private let api: WaffledAPI
+    private var loadGeneration = 0
 
     init(fetchPhotos: FetchPhotos? = nil, api: WaffledAPI = WaffledAPI()) {
         self.api = api
@@ -32,12 +33,12 @@ final class PhotosModel {
     }
 
     func load() async {
+        loadGeneration &+= 1
+        let generation = loadGeneration
         photosD.beginLoading()
-        do {
-            photosD.apply(.success(try await fetchPhotos()))
-        } catch {
-            photosD.apply(.failure(error))
-        }
+        let result = await RestFetch.result(fetchPhotos)
+        guard !Task.isCancelled, generation == loadGeneration else { return }
+        photosD.apply(result)
     }
 
     /// How many photos share a given album (for the detail "view all" line).

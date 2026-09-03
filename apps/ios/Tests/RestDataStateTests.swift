@@ -46,6 +46,36 @@ private actor DeferredRestValue<Value: Sendable> {
 
 }
 
+@MainActor
+private final class ConnectionTransitionRecorder {
+    private(set) var events: [String] = []
+    private var stopCount = 0
+
+    func lifecycle(suspendingFirstStop firstStop: DeferredRestValue<Bool>) -> SyncConnectionLifecycle {
+        SyncConnectionLifecycle(
+            stop: { [weak self] clearLocal in
+                guard let self else { return false }
+                self.stopCount += 1
+                let call = self.stopCount
+                self.events.append("stop:\(clearLocal)")
+                if call == 1 { return (try? await firstStop.fetch()) ?? false }
+                return true
+            },
+            start: { [weak self] in
+                self?.events.append("start")
+                return true
+            },
+            applyConfiguration: { [weak self] _, _ in
+                self?.events.append("apply-configuration")
+            }
+        )
+    }
+
+    func record(_ event: String) {
+        events.append(event)
+    }
+}
+
 private final class RestResponse<Value: Sendable>: @unchecked Sendable {
     var result: Result<Value, Error>
 
@@ -360,6 +390,36 @@ private let fixtureRestScope = RestDataScopeKey(
         #expect(model.photos.map(\.id) == ["photo-1"])
         if case .stale = model.state { /* expected */ }
         else { Issue.record("Expected the photo wall to be stale") }
+    }
+
+    @Test func olderPhotoResponseCannotOverwriteANewerRefresh() async {
+        let oldPhotos = DeferredRestValue<[WaffledAPI.Photo]>()
+        let calls = RestFetchCalls()
+        let oldPhoto = WaffledAPI.Photo(
+            id: "old", imageUrl: "/media/old.jpg", caption: "Old",
+            emoji: nil, colorHex: nil, memory: nil, takenAt: nil,
+            isFavorite: false, reactions: [:], uploadedBy: nil,
+            createdAt: "2026-09-03T12:00:00Z"
+        )
+        let newPhoto = WaffledAPI.Photo(
+            id: "new", imageUrl: "/media/new.jpg", caption: "New",
+            emoji: nil, colorHex: nil, memory: nil, takenAt: nil,
+            isFavorite: false, reactions: [:], uploadedBy: nil,
+            createdAt: "2026-09-03T12:01:00Z"
+        )
+        let model = PhotosModel(fetchPhotos: {
+            await calls.record("photos")
+            if await calls.count("photos") == 1 { return try await oldPhotos.fetch() }
+            return [newPhoto]
+        })
+
+        let oldLoad = Task { await model.load() }
+        await oldPhotos.waitUntilStarted()
+        await model.load()
+        await oldPhotos.succeed([oldPhoto])
+        await oldLoad.value
+
+        #expect(model.photos.map(\.id) == ["new"])
     }
 
     @Test func disabledFamilyModulesAreNeitherFetchedNorAggregated() async {
@@ -687,6 +747,148 @@ private let fixtureRestScope = RestDataScopeKey(
         #expect(calls == 2)
         #expect(sync.module(.chores))
         #expect(sync.rewardsOn)
+    }
+
+    @Test func failedNewerModuleRequestDoesNotDiscardAnOlderSuccess() async {
+        let oldModules = DeferredRestValue<WaffledAPI.HouseholdModules>()
+        let moduleCalls = RestFetchCalls()
+        let sync = SyncManager()
+        let person = WaffledAPI.CurrentPerson(
+            id: "person-a", memberType: "adult", isAdmin: true, capabilities: []
+        )
+        let fetchModules: @Sendable () async throws -> WaffledAPI.HouseholdModules = {
+            await moduleCalls.record("modules")
+            if await moduleCalls.count("modules") == 1 {
+                return try await oldModules.fetch()
+            }
+            throw RestFixtureFailure.rejected
+        }
+        let oldLoad = Task {
+            await sync.loadIdentity(fetchCurrentPerson: { person }, fetchModules: fetchModules)
+        }
+        await oldModules.waitUntilStarted()
+
+        await sync.loadIdentity(fetchCurrentPerson: { person }, fetchModules: fetchModules)
+        await oldModules.succeed(.init(modules: ["chores": false], rewards: false))
+        await oldLoad.value
+
+        #expect(await moduleCalls.count("modules") == 2)
+        #expect(!sync.module(.chores))
+        #expect(!sync.rewardsOn)
+    }
+
+    @Test func failedNewerCurrencyRequestDoesNotDiscardAnOlderSuccess() async {
+        let oldCurrencies = DeferredRestValue<[WaffledAPI.Currency]>()
+        let calls = RestFetchCalls()
+        let sync = SyncManager()
+        let stars = WaffledAPI.Currency(
+            key: "stars", label: "Stars", symbol: "⭐", color: nil,
+            isDefault: true, spendable: true, sortOrder: 0
+        )
+        let oldLoad = Task {
+            await sync.loadCurrencies(fetch: {
+                await calls.record("currencies")
+                return try await oldCurrencies.fetch()
+            })
+        }
+        await oldCurrencies.waitUntilStarted()
+
+        await sync.loadCurrencies(fetch: {
+            await calls.record("currencies")
+            throw RestFixtureFailure.rejected
+        })
+        await oldCurrencies.succeed([stars])
+        await oldLoad.value
+
+        #expect(await calls.count("currencies") == 2)
+        #expect(sync.currencies.map(\.key) == ["stars"])
+    }
+}
+
+@MainActor
+@Suite struct ConnectionTransitionTests {
+    private func waitForScopeRotation(
+        _ sync: SyncManager,
+        from oldScope: RestDataScopeKey
+    ) async {
+        for _ in 0..<100 {
+            if sync.restDataScopeKey != oldScope { return }
+            await Task.yield()
+        }
+        Issue.record("Expected sign-out to rotate the REST scope synchronously")
+    }
+
+    @Test func signOutPreemptsUpdateBeforeConfigurationOrRestart() async {
+        let firstStop = DeferredRestValue<Bool>()
+        let recorder = ConnectionTransitionRecorder()
+        let sync = SyncManager(
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop)
+        )
+        let oldScope = sync.restDataScopeKey
+
+        let update = Task {
+            await sync.updateConnection(apiBaseURL: AppConfig.apiBaseURL)
+        }
+        await firstStop.waitUntilStarted()
+
+        let signOut = Task { await sync.signOut() }
+        await waitForScopeRotation(sync, from: oldScope)
+        #expect(recorder.events == ["stop:false"])
+        await firstStop.succeed(true)
+
+        let updateResult = await update.value
+        let signOutResult = await signOut.value
+        #expect(updateResult == .transitionInProgress)
+        #expect(signOutResult)
+        #expect(recorder.events == ["stop:false", "stop:false"])
+    }
+
+    @Test func signOutPreemptsReauthenticationBeforeCredentialAdoptionOrRestart() async {
+        let firstStop = DeferredRestValue<Bool>()
+        let recorder = ConnectionTransitionRecorder()
+        let sync = SyncManager(
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop)
+        )
+        let oldScope = sync.restDataScopeKey
+
+        let reauthentication = Task {
+            await sync.reauthenticate(expectedScope: oldScope) {
+                recorder.record("adopt-credentials")
+            }
+        }
+        await firstStop.waitUntilStarted()
+
+        let signOut = Task { await sync.signOut() }
+        await waitForScopeRotation(sync, from: oldScope)
+        #expect(recorder.events == ["stop:false"])
+        await firstStop.succeed(true)
+
+        let reauthenticationResult = await reauthentication.value
+        let signOutResult = await signOut.value
+        #expect(!reauthenticationResult)
+        #expect(signOutResult)
+        #expect(recorder.events == ["stop:false", "stop:false"])
+    }
+
+    @Test func completedSignOutRejectsALateResponseBoundToItsOldScope() async {
+        let firstStop = DeferredRestValue<Bool>()
+        let recorder = ConnectionTransitionRecorder()
+        let sync = SyncManager(
+            testConnectionLifecycle: recorder.lifecycle(suspendingFirstStop: firstStop)
+        )
+        let oldScope = sync.restDataScopeKey
+
+        let signOut = Task { await sync.signOut() }
+        await firstStop.waitUntilStarted()
+        await firstStop.succeed(true)
+        #expect(await signOut.value)
+
+        let didReauthenticate = await sync.reauthenticate(expectedScope: oldScope) {
+            recorder.record("adopt-credentials")
+        }
+
+        #expect(!didReauthenticate)
+        #expect(recorder.events == ["stop:false"])
     }
 }
 
