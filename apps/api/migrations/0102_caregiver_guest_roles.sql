@@ -3,25 +3,62 @@
 -- A caregiver/guest can therefore expire in one household without affecting the
 -- same account's other household memberships.
 
+-- Do not guess what an installation's custom roles mean. Earlier schemas did not
+-- constrain member_type, so an operator may have values we cannot safely map to a
+-- built-in role. Abort before changing the schema or data and name every unknown
+-- value so the operator can make that policy decision explicitly.
+do $$
+declare
+  unknown_person_roles text[];
+  unknown_invite_roles text[];
+begin
+  select array_agg(role order by role)
+    into unknown_person_roles
+    from (
+      select distinct coalesce(member_type, '<null>') as role
+        from persons
+       where member_type is null
+          or member_type not in ('adult', 'caregiver', 'guest', 'teen', 'kid')
+    ) unknown_person_values;
+
+  select array_agg(role order by role)
+    into unknown_invite_roles
+    from (
+      select distinct coalesce(member_type, '<null>') as role
+        from household_invites
+       where member_type is null
+          or member_type not in ('adult', 'caregiver', 'guest', 'teen', 'kid')
+    ) unknown_invite_values;
+
+  if unknown_person_roles is not null or unknown_invite_roles is not null then
+    raise exception using
+      errcode = 'check_violation',
+      message = format(
+        'Cannot add caregiver/guest constraints: unknown member_type values (persons: %s; household_invites: %s). Rename these roles explicitly, then retry.',
+        coalesce(array_to_string(unknown_person_roles, ', '), 'none'),
+        coalesce(array_to_string(unknown_invite_roles, ', '), 'none')
+      );
+  end if;
+end $$;
+
 alter table persons
   add column access_expires_at timestamptz;
 
 alter table household_invites
   add column access_expires_at timestamptz;
 
--- Earlier schemas accepted arbitrary member_type values and did not tie admin
--- status to a role. Normalize those legacy rows before installing the checks so
--- an upgrade cannot stop halfway through. Unknown non-admin roles become the
--- least-privileged guest role; admins remain admins but are normalized to adult.
+-- Earlier schemas did not tie admin status to a role. The meaning of this invalid
+-- combination is unambiguous: preserve admin access and normalize the known role
+-- to adult before installing the constraint.
 update persons
-   set member_type = case when is_admin then 'adult' else 'guest' end
- where member_type not in ('adult', 'caregiver', 'guest', 'teen', 'kid')
-    or (is_admin and member_type <> 'adult');
+   set member_type = 'adult'
+ where is_admin
+   and member_type in ('caregiver', 'guest', 'teen', 'kid');
 
 update household_invites
-   set member_type = case when is_admin then 'adult' else 'guest' end
- where member_type not in ('adult', 'caregiver', 'guest', 'teen', 'kid')
-    or (is_admin and member_type <> 'adult');
+   set member_type = 'adult'
+ where is_admin
+   and member_type in ('caregiver', 'guest', 'teen', 'kid');
 
 -- Be defensive if an operator tested a pre-release version of this migration:
 -- permanent roles must never retain a temporary-access deadline.

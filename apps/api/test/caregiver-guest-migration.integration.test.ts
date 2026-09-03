@@ -7,7 +7,7 @@ import { PostgreSqlContainer } from './helpers/pg'
 import { runMigrations } from '../src/migrate'
 
 const migrationsDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
-const MIGRATION = '0092_caregiver_guest_roles'
+const MIGRATION = '0102_caregiver_guest_roles'
 
 function migrationsBefore(name: string): number {
   const files = readdirSync(migrationsDir).filter((file) => file.endsWith('.sql')).sort()
@@ -16,8 +16,8 @@ function migrationsBefore(name: string): number {
   return index
 }
 
-describe('0092 caregiver and guest roles', () => {
-  it('normalizes unconstrained legacy roles before adding role checks', async () => {
+describe('0102 caregiver and guest roles', () => {
+  it('normalizes known legacy admin-role violations before adding role checks', async () => {
     const pg = await new PostgreSqlContainer('postgres:16').start()
     const client = new Client({ connectionString: pg.getConnectionUri() })
     try {
@@ -31,13 +31,13 @@ describe('0092 caregiver and guest roles', () => {
       await client.query(
         `insert into persons (household_id, name, member_type, is_admin) values
           ($1, 'Legacy admin', 'teen', true),
-          ($1, 'Unknown role', 'visitor', false)`,
+          ($1, 'Ordinary teen', 'teen', false)`,
         [householdId]
       )
       await client.query(
         `insert into household_invites (household_id, email, member_type, is_admin) values
           ($1, 'admin@example.com', 'kid', true),
-          ($1, 'unknown@example.com', 'house-sitter', false)`,
+          ($1, 'kid@example.com', 'kid', false)`,
         [householdId]
       )
 
@@ -49,7 +49,7 @@ describe('0092 caregiver and guest roles', () => {
       )
       expect(people.rows).toEqual([
         { name: 'Legacy admin', member_type: 'adult', is_admin: true },
-        { name: 'Unknown role', member_type: 'guest', is_admin: false },
+        { name: 'Ordinary teen', member_type: 'teen', is_admin: false },
       ])
 
       const invites = await client.query<{ email: string; member_type: string; is_admin: boolean }>(
@@ -58,7 +58,7 @@ describe('0092 caregiver and guest roles', () => {
       )
       expect(invites.rows).toEqual([
         { email: 'admin@example.com', member_type: 'adult', is_admin: true },
-        { email: 'unknown@example.com', member_type: 'guest', is_admin: false },
+        { email: 'kid@example.com', member_type: 'kid', is_admin: false },
       ])
 
       await expect(
@@ -74,6 +74,54 @@ describe('0092 caregiver and guest roles', () => {
           [householdId]
         )
       ).rejects.toThrow()
+    } finally {
+      await client.end().catch(() => {})
+      await pg.stop()
+    }
+  }, 120_000)
+
+  it('aborts without rewriting unknown custom roles', async () => {
+    const pg = await new PostgreSqlContainer('postgres:16').start()
+    const client = new Client({ connectionString: pg.getConnectionUri() })
+    try {
+      await runMigrations(pg.getConnectionUri(), migrationsDir, migrationsBefore(MIGRATION))
+      await client.connect()
+      const household = await client.query<{ id: string }>(
+        `insert into households (name, timezone) values ('Custom roles', 'UTC') returning id`
+      )
+      const householdId = household.rows[0].id
+
+      await client.query(
+        `insert into persons (household_id, name, member_type, is_admin)
+         values ($1, 'House sitter', 'house-sitter', false)`,
+        [householdId]
+      )
+      await client.query(
+        `insert into household_invites (household_id, email, member_type, is_admin)
+         values ($1, 'visitor@example.com', 'visitor', false)`,
+        [householdId]
+      )
+
+      await expect(runMigrations(pg.getConnectionUri(), migrationsDir)).rejects.toThrow(
+        /unknown member_type.*house-sitter.*visitor/i
+      )
+
+      const person = await client.query<{ member_type: string }>(
+        `select member_type from persons where household_id = $1`,
+        [householdId]
+      )
+      const invite = await client.query<{ member_type: string }>(
+        `select member_type from household_invites where household_id = $1`,
+        [householdId]
+      )
+      expect(person.rows[0].member_type).toBe('house-sitter')
+      expect(invite.rows[0].member_type).toBe('visitor')
+
+      const addedColumn = await client.query(
+        `select 1 from information_schema.columns
+          where table_schema = 'public' and table_name = 'persons' and column_name = 'access_expires_at'`
+      )
+      expect(addedColumn.rowCount).toBe(0)
     } finally {
       await client.end().catch(() => {})
       await pg.stop()

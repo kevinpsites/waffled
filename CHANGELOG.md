@@ -48,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stop safely if their currency is later disabled, while earn-only currencies still work
   for spot awards.
 
+- Guest offline edits no longer enter or indefinitely block the PowerSync upload
+  queue. Upgrades also stop and identify unknown legacy household roles instead of
+  silently reclassifying them.
+
 ## [0.14.3] - 2026-09-02
 
 ### Added

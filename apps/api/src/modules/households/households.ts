@@ -81,13 +81,34 @@ export async function resolveTenant(principal: Principal): Promise<Tenant | null
   return findTenantBySub(principal.sub)
 }
 
+type TenantResolver = (principal: Principal) => Promise<Tenant | null>
+
+// The guest-write gate and the route guard both need the same tenant. Cache the
+// in-flight lookup on the request object (via a WeakMap) so a mutation issues one
+// database query, including when two consumers ask concurrently. A resolved null
+// is cached too; otherwise an unprovisioned caller would still be queried twice.
+const requestTenantCache = new WeakMap<Request, Promise<Tenant | null>>()
+
+export function resolveRequestTenant(
+  req: Request,
+  resolver: TenantResolver = resolveTenant
+): Promise<Tenant | null> {
+  const fromKey = (req as Request & { apiKeyTenant?: Tenant }).apiKeyTenant
+  if (fromKey) return Promise.resolve(fromKey)
+
+  const cached = requestTenantCache.get(req)
+  if (cached) return cached
+
+  const pending = req.principal ? resolver(req.principal) : Promise.resolve(null)
+  requestTenantCache.set(req, pending)
+  return pending
+}
+
 // Resolve the caller's household, or 403 if they haven't onboarded yet. A key-
 // authenticated request already resolved its owner tenant in the auth gate, so we
 // return that directly (the key's owner person is the tenant).
 export async function requireTenant(req: Request): Promise<Tenant> {
-  const fromKey = (req as Request & { apiKeyTenant?: Tenant }).apiKeyTenant
-  if (fromKey) return fromKey
-  const tenant = await resolveTenant(req.principal!)
+  const tenant = await resolveRequestTenant(req)
   if (!tenant) throw new AuthError('No household for this account; create one first', 403)
   return tenant
 }

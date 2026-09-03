@@ -3,7 +3,7 @@
 // bucketing, person color/owner, participant list). Pure helpers here are unit-
 // tested; watchAgendaRows streams live rows. Falls back gracefully (no DB → no-op).
 import type { AgendaEvent, Participant } from '../api/events'
-import { currentViewerPersonId } from '../api/client'
+import { currentViewerPersonId, powerSyncMutationAllowed } from '../api/client'
 import { getPowerSyncDb, onPowerSyncRecreated } from './db'
 
 // Personal-calendar visibility: a family event is visible to everyone; a personal
@@ -278,6 +278,7 @@ async function householdRowId(): Promise<string | null> {
 }
 
 export async function createEventLocal(draft: EventDraft): Promise<boolean> {
+  if (!powerSyncMutationAllowed()) return false
   const db = getPowerSyncDb()
   if (!db) return false
   const hh = await householdRowId()
@@ -304,6 +305,7 @@ export async function createEventLocal(draft: EventDraft): Promise<boolean> {
 }
 
 export async function updateEventLocal(id: string, draft: EventDraft): Promise<boolean> {
+  if (!powerSyncMutationAllowed()) return false
   const db = getPowerSyncDb()
   if (!db) return false
   const hh = await householdRowId()
@@ -327,6 +329,7 @@ export async function updateEventLocal(id: string, draft: EventDraft): Promise<b
 }
 
 export async function deleteEventLocal(id: string): Promise<boolean> {
+  if (!powerSyncMutationAllowed()) return false
   const db = getPowerSyncDb()
   if (!db) return false
   await db.execute(`delete from event_participants where event_id = ?`, [id])

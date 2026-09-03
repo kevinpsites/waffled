@@ -65,6 +65,17 @@ struct WaffledAPI: Sendable {
             if case let .http(code, _) = self { return code == 422 }
             return false
         }
+
+        /// The exact permanent rejection emitted by the guest-write middleware.
+        /// Other 403s may become valid after a permission change, so they continue
+        /// through PowerSync's ordinary retry path.
+        var isGuestReadOnly: Bool {
+            guard case let .http(code, body) = self, code == 403,
+                  let data = body.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let message = json["message"] as? String else { return false }
+            return message == "Guest access is read-only" || message == "Guest access is read-only."
+        }
     }
 
     /// One shared decoder (default config) — JSONDecoder is reusable and decoding is

@@ -5,6 +5,7 @@ import {
   apiGet,
   apiSend,
   guestRequestAllowed,
+  powerSyncMutationAllowed,
   setCurrentViewerMemberType,
 } from './client'
 
@@ -55,5 +56,15 @@ describe('guest client mutation policy', () => {
     expect(guestRequestAllowed('POST', '/api/auth/invites/abc/accept')).toBe(true)
     expect(guestRequestAllowed('PATCH', '/api/account/password')).toBe(true)
     expect(guestRequestAllowed('POST', '/api/chores')).toBe(false)
+  })
+
+  it('only queues PowerSync writes after a known write-capable role loads', () => {
+    expect(powerSyncMutationAllowed(null)).toBe(false)
+    expect(powerSyncMutationAllowed('guest')).toBe(false)
+    expect(powerSyncMutationAllowed('house-sitter')).toBe(false)
+    expect(powerSyncMutationAllowed('adult')).toBe(true)
+    expect(powerSyncMutationAllowed('caregiver')).toBe(true)
+    expect(powerSyncMutationAllowed('teen')).toBe(true)
+    expect(powerSyncMutationAllowed('kid')).toBe(true)
   })
 })

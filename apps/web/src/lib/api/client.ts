@@ -126,6 +126,14 @@ export function setCurrentViewerMemberType(memberType: string | null): void {
   viewerMemberType = memberType
 }
 
+// Local PowerSync writes must fail closed until /api/household has identified a
+// built-in role. Otherwise a guest (or a stale/custom role the clients do not
+// understand) can optimistically mutate SQLite and leave a rejected write at the
+// head of the durable upload queue.
+export function powerSyncMutationAllowed(memberType: string | null = viewerMemberType): boolean {
+  return memberType === 'adult' || memberType === 'caregiver' || memberType === 'teen' || memberType === 'kid'
+}
+
 export function getAccessToken(): string | undefined {
   try {
     return localStorage.getItem(ACCESS_KEY) || localStorage.getItem('waffled.token') || undefined

@@ -11,14 +11,13 @@ import { sensitiveRouteRateLimit } from './platform/rate-limit'
 import { registerHealthRoutes } from './modules/health/health'
 import { registerUpdateRoutes } from './modules/updates/updates'
 import {
-  resolveTenant,
+  resolveRequestTenant,
   requireTenant,
   requireAdmin,
   getContext,
   createHouseholdForAccount,
   presentHousehold,
   presentPerson,
-  type Tenant,
 } from './modules/households/households'
 import { authenticateApiKey, enforceApiKeyScope, registerApiKeyRoutes } from './modules/api-keys/api-keys'
 import { registerPersonRoutes, HEX_COLOR } from './modules/persons/persons'
@@ -128,8 +127,7 @@ api.use(async (req: Request, _res: Response, next: NextFunction) => {
   if (req.method === 'OPTIONS' || req.method === 'GET' || req.method === 'HEAD' || PUBLIC_PATHS.has(req.path)) return next()
   if (GUEST_WRITE_EXEMPT.has(req.path) || req.path.startsWith('/api/account/') ||
       (req.path.startsWith('/api/auth/invites/') && req.path.endsWith('/accept'))) return next()
-  const tenant = (req as Request & { apiKeyTenant?: Tenant }).apiKeyTenant ??
-    (req.principal ? await resolveTenant(req.principal) : null)
+  const tenant = await resolveRequestTenant(req)
   if (tenant?.memberType === 'guest') throw new AuthError('Guest access is read-only', 403)
   next()
 })
@@ -155,7 +153,7 @@ api.get('/api/me', async (req: Request) => ({ sub: req.principal?.sub }))
 
 // Your household + person, or { provisioned: false } if you haven't onboarded yet.
 api.get('/api/household', async (req: Request) => {
-  const tenant = (req as Request & { apiKeyTenant?: Tenant }).apiKeyTenant ?? (await resolveTenant(req.principal!))
+  const tenant = await resolveRequestTenant(req)
   if (!tenant) return { provisioned: false }
   const { household, person } = await getContext(tenant)
   // Capabilities the client can gate UI on (admin ⇒ all; else per-role matrix).

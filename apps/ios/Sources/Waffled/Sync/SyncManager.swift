@@ -118,12 +118,26 @@ final class SyncManager {
     private(set) var currentPerson: WaffledAPI.CurrentPerson? { didSet { rebuildEventIndex() } }
     /// The logged-in person's id (convenience; nil until identity loads).
     var currentPersonId: String? { currentPerson?.id }
-    var isReadOnlyGuest: Bool { currentPerson?.memberType == "guest" }
+    private var effectiveMemberType: String? { currentPerson?.memberType ?? AppConfig.currentMemberType }
+    var isReadOnlyGuest: Bool { effectiveMemberType == "guest" }
     func loadIdentity() async {
         guard currentPerson == nil else { return }
-        currentPerson = try? await api.currentPerson()
-        AppConfig.setCurrentMemberType(currentPerson?.memberType)
+        // Keep the last trusted role through a transient identity failure. Clearing it
+        // here briefly reopened local writes for guests; a real sign-out/session swap
+        // still clears it explicitly before the next account is used.
+        guard let person = try? await api.currentPerson() else { return }
+        currentPerson = person
+        AppConfig.setCurrentMemberType(person.memberType)
         await reloadModules()
+    }
+
+    /// Only a role understood by this client may enqueue an offline mutation. The
+    /// server remains authoritative for each role's finer-grained capabilities.
+    nonisolated static func localMutationAllowed(memberType: String?) -> Bool {
+        switch memberType {
+        case "adult", "caregiver", "teen", "kid": true
+        default: false
+        }
     }
 
     // MARK: optional modules
@@ -404,7 +418,7 @@ final class SyncManager {
     /// (events need none — a server-side reschedule/delete down-syncs through PowerSync).
     func commitMutate(verb: String, targetKind: String?, targetId: String,
                       args: [String: JSONValue], meta: [String: JSONValue]?) async -> (ok: Bool, message: String) {
-        guard mutationAllowed() else { return (false, "Guest access is read-only.") }
+        guard mutationAllowed() else { return (false, mutationUnavailableMessage) }
         do {
             let message = try await api.commitMutate(verb: verb, targetKind: targetKind,
                                                      targetId: targetId, args: args, meta: meta)
@@ -864,7 +878,7 @@ final class SyncManager {
     /// Trade a person's balance through a conversion N times. Returns success + an
     /// optional error message (e.g. "not enough to trade"). Bumps `rewardsRev`.
     func applyConversion(id: String, personId: String, times: Int) async -> (ok: Bool, error: String?) {
-        guard mutationAllowed() else { return (false, "Guest access is read-only.") }
+        guard mutationAllowed() else { return (false, mutationUnavailableMessage) }
         do {
             let r = try await api.applyConversion(id: id, personId: personId, times: times)
             if r.ok { rewardsRev += 1 }
@@ -953,11 +967,15 @@ final class SyncManager {
     }
 
     private func mutationAllowed() -> Bool {
-        guard !isReadOnlyGuest else {
-            lastError = "Guest access is read-only."
+        guard Self.localMutationAllowed(memberType: effectiveMemberType) else {
+            lastError = mutationUnavailableMessage
             return false
         }
         return true
+    }
+
+    private var mutationUnavailableMessage: String {
+        isReadOnlyGuest ? "Guest access is read-only." : "Household access is still loading. Try again."
     }
 
     /// The person a captured name resolves to (for the preview chip + routing hint).
