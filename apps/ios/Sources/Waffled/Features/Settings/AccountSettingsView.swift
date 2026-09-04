@@ -16,6 +16,8 @@ struct AccountSettingsView: View {
     @State private var switchingTo: String?     // householdId mid-switch (spinner)
     @State private var acceptingId: String?     // invite id mid-accept (spinner)
     @State private var actionError: String?
+    @State private var pendingDiscardSwitch: WaffledAPI.Membership?
+    @State private var pendingDiscardCount = 0
 
     // Your own calendar color: the pending pick, its debounced save, and the server's
     // complaint if it rejects one.
@@ -42,6 +44,24 @@ struct AccountSettingsView: View {
         .background(WF.canvas)
         .navigationTitle("Households").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
+        .confirmationDialog(
+            "Discard unsynced changes and switch?",
+            isPresented: Binding(
+                get: { pendingDiscardSwitch != nil },
+                set: { if !$0 { pendingDiscardSwitch = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let target = pendingDiscardSwitch {
+                Button("Discard changes and switch", role: .destructive) {
+                    pendingDiscardSwitch = nil
+                    Task { await switchTo(target, discardAuthorized: true) }
+                }
+            }
+            Button("Wait for sync", role: .cancel) { pendingDiscardSwitch = nil }
+        } message: {
+            Text("This device has \(pendingDiscardCount) change\(pendingDiscardCount == 1 ? "" : "s") that haven’t reached the server. Switching now permanently discards them.")
+        }
     }
 
     private var identityCard: some View {
@@ -211,11 +231,14 @@ struct AccountSettingsView: View {
     /// Switch the active household: mint its token, clear the previous household's mirror
     /// while the old credentials are still installed, then adopt + reconnect. Blocked
     /// while writes are queued — clearing would strand the previous household's writes.
-    private func switchTo(_ m: WaffledAPI.Membership) async {
+    private func switchTo(
+        _ m: WaffledAPI.Membership,
+        discardAuthorized: Bool = false
+    ) async {
         actionError = nil
-        guard sync.pendingUploads == 0 else {
-            let n = sync.pendingUploads
-            actionError = "You have \(n) change\(n == 1 ? "" : "s") still syncing. Wait for sync to finish, then switch."
+        if !discardAuthorized, sync.pendingUploads > 0 {
+            pendingDiscardCount = sync.pendingUploads
+            pendingDiscardSwitch = m
             return
         }
         switchingTo = m.householdId
@@ -226,13 +249,23 @@ struct AccountSettingsView: View {
         let sourceScope = sync.restDataScopeKey
         do {
             let r = try await api.switchHousehold(householdId: m.householdId)
-            guard await sync.reauthenticate(expectedScope: sourceScope, adoptCredentials: {
+            let result = await sync.reauthenticate(
+                expectedScope: sourceScope,
+                policy: discardAuthorized ? .discardAuthorized : .requireNoPendingUploads,
+                adoptCredentials: {
                 session.enterClaimedSession(access: r.accessToken, refresh: r.refreshToken)
-            }) else {
+            })
+            switch result {
+            case .completed:
+                await load()
+            case let .pendingUploads(count):
+                pendingDiscardCount = count
+                pendingDiscardSwitch = m
+            case .purgeFailed:
                 actionError = sync.lastError ?? "Couldn’t safely clear the previous household’s local data."
-                return
+            case .transitionInProgress:
+                actionError = "Another account change is still finishing. Try again."
             }
-            await load()
         } catch let WaffledAPI.APIError.http(code, _) {
             actionError = code == 403
                 ? "You're no longer a member of that household."

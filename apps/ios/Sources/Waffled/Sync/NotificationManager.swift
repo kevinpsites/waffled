@@ -71,10 +71,6 @@ final class NotificationManager {
         delegate.manager = self
         center.delegate = delegate
         center.setNotificationCategories([Self.reminderCategory()])
-        // A dead refresh token signs us out — drop any reminders for the old session.
-        NotificationCenter.default.addObserver(forName: .waffledAuthExpired, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.clearEventReminders() }
-        }
     }
 
     /// Snooze + View actions shown when a reminder is expanded/long-pressed.
@@ -165,9 +161,36 @@ final class NotificationManager {
     /// Drop Calendar's auto-scheduled and snoozed reminders (e.g. on sign-out or when
     /// event reminders are disabled) without cancelling Cook Mode or future features.
     func clearEventReminders() async {
+        await Self.clearEventRemindersForPrincipalExit(center: center)
+    }
+
+    /// Forget every in-memory event/reminder input owned by the exiting principal as
+    /// well as pending and already-delivered notifications. Resetting the cached inputs
+    /// prevents a preference toggle from re-scheduling the previous person's events
+    /// before the next principal's first reconcile.
+    func clearPrincipalState() async {
+        lastEvents = []
+        lastTz = .current
+        lastMyPersonId = nil
+        lastNames = [:]
+        pendingEventId = nil
+        droppedToCap = 0
+        await Self.clearEventRemindersForPrincipalExit(center: center)
+    }
+
+    /// Principal transitions use this directly from SyncManager so reminder cleanup is
+    /// ordered after a successful database purge and before credentials/UI are changed.
+    nonisolated static func clearEventRemindersForPrincipalExit(
+        center: UNUserNotificationCenter = .current()
+    ) async {
         let reqs = await center.pendingNotificationRequests()
         let ids = reqs.map(\.identifier).filter(Self.isEventReminderIdentifier)
         if !ids.isEmpty { center.removePendingNotificationRequests(withIdentifiers: ids) }
+        let delivered: [UNNotification] = await withCheckedContinuation { continuation in
+            center.getDeliveredNotifications { continuation.resume(returning: $0) }
+        }
+        let deliveredIds = delivered.map(\.request.identifier).filter(Self.isEventReminderIdentifier)
+        if !deliveredIds.isEmpty { center.removeDeliveredNotifications(withIdentifiers: deliveredIds) }
     }
 
     // MARK: building reminders

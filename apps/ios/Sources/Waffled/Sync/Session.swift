@@ -7,11 +7,41 @@ struct SessionSignOutCredentials {
     let refreshToken: () -> String?
     let clear: () -> Void
     let markSignedOut: () -> Void
+    let isCurrent: (AuthTokens.RefreshLease) -> Bool
+
+    init(
+        refreshToken: @escaping () -> String?,
+        clear: @escaping () -> Void,
+        markSignedOut: @escaping () -> Void,
+        isCurrent: @escaping (AuthTokens.RefreshLease) -> Bool = { _ in true }
+    ) {
+        self.refreshToken = refreshToken
+        self.clear = clear
+        self.markSignedOut = markSignedOut
+        self.isCurrent = isCurrent
+    }
 
     static let live = SessionSignOutCredentials(
         refreshToken: { AuthTokens.refreshToken },
         clear: { AuthTokens.clear() },
-        markSignedOut: { AppConfig.markSignedOut() }
+        markSignedOut: { AppConfig.markSignedOut() },
+        isCurrent: { AuthTokens.isCurrent($0) }
+    )
+}
+
+/// Persisted launch-boundary state, injectable so migration behavior can be proven
+/// without mutating process-wide Keychain/UserDefaults state in parallel tests.
+struct SessionBootstrapState {
+    let hasUsableToken: () -> Bool
+    let migrationIsComplete: () -> Bool
+    let markMigrationComplete: () -> Void
+    let loadAuthStatus: () async -> WaffledAPI.AuthStatus?
+
+    static let live = SessionBootstrapState(
+        hasUsableToken: { AppConfig.hasUsableToken },
+        migrationIsComplete: { PrincipalIsolationMigration.isComplete },
+        markMigrationComplete: { PrincipalIsolationMigration.markComplete() },
+        loadAuthStatus: { try? await WaffledAPI().authStatus() }
     )
 }
 
@@ -22,6 +52,11 @@ struct SessionSignOutCredentials {
 @Observable
 final class Session {
     enum Phase: Equatable { case loading, login, authed }
+    enum BootstrapResult: Equatable {
+        case ready
+        case pendingMigrationUploads(Int)
+        case purgeFailed
+    }
 
     private(set) var phase: Phase
     /// Server capabilities (initialized? which sign-in methods) — drives the login UI.
@@ -29,29 +64,66 @@ final class Session {
 
     private let api = WaffledAPI()
     private let signOutCredentials: SessionSignOutCredentials
+    private let bootstrapState: SessionBootstrapState
 
     init(
         initialPhase: Phase = .loading,
-        signOutCredentials: SessionSignOutCredentials = .live
+        signOutCredentials: SessionSignOutCredentials = .live,
+        bootstrapState: SessionBootstrapState = .live
     ) {
         phase = initialPhase
         self.signOutCredentials = signOutCredentials
+        self.bootstrapState = bootstrapState
     }
 
-    /// Decide the initial screen on launch. A real session (or a dev/env token for
-    /// headless demos) goes straight in; otherwise we probe `/auth/status` and show
-    /// login.
-    func bootstrap() async {
+    /// Clear any unowned/legacy mirror before the app renders either login or the kiosk
+    /// picker. A valid upgraded session first connects behind the blocking gate so its
+    /// queued writes can flush; the user must explicitly authorize discarding any that
+    /// remain. The migration marker is written only after an actual successful purge.
+    func bootstrap(
+        sync: SyncManager,
+        kioskNeedsPicker: Bool,
+        discardMigrationUploads: Bool = false
+    ) async -> BootstrapResult {
+        phase = .loading
         // QA/demo: force the login screen. Clears any real session but leaves a
         // pasted dev token in place (so a normal next launch signs back in).
-        if DemoHooks.resetAuth {
+        let forceLogin = DemoHooks.resetAuth
+        if forceLogin {
             AuthTokens.clear()
-        } else if AppConfig.hasUsableToken {
-            phase = .authed
-            return
         }
-        status = try? await api.authStatus()
+
+        let needsPrincipalSelection = forceLogin || kioskNeedsPicker || !bootstrapState.hasUsableToken()
+        let needsMigration = !bootstrapState.migrationIsComplete()
+        if needsMigration || needsPrincipalSelection {
+            let policy: SyncManager.PrincipalExitPolicy
+            if needsPrincipalSelection {
+                policy = .securityCritical
+            } else if discardMigrationUploads {
+                policy = .discardAuthorized
+            } else {
+                // Hidden by the app-level isolation gate: stale rows may load only so
+                // PowerSync can flush this still-valid principal's queued writes.
+                await sync.start()
+                policy = .requireNoPendingUploads
+            }
+            switch await sync.signOut(policy: policy) {
+            case .completed:
+                if needsMigration { bootstrapState.markMigrationComplete() }
+            case let .pendingUploads(count):
+                return .pendingMigrationUploads(count)
+            case .purgeFailed, .transitionInProgress:
+                return .purgeFailed
+            }
+        }
+
+        if !forceLogin, bootstrapState.hasUsableToken(), !kioskNeedsPicker {
+            phase = .authed
+            return .ready
+        }
+        status = await bootstrapState.loadAuthStatus()
         phase = .login
+        return .ready
     }
 
     /// Attempt a password login. Returns a user-facing error string, or nil on success.
@@ -109,21 +181,31 @@ final class Session {
         }
     }
 
-    /// Tear down auth and sync as one principal boundary. The loading gate prevents a
-    /// new login from starting while the previous PowerSync connection is still being
-    /// disconnected; `SyncManager.signOut` rotates the REST scope before it suspends.
+    /// Tear down auth and sync as one principal boundary. `SyncManager.signOut` freezes
+    /// local writes and rotates the REST scope before it suspends. Manual callers keep
+    /// their current view alive so an exact pending-count race or purge failure can be
+    /// surfaced there; an authoritative credential expiry opts into the neutral gate.
     /// Credentials remain installed until the local mirror is gone so a failed purge
     /// cannot expose either a login screen or a different principal.
     @discardableResult
-    func signOut(sync: SyncManager) async -> Bool {
-        guard case .authed = phase else { return false }
+    func signOut(
+        sync: SyncManager,
+        policy: SyncManager.PrincipalExitPolicy,
+        expectedRefreshLease: AuthTokens.RefreshLease? = nil,
+        blocksAuthenticatedUI: Bool = false
+    ) async -> SyncManager.PrincipalExitResult {
+        guard case .authed = phase else { return .transitionInProgress }
+        if let expectedRefreshLease, !signOutCredentials.isCurrent(expectedRefreshLease) {
+            return .transitionInProgress
+        }
         let refresh = signOutCredentials.refreshToken()
-        phase = .loading
-        guard await sync.signOut() else {
+        if blocksAuthenticatedUI { phase = .loading }
+        let result = await sync.signOut(policy: policy)
+        guard result == .completed else {
             // Fail closed on the previous principal. Re-entering the authenticated gate
             // also lets a later manual/expiry attempt retry the local deletion.
-            phase = .authed
-            return false
+            if blocksAuthenticatedUI { phase = .authed }
+            return result
         }
         signOutCredentials.clear()
         signOutCredentials.markSignedOut() // else the dev-token fallback re-auths us
@@ -138,7 +220,16 @@ final class Session {
             guard case .login = self.phase else { return }
             self.status = refreshedStatus
         }
-        return true
+        return .completed
+    }
+
+    /// Complete a kiosk boundary whose serialized purge/notification cleanup already
+    /// succeeded, without running a second database teardown. Callers invoke this only
+    /// before exposing the picker or normal login gate.
+    func completeIsolatedPrincipalExit() {
+        signOutCredentials.clear()
+        signOutCredentials.markSignedOut()
+        phase = .login
     }
 
     /// Adopt a freshly-minted session without a password round-trip — used by the kiosk

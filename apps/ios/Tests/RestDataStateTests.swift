@@ -831,7 +831,7 @@ private let fixtureRestScope = RestDataScopeKey(
         }
         await firstStop.waitUntilStarted()
 
-        let signOut = Task { await sync.signOut() }
+        let signOut = Task { await sync.signOut(policy: .securityCritical) }
         await waitForScopeRotation(sync, from: oldScope)
         #expect(recorder.events == ["stop:false"])
         await firstStop.succeed(true)
@@ -839,7 +839,7 @@ private let fixtureRestScope = RestDataScopeKey(
         let updateResult = await update.value
         let signOutResult = await signOut.value
         #expect(updateResult == .transitionInProgress)
-        #expect(signOutResult)
+        #expect(signOutResult == .completed)
         #expect(recorder.events == ["stop:false", "stop:true"])
     }
 
@@ -852,21 +852,23 @@ private let fixtureRestScope = RestDataScopeKey(
         let oldScope = sync.restDataScopeKey
 
         let reauthentication = Task {
-            await sync.reauthenticate(expectedScope: oldScope) {
-                recorder.record("adopt-credentials")
-            }
+            await sync.reauthenticate(
+                expectedScope: oldScope,
+                policy: .securityCritical,
+                adoptCredentials: { recorder.record("adopt-credentials") }
+            )
         }
         await firstStop.waitUntilStarted()
 
-        let signOut = Task { await sync.signOut() }
+        let signOut = Task { await sync.signOut(policy: .securityCritical) }
         await waitForScopeRotation(sync, from: oldScope)
         #expect(recorder.events == ["stop:true"])
         await firstStop.succeed(true)
 
         let reauthenticationResult = await reauthentication.value
         let signOutResult = await signOut.value
-        #expect(!reauthenticationResult)
-        #expect(signOutResult)
+        #expect(reauthenticationResult == .transitionInProgress)
+        #expect(signOutResult == .completed)
         #expect(recorder.events == ["stop:true", "stop:true"])
     }
 
@@ -878,16 +880,18 @@ private let fixtureRestScope = RestDataScopeKey(
         )
         let oldScope = sync.restDataScopeKey
 
-        let signOut = Task { await sync.signOut() }
+        let signOut = Task { await sync.signOut(policy: .securityCritical) }
         await firstStop.waitUntilStarted()
         await firstStop.succeed(true)
-        #expect(await signOut.value)
+        #expect(await signOut.value == .completed)
 
-        let didReauthenticate = await sync.reauthenticate(expectedScope: oldScope) {
-            recorder.record("adopt-credentials")
-        }
+        let didReauthenticate = await sync.reauthenticate(
+            expectedScope: oldScope,
+            policy: .securityCritical,
+            adoptCredentials: { recorder.record("adopt-credentials") }
+        )
 
-        #expect(!didReauthenticate)
+        #expect(didReauthenticate == .transitionInProgress)
         #expect(recorder.events == ["stop:true"])
     }
 }

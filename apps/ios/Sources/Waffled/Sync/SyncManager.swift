@@ -61,6 +61,21 @@ struct SyncConnectionLifecycle: Sendable {
     let applyConfiguration: @MainActor @Sendable (
         _ rawBaseURL: String?, _ rawDevToken: String?
     ) -> Void
+    let pendingUploadCount: @MainActor @Sendable () async -> Int?
+
+    init(
+        stop: @escaping @MainActor @Sendable (_ clearLocal: Bool) async -> Bool,
+        start: @escaping @MainActor @Sendable () async -> Bool,
+        applyConfiguration: @escaping @MainActor @Sendable (
+            _ rawBaseURL: String?, _ rawDevToken: String?
+        ) -> Void,
+        pendingUploadCount: @escaping @MainActor @Sendable () async -> Int? = { 0 }
+    ) {
+        self.stop = stop
+        self.start = start
+        self.applyConfiguration = applyConfiguration
+        self.pendingUploadCount = pendingUploadCount
+    }
 }
 
 /// Owns the PowerSync database lifecycle and surfaces live, observable state to
@@ -70,6 +85,23 @@ struct SyncConnectionLifecycle: Sendable {
 @Observable
 final class SyncManager {
     enum Status: String { case idle, connecting, connected, offline }
+    /// Whether queued writes may be destroyed at this principal boundary.
+    enum PrincipalExitPolicy: Equatable, Sendable {
+        /// Automatic transitions and the first pass of manual actions must defer.
+        case requireNoPendingUploads
+        /// The person explicitly accepted losing the reported queued changes.
+        case discardAuthorized
+        /// No valid principal remains to upload them (expired/legacy signed-out state).
+        case securityCritical
+    }
+    enum PrincipalExitResult: Equatable, Sendable {
+        case completed
+        case pendingUploads(Int)
+        case purgeFailed
+        case transitionInProgress
+
+        var didComplete: Bool { self == .completed }
+    }
     enum ConnectionUpdateResult: Equatable, Sendable {
         case updated
         case invalidURL
@@ -366,9 +398,23 @@ final class SyncManager {
     private var statusTask: Task<Void, Never>?
     private let connectionTransitions = ConnectionTransitionQueue()
     private let testConnectionLifecycle: SyncConnectionLifecycle?
+    private let principalStateCleanup: @MainActor @Sendable () async -> Void
 
-    init(testConnectionLifecycle: SyncConnectionLifecycle? = nil) {
+    // A principal exit freezes new local SQLite writes synchronously, then waits for
+    // any writer that already held a lease before checking ps_crud and clearing. This
+    // closes the zero-count -> new-write -> destructive-clear race.
+    private var localWritesFrozen = false
+    private var activeLocalWrites = 0
+    private var localWriteDrainWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(
+        testConnectionLifecycle: SyncConnectionLifecycle? = nil,
+        principalStateCleanup: @escaping @MainActor @Sendable () async -> Void = {
+            await NotificationManager.clearEventRemindersForPrincipalExit()
+        }
+    ) {
         self.testConnectionLifecycle = testConnectionLifecycle
+        self.principalStateCleanup = principalStateCleanup
         db = PowerSyncDatabase(schema: SyncSchema.schema, dbFilename: "waffled.sqlite")
     }
 
@@ -386,6 +432,7 @@ final class SyncManager {
     private func performStart(epoch: ConnectionTransitionQueue.Epoch) async {
         guard connectionTransitions.isCurrent(epoch) else { return }
         guard !started else { return }
+        localWritesFrozen = false
         started = true
 
         if let testConnectionLifecycle {
@@ -459,7 +506,8 @@ final class SyncManager {
         await connectionTransitions.run(
             preempting: false,
             busyResult: .transitionInProgress,
-            supersededResult: .transitionInProgress
+            supersededResult: .transitionInProgress,
+            prepare: { [weak self] in self?.localWritesFrozen = true }
         ) { [weak self] epoch in
             guard let self else { return .transitionInProgress }
 
@@ -471,13 +519,12 @@ final class SyncManager {
                 } else if let normalized = AppConfig.normalizedApiBaseURL(trimmed) {
                     normalizedBaseURL = normalized
                 } else {
+                    self.unfreezeLocalWrites(ifCurrent: epoch)
                     return .invalidURL
                 }
             } else {
                 normalizedBaseURL = nil
             }
-
-            guard self.pendingUploads == 0 else { return .pendingUploads(self.pendingUploads) }
 
             let normalizedToken = rawDevToken?.trimmingCharacters(in: .whitespacesAndNewlines)
             let serverChanged = normalizedBaseURL.map { $0 != AppConfig.apiBaseURL } ?? false
@@ -485,20 +532,46 @@ final class SyncManager {
             // A stored dev token is dormant while a Keychain session is active.
             let crossesPrincipalBoundary = serverChanged || (AuthTokens.accessToken == nil && tokenChanged)
 
+            await self.waitForLocalWritesToDrain()
+            guard self.connectionTransitions.isCurrent(epoch) else {
+                return .transitionInProgress
+            }
+            guard let pending = await self.exactPendingUploadCount() else {
+                self.lastError = "Couldn’t verify whether offline changes are still waiting."
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                return .teardownFailed
+            }
+            self.pendingUploads = pending
+            guard pending == 0 else {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                return .pendingUploads(pending)
+            }
+
             let stopped = await self.stopSync(clearLocal: crossesPrincipalBoundary, epoch: epoch)
             // A sign-out may have superseded this update while database teardown was
             // suspended. Never write its server/token or restart under that old intent.
             guard self.connectionTransitions.isCurrent(epoch) else {
                 return .transitionInProgress
             }
-            guard stopped else { return .teardownFailed }
+            guard stopped else {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                return .teardownFailed
+            }
+            if crossesPrincipalBoundary {
+                self.invalidateRestDataScope()
+                let clearedScope = self.restDataScopeKey
+                await self.principalStateCleanup()
+                guard self.connectionTransitions.isCurrent(epoch),
+                      self.restDataScopeKey == clearedScope else {
+                    return .transitionInProgress
+                }
+            }
             if let testConnectionLifecycle {
                 testConnectionLifecycle.applyConfiguration(rawBaseURL, rawDevToken)
             } else {
                 if let rawBaseURL { _ = AppConfig.setApiBaseURL(rawBaseURL) }
                 if let rawDevToken { AppConfig.setDevToken(rawDevToken) }
             }
-            if crossesPrincipalBoundary { self.invalidateRestDataScope() }
             await self.performStart(epoch: epoch)
             return self.connectionTransitions.isCurrent(epoch)
                 ? .updated
@@ -517,23 +590,57 @@ final class SyncManager {
     @discardableResult
     func reauthenticate(
         expectedScope: RestDataScopeKey,
+        policy: PrincipalExitPolicy,
         adoptCredentials: (() -> Void)? = nil
-    ) async -> Bool {
-        await connectionTransitions.run(
+    ) async -> PrincipalExitResult {
+        if policy == .requireNoPendingUploads, pendingUploads > 0 {
+            return .pendingUploads(pendingUploads)
+        }
+        return await connectionTransitions.run(
             preempting: false,
-            busyResult: false,
-            supersededResult: false
+            busyResult: .transitionInProgress,
+            supersededResult: .transitionInProgress,
+            prepare: { [weak self] in self?.localWritesFrozen = true }
         ) { [weak self] epoch in
-            guard let self, self.restDataScopeKey == expectedScope else { return false }
+            guard let self else { return .transitionInProgress }
+            guard self.restDataScopeKey == expectedScope else {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                return .transitionInProgress
+            }
+            await self.waitForLocalWritesToDrain()
+            guard self.connectionTransitions.isCurrent(epoch) else {
+                return .transitionInProgress
+            }
+            guard self.restDataScopeKey == expectedScope else {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                return .transitionInProgress
+            }
+            if let blocked = await self.pendingUploadBlock(policy: policy, epoch: epoch) {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                return blocked
+            }
             // Stop with the old credentials still installed. Only after teardown
-            // succeeds do we rotate the UI/REST scope and adopt replacement tokens.
-            guard await self.stopSync(clearLocal: true, epoch: epoch),
-                  self.connectionTransitions.isCurrent(epoch),
-                  self.restDataScopeKey == expectedScope else { return false }
+            // and all other principal-local state are cleared do we adopt replacements.
+            let stopped = await self.stopSync(clearLocal: true, epoch: epoch)
+            guard self.connectionTransitions.isCurrent(epoch) else {
+                return .transitionInProgress
+            }
+            guard stopped, self.restDataScopeKey == expectedScope else {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                return .purgeFailed
+            }
             self.invalidateRestDataScope()
+            let clearedScope = self.restDataScopeKey
+            await self.principalStateCleanup()
+            guard self.connectionTransitions.isCurrent(epoch),
+                  self.restDataScopeKey == clearedScope else {
+                return .transitionInProgress
+            }
             adoptCredentials?()
             await self.performStart(epoch: epoch)
             return self.connectionTransitions.isCurrent(epoch)
+                ? .completed
+                : .transitionInProgress
         }
     }
 
@@ -544,18 +651,118 @@ final class SyncManager {
     /// Clearing is mandatory: ordinary sign-out and token expiry are principal exits.
     /// Same-principal transport reconnects use `stopSync(clearLocal: false)` directly.
     @discardableResult
-    func signOut() async -> Bool {
-        await connectionTransitions.run(
+    func signOut(
+        policy: PrincipalExitPolicy,
+        expectedScope: RestDataScopeKey? = nil
+    ) async -> PrincipalExitResult {
+        if let expectedScope, restDataScopeKey != expectedScope {
+            return .transitionInProgress
+        }
+        // Fast refusal avoids perturbing REST state for a known-blocked automatic exit;
+        // the authoritative count is still checked again inside the frozen transition.
+        if policy == .requireNoPendingUploads, pendingUploads > 0 {
+            return .pendingUploads(pendingUploads)
+        }
+        return await connectionTransitions.run(
             preempting: true,
-            busyResult: false,
-            supersededResult: false,
+            busyResult: .transitionInProgress,
+            supersededResult: .transitionInProgress,
             // Invalidate REST-backed screens before the first suspension point. This
             // also revokes any reauthentication lease minted before account exit.
-            prepare: { [weak self] in self?.invalidateRestDataScope() }
+            prepare: { [weak self] in
+                self?.localWritesFrozen = true
+                self?.invalidateRestDataScope()
+            }
         ) { [weak self] epoch in
-            guard let self else { return false }
-            return await self.stopSync(clearLocal: true, epoch: epoch)
+            guard let self else { return .transitionInProgress }
+            await self.waitForLocalWritesToDrain()
+            guard self.connectionTransitions.isCurrent(epoch) else {
+                return .transitionInProgress
+            }
+            if let blocked = await self.pendingUploadBlock(policy: policy, epoch: epoch) {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                return blocked
+            }
+            let stopped = await self.stopSync(clearLocal: true, epoch: epoch)
+            guard self.connectionTransitions.isCurrent(epoch) else {
+                return .transitionInProgress
+            }
+            guard stopped else {
+                self.unfreezeLocalWrites(ifCurrent: epoch)
+                return .purgeFailed
+            }
+            await self.principalStateCleanup()
+            return self.connectionTransitions.isCurrent(epoch)
+                ? .completed
+                : .transitionInProgress
         }
+    }
+
+    private func pendingUploadBlock(
+        policy: PrincipalExitPolicy,
+        epoch: ConnectionTransitionQueue.Epoch
+    ) async -> PrincipalExitResult? {
+        guard policy == .requireNoPendingUploads else { return nil }
+        let count = await exactPendingUploadCount()
+        guard connectionTransitions.isCurrent(epoch) else {
+            return .transitionInProgress
+        }
+        guard let count else {
+            lastError = "Couldn’t verify whether offline changes are still waiting."
+            return .purgeFailed
+        }
+        pendingUploads = count
+        guard count == 0 else { return .pendingUploads(count) }
+        return nil
+    }
+
+    private func exactPendingUploadCount() async -> Int? {
+        if let testConnectionLifecycle {
+            return await testConnectionLifecycle.pendingUploadCount()
+        }
+        return try? await db.getOptional(
+            sql: "SELECT count(*) AS n FROM ps_crud", parameters: [],
+            mapper: { try $0.getInt(name: "n") }
+        )
+    }
+
+    private func beginLocalWrite() -> Bool {
+        guard !localWritesFrozen else {
+            lastError = "Finish switching accounts before making another offline change."
+            return false
+        }
+        activeLocalWrites += 1
+        return true
+    }
+
+    private func finishLocalWrite() {
+        activeLocalWrites -= 1
+        guard activeLocalWrites == 0 else { return }
+        let waiters = localWriteDrainWaiters
+        localWriteDrainWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+
+    private func waitForLocalWritesToDrain() async {
+        guard activeLocalWrites > 0 else { return }
+        await withCheckedContinuation { continuation in
+            localWriteDrainWaiters.append(continuation)
+        }
+    }
+
+    private func unfreezeLocalWrites(ifCurrent epoch: ConnectionTransitionQueue.Epoch) {
+        if connectionTransitions.isCurrent(epoch) { localWritesFrozen = false }
+    }
+
+    /// Deterministic seam for proving an exit cannot check/clear while a local writer
+    /// that began before the freeze is still suspended.
+    func withLocalWriteLeaseForTesting(
+        _ operation: @escaping @MainActor () async -> Void
+    ) async -> Bool {
+        guard beginLocalWrite() else { return false }
+        defer { finishLocalWrite() }
+        await operation()
+        return true
     }
 
     /// Stop PowerSync without deciding whether credentials/REST scope changed. This is
@@ -630,6 +837,8 @@ final class SyncManager {
     /// Insert an event locally. It commits to SQLite immediately (offline-safe) and
     /// PowerSync queues it for upload — the write half of the airplane-mode demo.
     func addTestEvent() async {
+        guard beginLocalWrite() else { return }
+        defer { finishLocalWrite() }
         guard let owner = try? await db.getOptional(
             sql: "SELECT id, household_id FROM persons ORDER BY sort_order, name LIMIT 1",
             parameters: [],
@@ -782,6 +991,8 @@ final class SyncManager {
     func createCalendarEvent(title: String, startsAtISO: String, endsAtISO: String?,
                              allDay: Bool, location: String?, personIds: [String],
                              calendarId: String?, isCountdown: Bool = false) async -> Bool {
+        guard beginLocalWrite() else { return false }
+        defer { finishLocalWrite() }
         guard let hh = await householdRowId() else { lastError = "No household synced yet."; return false }
         let id = UUID().uuidString.lowercased()
         do {
@@ -802,6 +1013,8 @@ final class SyncManager {
     /// Update an event + its participants in the local mirror.
     func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
                      allDay: Bool, location: String?, personIds: [String], isCountdown: Bool = false) async -> Bool {
+        guard beginLocalWrite() else { return false }
+        defer { finishLocalWrite() }
         guard let hh = await householdRowId() else { lastError = "No household synced yet."; return false }
         do {
             try await db.execute(
@@ -815,6 +1028,8 @@ final class SyncManager {
 
     /// Delete an event + its participants from the local mirror.
     func deleteEvent(id: String) async -> Bool {
+        guard beginLocalWrite() else { return false }
+        defer { finishLocalWrite() }
         do {
             try await db.execute(sql: "DELETE FROM event_participants WHERE event_id = ?", parameters: [id])
             try await db.execute(sql: "DELETE FROM events WHERE id = ?", parameters: [id])

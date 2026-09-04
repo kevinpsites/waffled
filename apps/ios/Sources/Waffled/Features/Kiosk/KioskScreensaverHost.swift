@@ -86,7 +86,9 @@ final class ScreensaverModel {
 struct KioskScreensaverHost: ViewModifier {
     @Environment(SyncManager.self) private var sync
     @Environment(KioskMode.self) private var kiosk
+    @Environment(Session.self) private var session
     @State private var model = ScreensaverModel()
+    @State private var securingProfileExit = false
     @AppStorage("waffled.screensaverMotion") private var motion = true
     // Idle/night-window detection doesn't need 1s precision — a 10s cadence keeps the SoC
     // asleep ~10× more while the kiosk sits idle (worst case: the saver appears, or the
@@ -107,6 +109,23 @@ struct KioskScreensaverHost: ViewModifier {
                         motion: motion, onWake: { wake() })
                         .transition(.opacity)
                         .zIndex(100)
+                }
+            }
+            .overlay {
+                if securingProfileExit {
+                    ZStack {
+                        WF.canvas.ignoresSafeArea()
+                        VStack(spacing: 14) {
+                            Image(systemName: "lock.shield.fill")
+                                .font(.system(size: 42, weight: .semibold))
+                                .foregroundStyle(WF.primary)
+                            Text("Finishing sync before switching profiles…")
+                                .font(.system(size: 18, weight: .bold)).foregroundStyle(WF.ink)
+                            Text("This screen stays private until queued changes are safe.")
+                                .font(.system(size: 13)).foregroundStyle(WF.ink3)
+                        }
+                    }
+                    .zIndex(200)
                 }
             }
             .animation(.easeInOut(duration: 0.45), value: model.showing)
@@ -145,8 +164,28 @@ struct KioskScreensaverHost: ViewModifier {
     /// to walk up isn't acting as whoever last used it); otherwise it just resumes.
     private func wake() {
         let toPicker = (model.cfg?.returnToPicker ?? false) && kiosk.isShared
-        model.wake()
-        if toPicker { Task { await kiosk.returnToPicker(sync: sync) } }
+        guard toPicker else { model.wake(); return }
+        guard !securingProfileExit else { return }
+        securingProfileExit = true
+        Task { await finishProfileExitWhenClean() }
+    }
+
+    private func finishProfileExitWhenClean() async {
+        while !Task.isCancelled {
+            // Keep Session.authed while this view owns the opaque blocker; only commit
+            // its login/picker state after SyncManager reports the purge completed.
+            let result = await sync.signOut(policy: .requireNoPendingUploads)
+            if result == .completed {
+                session.completeIsolatedPrincipalExit()
+                kiosk.completeProfileSignOut()
+                securingProfileExit = false
+                model.wake()
+                return
+            }
+            // Automatic idle return is never authorization to discard. Keep an opaque
+            // privacy screen up and retry while PowerSync flushes (or teardown recovers).
+            try? await Task.sleep(for: .seconds(2))
+        }
     }
 
     /// The soonest upcoming event (timed or all-day) for the "Next:" line.

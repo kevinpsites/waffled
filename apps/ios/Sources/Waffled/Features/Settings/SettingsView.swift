@@ -51,7 +51,7 @@ struct SettingsView: View {
     @Binding var path: [HubRoute]
     @Environment(SyncManager.self) private var sync
     @Environment(Session.self) private var session
-    @Environment(NotificationManager.self) private var notifications
+    @Environment(KioskMode.self) private var kiosk
     @State private var confirmSignOut = false
     /// Guards the verification auto-push so returning to Settings doesn't re-enter it.
     @State private var didAutoPush = false
@@ -127,7 +127,7 @@ struct SettingsView: View {
         .alert("Unsynced changes", isPresented: $showUnsyncedSignOutWarning) {
             Button("Wait for sync", role: .cancel) {}
             Button("Discard changes and sign out", role: .destructive) {
-                Task { await signOut() }
+                Task { await signOut(discardAuthorized: true) }
             }
         } message: {
             Text("This device has \(sync.pendingUploads) change\(sync.pendingUploads == 1 ? "" : "s") that haven’t reached the server. Signing out now will permanently discard them.")
@@ -176,15 +176,27 @@ struct SettingsView: View {
         sync.members.first { $0.id == sync.currentPersonId }?.name
     }
 
-    private func signOut() async {
+    private func signOut(discardAuthorized: Bool = false) async {
         busy = true
         signOutError = nil
-        guard await session.signOut(sync: sync) else {
+        let result = await session.signOut(
+            sync: sync,
+            policy: discardAuthorized ? .discardAuthorized : .requireNoPendingUploads
+        )
+        switch result {
+        case .completed:
+            kiosk.completeProfileSignOut()
+            return
+        case let .pendingUploads(count):
+            busy = false
+            if count > 0 { showUnsyncedSignOutWarning = true }
+        case .purgeFailed:
             signOutError = sync.lastError ?? "Couldn’t safely clear this account’s local data. Try again."
             busy = false
-            return
+        case .transitionInProgress:
+            signOutError = "Another account change is still finishing. Try again."
+            busy = false
         }
-        await notifications.clearEventReminders() // drop this household's event reminders
     }
 
     /// A settings row. `tap == nil` ⇒ not built yet (dimmed + a "Soon" pill).
