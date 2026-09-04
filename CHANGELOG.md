@@ -15,9 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Reward mistakes can now be corrected without rewriting history.** Adults with the
+  new `reward.correct` capability can reverse a mistaken spot award, replace it with
+  the right amount, or refund an approved redemption from a person profile on web,
+  iPhone, and iPad. Every correction records who made it and why as linked,
+  append-only ledger entries; pending requests can instead be canceled by their
+  requester or a reward approver before any balance is spent.
+  Refunds preserve the original approval attribution and reject mismatched or
+  corrupted redemption-to-ledger links, including during idempotent replay.
+
 ### Changed
 
 ### Fixed
+
+- Permission saves from older clients now preserve newer capability choices they
+  do not know how to send, preventing unrelated settings changes from silently
+  resetting who can correct reward history.
 
 - **Simultaneous reward spending cannot overdraw a balance.** Reward redemptions and
   currency conversions now share a household-member balance lock, so overlapping

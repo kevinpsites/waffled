@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { usePersonOverview, useConversions, usePersons, useHousehold, useGoalLists, can, personsApi, rewardsApi, fmtGoalNum, useWaffledBiteDevice, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
+import { emit, usePersonOverview, useConversions, usePersons, useHousehold, useGoalLists, can, personsApi, rewardsApi, fmtGoalNum, useWaffledBiteDevice, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
 import { TradeModal } from './components/TradeModal'
 import { SpotAwardModal } from './components/SpotAwardModal'
 import { WaffledBitePairModal } from './components/WaffledBitePairModal'
+import { LedgerCorrectionModal, type LedgerCorrectionTarget } from './components/LedgerCorrectionModal'
 import { rewardsEnabled, moduleEnabled } from '../lib/modules'
 import './../styles/overview.css'
 
@@ -47,6 +48,8 @@ function reasonLabel(reason: string): string {
   if (reason === 'chore_completed') return 'Chore done'
   if (reason === 'chore_uncompleted') return 'Chore undone'
   if (reason === 'reward_redeemed') return 'Reward'
+  if (reason === 'ledger_reversal') return 'Reversal'
+  if (reason === 'ledger_correction') return 'Corrected amount'
   return reason.replace(/_/g, ' ')
 }
 
@@ -214,15 +217,29 @@ export function PersonProfile() {
   const { person: me, household } = useHousehold()
   // The spend side of the economy (jar + redemptions) hides when rewards is off;
   // the earn side (wallet/ledger, fed by chores) stays.
+  const choresOn = moduleEnabled(household, 'chores')
   const rewardsOn = rewardsEnabled(household)
   const waffledBitesOn = moduleEnabled(household, 'waffledBites')
   const { lists: goalLists } = useGoalLists()
   const [trading, setTrading] = useState(false)
   const [awarding, setAwarding] = useState(false)
+  const [correctionTarget, setCorrectionTarget] = useState<LedgerCorrectionTarget | null>(null)
+  const [rewardActionError, setRewardActionError] = useState<string | null>(null)
   // A parent can hand out ad-hoc "spot" stars (not tied to a chore) when they hold
   // reward.grant. This is an *earn* action, so it stays visible even if the rewards
   // shop is off — the wallet/ledger is always shown.
-  const canAward = can(me, 'reward.grant')
+  const canAward = choresOn && can(me, 'reward.grant')
+  const canCorrect = choresOn && can(me, 'reward.correct')
+
+  async function cancelPendingRedemption(redemptionId: string) {
+    if (!window.confirm('Cancel this pending redemption? No balance has been spent yet.')) return
+    setRewardActionError(null)
+    try {
+      await rewardsApi.cancelRedemption(redemptionId)
+    } catch {
+      setRewardActionError('Couldn’t cancel this redemption. Please try again.')
+    }
+  }
 
   // "New goal for {name}" must keep its promise: it pre-selects this person by
   // targeting their individual goal list. You can only create a goal for someone
@@ -362,27 +379,43 @@ export function PersonProfile() {
           </div>
           <div className="tiny muted" style={{ fontWeight: 700, margin: '14px 0 4px' }}>RECENT</div>
           {data.recentLedger.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>No activity yet.</div>}
-          {data.recentLedger.map((e, i) => (
-            <div key={i} className="pp-ledger">
+          {data.recentLedger.map((e) => (
+            <div key={e.id} className="pp-ledger">
               <span className={`pp-ledger-amt ${e.amount >= 0 ? 'pos' : 'neg'}`}>{e.amount >= 0 ? `+${e.amount}` : e.amount} {symOf(e.currency)?.symbol ?? ''}</span>
-              <span className="pp-ledger-r">{e.detail ?? reasonLabel(e.reason)}</span>
+              <span className="pp-ledger-r">
+                {e.detail ?? reasonLabel(e.reason)}
+                {e.correctionReason && <span className="tiny muted"> · {e.correctionReason}</span>}
+                {e.reversedById && <span className="tiny muted"> · corrected</span>}
+              </span>
+              {canCorrect && e.reversible && !e.redemptionId && (
+                <button type="button" className="pp-trade" onClick={() => setCorrectionTarget({ kind: 'entry', entry: e })}>Correct</button>
+              )}
             </div>
           ))}
         </div>
 
-        {rewardsOn && (
+        {(rewardsOn || data.redemptions.length > 0) && (
           <div className="card pp-card">
             <div className="card-h" style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
               <span>Reward redemptions</span>
-              <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => navigate('/tasks?tab=rewards')}>🎁 Shop</button>
+              {rewardsOn && (
+                <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => navigate('/tasks?tab=rewards')}>🎁 Shop</button>
+              )}
             </div>
-            {data.redemptions.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>None yet — earn {(defaultCur?.label ?? 'stars').toLowerCase()}, then redeem in Tasks → Rewards.</div>}
+            {rewardsOn && data.redemptions.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>None yet — earn {(defaultCur?.label ?? 'stars').toLowerCase()}, then redeem in Tasks → Rewards.</div>}
+            {rewardActionError && <div role="alert" className="tiny" style={{ color: 'var(--primary)', fontWeight: 700, marginBottom: 8 }}>{rewardActionError}</div>}
             {data.redemptions.map((r) => (
               <div key={r.id} className="pp-redeem">
                 <span className="pp-redeem-emo">{r.emoji ?? '🎁'}</span>
                 <span className="pp-redeem-t">{r.title}</span>
                 <span className={`pp-redeem-status st-${r.status}`}>{r.status}</span>
                 <span className="pp-redeem-cost">{symOf(r.currency)?.symbol ?? '⭐'} {r.cost}</span>
+                {(r.requestedBy === me?.id || can(me, 'reward.approve')) && r.status === 'pending' && (
+                  <button type="button" className="pp-trade" onClick={() => cancelPendingRedemption(r.id)}>Cancel</button>
+                )}
+                {canCorrect && r.status === 'approved' && r.ledgerId && (
+                  <button type="button" className="pp-trade" onClick={() => setCorrectionTarget({ kind: 'refund', redemption: r })}>Refund</button>
+                )}
               </div>
             ))}
           </div>
@@ -404,6 +437,14 @@ export function PersonProfile() {
           presetPersonId={person.id}
           currencies={data.currencies}
           onClose={() => setAwarding(false)}
+        />
+      )}
+
+      {correctionTarget && (
+        <LedgerCorrectionModal
+          target={correctionTarget}
+          onClose={() => setCorrectionTarget(null)}
+          onSaved={() => emit('rewards')}
         />
       )}
     </div>

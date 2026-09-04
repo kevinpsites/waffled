@@ -170,19 +170,26 @@ export async function personOverview(householdId: string, personId: string) {
     [householdId, personId]
   )
   const balByCurrency = new Map(bal.rows.map((r) => [r.currency, Number(r.b)]))
-  const recent = await query<{ amount: number; reason: string; currency: string; detail: string | null; note: string | null; created_at: string }>(
-    `select le.amount, le.reason, le.currency, le.created_at, le.note,
+  const recent = await query<{ id: string; amount: number; reason: string; currency: string; detail: string | null; note: string | null; ref_type: string | null; ref_id: string | null; redemption_id: string | null; reverses_entry_id: string | null; correction_of_id: string | null; correction_reason: string | null; reversed_by_id: string | null; created_at: string }>(
+    `select le.id, le.amount, le.reason, le.currency, le.created_at, le.note,
+            le.ref_type, le.ref_id, le.reverses_entry_id, le.correction_of_id,
+            le.correction_reason, rr.id as redemption_id, reversed.id as reversed_by_id,
             coalesce(rr.title, ch.title) as detail
        from ledger_entries le
-       left join chore_instances ci on le.ref_type = 'chore_instance' and ci.id = le.ref_id
-       left join chores ch on ch.id = ci.chore_id and ch.deleted_at is null
-       left join reward_redemptions rr on le.ref_type = 'reward_redemption' and rr.id = le.ref_id
+       left join chore_instances ci
+         on le.ref_type = 'chore_instance' and ci.household_id = le.household_id and ci.id = le.ref_id
+       left join chores ch
+         on ch.household_id = le.household_id and ch.id = ci.chore_id and ch.deleted_at is null
+       left join reward_redemptions rr
+         on le.ref_type = 'reward_redemption' and rr.household_id = le.household_id and rr.id = le.ref_id
+       left join ledger_entries reversed
+         on reversed.household_id = le.household_id and reversed.reverses_entry_id = le.id
       where le.household_id=$1 and le.person_id=$2 and le.deleted_at is null
-      order by le.created_at desc limit 8`,
+      order by le.created_at desc limit 20`,
     [householdId, personId]
   )
-  const redemptions = await query<{ id: string; title: string; emoji: string | null; cost: number; currency: string; status: string; created_at: string }>(
-    `select id, title, emoji, cost, currency, status, created_at from reward_redemptions
+  const redemptions = await query<{ id: string; title: string; emoji: string | null; cost: number; currency: string; status: string; requested_by: string | null; ledger_id: string | null; refund_ledger_id: string | null; created_at: string }>(
+    `select id, title, emoji, cost, currency, status, requested_by, ledger_id, refund_ledger_id, created_at from reward_redemptions
        where household_id=$1 and person_id=$2 and deleted_at is null order by created_at desc limit 8`,
     [householdId, personId]
   )
@@ -237,8 +244,32 @@ export async function personOverview(householdId: string, personId: string) {
     goals,
     categoryBalance: balance,
     insight: buildInsight(balance, person.name),
-    recentLedger: recent.rows.map((r) => ({ amount: r.amount, reason: r.reason, currency: r.currency, detail: r.detail ?? null, note: r.note ?? null, createdAt: r.created_at })),
-    redemptions: redemptions.rows.map((r) => ({ id: r.id, title: r.title, emoji: r.emoji, cost: r.cost, currency: r.currency, status: r.status, createdAt: r.created_at })),
+    recentLedger: recent.rows.map((r) => ({
+      id: r.id,
+      amount: r.amount,
+      reason: r.reason,
+      currency: r.currency,
+      detail: r.detail ?? null,
+      note: r.note ?? null,
+      correctionReason: r.correction_reason ?? null,
+      correctionOfId: r.correction_of_id ?? null,
+      reversedById: r.reversed_by_id ?? null,
+      reversible: ['spot_award', 'ledger_correction'].includes(r.reason) && !r.reverses_entry_id && !r.reversed_by_id,
+      redemptionId: r.redemption_id ?? null,
+      createdAt: r.created_at,
+    })),
+    redemptions: redemptions.rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      emoji: r.emoji,
+      cost: r.cost,
+      currency: r.currency,
+      status: r.status,
+      requestedBy: r.requested_by,
+      ledgerId: r.ledger_id,
+      refundLedgerId: r.refund_ledger_id,
+      createdAt: r.created_at,
+    })),
     rewardShop,
     savingToward,
     streak,
