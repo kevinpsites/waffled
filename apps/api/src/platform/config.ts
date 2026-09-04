@@ -97,6 +97,9 @@ export interface MicrosoftConfig {
 export interface AppConfig {
   env: string
   port: number
+  /** Bind address. Unset → all interfaces (Compose/demo rely on Docker's network for
+   *  isolation); the native desktop runtime sets HOST=127.0.0.1 to pin it to loopback. */
+  host: string | undefined
   ai: AiConfig
   google: GoogleConfig
   microsoft: MicrosoftConfig
@@ -119,6 +122,7 @@ export interface AppConfig {
 export const config: AppConfig = {
   env: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3000', 10),
+  host: env('HOST'),
 
   // Capture-bar (6.6) LLM providers. Set any subset; the active one is chosen
   // per-household in Settings. An OpenAI-compatible OPENAI_BASE_URL lets a local
