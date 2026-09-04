@@ -1,6 +1,18 @@
 import Foundation
 import Observation
 
+/// REST feeds represented by optional Family launcher tiles. Photos is core and
+/// therefore deliberately absent: it is always loaded and aggregated.
+struct FamilyRestModules: Hashable, Sendable {
+    let chores: Bool
+    let goals: Bool
+    let rewards: Bool
+    let lists: Bool
+
+    static let all = Self(chores: true, goals: true, rewards: true, lists: true)
+    static let none = Self(chores: false, goals: false, rewards: false, lists: false)
+}
+
 /// REST-backed counts for the Family hub launcher tiles (chores, goals, rewards,
 /// lists, photos). None of these are PowerSync tables, so they load over the API —
 /// concurrently, on appear and on pull-to-refresh. Each tile's subtitle is derived
@@ -8,73 +20,140 @@ import Observation
 @MainActor
 @Observable
 final class FamilyHubModel {
-    private(set) var choresRemaining = 0
-    private(set) var goalsActive = 0
-    private(set) var goalsFeatured = 0
-    private(set) var rewards: [WaffledAPI.FamilyStarsDTO] = []
-    private(set) var listsCount = 0
-    private(set) var photosCount = 0
-    private(set) var latestMemory: String?
-    private(set) var loaded = false
+    typealias FetchChores = @Sendable () async throws -> [WaffledAPI.PersonChoresDTO]
+    typealias FetchGoals = @Sendable () async throws -> [WaffledAPI.GoalDTO]
+    typealias FetchStars = @Sendable () async throws -> [WaffledAPI.FamilyStarsDTO]
+    typealias FetchLists = @Sendable () async throws -> [WaffledAPI.ListRefDTO]
+    typealias FetchPhotos = @Sendable () async throws -> [WaffledAPI.Photo]
 
-    private let api = WaffledAPI()
+    private let choresD = RestDomain<[WaffledAPI.PersonChoresDTO]>([], isEmpty: \.isEmpty)
+    private let goalsD = RestDomain<[WaffledAPI.GoalDTO]>([], isEmpty: \.isEmpty)
+    private let rewardsD = RestDomain<[WaffledAPI.FamilyStarsDTO]>([], isEmpty: \.isEmpty)
+    private let listsD = RestDomain<[WaffledAPI.ListRefDTO]>([], isEmpty: \.isEmpty)
+    private let photosD = RestDomain<[WaffledAPI.Photo]>([], isEmpty: \.isEmpty)
 
-    func load() async {
-        async let chores = fetchChores()
-        async let goals = fetchGoals()
-        async let people = fetchStars()
-        async let lists = fetchLists()
-        async let photos = fetchPhotos()
-        let (c, g, p, l, ph) = await (chores, goals, people, lists, photos)
+    private let fetchChores: FetchChores
+    private let fetchGoals: FetchGoals
+    private let fetchStars: FetchStars
+    private let fetchLists: FetchLists
+    private let fetchPhotos: FetchPhotos
+    private var modules: FamilyRestModules = .all
+    private var dataScope: RestDataScopeKey?
+    private var loadGeneration = 0
 
-        choresRemaining = c.reduce(0) { $0 + max(0, $1.total - $1.done) }
-        goalsActive = g.count
-        goalsFeatured = g.filter(\.isFeatured).count
-        rewards = p.filter { $0.stars > 0 }.sorted { $0.stars > $1.stars }
-        listsCount = l.count
-        photosCount = ph.count
-        latestMemory = ph.compactMap(\.memory).first { !$0.isEmpty }
-        loaded = true
+    init(
+        fetchChores: FetchChores? = nil,
+        fetchGoals: FetchGoals? = nil,
+        fetchStars: FetchStars? = nil,
+        fetchLists: FetchLists? = nil,
+        fetchPhotos: FetchPhotos? = nil
+    ) {
+        let api = WaffledAPI()
+        self.fetchChores = fetchChores ?? { try await api.choresToday() }
+        self.fetchGoals = fetchGoals ?? { try await api.goals() }
+        self.fetchStars = fetchStars ?? { try await api.familyStars() }
+        self.fetchLists = fetchLists ?? { try await api.lists() }
+        self.fetchPhotos = fetchPhotos ?? { try await api.photos() }
+    }
+
+    var choresRemaining: Int {
+        choresD.value.reduce(0) { $0 + max(0, $1.total - $1.done) }
+    }
+    var goalsActive: Int { goalsD.value.count }
+    var goalsFeatured: Int { goalsD.value.filter(\.isFeatured).count }
+    var rewards: [WaffledAPI.FamilyStarsDTO] {
+        rewardsD.value.filter { $0.stars > 0 }.sorted { $0.stars > $1.stars }
+    }
+    var listsCount: Int { listsD.value.count }
+    var photosCount: Int { photosD.value.count }
+    var latestMemory: String? { photosD.value.compactMap(\.memory).first { !$0.isEmpty } }
+    var loaded: Bool { activeStates.allSatisfy(\.loaded) }
+    var state: RestState { .combined(activeStates) }
+
+    private var activeStates: [RestState] {
+        var states = [photosD.state]
+        if modules.chores { states.append(choresD.state) }
+        if modules.goals { states.append(goalsD.state) }
+        if modules.rewards { states.append(rewardsD.state) }
+        if modules.lists { states.append(listsD.state) }
+        return states
+    }
+
+    func load(scope: RestDataScopeKey, modules: FamilyRestModules) async {
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        if dataScope != scope {
+            dataScope = scope
+            choresD.reset()
+            goalsD.reset()
+            rewardsD.reset()
+            listsD.reset()
+            photosD.reset()
+        }
+        self.modules = modules
+        if modules.chores { choresD.beginLoading() }
+        if modules.goals { goalsD.beginLoading() }
+        if modules.rewards { rewardsD.beginLoading() }
+        if modules.lists { listsD.beginLoading() }
+        photosD.beginLoading()
+        async let chores = RestFetch.result(when: modules.chores, fetchChores)
+        async let goals = RestFetch.result(when: modules.goals, fetchGoals)
+        async let rewards = RestFetch.result(when: modules.rewards, fetchStars)
+        async let lists = RestFetch.result(when: modules.lists, fetchLists)
+        async let photos = RestFetch.result(fetchPhotos)
+        let results = await (chores, goals, rewards, lists, photos)
+
+        guard !Task.isCancelled, generation == loadGeneration else { return }
+        if let chores = results.0 { choresD.apply(chores) }
+        if let goals = results.1 { goalsD.apply(goals) }
+        if let rewards = results.2 { rewardsD.apply(rewards) }
+        if let lists = results.3 { listsD.apply(lists) }
+        photosD.apply(results.4)
     }
 
     // MARK: derived tile subtitles
 
     var choresSubtitle: String {
-        guard loaded else { return "Loading…" }
-        return choresRemaining > 0 ? "\(choresRemaining) to do today" : "All done today 🎉"
+        subtitle(choresD.state, value: choresRemaining > 0 ? "\(choresRemaining) to do today" : "All done today 🎉")
     }
 
     var goalsSubtitle: String {
-        guard loaded else { return "Loading…" }
-        if goalsActive == 0 { return "No goals yet" }
-        let base = "\(goalsActive) active"
-        return goalsFeatured > 0 ? "\(base) · \(goalsFeatured) featured" : base
+        let value: String
+        if goalsActive == 0 { value = "No goals yet" }
+        else {
+            let base = "\(goalsActive) active"
+            value = goalsFeatured > 0 ? "\(base) · \(goalsFeatured) featured" : base
+        }
+        return subtitle(goalsD.state, value: value)
     }
 
     var rewardsSubtitle: String {
-        guard loaded else { return "Loading…" }
-        guard !rewards.isEmpty else { return "No stars yet" }
-        return rewards.prefix(2)
+        let value = rewards.isEmpty ? "No stars yet" : rewards.prefix(2)
             .map { "\($0.name ?? "—") \($0.stars)" }
             .joined(separator: " · ")
+        return subtitle(rewardsD.state, value: value)
     }
 
     var listsSubtitle: String {
-        guard loaded else { return "Loading…" }
-        return "\(listsCount) list\(listsCount == 1 ? "" : "s")"
+        subtitle(listsD.state, value: "\(listsCount) list\(listsCount == 1 ? "" : "s")")
     }
 
     var photosSubtitle: String {
-        guard loaded else { return "Loading…" }
-        if let memory = latestMemory { return "“\(memory)” · \(photosCount) new" }
-        return photosCount > 0 ? "\(photosCount) photo\(photosCount == 1 ? "" : "s")" : "No photos yet"
+        let value: String
+        if let memory = latestMemory { value = "“\(memory)” · \(photosCount) new" }
+        else { value = photosCount > 0 ? "\(photosCount) photo\(photosCount == 1 ? "" : "s")" : "No photos yet" }
+        return subtitle(photosD.state, value: value)
     }
 
-    // MARK: fetches (failures leave counts at zero rather than erroring the screen)
-
-    private func fetchChores() async -> [WaffledAPI.PersonChoresDTO] { (try? await api.choresToday()) ?? [] }
-    private func fetchGoals() async -> [WaffledAPI.GoalDTO] { (try? await api.goals()) ?? [] }
-    private func fetchStars() async -> [WaffledAPI.FamilyStarsDTO] { (try? await api.familyStars()) ?? [] }
-    private func fetchLists() async -> [WaffledAPI.ListRefDTO] { (try? await api.lists()) ?? [] }
-    private func fetchPhotos() async -> [WaffledAPI.Photo] { (try? await api.photos()) ?? [] }
+    private func subtitle(_ state: RestState, value: String) -> String {
+        switch state {
+        case .loading: return "Loading…"
+        case .empty, .ready: return value
+        case .stale: return value.isEmpty ? "May be out of date" : "May be out of date · \(value)"
+        case .offline: return state.updatedAt == nil ? "Offline" : "Offline · \(value)"
+        case let .queued(pending, _): return "\(pending) change\(pending == 1 ? "" : "s") queued"
+        case .conflict: return "Needs review"
+        case .error: return "Couldn’t load"
+        }
+    }
 }

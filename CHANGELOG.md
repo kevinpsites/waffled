@@ -19,6 +19,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Signing out on iPhone and iPad now removes the previous person’s offline data.**
+  Ordinary sign-out, household changes, and shared-iPad profile changes clear the local
+  sync mirror and event reminders before another person can sign in. Upgraded devices
+  verify that cleanup before showing either login or the kiosk picker. Manual switches
+  warn before discarding offline edits; an automatic screensaver return waits for them
+  to upload behind a private lock screen instead of silently deleting them.
+
+- **A failed refresh no longer makes a saved change look lost.** The web event editor
+  now offers Retry when recurring-event details cannot load, and iPhone/iPad Countdowns
+  and Family Night say when the server accepted a change but the screen could not
+  refresh, avoiding a duplicate retry against a write that already succeeded.
+
+- **Failed calendar and settings changes no longer look successful on iPhone or iPad.**
+  Waffled keeps an event, countdown, Family Night assignment, or calendar preference in
+  its last confirmed state when the server rejects a change, preserves work that can be
+  retried, and explains what happened. Fast Family Night schedule changes are saved in
+  order, and retrying Calendar settings clears an old connection error once it succeeds.
+
+- **Family, approvals, and Photos no longer mistake a connection failure for “nothing
+  here.”** The iPhone Family hub, iPad Family kiosk, and shared Approvals and Photos
+  screens keep their last confirmed information and show an in-place loading, offline,
+  stale-data, or error notice; empty messages such as “All caught up” now appear only
+  after a successful empty response. Offline sections also report only their own
+  saved-data time instead of borrowing one from another tile. Hidden household modules
+  are excluded from loading, and saved REST values are cleared when the active account
+  or server changes so one household’s data cannot appear in another.
+
 ## [0.14.3] - 2026-09-02
 
 ### Added

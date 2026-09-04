@@ -92,7 +92,7 @@ private func expectFamilyNightFailure(_ operation: () async throws -> Void) asyn
         await model.load()
 
         await expectFamilyNightFailure {
-            try await model.assign(partId: "activity", personId: "person-2")
+            _ = try await model.assign(partId: "activity", personId: "person-2")
         }
 
         #expect(feed.saves.count == 1)
@@ -105,12 +105,27 @@ private func expectFamilyNightFailure(_ operation: () async throws -> Void) asyn
         let model = model(feed)
         await model.load()
 
-        try await model.assign(partId: "activity", personId: "person-2")
+        let outcome = try await model.assign(partId: "activity", personId: "person-2")
 
+        #expect(outcome == .refreshed)
         #expect(feed.saves.first?.date == "2026-07-31")
         #expect(feed.saves.first?.partId == "activity")
         #expect(feed.saves.first?.personId == "person-2")
         #expect(feed.fetchCount == 2)
         #expect(model.view?.next.assignments.first?.personName == "Jordan")
+    }
+
+    @Test func successfulAssignmentReportsWhenTheFollowUpRefreshFails() async throws {
+        let feed = FamilyNightFeed(snapshot: familyNight())
+        let model = model(feed)
+        await model.load()
+        feed.fetchFails = true
+
+        let outcome = try await model.assign(partId: "activity", personId: "person-2")
+
+        #expect(outcome == .savedButRefreshFailed)
+        #expect(feed.saves.count == 1)
+        #expect(feed.fetchCount == 2)
+        #expect(model.view?.next.assignments.first?.personName == "Avery")
     }
 }

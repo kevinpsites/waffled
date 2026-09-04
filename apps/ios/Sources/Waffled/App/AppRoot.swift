@@ -68,7 +68,7 @@ struct AppRoot: View {
         // before the next approvals reload lands.
         guard sync.module(.chores) else { return 0 }
         return (sync.can("chore.approve") ? approvals.chores.count : 0)
-            + (sync.can("reward.approve") ? approvals.redemptions.count : 0)
+            + (sync.rewardsOn && sync.can("reward.approve") ? approvals.redemptions.count : 0)
     }
 
     /// What the 4th ("flex") tab currently is: Meals if that module is on, else the
@@ -157,6 +157,7 @@ struct AppRoot: View {
         // Re-count whenever an approval lands or sign-in changes who we are.
         .onChange(of: sync.choresRev) { _, _ in Task { await refreshApprovalBadge() } }
         .onChange(of: sync.rewardsRev) { _, _ in Task { await refreshApprovalBadge() } }
+        .onChange(of: sync.modulesRev) { _, _ in Task { await refreshApprovalBadge() } }
         .onChange(of: sync.currentPersonId) { _, _ in Task { await refreshApprovalBadge() } }
         // A tapped reminder deep-links to its event on the Calendar tab.
         .onChange(of: notifications.pendingEventId) { _, id in
@@ -170,7 +171,11 @@ struct AppRoot: View {
     /// Reload pending approvals and push the count to the app-icon badge. Kids (and the
     /// signed-out state) resolve to 0, which clears any stale badge.
     private func refreshApprovalBadge() async {
-        await approvals.load()
+        await approvals.load(
+            scope: sync.restDataScopeKey,
+            choresEnabled: sync.module(.chores),
+            rewardsEnabled: sync.rewardsOn
+        )
         await notifications.setBadge(approvalCount)
     }
 

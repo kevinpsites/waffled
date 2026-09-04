@@ -52,6 +52,11 @@ enum Keychain {
 /// Access token (HS256 JWT, ~1h) rides every request as `Authorization: Bearer`.
 /// Refresh token (opaque, ~60d, single-use/rotating) mints a fresh pair on 401.
 enum AuthTokens {
+    struct RefreshLease: Equatable, Sendable {
+        let refreshToken: String
+        let generation: UInt64
+    }
+
     private static let accessKey = "waffled.accessToken"
     private static let refreshKey = "waffled.refreshToken"
 
@@ -62,6 +67,7 @@ enum AuthTokens {
     // the durable store; this is just the hot-path read cache.
     private static let lock = NSLock()
     private static var cache: (access: String?, refresh: String?)?
+    private static var generation: UInt64 = 0
 
     private static func loaded() -> (access: String?, refresh: String?) {
         if let c = cache { return c }
@@ -76,21 +82,59 @@ enum AuthTokens {
     /// True once a real login has stored tokens (distinct from the dev-token path).
     static var isSignedIn: Bool { accessToken != nil }
 
+    /// Snapshot used to bind an in-flight rotating refresh to the exact credential
+    /// generation that launched it. A later login/claim/save invalidates the lease.
+    static func refreshLease() -> RefreshLease? {
+        lock.lock(); defer { lock.unlock() }
+        guard let refresh = loaded().refresh else { return nil }
+        return RefreshLease(refreshToken: refresh, generation: generation)
+    }
+
+    static func isCurrent(_ lease: RefreshLease) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return generation == lease.generation && loaded().refresh == lease.refreshToken
+    }
+
     /// Store a fresh access+refresh pair (login, setup, or a rotated refresh).
     static func save(access: String, refresh: String) {
-        lock.lock(); cache = (access, refresh); lock.unlock()
+        lock.lock(); defer { lock.unlock() }
+        generation &+= 1
+        cache = (access, refresh)
         Keychain.set(accessKey, access)
         Keychain.set(refreshKey, refresh)
     }
 
+    /// Commit a refresh response only if no login, claim, clear, or newer refresh has
+    /// replaced the credentials since its request began.
+    @discardableResult
+    static func saveIfCurrent(
+        _ lease: RefreshLease,
+        access: String,
+        refresh: String
+    ) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard generation == lease.generation, loaded().refresh == lease.refreshToken else {
+            return false
+        }
+        generation &+= 1
+        cache = (access, refresh)
+        Keychain.set(accessKey, access)
+        Keychain.set(refreshKey, refresh)
+        return true
+    }
+
     /// Replace just the access token (kept for parity; refresh always rotates too).
     static func saveAccess(_ access: String) {
-        lock.lock(); cache = (access, loaded().refresh); lock.unlock()
+        lock.lock(); defer { lock.unlock() }
+        generation &+= 1
+        cache = (access, loaded().refresh)
         Keychain.set(accessKey, access)
     }
 
     static func clear() {
-        lock.lock(); cache = (nil, nil); lock.unlock()
+        lock.lock(); defer { lock.unlock() }
+        generation &+= 1
+        cache = (nil, nil)
         Keychain.set(accessKey, nil)
         Keychain.set(refreshKey, nil)
     }

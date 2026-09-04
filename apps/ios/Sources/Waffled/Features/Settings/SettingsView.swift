@@ -51,11 +51,13 @@ struct SettingsView: View {
     @Binding var path: [HubRoute]
     @Environment(SyncManager.self) private var sync
     @Environment(Session.self) private var session
-    @Environment(NotificationManager.self) private var notifications
+    @Environment(KioskMode.self) private var kiosk
     @State private var confirmSignOut = false
     /// Guards the verification auto-push so returning to Settings doesn't re-enter it.
     @State private var didAutoPush = false
+    @State private var showUnsyncedSignOutWarning = false
     @State private var busy = false
+    @State private var signOutError: String?
     private var isAdmin: Bool { sync.currentPerson?.isAdmin == true }
 
     var body: some View {
@@ -122,6 +124,14 @@ struct SettingsView: View {
             default: break
             }
         }
+        .alert("Unsynced changes", isPresented: $showUnsyncedSignOutWarning) {
+            Button("Wait for sync", role: .cancel) {}
+            Button("Discard changes and sign out", role: .destructive) {
+                Task { await signOut(discardAuthorized: true) }
+            }
+        } message: {
+            Text("This device has \(sync.pendingUploads) change\(sync.pendingUploads == 1 ? "" : "s") that haven’t reached the server. Signing out now will permanently discard them.")
+        }
     }
 
     /// Sign out lives right on the Settings landing (mirrors the web's footer).
@@ -131,7 +141,16 @@ struct SettingsView: View {
                 Text("Signed in as \(name)").font(.system(size: 12.5)).foregroundStyle(WF.ink3)
             }
             Button {
-                if confirmSignOut { Task { await signOut() } } else { confirmSignOut = true }
+                if confirmSignOut {
+                    confirmSignOut = false
+                    if sync.pendingUploads > 0 {
+                        showUnsyncedSignOutWarning = true
+                    } else {
+                        Task { await signOut() }
+                    }
+                } else {
+                    confirmSignOut = true
+                }
             } label: {
                 Text(busy ? "Signing out…" : (confirmSignOut ? "Tap again to sign out" : "Sign out"))
                     .font(.system(size: 15, weight: .bold))
@@ -143,6 +162,12 @@ struct SettingsView: View {
                         .strokeBorder(confirmSignOut ? .clear : WF.primary.opacity(0.4), lineWidth: 1))
             }
             .buttonStyle(.plain).disabled(busy)
+            if let signOutError {
+                Text(signOutError)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(WF.danger)
+                    .multilineTextAlignment(.center)
+            }
         }
         .padding(.top, 14)
     }
@@ -151,11 +176,27 @@ struct SettingsView: View {
         sync.members.first { $0.id == sync.currentPersonId }?.name
     }
 
-    private func signOut() async {
+    private func signOut(discardAuthorized: Bool = false) async {
         busy = true
-        await session.signOut()    // clear session, → login (Button's Task survives)
-        await sync.signOut()       // disconnect sync
-        await notifications.clearEventReminders() // drop this household's event reminders
+        signOutError = nil
+        let result = await session.signOut(
+            sync: sync,
+            policy: discardAuthorized ? .discardAuthorized : .requireNoPendingUploads
+        )
+        switch result {
+        case .completed:
+            kiosk.completeProfileSignOut()
+            return
+        case let .pendingUploads(count):
+            busy = false
+            if count > 0 { showUnsyncedSignOutWarning = true }
+        case .purgeFailed:
+            signOutError = sync.lastError ?? "Couldn’t safely clear this account’s local data. Try again."
+            busy = false
+        case .transitionInProgress:
+            signOutError = "Another account change is still finishing. Try again."
+            busy = false
+        }
     }
 
     /// A settings row. `tap == nil` ⇒ not built yet (dimmed + a "Soon" pill).
