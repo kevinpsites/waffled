@@ -3,12 +3,13 @@
 // redemption writes a negative ledger entry (reason 'reward_redeemed'), so the
 // ledger remains the single source of truth for every balance.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import type { QueryResultRow } from 'pg'
+import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { rewardsRoutes, moduleRoutes } from '../../platform/route-guards'
 import { assertPersonInHousehold, HouseholdReferenceError } from '../../platform/household-refs'
 import { requireCapability } from '../../platform/permissions'
+import { lockLedgerSubject } from '../../platform/ledger-lock'
 import { registerRewardCaptureTarget } from './rewards-capture'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
@@ -99,6 +100,16 @@ async function assertCurrencyInHousehold(householdId: string, currency: string, 
   if (!rows[0] || (requireSpendable && !rows[0].spendable)) {
     throw new HouseholdReferenceError('currency not found')
   }
+}
+
+async function lockSpendableCurrency(client: PoolClient, householdId: string, currency: string): Promise<boolean> {
+  const { rowCount } = await client.query(
+    `select 1 from currencies
+      where household_id=$1 and key=$2 and spendable=true and deleted_at is null
+      for share`,
+    [householdId, currency]
+  )
+  return !!rowCount
 }
 
 export async function balanceFor(householdId: string, personId: string, currency = 'stars'): Promise<number> {
@@ -217,6 +228,11 @@ export async function requestRedemption(tenant: Tenant, rewardId: string, person
   const client = await getPool().connect()
   try {
     await client.query('begin')
+    await lockLedgerSubject(client, tenant.householdId, personId)
+    if (!(await lockSpendableCurrency(client, tenant.householdId, reward.currency))) {
+      await client.query('rollback')
+      return { error: 'reward currency is no longer available' }
+    }
     const bal = await client.query<{ balance: string | null }>(
       `select coalesce(sum(amount),0) as balance from ledger_entries
          where household_id=$1 and person_id=$2 and currency=$3 and deleted_at is null`,
@@ -283,14 +299,12 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
     // but never create a new debit for an inactive person.
     if (red.person_deleted_at) { await client.query('rollback'); return null }
 
+    await lockLedgerSubject(client, tenant.householdId, red.person_id)
+
     // A pending request can outlive a catalog change. Re-check at decision time
-    // so disabling/deleting a currency cannot produce a new uncatalogued debit.
-    const currency = await client.query(
-      `select 1 from currencies
-        where household_id=$1 and key=$2 and spendable=true and deleted_at is null`,
-      [tenant.householdId, red.currency]
-    )
-    if (!currency.rowCount) {
+    // and hold the catalog row through commit, so disabling/deleting a currency
+    // cannot race a new debit.
+    if (!(await lockSpendableCurrency(client, tenant.householdId, red.currency))) {
       await client.query('rollback')
       return { error: 'reward currency is no longer available' }
     }

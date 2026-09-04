@@ -4,6 +4,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
+import { lockLedgerSubject } from '../src/platform/ledger-lock'
 
 const SECRET = 'waffled-local-dev-secret-change-me'
 
@@ -128,6 +129,69 @@ async function grantStars(personId: string, amount: number) {
 async function starsOf(personId: string): Promise<number> {
   const people = JSON.parse((await call('GET', '/api/balances', kevin)).body).people
   return people.find((p: { personId: string }) => p.personId === personId)?.stars ?? 0
+}
+
+// Hold the shared person-row lock until every competing HTTP transaction is
+// visibly waiting for it. This makes the concurrency assertions deterministic:
+// without the production lock, the barrier times out instead of occasionally
+// passing because one request happened to finish before the other started.
+async function waitForLockWaiters(observer: Client, expected: number, patterns: string[]): Promise<void> {
+  const deadline = Date.now() + 5_000
+  while (true) {
+    const { rows } = await observer.query<{ count: string }>(
+      `select count(*)::text as count from pg_stat_activity
+        where datname=current_database()
+          and pid <> pg_backend_pid()
+          and wait_event_type='Lock'
+          and query ilike all($1::text[])`,
+      [patterns]
+    )
+    if (Number(rows[0]?.count ?? 0) >= expected) return
+    if (Date.now() >= deadline) throw new Error('concurrent ledger operations did not reach the expected database lock')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+}
+
+async function runBehindLedgerLock<T>(personId: string, start: () => Promise<T>[]): Promise<T[]> {
+  const blocker = new Client({ connectionString: url })
+  const observer = new Client({ connectionString: url })
+  await Promise.all([blocker.connect(), observer.connect()])
+  await blocker.query('begin')
+  await blocker.query(`select id from persons where household_id=$1 and id=$2 for update`, [householdId, personId])
+  const pending = start()
+  let barrierError: unknown
+  try {
+    await waitForLockWaiters(observer, pending.length, ['%select id from persons%', '%for%update%'])
+  } catch (err) {
+    barrierError = err
+  } finally {
+    await blocker.query('commit')
+    await Promise.all([blocker.end(), observer.end()])
+  }
+  const results = await Promise.all(pending)
+  if (barrierError) throw barrierError
+  return results
+}
+
+async function runAfterConcurrentCurrencyDisable<T>(currencyId: string, start: () => Promise<T>): Promise<T> {
+  const blocker = new Client({ connectionString: url })
+  const observer = new Client({ connectionString: url })
+  await Promise.all([blocker.connect(), observer.connect()])
+  await blocker.query('begin')
+  await blocker.query(`update currencies set spendable=false where household_id=$1 and id=$2`, [householdId, currencyId])
+  const pending = start()
+  let barrierError: unknown
+  try {
+    await waitForLockWaiters(observer, 1, ['%from currencies%', '%for share%'])
+  } catch (err) {
+    barrierError = err
+  } finally {
+    await blocker.query('commit')
+    await Promise.all([blocker.end(), observer.end()])
+  }
+  const result = await pending
+  if (barrierError) throw barrierError
+  return result
 }
 
 describe('rewards api', () => {
@@ -430,6 +494,181 @@ describe('reward approval — per-reward flag + household default', () => {
     // Uncategorised rewards default to null.
     const plain = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Plain', cost: 1 })).body).reward
     expect(plain.category).toBeNull()
+  })
+})
+
+describe('reward redemption concurrency', () => {
+  it('keeps subject serialization compatible with concurrent ledger foreign-key checks', async () => {
+    const personId = await addMember('Compatible lock', 'kid', false, 'dev|compatible-lock')
+    const locker = await (await import('../src/platform/db')).getPool().connect()
+    const writer = new Client({ connectionString: url })
+    await writer.connect()
+    await writer.query(`set lock_timeout='1s'`)
+    await locker.query('begin')
+    await lockLedgerSubject(locker, householdId, personId)
+    let insertError: unknown
+    try {
+      await writer.query(
+        `insert into ledger_entries (household_id, person_id, currency, amount, reason, created_by)
+         values ($1,$2,'stars',1,'lock_compatibility',$3)`,
+        [householdId, personId, kevinId]
+      )
+    } catch (err) {
+      insertError = err
+    } finally {
+      await locker.query('rollback')
+      locker.release()
+      await writer.end()
+    }
+
+    expect(insertError).toBeUndefined()
+  })
+
+  it('rechecks and locks the currency during an auto-approved redemption', async () => {
+    const personId = await addMember('Concurrent currency auto', 'kid', false, 'dev|concurrent-currency-auto')
+    const currency = JSON.parse((await call('POST', '/api/currencies', kevin, {
+      label: 'Auto race tokens',
+      spendable: true,
+    })).body).currency
+    await withClient((c) => c.query(
+      `insert into ledger_entries (household_id, person_id, currency, amount, reason, created_by)
+       values ($1,$2,$3,10,'currency_race_seed',$4)`,
+      [householdId, personId, currency.key, kevinId]
+    ))
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Concurrent currency instant reward',
+      cost: 8,
+      currency: currency.key,
+      requiresApproval: false,
+    })).body).reward
+
+    const result = await runAfterConcurrentCurrencyDisable(currency.id, () =>
+      call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })
+    )
+
+    expect(result.statusCode).toBe(409)
+    expect(JSON.parse(result.body).message).toBe('reward currency is no longer available')
+    const writes = await withClient((c) => c.query(
+      `select 1 from ledger_entries where household_id=$1 and person_id=$2 and reason='reward_redeemed'`,
+      [householdId, personId]
+    ))
+    expect(writes.rowCount).toBe(0)
+  })
+
+  it('locks the currency while approving a pending redemption', async () => {
+    const personId = await addMember('Concurrent currency approval', 'kid', false, 'dev|concurrent-currency-approval')
+    const currency = JSON.parse((await call('POST', '/api/currencies', kevin, {
+      label: 'Approval race tokens',
+      spendable: true,
+    })).body).currency
+    await withClient((c) => c.query(
+      `insert into ledger_entries (household_id, person_id, currency, amount, reason, created_by)
+       values ($1,$2,$3,10,'currency_race_seed',$4)`,
+      [householdId, personId, currency.key, kevinId]
+    ))
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Concurrent currency gated reward',
+      cost: 8,
+      currency: currency.key,
+      requiresApproval: true,
+    })).body).reward
+    const redemption = JSON.parse((await call(
+      'POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId }
+    )).body).redemption
+
+    const result = await runAfterConcurrentCurrencyDisable(currency.id, () =>
+      call('POST', `/api/redemptions/${redemption.id}/approve`, kevin)
+    )
+
+    expect(result.statusCode).toBe(409)
+    const stored = await withClient((c) => c.query<{ status: string }>(
+      `select status from reward_redemptions where id=$1`,
+      [redemption.id]
+    ))
+    expect(stored.rows[0].status).toBe('pending')
+  })
+
+  it('serializes auto-approved redemptions so parallel requests cannot overspend', async () => {
+    const personId = await addMember('Concurrent auto', 'kid', false, 'dev|concurrent-auto')
+    await grantStars(personId, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Concurrent instant reward',
+      cost: 8,
+      requiresApproval: false,
+    })).body).reward
+
+    const results = await runBehindLedgerLock(personId, () => [
+      call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId }),
+      call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId }),
+    ])
+
+    expect(results.map((result) => result.statusCode).sort()).toEqual([201, 409])
+    expect(await starsOf(personId)).toBe(2)
+    const approved = await withClient((c) => c.query(
+      `select id from reward_redemptions
+        where household_id=$1 and person_id=$2 and reward_id=$3 and status='approved'`,
+      [householdId, personId, reward.id]
+    ))
+    expect(approved.rowCount).toBe(1)
+  })
+
+  it('serializes approvals for different pending requests against the same balance', async () => {
+    const personId = await addMember('Concurrent approval', 'kid', false, 'dev|concurrent-approval')
+    await grantStars(personId, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Concurrent gated reward',
+      cost: 8,
+      requiresApproval: true,
+    })).body).reward
+    const first = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).body).redemption
+    const second = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).body).redemption
+
+    const results = await runBehindLedgerLock(personId, () => [
+      call('POST', `/api/redemptions/${first.id}/approve`, kevin),
+      call('POST', `/api/redemptions/${second.id}/approve`, kevin),
+    ])
+
+    expect(results.map((result) => result.statusCode).sort()).toEqual([200, 409])
+    expect(await starsOf(personId)).toBe(2)
+    const statuses = await withClient((c) => c.query<{ status: string }>(
+      `select status from reward_redemptions where id = any($1::uuid[]) order by status`,
+      [[first.id, second.id]]
+    ))
+    expect(statuses.rows.map((row) => row.status)).toEqual(['approved', 'pending'])
+  })
+
+  it('uses the same balance lock for a reward and a currency conversion', async () => {
+    const personId = await addMember('Concurrent ledger', 'kid', false, 'dev|concurrent-ledger')
+    await grantStars(personId, 10)
+    const currency = JSON.parse((await call('POST', '/api/currencies', kevin, {
+      label: 'Race points',
+      symbol: 'R',
+    })).body).currency
+    const conversion = JSON.parse((await call('POST', '/api/conversions', kevin, {
+      fromCurrency: 'stars',
+      toCurrency: currency.key,
+      fromAmount: 8,
+      toAmount: 1,
+    })).body).conversion
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, {
+      title: 'Concurrent cross-path reward',
+      cost: 8,
+      requiresApproval: false,
+    })).body).reward
+
+    const results = await runBehindLedgerLock(personId, () => [
+      call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId }),
+      call('POST', `/api/conversions/${conversion.id}/apply`, kevin, { personId, times: 1 }),
+    ])
+
+    expect(results.filter((result) => result.statusCode < 300)).toHaveLength(1)
+    expect(results.filter((result) => result.statusCode === 409)).toHaveLength(1)
+    expect(await starsOf(personId)).toBe(2)
+    const debits = await withClient((c) => c.query(
+      `select 1 from ledger_entries where household_id=$1 and person_id=$2 and currency='stars' and amount < 0`,
+      [householdId, personId]
+    ))
+    expect(debits.rowCount).toBe(1)
   })
 })
 
