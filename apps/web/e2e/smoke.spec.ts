@@ -35,7 +35,7 @@ const household = {
   },
 }
 
-const capabilities = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage']
+const capabilities = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'reward.correct', 'goal.manage']
 const permissionRow = Object.fromEntries(capabilities.map((capability) => [capability, false]))
 const permissions = {
   adult: permissionRow,
@@ -72,7 +72,10 @@ async function mockApi(page: Page) {
     let body: unknown = empty
 
     if (path === '/api/auth/status') body = { initialized: true, methods: ['password'] }
-    else if (path === '/api/auth/login') body = { accessToken: 'test-access', refreshToken: 'test-refresh', expiresIn: 900 }
+    else if (path === '/api/auth/login') body = {
+      accessToken: 'test-access', refreshToken: 'test-refresh', expiresIn: 900,
+      memberType: 'adult', accessExpiresAt: null,
+    }
     else if (path === '/api/auth/logout') body = { ok: true }
     else if (path === '/api/household') body = { provisioned: true, household, person, memberships: [], pendingInvites: [] }
     else if (path === '/api/household/settings') {
