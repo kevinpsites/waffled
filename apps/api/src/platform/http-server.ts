@@ -1,5 +1,5 @@
 import http from 'node:http'
-import { isIP } from 'node:net'
+import { isIP, type AddressInfo } from 'node:net'
 import { log } from './logger'
 
 export const DEFAULT_BODY_LIMIT_BYTES = 1024 * 1024
@@ -98,5 +98,22 @@ export function createHttpServer(api: ApiRunner): http.Server {
         res.end(JSON.stringify({ error: 'Internal', message: (err as Error).message }))
       }
     })
+  })
+}
+
+/** Start listening and resolve with the bound address. `host` undefined keeps Node's
+ *  default (all interfaces); set it (e.g. 127.0.0.1) to pin the API to one interface. */
+export function listen(
+  server: http.Server,
+  opts: { port: number; host: string | undefined },
+): Promise<AddressInfo> {
+  return new Promise((resolve, reject) => {
+    server.once('error', reject)
+    const onListening = () => {
+      server.off('error', reject)
+      resolve(server.address() as AddressInfo)
+    }
+    if (opts.host) server.listen(opts.port, opts.host, onListening)
+    else server.listen(opts.port, onListening)
   })
 }

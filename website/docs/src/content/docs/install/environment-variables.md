@@ -25,6 +25,7 @@ the api's config; "auto" means `./waffled` generates it for you when missing.
 | `POWERSYNC_JWT_PRIVATE_KEY` | Stable RS256 key that signs PowerSync tokens | auto |
 | `POWERSYNC_JWT_KID` | Key ID for the PowerSync signing key | `waffled-powersync-1` |
 | `HTTP_PORT` / `API_PORT` / `POWERSYNC_PORT` | Host ports (Caddy / loopback API diagnostics / Caddy-fronted sync) | `8080` / `3000` / `8090` |
+| `HOST` | Interface the api process binds. Leave unset under Compose (Docker's private network isolates it); the native/desktop runtime sets `127.0.0.1` to pin the API to loopback | unset (all interfaces) |
 | `NODE_ENV` | Node environment | `production` |
 
 Production startup refuses missing or malformed required secrets. Run `./waffled up` instead of

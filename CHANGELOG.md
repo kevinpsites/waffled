@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **API bind address is configurable.** Set `HOST` to pin the API to one interface (the
+  native Mac runtime uses `127.0.0.1`, since without Docker's private network nothing else
+  keeps the API off the LAN); unset keeps today's bind-all-interfaces behaviour, so Compose
+  and the demo box are unaffected. The startup log line now includes the bound address.
+
 ### Fixed
 
 ## [0.14.3] - 2026-09-02
