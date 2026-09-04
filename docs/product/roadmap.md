@@ -287,6 +287,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
+- **Waffled for Mac — a downloadable app that runs the family server natively, no Docker.**
+  Plex-style: the web app stays the UI, the Mac app is a menu-bar icon (running / starting /
+  error) whose menu opens the web UI, copies the server address, toggles start-at-login, and
+  backs up. A non-technical person should go from download to a working household in under
+  five minutes, and relaunching re-opens the existing server. Same API, migrations,
+  PowerSync, Caddy and web build as Compose — only packaging and supervision differ, via a
+  small Go runtime supervisor that is a CLI first (`waffled-runtime start|status|backup`).
+  Mac only for now; Windows follows from the same runtime later. Plan, risks and phases in
+  [`native-mac-plan.md`](./native-mac-plan.md); Phase 1 is a throwaway native spike to prove
+  bundled Postgres and PowerSync-outside-Docker before any Swift is written.
 - **Chore due-dates on the calendar.** The last piece of "the calendar as the all-in-one
   dated view": overlay `chore_instances.due_on` onto the calendar as read-only all-day chips,
   tapping through to the chore rather than the event editor. Deliberately chips, not
