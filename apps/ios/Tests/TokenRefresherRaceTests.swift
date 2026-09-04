@@ -93,8 +93,8 @@ struct TokenRefresherRaceTests {
         let delayed = RefreshDeferred<TokenRefreshResponse>()
         let refresher = TokenRefresher(
             credentials: credentials(vault),
-            request: { token in
-                if token == "old-refresh" { return await delayed.wait() }
+            request: { lease in
+                if lease.refreshToken == "old-refresh" { return await delayed.wait() }
                 return .refreshed(access: "new-access-rotated", refresh: "new-refresh-rotated")
             },
             expire: { _ in }

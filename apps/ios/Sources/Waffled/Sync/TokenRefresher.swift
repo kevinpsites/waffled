@@ -35,13 +35,13 @@ actor TokenRefresher {
 
     private var inFlight: Flight?
     private let credentials: TokenRefreshCredentials
-    private let request: @Sendable (String) async -> TokenRefreshResponse
+    private let request: @Sendable (AuthTokens.RefreshLease) async -> TokenRefreshResponse
     private let expire: @Sendable (AuthTokens.RefreshLease) async -> Void
 
     init(
         credentials: TokenRefreshCredentials = .live,
-        request: @escaping @Sendable (String) async -> TokenRefreshResponse = {
-            await TokenRefresher.request(refreshToken: $0)
+        request: @escaping @Sendable (AuthTokens.RefreshLease) async -> TokenRefreshResponse = {
+            await TokenRefresher.request(lease: $0)
         },
         expire: @escaping @Sendable (AuthTokens.RefreshLease) async -> Void = {
             await TokenRefresher.expire($0)
@@ -57,9 +57,17 @@ actor TokenRefresher {
     /// separate flight and cannot be overwritten or expired by the older response.
     func refresh() async -> Bool {
         guard let lease = await credentials.currentLease() else { return false }
+        return await refresh(ifCurrent: lease)
+    }
+
+    /// Refresh only the credentials captured by the request that received a 401.
+    /// Passing the expected lease is what prevents an old A request from noticing B
+    /// is now signed in and refreshing/retrying with B's credentials.
+    func refresh(ifCurrent lease: AuthTokens.RefreshLease) async -> Bool {
         if let flight = inFlight, flight.lease == lease {
             return await flight.task.value
         }
+        guard await credentials.isCurrent(lease) else { return false }
         let id = UUID()
         let task = Task { await performRefresh(lease: lease) }
         inFlight = Flight(id: id, lease: lease, task: task)
@@ -69,7 +77,7 @@ actor TokenRefresher {
     }
 
     private func performRefresh(lease: AuthTokens.RefreshLease) async -> Bool {
-        switch await request(lease.refreshToken) {
+        switch await request(lease) {
         case let .refreshed(access, refresh):
             return await credentials.saveIfCurrent(lease, access, refresh)
         case .rejected:
@@ -81,15 +89,17 @@ actor TokenRefresher {
         }
     }
 
-    private static func request(refreshToken: String) async -> TokenRefreshResponse {
+    private static func request(lease: AuthTokens.RefreshLease) async -> TokenRefreshResponse {
         struct Body: Encodable { let refreshToken: String }
         struct Pair: Decodable { let accessToken: String; let refreshToken: String }
 
-        guard let endpoint = AppConfig.apiURL(path: "/api/auth/refresh") else { return .unavailable }
+        guard let endpoint = AppConfig.apiURL(
+            path: "/api/auth/refresh", baseURL: lease.apiBaseURL
+        ) else { return .unavailable }
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONEncoder().encode(Body(refreshToken: refreshToken))
+        req.httpBody = try? JSONEncoder().encode(Body(refreshToken: lease.refreshToken))
 
         guard let (data, resp) = try? await URLSession.shared.data(for: req) else {
             // Network failure (offline) — keep the tokens; PowerSync retries later.
@@ -109,8 +119,8 @@ actor TokenRefresher {
         // replacement session has won the race.
         await MainActor.run {
             guard AuthTokens.isCurrent(lease) else { return }
-            AuthTokens.clear()
-            NotificationCenter.default.post(name: .waffledAuthExpired, object: nil)
+            AuthTokens.requirePrincipalIsolation()
+            NotificationCenter.default.post(name: .waffledAuthExpired, object: lease)
         }
     }
 }

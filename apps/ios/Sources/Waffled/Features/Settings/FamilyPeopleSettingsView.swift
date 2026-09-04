@@ -21,6 +21,16 @@ enum AccessEndDatePolicy {
         return DateFmt.string(expiry.addingTimeInterval(-0.001), "yyyy-MM-dd", timezone)
     }
 
+    static func editableDateOnly(
+        accessEndsOn: String?,
+        legacyExpiry: String?,
+        householdTimeZoneIdentifier: String
+    ) -> String? {
+        accessEndsOn ?? legacyExpiry.flatMap {
+            dateOnly(fromExpiry: $0, householdTimeZoneIdentifier: householdTimeZoneIdentifier)
+        }
+    }
+
     static func pickerDate(from dateOnly: String) -> Date? {
         DateFmt.date(dateOnly, "yyyy-MM-dd", pickerTimeZone)
     }
@@ -162,8 +172,11 @@ struct FamilyPeopleSettingsView: View {
         if m.isAdmin && !m.isOwner { parts.append("Admin") }
         if let raw = m.accessExpiresAt, let expiry = Self.accessDate(raw) {
             let timezone = settings?.household.timezone ?? "UTC"
-            let endDate = AccessEndDatePolicy.dateOnly(fromExpiry: raw, householdTimeZoneIdentifier: timezone)
-                .flatMap(AccessEndDatePolicy.display)
+            let dateOnly = m.accessEndsOn ?? AccessEndDatePolicy.dateOnly(
+                fromExpiry: raw,
+                householdTimeZoneIdentifier: timezone
+            )
+            let endDate = dateOnly.flatMap(AccessEndDatePolicy.display)
             parts.append(expiry <= Date() ? "Access expired" : "Access ends \(endDate ?? "")")
         }
         return parts.joined(separator: " · ")
@@ -477,8 +490,11 @@ struct PersonEditorSheet: View {
         _birthday = State(initialValue: parsed ?? Date())
         _isAdmin = State(initialValue: editing?.isAdmin ?? false)
         _showOnKiosk = State(initialValue: editing?.showOnKiosk ?? true)
-        let expiry = editing?.accessExpiresAt
-            .flatMap { AccessEndDatePolicy.dateOnly(fromExpiry: $0, householdTimeZoneIdentifier: householdTimezone) }
+        let expiry = AccessEndDatePolicy.editableDateOnly(
+            accessEndsOn: editing?.accessEndsOn,
+            legacyExpiry: editing?.accessExpiresAt,
+            householdTimeZoneIdentifier: householdTimezone
+        )
             .flatMap(AccessEndDatePolicy.pickerDate)
         _hasAccessExpiry = State(initialValue: expiry != nil)
         _accessExpiry = State(initialValue: expiry ?? AccessEndDatePolicy.defaultPickerDate(

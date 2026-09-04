@@ -428,9 +428,13 @@ struct CalendarsSettingsView: View {
     }
 
     private func setAllSync(_ accountId: String, _ selected: Bool) async {
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return }
         let cals = status?.calendars.filter { $0.accountId == accountId && $0.selected != selected } ?? []
-        for c in cals { try? await api.updateCalendarLink(id: c.id, ["selected": .bool(selected)]) }
-        await load()
+        for c in cals {
+            try? await operationAPI.updateCalendarLink(id: c.id, ["selected": .bool(selected)])
+        }
+        status = try? await operationAPI.calendarStatus()
+        loading = false
     }
 
     private func shortDay(_ iso: String) -> String {

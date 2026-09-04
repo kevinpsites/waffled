@@ -9,7 +9,8 @@ struct GuestMutationPolicyTests {
         #expect(WaffledAPI.guestRequestAllowed(method: "GET", path: "/api/photos"))
         #expect(WaffledAPI.guestRequestAllowed(method: "POST", path: "/api/auth/switch"))
         #expect(WaffledAPI.guestRequestAllowed(method: "POST", path: "/api/auth/invites/invite-1/accept"))
-        #expect(WaffledAPI.guestRequestAllowed(method: "PATCH", path: "/api/account/password"))
+        #expect(WaffledAPI.guestRequestAllowed(method: "PUT", path: "/api/account/password"))
+        #expect(WaffledAPI.guestRequestAllowed(method: "PUT", path: "/api/account/email"))
     }
 
     @Test("blocks shared household writes")
@@ -17,6 +18,10 @@ struct GuestMutationPolicyTests {
         #expect(!WaffledAPI.guestRequestAllowed(method: "POST", path: "/api/chores"))
         #expect(!WaffledAPI.guestRequestAllowed(method: "PATCH", path: "/api/photos/photo-1"))
         #expect(!WaffledAPI.guestRequestAllowed(method: "DELETE", path: "/api/events/event-1"))
+        #expect(!WaffledAPI.guestRequestAllowed(method: "PUT", path: "/api/account/profile"))
+        #expect(!WaffledAPI.guestRequestAllowed(method: "PATCH", path: "/api/account/password"))
+        #expect(!WaffledAPI.guestRequestAllowed(method: "POST", path: "/api/auth/invites/a/b/accept"))
+        #expect(!WaffledAPI.guestRequestAllowed(method: "POST", path: "/api/auth/invites//accept"))
     }
 
     @Test("queues local writes only for known write-capable roles")
@@ -28,6 +33,120 @@ struct GuestMutationPolicyTests {
         #expect(SyncManager.localMutationAllowed(memberType: "caregiver"))
         #expect(SyncManager.localMutationAllowed(memberType: "teen"))
         #expect(SyncManager.localMutationAllowed(memberType: "kid"))
+        let deadline = Date(timeIntervalSince1970: 1_000)
+        #expect(!SyncManager.localMutationAllowed(memberType: "caregiver", accessExpiresAt: deadline,
+                                                  now: Date(timeIntervalSince1970: 1_001)))
+        #expect(SyncManager.localMutationAllowed(memberType: "caregiver", accessExpiresAt: deadline,
+                                                 now: Date(timeIntervalSince1970: 999)))
+    }
+
+    @Test("dev-token temporary policy preserves missing malformed and null presence")
+    func devTokenExpiryPresenceFailsClosed() {
+        AuthTokens.clear()
+        AppConfig.clearPrincipalIsolationRequirement()
+        AppConfig.clearSignedOut()
+        AppConfig.setDevToken("temporary-policy-test-token")
+        defer {
+            AppConfig.setCurrentMemberType(nil)
+            AppConfig.setDevToken("")
+        }
+
+        AppConfig.setCurrentAccess(memberType: "caregiver", accessExpiry: .missing)
+        #expect(AppConfig.currentAccessIsExpired)
+        #expect(AppConfig.bearerToken.isEmpty)
+
+        AppConfig.setCurrentAccess(memberType: "guest", accessExpiry: .malformed)
+        #expect(AppConfig.currentAccessIsExpired)
+        #expect(AppConfig.bearerToken.isEmpty)
+
+        AppConfig.setCurrentAccess(memberType: "caregiver", accessExpiry: .null)
+        #expect(!AppConfig.currentAccessIsExpired)
+        #expect(AppConfig.bearerToken == "temporary-policy-test-token")
+    }
+
+    @Test("expired access purges the prior replica before releasing the login gate")
+    @MainActor
+    func expiryPurgesBeforeLoginGate() async {
+        AppConfig.clearPrincipalIsolationRequirement()
+        AuthTokens.clear()
+        defer {
+            AuthTokens.clear()
+            AppConfig.clearPrincipalIsolationRequirement()
+        }
+        AuthTokens.save(access: "expired-access", refresh: "expired-refresh",
+                        memberType: "caregiver",
+                        accessExpiry: .value("2000-01-01T00:00:00.000Z"))
+
+        #expect(AppConfig.currentAccessIsExpired)
+        #expect(AppConfig.bearerToken.isEmpty)
+        var session: Session!
+        var phaseDuringPurge: Session.Phase?
+        var didPurge = false
+        var isolatedOnlyAfterPurge = false
+        let observer = NotificationCenter.default.addObserver(
+            forName: .waffledPrincipalIsolated, object: nil, queue: .main
+        ) { _ in
+            isolatedOnlyAfterPurge = didPurge
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        session = Session(isolateExpiredPrincipal: {
+            phaseDuringPurge = session.phase
+            didPurge = true
+            return true
+        })
+        await session.bootstrap()
+        #expect(phaseDuringPurge == .loading)
+        #expect(didPurge)
+        #expect(isolatedOnlyAfterPurge)
+        #expect(session.phase == .login)
+        // Once replica deletion succeeds, the old envelope is removed before the
+        // login gate is released and the isolation latch can safely be cleared.
+        #expect(!AuthTokens.isSignedIn)
+        #expect(AppConfig.bearerToken.isEmpty)
+        #expect(!AppConfig.principalIsolationRequired)
+    }
+
+    @Test("a failed replica purge keeps every signed-out gate closed")
+    @MainActor
+    func expiryPurgeFailureFailsClosed() async {
+        AppConfig.clearPrincipalIsolationRequirement()
+        AuthTokens.clear()
+        defer {
+            AuthTokens.clear()
+            AppConfig.clearPrincipalIsolationRequirement()
+        }
+        AuthTokens.save(access: "expired-access", refresh: "expired-refresh",
+                        memberType: "guest",
+                        accessExpiry: .value("2000-01-01T00:00:00.000Z"))
+
+        var isolatedNotificationPosted = false
+        let observer = NotificationCenter.default.addObserver(
+            forName: .waffledPrincipalIsolated, object: nil, queue: .main
+        ) { _ in
+            isolatedNotificationPosted = true
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        let session = Session(isolateExpiredPrincipal: { false })
+        await session.bootstrap()
+
+        #expect(session.phase == .loading)
+        #expect(!isolatedNotificationPosted)
+        #expect(AuthTokens.isSignedIn)
+        #expect(AppConfig.bearerToken.isEmpty)
+        #expect(AppConfig.principalIsolationRequired)
+
+        // A process crash cannot erase the latch: the next bootstrap retries the
+        // purge while the unusable old envelope remains available solely to identify
+        // the principal being torn down.
+        var retriedAfterRelaunch = false
+        let relaunched = Session(isolateExpiredPrincipal: {
+            retriedAfterRelaunch = true
+            return false
+        })
+        await relaunched.bootstrap()
+        #expect(retriedAfterRelaunch)
+        #expect(relaunched.phase == .loading)
     }
 
     @Test("restores the last verified role after a cold offline launch")
@@ -36,7 +155,7 @@ struct GuestMutationPolicyTests {
         let serverKey = "waffled.currentMemberTypeServer"
         let authScopeKey = "waffled.currentMemberTypeAuthScope"
         AuthTokens.clear()
-        AuthTokens.save(access: "offline-access", refresh: "offline-refresh")
+        AuthTokens.save(access: "offline-access", refresh: "offline-refresh", memberType: "adult")
         let identityScope = AppConfig.currentIdentityScope
         defer {
             AuthTokens.clear()
@@ -80,7 +199,7 @@ struct GuestMutationPolicyTests {
             AppConfig.setCurrentMemberType(nil)
         }
 
-        AuthTokens.save(access: "original-access", refresh: "original-refresh")
+        AuthTokens.save(access: "original-access", refresh: "original-refresh", memberType: "adult")
         AppConfig.setCurrentMemberType("adult")
         // The refresher stores a rotated pair through this same path. It must not
         // make a transient/offline refresh erase the last server-verified role.
@@ -104,15 +223,15 @@ struct GuestMutationPolicyTests {
         AuthTokens.clear()
         defer { AuthTokens.clear() }
 
-        AuthTokens.save(access: "first-access", refresh: "first-refresh")
+        AuthTokens.save(access: "first-access", refresh: "first-refresh", memberType: "adult")
         let firstScope = AppConfig.currentIdentityScope
-        AuthTokens.save(access: "second-access", refresh: "second-refresh")
+        AuthTokens.save(access: "second-access", refresh: "second-refresh", memberType: "adult")
 
         #expect(firstScope != nil)
         #expect(AppConfig.currentIdentityScope != firstScope)
     }
 
-    @Test("replacement profile session clears the durable role")
+    @Test("replacement profile session atomically replaces the durable role")
     @MainActor
     func replacementSessionClearsRole() {
         AuthTokens.clear()
@@ -121,10 +240,25 @@ struct GuestMutationPolicyTests {
             AppConfig.setCurrentMemberType(nil)
         }
 
-        AuthTokens.save(access: "original-access", refresh: "original-refresh")
+        AuthTokens.save(access: "original-access", refresh: "original-refresh", memberType: "adult")
         AppConfig.setCurrentMemberType("adult")
-        Session().enterClaimedSession(access: "replacement-access", refresh: "replacement-refresh")
-        #expect(AppConfig.currentMemberType == nil)
+        AuthTokens.save(access: "replacement-access", refresh: "replacement-refresh", memberType: "teen")
+        #expect(AppConfig.currentMemberType == "teen")
+    }
+
+    @Test("a claimed temporary profile persists its offline deadline immediately")
+    @MainActor
+    func claimedSessionPersistsDeadline() {
+        AuthTokens.clear()
+        defer { AuthTokens.clear() }
+
+        let expiry = "2099-06-16T05:00:00.000Z"
+        AuthTokens.save(access: "caregiver-access", refresh: "caregiver-refresh",
+                        memberType: "caregiver", accessExpiry: .value(expiry))
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        #expect(AppConfig.currentMemberType == "caregiver")
+        #expect(AppConfig.currentAccessExpiresAt == parser.date(from: expiry))
     }
 
     @Test("only guest read-only upload failures are permanent")

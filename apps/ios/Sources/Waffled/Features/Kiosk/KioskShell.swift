@@ -10,6 +10,7 @@ import SwiftUI
 struct KioskShell: View {
     @Environment(SyncManager.self) private var sync
     @Environment(KioskMode.self) private var kiosk
+    @Environment(Session.self) private var session
     @State private var selection: KioskNav = KioskNav(rawValue: DemoHooks.kioskPage ?? "") ?? .today
 
     /// Per-device list of user-pinned rail destinations (comma-joined `KioskNav`
@@ -168,7 +169,7 @@ struct KioskShell: View {
 
         if kiosk.isShared {
             // Tap the avatar → straight back to the picker (the swap badge signals it).
-            Button { Task { await kiosk.returnToPicker(sync: sync) } } label: { chip }
+            Button { Task { await kiosk.returnToPicker(sync: sync, session: session) } } label: { chip }
                 .buttonStyle(.plain)
         } else {
             chip
@@ -270,7 +271,7 @@ struct KioskShell: View {
         .contentShape(Rectangle())
 
         if kiosk.isShared {
-            Button { Task { await kiosk.returnToPicker(sync: sync) } } label: { chip }.buttonStyle(.plain)
+            Button { Task { await kiosk.returnToPicker(sync: sync, session: session) } } label: { chip }.buttonStyle(.plain)
         } else {
             chip
         }

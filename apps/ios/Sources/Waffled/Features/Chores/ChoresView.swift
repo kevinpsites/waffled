@@ -23,10 +23,14 @@ final class ChoresModel {
     init(date: String) { self.date = date }
 
     func load() async {
+        await load(using: api)
+    }
+
+    private func load(using operationAPI: WaffledAPI) async {
         loading = true
         // Sort once here (not in the `columns` computed property, which a render reads
         // N× per pass): incomplete first, then due time ascending, then title A–Z.
-        do { instances = ChoresModel.sortChores(try await api.choreInstances(date: date)); error = false }
+        do { instances = ChoresModel.sortChores(try await operationAPI.choreInstances(date: date)); error = false }
         catch { self.error = true }
         loading = false
     }
@@ -61,14 +65,15 @@ final class ChoresModel {
     /// then reload to pick up the true stars/streak/status.
     func toggle(_ inst: WaffledAPI.ChoreInstanceDTO) async {
         guard let idx = instances.firstIndex(where: { $0.id == inst.id }) else { return }
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return }
         let prev = instances[idx].status
         let isComplete = prev == "done" || prev == "awaiting"
         let next = isComplete ? "pending" : (inst.requiresApproval ? "awaiting" : "done")
         withAnimation { instances[idx].status = next }
         do {
-            if isComplete { try await api.uncompleteChore(id: inst.id) }
-            else { try await api.completeChore(id: inst.id) }
-            await load()
+            if isComplete { try await operationAPI.uncompleteChore(id: inst.id) }
+            else { try await operationAPI.completeChore(id: inst.id) }
+            await load(using: operationAPI)
         } catch {
             if let i = instances.firstIndex(where: { $0.id == inst.id }) { withAnimation { instances[i].status = prev } }
         }
@@ -78,7 +83,8 @@ final class ChoresModel {
     /// and-drop gesture (drop into their column). No-op if it's already theirs.
     func assign(id: String, to personId: String) async {
         guard let inst = instances.first(where: { $0.id == id }), inst.personId != personId else { return }
-        do { try await api.assignChore(id: id, personId: personId); await load() }
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return }
+        do { try await operationAPI.assignChore(id: id, personId: personId); await load(using: operationAPI) }
         catch { self.error = true }
     }
 
@@ -86,16 +92,18 @@ final class ChoresModel {
     /// No-op if it's already unassigned.
     func unassign(id: String) async {
         guard instances.first(where: { $0.id == id })?.personId != nil else { return }
-        do { try await api.assignChore(id: id, personId: nil); await load() }
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return }
+        do { try await operationAPI.assignChore(id: id, personId: nil); await load(using: operationAPI) }
         catch { self.error = true }
     }
 
     /// Claim an up-for-grabs chore for a person and mark it done in one motion.
     func claimComplete(id: String, personId: String) async {
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return }
         do {
-            try await api.claimChore(id: id, personId: personId)
-            try await api.completeChore(id: id)
-            await load()
+            try await operationAPI.claimChore(id: id, personId: personId)
+            try await operationAPI.completeChore(id: id)
+            await load(using: operationAPI)
         } catch { self.error = true }
     }
 
@@ -104,11 +112,12 @@ final class ChoresModel {
     /// Surfaces upload + 422 errors in `proofError` instead of failing silently.
     func completeWithProof(id: String, image: UIImage, claimFor personId: String? = nil) async {
         proofError = nil
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return }
         do {
-            let up = try await api.uploadImage(image)
-            if let personId { try await api.claimChore(id: id, personId: personId) }
-            try await api.completeChore(id: id, storageKey: up.key, contentType: up.contentType)
-            await load()
+            let up = try await operationAPI.uploadImage(image)
+            if let personId { try await operationAPI.claimChore(id: id, personId: personId) }
+            try await operationAPI.completeChore(id: id, storageKey: up.key, contentType: up.contentType)
+            await load(using: operationAPI)
         } catch let err as WaffledAPI.APIError where err.isProofRequired {
             proofError = "A photo is required to finish this chore."
         } catch let err as LocalizedError {
@@ -118,17 +127,27 @@ final class ChoresModel {
         }
     }
 
-    func approve(_ id: String) async { do { try await api.approveChore(id: id); await load() } catch { self.error = true } }
-    func reject(_ id: String) async { do { try await api.rejectChore(id: id); await load() } catch { self.error = true } }
+    func approve(_ id: String) async {
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return }
+        do { try await operationAPI.approveChore(id: id); await load(using: operationAPI) }
+        catch { self.error = true }
+    }
+
+    func reject(_ id: String) async {
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return }
+        do { try await operationAPI.rejectChore(id: id); await load(using: operationAPI) }
+        catch { self.error = true }
+    }
 
     /// Create (choreId nil) or edit a chore definition, then reload the day. Returns nil
     /// on success, else a user-facing error message (so the editor can show it instead of
     /// dismissing on a silent failure — e.g. a non-admin hitting the admin-only endpoint).
     func save(choreId: String?, body: [String: JSONValue]) async -> String? {
         do {
-            if let choreId { try await api.updateChore(id: choreId, body) }
-            else { try await api.createChore(body) }
-            await load()
+            let operationAPI = try api.boundToCurrentPrincipal()
+            if let choreId { try await operationAPI.updateChore(id: choreId, body) }
+            else { try await operationAPI.createChore(body) }
+            await load(using: operationAPI)
             return nil
         } catch let WaffledAPI.APIError.http(code, _) where code == 401 || code == 403 {
             return "Only a parent can add or edit chores. Switch to a parent to make changes."
@@ -138,7 +157,8 @@ final class ChoresModel {
     }
 
     func delete(choreId: String) async {
-        do { try await api.deleteChore(id: choreId); await load() }
+        guard let operationAPI = try? api.boundToCurrentPrincipal() else { return }
+        do { try await operationAPI.deleteChore(id: choreId); await load(using: operationAPI) }
         catch { self.error = true }
     }
 }

@@ -185,16 +185,18 @@ struct AppRoot: View {
     /// Reload pending approvals and push the count to the app-icon badge. Kids (and the
     /// signed-out state) resolve to 0, which clears any stale badge.
     private func refreshApprovalBadge() async {
+        guard let principal = NotificationManager.PrincipalContext.current else { return }
         await approvals.load()
-        await notifications.setBadge(approvalCount)
+        await notifications.setBadge(approvalCount, for: principal)
     }
 
     /// Rebuild the local reminder schedule from the current synced state.
     private func reconcileReminders() async {
+        guard let principal = NotificationManager.PrincipalContext.current else { return }
         let names = Dictionary(sync.members.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
         await notifications.reconcile(
             events: sync.events, tz: sync.householdTz,
-            myPersonId: sync.currentPersonId, names: names)
+            myPersonId: sync.currentPersonId, names: names, for: principal)
     }
 }
 

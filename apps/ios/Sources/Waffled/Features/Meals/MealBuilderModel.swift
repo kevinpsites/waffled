@@ -219,9 +219,15 @@ struct MealBuilderAPI: Sendable {
     var reorder: @Sendable (_ id: String, _ recipeIds: [String]) async throws -> WaffledAPI.MealDTO
     var addToList: @Sendable (_ id: String) async throws -> Int
     var schedule: @Sendable (_ id: String, _ date: String, _ mealType: String, _ cookPersonId: String?) async throws -> Void
+    /// Live operations replace this API with closures backed by one principal-bound
+    /// client. Test doubles leave it nil and keep their existing in-memory behavior.
+    var bound: (@Sendable () throws -> MealBuilderAPI)? = nil
 
     static var live: MealBuilderAPI {
-        let api = WaffledAPI()
+        live(using: WaffledAPI())
+    }
+
+    private static func live(using api: WaffledAPI) -> MealBuilderAPI {
         return MealBuilderAPI(
             fetch: { try await api.meal(id: $0) },
             create: { try await api.createMeal(name: $0, servings: $1) },
@@ -235,7 +241,8 @@ struct MealBuilderAPI: Sendable {
             // The reply carries a plate, but for a SAVED plate that is the *copy* the
             // server scheduled — not this one — so it is deliberately dropped rather
             // than repainted over the builder.
-            schedule: { _ = try await api.scheduleMeal(id: $0, date: $1, mealType: $2, cookPersonId: $3) })
+            schedule: { _ = try await api.scheduleMeal(id: $0, date: $1, mealType: $2, cookPersonId: $3) },
+            bound: { try live(using: api.boundToCurrentPrincipal()) })
     }
 }
 
@@ -460,8 +467,9 @@ final class MealBuilderModel {
         busy = true
         var ok = true
         do {
-            let id = try await ensureId()
-            let updated = try await fn(api, id)
+            let operationAPI = try api.bound?() ?? api
+            let id = try await ensureId(using: operationAPI)
+            let updated = try await fn(operationAPI, id)
             applyIfCurrent(updated, seq: mine)
         } catch {
             // Deliberately NOT gated on `mine == seq`: a write that failed still
@@ -477,13 +485,12 @@ final class MealBuilderModel {
 
     /// The plate's id, creating it on first use. One create, ever — a rename and an
     /// add racing each other share the same in-flight task rather than both POSTing.
-    private func ensureId() async throws -> String {
+    private func ensureId(using operationAPI: MealBuilderAPI) async throws -> String {
         if let mealId { return mealId }
         if let createTask { return try await createTask.value.id }
         let label = displayName
         let wanted = servings
-        let api = self.api
-        let task = Task { try await api.create(label, wanted) }
+        let task = Task { try await operationAPI.create(label, wanted) }
         createTask = task
         do {
             let created = try await task.value
