@@ -1,0 +1,15 @@
+# Everything the spike generates lives OUTSIDE the repo:
+#   data:  ~/Library/Application Support/WaffledSpike/  (postgres, media, logs, pids, config.env, Caddyfile)
+#   cache: ~/Library/Caches/WaffledSpike/               (postgres binaries, caddy, powersync-service clone)
+# Belt and braces in case any of it is ever pointed here:
+Caddyfile
+Caddyfile.generated
+config.env
+*.log
+*.pid
+node_modules/
+postgres/
+caddy/
+powersync-service/
+*.tgz
+*.tar.gz
