@@ -8,6 +8,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
 import { requireTenant, requireAdmin } from '../households/households'
 import { pendingInvitesForEmail, createMembershipFromInvite } from './accounts'
+import { AccessEndDateError, expiryAfterAccessEndDate } from '../../platform/access-expiry'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -34,7 +35,7 @@ export function registerInviteRoutes(api: Api): void {
   api.post('/api/households/invites', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
     requireAdmin(tenant)
-    const b = (req.body ?? {}) as { email?: string; memberType?: string; isAdmin?: boolean; accessExpiresAt?: string | null }
+    const b = (req.body ?? {}) as { email?: string; memberType?: string; isAdmin?: boolean; accessEndsOn?: unknown; accessExpiresAt?: string | null }
     const email = b.email?.trim()
     if (!email || !EMAIL_RE.test(email)) {
       return res.status(400).json({ error: 'BadRequest', message: 'a valid email is required' })
@@ -53,8 +54,24 @@ export function registerInviteRoutes(api: Api): void {
     if (isAdmin && memberType !== 'adult') {
       return res.status(400).json({ error: 'BadRequest', message: 'only an adult role can be an admin' })
     }
-    const accessExpiresAt = b.accessExpiresAt ?? null
-    if (accessExpiresAt !== null &&
+    if (b.accessEndsOn !== undefined && b.accessExpiresAt !== undefined) {
+      return res.status(400).json({ error: 'BadRequest', message: 'send accessEndsOn instead of accessExpiresAt, not both' })
+    }
+    let accessExpiresAt: string | null = b.accessExpiresAt ?? null
+    if (b.accessEndsOn !== undefined) {
+      const { rows } = await query<{ timezone: string }>(
+        `select timezone from households where id = $1 and deleted_at is null`,
+        [tenant.householdId]
+      )
+      try {
+        accessExpiresAt = expiryAfterAccessEndDate(b.accessEndsOn, rows[0]?.timezone ?? '')?.toISOString() ?? null
+      } catch (error) {
+        if (!(error instanceof AccessEndDateError)) throw error
+        return res.status(400).json({ error: 'BadRequest', message: error.message })
+      }
+      // Legacy exact-instant input remains accepted only when date-only input is
+      // absent, for rolling API/mobile upgrades. New callers use accessEndsOn.
+    } else if (accessExpiresAt !== null &&
         (typeof accessExpiresAt !== 'string' || !Number.isFinite(Date.parse(accessExpiresAt)) || Date.parse(accessExpiresAt) <= Date.now())) {
       return res.status(400).json({ error: 'BadRequest', message: 'accessExpiresAt must be null or a future ISO date' })
     }

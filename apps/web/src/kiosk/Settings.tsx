@@ -7,7 +7,7 @@ import { MODULES, moduleEnabled } from '../lib/modules'
 import { useThemePref } from '../lib/theme'
 import { eventStyle } from '../lib/display'
 import { familyColorHex } from '../lib/event-color'
-import { PersonModal } from './components/PersonModal'
+import { PersonModal, accessEndDate } from './components/PersonModal'
 import { ColorPicker, COLOR_SWATCHES } from './components/ColorPicker'
 import { SettingCard } from './components/SettingCard'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -64,7 +64,7 @@ function ageFrom(birthday: string | null | undefined): number | null {
   return age >= 0 ? age : null
 }
 
-function roleLine(m: SettingsMember): string {
+function roleLine(m: SettingsMember, householdTimezone: string): string {
   const parts: string[] = [m.memberType.charAt(0).toUpperCase() + m.memberType.slice(1)]
   if (m.isOwner) parts.push('Owner')
   else if (m.isAdmin) parts.push('Admin')
@@ -74,7 +74,11 @@ function roleLine(m: SettingsMember): string {
   else if (m.memberType === 'teen' || m.memberType === 'kid') parts.push('managed by parents')
   if (m.accessExpiresAt) {
     const expires = new Date(m.accessExpiresAt)
-    parts.push(expires.getTime() <= Date.now() ? 'access expired' : `access ends ${expires.toLocaleDateString()}`)
+    const endsOn = accessEndDate(m.accessExpiresAt, householdTimezone)
+    const displayEnd = endsOn
+      ? new Date(`${endsOn}T12:00:00.000Z`).toLocaleDateString('en-US', { timeZone: 'UTC' })
+      : ''
+    parts.push(expires.getTime() <= Date.now() ? 'access expired' : `access ends ${displayEnd}`)
   }
   return parts.join(' · ')
 }
@@ -86,14 +90,14 @@ function fmtBirthday(birthday: string | null | undefined): string | null {
   return b.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
 }
 
-function MemberRow({ m, onClick }: { m: SettingsMember; onClick: () => void }) {
+function MemberRow({ m, householdTimezone, onClick }: { m: SettingsMember; householdTimezone: string; onClick: () => void }) {
   const bday = fmtBirthday(m.birthday)
   return (
     <div className="set-member" onClick={onClick}>
       <div className="av md" style={{ background: `${m.colorHex ?? '#A6A29B'}22` }}>{m.avatarEmoji ?? '🙂'}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="set-member-n">{m.name}</div>
-        <div className="tiny muted" style={{ fontWeight: 600 }}>{roleLine(m)}</div>
+        <div className="tiny muted" style={{ fontWeight: 600 }}>{roleLine(m, householdTimezone)}</div>
       </div>
       {bday && <div className="tiny muted set-bday" style={{ fontWeight: 600 }}>🎂 {bday}</div>}
       <div className="set-swatch" style={{ background: m.colorHex ?? '#A6A29B' }} />
@@ -982,7 +986,7 @@ function FamilyPanel() {
 
       <SettingCard>
         {members.map((m) => (
-          <MemberRow key={m.id} m={m} onClick={() => setEditing(m)} />
+          <MemberRow key={m.id} m={m} householdTimezone={household.timezone} onClick={() => setEditing(m)} />
         ))}
       </SettingCard>
       <button type="button" className="btn btn-ghost set-add" onClick={() => setAdding(true)}>＋ Add a person</button>
@@ -1057,7 +1061,7 @@ function FamilyPanel() {
       <PermissionsCard />
 
       {(editing || adding) && (
-        <PersonModal person={editing} onClose={() => { setEditing(null); setAdding(false) }} onSaved={refetch} />
+        <PersonModal person={editing} householdTimezone={household.timezone} onClose={() => { setEditing(null); setAdding(false) }} onSaved={refetch} />
       )}
     </div>
   )

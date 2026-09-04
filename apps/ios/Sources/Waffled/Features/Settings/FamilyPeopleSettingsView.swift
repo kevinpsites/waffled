@@ -1,5 +1,62 @@
 import SwiftUI
 
+/// A selected access end is a household calendar date, not an instant in the
+/// admin device's timezone. The API turns this date into exclusive next-midnight;
+/// these helpers keep that civil date stable in the picker and when editing it.
+enum AccessEndDatePolicy {
+    static let pickerTimeZone = TimeZone(secondsFromGMT: 0)!
+
+    private static let iso = ISO8601DateFormatter()
+    private static let isoFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    static func dateOnly(fromExpiry raw: String, householdTimeZoneIdentifier: String) -> String? {
+        guard let expiry = isoFractional.date(from: raw) ?? iso.date(from: raw) else { return nil }
+        let timezone = TimeZone(identifier: householdTimeZoneIdentifier) ?? pickerTimeZone
+        // Expiry is exclusive next-midnight. One millisecond earlier is on the
+        // final allowed household-local date, including at DST transitions.
+        return DateFmt.string(expiry.addingTimeInterval(-0.001), "yyyy-MM-dd", timezone)
+    }
+
+    static func pickerDate(from dateOnly: String) -> Date? {
+        DateFmt.date(dateOnly, "yyyy-MM-dd", pickerTimeZone)
+    }
+
+    static func dateOnly(fromPickerDate date: Date) -> String {
+        DateFmt.string(date, "yyyy-MM-dd", pickerTimeZone)
+    }
+
+    static func todayPickerDate(
+        now: Date = Date(),
+        householdTimeZoneIdentifier: String
+    ) -> Date {
+        let timezone = TimeZone(identifier: householdTimeZoneIdentifier) ?? pickerTimeZone
+        let householdDay = DateFmt.string(now, "yyyy-MM-dd", timezone)
+        return pickerDate(from: householdDay) ?? now
+    }
+
+    static func defaultPickerDate(
+        now: Date = Date(),
+        householdTimeZoneIdentifier: String
+    ) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = pickerTimeZone
+        return calendar.date(
+            byAdding: .day,
+            value: 7,
+            to: todayPickerDate(now: now, householdTimeZoneIdentifier: householdTimeZoneIdentifier)
+        )!
+    }
+
+    static func display(_ dateOnly: String) -> String? {
+        guard let date = pickerDate(from: dateOnly) else { return nil }
+        return DateFmt.string(date, "MMM d", pickerTimeZone)
+    }
+}
+
 /// Settings → Family & people: manage members (add/edit/remove) and the household
 /// basics (name · week start · time zone · location). Admin actions; the owner
 /// can't be removed.
@@ -64,7 +121,10 @@ struct FamilyPeopleSettingsView: View {
         .navigationTitle("Family & People").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .sheet(item: $editor) { e in
-            PersonEditorSheet(editing: e.member) { await load() }
+            PersonEditorSheet(
+                editing: e.member,
+                householdTimezone: settings?.household.timezone ?? "UTC"
+            ) { await load() }
         }
     }
 
@@ -101,7 +161,10 @@ struct FamilyPeopleSettingsView: View {
         if m.isOwner { parts.append("Owner") }
         if m.isAdmin && !m.isOwner { parts.append("Admin") }
         if let raw = m.accessExpiresAt, let expiry = Self.accessDate(raw) {
-            parts.append(expiry <= Date() ? "Access expired" : "Access ends \(DateFmt.string(expiry, "MMM d", .current))")
+            let timezone = settings?.household.timezone ?? "UTC"
+            let endDate = AccessEndDatePolicy.dateOnly(fromExpiry: raw, householdTimeZoneIdentifier: timezone)
+                .flatMap(AccessEndDatePolicy.display)
+            parts.append(expiry <= Date() ? "Access expired" : "Access ends \(endDate ?? "")")
         }
         return parts.joined(separator: " · ")
     }
@@ -344,6 +407,7 @@ struct PermissionsCard: View {
 /// Creating a new person shows only the General fields (login/PIN need a saved id).
 struct PersonEditorSheet: View {
     let editing: WaffledAPI.HouseholdSettings.Member?
+    let householdTimezone: String
     let onDone: () async -> Void
 
     @Environment(SyncManager.self) private var sync
@@ -396,8 +460,13 @@ struct PersonEditorSheet: View {
         }
     }
 
-    init(editing: WaffledAPI.HouseholdSettings.Member?, onDone: @escaping () async -> Void) {
+    init(
+        editing: WaffledAPI.HouseholdSettings.Member?,
+        householdTimezone: String,
+        onDone: @escaping () async -> Void
+    ) {
         self.editing = editing
+        self.householdTimezone = householdTimezone
         self.onDone = onDone
         _name = State(initialValue: editing?.name ?? "")
         _emoji = State(initialValue: editing?.avatarEmoji ?? "🙂")
@@ -408,9 +477,13 @@ struct PersonEditorSheet: View {
         _birthday = State(initialValue: parsed ?? Date())
         _isAdmin = State(initialValue: editing?.isAdmin ?? false)
         _showOnKiosk = State(initialValue: editing?.showOnKiosk ?? true)
-        let expiry = editing?.accessExpiresAt.flatMap(Self.parseAccessExpiry)
+        let expiry = editing?.accessExpiresAt
+            .flatMap { AccessEndDatePolicy.dateOnly(fromExpiry: $0, householdTimeZoneIdentifier: householdTimezone) }
+            .flatMap(AccessEndDatePolicy.pickerDate)
         _hasAccessExpiry = State(initialValue: expiry != nil)
-        _accessExpiry = State(initialValue: expiry ?? Calendar.current.date(byAdding: .day, value: 7, to: Date())!)
+        _accessExpiry = State(initialValue: expiry ?? AccessEndDatePolicy.defaultPickerDate(
+            householdTimeZoneIdentifier: householdTimezone
+        ))
         _email = State(initialValue: editing?.loginEmail ?? "")
         _hasLogin = State(initialValue: editing?.hasLogin ?? false)
         _hasPassword = State(initialValue: editing?.hasPassword ?? false)
@@ -492,8 +565,14 @@ struct PersonEditorSheet: View {
                 }
             }.tint(WF.primary)
             if hasAccessExpiry {
-                DatePicker("Access ends", selection: $accessExpiry, in: Date()..., displayedComponents: .date)
+                DatePicker(
+                    "Access ends",
+                    selection: $accessExpiry,
+                    in: AccessEndDatePolicy.todayPickerDate(householdTimeZoneIdentifier: householdTimezone)...,
+                    displayedComponents: .date
+                )
                     .datePickerStyle(.compact)
+                    .environment(\.timeZone, AccessEndDatePolicy.pickerTimeZone)
             }
         }
 
@@ -665,10 +744,9 @@ struct PersonEditorSheet: View {
         b["avatarEmoji"] = emoji.isEmpty ? .null : .string(emoji)
         if hasBirthday { b["birthday"] = .string(Self.format(birthday)) }
         if temporaryRole, hasAccessExpiry {
-            let end = Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: accessExpiry) ?? accessExpiry
-            b["accessExpiresAt"] = .string(Self.iso.string(from: end))
+            b["accessEndsOn"] = .string(AccessEndDatePolicy.dateOnly(fromPickerDate: accessExpiry))
         } else {
-            b["accessExpiresAt"] = .null
+            b["accessEndsOn"] = .null
         }
         return b
     }
@@ -760,15 +838,6 @@ struct PersonEditorSheet: View {
     private static func parse(_ s: String?) -> Date? {
         guard let s, !s.isEmpty else { return nil }
         return DateFmt.date(String(s.prefix(10)), "yyyy-MM-dd", DateFmt.utc)
-    }
-    private static let iso = ISO8601DateFormatter()
-    private static let isoFractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private static func parseAccessExpiry(_ raw: String) -> Date? {
-        isoFractional.date(from: raw) ?? iso.date(from: raw)
     }
     private static func format(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", DateFmt.utc) }
 }

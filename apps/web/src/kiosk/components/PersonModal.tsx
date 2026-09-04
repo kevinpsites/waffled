@@ -13,18 +13,37 @@ const MEMBER_TYPES = [
   { key: 'kid', label: 'Kid', help: 'A managed family member with no management permissions by default.' },
 ]
 
-function accessEndDate(value: string | null | undefined): string {
+const dateOnlyFormatters = new Map<string, Intl.DateTimeFormat>()
+
+export function dateInTimeZone(value: Date, timezone: string): string {
+  if (Number.isNaN(value.getTime())) return ''
+  try {
+    let formatter = dateOnlyFormatters.get(timezone)
+    if (!formatter) {
+      formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      })
+      dateOnlyFormatters.set(timezone, formatter)
+    }
+    const parts = formatter.formatToParts(value)
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? ''
+    const year = part('year'); const month = part('month'); const day = part('day')
+    return year && month && day ? `${year}-${month}-${day}` : ''
+  } catch {
+    return ''
+  }
+}
+
+// Stored access expiry is the exclusive next household-local midnight, so the
+// policy's final allowed calendar date is the instant immediately before it.
+export function accessEndDate(value: string | null | undefined, householdTimezone: string): string {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 10)
-}
-
-function endOfLocalDay(value: string): string | null {
-  if (!value) return null
-  const date = new Date(`${value}T23:59:59.999`)
-  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+  return dateInTimeZone(new Date(date.getTime() - 1), householdTimezone)
 }
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
@@ -36,7 +55,7 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
 }
 
 // Add or edit a family member.
-export function PersonModal({ person, onClose, onSaved }: { person: SettingsMember | null; onClose: () => void; onSaved: () => void }) {
+export function PersonModal({ person, householdTimezone, onClose, onSaved }: { person: SettingsMember | null; householdTimezone: string; onClose: () => void; onSaved: () => void }) {
   const editing = !!person
   const [form, setForm] = useState({
     name: person?.name ?? '',
@@ -46,7 +65,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
     birthday: person?.birthday ? String(person.birthday).slice(0, 10) : '',
     isAdmin: person?.isAdmin ?? false,
     showOnKiosk: person?.showOnKiosk ?? true,
-    accessEnds: accessEndDate(person?.accessExpiresAt),
+    accessEnds: accessEndDate(person?.accessExpiresAt, householdTimezone),
     allergens: person?.allergens ?? [],
   })
   const [saving, setSaving] = useState(false)
@@ -180,7 +199,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
       birthday: form.birthday || null,
       isAdmin: form.isAdmin,
       showOnKiosk: form.showOnKiosk,
-      accessExpiresAt: temporaryRole ? endOfLocalDay(form.accessEnds) : null,
+      accessEndsOn: temporaryRole ? (form.accessEnds || null) : null,
       allergens: form.allergens,
     }
     setSaveErr(null)
@@ -246,7 +265,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
           {temporaryRole && (
             <label className="field">
               <span>Access ends (optional)</span>
-              <input type="date" min={new Date().toISOString().slice(0, 10)} value={form.accessEnds} onChange={(e) => set('accessEnds', e.target.value)} />
+              <input type="date" min={dateInTimeZone(new Date(), householdTimezone)} value={form.accessEnds} onChange={(e) => set('accessEnds', e.target.value)} />
               <span className="tiny muted">At the end of this date, existing sessions, API keys, and kiosk access stop working automatically.</span>
             </label>
           )}

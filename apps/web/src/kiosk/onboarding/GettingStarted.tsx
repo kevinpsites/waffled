@@ -82,7 +82,7 @@ function useOnboardingStatuses() {
 
 // ── step bodies ──────────────────────────────────────────────────────────────
 
-function FamilyStep({ onChanged }: { onChanged: () => void }) {
+function FamilyStep({ householdTimezone, onChanged }: { householdTimezone: string; onChanged: () => void }) {
   const [people, setPeople] = useState<Person[]>([])
   const [adding, setAdding] = useState(false)
 
@@ -109,6 +109,7 @@ function FamilyStep({ onChanged }: { onChanged: () => void }) {
       {adding && (
         <PersonModal
           person={null}
+          householdTimezone={householdTimezone}
           onClose={() => setAdding(false)}
           onSaved={() => { load(); onChanged() }}
         />
@@ -398,6 +399,7 @@ function OverlayWizard({
   onChanged,
   onClose,
   onFinish,
+  householdTimezone,
 }: {
   steps: typeof STEPS
   statuses: Statuses
@@ -405,6 +407,7 @@ function OverlayWizard({
   onChanged: (key: StepKey) => void
   onClose: () => void
   onFinish: () => void
+  householdTimezone: string
 }) {
   // Open where there's still work to do (e.g. Resume jumps to the first unfinished
   // step), not always back at step 1.
@@ -420,7 +423,7 @@ function OverlayWizard({
 
   function body() {
     switch (step.key) {
-      case 'family': return <FamilyStep onChanged={() => onChanged('family')} />
+      case 'family': return <FamilyStep householdTimezone={householdTimezone} onChanged={() => onChanged('family')} />
       case 'calendar': return <CalendarStep />
       case 'chores': return <ChoresStep onCreated={() => onChanged('chores')} />
       case 'goal': return <GoalStep onCreated={() => onChanged('goal')} onNavigateAway={onClose} />
@@ -526,6 +529,7 @@ export function GettingStartedBar() {
           onChanged={(key) => { markDone(key); void refresh() }}
           onClose={() => { setOverlayOpen(false); void refresh() }}
           onFinish={dismiss}
+          householdTimezone={household?.timezone ?? 'UTC'}
         />
       )}
     </>

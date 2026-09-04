@@ -128,22 +128,21 @@ describe('P2.4 invite-and-accept', () => {
   })
 
   it('validates temporary role, admin, and expiration combinations', async () => {
-    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
     expect((await call('POST', '/api/households/invites', kevinToken, {
       email: 'bad-admin@example.com', memberType: 'guest', isAdmin: true,
     })).statusCode).toBe(400)
     expect((await call('POST', '/api/households/invites', kevinToken, {
-      email: 'bad-expiry@example.com', memberType: 'adult', accessExpiresAt: future,
+      email: 'bad-expiry@example.com', memberType: 'adult', accessEndsOn: '2099-06-15',
     })).statusCode).toBe(400)
     expect((await call('POST', '/api/households/invites', kevinToken, {
-      email: 'past@example.com', memberType: 'caregiver', accessExpiresAt: '2020-01-01T00:00:00.000Z',
+      email: 'past@example.com', memberType: 'caregiver', accessEndsOn: '2020-01-01',
     })).statusCode).toBe(400)
   })
 
   it('lets an expired-only account return through a fresh temporary invite', async () => {
-    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    const accessEndsOn = '2099-06-15'
     const invitation = await call('POST', '/api/households/invites', kevinToken, {
-      email: 'locked@example.com', memberType: 'guest', accessExpiresAt: future,
+      email: 'locked@example.com', memberType: 'guest', accessEndsOn,
     })
     expect(invitation.statusCode).toBe(201)
 
@@ -161,7 +160,7 @@ describe('P2.4 invite-and-accept', () => {
     )
     expect(restored.rows).toHaveLength(1)
     expect(restored.rows[0].member_type).toBe('guest')
-    expect(new Date(restored.rows[0].access_expires_at).toISOString()).toBe(future)
+    expect(new Date(restored.rows[0].access_expires_at).toISOString()).toBe('2099-06-16T05:00:00.000Z')
   })
 
   it('returns a controlled denial when an expired-only account has no fresh invite', async () => {
@@ -208,12 +207,12 @@ describe('P2.4 invite-and-accept', () => {
   })
 
   it('carries caregiver access expiration into a hidden membership', async () => {
-    const accessExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    const accessEndsOn = '2099-06-15'
     const invite = json(await call('POST', '/api/households/invites', kevinToken, {
-      email: 'helper@example.com', memberType: 'caregiver', accessExpiresAt,
+      email: 'helper@example.com', memberType: 'caregiver', accessEndsOn,
     })).invite
     expect(invite).toMatchObject({ memberType: 'caregiver', isAdmin: false })
-    expect(new Date(invite.accessExpiresAt).toISOString()).toBe(accessExpiresAt)
+    expect(new Date(invite.accessExpiresAt).toISOString()).toBe('2099-06-16T05:00:00.000Z')
 
     const helperToken = (await login('helper@example.com', 'helperpass12')).accessToken
     const accepted = await call('POST', `/api/auth/invites/${invite.id}/accept`, helperToken)
@@ -227,7 +226,7 @@ describe('P2.4 invite-and-accept', () => {
       [householdA]
     )
     expect(membership.rows[0]).toMatchObject({ member_type: 'caregiver', is_admin: false, show_on_kiosk: false })
-    expect(membership.rows[0].access_expires_at.toISOString()).toBe(accessExpiresAt)
+    expect(membership.rows[0].access_expires_at.toISOString()).toBe('2099-06-16T05:00:00.000Z')
   })
 
   it('rejects accepting an invite addressed to a different email (403)', async () => {

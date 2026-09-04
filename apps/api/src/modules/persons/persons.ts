@@ -5,6 +5,7 @@ import { presentPerson, presentHousehold, type PersonRow, type HouseholdRow } fr
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
 import { MODULES, MODULE_KEYS } from '../../platform/modules'
 import { cleanAllergens } from '../../platform/allergens'
+import { AccessEndDateError, expiryAfterAccessEndDate } from '../../platform/access-expiry'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -55,6 +56,8 @@ export interface CreatePersonInput {
   accessExpiresAt?: string | null
 }
 
+type PersonRequestBody = Partial<CreatePersonInput> & { accessEndsOn?: unknown }
+
 export async function createPerson(
   householdId: string,
   input: CreatePersonInput
@@ -103,6 +106,23 @@ function validFutureExpiry(value: unknown): value is string | null {
   if (typeof value !== 'string' || !value.trim()) return false
   const time = Date.parse(value)
   return Number.isFinite(time) && time > Date.now()
+}
+
+async function normalizeAccessEndDate(householdId: string, body: Record<string, unknown>): Promise<void> {
+  if (!Object.prototype.hasOwnProperty.call(body, 'accessEndsOn')) return
+  // Keep accepting the old exact-instant field when accessEndsOn is absent so an
+  // API rollout does not strand an already-installed mobile client. Current
+  // clients use only the household-date contract; mixed input is ambiguous.
+  if (body.accessExpiresAt !== undefined) {
+    throw new AccessEndDateError('send accessEndsOn instead of accessExpiresAt, not both')
+  }
+  const { rows } = await query<{ timezone: string }>(
+    `select timezone from households where id = $1 and deleted_at is null`,
+    [householdId]
+  )
+  const expiry = expiryAfterAccessEndDate(body.accessEndsOn, rows[0]?.timezone ?? '')
+  body.accessExpiresAt = expiry?.toISOString() ?? null
+  delete body.accessEndsOn
 }
 
 // Patch is a whitelisted, household-scoped update. Returns null if no such
@@ -430,7 +450,7 @@ export function registerPersonRoutes(api: Api): void {
 
   // Add a member (admins only).
   api.post('/api/persons', adminRoute(async (tenant, req: Request, res: Response) => {
-    const body = (req.body ?? {}) as Partial<CreatePersonInput>
+    const body = { ...((req.body ?? {}) as PersonRequestBody) } as PersonRequestBody
     if (!body.name || !body.memberType || !MEMBER_TYPES.has(body.memberType)) {
       return res.status(400).json({
         error: 'BadRequest',
@@ -448,6 +468,12 @@ export function registerPersonRoutes(api: Api): void {
     }
     if (body.isAdmin && body.memberType !== 'adult') {
       return res.status(400).json({ error: 'BadRequest', message: 'only an adult role can be an admin' })
+    }
+    try {
+      await normalizeAccessEndDate(tenant.householdId, body as Record<string, unknown>)
+    } catch (error) {
+      if (!(error instanceof AccessEndDateError)) throw error
+      return res.status(400).json({ error: 'BadRequest', message: error.message })
     }
     if (body.accessExpiresAt !== undefined && !validFutureExpiry(body.accessExpiresAt)) {
       return res.status(400).json({ error: 'BadRequest', message: 'accessExpiresAt must be null or a future ISO date' })
@@ -473,7 +499,7 @@ export function registerPersonRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
 
-    const patch = (req.body ?? {}) as Record<string, unknown>
+    const patch = { ...((req.body ?? {}) as Record<string, unknown>) }
     if (patch.memberType !== undefined && !MEMBER_TYPES.has(String(patch.memberType))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid memberType' })
     }
@@ -495,6 +521,12 @@ export function registerPersonRoutes(api: Api): void {
       return res.status(400).json({ error: 'BadRequest', message: 'showOnKiosk must be a boolean' })
     }
     if ('allergens' in patch) patch.allergens = cleanAllergens(patch.allergens)
+    try {
+      await normalizeAccessEndDate(tenant.householdId, patch)
+    } catch (error) {
+      if (!(error instanceof AccessEndDateError)) throw error
+      return res.status(400).json({ error: 'BadRequest', message: error.message })
+    }
     if (!Object.keys(UPDATABLE).some((field) => field in patch)) {
       return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
     }

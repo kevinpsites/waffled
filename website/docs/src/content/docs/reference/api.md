@@ -32,8 +32,10 @@ guarded by `tenantRoute` (any member), `adminRoute` (admin/owner), or `capRoute(
 specific capability). Optional [modules](/administration/modules/) add a `moduleRoutes(key)` gate
 that 403s when the module is off.
 
-Household memberships use `adult`, `caregiver`, `guest`, `teen`, or `kid`. Caregiver and
-guest memberships may carry `accessExpiresAt`; expired memberships are excluded from
+Household memberships use `adult`, `caregiver`, `guest`, `teen`, or `kid`. When creating or
+updating a caregiver or guest, send the final household-local access date as
+`accessEndsOn: "YYYY-MM-DD"`; the API applies the household timezone and returns the stored
+exclusive expiry instant as `accessExpiresAt`. Expired memberships are excluded from
 authentication and household switching. Guest access is read-only across shared-state API
 routes, with narrow exemptions for account maintenance, accepting invites, and switching
 households.

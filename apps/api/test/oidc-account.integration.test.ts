@@ -241,10 +241,10 @@ describe('P2.5 OIDC match-by-account', () => {
       [householdA, person.rows[0].id, subject, canonicalEmail, accountId]
     )
 
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    const accessEndsOn = '2099-06-15'
     const invite = await call('POST', '/api/households/invites', {
       token: adminToken,
-      body: { email: canonicalEmail, memberType: 'guest', accessExpiresAt: expiresAt },
+      body: { email: canonicalEmail, memberType: 'guest', accessEndsOn },
     })
     expect(invite.statusCode).toBe(201)
 
@@ -263,7 +263,7 @@ describe('P2.5 OIDC match-by-account', () => {
     expect(restored.rows).toHaveLength(1)
     expect(restored.rows[0].id).toBe(person.rows[0].id)
     expect(restored.rows[0].member_type).toBe('guest')
-    expect(new Date(restored.rows[0].access_expires_at).toISOString()).toBe(expiresAt)
+    expect(new Date(restored.rows[0].access_expires_at).toISOString()).toBe('2099-06-16T05:00:00.000Z')
   })
 
   it('an uninvited, unknown SSO email is still rejected (403)', async () => {
