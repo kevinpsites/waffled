@@ -3,8 +3,9 @@
 // bucketing, person color/owner, participant list). Pure helpers here are unit-
 // tested; watchAgendaRows streams live rows. Falls back gracefully (no DB → no-op).
 import type { AgendaEvent, Participant } from '../api/events'
-import { currentViewerPersonId, powerSyncMutationAllowed } from '../api/client'
+import { currentIdentityScope, currentViewerPersonId, powerSyncMutationAllowed } from '../api/client'
 import { getPowerSyncDb, onPowerSyncRecreated } from './db'
+import { withLocalWriteLease } from './principal-transition'
 
 // Personal-calendar visibility: a family event is visible to everyone; a personal
 // event only to its owner. A row with no visibility (older/local rows) is treated as
@@ -224,9 +225,11 @@ const AGENDA_SQL = `${SINGLE_SELECT} where e.rrule is null union all ${OCC_SELEC
 export async function getLocalEvent(id: string, _tz: string): Promise<AgendaEvent | null> {
   if (isEventTombstoned(id)) return null
   const db = getPowerSyncDb()
+  const identityScope = currentIdentityScope()
   if (!db) return null
   try {
     const row = await db.getOptional<LocalEventRow>(`${SINGLE_SELECT} where e.id = ?`, [id])
+    if (getPowerSyncDb() !== db || currentIdentityScope() !== identityScope) return null
     // Guard a deep link to someone else's personal event — hide it like the lists do.
     return row && isVisibleToViewer(row) ? rowToAgenda(row) : null
   } catch {
@@ -239,9 +242,11 @@ export async function getLocalEvent(id: string, _tz: string): Promise<AgendaEven
 export async function getHouseholdTz(): Promise<string> {
   const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   const db = getPowerSyncDb()
+  const identityScope = currentIdentityScope()
   if (!db) return deviceTz
   try {
     const row = await db.getOptional<{ timezone: string | null }>('select timezone from households limit 1')
+    if (getPowerSyncDb() !== db || currentIdentityScope() !== identityScope) return deviceTz
     return row?.timezone || deviceTz
   } catch {
     return deviceTz
@@ -278,71 +283,83 @@ async function householdRowId(): Promise<string | null> {
 }
 
 export async function createEventLocal(draft: EventDraft): Promise<boolean> {
-  if (!powerSyncMutationAllowed()) return false
-  const db = getPowerSyncDb()
-  if (!db) return false
-  const hh = await householdRowId()
-  const tz = await getHouseholdTz()
-  const id = crypto.randomUUID()
-  // Only columns present in the client schema (schema.ts) — sync_state/status are
-  // server-owned and not replicated, so they must not appear here.
-  await db.execute(
-    `insert into events
-       (id, household_id, title, description, location, starts_at, ends_at, all_day, is_countdown, timezone,
-        person_id, goal_id, goal_step_id, rhythm_id, calendar_id, origin)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
-    [id, hh, draft.title, null, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, tz, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, draft.rhythmId ?? null, draft.calendarId ?? null]
-  )
-  for (const pid of [...new Set(draft.personIds)]) {
-    await db.execute(`insert into event_participants (id, household_id, event_id, person_id) values (?, ?, ?, ?)`, [
-      crypto.randomUUID(),
-      hh,
-      id,
-      pid,
-    ])
-  }
-  return true
+  const identityScope = currentIdentityScope()
+  return withLocalWriteLease(async () => {
+    if (currentIdentityScope() !== identityScope) return false
+    if (!powerSyncMutationAllowed()) return false
+    const db = getPowerSyncDb()
+    if (!db) return false
+    const hh = await householdRowId()
+    const tz = await getHouseholdTz()
+    const id = crypto.randomUUID()
+    // Only columns present in the client schema (schema.ts) — sync_state/status are
+    // server-owned and not replicated, so they must not appear here.
+    await db.execute(
+      `insert into events
+         (id, household_id, title, description, location, starts_at, ends_at, all_day, is_countdown, timezone,
+          person_id, goal_id, goal_step_id, rhythm_id, calendar_id, origin)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
+      [id, hh, draft.title, null, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, tz, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, draft.rhythmId ?? null, draft.calendarId ?? null]
+    )
+    for (const pid of [...new Set(draft.personIds)]) {
+      await db.execute(`insert into event_participants (id, household_id, event_id, person_id) values (?, ?, ?, ?)`, [
+        crypto.randomUUID(),
+        hh,
+        id,
+        pid,
+      ])
+    }
+    return true
+  })
 }
 
 export async function updateEventLocal(id: string, draft: EventDraft): Promise<boolean> {
-  if (!powerSyncMutationAllowed()) return false
-  const db = getPowerSyncDb()
-  if (!db) return false
-  const hh = await householdRowId()
-  const res = await db.execute(
-    `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, is_countdown = ?, person_id = ?, goal_id = ?, goal_step_id = ?, rhythm_id = ? where id = ?`,
-    [draft.title, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, draft.rhythmId ?? null, id]
-  )
-  // Row not in the local DB yet (PowerSync hasn't synced it) → the update matched
-  // nothing and would never upload. Bail so the caller saves via REST instead.
-  if ((res.rowsAffected ?? 0) === 0) return false
-  await db.execute(`delete from event_participants where event_id = ?`, [id])
-  for (const pid of [...new Set(draft.personIds)]) {
-    await db.execute(`insert into event_participants (id, household_id, event_id, person_id) values (?, ?, ?, ?)`, [
-      crypto.randomUUID(),
-      hh,
-      id,
-      pid,
-    ])
-  }
-  return true
+  const identityScope = currentIdentityScope()
+  return withLocalWriteLease(async () => {
+    if (currentIdentityScope() !== identityScope) return false
+    if (!powerSyncMutationAllowed()) return false
+    const db = getPowerSyncDb()
+    if (!db) return false
+    const hh = await householdRowId()
+    const res = await db.execute(
+      `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, is_countdown = ?, person_id = ?, goal_id = ?, goal_step_id = ?, rhythm_id = ? where id = ?`,
+      [draft.title, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, draft.rhythmId ?? null, id]
+    )
+    // Row not in the local DB yet (PowerSync hasn't synced it) → the update matched
+    // nothing and would never upload. Bail so the caller saves via REST instead.
+    if ((res.rowsAffected ?? 0) === 0) return false
+    await db.execute(`delete from event_participants where event_id = ?`, [id])
+    for (const pid of [...new Set(draft.personIds)]) {
+      await db.execute(`insert into event_participants (id, household_id, event_id, person_id) values (?, ?, ?, ?)`, [
+        crypto.randomUUID(),
+        hh,
+        id,
+        pid,
+      ])
+    }
+    return true
+  })
 }
 
 export async function deleteEventLocal(id: string): Promise<boolean> {
-  if (!powerSyncMutationAllowed()) return false
-  const db = getPowerSyncDb()
-  if (!db) return false
-  await db.execute(`delete from event_participants where event_id = ?`, [id])
-  const res = await db.execute(`delete from events where id = ?`, [id])
-  // Only a row that's actually in the local DB queues a CRUD op that uploads the
-  // delete. If PowerSync hasn't synced this event yet (rowsAffected 0), the local
-  // delete is a no-op that would NEVER reach the server — report failure so the
-  // caller falls back to the REST delete instead of silently dropping it.
-  if ((res.rowsAffected ?? 0) === 0) return false
-  // Real local delete in flight (crud upload, retried by PowerSync) — tombstone so
-  // it stays hidden across the replication window instead of briefly reappearing.
-  tombstoneEvent(id)
-  return true
+  const identityScope = currentIdentityScope()
+  return withLocalWriteLease(async () => {
+    if (currentIdentityScope() !== identityScope) return false
+    if (!powerSyncMutationAllowed()) return false
+    const db = getPowerSyncDb()
+    if (!db) return false
+    await db.execute(`delete from event_participants where event_id = ?`, [id])
+    const res = await db.execute(`delete from events where id = ?`, [id])
+    // Only a row that's actually in the local DB queues a CRUD op that uploads the
+    // delete. If PowerSync hasn't synced this event yet (rowsAffected 0), the local
+    // delete is a no-op that would NEVER reach the server — report failure so the
+    // caller falls back to the REST delete instead of silently dropping it.
+    if ((res.rowsAffected ?? 0) === 0) return false
+    // Real local delete in flight (crud upload, retried by PowerSync) — tombstone so
+    // it stays hidden across the replication window instead of briefly reappearing.
+    tombstoneEvent(id)
+    return true
+  })
 }
 
 // Stream agenda rows live from the local DB. Returns a disposer; a no-op disposer
@@ -356,6 +373,7 @@ export function watchAgendaRows(onRows: (rows: LocalEventRow[]) => void, onError
   let controller = new AbortController()
   const arm = () => {
     const db = getPowerSyncDb()
+    const identityScope = currentIdentityScope()
     if (!db) return
     controller = new AbortController()
     try {
@@ -363,8 +381,14 @@ export function watchAgendaRows(onRows: (rows: LocalEventRow[]) => void, onError
         AGENDA_SQL,
         [],
         {
-          onResult: (result) => onRows(dropTombstoned((result.rows?._array ?? []) as LocalEventRow[])),
-          onError: (e) => onError?.(e),
+          onResult: (result) => {
+            if (!disposed && getPowerSyncDb() === db && currentIdentityScope() === identityScope) {
+              onRows(dropTombstoned((result.rows?._array ?? []) as LocalEventRow[]))
+            }
+          },
+          onError: (e) => {
+            if (!disposed && getPowerSyncDb() === db && currentIdentityScope() === identityScope) onError?.(e)
+          },
         },
         { signal: controller.signal, tables: ['events', 'event_participants', 'event_occurrences', 'persons'] }
       )

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from '
 import { useSearchParams } from 'react-router'
 import { useSyncHealth, type SyncHealthStatus } from '../lib/powersync/sync-health'
 import { restartPowerSyncHard } from '../lib/powersync/db'
-import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, PrincipalTransitionError, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { useThemePref } from '../lib/theme'
 import { eventStyle } from '../lib/display'
@@ -2331,20 +2331,37 @@ function ConversionsSection({ currencies }: { currencies: Currency[] }) {
 // which fires waffled:auth-changed and drops the kiosk back to the Login screen.
 // Tap-to-confirm so a stray touch on the wall-mounted kiosk doesn't sign everyone out.
 function SignOutButton({ className }: { className?: string }) {
-  const [confirm, setConfirm] = useState(false)
+  const [confirm, setConfirm] = useState<'none' | 'confirm' | 'discard' | 'quarantine'>('none')
   const [busy, setBusy] = useState(false)
   async function signOut() {
-    if (!confirm) { setConfirm(true); return }
+    if (confirm === 'none') { setConfirm('confirm'); return }
     setBusy(true)
     try {
-      await authApi.logout()
-    } catch {
-      setBusy(false) // logout already clears the local session on its own; only reset if it threw before that
+      await authApi.logout({ discardPending: confirm === 'discard' || confirm === 'quarantine' })
+    } catch (err) {
+      if (err instanceof PrincipalTransitionError && err.result === 'pending-uploads') {
+        setConfirm('discard')
+      } else if (err instanceof PrincipalTransitionError && err.result === 'purge-failed') {
+        // A forced signed-out transition can quarantine the unreadable replica;
+        // startup will retry its cleanup before any future principal sees it.
+        setConfirm('quarantine')
+      } else {
+        setConfirm('confirm')
+      }
+      setBusy(false)
     }
   }
   return (
     <button type="button" className={className ?? 'btn btn-ghost'} onClick={signOut} disabled={busy}>
-      {busy ? 'Signing out…' : confirm ? 'Tap again to sign out' : '⏻ Sign out'}
+      {busy
+        ? 'Signing out…'
+        : confirm === 'quarantine'
+          ? 'Sign out & keep local data locked'
+          : confirm === 'discard'
+          ? 'Discard unsynced changes & sign out'
+          : confirm === 'confirm'
+            ? 'Tap again to sign out'
+            : '⏻ Sign out'}
     </button>
   )
 }
@@ -2676,18 +2693,24 @@ function AboutPanel() {
 function HouseholdsPanel() {
   const { household, memberships, pendingInvites } = useHousehold()
   const [switching, setSwitching] = useState<string | null>(null)
+  const [discarding, setDiscarding] = useState<string | null>(null)
   const [accepting, setAccepting] = useState<string | null>(null)
 
   async function doSwitch(id: string) {
+    if (switching || accepting) return
     setSwitching(id)
     try {
-      await authApi.switchHousehold(id)
+      await authApi.switchHousehold(id, { discardPending: discarding === id })
       window.location.assign('/')
-    } catch {
+    } catch (err) {
+      if (err instanceof PrincipalTransitionError && err.result === 'pending-uploads') {
+        setDiscarding(id)
+      }
       setSwitching(null)
     }
   }
   async function doAccept(id: string) {
+    if (switching || accepting) return
     setAccepting(id)
     try {
       await authApi.acceptInvite(id)
@@ -2717,8 +2740,12 @@ function HouseholdsPanel() {
               {current ? (
                 <span className="tiny muted" style={{ fontWeight: 700 }}>Current</span>
               ) : (
-                <button type="button" className="btn btn-primary" disabled={switching === m.householdId} onClick={() => doSwitch(m.householdId)}>
-                  {switching === m.householdId ? 'Switching…' : 'Switch'}
+                <button type="button" className="btn btn-primary" disabled={switching !== null || accepting !== null} onClick={() => doSwitch(m.householdId)}>
+                  {switching === m.householdId
+                    ? 'Switching…'
+                    : discarding === m.householdId
+                      ? 'Discard unsynced changes & switch'
+                      : 'Switch'}
                 </button>
               )}
             </div>
@@ -2734,7 +2761,7 @@ function HouseholdsPanel() {
           {pendingInvites.map((inv) => (
             <div key={inv.id} className="set-row2" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
               <div className="set-row2-t">{inv.householdName}</div>
-              <button type="button" className="btn btn-primary" disabled={accepting === inv.id} onClick={() => doAccept(inv.id)}>
+              <button type="button" className="btn btn-primary" disabled={switching !== null || accepting !== null} onClick={() => doAccept(inv.id)}>
                 {accepting === inv.id ? 'Accepting…' : 'Accept'}
               </button>
             </div>

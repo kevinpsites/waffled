@@ -1,6 +1,13 @@
 // Persons (family members) + household settings — client slice, types, hooks.
 import { useEffect, useState } from 'react'
-import { apiGet, apiSend, apiDelete, setCurrentViewerMemberType, setCurrentViewerPersonId } from './client'
+import {
+  apiGet,
+  apiSend,
+  apiDelete,
+  currentIdentityScope,
+  setCurrentViewerMemberType,
+  setCurrentViewerPersonId,
+} from './client'
 import { tap } from './bus'
 
 export interface Person {
@@ -129,22 +136,27 @@ export function useHousehold(): {
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([])
   useEffect(() => {
     let alive = true
-    const load = () =>
-      personsApi
+    const load = () => {
+      const identityScope = currentIdentityScope()
+      return personsApi
         .household()
         .then((d) => {
+          // A login, household switch, kiosk profile switch, or unmount may have
+          // happened while this request was suspended. Never let the old response
+          // restore its person/role into the replacement session's local gates.
+          if (!alive || currentIdentityScope() !== identityScope) return
           // Keep the module-level viewer in sync (drives personal-calendar visibility
           // in the offline agenda reads) and centrally block guest mutations regardless
-          // of whether this particular hook is still mounted.
+          // of which screen is mounted.
           setCurrentViewerPersonId(d.person?.id ?? null)
           setCurrentViewerMemberType(d.person?.memberType ?? null)
-          if (!alive) return
           setHousehold(d.household ?? null)
           setPerson(d.person ?? null)
           setMemberships(d.memberships ?? [])
           setPendingInvites(d.pendingInvites ?? [])
         })
         .catch(() => {})
+    }
     load()
     window.addEventListener(HOUSEHOLD_CHANGED, load)
     return () => {

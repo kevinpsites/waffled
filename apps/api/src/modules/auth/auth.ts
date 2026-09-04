@@ -8,7 +8,14 @@ import jwt from 'jsonwebtoken'
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { config } from '../../platform/config'
 import { query, getPool } from '../../platform/db'
-import { provisionHousehold, presentHousehold, presentPerson, requireTenant, requireAdmin } from '../households/households'
+import {
+  provisionHousehold,
+  presentHousehold,
+  presentPerson,
+  requireTenant,
+  requireAdmin,
+  resolveRequestTenant,
+} from '../households/households'
 import { loginMethods } from './oidc'
 import {
   listMemberships,
@@ -28,6 +35,7 @@ type Api = ReturnType<typeof createAPI>
 const ACCESS_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS) || 60 * 60 // 1h
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 60
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // ── password hashing (Node scrypt — no extra dependency) ─────────────────────
 export function hashPassword(pw: string): string {
@@ -230,12 +238,42 @@ export function registerAuthRoutes(api: Api): void {
   // refresh pair scoped to another household the account belongs to, and remembers
   // it as last-active. 403 if the account isn't a member of the target.
   api.post('/api/auth/switch', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
     const targetHouseholdId = ((req.body ?? {}) as { householdId?: string }).householdId?.trim()
     if (!targetHouseholdId) return res.status(400).json({ error: 'BadRequest', message: 'householdId is required' })
-    // Resolve the caller's account from their current membership person.
-    const ar = await query<{ account_id: string | null }>(`select account_id from persons where id = $1`, [tenant.personId])
-    const accountId = ar.rows[0]?.account_id
+
+    // Account-scoped tokens identify the global login independently of the selected
+    // household. Resolve that live account directly so a revoked/expired membership
+    // cannot strand another active membership. A UUID-shaped but unknown subject is
+    // not sufficient: the account row is the authority. Legacy tokens retain their
+    // active-membership fallback.
+    const subject = req.principal?.sub
+    const selectedHousehold = req.principal?.claims?.[config.auth.householdClaim]
+    let accountId: string | null | undefined
+    if (
+      subject
+      && UUID_RE.test(subject)
+      && typeof selectedHousehold === 'string'
+      && UUID_RE.test(selectedHousehold)
+    ) {
+      const ar = await query<{ id: string }>(
+        `select id from accounts where id = $1 and deleted_at is null`,
+        [subject]
+      )
+      accountId = ar.rows[0]?.id
+    }
+    if (!accountId) {
+      const tenant = await resolveRequestTenant(req)
+      if (tenant) {
+        const ar = await query<{ account_id: string | null }>(
+          `select p.account_id
+             from persons p
+             join accounts a on a.id = p.account_id and a.deleted_at is null
+            where p.id = $1`,
+          [tenant.personId]
+        )
+        accountId = ar.rows[0]?.account_id
+      }
+    }
     if (!accountId) return res.status(403).json({ error: 'Forbidden', message: 'This session has no account.' })
     const memberships = await listMemberships(accountId)
     const target = memberships.find((m) => m.householdId === targetHouseholdId)

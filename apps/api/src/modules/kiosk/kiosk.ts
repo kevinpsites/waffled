@@ -15,7 +15,7 @@
 import { randomBytes } from 'node:crypto'
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { AuthError } from '../../platform/auth'
+import { AuthError, MembershipInactiveError } from '../../platform/auth'
 import {
   mintAccess,
   issueRefresh,
@@ -23,7 +23,14 @@ import {
   hashPassword,
   verifyPassword,
 } from '../auth/auth'
-import { requireTenant, requireAdmin, resolveTenant, presentPerson, type PersonRow } from '../households/households'
+import {
+  requireTenant,
+  requireAdmin,
+  resolveRequestTenant,
+  resolveRequestInactiveMembership,
+  presentPerson,
+  type PersonRow,
+} from '../households/households'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -100,8 +107,9 @@ async function resolveHouseholdId(req: Request): Promise<string> {
   // account-scoped token (sub = account id + household claim), not just the legacy
   // sub → identity lookup. Then fall back to a pre-claim device token (the picker).
   if (req.principal) {
-    const tenant = await resolveTenant(req.principal)
+    const tenant = await resolveRequestTenant(req)
     if (tenant) return tenant.householdId
+    if (await resolveRequestInactiveMembership(req)) throw new MembershipInactiveError()
   }
   return (await requireDevice(req)).householdId
 }

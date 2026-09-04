@@ -125,10 +125,14 @@ final class SyncManager {
     var isReadOnlyGuest: Bool { effectiveMemberType == "guest" }
     func loadIdentity() async {
         guard currentPerson == nil else { return }
+        let identityScope = AppConfig.currentIdentityScope
         // Keep the last trusted role through a transient identity failure. Clearing it
         // here briefly reopened local writes for guests; a real sign-out/session swap
         // still clears it explicitly before the next account is used.
         guard let person = try? await api.currentPerson() else { return }
+        // The request may have been suspended across a login, household switch, or
+        // kiosk profile claim. Never install the old response into the new session.
+        guard AppConfig.currentIdentityScope == identityScope else { return }
         currentPerson = person
         AppConfig.setCurrentMemberType(person.memberType)
         await reloadModules()
@@ -197,7 +201,9 @@ final class SyncManager {
     /// (Re)load the module flags from the server — at identity load and after a toggle
     /// in Settings → Modules, so nav/Today reflect the change without a relaunch.
     func reloadModules() async {
+        let identityScope = AppConfig.currentIdentityScope
         if let m = try? await api.householdModules() {
+            guard AppConfig.currentIdentityScope == identityScope else { return }
             moduleFlags = m.modules
             rewardsSubEnabled = m.rewards
             // Same `/api/household` read carries settings.display, so the calendar's

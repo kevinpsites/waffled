@@ -26,6 +26,16 @@ export class AuthError extends Error {
   }
 }
 
+// Stable terminal-session signal for a JWT which once selected a real membership,
+// but whose membership is now expired, revoked, or deleted. Clients distinguish
+// this from an unknown/unprovisioned principal and from ordinary permission 403s.
+export class MembershipInactiveError extends AuthError {
+  constructor() {
+    super('Household access has expired or was revoked.', 401)
+    this.name = 'membership_inactive'
+  }
+}
+
 // Built on first use, only in auth0 mode — local mode never opens the JWKS client.
 let jwksClient: JwksClient | null = null
 function auth0KeyResolver(): GetPublicKeyOrSecret {

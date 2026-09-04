@@ -69,7 +69,7 @@ enum AppConfig {
         guard let memberType = defaults.string(forKey: memberTypeKey),
               builtInMemberTypes.contains(memberType),
               defaults.string(forKey: memberTypeServerKey) == apiBaseURL,
-              let authScope = memberTypeAuthScope(),
+              let authScope = currentIdentityScope,
               defaults.string(forKey: memberTypeAuthScopeKey) == authScope else {
             defaults.removeObject(forKey: memberTypeKey)
             defaults.removeObject(forKey: memberTypeServerKey)
@@ -81,7 +81,7 @@ enum AppConfig {
     static func setCurrentMemberType(_ value: String?) {
         memberTypeLock.lock(); defer { memberTypeLock.unlock() }
         let defaults = UserDefaults.standard
-        if let value, builtInMemberTypes.contains(value), let authScope = memberTypeAuthScope() {
+        if let value, builtInMemberTypes.contains(value), let authScope = currentIdentityScope {
             defaults.set(value, forKey: memberTypeKey)
             defaults.set(apiBaseURL, forKey: memberTypeServerKey)
             defaults.set(authScope, forKey: memberTypeAuthScopeKey)
@@ -95,8 +95,8 @@ enum AppConfig {
     /// A rotating real session keeps one logical scope; a pasted/launch-env dev
     /// token gets a non-reversible fingerprint so changing it across launches also
     /// invalidates the cached role without copying that credential into defaults.
-    private static func memberTypeAuthScope() -> String? {
-        if AuthTokens.isSignedIn { return "session" }
+    static var currentIdentityScope: String? {
+        if let scope = AuthTokens.identityScope { return scope }
         let token = devToken
         guard !token.isEmpty else { return nil }
         let digest = SHA256.hash(data: Data(token.utf8))

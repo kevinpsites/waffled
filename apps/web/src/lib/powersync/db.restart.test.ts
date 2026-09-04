@@ -66,10 +66,27 @@ async function freshDbModule() {
 beforeEach(() => {
   fakes.instances.length = 0
   fakes.failNext = null
-  localStorage.setItem('waffled.access', 'tok') // signed in, so health isn't pinned at no-auth
+  localStorage.clear()
+  localStorage.setItem('waffled.session.v1', JSON.stringify({
+    v: 1,
+    scope: 'test-scope',
+    accessToken: 'tok',
+    refreshToken: 'refresh-tok',
+  })) // signed in, so health isn't pinned at no-auth
+  localStorage.setItem('waffled.powersyncIdentityScope', 'session:test-scope')
 })
 
 describe('connectPowerSync', () => {
+  it('purges a pre-owner-format replica before publishing it on upgrade', async () => {
+    localStorage.removeItem('waffled.powersyncIdentityScope')
+    const db = await freshDbModule()
+    await db.connectPowerSync()
+
+    expect(fakes.instances[0].disconnectAndClear).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem('waffled.powersyncIdentityScope')).toBe('session:test-scope')
+    expect(db.getPowerSyncDb()).toBe(fakes.instances[0] as never)
+  })
+
   it('creates and connects a single client (a second call is a no-op)', async () => {
     const db = await freshDbModule()
     await db.connectPowerSync()
@@ -150,6 +167,144 @@ describe('connectPowerSync', () => {
   })
 })
 
+describe('principal transitions', () => {
+  it('refuses a lossless replacement while uploads are pending', async () => {
+    const db = await freshDbModule()
+    const client = await import('../api/client')
+    await db.connectPowerSync()
+    const old = fakes.instances[0]
+    old.getNextCrudTransaction.mockResolvedValue({ crud: [{}] })
+
+    await expect(client.setSession('new-access', 'new-refresh')).rejects.toMatchObject({
+      name: 'PrincipalTransitionError',
+      result: 'pending-uploads',
+    })
+    expect(client.getAccessToken()).toBe('tok')
+    expect(old.disconnectAndClear).not.toHaveBeenCalled()
+    expect(db.getPowerSyncDb()).toBe(old as never)
+  })
+
+  it('does not call the household-switch endpoint until the local queue preflight passes', async () => {
+    const db = await freshDbModule()
+    const client = await import('../api/client')
+    await db.connectPowerSync()
+    const old = fakes.instances[0]
+    old.getNextCrudTransaction.mockResolvedValue({ crud: [{}] })
+    const prepare = vi.fn(async () => ({ accessToken: 'new-access', refreshToken: 'new-refresh' }))
+
+    await expect(client.setSessionFrom(prepare)).rejects.toMatchObject({
+      name: 'PrincipalTransitionError',
+      result: 'pending-uploads',
+    })
+    expect(prepare).not.toHaveBeenCalled()
+    expect(old.disconnectAndClear).not.toHaveBeenCalled()
+    expect(client.getAccessToken()).toBe('tok')
+  })
+
+  it('clears the old replica before requesting prepared switch credentials', async () => {
+    const db = await freshDbModule()
+    const client = await import('../api/client')
+    await db.connectPowerSync()
+    const old = fakes.instances[0]
+    const prepare = vi.fn(async () => {
+      expect(old.disconnectAndClear).toHaveBeenCalledTimes(1)
+      expect(client.getAccessToken()).toBe('tok')
+      return { accessToken: 'new-access', refreshToken: 'new-refresh' }
+    })
+
+    await client.setSessionFrom(prepare)
+
+    expect(prepare).toHaveBeenCalledOnce()
+    expect(client.getAccessToken()).toBe('new-access')
+    expect(db.getPowerSyncDb()).toBe(fakes.instances[1] as never)
+  })
+
+  it('reconnects the unchanged principal if prepared switch credentials fail', async () => {
+    const db = await freshDbModule()
+    const client = await import('../api/client')
+    await db.connectPowerSync()
+    const old = fakes.instances[0]
+    const prepare = vi.fn(async () => { throw new Error('switch unavailable') })
+
+    await expect(client.setSessionFrom(prepare)).rejects.toThrow('switch unavailable')
+
+    expect(old.disconnectAndClear).toHaveBeenCalledTimes(1)
+    expect(client.getAccessToken()).toBe('tok')
+    expect(fakes.instances).toHaveLength(2)
+    expect(db.getPowerSyncDb()).toBe(fakes.instances[1] as never)
+  })
+
+  it('clears the old replica before an explicitly authorized replacement', async () => {
+    const db = await freshDbModule()
+    const client = await import('../api/client')
+    await db.connectPowerSync()
+    const old = fakes.instances[0]
+    old.getNextCrudTransaction.mockResolvedValue({ crud: [{}] })
+
+    await client.setSession('new-access', 'new-refresh', { discardPending: true })
+
+    expect(old.disconnectAndClear).toHaveBeenCalledTimes(1)
+    expect(old.close).toHaveBeenCalledTimes(1)
+    expect(client.getAccessToken()).toBe('new-access')
+    expect(client.currentIdentityScope()).not.toBe('session:test-scope')
+    expect(localStorage.getItem('waffled.powersyncIdentityScope')).toBe(client.currentIdentityScope())
+    expect(db.getPowerSyncDb()).toBe(fakes.instances[1] as never)
+  })
+
+  it('does not publish replacement credentials when an unknown on-disk replica cannot open', async () => {
+    const db = await freshDbModule()
+    const client = await import('../api/client')
+    // Model a prior failed boot: an A-owned OPFS file exists but there is no live
+    // handle available for the transition to inspect or clear.
+    fakes.failNext = { step: 'init', message: 'OPFS locked' }
+    await db.connectPowerSync()
+    expect(db.getPowerSyncDb()).toBeNull()
+    fakes.failNext = { step: 'init', message: 'still locked' }
+
+    await expect(client.setSession('new-access', 'new-refresh', { discardPending: true }))
+      .rejects.toMatchObject({ result: 'purge-failed' })
+    expect(client.getAccessToken()).toBe('tok')
+    expect(localStorage.getItem('waffled.powersyncIdentityScope')).toBe('session:test-scope')
+  })
+
+  it('quarantines a failed clear when signing out and never re-exposes the old handle', async () => {
+    const db = await freshDbModule()
+    const client = await import('../api/client')
+    await db.connectPowerSync()
+    const old = fakes.instances[0]
+    old.disconnectAndClear = vi.fn(async () => { throw new Error('clear failed') })
+
+    await expect(client.clearSession({ discardPending: true })).resolves.toBeUndefined()
+    expect(client.getAccessToken()).toBeUndefined()
+    expect(db.getPowerSyncDb()).toBeNull()
+    expect(localStorage.getItem('waffled.powersyncIdentityScope')).toBe('session:test-scope')
+    expect(old.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('serializes a replacement behind an in-flight hard restart', async () => {
+    const db = await freshDbModule()
+    const client = await import('../api/client')
+    await db.connectPowerSync()
+    const old = fakes.instances[0]
+    let releaseClose!: () => void
+    old.close = vi.fn(() => new Promise<void>((resolve) => { releaseClose = resolve }))
+
+    const restart = db.restartPowerSyncHard()
+    const replace = client.setSession('new-access', 'new-refresh', { discardPending: true })
+    await vi.waitFor(() => expect(old.close).toHaveBeenCalledTimes(1))
+    expect(client.getAccessToken()).toBe('tok')
+    releaseClose()
+    await Promise.all([restart, replace])
+
+    // Restart publishes instance 2 under A; the queued transition then clears it
+    // and publishes instance 3 under B.
+    expect(fakes.instances).toHaveLength(3)
+    expect(fakes.instances[1].disconnectAndClear).toHaveBeenCalledTimes(1)
+    expect(client.getAccessToken()).toBe('new-access')
+    expect(db.getPowerSyncDb()).toBe(fakes.instances[2] as never)
+  })
+})
+
 // The watchdog only re-classifies on its 30s tick, but the kiosk's offline strip
 // appears after 10s — so a stall that coincides with the network dropping used to
 // stack two banners for ~20s. Reacting to the browser's own events closes that gap.
@@ -188,6 +343,28 @@ describe('restartPowerSyncSoft', () => {
   it('is a safe no-op when PowerSync never came up', async () => {
     const db = await freshDbModule()
     await expect(db.restartPowerSyncSoft()).resolves.toBeUndefined()
+  })
+
+  it('never reconnects a raw handle after the atomic session scope changed', async () => {
+    const db = await freshDbModule()
+    await db.connectPowerSync()
+    const old = fakes.instances[0]
+    localStorage.setItem('waffled.session.v1', JSON.stringify({
+      v: 1,
+      scope: 'replacement-scope',
+      accessToken: 'replacement-token',
+      refreshToken: 'replacement-refresh',
+    }))
+
+    expect(db.getPowerSyncDb()).toBeNull()
+    await db.restartPowerSyncSoft()
+
+    expect(old.disconnect).toHaveBeenCalledTimes(1)
+    expect(old.close).toHaveBeenCalledTimes(1)
+    expect(old.connect).toHaveBeenCalledTimes(1)
+    expect(fakes.instances).toHaveLength(2)
+    expect(fakes.instances[1].disconnectAndClear).toHaveBeenCalledTimes(1)
+    expect(db.getPowerSyncDb()).toBe(fakes.instances[1] as never)
   })
 })
 

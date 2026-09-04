@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   status: vi.fn(),
   login: vi.fn(),
   setup: vi.fn(),
+  accessToken: null as string | null,
+  transitionInProgress: vi.fn(() => false),
+  waitForTransition: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('../lib/api', () => ({
@@ -17,8 +20,13 @@ vi.mock('../lib/api', () => ({
     startOidc: vi.fn(),
     oidcExchange: vi.fn(),
   },
-  getAccessToken: () => null,
+  getAccessToken: () => mocks.accessToken,
   isKioskMode: () => false,
+}))
+
+vi.mock('../lib/powersync/principal-transition', () => ({
+  principalTransitionInProgress: mocks.transitionInProgress,
+  waitForPrincipalTransition: mocks.waitForTransition,
 }))
 
 function renderGate() {
@@ -45,6 +53,11 @@ describe('AuthGate accessibility', () => {
     mocks.status.mockReset()
     mocks.login.mockReset()
     mocks.setup.mockReset()
+    mocks.accessToken = null
+    mocks.transitionInProgress.mockReset()
+    mocks.transitionInProgress.mockReturnValue(false)
+    mocks.waitForTransition.mockReset()
+    mocks.waitForTransition.mockResolvedValue(undefined)
   })
 
   it('labels login fields and focuses an announced sign-in error', async () => {
@@ -83,4 +96,29 @@ describe('AuthGate accessibility', () => {
     expect(email).toHaveAttribute('aria-describedby', hint.id)
     await expectNoAxeViolations(container)
   }, 30_000)
+
+  it('closes the render-to-subscribe gap when a transition starts before effects run', async () => {
+    mocks.accessToken = 'account-a-token'
+    mocks.transitionInProgress
+      .mockReturnValueOnce(false) // useState initializer
+      .mockReturnValue(true) // subscribe-then-check in the effect
+    mocks.waitForTransition.mockReturnValue(new Promise<void>(() => {}))
+
+    renderGate()
+
+    await waitFor(() => expect(screen.queryByText('Signed in')).not.toBeInTheDocument())
+    expect(screen.getByText('Loading…')).toBeInTheDocument()
+  })
+
+  it('shows fail-closed recovery when transition liveness cannot be proven', async () => {
+    mocks.accessToken = 'account-a-token'
+    mocks.transitionInProgress.mockReturnValue(true)
+    mocks.waitForTransition.mockRejectedValue(new Error('no Web Locks liveness proof'))
+
+    renderGate()
+
+    expect(await screen.findByText('Private data is still locked')).toBeInTheDocument()
+    expect(screen.queryByText('Signed in')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reload and try again' })).toBeInTheDocument()
+  })
 })

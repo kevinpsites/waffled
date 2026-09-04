@@ -1,7 +1,7 @@
 // Auth flow — login / first-run setup / logout. These hit the public auth
 // endpoints directly (no bearer) and persist the returned session via setSession,
 // which signals the AuthGate to render the app.
-import { apiGet, apiSend, setSession, clearSession } from './client'
+import { apiGet, apiSend, setSession, setSessionFrom, clearSession, getSessionRefreshToken } from './client'
 
 export interface AuthStatus {
   initialized: boolean
@@ -54,11 +54,11 @@ export const authApi = {
   status: () => apiGet<AuthStatus>('/api/auth/status'),
   async login(email: string, password: string): Promise<void> {
     const d = await post('/api/auth/login', { email, password })
-    setSession(d.accessToken, d.refreshToken)
+    await setSession(d.accessToken, d.refreshToken)
   },
   async setup(input: SetupInput): Promise<void> {
     const d = await post('/api/auth/setup', input)
-    setSession(d.accessToken, d.refreshToken)
+    await setSession(d.accessToken, d.refreshToken)
   },
   // Full-page handoff to the backend OIDC flow; it redirects back to /auth/callback.
   startOidc(): void {
@@ -67,7 +67,7 @@ export const authApi = {
   // /auth/callback exchanges the one-time handoff code for a real session.
   async oidcExchange(code: string): Promise<void> {
     const d = await post('/api/auth/oidc/exchange', { code })
-    setSession(d.accessToken, d.refreshToken)
+    await setSession(d.accessToken, d.refreshToken)
   },
   // Installation OIDC config (authed; routes require the installation owner).
   getConfig: () => apiGet<OidcConfig>('/api/auth/config'),
@@ -76,24 +76,25 @@ export const authApi = {
     apiSend<{ ok: boolean; issuer?: string; authorizationEndpoint?: string; message?: string }>('POST', '/api/auth/config/test', { issuerUrl }),
   // Mint a fresh session for another household this account belongs to. The caller
   // decides what to do next (we do a full reload to re-establish PowerSync etc.).
-  async switchHousehold(householdId: string): Promise<void> {
-    const d = await apiSend<SessionResponse>('POST', '/api/auth/switch', { householdId })
-    setSession(d.accessToken, d.refreshToken)
+  async switchHousehold(householdId: string, opts: { discardPending?: boolean } = {}): Promise<void> {
+    await setSessionFrom(
+      () => apiSend<SessionResponse>('POST', '/api/auth/switch', { householdId }),
+      opts
+    )
   },
   // Accept a pending invitation — creates the membership (no auto-switch).
   async acceptInvite(inviteId: string): Promise<void> {
     await apiSend('POST', `/api/auth/invites/${inviteId}/accept`, {})
   },
-  async logout(): Promise<void> {
+  async logout(opts: { discardPending?: boolean } = {}): Promise<void> {
     let refreshToken: string | undefined
-    try {
-      refreshToken = localStorage.getItem('waffled.refresh') || undefined
-    } catch {
-      /* ignore */
-    }
+    refreshToken = getSessionRefreshToken()
+    // Refuse an ordinary sign-out while writes are queued before revoking the
+    // only credential which can upload them. An explicit discard clears the
+    // private replica first; server revocation remains best-effort afterward.
+    await clearSession(opts)
     if (refreshToken) {
       await fetch('/api/auth/logout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ refreshToken }) }).catch(() => {})
     }
-    clearSession()
   },
 }

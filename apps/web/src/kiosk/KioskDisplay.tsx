@@ -18,19 +18,40 @@ import {
   type AgendaEvent,
 } from '../lib/api'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
+import { principalTransitionInProgress, waitForPrincipalTransition } from '../lib/powersync/principal-transition'
 import '../styles/kiosk-profiles.css'
 
 export function KioskDisplay({ children }: { children: ReactNode }) {
   const [on, setOn] = useState(isDisplayMode())
+  const [transitioning, setTransitioning] = useState(principalTransitionInProgress())
   useEffect(() => {
-    const h = () => setOn(isDisplayMode())
-    window.addEventListener('waffled:auth-changed', h)
-    return () => window.removeEventListener('waffled:auth-changed', h)
+    let active = true
+    const onAuthChange = () => {
+      setOn(isDisplayMode())
+      setTransitioning(principalTransitionInProgress())
+    }
+    const onTransition = () => {
+      setTransitioning(true)
+      // AuthGate owns the recovery UI. On a timeout, keep the display layer
+      // hidden so private ambient content never reappears behind that screen.
+      void waitForPrincipalTransition()
+        .then(() => { if (active) setTransitioning(false) })
+        .catch(() => {})
+    }
+    window.addEventListener('waffled:auth-changed', onAuthChange)
+    window.addEventListener('waffled:principal-transition-started', onTransition)
+    // Subscribe before checking so the render -> effect gap cannot miss a start.
+    if (principalTransitionInProgress()) onTransition()
+    return () => {
+      active = false
+      window.removeEventListener('waffled:auth-changed', onAuthChange)
+      window.removeEventListener('waffled:principal-transition-started', onTransition)
+    }
   }, [])
   return (
     <>
       {children}
-      {on && <DisplayLayer />}
+      {on && !transitioning && <DisplayLayer />}
     </>
   )
 }
@@ -109,7 +130,9 @@ function DisplayLayer() {
       }
       if (cfg.content !== 'off') {
         saverT = setTimeout(() => {
-          if (isKioskMode() && cfg.returnToPicker) clearProfileSession() // drop to picker underneath
+          if (isKioskMode() && cfg.returnToPicker) {
+            void clearProfileSession().catch(() => {}) // pending uploads keep the current profile underneath
+          }
           setSaver(true)
         }, cfg.screensaverMinutes * 60_000)
       }

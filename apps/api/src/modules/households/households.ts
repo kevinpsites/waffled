@@ -4,7 +4,7 @@
 import type { QueryResultRow } from 'pg'
 import type { Request } from 'lambda-api'
 import { getPool, query } from '../../platform/db'
-import { AuthError, type Principal } from '../../platform/auth'
+import { AuthError, MembershipInactiveError, type Principal } from '../../platform/auth'
 import { config } from '../../platform/config'
 import { seedDefaultRecipe } from '../meals/seed-default-recipe'
 
@@ -64,7 +64,7 @@ export function inferProvider(sub: string): string {
 // sub → identity → person → household path (covers pre-P2 tokens, kiosk, device).
 export async function resolveTenant(principal: Principal): Promise<Tenant | null> {
   const claim = principal.claims?.[config.auth.householdClaim]
-  if (typeof claim === 'string' && claim && UUID_RE.test(principal.sub)) {
+  if (typeof claim === 'string' && UUID_RE.test(claim) && UUID_RE.test(principal.sub)) {
     const { rows } = await query<{ person_id: string; is_admin: boolean; member_type: string }>(
       `select p.id as person_id, p.is_admin, p.member_type
          from persons p
@@ -81,6 +81,75 @@ export async function resolveTenant(principal: Principal): Promise<Tenant | null
   return findTenantBySub(principal.sub)
 }
 
+export interface InactiveMembership {
+  /// Present for account-backed sessions. Only a still-live account may use this
+  /// recovery identity to switch directly to another active household.
+  accountId: string | null
+  accountActive: boolean
+}
+
+// Classify a missing active tenant without weakening `resolveTenant`: a historical
+// membership/identity proves this JWT belonged to a real household session whose
+// access has since ended. A subject or household claim with no such history remains
+// the existing unprovisioned/unknown case.
+export async function resolveInactiveMembership(principal: Principal): Promise<InactiveMembership | null> {
+  const claim = principal.claims?.[config.auth.householdClaim]
+  if (typeof claim === 'string' && UUID_RE.test(claim) && UUID_RE.test(principal.sub)) {
+    const { rows } = await query<{ account_id: string; account_active: boolean }>(
+      `select a.id as account_id, (a.deleted_at is null) as account_active
+         from accounts a
+        where a.id = $1
+          and exists (
+            select 1
+              from persons p
+             where p.household_id = $2
+               and (
+                 p.account_id = a.id
+                 or exists (
+                   select 1 from identities i
+                    where i.person_id = p.id and i.account_id = a.id
+                 )
+               )
+          )
+          and not exists (
+            select 1
+              from persons active_p
+              join accounts active_a
+                on active_a.id = active_p.account_id and active_a.deleted_at is null
+             where active_p.account_id = a.id
+               and active_p.household_id = $2
+               and active_p.deleted_at is null
+               and (active_p.access_expires_at is null or active_p.access_expires_at > now())
+          )
+        limit 1`,
+      [principal.sub, claim]
+    )
+    const row = rows[0]
+    return row ? { accountId: row.account_id, accountActive: row.account_active } : null
+  }
+
+  // Legacy/profile sessions have no household claim. Keep deleted identities and
+  // persons in this lookup deliberately: their existence is the evidence that the
+  // otherwise-unresolved subject is revoked/expired rather than never provisioned.
+  const { rows } = await query<{ account_id: string | null; account_active: boolean }>(
+    `select coalesce(p.account_id, i.account_id) as account_id,
+            (a.id is not null and a.deleted_at is null) as account_active
+       from identities i
+       join persons p on p.id = i.person_id
+      left join accounts a on a.id = coalesce(p.account_id, i.account_id)
+      where i.auth0_user_id = $1
+        and (
+          i.deleted_at is not null
+          or p.deleted_at is not null
+          or (p.access_expires_at is not null and p.access_expires_at <= now())
+        )
+      limit 1`,
+    [principal.sub]
+  )
+  const row = rows[0]
+  return row ? { accountId: row.account_id, accountActive: row.account_active } : null
+}
+
 type TenantResolver = (principal: Principal) => Promise<Tenant | null>
 
 // The guest-write gate and the route guard both need the same tenant. Cache the
@@ -88,6 +157,7 @@ type TenantResolver = (principal: Principal) => Promise<Tenant | null>
 // database query, including when two consumers ask concurrently. A resolved null
 // is cached too; otherwise an unprovisioned caller would still be queried twice.
 const requestTenantCache = new WeakMap<Request, Promise<Tenant | null>>()
+const requestInactiveMembershipCache = new WeakMap<Request, Promise<InactiveMembership | null>>()
 
 export function resolveRequestTenant(
   req: Request,
@@ -104,12 +174,26 @@ export function resolveRequestTenant(
   return pending
 }
 
+export function resolveRequestInactiveMembership(req: Request): Promise<InactiveMembership | null> {
+  if ((req as Request & { apiKeyTenant?: Tenant }).apiKeyTenant || !req.principal) {
+    return Promise.resolve(null)
+  }
+  const cached = requestInactiveMembershipCache.get(req)
+  if (cached) return cached
+  const pending = resolveInactiveMembership(req.principal)
+  requestInactiveMembershipCache.set(req, pending)
+  return pending
+}
+
 // Resolve the caller's household, or 403 if they haven't onboarded yet. A key-
 // authenticated request already resolved its owner tenant in the auth gate, so we
 // return that directly (the key's owner person is the tenant).
 export async function requireTenant(req: Request): Promise<Tenant> {
   const tenant = await resolveRequestTenant(req)
-  if (!tenant) throw new AuthError('No household for this account; create one first', 403)
+  if (!tenant) {
+    if (await resolveRequestInactiveMembership(req)) throw new MembershipInactiveError()
+    throw new AuthError('No household for this account; create one first', 403)
+  }
   return tenant
 }
 

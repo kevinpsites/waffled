@@ -52,8 +52,15 @@ enum Keychain {
 /// Access token (HS256 JWT, ~1h) rides every request as `Authorization: Bearer`.
 /// Refresh token (opaque, ~60d, single-use/rotating) mints a fresh pair on 401.
 enum AuthTokens {
+    struct RefreshLease: Equatable, Sendable {
+        let refreshToken: String
+        let identityScope: String
+        let generation: UInt64
+    }
+
     private static let accessKey = "waffled.accessToken"
     private static let refreshKey = "waffled.refreshToken"
+    private static let sessionScopeKey = "waffled.authSessionScope"
 
     // In-memory cache, lazily loaded from the Keychain once. `authorize()` reads the
     // access token on EVERY request; without this cache that's a securityd XPC call
@@ -62,6 +69,7 @@ enum AuthTokens {
     // the durable store; this is just the hot-path read cache.
     private static let lock = NSLock()
     private static var cache: (access: String?, refresh: String?)?
+    private static var generation: UInt64 = 0
 
     private static func loaded() -> (access: String?, refresh: String?) {
         if let c = cache { return c }
@@ -73,26 +81,100 @@ enum AuthTokens {
     static var accessToken: String? { lock.lock(); defer { lock.unlock() }; return loaded().access }
     static var refreshToken: String? { lock.lock(); defer { lock.unlock() }; return loaded().refresh }
 
+    /// Stable for one signed-in principal/household across rotating refreshes, but
+    /// replaced for every explicit login, household switch, or kiosk profile claim.
+    /// It is non-secret and persisted so a verified role can be trusted offline after
+    /// relaunch without letting a delayed response cross a replacement-session boundary.
+    private static func identityScopeLocked() -> String? {
+        guard loaded().access != nil else { return nil }
+        let defaults = UserDefaults.standard
+        if let scope = defaults.string(forKey: sessionScopeKey), !scope.isEmpty {
+            return "session:\(scope)"
+        }
+        let scope = UUID().uuidString
+        defaults.set(scope, forKey: sessionScopeKey)
+        return "session:\(scope)"
+    }
+
+    static var identityScope: String? {
+        lock.lock(); defer { lock.unlock() }
+        return identityScopeLocked()
+    }
+
     /// True once a real login has stored tokens (distinct from the dev-token path).
     static var isSignedIn: Bool { accessToken != nil }
 
-    /// Store a fresh access+refresh pair (login, setup, or a rotated refresh).
-    static func save(access: String, refresh: String) {
-        lock.lock(); cache = (access, refresh); lock.unlock()
+    /// Snapshot used to bind one rotating refresh request to the credentials and
+    /// principal generation that launched it.
+    static func refreshLease() -> RefreshLease? {
+        lock.lock(); defer { lock.unlock() }
+        guard let refreshToken = loaded().refresh,
+              let identityScope = identityScopeLocked() else { return nil }
+        return RefreshLease(
+            refreshToken: refreshToken,
+            identityScope: identityScope,
+            generation: generation
+        )
+    }
+
+    static func isCurrent(_ lease: RefreshLease) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return generation == lease.generation &&
+            loaded().refresh == lease.refreshToken &&
+            identityScopeLocked() == lease.identityScope
+    }
+
+    /// Store a fresh access+refresh pair. Explicit login/household/profile replacement
+    /// rotates the identity scope; the token refresher opts into preserving it.
+    static func save(access: String, refresh: String, preservingIdentityScope: Bool = false) {
+        lock.lock()
+        generation &+= 1
+        cache = (access, refresh)
+        let defaults = UserDefaults.standard
+        if !preservingIdentityScope || defaults.string(forKey: sessionScopeKey) == nil {
+            defaults.set(UUID().uuidString, forKey: sessionScopeKey)
+        }
         Keychain.set(accessKey, access)
         Keychain.set(refreshKey, refresh)
+        lock.unlock()
+    }
+
+    /// Commit a refresh response only while its exact lease is still current. A
+    /// login, household/profile replacement, clear, or newer refresh invalidates it.
+    @discardableResult
+    static func saveIfCurrent(
+        _ lease: RefreshLease,
+        access: String,
+        refresh: String
+    ) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard generation == lease.generation,
+              loaded().refresh == lease.refreshToken,
+              identityScopeLocked() == lease.identityScope else { return false }
+        generation &+= 1
+        cache = (access, refresh)
+        Keychain.set(accessKey, access)
+        Keychain.set(refreshKey, refresh)
+        return true
     }
 
     /// Replace just the access token (kept for parity; refresh always rotates too).
     static func saveAccess(_ access: String) {
-        lock.lock(); cache = (access, loaded().refresh); lock.unlock()
+        lock.lock()
+        generation &+= 1
+        cache = (access, loaded().refresh)
         Keychain.set(accessKey, access)
+        lock.unlock()
     }
 
     static func clear() {
-        lock.lock(); cache = (nil, nil); lock.unlock()
+        lock.lock()
+        generation &+= 1
+        cache = (nil, nil)
+        UserDefaults.standard.removeObject(forKey: sessionScopeKey)
         Keychain.set(accessKey, nil)
         Keychain.set(refreshKey, nil)
+        lock.unlock()
         // Every explicit logout, expired refresh, and kiosk profile teardown uses
         // this boundary. Do not let the durable offline role cross principals.
         AppConfig.setCurrentMemberType(nil)

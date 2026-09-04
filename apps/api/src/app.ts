@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto'
 import createAPI, { type Request, type Response, type NextFunction } from 'lambda-api'
 import { config } from './platform/config'
-import { AuthError, requireAuth } from './platform/auth'
+import { AuthError, MembershipInactiveError, requireAuth } from './platform/auth'
 import { query } from './platform/db'
 import { log } from './platform/logger'
 import { version } from './platform/version'
@@ -12,6 +12,7 @@ import { registerHealthRoutes } from './modules/health/health'
 import { registerUpdateRoutes } from './modules/updates/updates'
 import {
   resolveRequestTenant,
+  resolveRequestInactiveMembership,
   requireTenant,
   requireAdmin,
   getContext,
@@ -155,7 +156,10 @@ api.get('/api/me', async (req: Request) => ({ sub: req.principal?.sub }))
 // Your household + person, or { provisioned: false } if you haven't onboarded yet.
 api.get('/api/household', async (req: Request) => {
   const tenant = await resolveRequestTenant(req)
-  if (!tenant) return { provisioned: false }
+  if (!tenant) {
+    if (await resolveRequestInactiveMembership(req)) throw new MembershipInactiveError()
+    return { provisioned: false }
+  }
   const { household, person } = await getContext(tenant)
   // Capabilities the client can gate UI on (admin ⇒ all; else per-role matrix).
   const capabilities = resolveCapabilities(person.member_type, person.is_admin, household.settings)

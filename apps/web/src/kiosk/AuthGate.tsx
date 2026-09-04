@@ -3,15 +3,18 @@ import { useNavigate } from 'react-router'
 import { authApi, getAccessToken, isKioskMode, type AuthStatus, type SetupInput } from '../lib/api'
 import { ProfilePicker } from './ProfilePicker'
 import { PairDevice } from './PairDevice'
+import { principalTransitionInProgress, waitForPrincipalTransition } from '../lib/powersync/principal-transition'
 import '../styles/auth.css'
 
-type Phase = 'loading' | 'authed' | 'login' | 'setup' | 'picker'
+type Phase = 'loading' | 'transitioning' | 'transition-error' | 'authed' | 'login' | 'setup' | 'picker'
 
 // Gates the whole kiosk: shows the first-run Setup wizard, the Login screen, or the
 // app — driven by whether a session exists and whether the instance is initialized.
 // Also handles the OIDC return at /auth/callback (exchange the handoff → session).
 export function AuthGate({ children }: { children: ReactNode }) {
-  const [phase, setPhase] = useState<Phase>(() => (getAccessToken() ? 'authed' : 'loading'))
+  const [phase, setPhase] = useState<Phase>(() =>
+    principalTransitionInProgress() ? 'transitioning' : getAccessToken() ? 'authed' : 'loading'
+  )
   const [status, setStatus] = useState<AuthStatus | null>(null)
   const [oidcError, setOidcError] = useState<string | null>(null)
   const navigate = useNavigate()
@@ -67,15 +70,49 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   // Login/setup/logout (and a failed refresh) all fire this; re-resolve.
   useEffect(() => {
-    const onChange = () => setPhase(getAccessToken() ? 'authed' : 'loading')
+    let active = true
+    const onTransition = () => {
+      setPhase('transitioning')
+      void waitForPrincipalTransition()
+        .then(() => {
+          if (active) setPhase(getAccessToken() ? 'authed' : 'loading')
+        })
+        .catch(() => {
+          if (active) setPhase('transition-error')
+        })
+    }
+    const onChange = () => {
+      if (principalTransitionInProgress()) onTransition()
+      else setPhase(getAccessToken() ? 'authed' : 'loading')
+    }
+    const onTransitionFailed = () => setPhase('transition-error')
     window.addEventListener('waffled:auth-changed', onChange)
-    return () => window.removeEventListener('waffled:auth-changed', onChange)
+    window.addEventListener('waffled:principal-transition-started', onTransition)
+    window.addEventListener('waffled:principal-transition-failed', onTransitionFailed)
+    // Subscribe first, then re-read the durable marker. A transition which began
+    // before subscription is observed here; one after it is caught by the event.
+    if (principalTransitionInProgress()) onTransition()
+    return () => {
+      active = false
+      window.removeEventListener('waffled:auth-changed', onChange)
+      window.removeEventListener('waffled:principal-transition-started', onTransition)
+      window.removeEventListener('waffled:principal-transition-failed', onTransitionFailed)
+    }
   }, [])
 
   if (phase === 'authed') return <>{children}</>
   if (phase === 'setup') return <SetupWizard />
   if (phase === 'picker') return <ProfilePicker />
   if (phase === 'login') return <LoginScreen status={status} oidcError={oidcError} />
+  if (phase === 'transition-error') {
+    return (
+      <AuthShell title="Private data is still locked" sub="Waffled could not safely finish changing sessions.">
+        <button type="button" className="btn btn-primary auth-submit" onClick={() => window.location.reload()}>
+          Reload and try again
+        </button>
+      </AuthShell>
+    )
+  }
   return (
     <div className="auth-screen">
       <div className="auth-loading">Loading…</div>

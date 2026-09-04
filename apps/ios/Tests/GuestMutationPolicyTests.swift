@@ -37,6 +37,7 @@ struct GuestMutationPolicyTests {
         let authScopeKey = "waffled.currentMemberTypeAuthScope"
         AuthTokens.clear()
         AuthTokens.save(access: "offline-access", refresh: "offline-refresh")
+        let identityScope = AppConfig.currentIdentityScope
         defer {
             AuthTokens.clear()
         }
@@ -45,7 +46,7 @@ struct GuestMutationPolicyTests {
         // /api/household request has had a chance to repopulate in-memory state.
         UserDefaults.standard.set("adult", forKey: roleKey)
         UserDefaults.standard.set(AppConfig.apiBaseURL, forKey: serverKey)
-        UserDefaults.standard.set("session", forKey: authScopeKey)
+        UserDefaults.standard.set(identityScope, forKey: authScopeKey)
 
         #expect(AppConfig.currentMemberType == "adult")
         #expect(SyncManager.localMutationAllowed(memberType: AppConfig.currentMemberType))
@@ -83,13 +84,32 @@ struct GuestMutationPolicyTests {
         AppConfig.setCurrentMemberType("adult")
         // The refresher stores a rotated pair through this same path. It must not
         // make a transient/offline refresh erase the last server-verified role.
-        AuthTokens.save(access: "rotated-access", refresh: "rotated-refresh")
+        let originalScope = AppConfig.currentIdentityScope
+        AuthTokens.save(
+            access: "rotated-access",
+            refresh: "rotated-refresh",
+            preservingIdentityScope: true
+        )
+        #expect(AppConfig.currentIdentityScope == originalScope)
         #expect(AppConfig.currentMemberType == "adult")
 
         // Logout, expired refresh credentials, and kiosk profile teardown all
         // converge on AuthTokens.clear().
         AuthTokens.clear()
         #expect(AppConfig.currentMemberType == nil)
+    }
+
+    @Test("replacement credentials rotate the identity generation")
+    func replacementSessionRotatesIdentityScope() {
+        AuthTokens.clear()
+        defer { AuthTokens.clear() }
+
+        AuthTokens.save(access: "first-access", refresh: "first-refresh")
+        let firstScope = AppConfig.currentIdentityScope
+        AuthTokens.save(access: "second-access", refresh: "second-refresh")
+
+        #expect(firstScope != nil)
+        #expect(AppConfig.currentIdentityScope != firstScope)
     }
 
     @Test("replacement profile session clears the durable role")

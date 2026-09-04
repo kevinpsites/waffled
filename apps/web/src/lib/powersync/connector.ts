@@ -7,7 +7,8 @@ import type {
   PowerSyncBackendConnector,
   PowerSyncCredentials,
 } from '@powersync/web'
-import { ApiSendError, apiGet, apiSend } from '../api/client'
+import { ApiSendError, apiGet, apiSend, currentIdentityScope } from '../api/client'
+import { withPrincipalUseLock } from './principal-transition'
 
 function isGuestReadOnlyRejection(error: unknown): boolean {
   if (!(error instanceof ApiSendError) || error.status !== 403) return false
@@ -16,10 +17,14 @@ function isGuestReadOnlyRejection(error: unknown): boolean {
 }
 
 export class WaffledConnector implements PowerSyncBackendConnector {
+  private readonly identityScope = currentIdentityScope()
+
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
+    if (currentIdentityScope() !== this.identityScope) return null
     const { token, powerSyncUrl } = await apiGet<{ token: string; powerSyncUrl: string | null }>(
       '/api/powersync/token'
     )
+    if (currentIdentityScope() !== this.identityScope) return null
     if (!token || !powerSyncUrl) return null
     return { endpoint: powerSyncUrl, token }
   }
@@ -31,14 +36,25 @@ export class WaffledConnector implements PowerSyncBackendConnector {
   // is permanent for that optimistic write: acknowledge it so the queue can advance;
   // the next down-sync restores the server-authoritative row.
   async uploadData(database: AbstractPowerSyncDatabase): Promise<void> {
-    for (let tx = await database.getNextCrudTransaction(); tx; tx = await database.getNextCrudTransaction()) {
-      const ops = tx.crud.map((e) => ({ op: e.op, table: e.table, id: e.id, data: e.opData }))
-      try {
-        await apiSend('POST', '/api/powersync/crud', { ops })
-      } catch (error) {
-        if (!isGuestReadOnlyRejection(error)) throw error
+    await withPrincipalUseLock(async () => {
+      if (currentIdentityScope() !== this.identityScope) {
+        throw new Error('Principal changed before PowerSync upload')
       }
-      await tx.complete()
-    }
+      for (let tx = await database.getNextCrudTransaction(); tx; tx = await database.getNextCrudTransaction()) {
+        if (currentIdentityScope() !== this.identityScope) {
+          throw new Error('Principal changed during PowerSync upload')
+        }
+        const ops = tx.crud.map((e) => ({ op: e.op, table: e.table, id: e.id, data: e.opData }))
+        try {
+          await apiSend('POST', '/api/powersync/crud', { ops })
+        } catch (error) {
+          if (!isGuestReadOnlyRejection(error)) throw error
+        }
+        if (currentIdentityScope() !== this.identityScope) {
+          throw new Error('Principal changed before PowerSync acknowledged an upload')
+        }
+        await tx.complete()
+      }
+    })
   }
 }

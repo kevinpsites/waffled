@@ -255,7 +255,9 @@ describe('POST /api/persons', () => {
        values ($1,$2,'password','dev|expired-helper')`,
       [kevinHouseholdId, p.rows[0].id]
     )
-    expect((await call('GET', '/api/persons', mint('dev|expired-helper'))).statusCode).toBe(403)
+    const denied = await call('GET', '/api/persons', mint('dev|expired-helper'))
+    expect(denied.statusCode).toBe(401)
+    expect(JSON.parse(denied.body)).toMatchObject({ error: 'membership_inactive' })
   })
 
   it('forbids a non-admin member from adding people (403)', async () => {

@@ -6,7 +6,7 @@ import { KioskDisplay } from './KioskDisplay'
 vi.mock('../lib/api', () => ({
   isDisplayMode: () => true,
   isKioskMode: () => true,
-  clearProfileSession: vi.fn(),
+  clearProfileSession: vi.fn(async () => {}),
   kioskApi: {
     displayConfig: vi.fn(async () => ({
       screensaverMinutes: 3,

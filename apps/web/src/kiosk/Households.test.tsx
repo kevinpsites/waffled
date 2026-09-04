@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { Settings } from './Settings'
+import { registerPrincipalTransitionHandler } from '../lib/powersync/principal-transition'
 
 const household = { id: 'A', name: 'A', timezone: 'America/Chicago', weekStart: 'sunday', ownerPersonId: 'p1' }
 const person = { id: 'p1', name: 'Kevin', memberType: 'adult', isAdmin: true, avatarEmoji: '🐻', colorHex: '#2F7FED' }
@@ -13,12 +14,15 @@ const pendingInvites = [{ id: 'inv1', householdId: 'C', householdName: 'C', memb
 // Capture POST bodies by path so the test can assert what was sent.
 type Sent = { path: string; body: unknown }
 
-function mockApi(sent: Sent[]) {
+function mockApi(sent: Sent[], switchGate: Promise<void> = Promise.resolve()) {
   globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url)
     if (init?.method === 'POST') {
       sent.push({ path: u, body: init.body ? JSON.parse(String(init.body)) : undefined })
-      if (u.includes('/api/auth/switch')) return { ok: true, json: async () => ({ accessToken: 'a', refreshToken: 'r', expiresIn: 900, householdId: 'B', memberships }) }
+      if (u.includes('/api/auth/switch')) {
+        await switchGate
+        return { ok: true, json: async () => ({ accessToken: 'a', refreshToken: 'r', expiresIn: 900, householdId: 'B', memberships }) }
+      }
       if (u.includes('/accept')) return { ok: true, json: async () => ({ membership: memberships[1] }) }
     }
     if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members: [] }) }
@@ -35,7 +39,28 @@ const renderHouseholds = () =>
     </MemoryRouter>,
   )
 
+function mockLocationAssign() {
+  const assign = vi.fn()
+  Object.defineProperty(window, 'location', {
+    value: { ...window.location, assign },
+    writable: true,
+    configurable: true,
+  })
+  return assign
+}
+
 describe('Households panel', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    registerPrincipalTransitionHandler(async (request) => {
+      request.beginIsolation()
+      await request.prepareReplacement?.()
+      request.commitCredentials()
+      request.finishIsolation()
+      return 'completed'
+    })
+  })
+
   it('renders the nav tab, a Switch for another household, and an Accept for an invite', async () => {
     mockApi([])
     renderHouseholds()
@@ -50,8 +75,7 @@ describe('Households panel', () => {
   it('switches household: POSTs /api/auth/switch and navigates home', async () => {
     const sent: Sent[] = []
     mockApi(sent)
-    const assign = vi.fn()
-    Object.defineProperty(window, 'location', { value: { ...window.location, assign }, writable: true })
+    const assign = mockLocationAssign()
 
     renderHouseholds()
     fireEvent.click(await screen.findByText('Switch'))
@@ -60,6 +84,28 @@ describe('Households panel', () => {
     const call = sent.find((s) => s.path.includes('/api/auth/switch'))!
     expect(call.body).toEqual({ householdId: 'B' })
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/'))
+  })
+
+  it('starts only one household switch while transition controls are disabled', async () => {
+    const sent: Sent[] = []
+    let releaseSwitch!: () => void
+    const switchGate = new Promise<void>((resolve) => { releaseSwitch = resolve })
+    mockApi(sent, switchGate)
+    const assign = mockLocationAssign()
+
+    renderHouseholds()
+    const switchButton = await screen.findByRole('button', { name: 'Switch' })
+    fireEvent.click(switchButton)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Switching…' })).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled()
+
+    fireEvent.click(switchButton)
+    expect(sent.filter((call) => call.path.includes('/api/auth/switch'))).toHaveLength(1)
+
+    releaseSwitch()
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/'))
+    expect(sent.filter((call) => call.path.includes('/api/auth/switch'))).toHaveLength(1)
   })
 
   it('accepts an invite: POSTs /api/auth/invites/:id/accept', async () => {

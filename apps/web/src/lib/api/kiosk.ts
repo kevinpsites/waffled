@@ -110,7 +110,7 @@ export const kioskApi = {
       throw new KioskClaimError(res.status, body.message || 'Could not switch profiles.', { retryAfter: body.retryAfter, triesLeft: body.triesLeft })
     }
     const d = (await res.json()) as { accessToken: string; refreshToken: string }
-    setSession(d.accessToken, d.refreshToken)
+    await setSession(d.accessToken, d.refreshToken)
   },
 
   async heartbeat(): Promise<void> {
