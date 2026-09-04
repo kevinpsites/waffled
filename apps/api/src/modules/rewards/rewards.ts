@@ -7,6 +7,8 @@ import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { rewardsRoutes, moduleRoutes } from '../../platform/route-guards'
+import { assertPersonInHousehold, HouseholdReferenceError } from '../../platform/household-refs'
+import { requireCapability } from '../../platform/permissions'
 import { registerRewardCaptureTarget } from './rewards-capture'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
@@ -88,6 +90,17 @@ export async function getRewardsRequireApproval(householdId: string): Promise<bo
   return rows[0]?.v ?? true
 }
 
+async function assertCurrencyInHousehold(householdId: string, currency: string, requireSpendable = false): Promise<void> {
+  const { rows } = await query<{ spendable: boolean }>(
+    `select spendable from currencies
+      where household_id=$1 and key=$2 and deleted_at is null`,
+    [householdId, currency]
+  )
+  if (!rows[0] || (requireSpendable && !rows[0].spendable)) {
+    throw new HouseholdReferenceError('currency not found')
+  }
+}
+
 export async function balanceFor(householdId: string, personId: string, currency = 'stars'): Promise<number> {
   const { rows } = await query<{ balance: string | null }>(
     `select coalesce(sum(amount),0) as balance from ledger_entries
@@ -109,6 +122,10 @@ export async function awardSpot(
   note?: string | null
 ): Promise<{ id: string }> {
   const cur = currency?.trim() || (await getDefaultCurrencyKey(tenant.householdId))
+  await assertPersonInHousehold(tenant.householdId, personId)
+  // `spendable` controls whether a currency can buy rewards, not whether it can
+  // be earned. Spot awards only require an active currency in this household.
+  await assertCurrencyInHousehold(tenant.householdId, cur)
   const { rows } = await query<{ id: string }>(
     `insert into ledger_entries (household_id, person_id, currency, amount, reason, ref_type, ref_id, note, created_by)
      values ($1,$2,$3,$4,'spot_award',null,null,$5,$6) returning id`,
@@ -176,6 +193,13 @@ export async function requestRedemption(tenant: Tenant, rewardId: string, person
   const reward = rows[0]
   if (!reward) return null
 
+  // `personId` is client-controlled (and capture commits call this service
+  // directly), so prove the redemption subject belongs to the active household
+  // before either the pending or auto-approved path can persist a relationship.
+  await assertPersonInHousehold(tenant.householdId, personId)
+  if (personId.toLowerCase() !== tenant.personId.toLowerCase()) await requireCapability(tenant, 'reward.manage')
+  await assertCurrencyInHousehold(tenant.householdId, reward.currency, true)
+
   // This reward needs a parent → a pending request for the approval queue.
   if (reward.requires_approval) {
     const { rows: ins } = await query<RedemptionRow>(
@@ -234,8 +258,12 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
   const client = await getPool().connect()
   try {
     await client.query('begin')
-    const cur = await client.query<RedemptionRow>(
-      `select * from reward_redemptions where household_id=$1 and id=$2 and deleted_at is null for update`,
+    const cur = await client.query<RedemptionRow & { person_deleted_at: string | null }>(
+      `select r.*, p.deleted_at as person_deleted_at from reward_redemptions r
+         join persons p
+           on p.id=r.person_id and p.household_id=r.household_id
+        where r.household_id=$1 and r.id=$2 and r.deleted_at is null
+        for update of r`,
       [tenant.householdId, id]
     )
     const red = cur.rows[0]
@@ -249,6 +277,22 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
       )
       await client.query('commit')
       return { redemption: upd.rows[0] }
+    }
+
+    // Keep local history visible and dismissible after a person is archived,
+    // but never create a new debit for an inactive person.
+    if (red.person_deleted_at) { await client.query('rollback'); return null }
+
+    // A pending request can outlive a catalog change. Re-check at decision time
+    // so disabling/deleting a currency cannot produce a new uncatalogued debit.
+    const currency = await client.query(
+      `select 1 from currencies
+        where household_id=$1 and key=$2 and spendable=true and deleted_at is null`,
+      [tenant.householdId, red.currency]
+    )
+    if (!currency.rowCount) {
+      await client.query('rollback')
+      return { error: 'reward currency is no longer available' }
     }
 
     const bal = await client.query<{ balance: string | null }>(
@@ -290,6 +334,7 @@ export function registerRewardRoutes(api: Api): void {
     const title = body.title?.trim()
     if (!title) return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
     const currency = body.currency?.trim() || (await getDefaultCurrencyKey(tenant.householdId))
+    await assertCurrencyInHousehold(tenant.householdId, currency, true)
     const category = body.category?.trim() || null
     // Inherit the household default unless the create form set it explicitly.
     const requiresApproval = typeof body.requiresApproval === 'boolean'
@@ -317,7 +362,11 @@ export function registerRewardRoutes(api: Api): void {
     }
     if ('emoji' in body) { sets.push(`emoji = $${i++}`); vals.push(body.emoji ?? null) }
     if (typeof body.cost === 'number') { sets.push(`cost = $${i++}`); vals.push(Math.max(0, Math.round(body.cost))) }
-    if (typeof body.currency === 'string' && body.currency.trim()) { sets.push(`currency = $${i++}`); vals.push(body.currency.trim()) }
+    if (typeof body.currency === 'string' && body.currency.trim()) {
+      const currency = body.currency.trim()
+      await assertCurrencyInHousehold(tenant.householdId, currency, true)
+      sets.push(`currency = $${i++}`); vals.push(currency)
+    }
     if ('category' in body) { sets.push(`category = $${i++}`); vals.push(body.category?.trim() || null) }
     if (typeof body.requiresApproval === 'boolean') { sets.push(`requires_approval = $${i++}`); vals.push(body.requiresApproval) }
     if (sets.length === 0) return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields' })
@@ -392,7 +441,8 @@ export function registerRewardRoutes(api: Api): void {
     if (status) { params.push(status); where += ` and r.status=$${params.length}` }
     const { rows } = await query<RedemptionRow & { person_name: string | null; avatar_emoji: string | null; color_hex: string | null }>(
       `select r.*, p.name as person_name, p.avatar_emoji, p.color_hex
-         from reward_redemptions r left join persons p on p.id = r.person_id
+         from reward_redemptions r
+         join persons p on p.id = r.person_id and p.household_id = r.household_id
         where ${where} order by r.created_at desc limit 100`,
       params
     )
