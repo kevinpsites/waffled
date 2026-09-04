@@ -119,12 +119,15 @@ services:
       # to your real host when not on localhost; empty → derived from request headers.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      # --- Media/blob uploads (local disk): api writes blobs, Caddy serves them.
-      # Files land in MEDIA_DIR (the waffled_media volume) and are served read-only by
-      # Caddy at MEDIA_BASE_URL, so the api stays out of the read path.
+      # --- Media/blob uploads (local disk): API writes, signed Caddy URLs serve.
+      # Files land in MEDIA_DIR. The API signs short-lived bearer links and the bundled
+      # Caddy route validates each link before reading its read-only volume. A proxy that
+      # bypasses Caddy MUST reproduce that signature check before serving this volume.
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       MEDIA_DIR: ${MEDIA_DIR:-/data/media}
       MEDIA_BASE_URL: ${MEDIA_BASE_URL:-/media}
+      MEDIA_URL_TTL_SECONDS: ${MEDIA_URL_TTL_SECONDS:-600}
+      MEDIA_SIGNING_KEY: ${MEDIA_SIGNING_KEY:-}
       # Returned by /api/powersync/token so clients know where to connect. Leave it
       # EMPTY on a LAN: the api derives the URL from the address each device used, so
       # the kiosk tablet and phones get one they can actually reach (a fixed localhost
@@ -180,7 +183,7 @@ services:
       # AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       # AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
     volumes:
-      - waffled_media:/data/media         # uploaded blobs (read-write); Caddy serves them read-only
+      - waffled_media:/data/media         # uploaded blobs (read-write); Caddy serves signed reads
     ports:
       # Host-only direct access; public requests must traverse Caddy so proxy trust
       # and ingress policy remain enforced.
@@ -248,7 +251,7 @@ services:
       POWERSYNC_CADDY_ADDRESS: ${POWERSYNC_CADDY_ADDRESS:-:8090}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro   # web build is baked into the image at /srv
-      - waffled_media:/data/media:ro                   # serve uploaded blobs directly (read-only)
+      - waffled_media:/data/media:ro                   # serve signature-validated blob reads
       - caddy_data:/data
       - caddy_config:/config
     healthcheck:
@@ -260,7 +263,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Nightly database (and optional media) backups. On by default, zero-config: dumps
+  # Nightly database and media backups. On by default, zero-config: dumps
   # land in the `waffled_backups` volume (see BACKUP_HOST_PATH to write to a folder you
   # choose instead, e.g. a mounted drive), pruned after BACKUP_RETENTION_DAYS. Set the
   # BACKUP_S3_* vars to ALSO push each dump offsite to S3 / B2 / R2 / MinIO. Every run
@@ -286,7 +289,7 @@ services:
       BACKUP_TIME: ${BACKUP_TIME:-02:00}                    # daily HH:MM (container TZ)
       BACKUP_ON_START: ${BACKUP_ON_START:-false}            # also back up right after start
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}   # local prune age
-      BACKUP_INCLUDE_MEDIA: ${BACKUP_INCLUDE_MEDIA:-false}  # also archive uploaded media
+      BACKUP_INCLUDE_MEDIA: ${BACKUP_INCLUDE_MEDIA:-true}   # archive uploaded family media by default
       MEDIA_DIR: /data/media
       # Optional offsite copy. Leave BACKUP_S3_BUCKET empty for local-only.
       BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}               # e.g. s3://my-bucket/waffled

@@ -28,8 +28,8 @@ interface RunResult {
   body: string
 }
 
-function call(method: string, path: string, token?: string, body?: unknown) {
-  const headers: Record<string, string> = {}
+function call(method: string, path: string, token?: string, body?: unknown, extraHeaders: Record<string, string> = {}) {
+  const headers: Record<string, string> = { ...extraHeaders }
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
   return app.run(
@@ -70,6 +70,8 @@ afterAll(async () => {
 // A 1x1 PNG, base64. Tiny but real bytes.
 const PNG_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+const JPEG_B64 = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]).toString('base64')
+const WEBP_B64 = Buffer.from('RIFF\x04\x00\x00\x00WEBP', 'binary').toString('base64')
 
 describe('POST /api/media', () => {
   it('403s for a caller with no household', async () => {
@@ -81,6 +83,11 @@ describe('POST /api/media', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  it('rejects malformed base64 and bytes that do not match the declared image type', async () => {
+    expect((await call('POST', '/api/media', kevin, { data: 'not-base64', contentType: 'image/png' })).statusCode).toBe(400)
+    expect((await call('POST', '/api/media', kevin, { data: PNG_B64, contentType: 'image/jpeg' })).statusCode).toBe(400)
+  })
+
   it('rejects an oversize image (>10MB decoded) with 413', async () => {
     // 11 MB of zero bytes → base64
     const big = Buffer.alloc(11 * 1024 * 1024, 0).toString('base64')
@@ -89,16 +96,31 @@ describe('POST /api/media', () => {
   })
 
   it('accepts jpeg/png/webp and writes the file to disk', async () => {
-    for (const ct of ['image/jpeg', 'image/png', 'image/webp']) {
-      const res = await call('POST', '/api/media', kevin, { data: PNG_B64, contentType: ct })
+    const samples: Record<string, string> = {
+      'image/jpeg': JPEG_B64,
+      'image/png': PNG_B64,
+      'image/webp': WEBP_B64,
+    }
+    for (const [ct, data] of Object.entries(samples)) {
+      const res = await call('POST', '/api/media', kevin, { data, contentType: ct })
       expect(res.statusCode).toBe(201)
       const out = JSON.parse(res.body) as { key: string; url: string; contentType: string }
       expect(out.contentType).toBe(ct)
-      expect(out.url).toBe(`/media/${out.key}`)
+      expect(out.url).toMatch(new RegExp(`^/media/${out.key}\\?expires=\\d{10}&sig=[A-Za-z0-9_-]{43}$`))
       // The file exists and contains the decoded bytes.
       const onDisk = await readFile(join(mediaDir, out.key))
-      expect(Buffer.compare(onDisk, Buffer.from(PNG_B64, 'base64'))).toBe(0)
+      expect(Buffer.compare(onDisk, Buffer.from(data, 'base64'))).toBe(0)
       await stat(join(mediaDir, out.key)) // throws if missing
     }
+  })
+
+  it('authorizes only an unmodified, signed media URL', async () => {
+    const upload = await call('POST', '/api/media', kevin, { data: PNG_B64, contentType: 'image/png' })
+    const out = JSON.parse(upload.body) as { key: string; url: string }
+
+    expect((await call('GET', '/api/media/authorize', undefined, undefined, { 'x-forwarded-uri': out.url })).statusCode).toBe(200)
+    expect((await call('GET', '/api/media/authorize', undefined, undefined, { 'x-forwarded-uri': `/media/${out.key}` })).statusCode).toBe(403)
+    expect((await call('GET', '/api/media/authorize', undefined, undefined, { 'x-forwarded-uri': `${out.url}x` })).statusCode).toBe(403)
+    expect((await call('GET', '/api/media/authorize')).statusCode).toBe(403)
   })
 })

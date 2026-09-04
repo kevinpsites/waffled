@@ -20,6 +20,8 @@ struct ScreensaverView: View {
     var bare: Bool = false
     /// Slow Ken-Burns drift on each photo (device-local preference). Off = photos sit still.
     var motion: Bool = true
+    /// Ask the owning model for fresh signed URLs when the media proxy returns 403.
+    var onMediaExpired: () -> Void = {}
     let onWake: () -> Void
 
     @State private var idx = 0
@@ -71,8 +73,10 @@ struct ScreensaverView: View {
             ZStack {
                 // The photo we're leaving sits underneath, static, so the incoming one
                 // fades in over a real image — never over a blank/placeholder frame.
-                SlidePhoto(photo: photos[prevIdx % photos.count], motion: false, duration: perPhoto)
-                SlidePhoto(photo: photos[idx % photos.count], motion: motion, duration: perPhoto + 1.2)
+                SlidePhoto(photo: photos[prevIdx % photos.count], motion: false, duration: perPhoto,
+                           onMediaExpired: onMediaExpired)
+                SlidePhoto(photo: photos[idx % photos.count], motion: motion, duration: perPhoto + 1.2,
+                           onMediaExpired: onMediaExpired)
                     .id(idx)
                     .transition(.opacity)
             }
@@ -175,6 +179,7 @@ private struct SlidePhoto: View {
     let photo: WaffledAPI.Photo
     let motion: Bool
     let duration: Double
+    let onMediaExpired: () -> Void
 
     @State private var image: UIImage?
     @State private var scale = 1.0
@@ -189,7 +194,8 @@ private struct SlidePhoto: View {
                 }
             }
             .clipped()
-            .task(id: photo.id) { await loadAndAnimate() }
+            // A credential refresh changes imageUrl while the photo id stays stable.
+            .task(id: photo.imageUrl) { await loadAndAnimate() }
     }
 
     private func loadAndAnimate() async {
@@ -200,7 +206,13 @@ private struct SlidePhoto: View {
             if let hit = ScreensaverImageCache.shared.cached(url) {
                 image = hit
             } else {
-                image = await ScreensaverImageCache.shared.load(url)
+                switch await ScreensaverImageCache.shared.load(url) {
+                case .image(let loaded): image = loaded
+                case .expired:
+                    image = nil
+                    onMediaExpired()
+                case .failed: image = nil
+                }
             }
         } else {
             image = nil
@@ -225,15 +237,22 @@ final class ScreensaverImageCache: @unchecked Sendable {
     private let cache = NSCache<NSURL, UIImage>()
     private init() { cache.countLimit = 240 }
 
-    func cached(_ url: URL) -> UIImage? { cache.object(forKey: url as NSURL) }
+    enum LoadResult {
+        case image(UIImage)
+        case expired
+        case failed
+    }
+
+    func cached(_ url: URL) -> UIImage? { cache.object(forKey: MediaURL.cacheKey(for: url)) }
 
     @discardableResult
-    func load(_ url: URL) async -> UIImage? {
-        if let img = cached(url) { return img }
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              let img = UIImage(data: data) else { return nil }
-        cache.setObject(img, forKey: url as NSURL)
-        return img
+    func load(_ url: URL) async -> LoadResult {
+        if let img = cached(url) { return .image(img) }
+        guard let (data, response) = try? await URLSession.shared.data(from: url) else { return .failed }
+        if (response as? HTTPURLResponse)?.statusCode == 403 { return .expired }
+        guard let img = UIImage(data: data) else { return .failed }
+        cache.setObject(img, forKey: MediaURL.cacheKey(for: url))
+        return .image(img)
     }
 
     /// Warm the cache for a batch of photos (sequential, capped) without blocking.

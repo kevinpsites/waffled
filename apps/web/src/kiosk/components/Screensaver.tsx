@@ -2,7 +2,7 @@
 // and the next event when available. With content='photos' and photos present, it
 // cycles them as the background (otherwise a calm dark gradient — "clock & weather").
 // Used both by the Photos manual "Play screensaver" and the kiosk idle screensaver.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Photo, Weather, AgendaEvent } from '../../lib/api'
 import '../../styles/photos.css'
 
@@ -44,6 +44,63 @@ const tileBg = (p: { colorHex?: string | null }) => {
   return `linear-gradient(135deg, ${c}, ${shade(c)})`
 }
 
+function signedMediaCacheKey(raw: string): string | null {
+  try {
+    const url = new URL(raw, window.location.origin)
+    if (!url.searchParams.has('expires') || !url.searchParams.has('sig')) return null
+    url.searchParams.delete('expires')
+    url.searchParams.delete('sig')
+    return url.toString()
+  } catch {
+    return null
+  }
+}
+
+// Keep the URL that actually loaded until the browser rejects it. API refreshes rotate
+// the bearer signature, but changing <img src> immediately would defeat the browser's
+// decoded-image cache and re-download every full-resolution slide. On a 403/error we
+// first retry the newest already-fetched signature, or ask the parent to fetch one.
+function ScreensaverPhoto({ url, className, loadedUrls, onMediaExpired }: {
+  url: string
+  className: string
+  loadedUrls: Map<string, string>
+  onMediaExpired?: () => void
+}) {
+  const cacheKey = signedMediaCacheKey(url)
+  const [src, setSrc] = useState(() => cacheKey ? loadedUrls.get(cacheKey) ?? url : url)
+  const keyRef = useRef(cacheKey)
+  const latestRef = useRef(url)
+  const awaitingFreshRef = useRef(false)
+  const rejectedRef = useRef(new Set<string>())
+
+  useEffect(() => {
+    latestRef.current = url
+    if (keyRef.current !== cacheKey) {
+      keyRef.current = cacheKey
+      awaitingFreshRef.current = false
+      rejectedRef.current.clear()
+      setSrc(cacheKey ? loadedUrls.get(cacheKey) ?? url : url)
+    } else if (awaitingFreshRef.current && url !== src) {
+      awaitingFreshRef.current = false
+      setSrc(url)
+    }
+  }, [cacheKey, loadedUrls, src, url])
+
+  return <img className={className} src={src} alt="" onLoad={() => {
+    if (cacheKey) loadedUrls.set(cacheKey, src)
+  }} onError={() => {
+    if (!cacheKey || rejectedRef.current.has(src)) return
+    rejectedRef.current.add(src)
+    if (loadedUrls.get(cacheKey) === src) loadedUrls.delete(cacheKey)
+    if (latestRef.current !== src) {
+      setSrc(latestRef.current)
+    } else {
+      awaitingFreshRef.current = true
+      onMediaExpired?.()
+    }
+  }} />
+}
+
 export function Screensaver({
   content,
   photos,
@@ -52,6 +109,7 @@ export function Screensaver({
   timezone,
   intervalSeconds = 10,
   bare = false,
+  onMediaExpired,
   onWake,
 }: {
   content: 'photos' | 'clock'
@@ -64,11 +122,15 @@ export function Screensaver({
   // overlays). Used by the manual "Play" from the Photos screen; the idle kiosk
   // screensaver leaves it false to keep the clock + weather chrome.
   bare?: boolean
+  onMediaExpired?: () => void
   onWake: () => void
 }) {
   const [now, setNow] = useState(() => new Date())
   const [idx, setIdx] = useState(0)
   const [prevIdx, setPrevIdx] = useState(0)
+  // Preserve each successfully loaded signed URL by stable storage path while this
+  // screensaver is mounted, including when a slide cycles out of the React tree.
+  const loadedMediaUrls = useRef(new Map<string, string>())
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000)
     return () => clearInterval(t)
@@ -103,8 +165,8 @@ export function Screensaver({
   return (
     <div className="ph-saver" style={{ background: bg }} onClick={onWake} role="button" aria-label="Wake screensaver">
       {/* base layer = the photo we're leaving; top layer fades in over it */}
-      {prevPhoto?.imageUrl && <img className="ph-saver-img" src={prevPhoto.imageUrl} alt="" />}
-      {photo?.imageUrl && <img key={idx} className="ph-saver-img ph-saver-img-top" src={photo.imageUrl} alt="" />}
+      {prevPhoto?.imageUrl && <ScreensaverPhoto url={prevPhoto.imageUrl} className="ph-saver-img" loadedUrls={loadedMediaUrls.current} onMediaExpired={onMediaExpired} />}
+      {photo?.imageUrl && <ScreensaverPhoto key={idx} url={photo.imageUrl} className="ph-saver-img ph-saver-img-top" loadedUrls={loadedMediaUrls.current} onMediaExpired={onMediaExpired} />}
       {showChrome && <div className="ph-saver-scrim" />}
       {showChrome && (
         <div className="ph-saver-clock">

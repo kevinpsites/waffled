@@ -1,4 +1,4 @@
-import { render, act } from '@testing-library/react'
+import { render, act, fireEvent } from '@testing-library/react'
 import { Screensaver, screensaverPhotos } from './Screensaver'
 import type { Photo } from '../../lib/api'
 
@@ -85,5 +85,74 @@ describe('Screensaver photo cycling', () => {
     // …and the chrome IS present when not bare
     rerender(<Screensaver content="photos" photos={photos} weather={null} nextEvent={null} onWake={() => {}} />)
     expect(container.querySelector('.ph-saver-clock')).toBeTruthy()
+  })
+
+  it('keeps the loaded URL stable across signature rotation, then retries with the fresh URL after rejection', () => {
+    const oldUrl = '/media/h/photo.jpg?expires=100&sig=old'
+    const freshUrl = '/media/h/photo.jpg?expires=200&sig=fresh'
+    const { container, rerender } = render(
+      <Screensaver content="photos" photos={[makePhoto({ id: 'a', imageUrl: oldUrl })]} weather={null} nextEvent={null} onWake={() => {}} />,
+    )
+
+    rerender(<Screensaver content="photos" photos={[makePhoto({ id: 'a', imageUrl: freshUrl })]} weather={null} nextEvent={null} onWake={() => {}} />)
+    const image = container.querySelector('img.ph-saver-img-top')!
+    expect(image.getAttribute('src')).toBe(oldUrl)
+
+    fireEvent.error(image)
+    expect(image.getAttribute('src')).toBe(freshUrl)
+  })
+
+  it('reuses a loaded URL by storage path after that slide cycles out and back in', () => {
+    const oldUrl = '/media/h/cycled.jpg?expires=100&sig=old'
+    const freshUrl = '/media/h/cycled.jpg?expires=200&sig=fresh'
+    const second = makePhoto({ id: 'b', imageUrl: '/media/h/second.jpg?expires=200&sig=b' })
+    const { container, rerender } = render(
+      <Screensaver
+        content="photos"
+        photos={[makePhoto({ id: 'a', imageUrl: oldUrl }), second]}
+        weather={null}
+        nextEvent={null}
+        intervalSeconds={3}
+        onWake={() => {}}
+      />,
+    )
+    const current = () => container.querySelector('img.ph-saver-img-top')!
+    fireEvent.load(current())
+    act(() => { vi.advanceTimersByTime(3_100) })
+
+    rerender(
+      <Screensaver
+        content="photos"
+        photos={[makePhoto({ id: 'a', imageUrl: freshUrl }), second]}
+        weather={null}
+        nextEvent={null}
+        intervalSeconds={3}
+        onWake={() => {}}
+      />,
+    )
+    act(() => { vi.advanceTimersByTime(3_100) })
+
+    expect(current().getAttribute('src')).toBe(oldUrl)
+    fireEvent.error(current())
+    expect(current().getAttribute('src')).toBe(freshUrl)
+  })
+
+  it('asks the parent for fresh signed URLs once when the current URL is rejected', () => {
+    const onMediaExpired = vi.fn()
+    const { container } = render(
+      <Screensaver
+        content="photos"
+        photos={[makePhoto({ id: 'a', imageUrl: '/media/h/photo.jpg?expires=100&sig=old' })]}
+        weather={null}
+        nextEvent={null}
+        onMediaExpired={onMediaExpired}
+        onWake={() => {}}
+      />,
+    )
+    const image = container.querySelector('img.ph-saver-img-top')!
+
+    fireEvent.error(image)
+    fireEvent.error(image)
+    expect(onMediaExpired).toHaveBeenCalledTimes(1)
   })
 })
