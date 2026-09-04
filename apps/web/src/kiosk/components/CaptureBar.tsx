@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../icons'
-import { usePersons, useHousehold, api, countdownsApi, pantryApi, can, localToday, emit, emitHouseholdChanged, type Topic, type Person, type Household, type ListSummary, type Candidate } from '../../lib/api'
+import { usePersons, useHousehold, api, countdownsApi, pantryApi, can, currentIdentityScope, localToday, emit, emitHouseholdChanged, type Topic, type Person, type Household, type ListSummary, type Candidate } from '../../lib/api'
 import { parseCapture, intentSummary, looksConfident, memberTypeLabel, MEMBER_TYPES, goalTypeLabel, GOAL_TYPES, mutateTargetLabel, type ParsedIntent } from '../../lib/capture/parse'
 import { moduleEnabled, rewardsEnabled } from '../../lib/modules'
 import { describeRrule } from './recurrence'
@@ -716,9 +716,9 @@ function CaptureBarEditor({ persons, viewer, household }: {
     return persons.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id ?? null
   }
 
-  async function commit(i: ParsedIntent): Promise<string> {
+  async function commit(i: ParsedIntent, identityScope: string | null): Promise<string> {
     if (i.kind === 'event') {
-      await api.createEvent({ title: i.title, startsAt: i.startsAt, allDay: i.allDay, personId: resolveEventPersonId(i.personName, persons, viewer?.id ?? null), rrule: i.rrule ?? undefined, recurrenceEndAt: i.recurrenceEndAt ?? undefined })
+      await api.createEvent({ title: i.title, startsAt: i.startsAt, allDay: i.allDay, personId: resolveEventPersonId(i.personName, persons, viewer?.id ?? null), rrule: i.rrule ?? undefined, recurrenceEndAt: i.recurrenceEndAt ?? undefined }, identityScope)
       return `Added “${i.title}”${i.rrule ? ' (repeating)' : ''} to the calendar`
     }
     if (i.kind === 'grocery') {
@@ -728,27 +728,27 @@ function CaptureBarEditor({ persons, viewer, household }: {
     }
     if (i.kind === 'list') {
       const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
-      const named = (await api.lists()).lists.filter((l) => l.listType !== 'grocery')
+      const named = (await api.lists(identityScope)).lists.filter((l) => l.listType !== 'grocery')
       let target = i.listName
         ? named.find((l) => norm(l.name) === norm(i.listName!)) ??
           named.find((l) => norm(l.name).includes(norm(i.listName!)) || norm(i.listName!).includes(norm(l.name)))
         : undefined
-      if (!target) target = await api.createList({ name: i.listName?.trim() || 'List' })
-      await api.addListItem(target.id, { name: i.itemName, quantity: i.quantity ?? undefined })
+      if (!target) target = await api.createList({ name: i.listName?.trim() || 'List' }, identityScope)
+      await api.addListItem(target.id, { name: i.itemName, quantity: i.quantity ?? undefined }, identityScope)
       return `Added “${i.itemName}” to ${target.name}`
     }
     if (i.kind === 'meal') {
       const date = i.date ?? localToday()
       let recipeId: string | undefined
       try {
-        const { recipes } = await api.recipes()
+        const { recipes } = await api.recipes(identityScope)
         const n = i.title.toLowerCase()
         const hit = recipes.find((r) => (r.title ?? '').toLowerCase() === n) ?? recipes.find((r) => (r.title ?? '').toLowerCase().includes(n))
         recipeId = hit?.id
       } catch {
         /* recipe lookup is best-effort */
       }
-      await api.planSlot({ date, mealType: i.mealType, recipeId, title: recipeId ? undefined : i.title })
+      await api.planSlot({ date, mealType: i.mealType, recipeId, title: recipeId ? undefined : i.title }, identityScope)
       return `Added “${i.title}” to ${i.mealType} (${i.whenLabel.split(' · ')[0]})`
     }
     if (i.kind === 'countdown') {
@@ -837,9 +837,14 @@ function CaptureBarEditor({ persons, viewer, household }: {
 
   async function performCommit(toCommit: ParsedIntent) {
     if (busy) return
+    // One user gesture belongs to one principal. List and meal commits perform a
+    // lookup before their write(s), so capture the generation before the first
+    // await and carry it through every continuation. Identity-bound helpers abort
+    // instead of letting account A's result mutate account B after a tab switch.
+    const identityScope = currentIdentityScope()
     setBusy(true)
     try {
-      const msg = await commit(toCommit)
+      const msg = await commit(toCommit, identityScope)
       emitAfterCommit(toCommit)
       setText('')
       setServer(null)

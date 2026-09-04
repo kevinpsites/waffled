@@ -3,7 +3,7 @@
 // offscreen <canvas> (downscaling the long edge to ~2048px and normalizing EXIF
 // orientation), base64 it, and POST JSON to /api/media. The server stores the blob and
 // returns a stable { key, url }. Callers then save the owning entity with `storageKey: key`.
-import { apiSend } from './client'
+import { apiSendForIdentity, currentIdentityScope } from './client'
 
 // Content types both the browser canvas and the server accept. HEIC is intentionally
 // excluded — Chrome can't decode it, so we reject it early with a friendly message.
@@ -81,7 +81,15 @@ export async function encodeImageForUpload(file: File): Promise<{ data: string; 
 
 // Upload a chosen file: validate type + size up front (fail fast), downscale/re-encode
 // via canvas, then POST { data, contentType } to /api/media. Resolves to { key, url, contentType }.
-export async function uploadImage(file: File): Promise<UploadedImage> {
+export async function uploadImage(
+  file: File,
+  identityScope = currentIdentityScope()
+): Promise<UploadedImage> {
   const { data, contentType } = await encodeImageForUpload(file)
-  return apiSend<UploadedImage>('POST', '/api/media', { data, contentType })
+  return apiSendForIdentity<UploadedImage>(
+    identityScope,
+    'POST',
+    '/api/media',
+    { data, contentType }
+  )
 }

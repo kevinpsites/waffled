@@ -65,7 +65,7 @@ export function PersonModal({ person, householdTimezone, onClose, onSaved }: { p
     birthday: person?.birthday ? String(person.birthday).slice(0, 10) : '',
     isAdmin: person?.isAdmin ?? false,
     showOnKiosk: person?.showOnKiosk ?? true,
-    accessEnds: accessEndDate(person?.accessExpiresAt, householdTimezone),
+    accessEnds: person?.accessEndsOn ?? accessEndDate(person?.accessExpiresAt, householdTimezone),
     allergens: person?.allergens ?? [],
   })
   const [saving, setSaving] = useState(false)

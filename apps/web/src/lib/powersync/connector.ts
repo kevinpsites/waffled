@@ -20,13 +20,15 @@ export class WaffledConnector implements PowerSyncBackendConnector {
   private readonly identityScope = currentIdentityScope()
 
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
-    if (currentIdentityScope() !== this.identityScope) return null
-    const { token, powerSyncUrl } = await apiGet<{ token: string; powerSyncUrl: string | null }>(
-      '/api/powersync/token'
-    )
-    if (currentIdentityScope() !== this.identityScope) return null
-    if (!token || !powerSyncUrl) return null
-    return { endpoint: powerSyncUrl, token }
+    return withPrincipalUseLock(async () => {
+      if (currentIdentityScope() !== this.identityScope) return null
+      const { token, powerSyncUrl } = await apiGet<{ token: string; powerSyncUrl: string | null }>(
+        '/api/powersync/token'
+      )
+      if (currentIdentityScope() !== this.identityScope) return null
+      if (!token || !powerSyncUrl) return null
+      return { endpoint: powerSyncUrl, token }
+    })
   }
 
   // Drain queued local writes to the server's CRUD sink (offline writes). Each

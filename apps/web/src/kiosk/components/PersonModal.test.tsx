@@ -95,4 +95,19 @@ describe('PersonModal household-local access dates', () => {
     expect(payload).toMatchObject({ accessEndsOn: '2026-11-01' })
     expect(payload).not.toHaveProperty('accessExpiresAt')
   })
+
+  it('prefers the canonical end date after the household timezone changes', () => {
+    const caregiver = {
+      ...member,
+      memberType: 'caregiver',
+      accessEndsOn: '2026-03-08',
+      // This was the exclusive midnight instant in the household's old timezone.
+      accessExpiresAt: '2026-03-09T07:00:00.000Z',
+      showOnKiosk: false,
+    } as SettingsMember
+
+    render(<PersonModal person={caregiver} householdTimezone="America/Denver" onClose={() => {}} onSaved={() => {}} />)
+
+    expect(screen.getByLabelText(/access ends/i)).toHaveValue('2026-03-08')
+  })
 })

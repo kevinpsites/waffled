@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { api, usePersons, useRecipes, type PlanCard, type Recipe } from '../../lib/api'
+import { api, currentIdentityScope, usePersons, useRecipes, type PlanCard, type Recipe } from '../../lib/api'
 import { useTopbarFull } from '../topbar-slot'
 import { Icon } from '../icons'
 import { RecipeModal } from './RecipeModal'
@@ -168,14 +168,20 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
 
   async function applyAll() {
     setApplying(true)
+    const identityScope = currentIdentityScope()
     try {
       for (const c of shown) {
-        await api.planSlot(c.recipeId ? { date: c.date, mealType: c.mealType, recipeId: c.recipeId } : { date: c.date, mealType: c.mealType, title: c.title })
+        await api.planSlot(
+          c.recipeId
+            ? { date: c.date, mealType: c.mealType, recipeId: c.recipeId }
+            : { date: c.date, mealType: c.mealType, title: c.title },
+          identityScope
+        )
       }
       // "& build list": rebuild the grocery from the new week's dinners so items
       // are linked to the planned recipes (otherwise the By-meal view stays empty
       // / shows stale items from a previous plan).
-      await api.rebuildGrocery(startStr).catch(() => {})
+      await api.rebuildGrocery(startStr, identityScope).catch(() => {})
       onApplied()
       onClose()
     } finally {

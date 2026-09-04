@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Fake @powersync/web. Instances are tracked by the constructor so the hard-restart
 // tests can assert that a genuinely NEW client was built — the old one owns the
@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const fakes = vi.hoisted(() => ({
   instances: [] as FakePowerSyncDatabase[],
   failNext: null as { step: 'init' | 'connect'; message: string } | null,
+  connectObserver: null as ((connector: unknown) => void | Promise<void>) | null,
 }))
 
 function maybeFail(step: 'init' | 'connect') {
@@ -22,7 +23,10 @@ class FakePowerSyncDatabase {
   watchCalls: Array<{ sql: string; options: { signal?: AbortSignal } }> = []
   onChangeCalls: Array<{ handler: { onChange: () => void }; options: unknown }> = []
   init = vi.fn(async () => maybeFail('init'))
-  connect = vi.fn(async () => maybeFail('connect'))
+  connect = vi.fn(async (connector?: unknown) => {
+    await fakes.connectObserver?.(connector)
+    maybeFail('connect')
+  })
   disconnect = vi.fn(async () => {})
   close = vi.fn(async () => {})
   disconnectAndClear = vi.fn(async () => {})
@@ -66,25 +70,208 @@ async function freshDbModule() {
 beforeEach(() => {
   fakes.instances.length = 0
   fakes.failNext = null
+  fakes.connectObserver = null
   localStorage.clear()
   localStorage.setItem('waffled.session.v1', JSON.stringify({
     v: 1,
     scope: 'test-scope',
     accessToken: 'tok',
     refreshToken: 'refresh-tok',
+    memberType: 'adult',
+    accessExpiresAt: null,
   })) // signed in, so health isn't pinned at no-auth
   localStorage.setItem('waffled.powersyncIdentityScope', 'session:test-scope')
+  const request = async <T>(
+    name: string,
+    options: LockOptions,
+    callback: (lock: Lock) => T | PromiseLike<T>
+  ): Promise<T> => callback({ name, mode: options.mode ?? 'exclusive' } as Lock)
+  vi.stubGlobal('navigator', { onLine: true, locks: { request } })
 })
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('connectPowerSync', () => {
   it('purges a pre-owner-format replica before publishing it on upgrade', async () => {
     localStorage.removeItem('waffled.powersyncIdentityScope')
+    const modes: Array<string | undefined> = []
+    const request = vi.fn(async (
+      name: string,
+      options: LockOptions,
+      callback: (lock: Lock) => unknown
+    ) => {
+      if (name === 'waffled:principal-replica') modes.push(options.mode)
+      return callback({ name, mode: options.mode ?? 'exclusive' } as Lock)
+    })
+    vi.stubGlobal('navigator', { onLine: true, locks: { request } })
     const db = await freshDbModule()
     await db.connectPowerSync()
 
     expect(fakes.instances[0].disconnectAndClear).toHaveBeenCalledTimes(1)
+    expect(modes).toContain('exclusive')
     expect(localStorage.getItem('waffled.powersyncIdentityScope')).toBe('session:test-scope')
     expect(db.getPowerSyncDb()).toBe(fakes.instances[0] as never)
+  })
+
+  it('keeps a fresh no-lock installation REST-only while still allowing login', async () => {
+    localStorage.setItem('waffled.session.v1', JSON.stringify({ v: 1, signedOut: true }))
+    localStorage.removeItem('waffled.powersyncIdentityScope')
+    vi.stubGlobal('navigator', { onLine: true, locks: undefined })
+    const db = await freshDbModule()
+    const client = await import('../api/client')
+
+    await db.connectPowerSync()
+    expect(fakes.instances).toHaveLength(0)
+    expect(localStorage.getItem('waffled.powersyncIdentityScope')).toBe('__rest_only__')
+
+    await expect(client.setSession('new-access', 'new-refresh')).resolves.toBeUndefined()
+    expect(client.getAccessToken()).toBe('new-access')
+    expect(db.getPowerSyncDb()).toBeNull()
+  })
+
+  it('keeps a no-lock reload REST-only when the durable sentinel already exists', async () => {
+    localStorage.setItem('waffled.powersyncIdentityScope', '__rest_only__')
+    vi.stubGlobal('navigator', { onLine: true, locks: undefined })
+    const db = await freshDbModule()
+
+    await db.connectPowerSync()
+
+    expect(fakes.instances).toHaveLength(0)
+    expect(db.getPowerSyncDb()).toBeNull()
+    expect(getSyncHealth().status).toBe('off')
+  })
+
+  it('quarantines a same-owner replica when origin-wide locks are unavailable', async () => {
+    vi.stubGlobal('navigator', { onLine: true, locks: undefined })
+    const db = await freshDbModule()
+
+    await db.connectPowerSync()
+
+    expect(fakes.instances).toHaveLength(0)
+    expect(db.getPowerSyncDb()).toBeNull()
+    expect(localStorage.getItem('waffled.powersyncIdentityScope')).toBe('session:test-scope')
+    expect(getSyncHealth().status).toBe('off')
+  })
+
+  it('releases the startup lease before awaiting connector completion', async () => {
+    let sharedDepth = 0
+    const request = vi.fn(async <T>(
+      name: string,
+      options: LockOptions,
+      callback: (lock: Lock) => T | PromiseLike<T>
+    ): Promise<T> => {
+      if (name === 'waffled:principal-replica' && options.mode === 'shared') sharedDepth++
+      try {
+        return await callback({ name, mode: options.mode ?? 'exclusive' } as Lock)
+      } finally {
+        if (name === 'waffled:principal-replica' && options.mode === 'shared') sharedDepth--
+      }
+    })
+    vi.stubGlobal('navigator', { onLine: true, locks: { request } })
+    fakes.connectObserver = async (connector) => {
+      expect(sharedDepth).toBe(1)
+      await (connector as { fetchCredentials: () => Promise<unknown> }).fetchCredentials()
+      expect(sharedDepth).toBe(0)
+    }
+    const db = await freshDbModule()
+
+    await db.connectPowerSync()
+    expect(fakes.instances[0].connect).toHaveBeenCalledOnce()
+    expect(db.getPowerSyncDb()).toBe(fakes.instances[0] as never)
+    expect(sharedDepth).toBe(0)
+    // One short publication/start lease and one post-connect validation lease.
+    // The connector work itself joins the first lease in this same-tab fake.
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not deadlock a cross-tab connector callback behind an exclusive waiter', async () => {
+    type PendingLock = {
+      mode: 'shared' | 'exclusive'
+      callback: (lock: Lock) => unknown | PromiseLike<unknown>
+      resolve: (value: unknown) => void
+      reject: (reason?: unknown) => void
+    }
+    const queue: PendingLock[] = []
+    let sharedHolders = 0
+    let exclusiveHeld = false
+    const order: string[] = []
+
+    const pump = () => {
+      if (exclusiveHeld || (sharedHolders > 0 && queue[0]?.mode === 'exclusive')) return
+      const grant = (pending: PendingLock) => {
+        if (pending.mode === 'exclusive') exclusiveHeld = true
+        else sharedHolders++
+        Promise.resolve()
+          .then(() => pending.callback({ name: 'waffled:principal-replica', mode: pending.mode } as Lock))
+          .then(pending.resolve, pending.reject)
+          .finally(() => {
+            if (pending.mode === 'exclusive') exclusiveHeld = false
+            else sharedHolders--
+            pump()
+          })
+      }
+      if (sharedHolders === 0 && queue[0]?.mode === 'exclusive') {
+        grant(queue.shift()!)
+        return
+      }
+      while (queue[0]?.mode === 'shared' && !exclusiveHeld) grant(queue.shift()!)
+    }
+    const request = vi.fn((
+      _name: string,
+      options: LockOptions,
+      callback: (lock: Lock) => unknown | PromiseLike<unknown>
+    ): Promise<unknown> => new Promise((resolve, reject) => {
+      queue.push({ mode: options.mode ?? 'exclusive', callback, resolve, reject })
+      pump()
+    }))
+    vi.stubGlobal('navigator', { onLine: true, locks: { request } })
+    fakes.connectObserver = async (connector) => {
+      // Model a SharedWorker choosing tab B after tab A initiated connect. A fair
+      // lock manager already has a principal transition queued ahead of B's
+      // credential callback.
+      const transition = navigator.locks.request(
+        'waffled:principal-replica',
+        { mode: 'exclusive' },
+        () => { order.push('exclusive') }
+      )
+      const remoteCredentials = navigator.locks.request(
+        'waffled:principal-replica',
+        { mode: 'shared' },
+        async () => {
+          order.push('remote-credentials')
+          await (connector as { fetchCredentials: () => Promise<unknown> }).fetchCredentials()
+        }
+      )
+      await Promise.all([transition, remoteCredentials])
+    }
+    const db = await freshDbModule()
+
+    await db.connectPowerSync()
+
+    expect(order).toEqual(['exclusive', 'remote-credentials'])
+    expect(db.getPowerSyncDb()).toBe(fakes.instances[0] as never)
+  }, 2_000)
+
+  it('keeps a no-lock manual hard restart REST-only', async () => {
+    vi.stubGlobal('navigator', { onLine: true, locks: undefined })
+    const db = await freshDbModule()
+
+    await db.restartPowerSyncHard()
+
+    expect(fakes.instances).toHaveLength(0)
+    expect(db.getPowerSyncDb()).toBeNull()
+    expect(localStorage.getItem('waffled.powersyncIdentityScope')).toBe('session:test-scope')
+  })
+
+  it('keeps a known replica owner fail-closed without origin-wide locks', async () => {
+    vi.stubGlobal('navigator', { onLine: true, locks: undefined })
+    await freshDbModule()
+    const client = await import('../api/client')
+
+    await expect(client.setSession('new-access', 'new-refresh', { discardPending: true }))
+      .rejects.toMatchObject({ result: 'purge-failed' })
+    expect(client.getAccessToken()).toBe('tok')
+    expect(localStorage.getItem('waffled.powersyncIdentityScope')).toBe('session:test-scope')
   })
 
   it('creates and connects a single client (a second call is a no-op)', async () => {
@@ -209,7 +396,12 @@ describe('principal transitions', () => {
     const prepare = vi.fn(async () => {
       expect(old.disconnectAndClear).toHaveBeenCalledTimes(1)
       expect(client.getAccessToken()).toBe('tok')
-      return { accessToken: 'new-access', refreshToken: 'new-refresh' }
+      return {
+        accessToken: 'new-access',
+        refreshToken: 'new-refresh',
+        memberType: 'adult',
+        accessExpiresAt: null,
+      }
     })
 
     await client.setSessionFrom(prepare)
@@ -354,12 +546,16 @@ describe('restartPowerSyncSoft', () => {
       scope: 'replacement-scope',
       accessToken: 'replacement-token',
       refreshToken: 'replacement-refresh',
+      memberType: 'adult',
+      accessExpiresAt: null,
     }))
 
     expect(db.getPowerSyncDb()).toBeNull()
     await db.restartPowerSyncSoft()
 
-    expect(old.disconnect).toHaveBeenCalledTimes(1)
+    // A stale tab must not disconnect the SharedWorker globally after another
+    // tab has already published and connected the replacement principal.
+    expect(old.disconnect).not.toHaveBeenCalled()
     expect(old.close).toHaveBeenCalledTimes(1)
     expect(old.connect).toHaveBeenCalledTimes(1)
     expect(fakes.instances).toHaveLength(2)
@@ -482,13 +678,75 @@ describe('restartPowerSyncHard', () => {
 // unless local writes are still queued for upload. Family data beats the replica.
 describe('restartPowerSyncHard({ clear: true })', () => {
   it('wipes the old replica via disconnectAndClear before rebuilding', async () => {
+    const modes: Array<string | undefined> = []
+    const request = vi.fn(async (
+      name: string,
+      options: LockOptions,
+      callback: (lock: Lock) => unknown
+    ) => {
+      if (name === 'waffled:principal-replica') modes.push(options.mode)
+      return callback({ name, mode: options.mode ?? 'exclusive' } as Lock)
+    })
+    vi.stubGlobal('navigator', { onLine: true, locks: { request } })
     const db = await freshDbModule()
     await db.connectPowerSync()
     const old = fakes.instances[0]
     await db.restartPowerSyncHard({ clear: true })
     expect(old.disconnectAndClear).toHaveBeenCalledTimes(1)
+    expect(modes).toContain('exclusive')
     expect(fakes.instances).toHaveLength(2)
     expect(fakes.instances[1].connect).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for an existing origin reader before probing and clearing', async () => {
+    let sharedHeld = false
+    let releaseWaitingExclusive: (() => void) | null = null
+    const request = vi.fn(async (
+      name: string,
+      options: LockOptions,
+      callback: (lock: Lock) => unknown
+    ) => {
+      if (name !== 'waffled:principal-replica') {
+        return callback({ name, mode: options.mode ?? 'exclusive' } as Lock)
+      }
+      if (options.mode === 'shared') {
+        sharedHeld = true
+        try {
+          return await callback({ name, mode: 'shared' } as Lock)
+        } finally {
+          sharedHeld = false
+          releaseWaitingExclusive?.()
+        }
+      }
+      if (sharedHeld) await new Promise<void>((resolve) => { releaseWaitingExclusive = resolve })
+      return callback({ name, mode: 'exclusive' } as Lock)
+    })
+    vi.stubGlobal('navigator', { onLine: true, locks: { request } })
+    const db = await freshDbModule()
+    const locks = await import('./principal-transition')
+    await db.connectPowerSync()
+    const old = fakes.instances[0]
+    let releaseReader!: () => void
+    let readerStarted!: () => void
+    const readerReady = new Promise<void>((resolve) => { readerStarted = resolve })
+    const readerGate = new Promise<void>((resolve) => { releaseReader = resolve })
+    const reader = locks.withPrincipalUseLock(async () => {
+      readerStarted()
+      await readerGate
+    })
+    await readerReady
+
+    const restart = db.restartPowerSyncHard({ clear: true })
+    await vi.waitFor(() => expect(request.mock.calls.some(([, options]) =>
+      (options as LockOptions).mode === 'exclusive'
+    )).toBe(true))
+    expect(old.getNextCrudTransaction).not.toHaveBeenCalled()
+    expect(old.disconnectAndClear).not.toHaveBeenCalled()
+
+    releaseReader()
+    await Promise.all([reader, restart])
+    expect(old.getNextCrudTransaction).toHaveBeenCalledTimes(1)
+    expect(old.disconnectAndClear).toHaveBeenCalledTimes(1)
   })
 
   it('skips the wipe when local writes are still queued (plain hard restart instead)', async () => {
@@ -525,6 +783,64 @@ describe('restartPowerSyncHard({ clear: true })', () => {
     const old = fakes.instances[0]
     await db.restartPowerSyncHard()
     expect(old.disconnectAndClear).not.toHaveBeenCalled()
+  })
+})
+
+describe('remote principal isolation', () => {
+  it('wakes auth policy handling for a same-scope deadline change but not token-only rotation', async () => {
+    await freshDbModule()
+    const onAuthChanged = vi.fn()
+    window.addEventListener('waffled:auth-changed', onAuthChanged)
+    const oldRecord = JSON.stringify({
+      v: 1,
+      scope: 'test-scope',
+      accessToken: 'access-r1',
+      refreshToken: 'refresh-r1',
+      memberType: 'caregiver',
+      accessExpiresAt: '2026-09-04T00:00:00.000Z',
+    })
+    const rotatedRecord = JSON.stringify({
+      v: 1,
+      scope: 'test-scope',
+      accessToken: 'access-r2',
+      refreshToken: 'refresh-r2',
+      memberType: 'caregiver',
+      accessExpiresAt: '2026-09-04T00:00:00.000Z',
+    })
+
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'waffled.session.v1',
+      oldValue: oldRecord,
+      newValue: rotatedRecord,
+    }))
+    expect(onAuthChanged).not.toHaveBeenCalled()
+
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'waffled.session.v1',
+      oldValue: rotatedRecord,
+      newValue: JSON.stringify({
+        ...JSON.parse(rotatedRecord),
+        accessExpiresAt: '2026-09-03T21:00:00.000Z',
+      }),
+    }))
+    expect(onAuthChanged).toHaveBeenCalled()
+    window.removeEventListener('waffled:auth-changed', onAuthChanged)
+  })
+
+  it('a late remote start closes only this tab and never globally disconnects the replacement', async () => {
+    const db = await freshDbModule()
+    await db.connectPowerSync()
+    const old = fakes.instances[0]
+    const signal = JSON.stringify({ id: 'remote-transition', state: 'started', at: Date.now() })
+    localStorage.setItem('waffled.principalTransition.v1', signal)
+
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'waffled.principalTransition.v1',
+      newValue: signal,
+    }))
+
+    await vi.waitFor(() => expect(old.close).toHaveBeenCalledTimes(1))
+    expect(old.disconnect).not.toHaveBeenCalled()
   })
 })
 

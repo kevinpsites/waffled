@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { api, useHousehold, usePersons, useRecipes, type PlanCard, type Recipe } from '../../lib/api'
+import { api, currentIdentityScope, useHousehold, usePersons, useRecipes, type PlanCard, type Recipe } from '../../lib/api'
 import { useTopbarFull } from '../topbar-slot'
 import { Icon } from '../icons'
 import { RecipeModal } from './RecipeModal'
@@ -318,6 +318,7 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
   async function applyAll() {
     setApplying(true)
     setApplyWarning(null) // a retry starts clean, so a stale warning can't outlive its cause
+    const identityScope = currentIdentityScope()
     try {
       // A night that won't save must not take the rest of the apply down with it. Left
       // unguarded, one rejection exits applyAll before the rebuild loop below, so a
@@ -326,14 +327,19 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
       const unsaved: string[] = []
       for (const c of toApply) {
         await api
-          .planSlot(c.recipeId ? { date: c.date, mealType: 'dinner', recipeId: c.recipeId } : { date: c.date, mealType: 'dinner', title: c.title })
+          .planSlot(
+            c.recipeId
+              ? { date: c.date, mealType: 'dinner', recipeId: c.recipeId }
+              : { date: c.date, mealType: 'dinner', title: c.title },
+            identityScope
+          )
           .catch(() => unsaved.push(c.date))
       }
       // Clear nights that were planned before but the user skipped.
       const cleared: string[] = []
       for (const d of removed) {
         if (plannedDates.has(d)) {
-          await api.clearSlot(d, 'dinner').catch(() => {})
+          await api.clearSlot(d, 'dinner', identityScope).catch(() => {})
           cleared.push(d)
         }
       }
@@ -349,7 +355,7 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
       // shopping for dinners the user just replaced.
       const failed: string[] = []
       for (const week of weekStartsToRebuild([...toApply.map((c) => c.date), ...cleared], firstDayOfWeek)) {
-        await api.rebuildGrocery(week).catch(() => failed.push(week))
+        await api.rebuildGrocery(week, identityScope).catch(() => failed.push(week))
       }
       // Whatever did save IS written, so surface it either way — nothing is lost by
       // showing the plan, and the nights that landed should appear.

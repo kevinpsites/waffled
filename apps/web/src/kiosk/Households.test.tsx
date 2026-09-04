@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { Settings } from './Settings'
+import { acknowledgeCurrentIdentityScopeAfterGate } from '../lib/api/client'
 import { registerPrincipalTransitionHandler } from '../lib/powersync/principal-transition'
 
 const household = { id: 'A', name: 'A', timezone: 'America/Chicago', weekStart: 'sunday', ownerPersonId: 'p1' }
@@ -21,7 +22,18 @@ function mockApi(sent: Sent[], switchGate: Promise<void> = Promise.resolve()) {
       sent.push({ path: u, body: init.body ? JSON.parse(String(init.body)) : undefined })
       if (u.includes('/api/auth/switch')) {
         await switchGate
-        return { ok: true, json: async () => ({ accessToken: 'a', refreshToken: 'r', expiresIn: 900, householdId: 'B', memberships }) }
+        return {
+          ok: true,
+          json: async () => ({
+            accessToken: 'a',
+            refreshToken: 'r',
+            expiresIn: 900,
+            householdId: 'B',
+            memberType: 'adult',
+            accessExpiresAt: null,
+            memberships,
+          }),
+        }
       }
       if (u.includes('/accept')) return { ok: true, json: async () => ({ membership: memberships[1] }) }
     }
@@ -52,6 +64,9 @@ function mockLocationAssign() {
 describe('Households panel', () => {
   beforeEach(() => {
     localStorage.clear()
+    // This test renders Settings without AuthGate; acknowledge the synthetic
+    // principal reset that the production gate would commit before mounting it.
+    acknowledgeCurrentIdentityScopeAfterGate(null)
     registerPrincipalTransitionHandler(async (request) => {
       request.beginIsolation()
       await request.prepareReplacement?.()

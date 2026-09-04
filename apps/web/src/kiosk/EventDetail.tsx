@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { EventModal } from './components/EventModal'
 import { useTopbarFull } from './topbar-slot'
-import { api, eventsApi, useEvent, useEventsRange, useHousehold, useGoals, mealsApi, invalidateGetCache, type AgendaEvent } from '../lib/api'
+import { api, currentIdentityScope, eventsApi, useEvent, useEventsRange, useHousehold, useGoals, mealsApi, invalidateGetCache, type AgendaEvent } from '../lib/api'
 import { useEventColor } from '../lib/event-color'
 import { deleteEventLocal, tombstoneEvent } from '../lib/powersync/events-local'
 import { suggestGoalForEvent } from '../lib/goal-match'
@@ -124,14 +124,22 @@ export function EventDetail() {
       return
     }
     setDeleting(true)
+    const identityScope = currentIdentityScope()
     try {
       if (event?.rrule && occurrenceOn) {
         // Viewing one occurrence of a series → delete just this one (cancel it).
         // Series-wide deletes go through Edit → the modal's this/following/all chooser.
-        await api.deleteEvent(id, { scope: 'this', occurrenceStart: occurrenceOn })
-      } else if (!(await deleteEventLocal(id))) {
-        await api.deleteEvent(id)
-        tombstoneEvent(id)
+        await api.deleteEvent(id, { scope: 'this', occurrenceStart: occurrenceOn }, identityScope)
+      } else {
+        const localResult = await deleteEventLocal(id, identityScope)
+        if (localResult === 'aborted') {
+          setDeleting(false)
+          return
+        }
+        if (localResult === 'rest-fallback') {
+          await api.deleteEvent(id, undefined, identityScope)
+          tombstoneEvent(id)
+        }
       }
       invalidateGetCache('/api/calendar/heads-up')
       navigate('/calendar')

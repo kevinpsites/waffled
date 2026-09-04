@@ -72,13 +72,13 @@ function roleLine(m: SettingsMember, householdTimezone: string): string {
   if (age != null && (m.memberType === 'teen' || m.memberType === 'kid')) parts.push(`age ${age}`)
   if (m.hasLogin) parts.push('signed in')
   else if (m.memberType === 'teen' || m.memberType === 'kid') parts.push('managed by parents')
-  if (m.accessExpiresAt) {
-    const expires = new Date(m.accessExpiresAt)
-    const endsOn = accessEndDate(m.accessExpiresAt, householdTimezone)
+  if (m.accessExpiresAt || m.accessEndsOn) {
+    const expires = m.accessExpiresAt ? new Date(m.accessExpiresAt) : null
+    const endsOn = m.accessEndsOn ?? accessEndDate(m.accessExpiresAt, householdTimezone)
     const displayEnd = endsOn
       ? new Date(`${endsOn}T12:00:00.000Z`).toLocaleDateString('en-US', { timeZone: 'UTC' })
       : ''
-    parts.push(expires.getTime() <= Date.now() ? 'access expired' : `access ends ${displayEnd}`)
+    parts.push(expires && expires.getTime() <= Date.now() ? 'access expired' : `access ends ${displayEnd}`)
   }
   return parts.join(' · ')
 }
@@ -896,7 +896,7 @@ function MyAccountPanel() {
         </>
       )}
 
-      <KioskPinCard personId={info.personId} hasPin={info.hasPin} />
+      {info.memberType !== 'guest' && <KioskPinCard personId={info.personId} hasPin={info.hasPin} />}
     </div>
   )
 }
@@ -3398,10 +3398,16 @@ export function Settings() {
   // The households tab only appears when there's something to act on (another
   // membership to switch to, or a pending invite). Not admin-gated.
   const showHouseholds = memberships.length > 1 || pendingInvites.length > 0
-  // The self-service Account items appear only for a real personal login — never on
-  // the shared kiosk, never for a login-less member.
+  // Credential self-service remains available to a guest with a personal login,
+  // but their profile is shared household state and therefore stays read-only.
   const showAccount = !isKioskMode() && !!account?.hasAccount
-  const nav = NAV.filter((n) => (!n.admin || isAdmin) && (n.key !== 'households' || showHouseholds) && ((n.key !== 'profile' && n.key !== 'account') || showAccount))
+  const showProfile = showAccount && person?.memberType !== 'guest'
+  const nav = NAV.filter((n) =>
+    (!n.admin || isAdmin) &&
+    (n.key !== 'households' || showHouseholds) &&
+    (n.key !== 'profile' || showProfile) &&
+    (n.key !== 'account' || showAccount)
+  )
   // Fall back to About (holds sign-out & account info) rather than whatever
   // happens to sort first, so a limited/kiosk user lands somewhere sensible.
   const activeTab = nav.some((n) => n.key === tab) ? tab : (nav.some((n) => n.key === 'about') ? 'about' : nav[0]?.key ?? 'about')

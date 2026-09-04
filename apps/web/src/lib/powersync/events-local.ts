@@ -256,7 +256,30 @@ export async function getHouseholdTz(): Promise<string> {
 // ── Local writes (offline-first) ───────────────────────────────────────────────
 // Write straight to the local DB; PowerSync queues + uploads to /api/powersync/crud.
 // The local-first reads pick these up instantly (optimistic, works offline). Each
-// returns false when PowerSync isn't running, so callers fall back to REST.
+// A normal local miss returns `rest-fallback`, so callers may use REST. An
+// identity-boundary race returns `aborted` instead: a write which was requested
+// by principal A must never be replayed with principal B's REST credentials.
+
+export type LocalEventMutationResult = 'applied' | 'rest-fallback' | 'aborted'
+
+type AttemptedLocalEventMutation = Exclude<LocalEventMutationResult, 'aborted'>
+
+async function withEventWriteLease(
+  identityScope: string | null,
+  operation: () => Promise<AttemptedLocalEventMutation>
+): Promise<LocalEventMutationResult> {
+  // `withLocalWriteLease` returns false when transition coordination has frozen
+  // admission. Keep the externally-visible result at `aborted` in that case.
+  // Once admitted, distinguish an identity mismatch from a genuine local miss;
+  // only the latter is safe for the caller to replay over REST.
+  let result: LocalEventMutationResult = 'aborted'
+  await withLocalWriteLease(async () => {
+    if (currentIdentityScope() !== identityScope) return true
+    result = await operation()
+    return true
+  })
+  return result
+}
 
 export interface EventDraft {
   title: string
@@ -282,13 +305,14 @@ async function householdRowId(): Promise<string | null> {
   return row?.id ?? null
 }
 
-export async function createEventLocal(draft: EventDraft): Promise<boolean> {
-  const identityScope = currentIdentityScope()
-  return withLocalWriteLease(async () => {
-    if (currentIdentityScope() !== identityScope) return false
-    if (!powerSyncMutationAllowed()) return false
+export async function createEventLocal(
+  draft: EventDraft,
+  identityScope = currentIdentityScope()
+): Promise<LocalEventMutationResult> {
+  return withEventWriteLease(identityScope, async () => {
+    if (!powerSyncMutationAllowed()) return 'rest-fallback'
     const db = getPowerSyncDb()
-    if (!db) return false
+    if (!db) return 'rest-fallback'
     const hh = await householdRowId()
     const tz = await getHouseholdTz()
     const id = crypto.randomUUID()
@@ -309,17 +333,19 @@ export async function createEventLocal(draft: EventDraft): Promise<boolean> {
         pid,
       ])
     }
-    return true
+    return 'applied'
   })
 }
 
-export async function updateEventLocal(id: string, draft: EventDraft): Promise<boolean> {
-  const identityScope = currentIdentityScope()
-  return withLocalWriteLease(async () => {
-    if (currentIdentityScope() !== identityScope) return false
-    if (!powerSyncMutationAllowed()) return false
+export async function updateEventLocal(
+  id: string,
+  draft: EventDraft,
+  identityScope = currentIdentityScope()
+): Promise<LocalEventMutationResult> {
+  return withEventWriteLease(identityScope, async () => {
+    if (!powerSyncMutationAllowed()) return 'rest-fallback'
     const db = getPowerSyncDb()
-    if (!db) return false
+    if (!db) return 'rest-fallback'
     const hh = await householdRowId()
     const res = await db.execute(
       `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, is_countdown = ?, person_id = ?, goal_id = ?, goal_step_id = ?, rhythm_id = ? where id = ?`,
@@ -327,7 +353,7 @@ export async function updateEventLocal(id: string, draft: EventDraft): Promise<b
     )
     // Row not in the local DB yet (PowerSync hasn't synced it) → the update matched
     // nothing and would never upload. Bail so the caller saves via REST instead.
-    if ((res.rowsAffected ?? 0) === 0) return false
+    if ((res.rowsAffected ?? 0) === 0) return 'rest-fallback'
     await db.execute(`delete from event_participants where event_id = ?`, [id])
     for (const pid of [...new Set(draft.personIds)]) {
       await db.execute(`insert into event_participants (id, household_id, event_id, person_id) values (?, ?, ?, ?)`, [
@@ -337,28 +363,29 @@ export async function updateEventLocal(id: string, draft: EventDraft): Promise<b
         pid,
       ])
     }
-    return true
+    return 'applied'
   })
 }
 
-export async function deleteEventLocal(id: string): Promise<boolean> {
-  const identityScope = currentIdentityScope()
-  return withLocalWriteLease(async () => {
-    if (currentIdentityScope() !== identityScope) return false
-    if (!powerSyncMutationAllowed()) return false
+export async function deleteEventLocal(
+  id: string,
+  identityScope = currentIdentityScope()
+): Promise<LocalEventMutationResult> {
+  return withEventWriteLease(identityScope, async () => {
+    if (!powerSyncMutationAllowed()) return 'rest-fallback'
     const db = getPowerSyncDb()
-    if (!db) return false
+    if (!db) return 'rest-fallback'
     await db.execute(`delete from event_participants where event_id = ?`, [id])
     const res = await db.execute(`delete from events where id = ?`, [id])
     // Only a row that's actually in the local DB queues a CRUD op that uploads the
     // delete. If PowerSync hasn't synced this event yet (rowsAffected 0), the local
     // delete is a no-op that would NEVER reach the server — report failure so the
     // caller falls back to the REST delete instead of silently dropping it.
-    if ((res.rowsAffected ?? 0) === 0) return false
+    if ((res.rowsAffected ?? 0) === 0) return 'rest-fallback'
     // Real local delete in flight (crud upload, retried by PowerSync) — tombstone so
     // it stays hidden across the replication window instead of briefly reappearing.
     tombstoneEvent(id)
-    return true
+    return 'applied'
   })
 }
 

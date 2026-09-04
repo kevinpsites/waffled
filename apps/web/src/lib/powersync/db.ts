@@ -17,6 +17,7 @@ import {
   activePrincipalTransitionId,
   freezeLocalWrites,
   onRemotePrincipalTransition,
+  originWideLockingAvailable,
   principalTransitionInProgress,
   registerPrincipalTransitionHandler,
   waitForPrincipalTransition,
@@ -55,6 +56,7 @@ let unlistenStatus: (() => void) | null = null
 const recreateSubs = new Set<() => void>()
 const REPLICA_OWNER_KEY = 'waffled.powersyncIdentityScope'
 const EMPTY_REPLICA_OWNER = '__empty__'
+const REST_ONLY_REPLICA_OWNER = '__rest_only__'
 
 function encodedIdentityScope(scope: string | null): string {
   return scope ?? '__none__'
@@ -81,6 +83,34 @@ function notifyRecreated(): void {
   for (const cb of [...recreateSubs]) cb()
 }
 
+async function quarantinePowerSyncWithoutOriginLocks(): Promise<void> {
+  const old = db
+  db = null
+  dbIdentityScope = undefined
+  unlistenStatus?.()
+  unlistenStatus = null
+  monitor.stop()
+  monitor.engineStopped()
+  if (storedReplicaOwner() === null) storeReplicaOwner(REST_ONLY_REPLICA_OWNER)
+  if (old) {
+    notifyRecreated()
+    // `close` releases this tab's handle without issuing an origin-global
+    // disconnect that could interfere with a correctly isolated HTTPS tab.
+    try { await old.close() } catch { /* remain REST-only */ }
+  }
+  watchConnectivity()
+}
+
+async function withFrozenLocalWrites<T>(operation: () => Promise<T>): Promise<T> {
+  const unfreeze = freezeLocalWrites()
+  try {
+    await waitForLocalWritesToDrain()
+    return await operation()
+  } finally {
+    unfreeze()
+  }
+}
+
 const monitor = new SyncHealthMonitor({
   isOnline: () => typeof navigator === 'undefined' || navigator.onLine,
   isAuthenticated: () => !!getAccessToken(),
@@ -89,7 +119,7 @@ const monitor = new SyncHealthMonitor({
 })
 
 export function getPowerSyncDb(): PowerSyncDatabase | null {
-  return db && dbIdentityScope === currentIdentityScope() ? db : null
+  return originWideLockingAvailable() && dbIdentityScope === currentIdentityScope() ? db : null
 }
 
 // Build + connect a client and wire its status stream into the health store.
@@ -102,6 +132,8 @@ async function startClient(): Promise<void> {
     schema: AppSchema,
     database: { dbFilename: 'waffled.db' },
   })
+  let identityScope: string | null | undefined
+  let instanceUnlisten: (() => void) | null = null
   // Anything that throws from here on leaves a half-built client that still owns
   // the worker and the OPFS handle on waffled.db. Callers only null out `db`, so
   // without this the orphan is unreachable — the next hard restart sees no old
@@ -112,45 +144,87 @@ async function startClient(): Promise<void> {
     // existing replica unless its durable owner matches this exact identity
     // generation. A missing marker is an upgrade from the pre-owner format and
     // therefore requires the same one-time privacy purge.
-    const identityScope = currentIdentityScope()
+    identityScope = currentIdentityScope()
     if (storedReplicaOwner() !== encodedIdentityScope(identityScope)) {
-      await instance.disconnectAndClear()
-      if (currentIdentityScope() !== identityScope) {
-        throw new Error('Identity changed while clearing the local replica')
-      }
-      if (!storeReplicaOwner(encodedIdentityScope(identityScope))) {
-        throw new Error('Could not persist the local replica owner')
-      }
+      await withFrozenLocalWrites(() => withPrincipalTransitionLock(async () => {
+        if (currentIdentityScope() !== identityScope) {
+          throw new Error('Identity changed before clearing the local replica')
+        }
+        await instance.disconnectAndClear()
+        if (currentIdentityScope() !== identityScope) {
+          throw new Error('Identity changed while clearing the local replica')
+        }
+        if (!storeReplicaOwner(encodedIdentityScope(identityScope))) {
+          throw new Error('Could not persist the local replica owner')
+        }
+      }))
     }
-    db = instance
-    dbIdentityScope = identityScope
-    unlistenStatus = instance.registerListener({
-      statusChanged: (s: SyncStatus) =>
-        monitor.noteStatus({
-          connected: s.connected,
-          connecting: s.connecting,
-          hasSynced: s.hasSynced,
-          lastSyncedAt: s.lastSyncedAt ? s.lastSyncedAt.getTime() : null,
+    let connectAttempt: Promise<void> | null = null
+    await withPrincipalUseLock(async () => {
+      // A transition may have completed between initialization/purge and this
+      // publication lease. Publish and *start* connect atomically, but never await
+      // the SharedWorker RPC while holding the lease: the worker may ask another
+      // tab for credentials, whose own shared request must be able to run after a
+      // queued exclusive transition.
+      if (currentIdentityScope() !== identityScope ||
+          storedReplicaOwner() !== encodedIdentityScope(identityScope)) {
+        throw new Error('Identity changed before publishing the local replica')
+      }
+      db = instance
+      dbIdentityScope = identityScope
+      instanceUnlisten = instance.registerListener({
+        statusChanged: (s: SyncStatus) =>
+          monitor.noteStatus({
+            connected: s.connected,
+            connecting: s.connecting,
+            hasSynced: s.hasSynced,
+            lastSyncedAt: s.lastSyncedAt ? s.lastSyncedAt.getTime() : null,
         }),
+      })
+      unlistenStatus = instanceUnlisten
+      // connect() retries internally; fetchCredentials returning null just means
+      // "not signed in yet" — it'll connect once a token is available.
+      connectAttempt = instance.connect(new WaffledConnector())
     })
-    // connect() retries internally; fetchCredentials returning null just means
-    // "not signed in yet" — it'll connect once a token is available.
-    await instance.connect(new WaffledConnector())
+    if (!connectAttempt) throw new Error('PowerSync connect was not started')
+    await connectAttempt
+
+    let stillCurrent = false
+    await withPrincipalUseLock(async () => {
+      stillCurrent = db === instance && dbIdentityScope === identityScope &&
+        currentIdentityScope() === identityScope &&
+        storedReplicaOwner() === encodedIdentityScope(identityScope)
+      if (!stillCurrent) return
+      monitor.engineStarted()
+      monitor.start()
+      watchConnectivity()
+    })
+    if (!stillCurrent) {
+      if (db === instance) {
+        db = null
+        dbIdentityScope = undefined
+      }
+      if (unlistenStatus === instanceUnlisten) unlistenStatus = null
+      ;(instanceUnlisten as (() => void) | null)?.()
+      try { await instance.close() } catch { /* a transition already owns teardown */ }
+      return
+    }
   } catch (err) {
-    unlistenStatus?.()
-    unlistenStatus = null
-    db = null
-    dbIdentityScope = undefined
+    const staleAttempt = identityScope !== undefined && currentIdentityScope() !== identityScope
+    if (db === instance) {
+      db = null
+      dbIdentityScope = undefined
+    }
+    if (unlistenStatus === instanceUnlisten) unlistenStatus = null
+    ;(instanceUnlisten as (() => void) | null)?.()
     try {
       await instance.close()
     } catch {
       /* best effort: a client that couldn't boot may not close cleanly either */
     }
+    if (staleAttempt) return
     throw err
   }
-  monitor.engineStarted()
-  monitor.start()
-  watchConnectivity()
 }
 
 // The watchdog re-classifies on its own (slow) tick, but the kiosk's offline strip
@@ -177,9 +251,12 @@ function serializeLifecycle<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 async function connectPowerSyncUnlocked(opts: {
-  originLockHeld?: boolean
   ignoreTransitionSignal?: boolean
 } = {}): Promise<void> {
+  if (!originWideLockingAvailable()) {
+    await quarantinePowerSyncWithoutOriginLocks()
+    return
+  }
   if (getPowerSyncDb()) return Promise.resolve()
   if (db) {
     // The origin's atomic session changed before this tab received the advisory
@@ -193,10 +270,12 @@ async function connectPowerSyncUnlocked(opts: {
     monitor.stop()
     monitor.engineStopped()
     notifyRecreated()
-    try { await stale.disconnect() } catch { /* owner validation remains authoritative */ }
+    // In SharedWorker mode disconnect() controls the origin-global connection.
+    // This stale tab may be observing a replacement which another tab has
+    // already connected, so only release this tab's handle here.
     try { await stale.close() } catch { /* a failed reopen remains REST-only */ }
   }
-  if (!opts.ignoreTransitionSignal && !opts.originLockHeld) {
+  if (!opts.ignoreTransitionSignal) {
     try {
       await waitForPrincipalTransition()
     } catch (error) {
@@ -208,9 +287,7 @@ async function connectPowerSyncUnlocked(opts: {
       return
     }
   }
-  const start = () => startClient()
-  const attempt = opts.originLockHeld ? start() : withPrincipalUseLock(start)
-  await attempt
+  await startClient()
     .catch((err) => {
       console.warn('PowerSync unavailable; falling back to REST only', err)
       db = null
@@ -229,7 +306,7 @@ async function connectPowerSyncUnlocked(opts: {
 
 let connecting: Promise<void> | null = null
 export function connectPowerSync(): Promise<void> {
-  if (getPowerSyncDb()) return Promise.resolve()
+  if (originWideLockingAvailable() && getPowerSyncDb()) return Promise.resolve()
   if (connecting) return connecting
   let attempt: Promise<void>
   attempt = serializeLifecycle(connectPowerSyncUnlocked)
@@ -243,20 +320,40 @@ export function connectPowerSync(): Promise<void> {
 // Cheap engine kick: drop the sync connection and dial again on the same client.
 // The first rung of the watchdog ladder. Never throws; a no-op with no client.
 export function restartPowerSyncSoft(): Promise<void> {
-  return serializeLifecycle(() => withPrincipalUseLock(restartPowerSyncSoftUnlocked))
+  return serializeLifecycle(restartPowerSyncSoftUnlocked)
 }
 
 async function restartPowerSyncSoftUnlocked(): Promise<void> {
+  if (!originWideLockingAvailable()) {
+    await quarantinePowerSyncWithoutOriginLocks()
+    return
+  }
   const instance = getPowerSyncDb()
   if (!instance && db) {
-    await connectPowerSyncUnlocked({ originLockHeld: true, ignoreTransitionSignal: true })
+    await connectPowerSyncUnlocked({ ignoreTransitionSignal: true })
     return
   }
   if (!instance) return
   try {
+    const identityScope = currentIdentityScope()
     const { WaffledConnector } = await loadEngine()
-    await instance.disconnect()
-    await instance.connect(new WaffledConnector())
+    let disconnectedCurrent = false
+    await withPrincipalUseLock(async () => {
+      if (getPowerSyncDb() !== instance) return
+      await instance.disconnect()
+      disconnectedCurrent = getPowerSyncDb() === instance && currentIdentityScope() === identityScope
+    })
+    if (!disconnectedCurrent) return
+
+    let connectAttempt: Promise<void> | null = null
+    await withPrincipalUseLock(async () => {
+      // A fair lock manager lets a queued exclusive transition win between the
+      // disconnect and this second shared lease. Only initiate reconnect if this
+      // exact instance/principal is still published once that waiter drains.
+      if (getPowerSyncDb() !== instance || currentIdentityScope() !== identityScope) return
+      connectAttempt = instance.connect(new WaffledConnector())
+    })
+    if (connectAttempt) await connectAttempt
   } catch (err) {
     console.warn('PowerSync soft restart failed', err)
   }
@@ -276,7 +373,7 @@ export function restartPowerSyncHard(opts: { clear?: boolean } = {}): Promise<vo
   const inFlight = hardRestarting
   if (inFlight && inFlight.clear === clear) return inFlight.promise
   let entry: { clear: boolean; promise: Promise<void> }
-  const promise = serializeLifecycle(() => withPrincipalUseLock(() => doHardRestart({ clear })))
+  const promise = serializeLifecycle(() => doHardRestart({ clear }))
     .finally(() => {
       if (hardRestarting === entry) hardRestarting = null
     })
@@ -286,40 +383,63 @@ export function restartPowerSyncHard(opts: { clear?: boolean } = {}): Promise<vo
 }
 
 async function doHardRestart({ clear = false }: { clear?: boolean } = {}): Promise<void> {
-  const old = db
-  db = null
-  dbIdentityScope = undefined
-  unlistenStatus?.()
-  unlistenStatus = null
-  if (old) {
-    if (clear) {
-      // The top rung, for a replica that survives plain rebuilds (same db file).
-      // Wiping and re-downloading is cheap — but never while local writes are
-      // still waiting to upload: family data beats the replica, every time.
-      //
-      // "Couldn't read the queue" is NOT "the queue is empty". This rung only ever
-      // runs against an already-wedged client, which is precisely the one whose
-      // probe throws — so a failed probe must skip the wipe, or the guarantee
-      // evaporates in the exact case it exists for.
-      let queueKnownEmpty = false
-      try {
-        queueKnownEmpty = (await old.getNextCrudTransaction()) == null
-      } catch {
-        /* wedged client, unreadable queue — assume writes are pending, don't wipe */
-      }
-      if (queueKnownEmpty) {
+  if (!originWideLockingAvailable()) {
+    await quarantinePowerSyncWithoutOriginLocks()
+    return
+  }
+  const identityScope = currentIdentityScope()
+  let detached = false
+  const detach = async (): Promise<boolean> => {
+    // A cross-tab principal replacement which won while this restart was queued
+    // owns the teardown. Do not detach or rebuild its newly-current replica.
+    if (currentIdentityScope() !== identityScope) return false
+    const old = db
+    db = null
+    dbIdentityScope = undefined
+    unlistenStatus?.()
+    unlistenStatus = null
+    detached = true
+    if (old) {
+      if (clear) {
+        // The top rung, for a replica that survives plain rebuilds (same db file).
+        // Wiping and re-downloading is cheap — but never while local writes are
+        // still waiting to upload: family data beats the replica, every time.
+        // This probe runs inside the exclusive origin lease, after existing
+        // writers/uploaders drain, so no operation can arrive between it and clear.
+        // "Couldn't read the queue" is NOT "the queue is empty".
+        let queueKnownEmpty = false
         try {
-          await old.disconnectAndClear()
+          queueKnownEmpty = (await old.getNextCrudTransaction()) == null
         } catch {
-          /* clearing failed — the close + rebuild below still runs */
+          /* wedged client, unreadable queue — assume writes are pending, don't wipe */
+        }
+        if (queueKnownEmpty) {
+          try {
+            await old.disconnectAndClear()
+          } catch {
+            /* clearing failed — the close + rebuild below still runs */
+          }
         }
       }
+      try {
+        await old.close()
+      } catch {
+        /* a wedged client may refuse to close cleanly — replace it anyway */
+      }
     }
-    try {
-      await old.close()
-    } catch {
-      /* a wedged client may refuse to close cleanly — replace it anyway */
-    }
+    return true
+  }
+
+  try {
+    const didDetach = await withFrozenLocalWrites(() =>
+      clear ? withPrincipalTransitionLock(detach) : withPrincipalUseLock(detach)
+    )
+    if (!didDetach) return
+  } catch (err) {
+    // In particular, a browser without Web Locks must keep the existing replica
+    // intact rather than running a destructive reset without origin exclusion.
+    console.warn('PowerSync restart isolation failed', err)
+    if (!detached) return
   }
   try {
     await startClient()
@@ -366,6 +486,42 @@ async function performPrincipalTransition(
     }
   }
   if (!requestIsCurrent()) return 'stale'
+
+  let initialOwner = storedReplicaOwner()
+  // Authentication can complete before the asynchronous boot path reaches
+  // connectPowerSync(). In a no-lock runtime PowerSync cannot be opened safely,
+  // so establish the same durable REST-only proof here rather than rejecting an
+  // otherwise valid first login merely because startup lost that race.
+  if (!originWideLockingAvailable() && !db && initialOwner == null &&
+      storeReplicaOwner(REST_ONLY_REPLICA_OWNER)) {
+    initialOwner = REST_ONLY_REPLICA_OWNER
+  }
+  const provenRestOnly = !db && (
+    initialOwner === REST_ONLY_REPLICA_OWNER ||
+    initialOwner === EMPTY_REPLICA_OWNER ||
+    initialOwner === encodedIdentityScope(null)
+  )
+  if (!originWideLockingAvailable()) {
+    // A plain-HTTP browser cannot run PowerSync, but still needs login/profile
+    // switching. Only bypass replica isolation when a durable marker proves no
+    // principal-owned replica was ever published. Known owners remain fail-closed.
+    if (!provenRestOnly) return 'purge-failed'
+    if (!requestIsCurrent()) return 'stale'
+    request.beginIsolation()
+    try {
+      await request.prepareReplacement?.()
+    } catch (error) {
+      request.finishIsolation()
+      throw error
+    }
+    if (!requestIsCurrent()) {
+      request.finishIsolation()
+      return 'stale'
+    }
+    request.commitCredentials()
+    request.finishIsolation()
+    return 'completed'
+  }
 
   const unfreeze = freezeLocalWrites()
   try {
@@ -533,7 +689,11 @@ function beginRemoteIsolation(id: string | null = null): void {
     monitor.engineStopped()
     notifyRecreated()
     if (old) {
-      try { await old.disconnect() } catch { /* transitioning tab owns recovery */ }
+      // In SharedWorker/multi-tab mode disconnect() controls the origin-global
+      // connection manager. A delayed tab must not disconnect the replacement
+      // principal which the initiating tab may already have connected. close()
+      // releases only this tab's handle there, and still disconnects first in
+      // single-tab implementations.
       try { await old.close() } catch { /* transitioning tab will fail closed if OPFS stays locked */ }
     }
   })
@@ -583,19 +743,41 @@ if (typeof window !== 'undefined') {
   // remote tab gates and drops its old handle before it can use the new session.
   window.addEventListener('storage', (event) => {
     if (event.key === 'waffled.session.v1') {
-      const scopeFromRecord = (raw: string | null): string => {
-        if (!raw) return '__missing__'
+      const metadataFromRecord = (raw: string | null): {
+        scope: string
+        policy: string
+      } => {
+        if (!raw) return { scope: '__missing__', policy: '__missing__' }
         try {
-          const value = JSON.parse(raw) as { scope?: unknown; signedOut?: unknown }
-          if (value.signedOut === true) return '__signed-out__'
-          return typeof value.scope === 'string' && value.scope ? `session:${value.scope}` : '__invalid__'
+          const value = JSON.parse(raw) as Record<string, unknown>
+          if (value.signedOut === true) return { scope: '__signed-out__', policy: '__signed-out__' }
+          const scope = typeof value.scope === 'string' && value.scope
+            ? `session:${value.scope}`
+            : '__invalid__'
+          // A refresh rotates only credentials. Role/deadline changes within the
+          // same scope must wake AuthGate so client.ts reloads the authoritative
+          // policy, re-arms a shortened deadline, or tears down expired access.
+          const policy = JSON.stringify([
+            Object.prototype.hasOwnProperty.call(value, 'memberType'),
+            value.memberType,
+            Object.prototype.hasOwnProperty.call(value, 'accessExpiresAt'),
+            value.accessExpiresAt,
+          ])
+          return { scope, policy }
         } catch {
-          return '__invalid__'
+          return { scope: '__invalid__', policy: '__invalid__' }
         }
       }
+      const oldRecord = metadataFromRecord(event.oldValue)
+      const newRecord = metadataFromRecord(event.newValue)
       // Access/refresh rotation rewrites the record but preserves its scope; it
       // is not a principal boundary and must not reload every other kiosk tab.
-      if (scopeFromRecord(event.oldValue) === scopeFromRecord(event.newValue)) return
+      if (oldRecord.scope === newRecord.scope) {
+        if (oldRecord.policy !== newRecord.policy) {
+          window.dispatchEvent(new Event('waffled:auth-changed'))
+        }
+        return
+      }
     } else if (event.key !== 'waffled.token' || event.oldValue === event.newValue) {
       return
     }

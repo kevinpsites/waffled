@@ -4,6 +4,7 @@ import { KioskDisplay } from './KioskDisplay'
 
 // Reproduce the paired-kiosk idle → screensaver path in isolation.
 vi.mock('../lib/api', () => ({
+  currentIdentityScope: () => 'session:test-kiosk',
   isDisplayMode: () => true,
   isKioskMode: () => true,
   clearProfileSession: vi.fn(async () => {}),

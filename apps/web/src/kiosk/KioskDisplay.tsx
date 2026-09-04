@@ -3,11 +3,12 @@
 // renders nothing extra — zero behavior, no screensaver. When ON it keeps the screen
 // awake, runs one idle watcher (reset-to-Today, then screensaver), shows the
 // screensaver overlay, and applies night dimming on a schedule.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router'
 import {
   isDisplayMode,
   isKioskMode,
+  currentIdentityScope,
   clearProfileSession,
   kioskApi,
   useWeather,
@@ -24,9 +25,20 @@ import '../styles/kiosk-profiles.css'
 export function KioskDisplay({ children }: { children: ReactNode }) {
   const [on, setOn] = useState(isDisplayMode())
   const [transitioning, setTransitioning] = useState(principalTransitionInProgress())
-  useEffect(() => {
+  const [identityScope, setIdentityScope] = useState(() => currentIdentityScope())
+  const observedIdentityScopeRef = useRef(identityScope)
+  useLayoutEffect(() => {
     let active = true
+    const observeIdentityScope = () => {
+      const next = currentIdentityScope()
+      if (next === observedIdentityScopeRef.current) return false
+      observedIdentityScopeRef.current = next
+      setIdentityScope(next)
+      setOn(isDisplayMode())
+      return true
+    }
     const onAuthChange = () => {
+      observeIdentityScope()
       setOn(isDisplayMode())
       setTransitioning(principalTransitionInProgress())
     }
@@ -35,24 +47,32 @@ export function KioskDisplay({ children }: { children: ReactNode }) {
       // AuthGate owns the recovery UI. On a timeout, keep the display layer
       // hidden so private ambient content never reappears behind that screen.
       void waitForPrincipalTransition()
-        .then(() => { if (active) setTransitioning(false) })
+        .then(() => {
+          if (!active) return
+          observeIdentityScope()
+          setOn(isDisplayMode())
+          setTransitioning(false)
+        })
         .catch(() => {})
     }
     window.addEventListener('waffled:auth-changed', onAuthChange)
     window.addEventListener('waffled:principal-transition-started', onTransition)
-    // Subscribe before checking so the render -> effect gap cannot miss a start.
+    // Subscribe before checking both boundaries. The start and finish can both
+    // occur before this effect, so a finished marker alone is not sufficient.
     if (principalTransitionInProgress()) onTransition()
+    else observeIdentityScope()
     return () => {
       active = false
       window.removeEventListener('waffled:auth-changed', onAuthChange)
       window.removeEventListener('waffled:principal-transition-started', onTransition)
     }
   }, [])
+  const scopeMatches = identityScope === currentIdentityScope()
   return (
-    <>
-      {children}
-      {on && !transitioning && <DisplayLayer />}
-    </>
+    <Fragment key={identityScope ?? 'signed-out'}>
+      {scopeMatches && children}
+      {scopeMatches && on && !transitioning && <DisplayLayer />}
+    </Fragment>
   )
 }
 

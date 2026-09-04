@@ -4,25 +4,41 @@ import { PhotoAdd } from './PhotoAdd'
 // Stub the api slice: uploadImage returns a unique key/url per call, and api.createPhoto
 // records the inputs it was called with so we can assert the upload key + album flow.
 const created: Record<string, unknown>[] = []
+const sentScopes: Array<string | null> = []
 let uploadN = 0
-const uploadImage = vi.fn(async () => {
+let currentScope: string | null = 'session:account-a'
+let afterSend: ((sentCount: number) => Promise<void>) | null = null
+const uploadImage = vi.fn(async (_file?: File, _identityScope?: string | null) => {
   uploadN += 1
   return { key: `media/up${uploadN}.jpg`, url: `/media/up${uploadN}.jpg`, contentType: 'image/jpeg' }
 })
 
 vi.mock('../../lib/api', () => ({
   uploadImage: (...args: unknown[]) => uploadImage(...(args as [])),
-  api: {
-    createPhoto: vi.fn(async (input: Record<string, unknown>) => {
-      created.push(input)
-      return { photo: { id: `p${created.length}` } }
-    }),
-  },
+}))
+
+vi.mock('../../lib/api/client', () => ({
+  currentIdentityScope: () => currentScope,
+  apiSendForIdentity: vi.fn(async (
+    identityScope: string | null,
+    _method: string,
+    _path: string,
+    input: Record<string, unknown>
+  ) => {
+    if (identityScope !== currentScope) throw new Error('Principal changed before /api/photos could be sent')
+    sentScopes.push(identityScope)
+    created.push(input)
+    await afterSend?.(created.length)
+    return { photo: { id: `p${created.length}` } }
+  }),
 }))
 
 beforeEach(() => {
   created.length = 0
   uploadN = 0
+  currentScope = 'session:account-a'
+  sentScopes.length = 0
+  afterSend = null
   uploadImage.mockClear()
 })
 
@@ -55,12 +71,40 @@ describe('PhotoAdd — upload', () => {
 
     pickFiles('a.jpg', 'b.jpg', 'c.jpg')
     await waitFor(() => expect(screen.getAllByPlaceholderText('Add a caption…').length).toBe(3))
+    expect(uploadImage.mock.calls.map((call) => call[1])).toEqual([
+      'session:account-a',
+      'session:account-a',
+      'session:account-a',
+    ])
 
     // topbar button pluralizes
     fireEvent.click(screen.getByRole('button', { name: /Add 3 photos/i }))
     await waitFor(() => expect(created.length).toBe(3))
     expect(created.map((c) => c.storageKey)).toEqual(['media/up1.jpg', 'media/up2.jpg', 'media/up3.jpg'])
     expect(onAdded).toHaveBeenCalled()
+  })
+
+  it('does not continue a multi-photo save with a replacement principal', async () => {
+    let releaseFirst!: () => void
+    const firstPending = new Promise<void>((resolve) => { releaseFirst = resolve })
+    afterSend = async (sentCount) => {
+      if (sentCount === 1) await firstPending
+    }
+    const onAdded = vi.fn()
+    render(<PhotoAdd onClose={() => {}} onAdded={onAdded} />)
+
+    pickFiles('a.jpg', 'b.jpg')
+    await waitFor(() => expect(screen.getAllByPlaceholderText('Add a caption…').length).toBe(2))
+    fireEvent.click(screen.getByRole('button', { name: /Add 2 photos/i }))
+    await waitFor(() => expect(created.length).toBe(1))
+
+    currentScope = 'session:account-b'
+    releaseFirst()
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Add 2 photos/i })).toBeEnabled())
+    expect(created).toHaveLength(1)
+    expect(sentScopes).toEqual(['session:account-a'])
+    expect(onAdded).not.toHaveBeenCalled()
   })
 
   it('applies the batch "Album for all" to every staged photo as memory', async () => {
