@@ -81,10 +81,16 @@ final class KioskMode {
     /// Claim a profile and become that person. On success the per-person session is
     /// adopted and the live sync re-scopes; the gate then shows the kiosk shell.
     func claim(_ profile: WaffledAPI.KioskProfile, pin: String?, sync: SyncManager, session: Session) async -> ClaimOutcome {
+        // Bind the claim response to the session that made the request. A sign-out or
+        // other principal transition while the request is in flight revokes this lease.
+        let sourceScope = sync.restDataScopeKey
         do {
             let claim = try await api.claimProfile(personId: profile.id, pin: pin)
-            session.enterClaimedSession(access: claim.accessToken, refresh: claim.refreshToken)
-            await sync.reauthenticate()
+            guard await sync.reauthenticate(expectedScope: sourceScope, adoptCredentials: {
+                session.enterClaimedSession(access: claim.accessToken, refresh: claim.refreshToken)
+            }) else {
+                return .failed("Couldn’t safely finish switching profiles. Try again.")
+            }
             hasProfile = true
             return .ok
         } catch let e as WaffledAPI.KioskClaimError {
@@ -120,8 +126,8 @@ final class KioskMode {
     func unpair(sync: SyncManager, session: Session) async {
         KioskDeviceStore.clear()
         isShared = false
-        await dropToPicker(sync: sync)
-        await session.signOut()
+        hasProfile = false
+        await session.signOut(sync: sync)
     }
 
     /// Drop the per-person session + tear down the live sync (no server revoke — the

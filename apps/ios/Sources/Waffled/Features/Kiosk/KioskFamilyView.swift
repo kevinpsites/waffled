@@ -7,17 +7,30 @@ import SwiftUI
 struct KioskFamilyView: View {
     @Environment(SyncManager.self) private var sync
     @Binding var path: [HubRoute]
-    @State private var chores: [WaffledAPI.PersonChoresDTO] = []
-    @State private var stars: [WaffledAPI.FamilyStarsDTO] = []
+    @State private var model = KioskFamilyModel()
 
     private let cols = [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 16, alignment: .top)]
     /// Verification one-shot (WAFFLED_OPEN_PERSON).
     private static var didOpenPerson = false
 
+    private struct LoadKey: Hashable {
+        let choresEnabled: Bool
+        let choresRevision: Int
+        let rewardsRevision: Int
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 KioskPageHeader("Family", "Tap a person to see just their day, chores & goals.")
+                if case .loading = model.state {
+                    WaffledLoading(top: 12)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    RestStateNotice(state: model.state, retry: { Task { await loadRestData() } })
+                }
+                // Members and today's schedule come from PowerSync, so keep those
+                // useful cards visible while the REST-only chore/star details load.
                 LazyVGrid(columns: cols, alignment: .leading, spacing: 16) {
                     ForEach(sync.members) { m in personCard(m) }
                 }
@@ -26,28 +39,34 @@ struct KioskFamilyView: View {
         }
         .background(WF.canvas)
         .toolbar(.hidden, for: .navigationBar)   // draws its own "Family" header
-        .task {
-            await sync.loadIdentity(); await load()
+        .task(id: loadKey) {
+            await loadRestData()
             if DemoHooks.openPerson, !Self.didOpenPerson, let first = sync.members.first {
                 Self.didOpenPerson = true; path.append(.person(first.id))
             }
         }
-        .refreshable { await load() }
-        .onChange(of: sync.choresRev) { _, _ in Task { await load() } }
+        .refreshable { await loadRestData() }
     }
 
-    private func load() async {
-        async let c = (try? await WaffledAPI().choresToday()) ?? []
-        async let s = (try? await WaffledAPI().familyStars()) ?? []
-        chores = await c
-        stars = await s
+    private var loadKey: LoadKey {
+        .init(
+            choresEnabled: sync.module(.chores),
+            choresRevision: sync.choresRev,
+            rewardsRevision: sync.rewardsRev
+        )
+    }
+
+    private func loadRestData() async {
+        await sync.loadIdentity()
+        guard !Task.isCancelled else { return }
+        await model.load(choresEnabled: sync.module(.chores))
     }
 
     // MARK: a person card
 
     private func personCard(_ m: SyncedMember) -> some View {
-        let pc = chores.first { $0.id == m.id }
-        let balance = stars.first { $0.name == m.name }?.stars
+        let pc = model.chores.first { $0.id == m.id }
+        let balance = model.stars.first { $0.name == m.name }?.stars
         let events = todayEvents(for: m)
         let tint = Color(hexString: m.colorHex) ?? WF.ink3
         return Button { path.append(.person(m.id)) } label: {
@@ -64,7 +83,7 @@ struct KioskFamilyView: View {
                     Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
                 }
 
-                if let pc, pc.total > 0 {
+                if sync.module(.chores), let pc, pc.total > 0 {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text("CHORES").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)

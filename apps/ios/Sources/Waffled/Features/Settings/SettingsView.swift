@@ -153,8 +153,7 @@ struct SettingsView: View {
 
     private func signOut() async {
         busy = true
-        await session.signOut()    // clear session, → login (Button's Task survives)
-        await sync.signOut()       // disconnect sync
+        await session.signOut(sync: sync)
         await notifications.clearEventReminders() // drop this household's event reminders
     }
 
