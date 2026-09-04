@@ -51,8 +51,8 @@ export async function ensureDefaultCurrency(householdId: string): Promise<void> 
   )
 }
 
-export async function listCurrencies(householdId: string): Promise<CurrencyRow[]> {
-  await ensureDefaultCurrency(householdId)
+export async function listCurrencies(householdId: string, seedDefault = true): Promise<CurrencyRow[]> {
+  if (seedDefault) await ensureDefaultCurrency(householdId)
   const { rows } = await query<CurrencyRow>(
     `select * from currencies where household_id=$1 and deleted_at is null order by sort_order, created_at`,
     [householdId]
@@ -61,8 +61,8 @@ export async function listCurrencies(householdId: string): Promise<CurrencyRow[]
 }
 
 // The default earn currency's key — used wherever a chore/reward doesn't name one.
-export async function getDefaultCurrencyKey(householdId: string): Promise<string> {
-  await ensureDefaultCurrency(householdId)
+export async function getDefaultCurrencyKey(householdId: string, seedDefault = true): Promise<string> {
+  if (seedDefault) await ensureDefaultCurrency(householdId)
   const { rows } = await query<{ key: string }>(
     `select key from currencies where household_id=$1 and deleted_at is null
       order by is_default desc, sort_order, created_at limit 1`,
@@ -288,7 +288,9 @@ export async function applyConversion(
 
 export function registerCurrencyRoutes(api: Api): void {
   api.get('/api/currencies', tenantRoute(async (tenant) => {
-    return { currencies: (await listCurrencies(tenant.householdId)).map(presentCurrency) }
+    return {
+      currencies: (await listCurrencies(tenant.householdId, tenant.memberType !== 'guest')).map(presentCurrency),
+    }
   }))
 
   api.post('/api/currencies', adminRoute(async (tenant, req: Request, res: Response) => {

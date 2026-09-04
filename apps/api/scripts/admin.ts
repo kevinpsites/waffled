@@ -194,13 +194,17 @@ async function makeAdmin(grant: boolean): Promise<void> {
   // the role and clear any temporary-access expiry in the same statement so
   // the break-glass CLI cannot violate the membership invariants.
   await query(
-    `update persons
+    `with locked_household as materialized (
+       select id from households where id = $3 for share
+     )
+     update persons p
         set is_admin = $1,
             member_type = case when $1 then 'adult' else member_type end,
             access_expires_at = case when $1 then null else access_expires_at end,
             updated_at = now()
-      where id = $2`,
-    [grant, p.id]
+       from locked_household
+      where p.id = $2 and p.household_id = locked_household.id`,
+    [grant, p.id, p.household_id]
   )
   console.log(ok(`✓ ${p.name} is now ${grant ? 'an admin' : 'a regular member'}.`))
 }

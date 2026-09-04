@@ -77,8 +77,8 @@ async function recipeIngredients(householdId: string) {
 // Recipes you can cook right now ("ready" — nothing to buy), plus the "mains" (proteins)
 // you have on hand that the library has recipes for. Rather than list every recipe for a
 // protein you own, we surface the protein as a chip → the recipe library filtered to it.
-export async function cookableRecipes(householdId: string): Promise<{ ready: CookReady[]; mains: CookMain[] }> {
-  await ensureDefaultStaples(householdId)
+export async function cookableRecipes(householdId: string, seedDefaultStaples = true): Promise<{ ready: CookReady[]; mains: CookMain[] }> {
+  if (seedDefaultStaples) await ensureDefaultStaples(householdId)
   const staples = new Set((await listPantryStaples(householdId)).map((s) => s.name.trim().toLowerCase()))
   const onHand = await pantryOnHand(householdId)
   const { recipes, byRecipe } = await recipeIngredients(householdId)
@@ -145,8 +145,12 @@ export interface RecipeMatch {
 // Which on-hand pantry items match this recipe's ingredients (for the "Used from your
 // pantry" confirm sheet after marking cooked). Same token-subset match as cookable, but
 // keyed to item ids so the client can post back a consume list.
-export async function pantryMatchesForRecipe(householdId: string, recipeId: string): Promise<RecipeMatch[]> {
-  await ensureDefaultStaples(householdId)
+export async function pantryMatchesForRecipe(
+  householdId: string,
+  recipeId: string,
+  seedDefaultStaples = true
+): Promise<RecipeMatch[]> {
+  if (seedDefaultStaples) await ensureDefaultStaples(householdId)
   const staples = new Set((await listPantryStaples(householdId)).map((s) => s.name.trim().toLowerCase()))
   const { rows: items } = await query<{ id: string; name: string; amount: string | null; unit: string | null }>(
     `select id, name, amount, unit from pantry_items

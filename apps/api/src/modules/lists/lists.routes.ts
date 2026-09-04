@@ -7,6 +7,7 @@ import { registerListItemCaptureTarget } from './lists-capture'
 import type { CreateListInput, PatchItemInput } from './lists.types'
 import {
   getOrCreateGroceryList,
+  findGroceryList,
   listLists,
   getList,
   createList,
@@ -56,7 +57,7 @@ export function registerListRoutes(api: Api): void {
   // ---- the household's lists (sidebar) --------------------------------------
   api.get('/api/lists', tenantRoute(async (tenant) => {
     // Ensure the grocery list exists so it always shows in the rail.
-    await getOrCreateGroceryList(tenant)
+    if (tenant.memberType !== 'guest') await getOrCreateGroceryList(tenant)
     return { lists: await listLists(tenant.householdId) }
   }))
 
@@ -155,7 +156,7 @@ export function registerListRoutes(api: Api): void {
     if (!list) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
     // Lazily sweep old checked items off a custom list before we read it (no cron):
     // a no-op for grocery/templates (scoped to list_type='custom' in the query).
-    await autoClearCheckedItems(tenant.householdId, id)
+    if (tenant.memberType !== 'guest') await autoClearCheckedItems(tenant.householdId, id)
     const items = await listItems(tenant.householdId, id)
     return { list: presentList(list), items: items.map(presentListItem) }
   }))
@@ -196,8 +197,11 @@ export function registerListRoutes(api: Api): void {
   }))
 
   // ---- grocery list (unchanged; the Today dashboard depends on these) -------
-  api.get('/api/lists/grocery', tenantRoute(async (tenant) => {
-    const list = await getOrCreateGroceryList(tenant)
+  api.get('/api/lists/grocery', tenantRoute(async (tenant, _req: Request, res: Response) => {
+    const list = tenant.memberType === 'guest'
+      ? await findGroceryList(tenant.householdId)
+      : await getOrCreateGroceryList(tenant)
+    if (!list) return res.status(404).json({ error: 'NotFound', message: 'grocery list not found' })
     const items = await listItems(tenant.householdId, list.id)
     return { list: presentList(list), items: items.map(presentListItem) }
   }))
@@ -322,8 +326,10 @@ export function registerListRoutes(api: Api): void {
     return ws === null ? householdWeekStart(tenant.householdId) : householdWeekStartFor(tenant.householdId, ws)
   }
 
-  api.get('/api/lists/grocery/board', tenantRoute(async (tenant, req: Request) => {
-    return groceryBoard(tenant, await weekStartFor(tenant, req))
+  api.get('/api/lists/grocery/board', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const board = await groceryBoard(tenant, await weekStartFor(tenant, req), tenant.memberType !== 'guest')
+    if (!board) return res.status(404).json({ error: 'NotFound', message: 'grocery list not found' })
+    return board
   }))
 
   api.post('/api/lists/grocery/rebuild', tenantRoute(async (tenant, req: Request) => {
@@ -340,7 +346,7 @@ export function registerListRoutes(api: Api): void {
   }))
 
   api.get('/api/pantry-staples', tenantRoute(async (tenant) => {
-    await ensureDefaultStaples(tenant.householdId)
+    if (tenant.memberType !== 'guest') await ensureDefaultStaples(tenant.householdId)
     return { staples: await listPantryStaples(tenant.householdId) }
   }))
 

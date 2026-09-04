@@ -12,6 +12,7 @@ export interface Membership {
   personId: string
   isAdmin: boolean
   memberType: string
+  accessEndsOn: string | null
   accessExpiresAt: Date | null
 }
 
@@ -24,10 +25,11 @@ export async function listMemberships(accountId: string): Promise<Membership[]> 
     person_id: string
     is_admin: boolean
     member_type: string
+    access_ends_on: string | null
     access_expires_at: Date | null
   }>(
     `select p.household_id, h.name as household_name, p.id as person_id, p.is_admin,
-            p.member_type, p.access_expires_at
+            p.member_type, p.access_ends_on, p.access_expires_at
        from persons p
        join households h on h.id = p.household_id and h.deleted_at is null
       where p.account_id = $1 and p.deleted_at is null
@@ -41,6 +43,7 @@ export async function listMemberships(accountId: string): Promise<Membership[]> 
     personId: r.person_id,
     isAdmin: r.is_admin,
     memberType: r.member_type,
+    accessEndsOn: r.access_ends_on,
     accessExpiresAt: r.access_expires_at,
   }))
 }
@@ -117,16 +120,19 @@ export async function linkPersonAccount(personId: string, accountId: string): Pr
 // Earliest pending (un-accepted, un-revoked) invite for an email, or null.
 export async function firstPendingInviteForEmail(
   email: string
-): Promise<{ id: string; householdId: string; memberType: string; isAdmin: boolean; accessExpiresAt: Date | null } | null> {
-  const { rows } = await query<{ id: string; household_id: string; member_type: string; is_admin: boolean; access_expires_at: Date | null }>(
-    `select id, household_id, member_type, is_admin, access_expires_at from household_invites
-      where lower(email) = lower($1) and accepted_at is null and revoked_at is null
-        and (access_expires_at is null or access_expires_at > now())
-      order by created_at limit 1`,
+): Promise<{ id: string; householdId: string; memberType: string; isAdmin: boolean; accessEndsOn: string | null; accessExpiresAt: Date | null } | null> {
+  const { rows } = await query<{ id: string; household_id: string; member_type: string; is_admin: boolean; access_ends_on: string | null; access_expires_at: Date | null }>(
+    `select hi.id, hi.household_id, hi.member_type, hi.is_admin,
+            hi.access_ends_on, hi.access_expires_at
+       from household_invites hi
+       join households h on h.id = hi.household_id and h.deleted_at is null
+      where lower(hi.email) = lower($1) and hi.accepted_at is null and hi.revoked_at is null
+        and (hi.access_expires_at is null or hi.access_expires_at > now())
+      order by hi.created_at limit 1`,
     [email]
   )
   const r = rows[0]
-  return r ? { id: r.id, householdId: r.household_id, memberType: r.member_type, isAdmin: r.is_admin, accessExpiresAt: r.access_expires_at } : null
+  return r ? { id: r.id, householdId: r.household_id, memberType: r.member_type, isAdmin: r.is_admin, accessEndsOn: r.access_ends_on, accessExpiresAt: r.access_expires_at } : null
 }
 
 // Create the membership for an accepted invite + mark it accepted, atomically.
@@ -138,25 +144,41 @@ export async function createMembershipFromInvite(
   accountId: string,
   accountEmail: string,
   invite: { id: string }
-): Promise<{ personId: string; householdId: string; memberType: string; isAdmin: boolean; accessExpiresAt: Date | null; created: boolean }> {
+): Promise<{ personId: string; householdId: string; memberType: string; isAdmin: boolean; accessEndsOn: string | null; accessExpiresAt: Date | null; created: boolean }> {
   const client = await getPool().connect()
   try {
     await client.query('begin')
-    // The earlier list/read is only discovery. The locked row is the authorization
-    // decision: an admin may revoke the invite (or its deadline may pass) while a
-    // login/accept request is waiting to enter this transaction. Never trust role,
-    // household, email, or expiry values supplied by that earlier caller snapshot.
+    // Discover only enough to establish the lock order. Timezone changes lock the
+    // household before refreshing invites and people, so acceptance must take the
+    // same parent-first order before it locks either child row.
+    const discovered = await client.query<{ household_id: string }>(
+      `select household_id from household_invites where id = $1`,
+      [invite.id]
+    )
+    const candidateHouseholdId = discovered.rows[0]?.household_id
+    if (!candidateHouseholdId) throw new AuthError('Invite not found.', 404)
+    const household = await client.query<{ id: string }>(
+      `select id from households where id = $1 and deleted_at is null for share`,
+      [candidateHouseholdId]
+    )
+    if (!household.rows[0]) throw new AuthError('Invite not found.', 404)
+
+    // Discovery is not authorization. Re-read and lock the invite only after the
+    // parent lock: an admin may revoke it, its deadline may pass, or an out-of-band
+    // writer may move it while this transaction waits. A household mismatch means
+    // we do not hold the correct parent lock, so fail safely and let the caller retry.
     const invitation = await client.query<{
       id: string
       household_id: string
       email: string
       member_type: string
       is_admin: boolean
+      access_ends_on: string | null
       access_expires_at: Date | null
       accepted_at: Date | null
       revoked_at: Date | null
     }>(
-      `select id, household_id, email, member_type, is_admin, access_expires_at,
+      `select id, household_id, email, member_type, is_admin, access_ends_on, access_expires_at,
               accepted_at, revoked_at
          from household_invites
         where id = $1
@@ -165,6 +187,9 @@ export async function createMembershipFromInvite(
     )
     const lockedInvite = invitation.rows[0]
     if (!lockedInvite) throw new AuthError('Invite not found.', 404)
+    if (lockedInvite.household_id !== candidateHouseholdId) {
+      throw new AuthError('The invite changed while it was being accepted. Please try again.', 409)
+    }
     if (lockedInvite.email.toLowerCase() !== accountEmail.toLowerCase()) {
       throw new AuthError('This invite is addressed to a different email.', 403)
     }
@@ -175,8 +200,8 @@ export async function createMembershipFromInvite(
       throw new AuthError('This invite has expired.', 403)
     }
 
-    const existing = await client.query<{ id: string; member_type: string; is_admin: boolean; access_expires_at: Date | null; has_active_access: boolean }>(
-      `select id, member_type, is_admin, access_expires_at,
+    const existing = await client.query<{ id: string; member_type: string; is_admin: boolean; access_ends_on: string | null; access_expires_at: Date | null; has_active_access: boolean }>(
+      `select id, member_type, is_admin, access_ends_on, access_expires_at,
               (access_expires_at is null or access_expires_at > clock_timestamp()) as has_active_access
          from persons
         where household_id = $1 and account_id = $2 and deleted_at is null
@@ -196,12 +221,13 @@ export async function createMembershipFromInvite(
         householdId: lockedInvite.household_id,
         memberType: current.member_type,
         isAdmin: current.is_admin,
+        accessEndsOn: current.access_ends_on,
         accessExpiresAt: current.access_expires_at,
         created: false,
       }
     }
 
-    let result: { personId: string; memberType: string; isAdmin: boolean; accessExpiresAt: Date | null; created: boolean }
+    let result: { personId: string; memberType: string; isAdmin: boolean; accessEndsOn: string | null; accessExpiresAt: Date | null; created: boolean }
     if (existing.rows[0]) {
       const current = existing.rows[0]
       // A fresh invite restores an expired membership in place. Reusing the row
@@ -209,14 +235,15 @@ export async function createMembershipFromInvite(
       // deadline. An already-active membership remains untouched for idempotency.
       let membership = current
       if (!current.has_active_access) {
-        const reactivated = await client.query<{ id: string; member_type: string; is_admin: boolean; access_expires_at: Date | null; has_active_access: boolean }>(
+        const reactivated = await client.query<{ id: string; member_type: string; is_admin: boolean; access_ends_on: string | null; access_expires_at: Date | null; has_active_access: boolean }>(
           `update persons
-              set member_type = $3, is_admin = $4, access_expires_at = $5,
-                  show_on_kiosk = $6, updated_at = now()
+              set member_type = $3, is_admin = $4, access_ends_on = $5,
+                  access_expires_at = $6, show_on_kiosk = $7, updated_at = now()
             where household_id = $1 and account_id = $2 and deleted_at is null
-            returning id, member_type, is_admin, access_expires_at, true as has_active_access`,
+            returning id, member_type, is_admin, access_ends_on, access_expires_at, true as has_active_access`,
           [lockedInvite.household_id, accountId, lockedInvite.member_type, lockedInvite.is_admin,
-            lockedInvite.access_expires_at, !['caregiver', 'guest'].includes(lockedInvite.member_type)]
+            lockedInvite.access_ends_on, lockedInvite.access_expires_at,
+            !['caregiver', 'guest'].includes(lockedInvite.member_type)]
         )
         membership = reactivated.rows[0]
       }
@@ -225,6 +252,7 @@ export async function createMembershipFromInvite(
         personId: m.id,
         memberType: m.member_type,
         isAdmin: m.is_admin,
+        accessEndsOn: m.access_ends_on,
         accessExpiresAt: m.access_expires_at,
         created: false,
       }
@@ -235,15 +263,17 @@ export async function createMembershipFromInvite(
       )
       const name = nameRow.rows[0]?.name ?? accountEmail.split('@')[0]
       const personRow = await client.query<{ id: string }>(
-        `insert into persons (household_id, name, member_type, is_admin, account_id, show_on_kiosk, access_expires_at)
-         values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+        `insert into persons (household_id, name, member_type, is_admin, account_id, show_on_kiosk, access_ends_on, access_expires_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
         [lockedInvite.household_id, name, lockedInvite.member_type, lockedInvite.is_admin, accountId,
-          !['caregiver', 'guest'].includes(lockedInvite.member_type), lockedInvite.access_expires_at]
+          !['caregiver', 'guest'].includes(lockedInvite.member_type), lockedInvite.access_ends_on,
+          lockedInvite.access_expires_at]
       )
       result = {
         personId: personRow.rows[0].id,
         memberType: lockedInvite.member_type,
         isAdmin: lockedInvite.is_admin,
+        accessEndsOn: lockedInvite.access_ends_on,
         accessExpiresAt: lockedInvite.access_expires_at,
         created: true,
       }
@@ -275,17 +305,19 @@ export async function createMembershipFromInvite(
 // household name so callers (login response, GET /api/auth/invites) can render them.
 export async function pendingInvitesForEmail(
   email: string
-): Promise<Array<{ id: string; householdId: string; householdName: string; memberType: string; isAdmin: boolean; accessExpiresAt: Date | null }>> {
+): Promise<Array<{ id: string; householdId: string; householdName: string; memberType: string; isAdmin: boolean; accessEndsOn: string | null; accessExpiresAt: Date | null }>> {
   const { rows } = await query<{
     id: string
     household_id: string
     household_name: string
     member_type: string
     is_admin: boolean
+    access_ends_on: string | null
     access_expires_at: Date | null
   }>(
-    `select hi.id, hi.household_id, h.name as household_name, hi.member_type, hi.is_admin, hi.access_expires_at
-       from household_invites hi join households h on h.id = hi.household_id
+    `select hi.id, hi.household_id, h.name as household_name, hi.member_type, hi.is_admin, hi.access_ends_on, hi.access_expires_at
+       from household_invites hi
+       join households h on h.id = hi.household_id and h.deleted_at is null
       where lower(hi.email) = lower($1) and hi.accepted_at is null and hi.revoked_at is null
         and (hi.access_expires_at is null or hi.access_expires_at > now())`,
     [email]
@@ -296,6 +328,7 @@ export async function pendingInvitesForEmail(
     householdName: r.household_name,
     memberType: r.member_type,
     isAdmin: r.is_admin,
+    accessEndsOn: r.access_ends_on,
     accessExpiresAt: r.access_expires_at,
   }))
 }

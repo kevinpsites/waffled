@@ -6,6 +6,7 @@ import type { Request } from 'lambda-api'
 import { getPool, query } from '../../platform/db'
 import { AuthError, MembershipInactiveError, type Principal } from '../../platform/auth'
 import { config } from '../../platform/config'
+import { normalizeHouseholdTimezone } from '../../platform/access-expiry'
 import { seedDefaultRecipe } from '../meals/seed-default-recipe'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -46,6 +47,7 @@ export interface PersonRow extends QueryResultRow {
   allergens: string[] | null
   reward_style: string
   show_on_kiosk: boolean
+  access_ends_on: string | null
   access_expires_at: Date | null
   sort_order: number
   created_at: Date
@@ -331,6 +333,9 @@ export interface ProvisionInput {
 export async function provisionHousehold(
   input: ProvisionInput
 ): Promise<{ household: HouseholdRow; person: PersonRow }> {
+  // Keep invalid text out even when this service is called outside the HTTP setup
+  // route (seed/import tooling uses the same boundary).
+  const timezone = normalizeHouseholdTimezone(input.timezone)
   const client = await getPool().connect()
   try {
     await client.query('begin')
@@ -341,7 +346,7 @@ export async function provisionHousehold(
     const h = await client.query<HouseholdRow>(
       `insert into households (name, timezone, settings)
        values ($1, $2, '{"onboarding":{"status":"active"}}'::jsonb) returning *`,
-      [input.householdName, input.timezone]
+      [input.householdName, timezone]
     )
     const household = h.rows[0]
 
@@ -425,13 +430,14 @@ export async function createHouseholdForAccount(
     person: { name: string; avatarEmoji: string | null; colorHex: string | null }
   }
 ): Promise<{ household: HouseholdRow; person: PersonRow }> {
+  const timezone = normalizeHouseholdTimezone(input.timezone)
   const client = await getPool().connect()
   try {
     await client.query('begin')
 
     const h = await client.query<HouseholdRow>(
       `insert into households (name, timezone) values ($1, $2) returning *`,
-      [input.householdName, input.timezone]
+      [input.householdName, timezone]
     )
     const household = h.rows[0]
 
@@ -493,6 +499,7 @@ export function presentPerson(p: PersonRow) {
     allergens: p.allergens ?? [],
     rewardStyle: p.reward_style ?? 'stars',
     showOnKiosk: p.show_on_kiosk ?? true,
+    accessEndsOn: p.access_ends_on ?? null,
     accessExpiresAt: p.access_expires_at ?? null,
   }
 }

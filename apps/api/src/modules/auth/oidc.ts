@@ -342,8 +342,8 @@ export function registerOidcRoutes(api: Api): void {
     // Mint an account-scoped session (sub = account.id + household claim) landing on
     // the account's last-active household — same as password login. Persons without
     // an account (legacy/kiosk) keep the claim-less subject.
-    const pr = await query<{ account_id: string | null; household_id: string }>(
-      `select account_id, household_id from persons where id = $1 and deleted_at is null
+    const pr = await query<{ account_id: string | null; household_id: string; member_type: string; access_expires_at: Date | null }>(
+      `select account_id, household_id, member_type, access_expires_at from persons where id = $1 and deleted_at is null
         and (access_expires_at is null or access_expires_at > now())`,
       [h.person_id]
     )
@@ -356,7 +356,8 @@ export function registerOidcRoutes(api: Api): void {
       }
       const active = await pickActiveHousehold(person.account_id, memberships)
       await setLastHousehold(person.account_id, active)
-      const activePersonId = memberships.find((m) => m.householdId === active)!.personId
+      const activeMembership = memberships.find((m) => m.householdId === active)!
+      const activePersonId = activeMembership.personId
       const access = mintAccess(person.account_id, { [config.auth.householdClaim]: active })
       const refreshToken = await issueRefresh(activePersonId, person.account_id)
       const acct = await query<{ email: string }>(`select email from accounts where id = $1`, [person.account_id])
@@ -364,13 +365,21 @@ export function registerOidcRoutes(api: Api): void {
         accessToken: access.token,
         refreshToken,
         expiresIn: access.expiresIn,
+        memberType: activeMembership.memberType,
+        accessExpiresAt: activeMembership.accessExpiresAt,
         memberships,
         pendingInvites: await pendingInvitesForEmail(acct.rows[0].email),
       })
     }
     const access = mintAccess(h.subject)
     const refreshToken = await issueRefresh(h.person_id, h.subject)
-    return res.status(200).json({ accessToken: access.token, refreshToken, expiresIn: access.expiresIn })
+    return res.status(200).json({
+      accessToken: access.token,
+      refreshToken,
+      expiresIn: access.expiresIn,
+      memberType: person.member_type,
+      accessExpiresAt: person.access_expires_at,
+    })
   })
 
   // ── installation config (Settings → Login & security) ──────────────────────

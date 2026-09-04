@@ -537,8 +537,8 @@ export async function awardSpot(
 // Per-person balances (per currency) + recent earn/spend history. Returns the
 // currency catalog too so the kiosk can render symbols/labels without a second
 // fetch. `stars` is kept as the default-currency total for older consumers.
-export async function balancesSummary(householdId: string) {
-  const currencies = await listCurrencies(householdId)
+export async function balancesSummary(householdId: string, seedDefaultCurrency = true) {
+  const currencies = await listCurrencies(householdId, seedDefaultCurrency)
   const defaultKey = currencies.find((c) => c.is_default)?.key ?? currencies[0]?.key ?? 'stars'
   const people = await query<{ id: string; name: string | null; avatar_emoji: string | null; color_hex: string | null }>(
     `select id, name, avatar_emoji, color_hex from persons where household_id=$1 and deleted_at is null order by sort_order, created_at`,
@@ -820,7 +820,7 @@ export function registerRewardRoutes(api: Api): void {
 
   // Balances + history
   api.get('/api/balances', tenantRoute(async (tenant) => {
-    return balancesSummary(tenant.householdId)
+    return balancesSummary(tenant.householdId, tenant.memberType !== 'guest')
   }))
 
   // Spot-award: a parent grants a person stars on the spot (not tied to a chore).

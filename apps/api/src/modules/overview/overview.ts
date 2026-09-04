@@ -150,7 +150,7 @@ function buildStreak(activeDates: string[], today: string) {
   return { days, week }
 }
 
-export async function personOverview(householdId: string, personId: string) {
+export async function personOverview(householdId: string, personId: string, seedDefaultCurrency = true) {
   const pr = await query<PersonRow>(
     `select id, name, avatar_emoji, color_hex, birthday::text, member_type, saving_toward_reward_id
        from persons where household_id=$1 and id=$2 and deleted_at is null`,
@@ -162,7 +162,7 @@ export async function personOverview(householdId: string, personId: string) {
   const goals = personGoals(await listGoals(householdId), personId)
   const balance = categoryBalance(goals)
 
-  const currencies = await listCurrencies(householdId)
+  const currencies = await listCurrencies(householdId, seedDefaultCurrency)
   const defaultKey = currencies.find((c) => c.is_default)?.key ?? currencies[0]?.key ?? 'stars'
   const bal = await query<{ currency: string; b: string }>(
     `select currency, coalesce(sum(amount),0) as b from ledger_entries
@@ -276,14 +276,14 @@ export async function personOverview(householdId: string, personId: string) {
   }
 }
 
-export async function familyOverview(householdId: string) {
+export async function familyOverview(householdId: string, seedDefaultCurrency = true) {
   const people = await query<PersonRow>(
     `select id, name, avatar_emoji, color_hex, birthday::text, member_type
        from persons where household_id=$1 and deleted_at is null order by sort_order, created_at`,
     [householdId]
   )
   const allGoals = await listGoals(householdId)
-  const defaultKey = await getDefaultCurrencyKey(householdId)
+  const defaultKey = await getDefaultCurrencyKey(householdId, seedDefaultCurrency)
   const balances = await query<{ person_id: string; b: string }>(
     `select person_id, sum(amount) as b from ledger_entries
        where household_id=$1 and currency=$2 and deleted_at is null group by person_id`,
@@ -311,12 +311,14 @@ export async function familyOverview(householdId: string) {
 }
 
 export function registerOverviewRoutes(api: Api): void {
-  api.get('/api/family/overview', tenantRoute(async (tenant) => familyOverview(tenant.householdId)))
+  api.get('/api/family/overview', tenantRoute(async (tenant) =>
+    familyOverview(tenant.householdId, tenant.memberType !== 'guest')
+  ))
 
   api.get('/api/persons/:id/overview', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
-    const overview = await personOverview(tenant.householdId, id)
+    const overview = await personOverview(tenant.householdId, id, tenant.memberType !== 'guest')
     if (!overview) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
     return overview
   }))

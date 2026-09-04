@@ -56,6 +56,7 @@ import { registerCaptureRoutes } from './modules/capture/capture'
 import { registerWeatherRoutes } from './integrations/weather'
 import { registerPowerSyncRoutes } from './modules/powersync/powersync'
 import { registerPowerSyncCrudRoutes } from './modules/powersync/powersync-crud'
+import { AccessEndDateError } from './platform/access-expiry'
 
 const api = createAPI()
 
@@ -124,11 +125,17 @@ api.use(async (req: Request, res: Response, next: NextFunction) => {
 // Keep account/session maintenance available so a guest can update credentials,
 // accept another invite, or switch away from the read-only household. The
 // PowerSync sink performs its own authenticated no-op so stale legacy queues drain.
-const GUEST_WRITE_EXEMPT = new Set(['/api/auth/switch', '/api/powersync/crud'])
+const GUEST_WRITE_EXEMPT = new Set([
+  'POST /api/auth/switch',
+  'POST /api/powersync/crud',
+  'PUT /api/account/password',
+  'PUT /api/account/email',
+])
 api.use(async (req: Request, _res: Response, next: NextFunction) => {
-  if (req.method === 'OPTIONS' || req.method === 'GET' || req.method === 'HEAD' || PUBLIC_PATHS.has(req.path)) return next()
-  if (GUEST_WRITE_EXEMPT.has(req.path) || req.path.startsWith('/api/account/') ||
-      (req.path.startsWith('/api/auth/invites/') && req.path.endsWith('/accept'))) return next()
+  const method = req.method.toUpperCase()
+  if (method === 'OPTIONS' || method === 'GET' || method === 'HEAD' || PUBLIC_PATHS.has(req.path)) return next()
+  if (GUEST_WRITE_EXEMPT.has(`${method} ${req.path}`) ||
+      (method === 'POST' && /^\/api\/auth\/invites\/[^/]+\/accept$/.test(req.path))) return next()
   const tenant = await resolveRequestTenant(req)
   if (tenant?.memberType === 'guest') throw new AuthError('Guest access is read-only', 403)
   next()
@@ -216,15 +223,22 @@ api.post('/api/households', async (req: Request, res: Response) => {
     return res.status(403).json({ error: 'Forbidden', message: 'This session has no account.' })
   }
 
-  const { household, person } = await createHouseholdForAccount(accountId, {
-    householdName: body.name,
-    timezone: body.timezone,
-    person: {
-      name: body.person.name,
-      avatarEmoji: body.person.avatarEmoji ?? null,
-      colorHex: body.person.colorHex ?? null,
-    },
-  })
+  let created: Awaited<ReturnType<typeof createHouseholdForAccount>>
+  try {
+    created = await createHouseholdForAccount(accountId, {
+      householdName: body.name,
+      timezone: body.timezone,
+      person: {
+        name: body.person.name,
+        avatarEmoji: body.person.avatarEmoji ?? null,
+        colorHex: body.person.colorHex ?? null,
+      },
+    })
+  } catch (error) {
+    if (!(error instanceof AccessEndDateError)) throw error
+    return res.status(400).json({ error: 'BadRequest', message: error.message })
+  }
+  const { household, person } = created
   return res
     .status(201)
     .json({ household: presentHousehold(household), person: presentPerson(person) })

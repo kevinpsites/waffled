@@ -142,9 +142,12 @@ export function registerChoreRoutes(api: Api): void {
   api.get('/api/chores/today', tenantRoute(async (tenant, req: Request) => {
     const tz = await householdTz(tenant.householdId)
     const date = requestedDate(req.query?.date, todayDate(tz))
-    await ensureTodayInstances(tenant.householdId, date)
+    // Materialization is a shared-state write even though this is a GET. Guests are
+    // hard read-only, so they may inspect only instances another active member has
+    // already materialized.
+    if (tenant.memberType !== 'guest') await ensureTodayInstances(tenant.householdId, date)
     const [people, upForGrabs] = await Promise.all([
-      todaySummary(tenant.householdId, date, tz),
+      todaySummary(tenant.householdId, date, tz, tenant.memberType !== 'guest'),
       upForGrabsCount(tenant.householdId, date, tz),
     ])
     return { date, people, upForGrabs }
@@ -155,7 +158,7 @@ export function registerChoreRoutes(api: Api): void {
   api.get('/api/chore-instances/today', tenantRoute(async (tenant, req: Request) => {
     const tz = await householdTz(tenant.householdId)
     const date = requestedDate(req.query?.date, todayDate(tz))
-    await ensureTodayInstances(tenant.householdId, date)
+    if (tenant.memberType !== 'guest') await ensureTodayInstances(tenant.householdId, date)
     const instances = await listTodayInstances(tenant.householdId, date, tz)
     return { date, instances }
   }))

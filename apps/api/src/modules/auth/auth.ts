@@ -26,6 +26,7 @@ import {
   createMembershipFromInvite,
 } from './accounts'
 import { HEX_COLOR } from '../persons/persons'
+import { AccessEndDateError } from '../../platform/access-expiry'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -111,7 +112,7 @@ export function registerAuthRoutes(api: Api): void {
       admin?: { name?: string; email?: string; password?: string; avatarEmoji?: string; colorHex?: string }
     }
     const name = b.household?.name?.trim()
-    const timezone = b.household?.timezone?.trim()
+    const timezone = typeof b.household?.timezone === 'string' ? b.household.timezone.trim() : ''
     const adminName = b.admin?.name?.trim()
     const email = b.admin?.email?.trim()
     const password = b.admin?.password ?? ''
@@ -148,6 +149,9 @@ export function registerAuthRoutes(api: Api): void {
         household: presentHousehold(household),
       })
     } catch (err) {
+      if (err instanceof AccessEndDateError) {
+        return res.status(400).json({ error: 'BadRequest', message: err.message })
+      }
       if ((err as { code?: string }).code === '23505') {
         return res.status(409).json({ error: 'Conflict', message: 'Already set up.' })
       }
@@ -192,13 +196,16 @@ export function registerAuthRoutes(api: Api): void {
     }
     const active = await pickActiveHousehold(accountId, memberships)
     await setLastHousehold(accountId, active)
-    const activePersonId = memberships.find((m) => m.householdId === active)!.personId
+    const activeMembership = memberships.find((m) => m.householdId === active)!
+    const activePersonId = activeMembership.personId
     const accessTk = mintAccess(accountId, { [config.auth.householdClaim]: active })
     const refreshToken = await issueRefresh(activePersonId, accountId)
     return res.status(200).json({
       accessToken: accessTk.token,
       refreshToken,
       expiresIn: accessTk.expiresIn,
+      memberType: activeMembership.memberType,
+      accessExpiresAt: activeMembership.accessExpiresAt,
       memberships,
       pendingInvites: await pendingInvitesForEmail(account.email),
     })
@@ -286,6 +293,8 @@ export function registerAuthRoutes(api: Api): void {
       refreshToken,
       expiresIn: accessTk.expiresIn,
       householdId: targetHouseholdId,
+      memberType: target.memberType,
+      accessExpiresAt: target.accessExpiresAt,
       memberships,
     })
   })
