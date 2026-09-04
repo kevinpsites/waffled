@@ -174,6 +174,9 @@ export function EventModal({
   const [originalRrule, setOriginalRrule] = useState<string | null>(initialRrule)
   const [originalRecurrenceEndAt, setOriginalRecurrenceEndAt] = useState<string | null>(initialRecurrenceEndAt)
   const [seriesReady, setSeriesReady] = useState(!wasRecurring || !!initialRrule)
+  const [seriesLoading, setSeriesLoading] = useState(wasRecurring && !initialRrule)
+  const [seriesLoadError, setSeriesLoadError] = useState<string | null>(null)
+  const [seriesLoadAttempt, setSeriesLoadAttempt] = useState(0)
   const [scopePrompt, setScopePrompt] = useState<null | 'save' | 'delete'>(null)
 
   // PowerSync occurrence rows carry the series/occurrence handles but not the
@@ -183,6 +186,7 @@ export function EventModal({
     if (!wasRecurring || initialRrule || !event) return
     let alive = true
     setSeriesReady(false)
+    setSeriesLoading(true)
     void api.event(event.seriesId ?? event.id)
       .then(({ event: master }) => {
         if (!alive) return
@@ -204,14 +208,17 @@ export function EventModal({
           setUntil('')
         }
         setSeriesReady(true)
+        setSeriesLoadError(null)
+        setSeriesLoading(false)
       })
       .catch(() => {
         if (!alive) return
-        setSaveError('Could not load this repeating series. Check your connection and try again.')
+        setSeriesLoadError('Could not load this repeating series. Check your connection and try again.')
         setSeriesReady(false)
+        setSeriesLoading(false)
       })
     return () => { alive = false }
-  }, [event, initialRrule, wasRecurring])
+  }, [event, initialRrule, seriesLoadAttempt, wasRecurring])
 
   // The event's start, used for the default weekly day and monthly nth-weekday.
   const startDate = new Date(`${form.day}T${form.time || '12:00'}`)
@@ -641,6 +648,35 @@ export function EventModal({
         <div className="wf-serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>
           {editing ? (isMeal ? 'Planned meal' : 'Edit event') : 'New event'}
         </div>
+
+        {seriesLoadError && (
+          <div
+            role="alert"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              marginBottom: 14,
+              padding: '10px 12px',
+              borderRadius: 12,
+              background: 'color-mix(in srgb, var(--primary) 8%, var(--panel))',
+              color: 'var(--primary)',
+              fontSize: 14,
+              fontWeight: 650,
+            }}
+          >
+            <span style={{ flex: 1 }}>{seriesLoadError}</span>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={seriesLoading}
+              onClick={() => setSeriesLoadAttempt((attempt) => attempt + 1)}
+              style={{ flexShrink: 0, padding: '7px 11px', fontSize: 13 }}
+            >
+              {seriesLoading ? 'Trying…' : 'Try again'}
+            </button>
+          </div>
+        )}
 
         {saveError && (
           <div role="alert" style={{ marginBottom: 14, color: 'var(--primary)', fontSize: 14, fontWeight: 650 }}>

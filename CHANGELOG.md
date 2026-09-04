@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A failed refresh no longer makes a saved change look lost.** The web event editor
+  now offers Retry when recurring-event details cannot load, and iPhone/iPad Countdowns
+  and Family Night say when the server accepted a change but the screen could not
+  refresh, avoiding a duplicate retry against a write that already succeeded.
+
 ## [0.14.3] - 2026-09-02
 
 ### Added
