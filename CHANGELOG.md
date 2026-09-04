@@ -840,6 +840,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Recurring chore edits can now start after a finished chore without rewriting it.**
+  On web, iPhone, and iPad, a completed or awaiting-approval occurrence can be used as
+  the boundary for "This and future chores." The selected historical row stays exactly
+  as completed, only future pending chores change or disappear, and failed web edits
+  keep the scope chooser open so they can be retried.
+
 - **The Waffled-Bite control panel keeps itself up to date.** The panel read the device
   once when you opened it and then never again, so anything your child did on the device
   — switching the sound machine on, starting a timer — didn't show up until you reloaded,
