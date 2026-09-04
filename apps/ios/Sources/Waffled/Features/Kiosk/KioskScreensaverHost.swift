@@ -86,6 +86,7 @@ final class ScreensaverModel {
 struct KioskScreensaverHost: ViewModifier {
     @Environment(SyncManager.self) private var sync
     @Environment(KioskMode.self) private var kiosk
+    @Environment(Session.self) private var session
     @State private var model = ScreensaverModel()
     @AppStorage("waffled.screensaverMotion") private var motion = true
     // Idle/night-window detection doesn't need 1s precision — a 10s cadence keeps the SoC
@@ -146,7 +147,7 @@ struct KioskScreensaverHost: ViewModifier {
     private func wake() {
         let toPicker = (model.cfg?.returnToPicker ?? false) && kiosk.isShared
         model.wake()
-        if toPicker { Task { await kiosk.returnToPicker(sync: sync) } }
+        if toPicker { Task { await kiosk.returnToPicker(sync: sync, session: session) } }
     }
 
     /// The soonest upcoming event (timed or all-day) for the "Next:" line.

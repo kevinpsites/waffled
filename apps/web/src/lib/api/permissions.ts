@@ -3,10 +3,10 @@
 // baked into person.capabilities server-side, so `can()` needs no special-casing.
 import { apiGet, apiSend } from './client'
 
-export const CAPABILITIES = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage'] as const
+export const CAPABILITIES = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'reward.correct', 'goal.manage'] as const
 export type Capability = (typeof CAPABILITIES)[number]
 
-export type Role = 'adult' | 'teen' | 'kid'
+export type Role = 'adult' | 'caregiver' | 'guest' | 'teen' | 'kid'
 export type PermissionMatrix = Record<Role, Record<Capability, boolean>>
 
 // Friendly labels for the Settings grid (rows = roles, cols = capabilities).
@@ -16,9 +16,12 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   'reward.manage': 'Manage rewards',
   'reward.approve': 'Approve redemptions',
   'reward.grant': 'Award stars',
+  'reward.correct': 'Correct reward history',
   'goal.manage': 'Manage goals',
 }
-export const ROLE_LABELS: Record<Role, string> = { adult: 'Adult', teen: 'Teen', kid: 'Kid' }
+export const ROLE_LABELS: Record<Role, string> = {
+  adult: 'Adult', caregiver: 'Caregiver', guest: 'Guest', teen: 'Teen', kid: 'Kid',
+}
 
 // `can(person, cap)` — does this person hold the capability. A null person (not yet
 // loaded) is treated as no — gate UI conservatively until we know.

@@ -46,6 +46,16 @@ describe('built-in auth', () => {
     expect(json(await call('GET', '/api/auth/status')).initialized).toBe(false)
   })
 
+  it('rejects an invalid household timezone without initializing the instance', async () => {
+    const res = await call('POST', '/api/auth/setup', {
+      ...setup,
+      household: { ...setup.household, timezone: 'Mars/Olympus' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(json(res).message).toMatch(/valid IANA timezone/i)
+    expect(json(await call('GET', '/api/auth/status')).initialized).toBe(false)
+  })
+
   it('starts uninitialized then sets up the first admin + household', async () => {
     expect(json(await call('GET', '/api/auth/status')).initialized).toBe(false)
 

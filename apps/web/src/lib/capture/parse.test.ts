@@ -371,6 +371,16 @@ describe('parseCapture — person', () => {
     expect(i.memberType).toBe('adult')
   })
 
+  it('recognizes caregiver and guest relationships as restricted roles', () => {
+    const caregiver = p('add my babysitter Casey')
+    if (caregiver?.kind !== 'person') throw new Error('expected caregiver person')
+    expect(caregiver).toMatchObject({ name: 'Casey', memberType: 'caregiver', isAdmin: false })
+
+    const guest = p('add a guest named Robin')
+    if (guest?.kind !== 'person') throw new Error('expected guest person')
+    expect(guest).toMatchObject({ name: 'Robin', memberType: 'guest', isAdmin: false })
+  })
+
   it('"add a family member named Robin" → an adult by default', () => {
     const i = p('add a family member named Robin')
     if (i?.kind !== 'person') throw new Error('expected person')

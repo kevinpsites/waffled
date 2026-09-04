@@ -28,6 +28,7 @@ function mint(sub: string): string {
   return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
 }
 const kevin = mint('dev|kevin')
+const guest = mint('dev|guest')
 
 interface RunResult { statusCode: number; body: string }
 function call(method: string, path: string, token?: string, body?: unknown) {
@@ -116,6 +117,15 @@ beforeAll(async () => {
   await query(
     `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
     [sb.household.id, kevinId]
+  )
+  const guestPerson = await query<{ id: string }>(
+    `insert into persons (household_id, name, member_type) values ($1,'Read only guest','guest') returning id`,
+    [sb.household.id]
+  )
+  await query(
+    `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified)
+     values ($1,$2,'password','dev|guest',true)`,
+    [sb.household.id, guestPerson.rows[0].id]
   )
   localGoalId = (await query<{ id: string }>(
     `insert into goals (household_id, title, goal_type, tracking_mode)
@@ -239,8 +249,42 @@ describe('powersync crud upload', () => {
     expect(writeCalls.slice(n).some((w) => w.method === 'DELETE')).toBe(true)
   })
 
-  it('403s for a caller with no household', async () => {
-    expect((await call('POST', '/api/powersync/crud', mint('dev|nobody'), { ops: [] })).statusCode).toBe(403)
+  it('acknowledges and drops a guest upload without touching server state', async () => {
+    const id = randomUUID()
+    const writesBefore = writeCalls.length
+    const res = await call('POST', '/api/powersync/crud', guest, {
+      ops: [{ op: 'PUT', table: 'events', id, data: {
+        title: 'Guest write must disappear', starts_at: '2026-07-12T15:00:00Z', all_day: 0,
+      } }],
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toEqual({ applied: 0 })
+    expect((await eventsInJuly()).some((event) => event.id === id)).toBe(false)
+    expect(writeCalls).toHaveLength(writesBefore)
+  })
+
+  it('still validates the upload envelope before acknowledging a guest', async () => {
+    expect((await call('POST', '/api/powersync/crud', guest, { ops: 'not-an-array' })).statusCode).toBe(400)
+  })
+
+  it('does not turn the upload drain into an unauthenticated endpoint', async () => {
+    expect((await call('POST', '/api/powersync/crud', 'not-a-valid-token', { ops: [] })).statusCode).toBe(401)
+  })
+
+  it('acknowledges stale uploads for an authenticated caller with no active household', async () => {
+    const id = randomUUID()
+    const writesBefore = writeCalls.length
+    const res = await call('POST', '/api/powersync/crud', mint('dev|nobody'), {
+      ops: [{ op: 'PUT', table: 'events', id, data: {
+        title: 'Expired membership write must disappear', starts_at: '2026-07-13T15:00:00Z', all_day: 0,
+      } }],
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toEqual({ applied: 0 })
+    expect((await eventsInJuly()).some((event) => event.id === id)).toBe(false)
+    expect(writeCalls).toHaveLength(writesBefore)
   })
 })
 

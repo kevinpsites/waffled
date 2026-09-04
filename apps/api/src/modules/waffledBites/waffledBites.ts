@@ -59,7 +59,15 @@ export async function requireWaffledBiteDevice(req: Request): Promise<WaffledBit
   if (claims?.kind !== 'waffled-bite-device') throw new AuthError('Device token required', 403)
   const deviceId = String(req.principal!.sub).replace(/^waffled-bite-device:/, '')
   const { rows } = await query<{ household_id: string; person_id: string; label: string }>(
-    `select household_id, person_id, label from waffled_bite_devices where id = $1 and revoked_at is null`,
+    `select d.household_id, d.person_id, d.label
+       from waffled_bite_devices d
+       join persons p
+         on p.id = d.person_id
+        and p.household_id = d.household_id
+        and p.deleted_at is null
+        and p.member_type = 'kid'
+        and (p.access_expires_at is null or p.access_expires_at > now())
+      where d.id = $1 and d.revoked_at is null`,
     [deviceId]
   )
   if (!rows[0]) throw new AuthError('Device revoked', 401)
@@ -305,7 +313,13 @@ export function registerWaffledBiteRoutes(api: Api): void {
   // ── pairing (parent side) ─────────────────────────────────────────────────────
   api.post('/api/persons/:id/waffled-bite/pairing-code', adminRoute(async (tenant, req: Request, res: Response) => {
     const personId = req.params.id ?? ''
-    const owns = await query(`select 1 from persons where id = $1 and household_id = $2 and deleted_at is null`, [personId, tenant.householdId])
+    const owns = await query(
+      `select 1 from persons
+        where id = $1 and household_id = $2 and deleted_at is null
+          and member_type = 'kid'
+          and (access_expires_at is null or access_expires_at > now())`,
+      [personId, tenant.householdId]
+    )
     if (!owns.rows.length) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
     const code = genCode()
     // Opportunistic cleanup: a code a parent minted then abandoned (closed the
@@ -355,9 +369,17 @@ export function registerWaffledBiteRoutes(api: Api): void {
     const code = b.code?.trim().toUpperCase()
     if (!code) return res.status(400).json({ error: 'BadRequest', message: 'code is required' })
     const consumed = await query<{ household_id: string; person_id: string }>(
-      `update waffled_bite_pairing_codes set consumed_at = now()
-        where code = $1 and consumed_at is null and created_at > now() - ($2 || ' minutes')::interval
-        returning household_id, person_id`,
+      `update waffled_bite_pairing_codes pc set consumed_at = now()
+         from persons p
+        where pc.code = $1
+          and pc.consumed_at is null
+          and pc.created_at > now() - ($2 || ' minutes')::interval
+          and p.id = pc.person_id
+          and p.household_id = pc.household_id
+          and p.deleted_at is null
+          and p.member_type = 'kid'
+          and (p.access_expires_at is null or p.access_expires_at > now())
+        returning pc.household_id, pc.person_id`,
       [code, String(CODE_TTL_MIN)]
     )
     const claim = consumed.rows[0]
@@ -383,8 +405,16 @@ export function registerWaffledBiteRoutes(api: Api): void {
     const secret = ((req.body ?? {}) as { deviceSecret?: string }).deviceSecret
     if (!secret) return res.status(400).json({ error: 'BadRequest', message: 'deviceSecret is required' })
     const { rows } = await query<{ id: string; household_id: string; person_id: string }>(
-      `update waffled_bite_devices set last_seen_at = now()
-        where token_hash = $1 and revoked_at is null returning id, household_id, person_id`,
+      `update waffled_bite_devices d set last_seen_at = now()
+         from persons p
+        where d.token_hash = $1
+          and d.revoked_at is null
+          and p.id = d.person_id
+          and p.household_id = d.household_id
+          and p.deleted_at is null
+          and p.member_type = 'kid'
+          and (p.access_expires_at is null or p.access_expires_at > now())
+        returning d.id, d.household_id, d.person_id`,
       [sha256(secret)]
     )
     const d = rows[0]

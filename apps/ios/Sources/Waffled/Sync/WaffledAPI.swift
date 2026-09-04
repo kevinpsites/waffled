@@ -51,6 +51,48 @@ enum JSONValue: Codable, Equatable, Sendable {
 /// Tiny HTTP client for the two endpoints the sync layer needs. Stateless — reads
 /// `AppConfig` at call time so a token edit takes effect on the next request.
 struct WaffledAPI: Sendable {
+    typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
+    private let transport: Transport
+    private let refreshSession: @Sendable (AuthTokens.RefreshLease) async -> Bool
+    private let kioskToken: @Sendable (KioskDeviceStore.Snapshot) async throws -> String
+    private let freshKioskToken: @Sendable (KioskDeviceStore.Snapshot) async throws -> String
+    private let responseChecked: @Sendable () -> Void
+    private let responseDecoded: @Sendable () -> Void
+    private var requiredPrincipal: RequiredPrincipal?
+
+    init(
+        transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
+        refreshSession: @escaping @Sendable (AuthTokens.RefreshLease) async -> Bool = {
+            await TokenRefresher.shared.refresh(ifCurrent: $0)
+        },
+        kioskToken: @escaping @Sendable (KioskDeviceStore.Snapshot) async throws -> String = {
+            try await KioskDeviceAuth.shared.token(for: $0)
+        },
+        freshKioskToken: @escaping @Sendable (KioskDeviceStore.Snapshot) async throws -> String = {
+            try await KioskDeviceAuth.shared.refresh(for: $0)
+        },
+        responseChecked: @escaping @Sendable () -> Void = {},
+        responseDecoded: @escaping @Sendable () -> Void = {}
+    ) {
+        self.transport = transport
+        self.refreshSession = refreshSession
+        self.kioskToken = kioskToken
+        self.freshKioskToken = freshKioskToken
+        self.responseChecked = responseChecked
+        self.responseDecoded = responseDecoded
+        self.requiredPrincipal = nil
+    }
+
+    /// Return a copy whose authorized requests may only use the principal/server that
+    /// is current now. Multi-request UI operations use one bound copy so a transition
+    /// between their awaits aborts the remainder instead of sending it as the new user.
+    func boundToCurrentPrincipal() throws -> WaffledAPI {
+        var copy = self
+        copy.requiredPrincipal = try RequiredPrincipal.capture()
+        return copy
+    }
+
     struct TokenResponse: Decodable {
         let token: String
         let powerSyncUrl: String?
@@ -59,11 +101,26 @@ struct WaffledAPI: Sendable {
     enum APIError: Error {
         case http(Int, String)
         case invalidServerURL
+        /// The request crossed a server, signed-in principal, or kiosk-device
+        /// boundary while suspended. Callers must discard it without mutating the
+        /// replacement identity (especially without clearing replacement secrets).
+        case superseded
         /// True for the 422 a photo-required chore returns when completed without proof
         /// (`{ error: "ProofRequired" }`) — lets the capture flow prompt for a photo.
         var isProofRequired: Bool {
             if case let .http(code, _) = self { return code == 422 }
             return false
+        }
+
+        /// The exact permanent rejection emitted by the guest-write middleware.
+        /// Other 403s may become valid after a permission change, so they continue
+        /// through PowerSync's ordinary retry path.
+        var isGuestReadOnly: Bool {
+            guard case let .http(code, body) = self, code == 403,
+                  let data = body.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let message = json["message"] as? String else { return false }
+            return message == "Guest access is read-only" || message == "Guest access is read-only."
         }
     }
 
@@ -105,23 +162,47 @@ struct WaffledAPI: Sendable {
         let accessToken: String
         let refreshToken: String
         let expiresIn: Int?
+        let memberType: String?
+        let accessExpiry: AccessExpiryField
+
+        var candidate: AuthTokens.Candidate {
+            .init(accessToken: accessToken, refreshToken: refreshToken,
+                  memberType: memberType, accessExpiry: accessExpiry)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case accessToken, refreshToken, expiresIn, memberType, accessExpiresAt
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            accessToken = try c.decode(String.self, forKey: .accessToken)
+            refreshToken = try c.decode(String.self, forKey: .refreshToken)
+            expiresIn = try c.decodeIfPresent(Int.self, forKey: .expiresIn)
+            memberType = try c.decodeIfPresent(String.self, forKey: .memberType)
+            accessExpiry = AccessExpiryField.decode(.accessExpiresAt, from: c)
+        }
     }
 
     /// Has this instance been set up, and which sign-in methods are offered.
-    func authStatus() async throws -> AuthStatus {
-        let req = URLRequest(url: try url("/api/auth/status"))
-        let (data, resp) = try await URLSession.shared.data(for: req)
+    func authStatus(baseURL: String? = nil) async throws -> AuthStatus {
+        let requestBaseURL = baseURL ?? AppConfig.apiBaseURL
+        let req = URLRequest(url: try url("/api/auth/status", baseURL: requestBaseURL))
+        let (data, resp) = try await transport(req)
+        guard AppConfig.apiBaseURL == requestBaseURL else { throw APIError.superseded }
         try check(resp, data)
         return try Self.decoder.decode(AuthStatus.self, from: data)
     }
 
     /// Exchange email + password for an access + refresh pair.
-    func login(email: String, password: String) async throws -> Session {
-        var req = URLRequest(url: try url("/api/auth/login"))
+    func login(email: String, password: String, baseURL: String? = nil) async throws -> Session {
+        let requestBaseURL = baseURL ?? AppConfig.apiBaseURL
+        var req = URLRequest(url: try url("/api/auth/login", baseURL: requestBaseURL))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["email": email, "password": password])
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await transport(req)
+        guard AppConfig.apiBaseURL == requestBaseURL else { throw APIError.superseded }
         try check(resp, data)
         return try Self.decoder.decode(Session.self, from: data)
     }
@@ -130,30 +211,36 @@ struct WaffledAPI: Sendable {
     static let oidcRedirect = "waffled://auth/callback"
 
     /// The URL that kicks off backend-mediated OIDC, carrying our deep-link redirect.
-    func oidcStartURL() throws -> URL {
+    func oidcStartURL(baseURL: String? = nil) throws -> URL {
         let encoded = WaffledAPI.oidcRedirect.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? WaffledAPI.oidcRedirect
-        return try url("/api/auth/oidc/start?redirect=\(encoded)")
+        return try url(
+            "/api/auth/oidc/start?redirect=\(encoded)",
+            baseURL: baseURL ?? AppConfig.apiBaseURL
+        )
     }
 
     /// Exchange the one-time handoff `code` (from the deep-link callback) for a session.
-    func oidcExchange(code: String) async throws -> Session {
-        var req = URLRequest(url: try url("/api/auth/oidc/exchange"))
+    func oidcExchange(code: String, baseURL: String? = nil) async throws -> Session {
+        let requestBaseURL = baseURL ?? AppConfig.apiBaseURL
+        var req = URLRequest(url: try url("/api/auth/oidc/exchange", baseURL: requestBaseURL))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["code": code])
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await transport(req)
+        guard AppConfig.apiBaseURL == requestBaseURL else { throw APIError.superseded }
         try check(resp, data)
         return try Self.decoder.decode(Session.self, from: data)
     }
 
     /// Best-effort server-side revocation of a refresh token (logout).
-    func revoke(refreshToken: String) async {
-        guard let endpoint = try? url("/api/auth/logout") else { return }
+    func revoke(refreshToken: String, baseURL: String? = nil) async {
+        let requestBaseURL = baseURL ?? AppConfig.apiBaseURL
+        guard let endpoint = try? url("/api/auth/logout", baseURL: requestBaseURL) else { return }
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONEncoder().encode(["refreshToken": refreshToken])
-        _ = try? await URLSession.shared.data(for: req)
+        _ = try? await transport(req)
     }
 
     // MARK: multi-household identity (memberships, switch, invites)
@@ -171,6 +258,8 @@ struct WaffledAPI: Sendable {
         let personId: String
         let isAdmin: Bool
         let memberType: String
+        let accessEndsOn: String?
+        let accessExpiresAt: String?
         var id: String { householdId }
     }
 
@@ -180,6 +269,8 @@ struct WaffledAPI: Sendable {
         let householdName: String
         let memberType: String
         let isAdmin: Bool
+        let accessEndsOn: String?
+        let accessExpiresAt: String?
     }
 
     /// `GET /api/household`, decoded for the switcher: the active household plus the
@@ -207,9 +298,9 @@ struct WaffledAPI: Sendable {
     func householdOverview() async throws -> HouseholdOverview {
         var req = URLRequest(url: try url("/api/household"))
         authorize(&req)
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
-        return try Self.decoder.decode(HouseholdOverview.self, from: data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
+        return try decodeBound(HouseholdOverview.self, from: data, binding: binding)
     }
 
     /// The fresh session `POST /api/auth/switch` mints for the target household.
@@ -218,6 +309,27 @@ struct WaffledAPI: Sendable {
         let refreshToken: String
         let expiresIn: Int?
         let householdId: String
+        let memberType: String?
+        let accessExpiry: AccessExpiryField
+
+        var candidate: AuthTokens.Candidate {
+            .init(accessToken: accessToken, refreshToken: refreshToken,
+                  memberType: memberType, accessExpiry: accessExpiry)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case accessToken, refreshToken, expiresIn, householdId, memberType, accessExpiresAt
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            accessToken = try c.decode(String.self, forKey: .accessToken)
+            refreshToken = try c.decode(String.self, forKey: .refreshToken)
+            expiresIn = try c.decodeIfPresent(Int.self, forKey: .expiresIn)
+            householdId = try c.decode(String.self, forKey: .householdId)
+            memberType = try c.decodeIfPresent(String.self, forKey: .memberType)
+            accessExpiry = AccessExpiryField.decode(.accessExpiresAt, from: c)
+        }
     }
 
     /// Switch the active household. Returns an access+refresh pair whose token carries
@@ -229,9 +341,9 @@ struct WaffledAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["householdId": householdId])
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
-        return try Self.decoder.decode(SwitchResult.self, from: data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
+        return try decodeBound(SwitchResult.self, from: data, binding: binding)
     }
 
     /// Accept a pending invite (creates the membership; 200 if it already existed). Does
@@ -242,17 +354,17 @@ struct WaffledAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = "{}".data(using: .utf8)
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
     }
 
     /// Exchange the session token for a short-lived PowerSync token + endpoint.
     func fetchPowerSyncToken() async throws -> TokenResponse {
         var req = URLRequest(url: try url("/api/powersync/token"))
         authorize(&req)
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
-        return try Self.decoder.decode(TokenResponse.self, from: data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
+        return try decodeBound(TokenResponse.self, from: data, binding: binding)
     }
 
     struct CaptureResponse: Decodable {
@@ -268,9 +380,9 @@ struct WaffledAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["text": text])
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
-        return try Self.decoder.decode(CaptureResponse.self, from: data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
+        return try decodeBound(CaptureResponse.self, from: data, binding: binding)
     }
 
     /// Preload the model (fire-and-forget) so the first parse isn't a cold start.
@@ -281,7 +393,7 @@ struct WaffledAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = "{}".data(using: .utf8)
-        _ = try? await URLSession.shared.data(for: req)
+        _ = try? await perform(req)
     }
 
     // MARK: capture Tier 2 (mutate — resolve → commit)
@@ -328,9 +440,9 @@ struct WaffledAPI: Sendable {
             "args": .object(args),
         ]
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
-        return try Self.decoder.decode(ResolveResponse.self, from: data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
+        return try decodeBound(ResolveResponse.self, from: data, binding: binding)
     }
 
     /// Apply a chosen mutate. Body = the web `MutateCommand`: `{ verb, targetKind, targetId,
@@ -350,13 +462,15 @@ struct WaffledAPI: Sendable {
         ]
         if let meta { body["meta"] = .object(meta) }
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await perform(req)
+        let (data, resp, binding) = try await perform(req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if (200..<300).contains(code) {
-            return try Self.decoder.decode(CommitResult.self, from: data).message
+            return try decodeBound(CommitResult.self, from: data, binding: binding).message
         }
-        let msg = (try? Self.decoder.decode(ServerError.self, from: data)).flatMap { $0.message ?? $0.error }
+        let msg = (try? decodeBound(ServerError.self, from: data, binding: binding))
+            .flatMap { $0.message ?? $0.error }
             ?? "Couldn’t do that — try again."
+        try binding.validate()
         throw CaptureCommitError(message: msg)
     }
 
@@ -459,9 +573,9 @@ struct WaffledAPI: Sendable {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 120
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
-        return try Self.decoder.decode(PlanWeekResult.self, from: data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
+        return try decodeBound(PlanWeekResult.self, from: data, binding: binding)
     }
 
     /// The result of an AI "plan my month" run: drafted nights (`suggestions`) plus
@@ -500,9 +614,9 @@ struct WaffledAPI: Sendable {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 120
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
-        return try Self.decoder.decode(PlanMonthResult.self, from: data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
+        return try decodeBound(PlanMonthResult.self, from: data, binding: binding)
     }
 
     struct RecipeRef: Decodable { let id: String; let title: String? }
@@ -1713,6 +1827,8 @@ struct WaffledAPI: Sendable {
             let isAdmin: Bool
             let avatarEmoji, colorHex, birthday, dietaryNotes: String?
             let showOnKiosk: Bool
+            let accessEndsOn: String?
+            let accessExpiresAt: String?
             let hasLogin: Bool
             let loginEmail: String?
             let hasPassword: Bool
@@ -2057,10 +2173,12 @@ struct WaffledAPI: Sendable {
     /// gate management/approval controls — mirrors the web `can(person, cap)` helper.
     /// Capabilities are server-resolved (admins implicitly get all four). nil if the
     /// account hasn't been provisioned yet.
-    struct CurrentPerson: Decodable, Sendable, Equatable {
+    struct CurrentPerson: Sendable, Equatable {
         let id: String
-        let memberType: String       // "adult" | "teen" | "kid"
+        let memberType: String       // adult | caregiver | guest | teen | kid
         let isAdmin: Bool
+        let accessExpiry: AccessExpiryField
+        var accessExpiresAt: String? { accessExpiry.storedValue }
         let capabilities: [String]   // e.g. "chore.manage", "chore.approve", "reward.manage", "reward.approve"
     }
     func currentPerson() async throws -> CurrentPerson? {
@@ -2070,7 +2188,21 @@ struct WaffledAPI: Sendable {
                 let id: String
                 let memberType: String?
                 let isAdmin: Bool?
+                let accessExpiry: AccessExpiryField
                 let capabilities: [String]?
+
+                private enum CodingKeys: String, CodingKey {
+                    case id, memberType, isAdmin, accessExpiresAt, capabilities
+                }
+
+                init(from decoder: Decoder) throws {
+                    let c = try decoder.container(keyedBy: CodingKeys.self)
+                    id = try c.decode(String.self, forKey: .id)
+                    memberType = try c.decodeIfPresent(String.self, forKey: .memberType)
+                    isAdmin = try c.decodeIfPresent(Bool.self, forKey: .isAdmin)
+                    accessExpiry = AccessExpiryField.decode(.accessExpiresAt, from: c)
+                    capabilities = try c.decodeIfPresent([String].self, forKey: .capabilities)
+                }
             }
         }
         guard let p = try await getJSON("/api/household", as: Resp.self).person else { return nil }
@@ -2079,6 +2211,7 @@ struct WaffledAPI: Sendable {
         return CurrentPerson(id: p.id,
                              memberType: p.memberType ?? "",
                              isAdmin: p.isAdmin ?? false,
+                             accessExpiry: p.accessExpiry,
                              capabilities: p.capabilities ?? [])
     }
 
@@ -2195,10 +2328,12 @@ struct WaffledAPI: Sendable {
         let avatarEmoji: String?
         let avatarUrl: String?
         let colorHex: String?
+        let accessExpiry: AccessExpiryField
+        var accessExpiresAt: String? { accessExpiry.storedValue }
         let hasPin: Bool
 
         private enum CodingKeys: String, CodingKey {
-            case id, name, memberType, isAdmin, avatarEmoji, avatarUrl, colorHex, hasPin
+            case id, name, memberType, isAdmin, avatarEmoji, avatarUrl, colorHex, accessExpiresAt, hasPin
         }
 
         init(from decoder: Decoder) throws {
@@ -2210,6 +2345,7 @@ struct WaffledAPI: Sendable {
             avatarEmoji = try c.decodeIfPresent(String.self, forKey: .avatarEmoji)
             avatarUrl = try c.decodeIfPresent(String.self, forKey: .avatarUrl)
             colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
+            accessExpiry = AccessExpiryField.decode(.accessExpiresAt, from: c)
             // Only the picker LIST includes `hasPin`; the claim response's embedded
             // `person` object omits it. Tolerate its absence — a present-but-incomplete
             // `person` would otherwise throw a DecodingError that the claim path reports
@@ -2274,7 +2410,10 @@ struct WaffledAPI: Sendable {
         // device token — the picker just minted a fresh one). Retrying would re-submit the
         // PIN and burn a second attempt, racing the lockout. Any genuinely-stale device
         // token is refreshed by the profiles poll long before a claim.
-        let (data, resp) = try await deviceSend("POST", "/api/kiosk/profile/\(personId)", body: body, retryOn401: false)
+        let (data, resp) = try await deviceSend(
+            "POST", "/api/kiosk/profile/\(personId)", body: body,
+            retryOn401: false, forceFreshToken: true
+        )
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
         switch code {
         case 200..<300: return try Self.decoder.decode(KioskClaim.self, from: data)
@@ -2300,28 +2439,90 @@ struct WaffledAPI: Sendable {
         ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?[key] as? Int
     }
     private func deviceGet<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
-        let (data, resp) = try await deviceFetch(URLRequest(url: try url(path)))
-        try check(resp, data)
-        return try Self.decoder.decode(T.self, from: data)
+        let snapshot = KioskDeviceStore.snapshot()
+        guard let endpoint = AppConfig.apiURL(path: path, baseURL: snapshot.apiBaseURL) else {
+            throw APIError.invalidServerURL
+        }
+        let (data, resp) = try await deviceFetch(
+            URLRequest(url: endpoint), snapshot: snapshot
+        )
+        let statusError: Error?
+        do {
+            try check(resp, data)
+            statusError = nil
+        } catch {
+            statusError = error
+        }
+        responseChecked()
+        guard KioskDeviceStore.isCurrent(snapshot) else {
+            throw KioskDeviceAuth.Superseded()
+        }
+        if let statusError { throw statusError }
+
+        let decoded: T
+        do {
+            decoded = try Self.decoder.decode(T.self, from: data)
+        } catch {
+            guard KioskDeviceStore.isCurrent(snapshot) else {
+                throw KioskDeviceAuth.Superseded()
+            }
+            throw error
+        }
+        responseDecoded()
+        guard KioskDeviceStore.isCurrent(snapshot) else {
+            throw KioskDeviceAuth.Superseded()
+        }
+        return decoded
     }
-    private func deviceSend(_ method: String, _ path: String, body: [String: JSONValue], retryOn401: Bool = true) async throws -> (Data, URLResponse) {
-        var req = URLRequest(url: try url(path))
+    private func deviceSend(
+        _ method: String,
+        _ path: String,
+        body: [String: JSONValue],
+        retryOn401: Bool = true,
+        forceFreshToken: Bool = false
+    ) async throws -> (Data, URLResponse) {
+        let snapshot = KioskDeviceStore.snapshot()
+        guard let endpoint = AppConfig.apiURL(path: path, baseURL: snapshot.apiBaseURL) else {
+            throw APIError.invalidServerURL
+        }
+        var req = URLRequest(url: endpoint)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(body)
-        return try await deviceFetch(req, retryOn401: retryOn401)
+        return try await deviceFetch(
+            req,
+            snapshot: snapshot,
+            retryOn401: retryOn401,
+            forceFreshToken: forceFreshToken
+        )
     }
     /// Run a device-authed request, refreshing the device token once on a 401. Callers
     /// where a 401 is a *business* outcome (e.g. a wrong PIN on claim) pass
     /// `retryOn401: false` so the 401 surfaces instead of silently re-submitting.
-    private func deviceFetch(_ req: URLRequest, retryOn401: Bool = true) async throws -> (Data, URLResponse) {
+    private func deviceFetch(
+        _ req: URLRequest,
+        snapshot: KioskDeviceStore.Snapshot,
+        retryOn401: Bool = true,
+        forceFreshToken: Bool = false
+    ) async throws -> (Data, URLResponse) {
+        guard KioskDeviceStore.isCurrent(snapshot) else { throw KioskDeviceAuth.Superseded() }
         var r = req
-        r.setValue("Bearer \(try await KioskDeviceAuth.shared.token())", forHTTPHeaderField: "Authorization")
-        let (data, resp) = try await URLSession.shared.data(for: r)
-        guard retryOn401, (resp as? HTTPURLResponse)?.statusCode == 401 else { return (data, resp) }
+        let firstToken = forceFreshToken
+            ? try await freshKioskToken(snapshot)
+            : try await kioskToken(snapshot)
+        guard KioskDeviceStore.isCurrent(snapshot) else { throw KioskDeviceAuth.Superseded() }
+        r.setValue("Bearer \(firstToken)", forHTTPHeaderField: "Authorization")
+        let (data, resp) = try await transport(r)
+        guard KioskDeviceStore.isCurrent(snapshot) else { throw KioskDeviceAuth.Superseded() }
+        guard retryOn401, (resp as? HTTPURLResponse)?.statusCode == 401 else {
+            return (data, resp)
+        }
         var retry = req
-        retry.setValue("Bearer \(try await KioskDeviceAuth.shared.refresh())", forHTTPHeaderField: "Authorization")
-        return try await URLSession.shared.data(for: retry)
+        retry.setValue("Bearer \(try await freshKioskToken(snapshot))", forHTTPHeaderField: "Authorization")
+        guard KioskDeviceStore.isCurrent(snapshot) else { throw KioskDeviceAuth.Superseded() }
+        let result = try await transport(retry)
+        guard KioskDeviceStore.isCurrent(snapshot) else { throw KioskDeviceAuth.Superseded() }
+        return result
     }
 
     // MARK: - Waffled-Bites (kid device pairing + parent controls)
@@ -2498,6 +2699,9 @@ struct WaffledAPI: Sendable {
         let cost: Int
         let currency: String
         let status: String          // pending | approved | denied
+        let requestedBy: String?
+        let ledgerId: String?
+        let refundLedgerId: String?
         let decidedAt: String?
         let createdAt: String
     }
@@ -2579,6 +2783,29 @@ struct WaffledAPI: Sendable {
     func denyRedemption(id: String) async throws -> RewardRedemption {
         struct Resp: Decodable { let redemption: RewardRedemption }
         return try await sendJSON("POST", "/api/redemptions/\(id)/deny", as: Resp.self).redemption
+    }
+
+    /// Cancel a pending redemption. No ledger entry exists yet, so this only
+    /// changes request state and never adjusts the balance.
+    func cancelRedemption(id: String) async throws {
+        try await send("POST", "/api/redemptions/\(id)/cancel", body: [:])
+    }
+
+    /// Refund a settled redemption with an append-only compensating ledger row.
+    func refundRedemption(id: String, reason: String, idempotencyKey: String) async throws {
+        try await send("POST", "/api/redemptions/\(id)/refund", body: [
+            "reason": .string(reason), "idempotencyKey": .string(idempotencyKey),
+        ])
+    }
+
+    /// Reverse a settled ledger entry and optionally replace it with a corrected
+    /// amount. The original entry remains visible for auditability.
+    func correctLedgerEntry(id: String, reason: String, replacementAmount: Int?, idempotencyKey: String) async throws {
+        var body: [String: JSONValue] = [
+            "reason": .string(reason), "idempotencyKey": .string(idempotencyKey),
+        ]
+        if let replacementAmount { body["replacementAmount"] = .int(replacementAmount) }
+        try await send("POST", "/api/ledger-entries/\(id)/correct", body: body)
     }
 
     /// Pin (or clear, with `nil`) the reward a person is saving toward.
@@ -2763,17 +2990,51 @@ struct WaffledAPI: Sendable {
             let text: String
         }
         struct LedgerEntry: Decodable, Sendable, Identifiable {
+            let id: String
             let amount: Int
             let reason, currency: String
             let detail: String?
             let note: String?          // free-text on ad-hoc entries (e.g. a spot award's reason)
+            let correctionReason: String?
+            let correctionOfId: String?
+            let reversedById: String?
+            let reversible: Bool
+            let redemptionId: String?
             let createdAt: String
-            var id: String { createdAt + reason + "\(amount)" + (detail ?? "") }
+
+            private enum CodingKeys: String, CodingKey {
+                case id, amount, reason, currency, detail, note, correctionReason
+                case correctionOfId, reversedById, reversible, redemptionId, createdAt
+            }
+
+            init(from decoder: Decoder) throws {
+                let values = try decoder.container(keyedBy: CodingKeys.self)
+                amount = try values.decode(Int.self, forKey: .amount)
+                reason = try values.decode(String.self, forKey: .reason)
+                currency = try values.decode(String.self, forKey: .currency)
+                detail = try values.decodeIfPresent(String.self, forKey: .detail)
+                note = try values.decodeIfPresent(String.self, forKey: .note)
+                correctionReason = try values.decodeIfPresent(String.self, forKey: .correctionReason)
+                correctionOfId = try values.decodeIfPresent(String.self, forKey: .correctionOfId)
+                reversedById = try values.decodeIfPresent(String.self, forKey: .reversedById)
+                reversible = try values.decodeIfPresent(Bool.self, forKey: .reversible) ?? false
+                redemptionId = try values.decodeIfPresent(String.self, forKey: .redemptionId)
+                createdAt = try values.decode(String.self, forKey: .createdAt)
+                id = try values.decodeIfPresent(String.self, forKey: .id)
+                    ?? "\(createdAt)\(reason)\(amount)\(detail ?? "")"
+            }
 
             /// Human label for the ledger row: a chore/reward title when present, else
             /// the humanized reason — and for a spot award, append the parent's note
             /// ("spot award — being so helpful").
             var label: String {
+                let auditReason = correctionReason.map { " · \($0)" } ?? ""
+                if reason == "ledger_reversal" {
+                    return "Reversal" + (detail.map { " · \($0)" } ?? "") + auditReason
+                }
+                if reason == "ledger_correction" {
+                    return "Corrected" + (detail.map { " · \($0)" } ?? "") + auditReason
+                }
                 if let d = detail, !d.isEmpty { return d }
                 let base = reason.replacingOccurrences(of: "_", with: " ")
                 if reason == "spot_award", let n = note?.trimmingCharacters(in: .whitespaces), !n.isEmpty {
@@ -2787,6 +3048,9 @@ struct WaffledAPI: Sendable {
             let emoji: String?
             let cost: Int
             let currency, status: String
+            let requestedBy: String?
+            let ledgerId: String?
+            let refundLedgerId: String?
             let createdAt: String
         }
         /// The reward a person is saving toward — drives the shop's hero card.
@@ -4022,8 +4286,8 @@ struct WaffledAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["ops": ops])
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
     }
 
     // MARK: - Rhythms (the things that should keep happening)
@@ -4313,8 +4577,8 @@ struct WaffledAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
     }
 
     /// POST/PATCH a JSON body and decode the JSON response, throwing on non-2xx.
@@ -4324,9 +4588,9 @@ struct WaffledAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
-        return try Self.decoder.decode(T.self, from: data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
+        return try decodeBound(T.self, from: data, binding: binding)
     }
 
     /// PATCH an arbitrary Encodable body and decode the JSON response. Optionals in
@@ -4338,9 +4602,9 @@ struct WaffledAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
-        return try Self.decoder.decode(T.self, from: data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
+        return try decodeBound(T.self, from: data, binding: binding)
     }
 
     /// POST/PATCH (no body) and decode the JSON response, throwing on non-2xx.
@@ -4348,18 +4612,18 @@ struct WaffledAPI: Sendable {
         var req = URLRequest(url: try url(path))
         req.httpMethod = method
         authorize(&req)
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
-        return try Self.decoder.decode(T.self, from: data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
+        return try decodeBound(T.self, from: data, binding: binding)
     }
 
     /// GET `path` and decode the JSON body, throwing on non-2xx.
     private func getJSON<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
         var req = URLRequest(url: try url(path))
         authorize(&req)
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
-        return try Self.decoder.decode(T.self, from: data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
+        return try decodeBound(T.self, from: data, binding: binding)
     }
 
     /// DELETE `path`, throwing on non-2xx (204 is success).
@@ -4367,12 +4631,14 @@ struct WaffledAPI: Sendable {
         var req = URLRequest(url: try url(path))
         req.httpMethod = "DELETE"
         authorize(&req)
-        let (data, resp) = try await perform(req)
-        try check(resp, data)
+        let (data, resp, binding) = try await perform(req)
+        try check(resp, data, binding: binding)
     }
 
-    private func url(_ path: String) throws -> URL {
-        guard let url = AppConfig.apiURL(path: path) else { throw APIError.invalidServerURL }
+    private func url(_ path: String, baseURL: String = AppConfig.apiBaseURL) throws -> URL {
+        guard let url = AppConfig.apiURL(path: path, baseURL: baseURL) else {
+            throw APIError.invalidServerURL
+        }
         return url
     }
 
@@ -4380,28 +4646,225 @@ struct WaffledAPI: Sendable {
         req.setValue("Bearer \(AppConfig.bearerToken)", forHTTPHeaderField: "Authorization")
     }
 
+    /// Immutable identity/server boundary for one authorized request. A rotating
+    /// access token may change while a 401 is refreshed, but the logical principal
+    /// and origin may not. Dev-token requests use the same rule, with their hashed
+    /// identity scope instead of a Keychain envelope.
+    private struct AuthorizationContext: Sendable {
+        let apiBaseURL: String
+        let identityScope: String?
+        let bearerToken: String
+        let realSession: AuthTokens.RequestSnapshot?
+        let refreshLease: AuthTokens.RefreshLease?
+
+        static func capture(matching request: URLRequest) throws -> AuthorizationContext {
+            guard !AppConfig.principalIsolationRequired,
+                  !AppConfig.currentAccessIsExpired else { throw APIError.superseded }
+            let authorization = request.value(forHTTPHeaderField: "Authorization") ?? ""
+            let prefix = "Bearer "
+            let requestToken = authorization.hasPrefix(prefix)
+                ? String(authorization.dropFirst(prefix.count))
+                : ""
+
+            if let session = AuthTokens.requestSnapshot() {
+                guard requestToken == session.accessToken,
+                      Self.request(request, belongsTo: session.apiBaseURL) else {
+                    throw APIError.superseded
+                }
+                return AuthorizationContext(
+                    apiBaseURL: session.apiBaseURL,
+                    identityScope: session.identityScope,
+                    bearerToken: session.accessToken,
+                    realSession: session,
+                    refreshLease: session.refreshLease
+                )
+            }
+
+            let baseURL = AppConfig.apiBaseURL
+            let scope = AppConfig.currentIdentityScope
+            let bearer = AppConfig.bearerToken
+            guard requestToken == bearer, Self.request(request, belongsTo: baseURL) else {
+                throw APIError.superseded
+            }
+            return AuthorizationContext(
+                apiBaseURL: baseURL,
+                identityScope: scope,
+                bearerToken: bearer,
+                realSession: nil,
+                refreshLease: nil
+            )
+        }
+
+        var isCurrent: Bool {
+            guard !AppConfig.principalIsolationRequired,
+                  !AppConfig.currentAccessIsExpired else { return false }
+            if let realSession { return AuthTokens.isSamePrincipal(as: realSession) }
+            return AppConfig.apiBaseURL == apiBaseURL &&
+                AppConfig.currentIdentityScope == identityScope &&
+                AppConfig.bearerToken == bearerToken
+        }
+
+        var currentAccessToken: String? {
+            if let realSession { return AuthTokens.accessTokenIfSamePrincipal(as: realSession) }
+            return isCurrent ? bearerToken : nil
+        }
+
+        private static func request(_ request: URLRequest, belongsTo baseURL: String) -> Bool {
+            guard let absolute = request.url?.absoluteString else { return false }
+            return absolute == baseURL || absolute.hasPrefix(baseURL + "/")
+        }
+    }
+
+    /// Stable logical identity required by a multi-request operation. Unlike an access
+    /// token, this survives ordinary token refresh but changes for login, household or
+    /// kiosk-profile replacement, dev-token replacement, and server changes.
+    private struct RequiredPrincipal: Sendable {
+        let apiBaseURL: String
+        let identityScope: String
+
+        static func capture() throws -> RequiredPrincipal {
+            guard !AppConfig.principalIsolationRequired,
+                  !AppConfig.currentAccessIsExpired,
+                  !AppConfig.bearerToken.isEmpty,
+                  let identityScope = AppConfig.currentIdentityScope else {
+                throw APIError.superseded
+            }
+            return RequiredPrincipal(
+                apiBaseURL: AppConfig.apiBaseURL,
+                identityScope: identityScope
+            )
+        }
+
+        func validate() throws {
+            guard !AppConfig.principalIsolationRequired,
+                  !AppConfig.currentAccessIsExpired,
+                  !AppConfig.bearerToken.isEmpty,
+                  AppConfig.apiBaseURL == apiBaseURL,
+                  AppConfig.currentIdentityScope == identityScope else {
+                throw APIError.superseded
+            }
+        }
+
+        func validate(matching context: AuthorizationContext) throws {
+            try validate()
+            guard context.apiBaseURL == apiBaseURL,
+                  context.identityScope == identityScope else {
+                throw APIError.superseded
+            }
+        }
+    }
+
+    /// Travels with bytes returned by `perform` so decoding is covered by the same
+    /// principal boundary as the network await. Decoding can be substantial and runs
+    /// off the main actor; a replacement is therefore allowed to happen concurrently
+    /// even though there is no second `await` in the helper itself.
+    private struct ResponseBinding: Sendable {
+        let context: AuthorizationContext
+
+        func validate() throws {
+            guard context.isCurrent else { throw APIError.superseded }
+        }
+    }
+
+    private func decodeBound<T: Decodable>(
+        _ type: T.Type,
+        from data: Data,
+        binding: ResponseBinding
+    ) throws -> T {
+        // Reject already-stale bytes before parsing as well as after. Besides being
+        // cheaper, this ensures malformed data from A cannot surface as a decoding
+        // error after B has replaced it.
+        try binding.validate()
+        let decoded = try Self.decoder.decode(type, from: data)
+        // Deterministic test seam for the decode→return boundary. Production's no-op
+        // still leaves the second validation immediately after potentially-expensive
+        // decoding, where a concurrent MainActor credential replacement can occur.
+        responseDecoded()
+        try binding.validate()
+        return decoded
+    }
+
+    /// Mirror the API's guest-write middleware. Reads remain open, along with the
+    /// account/session routes a guest needs to leave this household or restore
+    /// access elsewhere. Kept pure so the contract has a focused unit test.
+    nonisolated static func guestRequestAllowed(method: String?, path: String) -> Bool {
+        let verb = (method ?? "GET").uppercased()
+        if ["GET", "HEAD", "OPTIONS"].contains(verb) { return true }
+        if verb == "POST", path == "/api/auth/switch" { return true }
+        if verb == "PUT",
+           path == "/api/account/password" || path == "/api/account/email" { return true }
+        guard verb == "POST" else { return false }
+        let prefix = "/api/auth/invites/"
+        let suffix = "/accept"
+        guard path.hasPrefix(prefix), path.hasSuffix(suffix) else { return false }
+        let inviteId = path.dropFirst(prefix.count).dropLast(suffix.count)
+        return !inviteId.isEmpty && !inviteId.contains("/")
+    }
+
     /// Run an authed request, transparently refreshing the access token once on a
     /// 401 and retrying. Mirrors the web's `authFetch`: a single rotating-refresh
     /// (coordinated by `TokenRefresher`) recovers an expired access token without the
     /// user noticing; if the refresh token is dead, the original 401 is returned and
     /// `.waffledAuthExpired` (fired by the refresher) sends the user to login.
-    private func perform(_ req: URLRequest) async throws -> (Data, URLResponse) {
-        let (data, resp) = try await URLSession.shared.data(for: req)
+    private func perform(
+        _ req: URLRequest
+    ) async throws -> (Data, URLResponse, ResponseBinding) {
+        try requiredPrincipal?.validate()
+        guard !AppConfig.principalIsolationRequired else { throw APIError.superseded }
+        if AppConfig.currentAccessIsExpired {
+            AuthTokens.requirePrincipalIsolation()
+            NotificationCenter.default.post(
+                name: .waffledAuthExpired,
+                object: AuthTokens.refreshLease()
+            )
+            throw APIError.http(401, #"{"error":"membership_inactive","message":"Household access has expired."}"#)
+        }
+        if AppConfig.currentMemberType == "guest",
+           !Self.guestRequestAllowed(method: req.httpMethod, path: req.url?.path ?? "") {
+            throw APIError.http(403, #"{"error":"Forbidden","message":"Guest access is read-only."}"#)
+        }
+        let context = try AuthorizationContext.capture(matching: req)
+        try requiredPrincipal?.validate(matching: context)
+        let binding = ResponseBinding(context: context)
+        let (data, resp) = try await transport(req)
+        guard context.isCurrent else { throw APIError.superseded }
         guard (resp as? HTTPURLResponse)?.statusCode == 401,
-              AuthTokens.refreshToken != nil,
-              await TokenRefresher.shared.refresh() else {
-            return (data, resp)
+              let lease = context.refreshLease,
+              await refreshSession(lease) else {
+            return (data, resp, binding)
+        }
+        guard context.isCurrent,
+              let accessToken = context.currentAccessToken else {
+            throw APIError.superseded
         }
         var retry = req
-        authorize(&retry)   // swap in the freshly-minted access token
-        return try await URLSession.shared.data(for: retry)
+        retry.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let result = try await transport(retry)
+        guard context.isCurrent else { throw APIError.superseded }
+        return (result.0, result.1, binding)
     }
 
-    private func check(_ resp: URLResponse, _ data: Data) throws {
-        guard let http = resp as? HTTPURLResponse else { return }
-        guard (200..<300).contains(http.statusCode) else {
-            throw APIError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+    private func check(
+        _ resp: URLResponse,
+        _ data: Data,
+        binding: ResponseBinding? = nil
+    ) throws {
+        try binding?.validate()
+        let error: APIError?
+        if let http = resp as? HTTPURLResponse,
+           !(200..<300).contains(http.statusCode) {
+            error = .http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+        } else {
+            error = nil
         }
+
+        // Deterministic test seam for the status/body-check → throw/return boundary.
+        // In production this no-op is followed by the real current-principal check.
+        if let binding {
+            responseChecked()
+            try binding.validate()
+        }
+        if let error { throw error }
     }
 
     // MARK: - Version & update check

@@ -1,7 +1,14 @@
 // Auth flow — login / first-run setup / logout. These hit the public auth
 // endpoints directly (no bearer) and persist the returned session via setSession,
 // which signals the AuthGate to render the app.
-import { apiGet, apiSend, setSession, clearSession } from './client'
+import {
+  apiGet,
+  apiSend,
+  clearSessionForLogout,
+  currentIdentityScope,
+  setSession,
+  setSessionFrom,
+} from './client'
 
 export interface AuthStatus {
   initialized: boolean
@@ -12,8 +19,33 @@ interface SessionResponse {
   accessToken: string
   refreshToken: string
   expiresIn: number
-  person?: unknown
+  memberType?: string | null
+  accessExpiresAt?: string | null
+  person?: { memberType?: string | null; accessExpiresAt?: string | null }
   household?: unknown
+}
+
+function viewerAccessFrom(response: SessionResponse): {
+  memberType: string | null
+  accessExpiresAt?: string | null
+} | undefined {
+  const responseHasMemberType = Object.prototype.hasOwnProperty.call(response, 'memberType')
+  const personHasMemberType = !!response.person &&
+    Object.prototype.hasOwnProperty.call(response.person, 'memberType')
+  if (!responseHasMemberType && !personHasMemberType) return undefined
+
+  const memberType = responseHasMemberType ? response.memberType : response.person?.memberType
+  const viewerAccess: { memberType: string | null; accessExpiresAt?: string | null } = {
+    memberType: memberType ?? null,
+  }
+  // Do not collapse omission into null: null explicitly means indefinite access,
+  // while a missing caregiver/guest deadline is an incomplete session response.
+  if (Object.prototype.hasOwnProperty.call(response, 'accessExpiresAt')) {
+    viewerAccess.accessExpiresAt = response.accessExpiresAt
+  } else if (response.person && Object.prototype.hasOwnProperty.call(response.person, 'accessExpiresAt')) {
+    viewerAccess.accessExpiresAt = response.person.accessExpiresAt
+  }
+  return viewerAccess
 }
 // Installation-owner-managed OIDC config (Settings → Login & security). The
 // client secret is never returned — `secretSet` reports whether one is stored.
@@ -53,12 +85,20 @@ async function post(path: string, body: unknown): Promise<SessionResponse> {
 export const authApi = {
   status: () => apiGet<AuthStatus>('/api/auth/status'),
   async login(email: string, password: string): Promise<void> {
+    const expectedIdentityScope = currentIdentityScope()
     const d = await post('/api/auth/login', { email, password })
-    setSession(d.accessToken, d.refreshToken)
+    await setSession(d.accessToken, d.refreshToken, {
+      expectedIdentityScope,
+      viewerAccess: viewerAccessFrom(d),
+    })
   },
   async setup(input: SetupInput): Promise<void> {
+    const expectedIdentityScope = currentIdentityScope()
     const d = await post('/api/auth/setup', input)
-    setSession(d.accessToken, d.refreshToken)
+    await setSession(d.accessToken, d.refreshToken, {
+      expectedIdentityScope,
+      viewerAccess: viewerAccessFrom(d),
+    })
   },
   // Full-page handoff to the backend OIDC flow; it redirects back to /auth/callback.
   startOidc(): void {
@@ -66,8 +106,12 @@ export const authApi = {
   },
   // /auth/callback exchanges the one-time handoff code for a real session.
   async oidcExchange(code: string): Promise<void> {
+    const expectedIdentityScope = currentIdentityScope()
     const d = await post('/api/auth/oidc/exchange', { code })
-    setSession(d.accessToken, d.refreshToken)
+    await setSession(d.accessToken, d.refreshToken, {
+      expectedIdentityScope,
+      viewerAccess: viewerAccessFrom(d),
+    })
   },
   // Installation OIDC config (authed; routes require the installation owner).
   getConfig: () => apiGet<OidcConfig>('/api/auth/config'),
@@ -76,24 +120,23 @@ export const authApi = {
     apiSend<{ ok: boolean; issuer?: string; authorizationEndpoint?: string; message?: string }>('POST', '/api/auth/config/test', { issuerUrl }),
   // Mint a fresh session for another household this account belongs to. The caller
   // decides what to do next (we do a full reload to re-establish PowerSync etc.).
-  async switchHousehold(householdId: string): Promise<void> {
-    const d = await apiSend<SessionResponse>('POST', '/api/auth/switch', { householdId })
-    setSession(d.accessToken, d.refreshToken)
+  async switchHousehold(householdId: string, opts: { discardPending?: boolean } = {}): Promise<void> {
+    await setSessionFrom(
+      () => apiSend<SessionResponse>('POST', '/api/auth/switch', { householdId }),
+      opts
+    )
   },
   // Accept a pending invitation — creates the membership (no auto-switch).
   async acceptInvite(inviteId: string): Promise<void> {
     await apiSend('POST', `/api/auth/invites/${inviteId}/accept`, {})
   },
-  async logout(): Promise<void> {
-    let refreshToken: string | undefined
-    try {
-      refreshToken = localStorage.getItem('waffled.refresh') || undefined
-    } catch {
-      /* ignore */
-    }
+  async logout(opts: { discardPending?: boolean } = {}): Promise<void> {
+    // Refuse an ordinary sign-out while writes are queued before revoking the
+    // only credential which can upload them. An explicit discard clears the
+    // private replica first; server revocation remains best-effort afterward.
+    const refreshToken = await clearSessionForLogout(opts)
     if (refreshToken) {
       await fetch('/api/auth/logout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ refreshToken }) }).catch(() => {})
     }
-    clearSession()
   },
 }

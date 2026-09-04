@@ -847,6 +847,11 @@ private struct AddTimerControl: View {
 final class TimerAlarm {
     private var player: AVAudioPlayer?
     private let center = UNUserNotificationCenter.current()
+    private weak var notifications: NotificationManager?
+
+    init(notificationManager: NotificationManager? = nil) {
+        notifications = notificationManager
+    }
 
     /// Ask once for permission and pre-load the looping chime so `start()` is instant.
     func prepare() async {
@@ -887,22 +892,11 @@ final class TimerAlarm {
     /// straight back into Cook Mode — at the DISH whose timer fired (re-opening its whole
     /// plate if it had one), on the step it fired on.
     func scheduleNotification(id: String, fireAt: Date, name: String, link: CookTimerLink) {
-        let interval = fireAt.timeIntervalSinceNow
-        guard interval > 0.5 else { return }
-        let c = UNMutableNotificationContent()
-        c.title = "Timer done"
-        c.body = "\(name) — your cook timer is up."
-        c.sound = .default
-        c.interruptionLevel = .timeSensitive
-        c.threadIdentifier = "waffled-cook-timers"
-        c.userInfo = link.userInfo(timerId: id)
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
-        center.add(UNNotificationRequest(identifier: id, content: c, trigger: trigger))
+        notifications?.scheduleCookTimer(id: id, fireAt: fireAt, name: name, link: link)
     }
 
     func cancelNotification(_ id: String) {
-        center.removePendingNotificationRequests(withIdentifiers: [id])
-        center.removeDeliveredNotifications(withIdentifiers: [id])
+        notifications?.cancelCookTimer(id)
     }
 
     /// A short, looping-friendly system sound shipped with iOS.

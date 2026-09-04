@@ -190,7 +190,22 @@ async function makeAdmin(grant: boolean): Promise<void> {
     if (rows[0]?.owner) die("The household owner is always an admin and can't be demoted.")
   }
   if (p.is_admin === grant) { console.log(c.dim + `${p.name} is already ${grant ? 'an admin' : 'not an admin'} — no change.` + c.reset); return }
-  await query(`update persons set is_admin = $1, updated_at = now() where id = $2`, [grant, p.id])
+  // Admin privileges are only valid for permanent adult memberships. Promote
+  // the role and clear any temporary-access expiry in the same statement so
+  // the break-glass CLI cannot violate the membership invariants.
+  await query(
+    `with locked_household as materialized (
+       select id from households where id = $3 for share
+     )
+     update persons p
+        set is_admin = $1,
+            member_type = case when $1 then 'adult' else member_type end,
+            access_expires_at = case when $1 then null else access_expires_at end,
+            updated_at = now()
+       from locked_household
+      where p.id = $2 and p.household_id = locked_household.id`,
+    [grant, p.id, p.household_id]
+  )
   console.log(ok(`✓ ${p.name} is now ${grant ? 'an admin' : 'a regular member'}.`))
 }
 
@@ -355,6 +370,14 @@ async function addMember(): Promise<void> {
   const householdId = flag('household-id')
   if (!email || !householdId) die('add-member requires --email <login email> and --household-id <uuid>.')
 
+  const memberType = flag('member-type') || 'adult'
+  const memberTypes = new Set(['adult', 'caregiver', 'guest', 'teen', 'kid'])
+  if (!memberTypes.has(memberType)) {
+    die('--member-type must be one of: adult, caregiver, guest, teen, kid.')
+  }
+  const isAdmin = has('admin')
+  if (isAdmin && memberType !== 'adult') die('--admin is only available for an adult member.')
+
   const account = await accountByEmail(email)
   if (!account) {
     die(`No account uses "${email}". They must sign in once (password or SSO) first, or use the web Households → invite flow.`)
@@ -373,8 +396,6 @@ async function addMember(): Promise<void> {
     return
   }
 
-  const memberType = flag('member-type') || 'adult'
-  const isAdmin = has('admin')
   if (!(await confirm(`Attach ${c.bold}${email}${c.reset} to "${householdName}" as ${memberType}${isAdmin ? ' (admin)' : ''}?`))) {
     die('Aborted.', 0)
   }
@@ -387,8 +408,9 @@ async function addMember(): Promise<void> {
   const displayName = nameRow.rows[0]?.name || email.split('@')[0]
 
   await query(
-    `insert into persons (household_id, name, member_type, is_admin, account_id) values ($1, $2, $3, $4, $5)`,
-    [householdId, displayName, memberType, isAdmin, account.id]
+    `insert into persons (household_id, name, member_type, is_admin, account_id, show_on_kiosk)
+     values ($1, $2, $3, $4, $5, $6)`,
+    [householdId, displayName, memberType, isAdmin, account.id, !['caregiver', 'guest'].includes(memberType)]
   )
   console.log(ok(`✓ Attached ${displayName} (${email}) to "${householdName}" as ${memberType}${isAdmin ? ' (admin)' : ''}.`))
 }
@@ -421,8 +443,9 @@ ${c.dim}Run as: ./waffled admin <command> [flags]${c.reset}
   ${c.bold}reset-password${c.reset} --email <e> [--password <pw>] [--yes]
                                      set a member's password (random if omitted); revokes
                                      their sessions across ALL their households
-  ${c.bold}add-member${c.reset} --email <e> --household-id <uuid> [--member-type adult|teen|kid] [--admin] [--yes]
-                                     attach an existing account to a household (break-glass invite)
+  ${c.bold}add-member${c.reset} --email <e> --household-id <uuid> [--member-type adult|caregiver|guest|teen|kid] [--admin] [--yes]
+                                     attach an existing account (break-glass invite); --admin is
+                                     adult-only; caregiver/guest are hidden from the kiosk by default
   ${c.bold}list-accounts${c.reset}                      each human and the households they belong to
   ${c.bold}make-admin${c.reset}    (--email <e> | --person <uuid>)    grant admin
   ${c.bold}revoke-admin${c.reset}  (--email <e> | --person <uuid>)    revoke admin (not the owner)

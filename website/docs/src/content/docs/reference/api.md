@@ -32,6 +32,14 @@ guarded by `tenantRoute` (any member), `adminRoute` (admin/owner), or `capRoute(
 specific capability). Optional [modules](/administration/modules/) add a `moduleRoutes(key)` gate
 that 403s when the module is off.
 
+Household memberships use `adult`, `caregiver`, `guest`, `teen`, or `kid`. When creating or
+updating a caregiver or guest, send the final household-local access date as
+`accessEndsOn: "YYYY-MM-DD"`; the API applies the household timezone and returns the stored
+exclusive expiry instant as `accessExpiresAt`. Expired memberships are excluded from
+authentication and household switching. Guest access is read-only across shared-state API
+routes, with narrow exemptions for account maintenance, accepting invites, and switching
+households.
+
 ## API keys
 
 Create and manage keys in the app (they're minted by a signed-in session, not by another key):
@@ -124,12 +132,18 @@ capability X · **module(X)** = requires module X enabled · **device** = kiosk 
 | GET · POST · PATCH · DELETE | `/api/rewards[/:id]` · `/archived` · `/:id/restore` | Rewards catalog | tenant / cap:reward.manage |
 | GET | `/api/balances` · `/api/redemptions` | Balances / redemptions | tenant |
 | POST | `/api/rewards/:id/redeem` | Redeem a reward | tenant |
-| POST | `/api/persons/:id/award` | Spot-award currency | cap:reward.grant |
+| POST | `/api/persons/:id/award` | Spot-award currency | module(chores) + cap:reward.grant |
 | POST | `/api/redemptions/:id/approve` · `/deny` | Approve / deny a redemption | cap:reward.approve |
+| POST | `/api/redemptions/:id/cancel` | Cancel a pending redemption | requester or cap:reward.approve |
+| POST | `/api/redemptions/:id/refund` | Refund an approved redemption | module(chores) + cap:reward.correct |
+| POST | `/api/ledger-entries/:id/correct` | Append a reversal / corrected replacement | module(chores) + cap:reward.correct |
 | GET · PUT | `/api/rewards/settings` | Reward settings | tenant / cap:reward.manage |
 | GET · POST · PATCH · DELETE | `/api/currencies[/:id]` · `/api/conversions[/:id]` · `/:id/apply` | Currencies & conversions | tenant / admin |
 
-*Rewards routes also require the rewards sub-flag (`settings.chores.rewards`).*
+*Reward catalog, list/balance, redeem, approval/denial, and settings routes also
+require the rewards sub-flag (`settings.chores.rewards`). Award, correction, and
+refund require only the Chores module; pending-request cancellation is tenant-only
+so historical cleanup remains available after either toggle is disabled.*
 
 ### Goals — `module(goals)`
 

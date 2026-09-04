@@ -88,6 +88,19 @@ describe('P2.6 admin-gated household creation', () => {
     expect((await call('POST', '/api/households', kevinToken, { name: 'C' })).statusCode).toBe(400)
   })
 
+  it('rejects an invalid timezone without creating an additional household', async () => {
+    const before = (await query(`select count(*)::int as count from households where deleted_at is null`)).rows[0].count
+    const res = await call('POST', '/api/households', kevinToken, {
+      name: 'Invalid Timezone House',
+      timezone: 'Mars/Olympus',
+      person: { name: 'Kevin' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(json(res).message).toMatch(/valid IANA timezone/i)
+    const after = (await query(`select count(*)::int as count from households where deleted_at is null`)).rows[0].count
+    expect(after).toBe(before)
+  })
+
   // The member color reaches the calendar's CSS straight from user input, so
   // every write path validates it — this one included, not just /api/persons.
   it('rejects a person color that is not a #RRGGBB hex (400)', async () => {

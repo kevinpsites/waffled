@@ -131,6 +131,8 @@
 .st-pending { background: var(--warn-t); color: var(--warn); }
 .st-approved { background: var(--person-3-t); color: var(--success); }
 .st-denied { background: var(--panel); color: var(--ink-3); }
+.st-canceled { background: var(--panel); color: var(--ink-3); }
+.st-refunded { background: var(--ai-t); color: var(--ai-d); }
 .pp-redeem-cost { font-size: 13px; font-weight: 800; color: var(--person-4); }
 
 @media (max-width: 1000px) {

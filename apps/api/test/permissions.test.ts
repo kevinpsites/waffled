@@ -10,12 +10,25 @@ import {
 } from '../src/platform/permissions'
 
 describe('DEFAULT_PERMISSIONS', () => {
-  it('adult has every capability; teen and kid have none', () => {
+  it('adult has every capability; guest, teen, and kid have none', () => {
     for (const cap of CAPABILITIES) {
       expect(DEFAULT_PERMISSIONS.adult[cap]).toBe(true)
+      expect(DEFAULT_PERMISSIONS.guest[cap]).toBe(false)
       expect(DEFAULT_PERMISSIONS.teen[cap]).toBe(false)
       expect(DEFAULT_PERMISSIONS.kid[cap]).toBe(false)
     }
+  })
+
+  it('gives caregivers routine chore and approval rights without financial/admin rights', () => {
+    expect(DEFAULT_PERMISSIONS.caregiver).toEqual({
+      'chore.manage': true,
+      'chore.approve': true,
+      'reward.manage': false,
+      'reward.approve': true,
+      'reward.grant': false,
+      'reward.correct': false,
+      'goal.manage': false,
+    })
   })
 
   it('exposes the full capability set, including goal.manage', () => {
@@ -25,9 +38,12 @@ describe('DEFAULT_PERMISSIONS', () => {
       'reward.manage',
       'reward.approve',
       'reward.grant',
+      'reward.correct',
       'goal.manage',
     ])
     expect(DEFAULT_PERMISSIONS.adult['goal.manage']).toBe(true)
+    expect(DEFAULT_PERMISSIONS.caregiver['reward.correct']).toBe(false)
+    expect(DEFAULT_PERMISSIONS.guest['reward.correct']).toBe(false)
     expect(DEFAULT_PERMISSIONS.teen['goal.manage']).toBe(false)
     expect(DEFAULT_PERMISSIONS.kid['goal.manage']).toBe(false)
   })
@@ -62,6 +78,11 @@ describe('getPermissions', () => {
     expect((merged.teen as Record<string, unknown>)['bogus.cap']).toBeUndefined()
     expect((merged as Record<string, unknown>).ghost).toBeUndefined()
   })
+
+  it('ignores stored attempts to grant a guest mutation rights', () => {
+    const merged = getPermissions({ permissions: { guest: { 'chore.manage': true, 'reward.grant': true } } })
+    expect(merged.guest).toEqual(DEFAULT_PERMISSIONS.guest)
+  })
 })
 
 describe('can', () => {
@@ -78,6 +99,12 @@ describe('can', () => {
 
   it('an unknown role has no capabilities', () => {
     expect(can('robot', false, 'chore.manage', undefined)).toBe(false)
+  })
+
+  it('guest is read-only even if malformed data marks it admin or grants a cell', () => {
+    const settings = { permissions: { guest: { 'chore.manage': true } } }
+    expect(can('guest', true, 'chore.manage', settings)).toBe(false)
+    expect(resolveCapabilities('guest', true, settings)).toEqual([])
   })
 })
 

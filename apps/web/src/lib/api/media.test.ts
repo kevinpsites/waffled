@@ -35,6 +35,7 @@ function stubCanvas(dataUrl: string) {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  localStorage.clear()
 })
 
 describe('uploadImage — guards', () => {
@@ -75,5 +76,32 @@ describe('uploadImage — happy path', () => {
     await uploadImage(fakeFile('image/webp', 5000))
     const post = sent.find((s) => s.url.endsWith('/api/media'))!
     expect((post.body as { contentType: string }).contentType).toBe('image/webp')
+  })
+
+  it('does not upload an image with a replacement principal after async encoding', async () => {
+    localStorage.setItem('waffled.session.v1', JSON.stringify({
+      v: 1,
+      scope: 'account-a',
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+      memberType: 'adult',
+      accessExpiresAt: null,
+    }))
+    stubCanvas('data:image/jpeg;base64,QUJD')
+    const fetchMock = vi.fn()
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const upload = uploadImage(fakeFile('image/jpeg', 5000))
+    localStorage.setItem('waffled.session.v1', JSON.stringify({
+      v: 1,
+      scope: 'account-b',
+      accessToken: 'access-b',
+      refreshToken: 'refresh-b',
+      memberType: 'adult',
+      accessExpiresAt: null,
+    }))
+
+    await expect(upload).rejects.toThrow('Principal changed before /api/media could be sent')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

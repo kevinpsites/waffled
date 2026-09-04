@@ -15,9 +15,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Reward mistakes can now be corrected without rewriting history.** Adults with the
+  new `reward.correct` capability can reverse a mistaken spot award, replace it with
+  the right amount, or refund an approved redemption from a person profile on web,
+  iPhone, and iPad. Every correction records who made it and why as linked,
+  append-only ledger entries; pending requests can instead be canceled by their
+  requester or a reward approver before any balance is spent.
+  Refunds preserve the original approval attribution and reject mismatched or
+  corrupted redemption-to-ledger links, including during idempotent replay.
+
+- **Caregiver and read-only guest household roles.** Admins can now invite or edit
+  temporary helpers with an optional access-expiration date. Caregivers receive the
+  routine chore approval/management defaults without reward or goal administration;
+  guests can browse the household but cannot change shared data. Expired memberships
+  disappear from active sessions and can be restored in place with a fresh invite.
+
 ### Changed
 
 ### Fixed
+
+- Permission saves from older clients now preserve newer capability choices they
+  do not know how to send, preventing unrelated settings changes from silently
+  resetting who can correct reward history.
+
+- **Simultaneous reward spending cannot overdraw a balance.** Reward redemptions and
+  currency conversions now share a household-member balance lock, so overlapping
+  requests are applied one at a time and recheck the latest balance before spending.
+
+- **Reward activity stays inside your family.** Redeeming or granting a reward now
+  rejects people and currencies from another household, and a family member can only
+  redeem for someone else when their role can manage rewards. Pending redemptions also
+  stop safely if their currency is later disabled, while earn-only currencies still work
+  for spot awards.
+
+- Web and iOS retain the last server-verified built-in role across a cold offline
+  restart, so known members can keep working; session, profile, household, server,
+  and dev-token changes still clear that trust before another principal can use it.
+
+- Guest offline edits no longer enter or indefinitely block the PowerSync upload
+  queue, and the API safely drains stale uploads left by older guest or expired-
+  membership clients without changing server data. Upgrades also stop and identify
+  unknown legacy household roles instead of silently reclassifying them.
+- Invite acceptance now locks and revalidates the invitation at the membership
+  transaction boundary, so a concurrent revocation or elapsed deadline cannot
+  restore access. iOS also clears the prior offline role before storing replacement
+  login, profile, or household credentials.
 
 ## [0.14.3] - 2026-09-02
 

@@ -1,6 +1,14 @@
 // Calendar events domain — client slice, types, and hooks.
 import { useEffect, useRef, useState } from 'react'
-import { apiGet, apiGetCached, apiSend, apiDelete, localToday } from './client'
+import {
+  apiDelete,
+  apiDeleteForIdentity,
+  apiGet,
+  apiGetCached,
+  apiSend,
+  apiSendForIdentity,
+  localToday,
+} from './client'
 import { useRefetchOn } from './bus'
 import { watchAgendaRows, eventsForDay, eventsForRange, getHouseholdTz, getLocalEvent, dropTombstoned, isEventTombstoned, type LocalEventRow } from '../powersync/events-local'
 import { isReplicaTrusted, subscribeSyncHealth } from '../powersync/sync-health'
@@ -76,17 +84,28 @@ export const eventsApi = {
     recurrenceEndAt?: string | null
     rdate?: string | null
     exdate?: string | null
-  }) => apiSend<{ event: AgendaEvent }>('POST', '/api/events', input),
-  updateEvent: (id: string, patch: Record<string, unknown>) =>
-    apiSend<{ event: AgendaEvent }>('PATCH', `/api/events/${id}`, patch),
+  }, identityScope?: string | null) => identityScope === undefined
+    ? apiSend<{ event: AgendaEvent }>('POST', '/api/events', input)
+    : apiSendForIdentity<{ event: AgendaEvent }>(identityScope, 'POST', '/api/events', input),
+  updateEvent: (id: string, patch: Record<string, unknown>, identityScope?: string | null) =>
+    identityScope === undefined
+      ? apiSend<{ event: AgendaEvent }>('PATCH', `/api/events/${id}`, patch)
+      : apiSendForIdentity<{ event: AgendaEvent }>(identityScope, 'PATCH', `/api/events/${id}`, patch),
   // Recurring deletes pass a scope ('this'|'following') + the occurrence slot;
   // omit opts (or pass scope 'all'/none) to delete the whole series / a single event.
-  deleteEvent: (id: string, opts?: { scope?: string; occurrenceStart?: string | null }) => {
+  deleteEvent: (
+    id: string,
+    opts?: { scope?: string; occurrenceStart?: string | null },
+    identityScope?: string | null
+  ) => {
     const q = new URLSearchParams()
     if (opts?.scope) q.set('scope', opts.scope)
     if (opts?.occurrenceStart) q.set('occurrenceStart', opts.occurrenceStart)
     const qs = q.toString()
-    return apiDelete(`/api/events/${id}${qs ? `?${qs}` : ''}`)
+    const path = `/api/events/${id}${qs ? `?${qs}` : ''}`
+    return identityScope === undefined
+      ? apiDelete(path)
+      : apiDeleteForIdentity(identityScope, path)
   },
 }
 

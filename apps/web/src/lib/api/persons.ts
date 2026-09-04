@@ -1,6 +1,13 @@
 // Persons (family members) + household settings — client slice, types, hooks.
 import { useEffect, useState } from 'react'
-import { apiGet, apiSend, apiDelete, setCurrentViewerPersonId } from './client'
+import {
+  apiGet,
+  apiSend,
+  apiDelete,
+  currentIdentityScope,
+  setCurrentViewerAccess,
+  setCurrentViewerPersonId,
+} from './client'
 import { tap } from './bus'
 
 export interface Person {
@@ -18,6 +25,8 @@ export interface Person {
   allergens?: string[]
   rewardStyle?: string
   showOnKiosk?: boolean
+  accessEndsOn?: string | null
+  accessExpiresAt?: string | null
   // Resolved capabilities for the *current* caller (from /api/household). Admins &
   // default adults get them all; teen/kid get only what the household grants.
   capabilities?: string[]
@@ -64,6 +73,8 @@ export interface Membership {
   personId: string
   isAdmin: boolean
   memberType: string
+  accessEndsOn?: string | null
+  accessExpiresAt?: string | null
 }
 
 // An outstanding invitation to join another household.
@@ -73,6 +84,8 @@ export interface PendingInvite {
   householdName: string
   memberType: string
   isAdmin: boolean
+  accessEndsOn?: string | null
+  accessExpiresAt?: string | null
 }
 
 export const personsApi = {
@@ -126,20 +139,38 @@ export function useHousehold(): {
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([])
   useEffect(() => {
     let alive = true
-    const load = () =>
-      personsApi
+    let localRequestSequence = 0
+    const load = () => {
+      const identityScope = currentIdentityScope()
+      const localSequence = ++localRequestSequence
+      return personsApi
         .household()
-        .then((d) => {
+        .then(async (d) => {
+          // A login, household switch, kiosk profile switch, or unmount may have
+          // happened while this request was suspended. Never let the old response
+          // restore its person/role into the replacement session's local gates.
+          if (!alive || localSequence !== localRequestSequence ||
+              currentIdentityScope() !== identityScope) return
           // Keep the module-level viewer in sync (drives personal-calendar visibility
-          // in the offline agenda reads) regardless of whether this hook is still mounted.
+          // in the offline agenda reads) and centrally block guest mutations regardless
+          // of which screen is mounted. Publish every still-live, identity-current
+          // observation: the atomic merge may tighten but never extend authority, so
+          // an older restrictive result is useful even if a newer hook was cancelled.
+          await setCurrentViewerAccess(
+            d.person?.memberType ?? null,
+            d.person?.accessExpiresAt,
+            { preventAuthorityExtension: true }
+          )
+          if (!alive || localSequence !== localRequestSequence ||
+              currentIdentityScope() !== identityScope) return
           setCurrentViewerPersonId(d.person?.id ?? null)
-          if (!alive) return
           setHousehold(d.household ?? null)
           setPerson(d.person ?? null)
           setMemberships(d.memberships ?? [])
           setPendingInvites(d.pendingInvites ?? [])
         })
         .catch(() => {})
+    }
     load()
     window.addEventListener(HOUSEHOLD_CHANGED, load)
     return () => {

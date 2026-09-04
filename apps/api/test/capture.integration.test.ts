@@ -5,7 +5,11 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
-import { finalizeIntent, resolveDayFromText } from '../src/modules/capture/capture'
+
+const PROVIDER_ENV_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OLLAMA_HOST'] as const
+const originalProviderEnv = new Map(
+  PROVIDER_ENV_KEYS.map((key) => [key, process.env[key]])
+)
 
 const SECRET = 'waffled-local-dev-secret-change-me'
 let pg: StartedPostgreSqlContainer
@@ -13,6 +17,8 @@ let url: string
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let app: any
 let closePool: () => Promise<void>
+let finalizeIntent: typeof import('../src/modules/capture/capture').finalizeIntent
+let resolveDayFromText: typeof import('../src/modules/capture/capture').resolveDayFromText
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
@@ -28,12 +34,19 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 let kevin = ''
 
 beforeAll(async () => {
+  // This file verifies the no-provider baseline. Developer shell credentials
+  // must not make that behavior machine-dependent; load config only after the
+  // provider environment has been explicitly isolated for this worker.
+  for (const key of PROVIDER_ENV_KEYS) delete process.env[key]
   pg = await new PostgreSqlContainer('postgres:16').start()
   url = pg.getConnectionUri()
   await runMigrations(url)
   process.env.DATABASE_URL = url
   process.env.LOCAL_JWT_SECRET = SECRET
   delete process.env.AUTH0_DOMAIN
+  const capture = await import('../src/modules/capture/capture')
+  finalizeIntent = capture.finalizeIntent
+  resolveDayFromText = capture.resolveDayFromText
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
   const setup = await call('POST', '/api/auth/setup', undefined, {
@@ -47,6 +60,11 @@ beforeAll(async () => {
 afterAll(async () => {
   await closePool?.()
   await pg?.stop()
+  for (const key of PROVIDER_ENV_KEYS) {
+    const original = originalProviderEnv.get(key)
+    if (original === undefined) delete process.env[key]
+    else process.env[key] = original
+  }
 })
 
 describe('capture config endpoints', () => {

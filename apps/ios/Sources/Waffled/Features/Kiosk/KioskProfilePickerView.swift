@@ -32,6 +32,13 @@ struct KioskProfilePickerView: View {
             WF.canvas.ignoresSafeArea()
             VStack(spacing: 0) {
                 header
+                if let identityError = kiosk.deviceIdentityError {
+                    Text(identityError)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(WF.primaryD)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28).padding(.bottom, 16)
+                }
                 if !loaded {
                     WaffledLoading(top: 80)
                     Spacer()
@@ -160,20 +167,36 @@ struct KioskProfilePickerView: View {
     // MARK: data
 
     private func load(silent: Bool = false) async {
+        let deviceSnapshot = KioskDeviceStore.snapshot()
         do {
             let resp = try await api.kioskProfiles()
+            guard KioskDeviceStore.isCurrent(deviceSnapshot) else { return }
             profiles = resp.profiles
             deviceLabel = resp.deviceLabel ?? kiosk.deviceLabel
             loadError = nil
         } catch let WaffledAPI.APIError.http(code, _) where code == 401 {
+            guard KioskDeviceStore.isCurrent(deviceSnapshot) else { return }
             // The device's own credential was rejected — an admin unpaired this kiosk.
             // Forget the pairing and fall back to login rather than a dead picker.
-            kiosk.handleDeviceRevoked()
+            if !kiosk.handleDeviceRevoked(expectedDevice: deviceSnapshot) {
+                profiles = []
+                loadError = kiosk.deviceIdentityError
+            }
         } catch is KioskDeviceAuth.NotPaired {
-            kiosk.handleDeviceRevoked()
+            guard KioskDeviceStore.isCurrent(deviceSnapshot) else { return }
+            if !kiosk.handleDeviceRevoked(expectedDevice: deviceSnapshot) {
+                profiles = []
+                loadError = kiosk.deviceIdentityError
+            }
+        } catch is KioskDeviceAuth.Superseded {
+            return
+        } catch WaffledAPI.APIError.superseded {
+            return
         } catch {
+            guard KioskDeviceStore.isCurrent(deviceSnapshot) else { return }
             if !silent { loadError = "Couldn’t load profiles. Check the connection." }
         }
+        guard KioskDeviceStore.isCurrent(deviceSnapshot) || !kiosk.isShared else { return }
         loaded = true
     }
 
@@ -358,8 +381,11 @@ struct KioskPickerEscapeSheet: View {
                 // Local-only: forget the device pairing and return to sign-in. We can't
                 // revoke server-side here (nobody is signed in on the picker); an admin can
                 // remove the leftover device entry from Settings → Display & Kiosk later.
-                kiosk.handleDeviceRevoked()
-                dismiss()
+                if kiosk.handleDeviceRevoked() {
+                    dismiss()
+                } else {
+                    serverError = kiosk.deviceIdentityError
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {

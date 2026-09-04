@@ -752,7 +752,7 @@ describe('chore capability gating (non-admin members)', () => {
 
   it('a non-admin adult holds the default capabilities; a kid holds none', async () => {
     const adult = JSON.parse((await call('GET', '/api/household', adultToken)).body).person
-    expect(adult.capabilities.sort()).toEqual(['chore.approve', 'chore.manage', 'goal.manage', 'reward.approve', 'reward.grant', 'reward.manage'])
+    expect(adult.capabilities.sort()).toEqual(['chore.approve', 'chore.manage', 'goal.manage', 'reward.approve', 'reward.correct', 'reward.grant', 'reward.manage'])
     const kid = JSON.parse((await call('GET', '/api/household', kidToken)).body).person
     expect(kid.capabilities).toEqual([])
   })
@@ -798,6 +798,72 @@ describe('chore capability gating (non-admin members)', () => {
 
     // reset so later assumptions about defaults hold
     await call('PUT', '/api/permissions', kevin, { permissions: { kid: { 'chore.approve': false } } })
+  })
+
+  it('preserves capability cells omitted by an older permissions client', async () => {
+    const seeded = await call('PUT', '/api/permissions', kevin, {
+      permissions: {
+        adult: { 'reward.correct': false },
+        caregiver: { 'reward.correct': true },
+        guest: { 'reward.correct': true },
+        teen: { 'reward.correct': true },
+        kid: { 'reward.correct': true },
+      },
+    })
+    expect(seeded.statusCode).toBe(200)
+
+    // This is the complete matrix sent by a client released before
+    // reward.correct existed. Saving an unrelated cell must not reset the
+    // server-only capability to its role default.
+    const legacyAdult = {
+      'chore.manage': false,
+      'chore.approve': true,
+      'reward.manage': true,
+      'reward.approve': true,
+      'reward.grant': true,
+      'goal.manage': true,
+      'future.unknown': true,
+    }
+    const legacyRestricted = {
+      'chore.manage': false,
+      'chore.approve': false,
+      'reward.manage': false,
+      'reward.approve': false,
+      'reward.grant': false,
+      'goal.manage': false,
+      'future.unknown': true,
+    }
+    const updated = await call('PUT', '/api/permissions', kevin, {
+      permissions: {
+        adult: legacyAdult,
+        caregiver: legacyRestricted,
+        guest: { ...legacyRestricted, 'reward.correct': true },
+        teen: legacyRestricted,
+        kid: legacyRestricted,
+        futureRole: { 'reward.correct': true },
+      },
+    })
+
+    expect(updated.statusCode).toBe(200)
+    const permissions = JSON.parse(updated.body).permissions
+    expect(permissions.adult['chore.manage']).toBe(false)
+    expect(permissions.adult['reward.correct']).toBe(false)
+    expect(permissions.caregiver['reward.correct']).toBe(true)
+    expect(permissions.guest['reward.correct']).toBe(false)
+    expect(permissions.teen['reward.correct']).toBe(true)
+    expect(permissions.kid['reward.correct']).toBe(true)
+    expect(permissions.adult['future.unknown']).toBeUndefined()
+    expect(permissions.futureRole).toBeUndefined()
+
+    await call('PUT', '/api/permissions', kevin, {
+      permissions: {
+        adult: { 'chore.manage': true, 'reward.correct': true },
+        caregiver: { 'reward.correct': false },
+        guest: { 'reward.correct': true },
+        teen: { 'reward.correct': false },
+        kid: { 'reward.correct': false },
+      },
+    })
   })
 
   it('non-admins cannot read or write the permissions matrix (403)', async () => {
