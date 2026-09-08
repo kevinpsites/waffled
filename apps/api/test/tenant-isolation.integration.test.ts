@@ -224,6 +224,59 @@ describe('redeeming for another member needs the capability', () => {
   })
 })
 
+// ---- Follow-up to finding 6 — the same rule, through the capture bar --------
+// The route gate is only half the door. /api/capture/commit reaches the very same
+// requestRedemption via the rewards capture target, and it resolves a spoken name
+// ("Sib A spent 3 stars on ice cream") into that person's id — so without the same
+// capability check a kid could spend a sibling's balance by naming them. No tenant
+// leak (findPersonByName is household-scoped); this is the in-household half.
+describe('redeeming for another member through capture needs the capability', () => {
+  const commit = (token: string, rewardId: string, personName?: string) =>
+    call('POST', '/api/capture/commit', token, {
+      verb: 'redeem',
+      targetKind: 'reward',
+      targetId: rewardId,
+      args: personName ? { personName } : {},
+    })
+
+  it('refuses a kid naming a sibling, and leaves the sibling’s balance intact', async () => {
+    // Approval OFF is the only shape that actually spends — an approval-gated reward
+    // just queues a request, so it would prove nothing about the money.
+    const reward = await call('POST', '/api/rewards', attacker, { title: 'Ice cream', cost: 3, requiresApproval: false })
+    expect(reward.statusCode).toBe(201)
+    const rewardId = JSON.parse(reward.body).reward.id as string
+
+    // Fund both kids, so a refusal can never be mistaken for "not enough stars".
+    for (const id of [aKidId, aSiblingId]) {
+      expect((await call('POST', `/api/persons/${id}/award`, attacker, { amount: 10 })).statusCode).toBe(201)
+    }
+    const stars = (personId: string) =>
+      withClient(async (c) =>
+        Number(
+          (
+            await c.query<{ balance: string }>(
+              `select coalesce(sum(amount),0) as balance from ledger_entries
+                 where household_id=$1 and person_id=$2 and deleted_at is null`,
+              [householdA, personId]
+            )
+          ).rows[0].balance
+        )
+      )
+
+    // Spending your OWN balance through capture stays allowed.
+    expect((await commit(attackerKid, rewardId)).statusCode).toBe(200)
+    expect(await stars(aKidId)).toBe(7)
+
+    // Naming a sibling is a parent action.
+    expect((await commit(attackerKid, rewardId, 'Sib A')).statusCode).toBe(403)
+    expect(await stars(aSiblingId)).toBe(10)
+
+    // An admin (who holds reward.manage) still can.
+    expect((await commit(attacker, rewardId, 'Sib A')).statusCode).toBe(200)
+    expect(await stars(aSiblingId)).toBe(7)
+  })
+})
+
 // ---- Finding 3 — photo uploadedBy -------------------------------------------
 describe('photo attribution cannot reach another household', () => {
   it('refuses a photo attributed to a person outside the household', async () => {
