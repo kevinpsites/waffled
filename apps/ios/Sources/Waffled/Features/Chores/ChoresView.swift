@@ -277,7 +277,10 @@ struct ChoresView: View {
                 }
             }
         }
-        .task(id: sync.choresRev) { await model.load(); await approvals.load() }
+        .task(id: "\(sync.choresRev)|\(sync.modulesRev)") {
+            await model.load()
+            await loadApprovals()
+        }
         .task { await sync.loadCurrencies() }
         .sheet(item: $editor) { target in
             // Snapshot the sync-derived inputs HERE (read `sync` once) instead of letting
@@ -421,7 +424,10 @@ struct ChoresView: View {
         }
         // Bounce even when nothing's scheduled, so pull-to-refresh still triggers.
         .scrollBounceBehavior(.always)
-        .refreshable { await model.load(); await approvals.load() }
+        .refreshable {
+            await model.load()
+            await loadApprovals()
+        }
         // Horizontal flick steps a day (matching Calendar's day view). simultaneousGesture
         // (not gesture) so vertical scroll + drag-to-reassign still work.
         .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleDaySwipe))
@@ -634,9 +640,17 @@ struct ChoresView: View {
         approvals.drop(chore: c.id)
         Task {
             let ok = await op()
-            await approvals.load()
+            await loadApprovals()
             if ok { await model.load() }
         }
+    }
+
+    private func loadApprovals() async {
+        await approvals.load(
+            scope: sync.restDataScopeKey,
+            choresEnabled: sync.module(.chores),
+            rewardsEnabled: sync.rewardsOn
+        )
     }
 
     /// Up for grabs first, then every household member in order, then any orphans.

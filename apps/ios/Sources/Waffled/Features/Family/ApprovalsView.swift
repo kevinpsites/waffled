@@ -5,25 +5,68 @@ import SwiftUI
 @MainActor
 @Observable
 final class ApprovalsModel {
-    private(set) var redemptions: [WaffledAPI.RewardRedemption] = []
-    private(set) var chores: [WaffledAPI.ChoreInstanceDTO] = []
-    private(set) var loading = true
+    typealias FetchRedemptions = @Sendable () async throws -> [WaffledAPI.RewardRedemption]
+    typealias FetchChores = @Sendable () async throws -> [WaffledAPI.ChoreInstanceDTO]
 
-    private let api = WaffledAPI()
+    private let redemptionsD = RestDomain<[WaffledAPI.RewardRedemption]>([], isEmpty: \.isEmpty)
+    private let choresD = RestDomain<[WaffledAPI.ChoreInstanceDTO]>([], isEmpty: \.isEmpty)
+    private let fetchRedemptions: FetchRedemptions
+    private let fetchChores: FetchChores
+    private var dataScope: RestDataScopeKey?
+    private var loadGeneration = 0
+    private var choresEnabled = true
+    private var rewardsEnabled = true
+    private var modulesUpdatedAt: Date?
+
+    init(fetchRedemptions: FetchRedemptions? = nil, fetchChores: FetchChores? = nil) {
+        let api = WaffledAPI()
+        self.fetchRedemptions = fetchRedemptions ?? { try await api.redemptions(status: "pending") }
+        self.fetchChores = fetchChores ?? { try await api.awaitingChores() }
+    }
+
+    var redemptions: [WaffledAPI.RewardRedemption] { rewardsEnabled ? redemptionsD.value : [] }
+    var chores: [WaffledAPI.ChoreInstanceDTO] { choresEnabled ? choresD.value : [] }
+    var state: RestState {
+        var states: [RestState] = []
+        if rewardsEnabled { states.append(redemptionsD.state) }
+        if choresEnabled { states.append(choresD.state) }
+        if states.isEmpty, let modulesUpdatedAt { return .empty(updatedAt: modulesUpdatedAt) }
+        return .combined(states)
+    }
+    var loading: Bool { !state.loaded }
 
     var total: Int { redemptions.count + chores.count }
     var isEmpty: Bool { total == 0 }
 
-    func load() async {
-        async let red = try? await api.redemptions(status: "pending")
-        async let ch = try? await api.awaitingChores()
-        redemptions = await red ?? []
-        chores = await ch ?? []
-        loading = false
+    func load(
+        scope: RestDataScopeKey,
+        choresEnabled: Bool = true,
+        rewardsEnabled: Bool = true
+    ) async {
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        if dataScope != scope {
+            dataScope = scope
+            redemptionsD.reset()
+            choresD.reset()
+            modulesUpdatedAt = nil
+        }
+        self.choresEnabled = choresEnabled
+        self.rewardsEnabled = rewardsEnabled
+        if rewardsEnabled { redemptionsD.beginLoading() }
+        if choresEnabled { choresD.beginLoading() }
+        async let redemptions = RestFetch.result(when: rewardsEnabled, fetchRedemptions)
+        async let chores = RestFetch.result(when: choresEnabled, fetchChores)
+        let results = await (redemptions, chores)
+
+        guard !Task.isCancelled, generation == loadGeneration else { return }
+        if let redemptions = results.0 { redemptionsD.apply(redemptions) }
+        if let chores = results.1 { choresD.apply(chores) }
+        modulesUpdatedAt = Date()
     }
 
-    func drop(redemption id: String) { redemptions.removeAll { $0.id == id } }
-    func drop(chore id: String) { chores.removeAll { $0.id == id } }
+    func drop(redemption id: String) { redemptionsD.value.removeAll { $0.id == id } }
+    func drop(chore id: String) { choresD.value.removeAll { $0.id == id } }
 }
 
 /// The gold "N to approve" entry card, shown wherever a parent might jump to the
@@ -86,10 +129,14 @@ struct ApprovalsView: View {
                     let showChores = sync.can("chore.approve") && !model.chores.isEmpty
                     if model.loading && model.isEmpty {
                         WaffledLoading()
-                    } else if !showRedemptions && !showChores {
-                        WaffledEmptyState(emoji: "🎉", title: "All caught up",
-                                       message: "No reward purchases or chores waiting on you.")
                     } else {
+                        RestStateNotice(state: model.state, retry: {
+                            Task { await load() }
+                        })
+                        if !showRedemptions && !showChores && model.state.isAuthoritative {
+                            WaffledEmptyState(emoji: "🎉", title: "All caught up",
+                                           message: "No reward purchases or chores waiting on you.")
+                        }
                         if showRedemptions {
                             SectionLabel(text: "Reward purchases")
                             ForEach(model.redemptions) { redemptionRow($0) }
@@ -106,11 +153,11 @@ struct ApprovalsView: View {
                 .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
             }
             .scrollBounceBehavior(.always)
-            .refreshable { await model.load() }
+            .refreshable { await load() }
         }
         .background(WF.canvas)
         .navigationTitle("Needs your OK").navigationBarTitleDisplayMode(.inline)
-        .task { await model.load() }
+        .task(id: sync.modulesRev) { await load() }
         .sheet(item: $reviewing) { c in
             ChoreProofReview(
                 chore: c, memberColorHex: nil,
@@ -198,6 +245,18 @@ struct ApprovalsView: View {
     /// (re-fetch) if it failed.
     private func decide(_ drop: () -> Void, _ op: @escaping () async -> Bool) {
         drop()
-        Task { if await op() == false { await model.load() } }
+        Task {
+            if await op() == false {
+                await load()
+            }
+        }
+    }
+
+    private func load() async {
+        await model.load(
+            scope: sync.restDataScopeKey,
+            choresEnabled: sync.module(.chores),
+            rewardsEnabled: sync.rewardsOn
+        )
     }
 }

@@ -6,9 +6,9 @@ import SwiftUI
 /// PowerSync-backed model into the environment here.
 @main
 struct WaffledApp: App {
-    @State private var sync = SyncManager()
+    @State private var sync: SyncManager
     @State private var session = Session()
-    @State private var notifications = NotificationManager()
+    @State private var notifications: NotificationManager
     @State private var kiosk = KioskMode()
     /// The light/dark/system choice, persisted. Drives `.preferredColorScheme` below.
     @State private var theme = ThemeStore()
@@ -17,18 +17,36 @@ struct WaffledApp: App {
     @State private var cook = CookSessionStore()
     /// Cold-launch splash (bouncing logo on cream). Shown once per launch, then faded.
     @State private var showSplash = true
+    /// Nothing principal-selectable renders until the legacy/unauthenticated database
+    /// boundary has been verified. This gate intentionally wraps both auth and kiosk.
+    @State private var bootstrapReady = false
+    @State private var bootstrapIssue: Session.BootstrapResult?
+    @State private var bootstrapBusy = false
+
+    init() {
+        let notifications = NotificationManager()
+        _notifications = State(initialValue: notifications)
+        _sync = State(initialValue: SyncManager(principalStateCleanup: {
+            await notifications.clearPrincipalState()
+        }))
+    }
 
     var body: some Scene {
         WindowGroup {
             ZStack {
-                // KioskGate wraps the auth gate: a shared-kiosk iPad with nobody claimed in
-                // shows the profile picker INSTEAD of the login screen. On iPhone (and a
-                // single-login iPad) it's a transparent passthrough.
-                KioskGate {
-                    AuthGate {
-                        RootView()
-                            .task { await sync.start() }   // connect PowerSync once signed in
+                if bootstrapReady {
+                    // KioskGate wraps the auth gate: a shared-kiosk iPad with nobody claimed in
+                    // shows the profile picker INSTEAD of the login screen. On iPhone (and a
+                    // single-login iPad) it's a transparent passthrough.
+                    KioskGate {
+                        AuthGate {
+                            RootView()
+                                .id(sync.restDataScopeKey)
+                                .task { await sync.start() }   // connect PowerSync once signed in
+                        }
                     }
+                } else {
+                    principalIsolationGate
                 }
                 if showSplash {
                     SplashView()
@@ -49,7 +67,23 @@ struct WaffledApp: App {
             .environment(theme)
             .tint(WF.primary)
             .preferredColorScheme(theme.colorScheme)   // light / dark / follow-device (Settings → Appearance)
-            .task { await session.bootstrap() }    // read the Keychain / probe auth status
+            .task { await bootstrap() }
+            // One coordinator owns an expired credential boundary. Session gates the
+            // login UI until SyncManager has invalidated REST state and disconnected,
+            // avoiding two unordered notification observers racing a new login.
+            .onReceive(NotificationCenter.default.publisher(for: .waffledAuthExpired)) { note in
+                guard let lease = note.object as? AuthTokens.RefreshLease else { return }
+                Task {
+                    if await session.signOut(
+                        sync: sync,
+                        policy: .securityCritical,
+                        expectedRefreshLease: lease,
+                        blocksAuthenticatedUI: true
+                    ) == .completed {
+                        kiosk.completeProfileSignOut()
+                    }
+                }
+            }
             .task {
                 // Headless-verification rotation (see DemoHooks.forceOrientation). The
                 // request is a preference the system can ignore while the scene is still
@@ -72,6 +106,64 @@ struct WaffledApp: App {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var principalIsolationGate: some View {
+        if bootstrapBusy || bootstrapIssue == nil {
+            SplashView()
+        } else {
+            ZStack {
+                WF.canvas.ignoresSafeArea()
+                VStack(spacing: 16) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 42, weight: .semibold))
+                        .foregroundStyle(WF.primary)
+                    Text("Finishing a private-data update")
+                        .font(.system(size: 20, weight: .bold)).foregroundStyle(WF.ink)
+                    switch bootstrapIssue {
+                    case let .pendingMigrationUploads(count):
+                        Text("This device has \(count) change\(count == 1 ? "" : "s") still waiting to sync. Keep Waffled open and retry, or discard those changes to finish the update.")
+                            .font(.system(size: 14)).foregroundStyle(WF.ink2)
+                            .multilineTextAlignment(.center)
+                        HStack(spacing: 12) {
+                            Button("Retry") { Task { await bootstrap() } }
+                                .buttonStyle(.bordered)
+                            Button("Discard changes", role: .destructive) {
+                                Task { await bootstrap(discardMigrationUploads: true) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                    case .purgeFailed, .none:
+                        Text("Waffled couldn’t safely clear data left by the previous session. No account or profile is available until that cleanup succeeds.")
+                            .font(.system(size: 14)).foregroundStyle(WF.ink2)
+                            .multilineTextAlignment(.center)
+                        Button("Try again") { Task { await bootstrap() } }
+                            .buttonStyle(.borderedProminent)
+                    case .ready:
+                        EmptyView()
+                    }
+                }
+                .padding(28).frame(maxWidth: 520)
+            }
+        }
+    }
+
+    private func bootstrap(discardMigrationUploads: Bool = false) async {
+        guard !bootstrapBusy else { return }
+        bootstrapBusy = true
+        bootstrapIssue = nil
+        let result = await session.bootstrap(
+            sync: sync,
+            kioskNeedsPicker: kiosk.needsPicker,
+            discardMigrationUploads: discardMigrationUploads
+        )
+        if result == .ready {
+            bootstrapReady = true
+        } else {
+            bootstrapIssue = result
+        }
+        bootstrapBusy = false
     }
 }
 

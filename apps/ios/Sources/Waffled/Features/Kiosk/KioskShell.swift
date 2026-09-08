@@ -10,7 +10,10 @@ import SwiftUI
 struct KioskShell: View {
     @Environment(SyncManager.self) private var sync
     @Environment(KioskMode.self) private var kiosk
+    @Environment(Session.self) private var session
     @State private var selection: KioskNav = KioskNav(rawValue: DemoHooks.kioskPage ?? "") ?? .today
+    @State private var confirmProfileSwitch = false
+    @State private var profileSwitchError: String?
 
     /// Per-device list of user-pinned rail destinations (comma-joined `KioskNav`
     /// rawValues) — see `KioskRail`. Editing it in Display & Kiosk re-renders the rail
@@ -80,6 +83,22 @@ struct KioskShell: View {
         .onChange(of: sync.modulesRev) { _, _ in correctSelection() }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
+        }
+        .confirmationDialog("Discard unsynced changes and switch profile?", isPresented: $confirmProfileSwitch, titleVisibility: .visible) {
+            Button("Discard changes and switch", role: .destructive) {
+                Task { await performProfileSwitch(policy: .discardAuthorized) }
+            }
+            Button("Wait for sync", role: .cancel) {}
+        } message: {
+            Text("This device has \(sync.pendingUploads) change\(sync.pendingUploads == 1 ? "" : "s") that haven’t reached the server.")
+        }
+        .alert("Couldn’t switch profiles", isPresented: Binding(
+            get: { profileSwitchError != nil },
+            set: { if !$0 { profileSwitchError = nil } }
+        )) {
+            Button("OK", role: .cancel) { profileSwitchError = nil }
+        } message: {
+            Text(profileSwitchError ?? "Try again.")
         }
     }
 
@@ -168,7 +187,7 @@ struct KioskShell: View {
 
         if kiosk.isShared {
             // Tap the avatar → straight back to the picker (the swap badge signals it).
-            Button { Task { await kiosk.returnToPicker(sync: sync) } } label: { chip }
+            Button { requestProfileSwitch() } label: { chip }
                 .buttonStyle(.plain)
         } else {
             chip
@@ -270,9 +289,31 @@ struct KioskShell: View {
         .contentShape(Rectangle())
 
         if kiosk.isShared {
-            Button { Task { await kiosk.returnToPicker(sync: sync) } } label: { chip }.buttonStyle(.plain)
+            Button { requestProfileSwitch() } label: { chip }.buttonStyle(.plain)
         } else {
             chip
+        }
+    }
+
+    private func requestProfileSwitch() {
+        if sync.pendingUploads > 0 {
+            confirmProfileSwitch = true
+        } else {
+            Task { await performProfileSwitch(policy: .requireNoPendingUploads) }
+        }
+    }
+
+    private func performProfileSwitch(policy: SyncManager.PrincipalExitPolicy) async {
+        let result = await kiosk.returnToPicker(sync: sync, session: session, policy: policy)
+        switch result {
+        case .completed:
+            break
+        case let .pendingUploads(count):
+            if count > 0 { confirmProfileSwitch = true }
+        case .purgeFailed:
+            profileSwitchError = sync.lastError ?? "Couldn’t safely clear this profile’s local data."
+        case .transitionInProgress:
+            profileSwitchError = "Another account change is still finishing. Try again."
         }
     }
 

@@ -158,33 +158,36 @@ struct PhotosView: View {
     private func grid(columns: [GridItem], tileHeight: CGFloat) -> some View {
         if model.loading && model.photos.isEmpty {
             WaffledLoading(top: 48)
-        } else if model.photos.isEmpty {
-            WaffledEmptyState(
-                emoji: model.error ? "😕" : "📷",
-                title: model.error ? "Couldn’t load photos" : "No photos yet",
-                message: model.error ? "Pull to refresh to try again."
-                                     : "Tap Add to upload your family’s moments.",
-                top: 56)
         } else {
-            LazyVGrid(columns: columns, spacing: tileHeight > 180 ? 14 : 12) {
-                ForEach(shownPhotos) { photo in
-                    let picked = selection.contains(photo.id)
-                    Button {
-                        if selecting { toggle(photo.id) } else { detail = photo }
-                    } label: {
-                        PhotoTile(photo: photo, height: tileHeight)
-                            .overlay {
-                                if selecting && picked {
-                                    RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
-                                        .strokeBorder(WF.primary, lineWidth: 3)
+            RestStateNotice(state: model.state, retry: { Task { await model.load() } })
+                .padding(.horizontal, isKiosk ? 0 : 16)
+            if model.photos.isEmpty && model.state.isAuthoritative {
+                WaffledEmptyState(
+                    emoji: "📷",
+                    title: "No photos yet",
+                    message: "Tap Add to upload your family’s moments.",
+                    top: 56)
+            } else if !model.photos.isEmpty {
+                LazyVGrid(columns: columns, spacing: tileHeight > 180 ? 14 : 12) {
+                    ForEach(shownPhotos) { photo in
+                        let picked = selection.contains(photo.id)
+                        Button {
+                            if selecting { toggle(photo.id) } else { detail = photo }
+                        } label: {
+                            PhotoTile(photo: photo, height: tileHeight)
+                                .overlay {
+                                    if selecting && picked {
+                                        RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                                            .strokeBorder(WF.primary, lineWidth: 3)
+                                    }
                                 }
-                            }
-                            .overlay(alignment: .topLeading) {
-                                if selecting { selectBadge(on: picked).padding(8) }
-                            }
-                            .opacity(selecting && !picked ? 0.78 : 1)
+                                .overlay(alignment: .topLeading) {
+                                    if selecting { selectBadge(on: picked).padding(8) }
+                                }
+                                .opacity(selecting && !picked ? 0.78 : 1)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
