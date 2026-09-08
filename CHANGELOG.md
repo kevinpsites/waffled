@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **API keys with list write access can now update and remove list items.** External
+  integrations can use the existing `PATCH` and `DELETE /api/list-items/:id` endpoints;
+  read-only list keys remain unable to change them.
+
 ### Changed
 
 - **API bind address is configurable.** Set `HOST` to pin the API to one interface (the

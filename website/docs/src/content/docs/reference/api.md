@@ -51,6 +51,10 @@ reachable with a key — `household`, `persons`/`family` (read), `lists`, `pantr
 countdowns, family-night, goal-calendar, Google calendar) always 403s for a key. In-route
 capability checks still apply on top of the scope.
 
+The `lists:read` scope covers list reads under `/api/lists`. The `lists:write` scope also
+allows integrations to add items under `/api/lists/:id/items` and update or remove existing
+items through `PATCH` or `DELETE /api/list-items/:id`.
+
 ---
 
 ## Endpoint reference
@@ -155,7 +159,10 @@ capability X · **module(X)** = requires module X enabled · **device** = kiosk 
 
 | Method | Path | Purpose | Auth |
 |---|---|---|---|
-| GET · POST · PATCH · DELETE | `/api/lists[/:id]` · `/api/list-items/:id` | Lists & items | module(lists) tenant |
+| GET · POST · PATCH · DELETE | `/api/lists[/:id]` | Lists | module(lists) tenant |
+| POST | `/api/lists/:id/items` | Add a list item | module(lists) tenant |
+| PATCH · DELETE | `/api/list-items/:id` | Update or remove a list item | module(lists) tenant |
+| PATCH | `/api/list-items/bulk` | Update several list items | module(lists) tenant |
 | GET · POST | `/api/lists/templates[/:id]` · `/:id/save-as-template` · `/:id/apply` | List templates | module(lists) tenant |
 | GET · POST | `/api/lists/grocery` · `/board` · `/rebuild` · `/from-recipe/:id` · `/items` | Grocery board | module(lists) tenant |
 | GET · POST · DELETE | `/api/pantry-staples[/:id]` | Pantry staples | module(lists) tenant |

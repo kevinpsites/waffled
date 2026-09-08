@@ -176,7 +176,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   tab; Today cards / nav / routes gate on it), the first module — **Pantry / on-hand
   inventory** (items with quantities + locations, quantity stepper, "used up", drag between
   locations, a Today card) — and **per-user API keys + scopes** (`waffled_…` key via `x-api-key`,
-  `<resource>:read|write` over the unchanged capability matrix, **Settings → API Keys** tab).
+  `<resource>:read|write` over the unchanged capability matrix, including list-item add/update/
+  remove access for `lists:write`, **Settings → API Keys** tab).
   Web today; the module flag is server-shared so iOS can grow native cards later. The two
   supported patterns (built-in toggle module · external integration via API keys) and the one
   we don't build (in-process plugins) are written up in

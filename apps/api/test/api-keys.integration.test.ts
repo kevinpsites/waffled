@@ -129,6 +129,15 @@ describe('api-key authentication + scope gate', () => {
     expect((await keyCall('GET', '/api/chores/today', readKey)).statusCode).toBe(403)
   })
 
+  it('allows Open WebUI integrations with lists:write to mutate list items', async () => {
+    const list = JSON.parse((await keyCall('POST', '/api/lists', writeKey, { name: 'Open WebUI' })).body).list
+    const item = JSON.parse((await keyCall('POST', `/api/lists/${list.id}/items`, writeKey, { name: 'Milk' })).body).item
+
+    expect((await keyCall('PATCH', `/api/list-items/${item.id}`, readKey, { checked: true })).statusCode).toBe(403)
+    expect((await keyCall('PATCH', `/api/list-items/${item.id}`, writeKey, { checked: true })).statusCode).toBe(200)
+    expect((await keyCall('DELETE', `/api/list-items/${item.id}`, writeKey)).statusCode).toBe(204)
+  })
+
   it('requires :write for mutations', async () => {
     // readKey has lists:read only → POST denied
     expect((await keyCall('POST', '/api/lists', readKey, { name: 'Camping' })).statusCode).toBe(403)
