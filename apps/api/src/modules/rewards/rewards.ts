@@ -396,8 +396,11 @@ export function registerRewardRoutes(api: Api): void {
     let where = `r.household_id=$1 and r.deleted_at is null`
     if (status) { params.push(status); where += ` and r.status=$${params.length}` }
     const { rows } = await query<RedemptionRow & { person_name: string | null; avatar_emoji: string | null; color_hex: string | null }>(
+      // The persons join carries the household predicate so a row that somehow
+      // holds a foreign person_id resolves to nulls, never a stranger's profile.
       `select r.*, p.name as person_name, p.avatar_emoji, p.color_hex
-         from reward_redemptions r left join persons p on p.id = r.person_id
+         from reward_redemptions r
+         left join persons p on p.id = r.person_id and p.household_id = r.household_id
         where ${where} order by r.created_at desc limit 100`,
       params
     )
@@ -410,6 +413,7 @@ export function registerRewardRoutes(api: Api): void {
     const body = (req.body ?? {}) as { personId?: string }
     const personId = body.personId?.trim() || tenant.personId
     if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
+    await assertPersonInHousehold(tenant.householdId, personId)
     const red = await requestRedemption(tenant, id, personId)
     if (red === null) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     if ('error' in red) return res.status(409).json({ error: 'Conflict', message: red.error })

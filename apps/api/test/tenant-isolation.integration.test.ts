@@ -164,3 +164,42 @@ describe('spot award cannot reach another household', () => {
     expect(rows[0].stars).toBe(7)
   })
 })
+
+// ---- Finding 2 — reward redemption ------------------------------------------
+describe('reward redemption cannot reach another household', () => {
+  it('refuses a redemption filed for a person outside the household', async () => {
+    const reward = await call('POST', '/api/rewards', attacker, { title: 'Ice cream', cost: 5, requiresApproval: true })
+    expect(reward.statusCode).toBe(201)
+    const rewardId = JSON.parse(reward.body).reward.id as string
+
+    const res = await call('POST', `/api/rewards/${rewardId}/redeem`, attacker, { personId: bPersonId })
+    expect(res.statusCode).toBe(404)
+    const { rows } = await withClient((c) =>
+      c.query(`select 1 from reward_redemptions where person_id = $1`, [bPersonId])
+    )
+    expect(rows.length).toBe(0)
+  })
+
+  it('never discloses a foreign person through the redemptions list', async () => {
+    // Independent of the write guard: a row already on file (or written by some
+    // future missed guard) must still not resolve a stranger's profile.
+    await withClient(async (c) => {
+      const reward = await c.query<{ id: string }>(
+        `insert into rewards (household_id, title, cost, currency) values ($1,'Poisoned',1,'stars') returning id`,
+        [householdA]
+      )
+      await c.query(
+        `insert into reward_redemptions (household_id, reward_id, person_id, title, cost, currency, status)
+         values ($1,$2,$3,'Poisoned',1,'stars','pending')`,
+        [householdA, reward.rows[0].id, bPersonId]
+      )
+    })
+    const res = await call('GET', '/api/redemptions', attacker)
+    expect(res.statusCode).toBe(200)
+    const redemptions = JSON.parse(res.body).redemptions as { personId: string; personName: string | null }[]
+    const poisoned = redemptions.find((r) => r.personId === bPersonId)
+    expect(poisoned).toBeTruthy()
+    expect(poisoned?.personName).toBe(null)
+    expect(res.body).not.toContain(VICTIM_NAME)
+  })
+})
