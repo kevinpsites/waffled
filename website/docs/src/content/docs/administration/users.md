@@ -18,7 +18,8 @@ Add people in **Settings → Family & People**. Each person has:
 | Name | Display name across the app |
 | Avatar | Photo or initials |
 | Color | Their accent color (chips, calendar, attribution) |
-| `member_type` | **adult / teen / kid** — carries authorization (see below) |
+| `member_type` | **adult / caregiver / guest / teen / kid** — carries authorization (see below) |
+| Access expires | Optional for caregivers and guests; access ends automatically at that time |
 | Birthday | Optional; feeds calendar countdowns |
 
 A person can exist as a **profile without a login** — this is the normal setup for
@@ -42,9 +43,11 @@ wizard and can't be removed the way an ordinary login can. Removing anyone's log
 
 Two things drive what a member can do:
 
-- **`member_type`** (adult / teen / kid) carries authorization. Capabilities default
-  **adult = on, teen/kid = off**.
-- **`is_admin`** — the household **owner** — is always a superuser.
+- **`member_type`** carries authorization. Adults receive all capabilities by default;
+  caregivers can manage and approve routine chores and approve rewards; teens and kids
+  start with no extra capabilities; guests are always read-only.
+- **`is_admin`** is always a superuser and is only valid for an adult. The household
+  owner is an admin.
 
 The owner tunes a **per-capability grid per household** in Settings. What each
 capability gates, the defaults, and the "you can always act on your own stuff"
@@ -63,7 +66,11 @@ To bring in a new member who'll have their own login:
 2. The invited person **accepts** the invite to join the household.
 
 This is also how email-only / SSO members get access — the invite gates who is
-allowed to sign in via OIDC.
+allowed to sign in via OIDC. An invite can assign any role. Caregiver and guest
+invites may also include an expiration date; those profiles stay off the kiosk picker
+by default. Once temporary access expires, existing sessions stop working and the
+membership no longer appears in the household switcher. A fresh invite restores the
+same membership and its history instead of creating a duplicate person.
 
 ## Multiple households
 

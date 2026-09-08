@@ -337,7 +337,7 @@ function eligibleGoals(eventPeople: string[], goals: SuggestGoalRow[]): SuggestG
   })
 }
 
-export async function suggestionQueue(householdId: string): Promise<Suggestion[]> {
+export async function suggestionQueue(householdId: string, allowLearningWrites = true): Promise<Suggestion[]> {
   // Candidate single events: untagged, not a planned meal, in a window around now,
   // not cancelled, not already dismissed.
   const { rows: singles } = await query<SuggestEventRow>(
@@ -419,7 +419,10 @@ export async function suggestionQueue(householdId: string): Promise<Suggestion[]
   // 3) LLM fallback for the unmatched — but only events we haven't already asked
   // about (each event is classified at most once; matches go to memory, so future
   // loads resolve them instantly without re-paying the LLM). One batched call.
-  if (leftover.length) {
+  // The fallback records both which events have been sent to the model and the
+  // learned match. A guest GET must remain a pure read, so it still receives
+  // memory/keyword suggestions but does not enter this persistence-bearing path.
+  if (leftover.length && allowLearningWrites) {
     const { provider } = await getAiConfig(householdId)
     if (provider !== 'heuristic') {
       const { rows: seenRows } = await query<{ event_id: string }>(
@@ -634,7 +637,7 @@ export function registerGoalCalendarRoutes(api: Api): void {
 
   // Smart suggestions: untagged events that might count toward a goal.
   api.get('/api/goal-calendar/suggestions', tenantRoute(async (tenant) => {
-    return { items: await suggestionQueue(tenant.householdId) }
+    return { items: await suggestionQueue(tenant.householdId, tenant.memberType !== 'guest') }
   }))
 
   api.post('/api/goal-calendar/suggestions/link', tenantRoute(async (tenant, req: Request, res: Response) => {

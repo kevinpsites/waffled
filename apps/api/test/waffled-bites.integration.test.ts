@@ -76,6 +76,22 @@ describe('waffled-bites device pairing + parent control panel', () => {
     expect((await call('PATCH', '/api/household/modules', { waffledBites: true }, admin)).statusCode).toBe(200)
   })
 
+  it('only mints pairing codes for an active kid in the current household', async () => {
+    const owner = await query<{ id: string }>(
+      `select id from persons where account_id is not null and is_admin = true limit 1`
+    )
+    expect((await call('POST', `/api/persons/${owner.rows[0].id}/waffled-bite/pairing-code`, {}, admin)).statusCode).toBe(404)
+
+    const foreignHousehold = await query<{ id: string }>(
+      `insert into households (name, timezone) values ('Other family', 'America/Denver') returning id`
+    )
+    const foreignKid = await query<{ id: string }>(
+      `insert into persons (household_id, name, member_type) values ($1, 'Other kid', 'kid') returning id`,
+      [foreignHousehold.rows[0].id]
+    )
+    expect((await call('POST', `/api/persons/${foreignKid.rows[0].id}/waffled-bite/pairing-code`, {}, admin)).statusCode).toBe(404)
+  })
+
   it('403s minting a pairing code before the module is enabled', async () => {
     await call('PATCH', '/api/household/modules', { waffledBites: false }, admin)
     expect((await call('POST', `/api/persons/${kid}/waffled-bite/pairing-code`, {}, admin)).statusCode).toBe(403)
@@ -104,6 +120,21 @@ describe('waffled-bites device pairing + parent control panel', () => {
     expect(r.statusCode).toBe(409)
   })
 
+  it('revalidates the kid when an already-minted pairing code is consumed', async () => {
+    const code = json(await call('POST', `/api/persons/${otherKid}/waffled-bite/pairing-code`, {}, admin)).code
+    try {
+      await query(`update persons set deleted_at = now() where id = $1`, [otherKid])
+      expect((await call('POST', '/api/waffled-bites/pair', { code })).statusCode).toBe(401)
+      const pairingCode = await query<{ consumed_at: Date | null }>(
+        `select consumed_at from waffled_bite_pairing_codes where code = $1`, [code]
+      )
+      expect(pairingCode.rows[0].consumed_at).toBeNull()
+    } finally {
+      await query(`update persons set deleted_at = null where id = $1`, [otherKid])
+      await query(`delete from waffled_bite_pairing_codes where code = $1`, [code])
+    }
+  })
+
   // ── abandoned pairing codes don't accumulate forever ────────────────────────
   it('sweeps expired, never-claimed pairing codes the next time one is minted', async () => {
     // A code a parent minted and then abandoned (closed the pairing modal without
@@ -130,6 +161,43 @@ describe('waffled-bites device pairing + parent control panel', () => {
     deviceToken = json(r).accessToken
     expect(typeof deviceToken).toBe('string')
     expect((await call('POST', '/api/waffled-bites/device/token', { deviceSecret: 'garbage' })).statusCode).toBe(401)
+  })
+
+  it('invalidates both the long-lived secret and minted token when the bound kid becomes ineligible', async () => {
+    const original = await query<{ household_id: string }>(
+      `select household_id from waffled_bite_devices where id = $1`, [deviceId]
+    )
+    const foreign = await query<{ id: string }>(
+      `insert into households (name, timezone) values ('Credential boundary', 'UTC') returning id`
+    )
+    const expectCredentialsRejected = async () => {
+      expect((await call('POST', '/api/waffled-bites/device/token', { deviceSecret })).statusCode).toBe(401)
+      expect((await call('GET', '/api/waffled-bites/device/state', undefined, deviceToken)).statusCode).toBe(401)
+    }
+
+    try {
+      // The device and person foreign keys are independent, so enforce their
+      // tenant binding in every credential path even if a row is ever corrupted.
+      await query(`update waffled_bite_devices set household_id = $1 where id = $2`, [foreign.rows[0].id, deviceId])
+      await expectCredentialsRejected()
+      await query(`update waffled_bite_devices set household_id = $1 where id = $2`, [original.rows[0].household_id, deviceId])
+
+      await query(`update persons set member_type = 'caregiver' where id = $1`, [kid])
+      await expectCredentialsRejected()
+      await query(`update persons set member_type = 'kid' where id = $1`, [kid])
+
+      await query(`update persons set deleted_at = now() where id = $1`, [kid])
+      await expectCredentialsRejected()
+    } finally {
+      await query(`update waffled_bite_devices set household_id = $1 where id = $2`, [original.rows[0].household_id, deviceId])
+      await query(`update persons set member_type = 'kid', access_ends_on = null, deleted_at = null where id = $1`, [kid])
+    }
+
+    // Eligibility restoration revives neither a revoked device nor a new device;
+    // it simply permits the same still-bound credential to authenticate again.
+    const restored = await call('POST', '/api/waffled-bites/device/token', { deviceSecret })
+    expect(restored.statusCode).toBe(200)
+    deviceToken = json(restored).accessToken
   })
 
   it("shows the paired device (with its live runtime state) on the kid's profile", async () => {

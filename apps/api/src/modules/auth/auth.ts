@@ -8,15 +8,25 @@ import jwt from 'jsonwebtoken'
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { config } from '../../platform/config'
 import { query, getPool } from '../../platform/db'
-import { provisionHousehold, presentHousehold, presentPerson, requireTenant, requireAdmin } from '../households/households'
+import {
+  provisionHousehold,
+  presentHousehold,
+  presentPerson,
+  requireTenant,
+  requireAdmin,
+  resolveRequestTenant,
+} from '../households/households'
 import { loginMethods } from './oidc'
 import {
   listMemberships,
   pickActiveHousehold,
   setLastHousehold,
   pendingInvitesForEmail,
+  firstPendingInviteForEmail,
+  createMembershipFromInvite,
 } from './accounts'
 import { HEX_COLOR } from '../persons/persons'
+import { AccessEndDateError } from '../../platform/access-expiry'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -26,6 +36,7 @@ type Api = ReturnType<typeof createAPI>
 const ACCESS_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS) || 60 * 60 // 1h
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 60
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // ── password hashing (Node scrypt — no extra dependency) ─────────────────────
 export function hashPassword(pw: string): string {
@@ -101,7 +112,7 @@ export function registerAuthRoutes(api: Api): void {
       admin?: { name?: string; email?: string; password?: string; avatarEmoji?: string; colorHex?: string }
     }
     const name = b.household?.name?.trim()
-    const timezone = b.household?.timezone?.trim()
+    const timezone = typeof b.household?.timezone === 'string' ? b.household.timezone.trim() : ''
     const adminName = b.admin?.name?.trim()
     const email = b.admin?.email?.trim()
     const password = b.admin?.password ?? ''
@@ -138,6 +149,9 @@ export function registerAuthRoutes(api: Api): void {
         household: presentHousehold(household),
       })
     } catch (err) {
+      if (err instanceof AccessEndDateError) {
+        return res.status(400).json({ error: 'BadRequest', message: err.message })
+      }
       if ((err as { code?: string }).code === '23505') {
         return res.status(409).json({ error: 'Conflict', message: 'Already set up.' })
       }
@@ -153,8 +167,8 @@ export function registerAuthRoutes(api: Api): void {
     if (!email || !password) return res.status(400).json({ error: 'BadRequest', message: 'email and password are required' })
     // Authenticate the *account* (the global human login, keyed by lower(email)).
     // The credentials table is gone — accounts.password_hash is the password mirror.
-    const { rows } = await query<{ id: string; password_hash: string | null }>(
-      `select id, password_hash from accounts where lower(email) = lower($1) and deleted_at is null limit 1`,
+    const { rows } = await query<{ id: string; email: string; password_hash: string | null }>(
+      `select id, email, password_hash from accounts where lower(email) = lower($1) and deleted_at is null limit 1`,
       [email]
     )
     const account = rows[0]
@@ -164,18 +178,36 @@ export function registerAuthRoutes(api: Api): void {
     }
     // Mint an account-scoped token landing on the last-active household.
     const accountId = account.id
-    const memberships = await listMemberships(accountId)
+    let memberships = await listMemberships(accountId)
+    // A temporary-only account must still be able to return later through a fresh
+    // invite. With no active household there is nowhere to host the normal
+    // invite-accept screen, so a successful credential login accepts its first
+    // pending invite (the same bootstrap behavior used by first-time OIDC).
+    if (memberships.length === 0) {
+      const invite = await firstPendingInviteForEmail(account.email)
+      if (!invite) {
+        return res.status(403).json({ error: 'Forbidden', message: 'No active household access for this account.' })
+      }
+      await createMembershipFromInvite(accountId, account.email, invite)
+      memberships = await listMemberships(accountId)
+      if (memberships.length === 0) {
+        return res.status(403).json({ error: 'Forbidden', message: 'No active household access for this account.' })
+      }
+    }
     const active = await pickActiveHousehold(accountId, memberships)
     await setLastHousehold(accountId, active)
-    const activePersonId = memberships.find((m) => m.householdId === active)!.personId
+    const activeMembership = memberships.find((m) => m.householdId === active)!
+    const activePersonId = activeMembership.personId
     const accessTk = mintAccess(accountId, { [config.auth.householdClaim]: active })
     const refreshToken = await issueRefresh(activePersonId, accountId)
     return res.status(200).json({
       accessToken: accessTk.token,
       refreshToken,
       expiresIn: accessTk.expiresIn,
+      memberType: activeMembership.memberType,
+      accessExpiresAt: activeMembership.accessExpiresAt,
       memberships,
-      pendingInvites: await pendingInvitesForEmail(email),
+      pendingInvites: await pendingInvitesForEmail(account.email),
     })
   })
 
@@ -190,10 +222,12 @@ export function registerAuthRoutes(api: Api): void {
     // scoped session. Persons without an account (kiosk/device/no-account) keep the
     // legacy claim-less subject.
     const pr = await query<{ household_id: string; account_id: string | null }>(
-      `select household_id, account_id from persons where id = $1`,
+      `select household_id, account_id from persons where id = $1 and deleted_at is null
+        and (access_expires_at is null or access_expires_at > now())`,
       [r.personId]
     )
     const person = pr.rows[0]
+    if (!person) return res.status(401).json({ error: 'Unauthorized', message: 'Household access has expired.' })
     let access: { token: string; expiresIn: number }
     let newSubject: string
     if (person?.account_id) {
@@ -211,12 +245,42 @@ export function registerAuthRoutes(api: Api): void {
   // refresh pair scoped to another household the account belongs to, and remembers
   // it as last-active. 403 if the account isn't a member of the target.
   api.post('/api/auth/switch', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
     const targetHouseholdId = ((req.body ?? {}) as { householdId?: string }).householdId?.trim()
     if (!targetHouseholdId) return res.status(400).json({ error: 'BadRequest', message: 'householdId is required' })
-    // Resolve the caller's account from their current membership person.
-    const ar = await query<{ account_id: string | null }>(`select account_id from persons where id = $1`, [tenant.personId])
-    const accountId = ar.rows[0]?.account_id
+
+    // Account-scoped tokens identify the global login independently of the selected
+    // household. Resolve that live account directly so a revoked/expired membership
+    // cannot strand another active membership. A UUID-shaped but unknown subject is
+    // not sufficient: the account row is the authority. Legacy tokens retain their
+    // active-membership fallback.
+    const subject = req.principal?.sub
+    const selectedHousehold = req.principal?.claims?.[config.auth.householdClaim]
+    let accountId: string | null | undefined
+    if (
+      subject
+      && UUID_RE.test(subject)
+      && typeof selectedHousehold === 'string'
+      && UUID_RE.test(selectedHousehold)
+    ) {
+      const ar = await query<{ id: string }>(
+        `select id from accounts where id = $1 and deleted_at is null`,
+        [subject]
+      )
+      accountId = ar.rows[0]?.id
+    }
+    if (!accountId) {
+      const tenant = await resolveRequestTenant(req)
+      if (tenant) {
+        const ar = await query<{ account_id: string | null }>(
+          `select p.account_id
+             from persons p
+             join accounts a on a.id = p.account_id and a.deleted_at is null
+            where p.id = $1`,
+          [tenant.personId]
+        )
+        accountId = ar.rows[0]?.account_id
+      }
+    }
     if (!accountId) return res.status(403).json({ error: 'Forbidden', message: 'This session has no account.' })
     const memberships = await listMemberships(accountId)
     const target = memberships.find((m) => m.householdId === targetHouseholdId)
@@ -229,6 +293,8 @@ export function registerAuthRoutes(api: Api): void {
       refreshToken,
       expiresIn: accessTk.expiresIn,
       householdId: targetHouseholdId,
+      memberType: target.memberType,
+      accessExpiresAt: target.accessExpiresAt,
       memberships,
     })
   })

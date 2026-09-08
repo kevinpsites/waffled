@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Where the app points and how it authenticates — device-only settings.
@@ -8,6 +9,16 @@ import Foundation
 enum AppConfig {
     private static let urlKey = "waffled.apiBaseURL"
     private static let tokenKey = "waffled.devToken"
+    private static let memberTypeKey = "waffled.currentMemberType"
+    private static let memberTypeServerKey = "waffled.currentMemberTypeServer"
+    private static let memberTypeAuthScopeKey = "waffled.currentMemberTypeAuthScope"
+    private static let accessExpiryKey = "waffled.currentAccessExpiresAt"
+    private static let accessExpiryPresenceKey = "waffled.currentAccessExpiryPresence"
+    private static let accessExpiryServerKey = "waffled.currentAccessExpiryServer"
+    private static let accessExpiryAuthScopeKey = "waffled.currentAccessExpiryAuthScope"
+    private static let principalIsolationRequiredKey = "waffled.principalIsolationRequired"
+    private static let builtInMemberTypes: Set<String> = ["adult", "caregiver", "guest", "teen", "kid"]
+    private static let memberTypeLock = NSLock()
 
     /// The built-in fallback server address — the compose stack's Caddy origin (serves
     /// /api + /media). Exposed so the About screen can show/reset to it.
@@ -49,13 +60,203 @@ enum AppConfig {
     /// present, else the dev token. Read at call time so login/refresh/logout take
     /// effect on the next request.
     static var bearerToken: String {
-        AuthTokens.accessToken ?? devToken
+        guard !principalIsolationRequired, !currentAccessIsExpired else { return "" }
+        return AuthTokens.accessToken ?? devToken
+    }
+
+    /// The active household role, loaded from `/api/household`. Its last verified
+    /// built-in value survives a cold offline launch, but only for the same server.
+    /// Explicit session/profile/token changes clear it at their mutation boundary.
+    /// WaffledAPI reads this shared value so every feature client applies the guest
+    /// read-only rule, including models without the app's SyncManager environment.
+    static var currentMemberType: String? {
+        if AuthTokens.isSignedIn { return AuthTokens.memberType }
+        memberTypeLock.lock(); defer { memberTypeLock.unlock() }
+        let defaults = UserDefaults.standard
+        guard let memberType = defaults.string(forKey: memberTypeKey),
+              builtInMemberTypes.contains(memberType),
+              defaults.string(forKey: memberTypeServerKey) == apiBaseURL,
+              let authScope = currentIdentityScope,
+              defaults.string(forKey: memberTypeAuthScopeKey) == authScope else {
+            defaults.removeObject(forKey: memberTypeKey)
+            defaults.removeObject(forKey: memberTypeServerKey)
+            defaults.removeObject(forKey: memberTypeAuthScopeKey)
+            clearAccessExpiry(defaults)
+            return nil
+        }
+        return memberType
+    }
+    static func setCurrentMemberType(_ value: String?) {
+        setCurrentAccess(memberType: value, accessExpiry: .missing)
+    }
+
+    static func setCurrentAccess(memberType value: String?, accessExpiry: AccessExpiryField) {
+        if AuthTokens.isSignedIn {
+            AuthTokens.updateAccessPolicy(memberType: value, accessExpiry: accessExpiry)
+        } else {
+            setDevCurrentAccess(memberType: value, accessExpiry: accessExpiry)
+        }
+    }
+
+    /// Persist the server-verified active membership policy as one identity-bound
+    /// unit. The expiry is an instant, so it can be enforced without connectivity
+    /// even if the app remains open across the deadline.
+    static func setCurrentAccess(memberType value: String?, accessExpiresAt: String?) {
+        if AuthTokens.isSignedIn {
+            AuthTokens.updateAccessPolicy(
+                memberType: value,
+                accessExpiry: accessExpiresAt.map(AccessExpiryField.value) ?? .null
+            )
+            return
+        }
+        setDevCurrentAccess(
+            memberType: value,
+            accessExpiry: accessExpiresAt.map(AccessExpiryField.value) ?? .null
+        )
+    }
+
+    private static func setDevCurrentAccess(
+        memberType value: String?, accessExpiry: AccessExpiryField
+    ) {
+        memberTypeLock.lock()
+        let defaults = UserDefaults.standard
+        if let value, builtInMemberTypes.contains(value), let authScope = currentIdentityScope {
+            defaults.set(value, forKey: memberTypeKey)
+            defaults.set(apiBaseURL, forKey: memberTypeServerKey)
+            defaults.set(authScope, forKey: memberTypeAuthScopeKey)
+            if ["caregiver", "guest"].contains(value) {
+                switch accessExpiry {
+                case let .value(raw):
+                    defaults.set("value", forKey: accessExpiryPresenceKey)
+                    defaults.set(raw, forKey: accessExpiryKey)
+                case .null:
+                    defaults.set("null", forKey: accessExpiryPresenceKey)
+                    defaults.removeObject(forKey: accessExpiryKey)
+                case .missing:
+                    defaults.set("missing", forKey: accessExpiryPresenceKey)
+                    defaults.removeObject(forKey: accessExpiryKey)
+                case .malformed:
+                    defaults.set("malformed", forKey: accessExpiryPresenceKey)
+                    defaults.removeObject(forKey: accessExpiryKey)
+                }
+                defaults.set(apiBaseURL, forKey: accessExpiryServerKey)
+                defaults.set(authScope, forKey: accessExpiryAuthScopeKey)
+            } else {
+                clearAccessExpiry(defaults)
+            }
+        } else {
+            defaults.removeObject(forKey: memberTypeKey)
+            defaults.removeObject(forKey: memberTypeServerKey)
+            defaults.removeObject(forKey: memberTypeAuthScopeKey)
+            clearAccessExpiry(defaults)
+        }
+        memberTypeLock.unlock()
+        NotificationCenter.default.post(name: .waffledAccessPolicyChanged, object: nil)
+    }
+
+    private static func clearAccessExpiry(_ defaults: UserDefaults) {
+        defaults.removeObject(forKey: accessExpiryKey)
+        defaults.removeObject(forKey: accessExpiryPresenceKey)
+        defaults.removeObject(forKey: accessExpiryServerKey)
+        defaults.removeObject(forKey: accessExpiryAuthScopeKey)
+    }
+
+    static var currentAccessExpiresAt: Date? {
+        if AuthTokens.isSignedIn {
+            // `accessExpiresAt` is membership policy, not access-token lifetime. A
+            // missing field is fail-closed only for temporary roles; permanent roles
+            // do not arm the local expiry timer.
+            guard let role = AuthTokens.memberType,
+                  role == "caregiver" || role == "guest" else { return nil }
+            guard let expiry = AuthTokens.accessExpiry else { return .distantPast }
+            switch expiry {
+            case .null: return nil
+            case let .value(raw): return parseAccessInstant(raw) ?? .distantPast
+            case .missing, .malformed: return .distantPast
+            }
+        }
+        memberTypeLock.lock(); defer { memberTypeLock.unlock() }
+        let defaults = UserDefaults.standard
+        guard let role = defaults.string(forKey: memberTypeKey),
+              role == "caregiver" || role == "guest" else { return nil }
+        guard
+              defaults.string(forKey: accessExpiryServerKey) == apiBaseURL,
+              let authScope = currentIdentityScope,
+              defaults.string(forKey: accessExpiryAuthScopeKey) == authScope else {
+            clearAccessExpiry(defaults)
+            return .distantPast
+        }
+        switch defaults.string(forKey: accessExpiryPresenceKey) {
+        case "null": return nil
+        case "value":
+            guard let raw = defaults.string(forKey: accessExpiryKey) else { return .distantPast }
+            return parseAccessInstant(raw) ?? .distantPast
+        default: return .distantPast
+        }
+    }
+
+    static func accessIsExpired(memberType: String?, accessExpiresAt: Date?, now: Date = Date()) -> Bool {
+        guard memberType == "caregiver" || memberType == "guest", let accessExpiresAt else { return false }
+        return accessExpiresAt <= now
+    }
+
+    static var currentAccessIsExpired: Bool {
+        let role = currentMemberType
+        guard role == "caregiver" || role == "guest" else { return false }
+        if AuthTokens.isSignedIn {
+            guard let expiry = AuthTokens.accessExpiry else { return true }
+            switch expiry {
+            case .null: return false
+            case let .value(raw):
+                guard let date = parseAccessInstant(raw) else { return true }
+                return date <= Date()
+            case .missing, .malformed: return true
+            }
+        }
+        return accessIsExpired(memberType: role, accessExpiresAt: currentAccessExpiresAt)
+    }
+
+    /// Durable crash-safe latch set before expired credentials are deleted. Because the
+    /// PowerSync database is a single shared file, no login/profile gate may reopen
+    /// until `disconnectAndClear` succeeds and clears this marker.
+    static var principalIsolationRequired: Bool {
+        UserDefaults.standard.bool(forKey: principalIsolationRequiredKey)
+    }
+
+    static func requirePrincipalIsolation() {
+        UserDefaults.standard.set(true, forKey: principalIsolationRequiredKey)
+        UserDefaults.standard.synchronize()
+    }
+
+    static func clearPrincipalIsolationRequirement() {
+        UserDefaults.standard.removeObject(forKey: principalIsolationRequiredKey)
+    }
+
+    static func parseAccessInstant(_ raw: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+    }
+
+    /// A rotating real session keeps one logical scope; a pasted/launch-env dev
+    /// token gets a non-reversible fingerprint so changing it across launches also
+    /// invalidates the cached role without copying that credential into defaults.
+    static var currentIdentityScope: String? {
+        if let scope = AuthTokens.identityScope { return scope }
+        let token = devToken
+        guard !token.isEmpty else { return nil }
+        // A token is meaningful only at the origin that issued it. Including the
+        // normalized server closes the A→B case where the same pasted dev token
+        // would otherwise look like one principal and reconnect atop A's replica.
+        let digest = SHA256.hash(data: Data((apiBaseURL + "\u{0}" + token).utf8))
+        return "dev:" + digest.map { String(format: "%02x", $0) }.joined()
     }
 
     /// Whether the app has *any* usable token — a real session or a dev token. Used
     /// to gate the login screen (headless demos with a dev token skip login). After an
     /// explicit sign-out the dev-token fallback is suppressed so logout sticks.
     static var hasUsableToken: Bool {
+        if principalIsolationRequired || currentAccessIsExpired { return false }
         if AuthTokens.isSignedIn { return true }
         if wasSignedOut { return false }
         return !devToken.isEmpty
@@ -91,21 +292,31 @@ enum AppConfig {
     /// Invalid non-empty values are rejected without replacing the current server.
     @discardableResult
     static func setApiBaseURL(_ value: String) -> Bool {
+        let previous = apiBaseURL
         let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if v.isEmpty {
             UserDefaults.standard.removeObject(forKey: urlKey)
+            if apiBaseURL != previous { setCurrentMemberType(nil) }
             return true
         }
         guard let normalized = normalizedApiBaseURL(v) else { return false }
         UserDefaults.standard.set(normalized, forKey: urlKey)
+        if apiBaseURL != previous { setCurrentMemberType(nil) }
         return true
     }
 
     /// Save the dev token, or clear it when blank.
     static func setDevToken(_ value: String) {
+        let previous = storedDevToken
         let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if v.isEmpty { UserDefaults.standard.removeObject(forKey: tokenKey) }
         else { UserDefaults.standard.set(v, forKey: tokenKey) }
+        // A pasted developer token is dormant while a real Keychain session exists.
+        // Clear only the dev-token policy cache; routing through setCurrentMemberType
+        // would treat nil as a malformed update to the real session and fail-close it.
+        if storedDevToken != previous {
+            setDevCurrentAccess(memberType: nil, accessExpiry: .missing)
+        }
     }
 
     private static let signedOutKey = "waffled.signedOut"

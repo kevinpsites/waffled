@@ -491,9 +491,9 @@ struct PlanWeekSheet: View {
         // the planner grid is cut on the DEVICE's first day while the grocery list is keyed
         // by the HOUSEHOLD's, so a Sun–Sat grid can straddle two household weeks and both
         // have to be built. This is just the executor.
-        for op in MealPlanApply.week(suggestions: suggestions, firstDay: sync.householdWeekStart) {
-            await sync.perform(op)
-        }
+        _ = await sync.perform(
+            MealPlanApply.week(suggestions: suggestions, firstDay: sync.householdWeekStart)
+        )
         applying = false
         onApplied()
         dismiss()

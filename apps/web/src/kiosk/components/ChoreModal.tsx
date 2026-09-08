@@ -91,7 +91,7 @@ export function ChoreModal({
   // chore is assigned to an adult/admin. Still shown for kids, teens, and
   // "up for grabs" (unknown claimer), where a sign-off makes sense.
   const assignee = persons.find((p) => p.id === form.personId)
-  const assigneeIsAdult = !!assignee && (assignee.memberType === 'adult' || assignee.isAdmin)
+  const assigneeIsAdult = !!assignee && (assignee.memberType === 'adult' || assignee.memberType === 'caregiver' || assignee.isAdmin)
   const curKey = form.rewardCurrency || defaultCurrency?.key || 'stars'
   const selectedCur = currencies.find((c) => c.key === curKey)
   const [saving, setSaving] = useState(false)

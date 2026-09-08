@@ -6,17 +6,36 @@ import SwiftUI
 /// PowerSync-backed model into the environment here.
 @main
 struct WaffledApp: App {
-    @State private var sync = SyncManager()
-    @State private var session = Session()
-    @State private var notifications = NotificationManager()
+    @State private var sync: SyncManager
+    @State private var session: Session
+    @State private var notifications: NotificationManager
     @State private var kiosk = KioskMode()
     /// The light/dark/system choice, persisted. Drives `.preferredColorScheme` below.
     @State private var theme = ThemeStore()
     /// The active Cook Mode session, hoisted app-level so Cook Mode + its running timers
     /// survive the app backgrounding (and a tapped timer notification can re-open it).
-    @State private var cook = CookSessionStore()
+    @State private var cook: CookSessionStore
     /// Cold-launch splash (bouncing logo on cream). Shown once per launch, then faded.
     @State private var showSplash = true
+
+    init() {
+        let notifications = NotificationManager()
+        let cook = CookSessionStore(notificationManager: notifications)
+        let sync = SyncManager(
+            principalArtifactsCleanup: {
+                // Stop Cook Mode first so it cannot enqueue another timer while the
+                // notification cleanup is establishing its final system-wide barrier.
+                cook.clearPrincipalArtifacts()
+                await notifications.clearPrincipalArtifacts()
+            }
+        )
+        _notifications = State(initialValue: notifications)
+        _cook = State(initialValue: cook)
+        _sync = State(initialValue: sync)
+        _session = State(initialValue: Session(
+            isolateExpiredPrincipal: { await sync.isolateExpiredPrincipal() }
+        ))
+    }
 
     var body: some Scene {
         WindowGroup {

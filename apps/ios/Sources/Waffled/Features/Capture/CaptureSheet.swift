@@ -37,7 +37,7 @@ struct CaptureSheet: View {
     @State private var mealDate = Date()
     @State private var cdDate = Date()                       // countdown target day
     @State private var cdEmoji: String?                       // server-parsed countdown emoji (carried through)
-    @State private var personType = "adult"                   // person member type (adult|teen|kid)
+    @State private var personType = "adult"                   // person member type
     @State private var personEmoji: String?                   // LLM-picked avatar emoji (carried through)
     @State private var personBirthday: String?               // LLM-picked birthday YYYY-MM-DD (carried through)
     @State private var personIsAdmin = false                 // LLM-picked admin flag (carried through)
@@ -503,7 +503,13 @@ struct CaptureSheet: View {
         case "countdown":
             return DateFmt.string(cdDate, "EEE, MMM d", sync.householdTz)
         case "person":
-            return personType == "kid" ? "Kid" : (personType == "teen" ? "Teen" : "Adult")
+            switch personType {
+            case "kid": return "Kid"
+            case "teen": return "Teen"
+            case "caregiver": return "Caregiver"
+            case "guest": return "Guest"
+            default: return "Adult"
+            }
         case "goal":
             let typeLabel = goalType == "count" ? "Count" : (goalType == "total" ? "Total" : (goalType == "checklist" ? "Checklist" : "Habit"))
             let measured = goalType == "count" || goalType == "total"
@@ -582,8 +588,11 @@ struct CaptureSheet: View {
             HStack { DatePicker("", selection: $cdDate, displayedComponents: .date).labelsHidden(); Spacer(minLength: 0) }
         case "person":
             ChipFlow(spacing: 8, lineSpacing: 8) {
-                ForEach([("adult", "Adult"), ("teen", "Teen"), ("kid", "Kid")], id: \.0) { key, label in
-                    selectChip(label, on: personType == key) { personType = key }
+                ForEach([("adult", "Adult"), ("caregiver", "Caregiver"), ("guest", "Guest"), ("teen", "Teen"), ("kid", "Kid")], id: \.0) { key, label in
+                    selectChip(label, on: personType == key) {
+                        personType = key
+                        if key != "adult" { personIsAdmin = false }
+                    }
                 }
             }
             if personBlocked {

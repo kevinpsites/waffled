@@ -70,7 +70,10 @@ async function mockApi(page: Page) {
     let body: unknown = empty
 
     if (path === '/api/auth/status') body = { initialized: true, methods: ['password'] }
-    else if (path === '/api/auth/login') body = { accessToken: 'test-access', refreshToken: 'test-refresh', expiresIn: 900 }
+    else if (path === '/api/auth/login') body = {
+      accessToken: 'test-access', refreshToken: 'test-refresh', expiresIn: 900,
+      memberType: 'adult', accessExpiresAt: null,
+    }
     else if (path === '/api/household') body = { provisioned: true, household, person, memberships: [], pendingInvites: [] }
     else if (path === '/api/persons') body = { persons: [person] }
     else if (path === '/api/permissions') body = { permissions: { adult: permissionRow, teen: permissionRow, kid: permissionRow }, capabilities, roles: ['adult', 'teen', 'kid'] }

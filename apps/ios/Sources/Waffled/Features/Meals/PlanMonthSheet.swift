@@ -482,11 +482,11 @@ struct PlanMonthSheet: View {
         // touches, that a rebuild covers only ONE of them, and that rebuilds follow every
         // write. This is deliberately just the executor: with the derivation inline here it
         // was untestable, and a revert to a single rebuild call went unnoticed.
-        for op in MealPlanApply.month(suggestions: suggestions, plannedDates: plannedDates,
-                                      dirty: dirty, skipped: skipped,
-                                      firstDay: sync.householdWeekStart) {
-            await sync.perform(op)
-        }
+        _ = await sync.perform(
+            MealPlanApply.month(suggestions: suggestions, plannedDates: plannedDates,
+                                dirty: dirty, skipped: skipped,
+                                firstDay: sync.householdWeekStart)
+        )
         applying = false
         onApplied()
         dismiss()

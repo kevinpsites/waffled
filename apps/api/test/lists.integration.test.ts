@@ -14,6 +14,7 @@ let url: string
 let app: any
 let closePool: () => Promise<void>
 let foreignPersonId = ''
+let guest = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, {
@@ -71,6 +72,18 @@ beforeAll(async () => {
   })
   expect(setup.statusCode).toBe(201)
   kevin = JSON.parse(setup.body).accessToken
+  const ownerHouseholdId = JSON.parse(setup.body).household.id as string
+  const guestPerson = await query<{ id: string }>(
+    `insert into persons (household_id, name, member_type)
+     values ($1, 'List Guest', 'guest') returning id`,
+    [ownerHouseholdId]
+  )
+  await query(
+    `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified)
+     values ($1,$2,'password','dev|list-guest','list-guest@example.com',true)`,
+    [ownerHouseholdId, guestPerson.rows[0].id]
+  )
+  guest = mint('dev|list-guest')
 
   // Second tenant for the cross-household isolation test. Setup is now locked, so
   // seed kelly's household directly; mint('dev|kelly') resolves via this identity.
@@ -156,6 +169,34 @@ describe('grocery api', () => {
     const body = JSON.parse(res.body)
     expect(body.list).toMatchObject({ listType: 'grocery' })
     expect(body.items).toEqual([])
+  })
+
+  it('does not let guest GETs create a missing grocery list', async () => {
+    const fixture = await withClient(async (c) => {
+      const household = await c.query<{ id: string }>(
+        `insert into households (name, timezone) values ('Guest-only lists', 'UTC') returning id`
+      )
+      const person = await c.query<{ id: string }>(
+        `insert into persons (household_id, name, member_type)
+         values ($1, 'Readonly', 'guest') returning id`,
+        [household.rows[0].id]
+      )
+      await c.query(
+        `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified)
+         values ($1,$2,'password','dev|empty-list-guest',true)`,
+        [household.rows[0].id, person.rows[0].id]
+      )
+      return household.rows[0].id
+    })
+    const token = mint('dev|empty-list-guest')
+
+    expect((await call('GET', '/api/lists', token)).statusCode).toBe(200)
+    expect((await call('GET', '/api/lists/grocery', token)).statusCode).toBe(404)
+    expect((await call('GET', '/api/lists/grocery/board', token)).statusCode).toBe(404)
+    const rows = await withClient((c) =>
+      c.query(`select 1 from lists where household_id=$1 and deleted_at is null`, [fixture])
+    )
+    expect(rows.rows).toHaveLength(0)
   })
 
   it('POST adds an item, and GET then shows it', async () => {
@@ -1307,6 +1348,22 @@ describe('list-item bulk edit + completed-item lifecycle', () => {
     expect(names).not.toContain('Old checked')
     expect(names).toContain('Fresh checked')
     expect(names).toContain('Still active')
+  })
+
+  it('does not let a guest GET lazily clear an aged checked item', async () => {
+    const list = await newList('Guest-safe auto clear')
+    const old = await addItem(list, 'Guest can still see this')
+    await call('PATCH', `/api/list-items/${old}`, kevin, { checked: true })
+    await withClient((c) => c.query(`update list_items set checked_at = now() - interval '25 hours' where id=$1`, [old]))
+
+    const response = await call('GET', `/api/lists/${list}`, guest)
+    expect(response.statusCode).toBe(200)
+    expect(JSON.parse(response.body).items.map((item: { id: string }) => item.id)).toContain(old)
+    const stored = await withClient((c) => c.query<{ deleted_at: Date | null }>(`select deleted_at from list_items where id=$1`, [old]))
+    expect(stored.rows[0].deleted_at).toBeNull()
+
+    // Ordinary members retain the existing lazy cleanup behavior.
+    await call('GET', `/api/lists/${list}`, kevin)
   })
 
   it('never auto-clears a custom list whose auto_clear_checked is NULL (the "never" sentinel)', async () => {

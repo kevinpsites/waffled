@@ -225,7 +225,7 @@ export function registerPantryRoutes(api: Api): void {
     let product
     let offDown = false
     try {
-      product = await lookupBarcode(barcode)
+      product = await lookupBarcode(barcode, tenant.memberType !== 'guest')
     } catch {
       offDown = true // OFF unreachable — we can still recall a household entry below
     }
@@ -262,7 +262,7 @@ export function registerPantryRoutes(api: Api): void {
   // nearly-makeable (1–2 missing). Deterministic name matching.
   api.get('/api/pantry/cookable', tenantRoute(async (tenant) => {
     await requirePantry(tenant)
-    return cookableRecipes(tenant.householdId)
+    return cookableRecipes(tenant.householdId, tenant.memberType !== 'guest')
   }))
 
   // Recipes that use a given pantry item (the detail sheet's "Plan it in").
@@ -284,7 +284,7 @@ export function registerPantryRoutes(api: Api): void {
     await requirePantry(tenant)
     const id = req.params.recipeId ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
-    return { matches: await pantryMatchesForRecipe(tenant.householdId, id) }
+    return { matches: await pantryMatchesForRecipe(tenant.householdId, id, tenant.memberType !== 'guest') }
   }))
 
   // Apply the confirmed consumption: for each item, either mark it used-up (recoverable)

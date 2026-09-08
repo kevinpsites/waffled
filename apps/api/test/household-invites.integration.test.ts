@@ -42,6 +42,8 @@ describe('0056 household_invites', () => {
     expect(res.rows.map((r) => r.column_name).sort()).toEqual(
       [
         'accepted_at',
+        'access_ends_on',
+        'access_expires_at',
         'created_at',
         'email',
         'household_id',

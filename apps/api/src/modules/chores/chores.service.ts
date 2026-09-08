@@ -198,8 +198,13 @@ interface SummaryRow extends QueryResultRow {
 
 // Per-person done/total for the day + balance in the household's default currency
 // (drives the kiosk rings).
-export async function todaySummary(householdId: string, dueOn: string, tz = 'UTC'): Promise<PersonChoreSummary[]> {
-  const defaultCurrency = await getDefaultCurrencyKey(householdId)
+export async function todaySummary(
+  householdId: string,
+  dueOn: string,
+  tz = 'UTC',
+  seedDefaultCurrency = true
+): Promise<PersonChoreSummary[]> {
+  const defaultCurrency = await getDefaultCurrencyKey(householdId, seedDefaultCurrency)
   const { rows } = await query<SummaryRow>(
     `select p.id, p.name, p.avatar_emoji, p.color_hex, p.member_type, p.is_admin,
             count(c.id) as total,

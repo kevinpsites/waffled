@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor, within, act } from '@testing-librar
 import { MemoryRouter } from 'react-router'
 import { Settings } from './Settings'
 import type { PermissionMatrix } from '../lib/api'
+import { acknowledgeCurrentIdentityScopeAfterGate, setCurrentViewerMemberType } from '../lib/api/client'
 import { publishSyncHealth, __resetSyncHealthForTests } from '../lib/powersync/sync-health'
 
 const renderSettings = () => render(<MemoryRouter><Settings /></MemoryRouter>)
@@ -42,6 +43,10 @@ describe('Settings screen', () => {
   // The sync-health store is module-global; reset it so a Live Sync assertion in
   // one test can't be satisfied by a snapshot another test published.
   beforeEach(() => {
+    // The global test harness clears localStorage between cases without mounting
+    // AuthGate; explicitly acknowledge that synthetic signed-out boundary.
+    acknowledgeCurrentIdentityScopeAfterGate(null)
+    setCurrentViewerMemberType(null)
     __resetSyncHealthForTests()
   })
 
@@ -54,6 +59,50 @@ describe('Settings screen', () => {
     expect(menu).toHaveClass('sel')
     fireEvent.change(menu, { target: { value: 'appearance' } })
     expect(screen.getByText('Match system')).toBeInTheDocument()
+  })
+
+  it('keeps credential settings but hides shared profile and PIN editing for guests', async () => {
+    const guest = {
+      id: 'p3', name: 'Guest', memberType: 'guest', isAdmin: false,
+      avatarEmoji: '👋', colorHex: '#7f8c8d', birthday: null,
+      showOnKiosk: false, accessExpiresAt: '2099-06-16T05:00:00.000Z',
+    }
+    const guestAccount = {
+      personId: guest.id,
+      name: guest.name,
+      avatarEmoji: guest.avatarEmoji,
+      colorHex: guest.colorHex,
+      birthday: guest.birthday,
+      isAdmin: false,
+      memberType: 'guest',
+      hasAccount: true,
+      hasPin: true,
+      email: 'guest@example.com',
+      hasPassword: true,
+      provider: 'password',
+    }
+    globalThis.fetch = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/api/account')) return { ok: true, json: async () => guestAccount }
+      if (u.includes('/api/household')) {
+        return { ok: true, json: async () => ({ provisioned: true, household, person: guest }) }
+      }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    // A stale/direct profile URL must fall back to an allowed destination.
+    render(<MemoryRouter initialEntries={['/?tab=profile']}><Settings /></MemoryRouter>)
+    const menu = await screen.findByLabelText('Settings section')
+    await waitFor(() => {
+      expect(within(menu).queryByRole('option', { name: /My Profile/ })).not.toBeInTheDocument()
+      expect(within(menu).getByRole('option', { name: /My Account/ })).toBeInTheDocument()
+    })
+    expect(screen.queryByText('My Profile')).not.toBeInTheDocument()
+
+    fireEvent.change(menu, { target: { value: 'account' } })
+    expect(await screen.findByText('Change Email')).toBeInTheDocument()
+    expect(screen.getByText('Change Password')).toBeInTheDocument()
+    expect(screen.queryByText('Kiosk PIN')).not.toBeInTheDocument()
   })
 
   it('renders the sub-nav and Family & people with member role lines', async () => {
@@ -135,6 +184,20 @@ describe('Settings screen', () => {
 
   it('saves screensaver photo-source / interval / shuffle changes', async () => {
     const puts: Array<Record<string, unknown>> = []
+    // This admin-only panel normally runs with a claimed profile. Seed the
+    // atomic session so displayConfig uses that profile instead of correctly
+    // rejecting the unpaired-device path exercised by an empty test browser.
+    localStorage.setItem('waffled.session.v1', JSON.stringify({
+      v: 1,
+      scope: 'settings-test',
+      accessToken: 'settings-access',
+      refreshToken: 'settings-refresh',
+      memberType: 'adult',
+      accessExpiresAt: null,
+    }))
+    // This component test bypasses AuthGate, so explicitly model the post-gate
+    // acknowledgement which makes the synthetic session usable by Settings.
+    acknowledgeCurrentIdentityScopeAfterGate('session:settings-test')
     globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
       const u = String(url)
       if (u.includes('/api/kiosk/display')) {
@@ -174,8 +237,14 @@ describe('Settings screen', () => {
 
   it('renders the permissions grid with a Manage goals column and toggles it', async () => {
     const puts: PermissionMatrix[] = []
-    const emptyRow = { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false }
-    const matrix: PermissionMatrix = { adult: { ...emptyRow }, teen: { ...emptyRow }, kid: { ...emptyRow } }
+    const emptyRow = { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'reward.correct': false, 'goal.manage': false }
+    const matrix: PermissionMatrix = {
+      adult: { ...emptyRow },
+      caregiver: { ...emptyRow },
+      guest: { ...emptyRow },
+      teen: { ...emptyRow },
+      kid: { ...emptyRow },
+    }
     globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
       const u = String(url)
       if (u.includes('/api/permissions')) {
@@ -201,6 +270,8 @@ describe('Settings screen', () => {
     // Toggling Teen's Manage goals checkbox PUTs the matrix with it flipped on.
     fireEvent.click(screen.getByRole('checkbox', { name: 'Teen: Manage goals' }))
     await waitFor(() => expect(puts.some((m) => m.teen['goal.manage'] === true)).toBe(true))
+    expect(screen.getByRole('checkbox', { name: 'Guest: Correct reward history' })).toBeDisabled()
+    expect(matrix.caregiver['reward.correct']).toBe(false)
   })
 
   it('plumbs the Countdowns config (sleeps toggle + birthday horizon) under Calendars', async () => {

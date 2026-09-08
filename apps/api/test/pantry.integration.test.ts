@@ -26,6 +26,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 }
 
 const kevin = mint('dev|kevin')
+const guest = mint('dev|pantry-guest')
 let householdId = ''
 
 beforeAll(async () => {
@@ -47,6 +48,16 @@ beforeAll(async () => {
   await query(
     `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
     [householdId, ownerId]
+  )
+  const guestPerson = await query<{ id: string }>(
+    `insert into persons (household_id, name, member_type)
+     values ($1, 'Pantry Guest', 'guest') returning id`,
+    [householdId]
+  )
+  await query(
+    `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified)
+     values ($1,$2,'password','dev|pantry-guest',true)`,
+    [householdId, guestPerson.rows[0].id]
   )
 })
 
@@ -199,6 +210,16 @@ describe('pantry Open Food Facts integration', () => {
     const r2 = await call('GET', `/api/pantry/lookup/${FOUND}`, kevin)
     expect(r2.statusCode).toBe(200)
     expect(fetchMock.mock.calls.length).toBe(before + 1)
+  })
+
+  it('does not let a guest lookup fill the shared product cache', async () => {
+    const barcode = '44444444'
+    const before = fetchMock.mock.calls.length
+    const response = await call('GET', `/api/pantry/lookup/${barcode}`, guest)
+    expect(response.statusCode).toBe(404)
+    expect(fetchMock.mock.calls.length).toBe(before)
+    const { query } = await import('../src/platform/db')
+    expect((await query(`select 1 from products where barcode=$1`, [barcode])).rows).toHaveLength(0)
   })
 
   it('404s an unknown barcode (cached not_found)', async () => {

@@ -49,7 +49,10 @@ export interface Redemption {
   emoji: string | null
   cost: number
   currency: string
-  status: 'pending' | 'approved' | 'denied'
+  status: 'pending' | 'approved' | 'denied' | 'canceled' | 'refunded'
+  requestedBy: string | null
+  ledgerId: string | null
+  refundLedgerId: string | null
   decidedAt: string | null
   createdAt: string
 }
@@ -74,10 +77,24 @@ export const rewardsApi = {
     apiSend<{ id: string }>('POST', `/api/persons/${personId}/award`, { amount, currency, note }).then(tap('rewards')),
   approve: (id: string) => apiSend<{ redemption: Redemption }>('POST', `/api/redemptions/${id}/approve`).then((r) => r.redemption).then(tap('rewards')),
   deny: (id: string) => apiSend<{ redemption: Redemption }>('POST', `/api/redemptions/${id}/deny`).then((r) => r.redemption).then(tap('rewards')),
+  cancelRedemption: (id: string) =>
+    apiSend<{ redemption: Redemption }>('POST', `/api/redemptions/${id}/cancel`).then((r) => r.redemption).then(tap('rewards')),
+  refundRedemption: (id: string, reason: string, idempotencyKey: string) =>
+    apiSend<{ redemption: Redemption; correction: LedgerCorrection }>('POST', `/api/redemptions/${id}/refund`, { reason, idempotencyKey }).then(tap('rewards')),
+  correctLedgerEntry: (id: string, reason: string, replacementAmount: number | undefined, idempotencyKey: string) =>
+    apiSend<{ correction: LedgerCorrection }>('POST', `/api/ledger-entries/${id}/correct`, { reason, replacementAmount, idempotencyKey }).then(tap('rewards')),
   // Household reward-approval policy (Settings → Chores & rewards). Off = kids redeem instantly.
   settings: () => apiGet<{ requireApproval: boolean }>('/api/rewards/settings'),
   setSettings: (requireApproval: boolean) =>
     apiSend<{ requireApproval: boolean }>('PUT', '/api/rewards/settings', { requireApproval }).then((r) => r.requireApproval).then(tap('rewards')),
+}
+
+export interface LedgerCorrection {
+  originalId: string
+  reversalId: string
+  replacementId: string | null
+  balance: number
+  replayed: boolean
 }
 
 export interface PendingRedemptionsState {

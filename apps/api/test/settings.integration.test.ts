@@ -95,9 +95,37 @@ describe('household settings', () => {
     expect(check.household.weekStart).toBe('monday')
   })
 
+  it('keeps a temporary-access civil date stable when the household timezone changes', async () => {
+    const created = await call('POST', '/api/persons', kevin, {
+      name: 'Temporary helper', memberType: 'caregiver', accessEndsOn: '2099-06-15',
+    })
+    expect(created.statusCode).toBe(201)
+    expect(JSON.parse(created.body).person).toMatchObject({
+      accessEndsOn: '2099-06-15',
+      accessExpiresAt: '2099-06-16T05:00:00.000Z',
+    })
+
+    const changed = await call('PATCH', '/api/household', kevin, { timezone: 'Pacific/Honolulu' })
+    expect(changed.statusCode).toBe(200)
+    const settings = JSON.parse((await call('GET', '/api/household/settings', kevin)).body)
+    const helper = settings.members.find((m: { name: string }) => m.name === 'Temporary helper')
+    expect(helper).toMatchObject({
+      accessEndsOn: '2099-06-15',
+      accessExpiresAt: '2099-06-16T10:00:00.000Z',
+    })
+
+    // Keep this shared suite's fixture timezone stable for later tests.
+    expect((await call('PATCH', '/api/household', kevin, { timezone: 'America/Chicago' })).statusCode).toBe(200)
+  })
+
   it('validates the patch (400)', async () => {
     expect((await call('PATCH', '/api/household', kevin, { weekStart: 'someday' })).statusCode).toBe(400)
     expect((await call('PATCH', '/api/household', kevin, { nope: 1 })).statusCode).toBe(400)
+    const invalidTimezone = await call('PATCH', '/api/household', kevin, { timezone: 'Mars/Olympus' })
+    expect(invalidTimezone.statusCode).toBe(400)
+    expect(JSON.parse(invalidTimezone.body).message).toMatch(/valid IANA timezone/i)
+    const stored = JSON.parse((await call('GET', '/api/household/settings', kevin)).body)
+    expect(stored.household.timezone).toBe('America/Chicago')
   })
 
   it('403s for a caller with no household', async () => {

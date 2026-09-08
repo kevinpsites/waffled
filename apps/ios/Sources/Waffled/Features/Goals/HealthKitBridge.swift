@@ -573,11 +573,13 @@ final class HealthKitBridge {
 
     /// Read `metric`'s total for one local day (`key`, its "yyyy-MM-dd") and push it to
     /// `goalId`. A denied read or no data is a silent no-op. Returns true only if a value
-    /// was posted. Auth is requested by the caller once before looping.
-    static func pushDay(_ api: WaffledAPI, goalId: String, metric: Metric, day: Date, key: String) async -> Bool {
+    /// was posted; transport/API failures propagate so callers do not advance their
+    /// durable sync watermark past a day that was never accepted. Auth is requested by
+    /// the caller once before looping.
+    static func pushDay(_ api: WaffledAPI, goalId: String, metric: Metric, day: Date, key: String) async throws -> Bool {
         guard let value = await shared.total(for: metric, on: day), value > 0 else { return false }
-        do { try await api.syncGoalHealth(goalId: goalId, metric: metric.key, day: key, value: value); return true }
-        catch { return false }
+        try await api.syncGoalHealth(goalId: goalId, metric: metric.key, day: key, value: value)
+        return true
     }
 
     /// Today's cumulative total for `metric` — convenience over `total(for:on:)` used by the

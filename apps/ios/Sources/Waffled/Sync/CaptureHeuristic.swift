@@ -460,12 +460,16 @@ enum CaptureHeuristic {
     // Mirrors `detectPerson` in parse.ts.
     private static let relKid = "son|daughter|kid|child|boy|girl|baby"
     private static let relTeen = "teenager|teen"
+    private static let relCaregiver = "babysitter|sitter|nanny|caregiver"
+    private static let relGuest = "guest|visitor"
     private static let relAdult = "husband|wife|spouse|partner|mom|mum|mommy|mother|dad|daddy|father|parent|adult|grandma|grandpa|grandmother|grandfather"
 
     private static func memberTypeForRel(_ word: String) -> String {
         let w = word.lowercased() as NSString
         if test("^(?:\(relKid))$", w) { return "kid" }
         if test("^(?:\(relTeen))$", w) { return "teen" }
+        if test("^(?:\(relCaregiver))$", w) { return "caregiver" }
+        if test("^(?:\(relGuest))$", w) { return "guest" }
         return "adult"
     }
     // Drop a trailing ", age 8" / "aged 8" (age maps to nothing today — no birthday).
@@ -483,7 +487,7 @@ enum CaptureHeuristic {
             || test(#"\b\d{1,2}/\d{1,2}\b"#, text) { return nil }
         // The `(?![’'ʼ]s)` lookahead stops "mom's"/"dad's" being read as a relationship —
         // literal apostrophe chars (a raw string wouldn't interpret \u{2019}). Mirrors parse.ts.
-        let relPat = "\\b(?:add|create|make|register)\\s+(?:my|our|a|an|the)?\\s*(?:new\\s+)?(\(relKid)|\(relTeen)|\(relAdult))(?![’'ʼ]s)\\b[\\s,:-]*(?:named\\s+|called\\s+)?(.+)$"
+        let relPat = "\\b(?:add|create|make|register)\\s+(?:my|our|a|an|the)?\\s*(?:new\\s+)?(\(relKid)|\(relTeen)|\(relCaregiver)|\(relGuest)|\(relAdult))(?![’'ʼ]s)\\b[\\s,:-]*(?:named\\s+|called\\s+)?(.+)$"
         if let m = firstMatch(relPat, text) {
             let name = cleanPersonName(m.groups[2] ?? "")
             if !name.isEmpty {

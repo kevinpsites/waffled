@@ -29,6 +29,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 }
 
 const kevin = mint('dev|kevin')
+const guest = mint('dev|goal-calendar-guest')
 let householdId = ''
 let kevinId = ''
 let kellyId = ''
@@ -73,6 +74,20 @@ beforeAll(async () => {
     cl.query(
       `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
       [householdId, kevinId]
+    )
+  )
+  const guestPerson = await withClient((cl) =>
+    cl.query<{ id: string }>(
+      `insert into persons (household_id, name, member_type)
+       values ($1, 'Goal Calendar Guest', 'guest') returning id`,
+      [householdId]
+    )
+  )
+  await withClient((cl) =>
+    cl.query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified)
+       values ($1,$2,'password','dev|goal-calendar-guest',true)`,
+      [householdId, guestPerson.rows[0].id]
     )
   )
   const k = await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult' })
@@ -460,6 +475,38 @@ describe('calendar → goal suggestions (Phase B)', () => {
     await makeGoal({ title: 'Reading hours', category: 'intellectual' })
     const eventId = await untaggedEvent('Library trip', [kevinId, kellyId])
     expect((await suggestions()).find((s) => s.eventId === eventId)).toBeFalsy()
+  })
+
+  it('keeps a guest suggestion GET out of the persistence-bearing LLM fallback', async () => {
+    await makeGoal({ title: 'Unrelated austere objective', category: 'other' })
+    const eventId = await untaggedEvent('Zorblax rendezvous', [kevinId], 18)
+    await withClient((cl) =>
+      cl.query(
+        `update households
+            set settings = coalesce(settings, '{}'::jsonb)
+              || jsonb_build_object('ai', jsonb_build_object('provider', 'ollama', 'model', 'test'))
+          where id = $1`,
+        [householdId]
+      )
+    )
+    try {
+      const response = await call('GET', '/api/goal-calendar/suggestions', guest)
+      expect(response.statusCode).toBe(200)
+      const seen = await withClient((cl) =>
+        cl.query(`select 1 from event_llm_seen where household_id=$1 and event_id=$2`, [householdId, eventId])
+      )
+      expect(seen.rows).toHaveLength(0)
+    } finally {
+      await withClient((cl) =>
+        cl.query(
+          `update households
+              set settings = coalesce(settings, '{}'::jsonb)
+                || jsonb_build_object('ai', jsonb_build_object('provider', 'heuristic', 'model', null))
+            where id = $1`,
+          [householdId]
+        )
+      )
+    }
   })
 })
 

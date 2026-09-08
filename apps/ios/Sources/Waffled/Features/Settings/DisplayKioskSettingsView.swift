@@ -153,7 +153,7 @@ struct DisplayKioskSettingsView: View {
                 if kiosk.isShared {
                     rowLabel("This iPad is a shared kiosk", deviceSubtitle)
                     HStack(spacing: 10) {
-                        pillButton("Switch profile", tint: WF.primary) { Task { await kiosk.returnToPicker(sync: sync) } }
+                        pillButton("Switch profile", tint: WF.primary) { Task { await kiosk.returnToPicker(sync: sync, session: session) } }
                         pillButton("Stop sharing", tint: WF.ink2, faint: true) { confirmUnpair = true }
                     }
                 } else {
@@ -197,7 +197,7 @@ struct DisplayKioskSettingsView: View {
 
     private func promote() async {
         deviceBusy = true; deviceError = nil
-        deviceError = await kiosk.enableViaPromote(label: nil, sync: sync)
+        deviceError = await kiosk.enableViaPromote(label: nil, sync: sync, session: session)
         deviceBusy = false
     }
 

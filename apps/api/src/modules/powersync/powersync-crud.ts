@@ -10,8 +10,7 @@
 // and the scheduler retries), so a write succeeds even when Google is unreachable.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { type Tenant } from '../households/households'
-import { tenantRoute } from '../../platform/route-guards'
+import { resolveRequestTenant, type Tenant } from '../households/households'
 import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync.service'
 import { recordMatch, WEIGHT } from '../goals/goal-match-memory'
 import {
@@ -170,11 +169,24 @@ async function validateOps(tenant: Tenant, ops: CrudOp[]): Promise<void> {
 
 export function registerPowerSyncCrudRoutes(api: Api): void {
   // PowerSync's connector uploads queued row ops here (see web WaffledConnector).
-  api.post('/api/powersync/crud', tenantRoute(async (tenant, req: Request, res: Response) => {
+  api.post('/api/powersync/crud', async (req: Request, res: Response) => {
     const ops = (req.body as { ops?: CrudOp[] } | undefined)?.ops
     if (!Array.isArray(ops)) {
       return res.status(400).json({ error: 'BadRequest', message: 'ops[] required' })
     }
+
+    const tenant = await resolveRequestTenant(req)
+    if (tenant) {
+      ;(req as Request & { tenantHouseholdId?: string }).tenantHouseholdId = tenant.householdId
+    }
+    // Older web bundles and iOS builds can still have writes queued when a
+    // membership becomes guest, expires, or is deleted. A 403 would make
+    // PowerSync retry that transaction forever and wedge every later upload.
+    // Authentication has already succeeded in the global gate; acknowledge the
+    // whole valid envelope without inspecting/applying any row operation so the
+    // durable queue advances and server state remains authoritative.
+    if (!tenant || tenant.memberType === 'guest') return { applied: 0 }
+
     await validateOps(tenant, ops)
     for (const op of ops) {
       if (!op || typeof op.id !== 'string' || !op.id) continue
@@ -209,5 +221,5 @@ export function registerPowerSyncCrudRoutes(api: Api): void {
       // Unknown tables are ignored — the sync rules never sync them anyway.
     }
     return { applied: ops.length }
-  }))
+  })
 }

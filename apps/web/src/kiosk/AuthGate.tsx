@@ -1,17 +1,28 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode, type FormEvent } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { authApi, getAccessToken, isKioskMode, type AuthStatus, type SetupInput } from '../lib/api'
+import { acknowledgeCurrentIdentityScopeAfterGate, authApi, currentIdentityScope, getAccessToken, isKioskMode, type AuthStatus, type SetupInput } from '../lib/api'
 import { ProfilePicker } from './ProfilePicker'
 import { PairDevice } from './PairDevice'
+import { principalTransitionInProgress, waitForPrincipalTransition } from '../lib/powersync/principal-transition'
 import '../styles/auth.css'
 
-type Phase = 'loading' | 'authed' | 'login' | 'setup' | 'picker'
+type Phase = 'loading' | 'transitioning' | 'transition-error' | 'authed' | 'login' | 'setup' | 'picker'
 
 // Gates the whole kiosk: shows the first-run Setup wizard, the Login screen, or the
 // app — driven by whether a session exists and whether the instance is initialized.
 // Also handles the OIDC return at /auth/callback (exchange the handoff → session).
 export function AuthGate({ children }: { children: ReactNode }) {
-  const [phase, setPhase] = useState<Phase>(() => (getAccessToken() ? 'authed' : 'loading'))
+  // A session generation is the UI's principal boundary. Keep the generation
+  // which this tree was resolved for so a completed cross-tab transition cannot
+  // leave the prior principal's mounted React state alive.
+  const [resolvedIdentityScope, setResolvedIdentityScope] = useState(() => currentIdentityScope())
+  const observedIdentityScopeRef = useRef(resolvedIdentityScope)
+  const [pendingIdentityAcknowledgement, setPendingIdentityAcknowledgement] = useState<{
+    scope: string | null
+  } | null>(null)
+  const [phase, setPhase] = useState<Phase>(() =>
+    principalTransitionInProgress() ? 'transitioning' : getAccessToken() ? 'authed' : 'loading'
+  )
   const [status, setStatus] = useState<AuthStatus | null>(null)
   const [oidcError, setOidcError] = useState<string | null>(null)
   const navigate = useNavigate()
@@ -19,8 +30,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // StrictMode runs effects twice in dev), which would 401 the 2nd call and leave a
   // stale "Invalid or expired sign-in" error that later surfaces on the login screen.
   const exchangingRef = useRef(false)
+  const resolveEpochRef = useRef(0)
 
   const resolve = useCallback(async () => {
+    const identityScope = currentIdentityScope()
+    const epoch = ++resolveEpochRef.current
+    const canCommitPhase = () =>
+      resolveEpochRef.current === epoch &&
+      !principalTransitionInProgress() &&
+      currentIdentityScope() === identityScope
+    const commitPhase = (next: Phase) => {
+      if (!canCommitPhase()) return false
+      observedIdentityScopeRef.current = identityScope
+      setResolvedIdentityScope(identityScope)
+      setPhase(next)
+      return true
+    }
     // OIDC return: exchange the one-time handoff code for a session, then clean the URL.
     // Navigate via the router (not history.replaceState) so React Router actually
     // leaves /auth/callback — otherwise the app mounts with no matching route (blank).
@@ -43,39 +68,114 @@ export function AuthGate({ children }: { children: ReactNode }) {
       // so it never shows up on a login screen the user reached some other way.
       setOidcError(null)
     }
+    if (!canCommitPhase()) return
     if (getAccessToken()) {
-      setPhase('authed')
+      commitPhase('authed')
       return
     }
     // Paired kiosk with no active profile → the profile picker (not the login form).
     if (isKioskMode()) {
-      setPhase('picker')
+      commitPhase('picker')
       return
     }
     try {
       const s = await authApi.status()
+      if (!commitPhase(s.initialized ? 'login' : 'setup')) return
       setStatus(s)
-      setPhase(s.initialized ? 'login' : 'setup')
     } catch {
-      setPhase('login')
+      commitPhase('login')
     }
   }, [navigate])
 
   useEffect(() => {
-    if (phase === 'loading') void resolve()
-  }, [phase, resolve])
+    if (phase === 'loading' && pendingIdentityAcknowledgement === null) void resolve()
+  }, [pendingIdentityAcknowledgement, phase, resolve])
+
+  // This layout effect runs only after React has committed the loading gate, so
+  // none of the prior principal's controls remain mounted when the document is
+  // allowed to read the replacement credentials. A wrapper object distinguishes
+  // a pending signed-out acknowledgement (`scope: null`) from no pending work.
+  useLayoutEffect(() => {
+    if (phase !== 'loading' || pendingIdentityAcknowledgement === null) return
+    if (principalTransitionInProgress()) return
+    if (!acknowledgeCurrentIdentityScopeAfterGate(pendingIdentityAcknowledgement.scope)) {
+      const currentScope = currentIdentityScope()
+      observedIdentityScopeRef.current = currentScope
+      setPendingIdentityAcknowledgement({ scope: currentScope })
+      return
+    }
+    setPendingIdentityAcknowledgement(null)
+  }, [pendingIdentityAcknowledgement, phase])
 
   // Login/setup/logout (and a failed refresh) all fire this; re-resolve.
-  useEffect(() => {
-    const onChange = () => setPhase(getAccessToken() ? 'authed' : 'loading')
+  useLayoutEffect(() => {
+    let active = true
+    const observeIdentityScope = () => {
+      const next = currentIdentityScope()
+      if (next === observedIdentityScopeRef.current) return false
+      observedIdentityScopeRef.current = next
+      resolveEpochRef.current++
+      // The scope mismatch itself gates the old tree, and layout effects flush
+      // this update before paint, so the old principal is never exposed.
+      setPendingIdentityAcknowledgement({ scope: next })
+      setPhase('loading')
+      return true
+    }
+    const onTransition = () => {
+      const epoch = ++resolveEpochRef.current
+      setPhase('transitioning')
+      void waitForPrincipalTransition()
+        .then(() => {
+          if (!active || resolveEpochRef.current !== epoch || principalTransitionInProgress()) return
+          const identityScope = currentIdentityScope()
+          observedIdentityScopeRef.current = identityScope
+          setPendingIdentityAcknowledgement({ scope: identityScope })
+          setPhase('loading')
+        })
+        .catch(() => {
+          if (active && resolveEpochRef.current === epoch) setPhase('transition-error')
+        })
+    }
+    const onChange = () => {
+      resolveEpochRef.current++
+      if (principalTransitionInProgress()) onTransition()
+      else if (!observeIdentityScope()) setPhase(getAccessToken() ? 'authed' : 'loading')
+    }
+    const onTransitionFailed = () => {
+      resolveEpochRef.current++
+      setPhase('transition-error')
+    }
     window.addEventListener('waffled:auth-changed', onChange)
-    return () => window.removeEventListener('waffled:auth-changed', onChange)
-  }, [])
+    window.addEventListener('waffled:principal-transition-started', onTransition)
+    window.addEventListener('waffled:principal-transition-failed', onTransitionFailed)
+    // Subscribe first, then re-read both durable boundaries. A transition may
+    // start and finish (including its session-scope commit) between render and
+    // this subscription, leaving no active marker for the old check to see.
+    if (principalTransitionInProgress()) onTransition()
+    else observeIdentityScope()
+    return () => {
+      active = false
+      window.removeEventListener('waffled:auth-changed', onChange)
+      window.removeEventListener('waffled:principal-transition-started', onTransition)
+      window.removeEventListener('waffled:principal-transition-failed', onTransitionFailed)
+    }
+  }, [resolve])
 
-  if (phase === 'authed') return <>{children}</>
+  if (phase === 'authed' && resolvedIdentityScope === currentIdentityScope()) {
+    return <Fragment key={resolvedIdentityScope ?? 'signed-out'}>{children}</Fragment>
+  }
   if (phase === 'setup') return <SetupWizard />
   if (phase === 'picker') return <ProfilePicker />
   if (phase === 'login') return <LoginScreen status={status} oidcError={oidcError} />
+  if (phase === 'transition-error') {
+    return (
+      <AuthShell title="Private data is still locked" sub="Waffled could not safely finish changing sessions.">
+        <button type="button" className="btn btn-primary auth-submit" onClick={() => window.location.reload()}>
+          Reload and try again
+        </button>
+      </AuthShell>
+    )
+  }
   return (
     <div className="auth-screen">
       <div className="auth-loading">Loading…</div>

@@ -60,10 +60,10 @@ struct AccountSettingsView: View {
                     }
                     Spacer(minLength: 0)
                 }
-                // Your own calendar color (the web's My Profile row). Goes through
-                // /api/account/profile, so a teen or kid can set it without an admin —
-                // Family & People, the only other place a color can be edited, is admin-only.
-                if me != nil {
+                // Your own calendar color (the web's My Profile row). Guests are hard
+                // read-only because this changes the shared person rendered elsewhere.
+                // Other roles may self-edit without the admin-only Family & People view.
+                if me != nil, !sync.isReadOnlyGuest {
                     Divider().background(WF.hair)
                     SectionLabel(text: "Your color")
                     ColorSwatchPicker(hex: myColorBinding, size: 28)
@@ -220,11 +220,16 @@ struct AccountSettingsView: View {
         }
         switchingTo = m.householdId
         defer { switchingTo = nil }
+        let sourceScope = AppConfig.currentIdentityScope
         do {
             let r = try await api.switchHousehold(householdId: m.householdId)
-            session.enterClaimedSession(access: r.accessToken, refresh: r.refreshToken)
-            await sync.reauthenticate(clearLocal: true)   // household changed → wipe + re-pull
-            await load()
+            actionError = await session.adoptCandidate(
+                r.candidate,
+                sourceScope: sourceScope,
+                sync: sync,
+                policy: .requireNoPendingUploads
+            )
+            if actionError == nil { await load() }
         } catch let WaffledAPI.APIError.http(code, _) {
             actionError = code == 403
                 ? "You're no longer a member of that household."

@@ -1,7 +1,8 @@
 import { NavLink, Link } from 'react-router'
 import { Icon } from '../icons'
 import { SCREENS, SETTINGS, type Screen } from '../nav'
-import { isKioskMode, authApi, useHousehold } from '../../lib/api'
+import { useState } from 'react'
+import { isKioskMode, authApi, PrincipalTransitionError, useHousehold } from '../../lib/api'
 import { moduleEnabled } from '../../lib/modules'
 
 function railClass({ isActive }: { isActive: boolean }) {
@@ -13,6 +14,8 @@ function railClass({ isActive }: { isActive: boolean }) {
 // name and links to Settings (account).
 function RailAccount({ onNavigate }: { onNavigate?: () => void }) {
   const { person } = useHousehold()
+  const [recovery, setRecovery] = useState<'none' | 'discard' | 'quarantine'>('none')
+  const [busy, setBusy] = useState(false)
   const avatar = (
     <span
       className="rail-switch-av"
@@ -23,10 +26,39 @@ function RailAccount({ onNavigate }: { onNavigate?: () => void }) {
   )
 
   if (isKioskMode()) {
+    const switchProfile = async () => {
+      setBusy(true)
+      try {
+        await authApi.logout({ discardPending: recovery !== 'none' })
+        onNavigate?.()
+      } catch (err) {
+        if (err instanceof PrincipalTransitionError && err.result === 'pending-uploads') {
+          setRecovery('discard')
+        } else if (err instanceof PrincipalTransitionError && err.result === 'purge-failed') {
+          setRecovery('quarantine')
+        }
+        setBusy(false)
+      }
+    }
     return (
-      <button className="rail-switch" onClick={() => { onNavigate?.(); void authApi.logout() }} title="Switch profile">
+      <button
+        className="rail-switch"
+        onClick={() => void switchProfile()}
+        disabled={busy}
+        title={recovery === 'quarantine'
+          ? 'Switch profile and keep unreadable local data locked for cleanup'
+          : recovery === 'discard'
+            ? 'Discard unsynced changes and switch profile'
+            : 'Switch profile'}
+      >
         {avatar}
-        <span className="rail-switch-label">Switch</span>
+        <span className="rail-switch-label">{busy
+          ? 'Switching…'
+          : recovery === 'quarantine'
+            ? 'Lock data & switch'
+            : recovery === 'discard'
+              ? 'Discard & switch'
+              : 'Switch'}</span>
       </button>
     )
   }

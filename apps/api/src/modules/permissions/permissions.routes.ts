@@ -3,14 +3,13 @@
 // they don't configure it. The matrix only matters for non-admin members (admins
 // always have every capability).
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { query } from '../../platform/db'
+import { getPool, query } from '../../platform/db'
 import { adminRoute } from '../../platform/route-guards'
 import {
   getPermissions,
+  DEFAULT_PERMISSIONS,
   CAPABILITIES,
   ROLES,
-  type MemberRole,
-  type Capability,
 } from '../../platform/permissions'
 
 type Api = ReturnType<typeof createAPI>
@@ -35,23 +34,40 @@ export function registerPermissionRoutes(api: Api): void {
       return res.status(400).json({ error: 'BadRequest', message: 'permissions object is required' })
     }
     // Sanitize: keep only known roles/capabilities + boolean values, then merge over
-    // current settings so getPermissions returns a complete matrix on read.
+    // current settings so older clients cannot reset capabilities added after they
+    // shipped merely by saving another cell.
     const incoming = body.permissions as Record<string, unknown>
-    const clean: Record<string, Record<string, boolean>> = {}
-    for (const role of ROLES) {
-      const row = incoming[role]
-      if (typeof row !== 'object' || row === null) continue
-      const r = row as Record<string, unknown>
-      const cells: Record<string, boolean> = {}
-      for (const cap of CAPABILITIES) {
-        if (typeof r[cap] === 'boolean') cells[cap as Capability] = r[cap] as boolean
+    const client = await getPool().connect()
+    try {
+      await client.query('begin')
+      const current = await client.query<{ settings: unknown }>(
+        `select settings from households where id = $1 for update`,
+        [tenant.householdId]
+      )
+      const merged = getPermissions(current.rows[0]?.settings)
+      for (const role of ROLES) {
+        // Guests are a hard read-only role. Do not persist even an admin-supplied
+        // `true` cell: the PUT response and stored matrix must agree with later reads.
+        if (role === 'guest') continue
+        const row = incoming[role]
+        if (typeof row !== 'object' || row === null) continue
+        const cells = row as Record<string, unknown>
+        for (const cap of CAPABILITIES) {
+          if (typeof cells[cap] === 'boolean') merged[role][cap] = cells[cap]
+        }
       }
-      if (Object.keys(cells).length) clean[role as MemberRole] = cells
+      merged.guest = { ...DEFAULT_PERMISSIONS.guest }
+      await client.query(
+        `update households set settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{permissions}', $2::jsonb) where id = $1`,
+        [tenant.householdId, JSON.stringify(merged)]
+      )
+      await client.query('commit')
+      return { permissions: merged }
+    } catch (error) {
+      await client.query('rollback')
+      throw error
+    } finally {
+      client.release()
     }
-    await query(
-      `update households set settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{permissions}', $2::jsonb) where id = $1`,
-      [tenant.householdId, JSON.stringify(clean)]
-    )
-    return { permissions: getPermissions(await householdSettings(tenant.householdId)) }
   }))
 }

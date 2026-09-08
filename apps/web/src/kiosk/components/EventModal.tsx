@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { api, usePersons, useGoals, useRhythms, goalsApi, goalCalendarApi, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink, type GoalStep } from '../../lib/api'
+import { api, usePersons, useGoals, useRhythms, goalsApi, goalCalendarApi, calendarsApi, mealsApi, currentIdentityScope, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink, type GoalStep } from '../../lib/api'
 import { suggestGoalForEvent } from '../../lib/goal-match'
 import { Icon } from '../icons'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
@@ -555,15 +555,29 @@ export function EventModal({
     }
     setSaving(true)
     const { draft, restPayload, chosenCal } = buildPayloads()
+    const identityScope = currentIdentityScope()
     try {
       // Prefer the local DB (instant, offline-capable); fall back to REST when
       // PowerSync isn't running.
       if (editing) {
-        if (!(await updateEventLocal(event!.id, draft))) await api.updateEvent(event!.id, restPayload)
+        const localResult = await updateEventLocal(event!.id, draft, identityScope)
+        if (localResult === 'aborted') {
+          setSaving(false)
+          return
+        }
+        if (localResult === 'rest-fallback') await api.updateEvent(event!.id, restPayload, identityScope)
         invalidateGetCache(`/api/events/${event!.id}/insight`)
       } else {
-        if (!(await createEventLocal({ ...draft, calendarId: chosenCal }))) {
-          await api.createEvent(ownerCals.length > 1 ? { ...restPayload, calendarId: chosenCal } : restPayload)
+        const localResult = await createEventLocal({ ...draft, calendarId: chosenCal }, identityScope)
+        if (localResult === 'aborted') {
+          setSaving(false)
+          return
+        }
+        if (localResult === 'rest-fallback') {
+          await api.createEvent(
+            ownerCals.length > 1 ? { ...restPayload, calendarId: chosenCal } : restPayload,
+            identityScope
+          )
         }
       }
       // The week digest reflects this event — refresh it next time it's shown.
@@ -606,12 +620,19 @@ export function EventModal({
       return
     }
     setSaving(true)
+    const identityScope = currentIdentityScope()
     try {
       // Prefer the local delete (instant, offline); when the row isn't in the local
-      // DB yet it returns false and we delete via REST, tombstoning on success so
-      // the UI hides it through the refetch/replication window.
-      if (!(await deleteEventLocal(event!.id))) {
-        await api.deleteEvent(event!.id)
+      // DB yet it explicitly permits a REST fallback, tombstoning on success so
+      // the UI hides it through the refetch/replication window. A principal-change
+      // abort is intentionally not replayed with the replacement session.
+      const localResult = await deleteEventLocal(event!.id, identityScope)
+      if (localResult === 'aborted') {
+        setSaving(false)
+        return
+      }
+      if (localResult === 'rest-fallback') {
+        await api.deleteEvent(event!.id, undefined, identityScope)
         tombstoneEvent(event!.id)
       }
       invalidateGetCache('/api/calendar/heads-up')

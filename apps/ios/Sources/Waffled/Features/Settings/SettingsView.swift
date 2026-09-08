@@ -153,9 +153,12 @@ struct SettingsView: View {
 
     private func signOut() async {
         busy = true
-        await session.signOut()    // clear session, → login (Button's Task survives)
-        await sync.signOut()       // disconnect sync
-        await notifications.clearEventReminders() // drop this household's event reminders
+        let result = await session.signOut(sync: sync, policy: .securityCritical)
+        if result == .completed {
+            await notifications.clearEventReminders()
+        } else if result != .purgeFailed {
+            busy = false
+        }
     }
 
     /// A settings row. `tap == nil` ⇒ not built yet (dimmed + a "Soon" pill).

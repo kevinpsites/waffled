@@ -159,20 +159,25 @@ struct FamilyNightSettingsView: View {
     /// Save day + time; if Family Night is on the calendar, re-schedule so the event
     /// follows the new slot (matches the web behavior).
     private func saveSchedule() async {
-        guard isAdmin else { return }
-        _ = try? await api.setFamilyNightConfig(["dayOfWeek": .int(dayOfWeek), "time": .string(Self.formatTime(time))])
-        if onCalendar { _ = try? await api.scheduleFamilyNight() }
+        guard isAdmin, let operationAPI = try? api.boundToCurrentPrincipal() else { return }
+        do {
+            _ = try await operationAPI.setFamilyNightConfig([
+                "dayOfWeek": .int(dayOfWeek),
+                "time": .string(Self.formatTime(time)),
+            ])
+            if onCalendar { _ = try await operationAPI.scheduleFamilyNight() }
+        } catch {}
     }
 
     private func toggleCalendar(_ on: Bool) {
-        guard isAdmin else { return }
+        guard isAdmin, let operationAPI = try? api.boundToCurrentPrincipal() else { return }
         onCalendar = on
         busyCalendar = true
         Task {
-            if on { _ = try? await api.scheduleFamilyNight() }
-            else { try? await api.unscheduleFamilyNight() }
+            if on { _ = try? await operationAPI.scheduleFamilyNight() }
+            else { try? await operationAPI.unscheduleFamilyNight() }
             // Reflect the server's event link (and re-sync the calendar mirror).
-            if let v = try? await api.familyNight() { onCalendar = v.config.eventId != nil }
+            if let v = try? await operationAPI.familyNight() { onCalendar = v.config.eventId != nil }
             busyCalendar = false
         }
     }

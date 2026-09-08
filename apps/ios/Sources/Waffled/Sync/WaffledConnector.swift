@@ -10,6 +10,10 @@ import PowerSync
 final class WaffledConnector: PowerSyncBackendConnectorProtocol, @unchecked Sendable {
     private let api = WaffledAPI()
 
+    nonisolated static func isPermanentUploadRejection(_ error: Error) -> Bool {
+        (error as? WaffledAPI.APIError)?.isGuestReadOnly == true
+    }
+
     func fetchCredentials() async throws -> PowerSyncCredentials? {
         let resp = try await api.fetchPowerSyncToken()
         guard let endpoint = resp.powerSyncUrl, !endpoint.isEmpty, !resp.token.isEmpty else {
@@ -24,8 +28,15 @@ final class WaffledConnector: PowerSyncBackendConnectorProtocol, @unchecked Send
             let ops = tx.crud.map { entry in
                 CrudOpDTO(op: entry.op.rawValue, table: entry.table, id: entry.id, data: entry.opData)
             }
-            // Throw on failure so PowerSync keeps the queue and retries (offline-safe).
-            try await api.uploadCrud(ops)
+            // Transient failures keep the queue for retry. A guest rejection is
+            // permanent for this optimistic mutation, so acknowledge it; PowerSync's
+            // next download restores the server-authoritative value locally.
+            do {
+                try await api.uploadCrud(ops)
+            } catch where Self.isPermanentUploadRejection(error) {
+                try await tx.complete()
+                continue
+            }
             try await tx.complete()
         }
     }

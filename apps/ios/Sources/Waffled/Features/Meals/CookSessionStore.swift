@@ -36,9 +36,14 @@ final class CookSessionStore {
     /// second; `dishTimers(_:)` slices it when a single dish is what's wanted.
     var timers: [CookTimer] = []
     /// The in-app chime + local-notification scheduler. One instance for the session.
-    let alarm = TimerAlarm()
+    let alarm: TimerAlarm
 
     private let api = WaffledAPI()
+    private var principalGeneration: UInt64 = 0
+
+    init(notificationManager: NotificationManager? = nil) {
+        alarm = TimerAlarm(notificationManager: notificationManager)
+    }
 
     /// A live session ⇒ present Cook Mode. Bound to the root `.fullScreenCover`.
     var isActive: Bool { session != nil }
@@ -100,16 +105,27 @@ final class CookSessionStore {
     /// Cook Mode opens. Re-starting the plate already cooking is a no-op (timers + per-dish
     /// progress kept); a dish whose recipe won't load is skipped by `CookSession.plate`.
     func startPlate(_ meal: WaffledAPI.MealDTO) async {
+        let generation = principalGeneration
+        await startPlate(meal, principalGeneration: generation)
+    }
+
+    private func startPlate(
+        _ meal: WaffledAPI.MealDTO,
+        principalGeneration expectedGeneration: UInt64
+    ) async {
         if session?.plateId == meal.id { return }
         guard let s = CookSession.plate(meal, methods: await methods(for: meal)) else { return }
+        guard principalGeneration == expectedGeneration else { return }
         start(s)
     }
 
     /// Same, given only the plate's id (a plate card, or a tapped timer notification).
     func startPlate(mealId: String) async {
+        let generation = principalGeneration
         if session?.plateId == mealId { return }
         guard let meal = try? await api.meal(id: mealId) else { return }
-        await startPlate(meal)
+        guard principalGeneration == generation else { return }
+        await startPlate(meal, principalGeneration: generation)
     }
 
     /// Fetch every dish's steps + ingredients at once. `MealDishDTO` carries the plate's
@@ -209,15 +225,23 @@ final class CookSessionStore {
             session?.jump(toDish: link.dishId, step: link.stepIndex)
             return
         }
+        let generation = principalGeneration
         Task {
+            guard principalGeneration == generation else { return }
             if let plateId = link.plateId {
-                await startPlate(mealId: plateId)
-                if session?.contains(link.dishId) == true {
-                    session?.jump(toDish: link.dishId, step: link.stepIndex)
-                    return
+                if let meal = try? await api.meal(id: plateId) {
+                    guard principalGeneration == generation else { return }
+                    await startPlate(meal, principalGeneration: generation)
+                    guard principalGeneration == generation else { return }
+                    if session?.contains(link.dishId) == true {
+                        session?.jump(toDish: link.dishId, step: link.stepIndex)
+                        return
+                    }
                 }
             }
+            guard principalGeneration == generation else { return }
             guard let d = try? await api.recipeDetail(id: link.dishId) else { return }
+            guard principalGeneration == generation else { return }
             start(id: link.dishId, title: d.recipe.title, steps: d.steps, ingredients: d.ingredients)
             session?.jump(toDish: link.dishId, step: link.stepIndex)
         }
@@ -229,6 +253,15 @@ final class CookSessionStore {
         cancelTimers()
         alarm.stop()
         session = nil
+    }
+
+    /// Cook Mode is app-scoped so it survives ordinary navigation/backgrounding, but
+    /// it must not survive an account, household, profile, or server boundary. Called
+    /// from SyncManager's awaited principal-artifact cleanup before the next gate opens.
+    func clearPrincipalArtifacts() {
+        principalGeneration &+= 1
+        end()
+        pendingPantryReconcile = nil
     }
 
     /// Finish & mark cooked (last step). Records the cook of the dish on screen by id —
@@ -244,10 +277,14 @@ final class CookSessionStore {
     func finish() {
         guard let dish = session?.activeDish else { end(); return }
         let id = dish.id, title = dish.title
+        let generation = principalGeneration
         end()   // close Cook Mode straight away
         Task {
+            guard principalGeneration == generation else { return }
             _ = try? await api.markRecipeCooked(id: id)
+            guard principalGeneration == generation else { return }
             if let matches = try? await api.pantryForRecipe(recipeId: id), !matches.isEmpty {
+                guard principalGeneration == generation else { return }
                 pendingPantryReconcile = PantryReconcile(id: id, title: title, matches: matches)
             }
         }

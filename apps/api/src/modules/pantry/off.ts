@@ -220,7 +220,7 @@ function ageDays(fetchedAt: string): number {
 
 // The cache-aware lookup. Returns the product view, or null if OFF has no such
 // barcode (cached as not_found within the TTL).
-export async function lookupBarcode(rawBarcode: string): Promise<ProductView | null> {
+export async function lookupBarcode(rawBarcode: string, allowCacheWrites = true): Promise<ProductView | null> {
   const barcode = String(rawBarcode).replace(/\D/g, '')
   if (!barcode) return null
 
@@ -230,9 +230,13 @@ export async function lookupBarcode(rawBarcode: string): Promise<ProductView | n
   if (cached && ageDays(cached.fetched_at) < PRODUCT_TTL_DAYS) {
     // Fresh enough to serve. If it's in the SWR window, refresh in the background
     // (the container is long-lived, so the write lands; we don't await it).
-    if (ageDays(cached.fetched_at) >= PRODUCT_SWR_DAYS) void fetchAndStore(barcode).catch(() => {})
+    if (allowCacheWrites && ageDays(cached.fetched_at) >= PRODUCT_SWR_DAYS) void fetchAndStore(barcode).catch(() => {})
     return cached.status === 'not_found' ? null : presentRow(cached)
   }
+
+  // A guest-authenticated GET is a strict read. It may use even a stale cache row,
+  // but it must neither fill a miss nor kick off a background refresh.
+  if (!allowCacheWrites) return cached?.status === 'not_found' ? null : cached ? presentRow(cached) : null
 
   // Missing or stale → refetch. On a network error, fall back to the stale row.
   try {

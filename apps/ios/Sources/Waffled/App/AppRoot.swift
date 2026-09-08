@@ -116,11 +116,23 @@ struct AppRoot: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // App-wide offline / pending-sync strip, pushed below the status bar.
-            .safeAreaInset(edge: .top, spacing: 0) { OfflineBanner() }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 0) {
+                    OfflineBanner()
+                    if sync.isReadOnlyGuest {
+                        Text("Guest access · Read-only")
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
+                            .frame(maxWidth: .infinity).padding(.vertical, 7)
+                            .background(WF.panel)
+                            .overlay(WF.hair.frame(height: 1), alignment: .bottom)
+                    }
+                }
+            }
 
             WaffledTabBar(tab: $tab, familyBadge: approvalCount,
                        flexSlot: flexSlot,
-                       onCapture: { showCapture = true },
+                       readOnly: sync.isReadOnlyGuest,
+                       onCapture: { if !sync.isReadOnlyGuest { showCapture = true } },
                        onReselect: {
                            if $0 == .family { familyPath = [] }
                            if $0 == .flex { mealsPath = []; modulePath = [] }
@@ -158,6 +170,9 @@ struct AppRoot: View {
         .onChange(of: sync.choresRev) { _, _ in Task { await refreshApprovalBadge() } }
         .onChange(of: sync.rewardsRev) { _, _ in Task { await refreshApprovalBadge() } }
         .onChange(of: sync.currentPersonId) { _, _ in Task { await refreshApprovalBadge() } }
+        .onChange(of: sync.isReadOnlyGuest) { _, readOnly in
+            if readOnly { showCapture = false }
+        }
         // A tapped reminder deep-links to its event on the Calendar tab.
         .onChange(of: notifications.pendingEventId) { _, id in
             guard let id else { return }
@@ -170,16 +185,18 @@ struct AppRoot: View {
     /// Reload pending approvals and push the count to the app-icon badge. Kids (and the
     /// signed-out state) resolve to 0, which clears any stale badge.
     private func refreshApprovalBadge() async {
+        guard let principal = NotificationManager.PrincipalContext.current else { return }
         await approvals.load()
-        await notifications.setBadge(approvalCount)
+        await notifications.setBadge(approvalCount, for: principal)
     }
 
     /// Rebuild the local reminder schedule from the current synced state.
     private func reconcileReminders() async {
+        guard let principal = NotificationManager.PrincipalContext.current else { return }
         let names = Dictionary(sync.members.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
         await notifications.reconcile(
             events: sync.events, tz: sync.householdTz,
-            myPersonId: sync.currentPersonId, names: names)
+            myPersonId: sync.currentPersonId, names: names, for: principal)
     }
 }
 
@@ -189,6 +206,7 @@ struct WaffledTabBar: View {
     @Binding var tab: Tab
     var familyBadge: Int = 0
     var flexSlot: FlexSlot? = .meals
+    var readOnly = false
     var onCapture: () -> Void
     var onReselect: (Tab) -> Void = { _ in }
 
@@ -240,7 +258,7 @@ struct WaffledTabBar: View {
     private var captureButton: some View {
         Button(action: onCapture) {
             ZStack {
-                Circle().fill(WF.primary)
+                Circle().fill(readOnly ? WF.ink3 : WF.primary)
                 Image(systemName: "sparkles")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(.white)
@@ -248,6 +266,7 @@ struct WaffledTabBar: View {
             .frame(width: 54, height: 54)
             .wfShadow3()
         }
+        .disabled(readOnly)
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
         .offset(y: -18)

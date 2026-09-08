@@ -2,11 +2,14 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { ReactElement } from 'react'
 import { EventModal } from './EventModal'
+import * as eventLocal from '../../lib/powersync/events-local'
 
 // EventModal uses useNavigate (the "View recipe" jump), so it needs a Router.
 const renderModal = (ui: ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>)
 
 describe('EventModal', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   it('creates an event with the entered details', async () => {
     const calls: Array<{ url: string; body: Record<string, unknown> }> = []
     globalThis.fetch = vi.fn(async (url: string, opts?: { method?: string; body?: string }) => {
@@ -32,6 +35,51 @@ describe('EventModal', () => {
     expect(typeof calls[0].body.startsAt).toBe('string')
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('does not replay an A local fallback with B credentials', async () => {
+    localStorage.setItem('waffled.session.v1', JSON.stringify({
+      v: 1,
+      scope: 'principal-a',
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+      memberType: 'adult',
+      accessExpiresAt: null,
+    }))
+    let resolveLocal!: (result: eventLocal.LocalEventMutationResult) => void
+    vi.spyOn(eventLocal, 'createEventLocal').mockImplementationOnce(() =>
+      new Promise((resolve) => { resolveLocal = resolve })
+    )
+    const eventPosts: string[] = []
+    globalThis.fetch = vi.fn(async (url: string, opts?: { method?: string }) => {
+      if (String(url).includes('/api/persons')) {
+        return { ok: true, json: async () => ({ persons: [] }) }
+      }
+      if (String(url).includes('/api/events') && opts?.method === 'POST') {
+        eventPosts.push(String(url))
+      }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    const onClose = vi.fn()
+    renderModal(<EventModal date="2026-06-09" onClose={onClose} onSaved={vi.fn()} />)
+    fireEvent.change(screen.getByPlaceholderText('Soccer practice'), { target: { value: 'A private event' } })
+    fireEvent.click(screen.getByRole('button', { name: /Add event/ }))
+    await waitFor(() => expect(eventLocal.createEventLocal).toHaveBeenCalledOnce())
+
+    localStorage.setItem('waffled.session.v1', JSON.stringify({
+      v: 1,
+      scope: 'principal-b',
+      accessToken: 'access-b',
+      refreshToken: 'refresh-b',
+      memberType: 'adult',
+      accessExpiresAt: null,
+    }))
+    resolveLocal('rest-fallback')
+
+    expect(await screen.findByText(/Principal changed before \/api\/events could be sent/)).toBeInTheDocument()
+    expect(eventPosts).toHaveLength(0)
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   const sampleEvent = {

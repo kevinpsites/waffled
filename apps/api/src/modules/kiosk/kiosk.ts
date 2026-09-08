@@ -15,7 +15,7 @@
 import { randomBytes } from 'node:crypto'
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { AuthError } from '../../platform/auth'
+import { AuthError, MembershipInactiveError } from '../../platform/auth'
 import {
   mintAccess,
   issueRefresh,
@@ -23,7 +23,14 @@ import {
   hashPassword,
   verifyPassword,
 } from '../auth/auth'
-import { requireTenant, requireAdmin, resolveTenant, presentPerson, type PersonRow } from '../households/households'
+import {
+  requireTenant,
+  requireAdmin,
+  resolveRequestTenant,
+  resolveRequestInactiveMembership,
+  presentPerson,
+  type PersonRow,
+} from '../households/households'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -100,8 +107,9 @@ async function resolveHouseholdId(req: Request): Promise<string> {
   // account-scoped token (sub = account id + household claim), not just the legacy
   // sub → identity lookup. Then fall back to a pre-claim device token (the picker).
   if (req.principal) {
-    const tenant = await resolveTenant(req.principal)
+    const tenant = await resolveRequestTenant(req)
     if (tenant) return tenant.householdId
+    if (await resolveRequestInactiveMembership(req)) throw new MembershipInactiveError()
   }
   return (await requireDevice(req)).householdId
 }
@@ -212,6 +220,7 @@ export function registerKioskRoutes(api: Api): void {
       `select p.*, (p.pin_hash is not null) as has_pin
          from persons p
         where p.household_id = $1 and p.deleted_at is null and p.show_on_kiosk
+          and (p.access_expires_at is null or p.access_expires_at > now())
         order by p.sort_order, p.created_at`,
       [householdId]
     )
@@ -262,7 +271,8 @@ export function registerKioskRoutes(api: Api): void {
     const personId = req.params.personId ?? ''
     const { rows } = await query<PersonRow & { pin_hash: string | null; pin_failed_count: number; pin_locked_until: Date | null }>(
       `select * from persons
-        where id = $1 and household_id = $2 and deleted_at is null and show_on_kiosk`,
+        where id = $1 and household_id = $2 and deleted_at is null and show_on_kiosk
+          and (access_expires_at is null or access_expires_at > now())`,
       [personId, householdId]
     )
     const person = rows[0]

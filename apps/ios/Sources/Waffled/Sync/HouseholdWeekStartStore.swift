@@ -36,6 +36,10 @@ enum HouseholdWeekStartStore {
         defaults.set(value.rawValue, forKey: key)
     }
 
+    static func clear(defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: key)
+    }
+
     /// Take the value a sync tick reported, remember it, and hand back what to use.
     ///
     /// Reading and remembering are deliberately ONE call. As two steps, dropping the save

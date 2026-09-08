@@ -1,14 +1,20 @@
 // Members (persons) CRUD, always scoped to the caller's household.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { query } from '../../platform/db'
+import { getPool, query } from '../../platform/db'
 import { presentPerson, presentHousehold, type PersonRow, type HouseholdRow } from '../households/households'
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
 import { MODULES, MODULE_KEYS } from '../../platform/modules'
 import { cleanAllergens } from '../../platform/allergens'
+import {
+  AccessEndDateError,
+  canonicalAccessWindow,
+  normalizeHouseholdTimezone,
+} from '../../platform/access-expiry'
 
 type Api = ReturnType<typeof createAPI>
 
-const MEMBER_TYPES = new Set(['adult', 'teen', 'kid'])
+const MEMBER_TYPES = new Set(['adult', 'caregiver', 'guest', 'teen', 'kid'])
+const TEMPORARY_MEMBER_TYPES = new Set(['caregiver', 'guest'])
 const WEEK_STARTS = new Set(['sunday', 'monday'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -27,6 +33,8 @@ const UPDATABLE: Record<string, string> = {
   allergens: 'allergens',
   rewardStyle: 'reward_style',
   showOnKiosk: 'show_on_kiosk',
+  accessEndsOn: 'access_ends_on',
+  accessExpiresAt: 'access_expires_at',
   sortOrder: 'sort_order',
 }
 
@@ -49,30 +57,64 @@ export interface CreatePersonInput {
   isAdmin?: boolean
   rewardStyle?: string
   sortOrder?: number
+  showOnKiosk?: boolean
+  accessEndsOn?: string | null
+  accessExpiresAt?: string | null
 }
+
+type PersonRequestBody = Partial<CreatePersonInput> & { accessEndsOn?: unknown }
 
 export async function createPerson(
   householdId: string,
   input: CreatePersonInput
 ): Promise<PersonRow> {
-  const { rows } = await query<PersonRow>(
-    `insert into persons
-       (household_id, name, member_type, is_admin, avatar_emoji, color_hex, birthday, reward_style, sort_order)
-     values ($1, $2, $3, $4, $5, $6, $7, coalesce($8,'stars'), coalesce($9,0))
-     returning *`,
-    [
-      householdId,
-      input.name,
-      input.memberType,
-      input.isAdmin ?? false,
-      input.avatarEmoji ?? null,
-      input.colorHex ?? null,
-      input.birthday ?? null,
-      input.rewardStyle ?? null,
-      input.sortOrder ?? null,
-    ]
-  )
-  return rows[0]
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    // Validation and persistence must observe one timezone. A concurrent timezone
+    // patch either commits before this lock (and is validated here) or waits until
+    // the new person has been canonicalized by the database trigger.
+    const household = await client.query<{ timezone: string }>(
+      `select timezone from households where id = $1 and deleted_at is null for share`,
+      [householdId]
+    )
+    if (!household.rows[0]) throw new Error('household not found')
+    const accessWindow = canonicalAccessWindow(input, household.rows[0].timezone)
+    const accessEndsOn = accessWindow?.accessEndsOn ?? null
+
+    const { rows } = await client.query<PersonRow>(
+      `insert into persons
+         (household_id, name, member_type, is_admin, avatar_emoji, color_hex, birthday,
+          reward_style, sort_order, show_on_kiosk, access_ends_on, access_expires_at)
+       values ($1, $2, $3, $4, $5, $6, $7,
+               coalesce($8,'stars'), coalesce($9,0), $10, $11, null)
+       returning *`,
+      [
+        householdId,
+        input.name,
+        input.memberType,
+        input.isAdmin ?? false,
+        input.avatarEmoji ?? null,
+        input.colorHex ?? null,
+        input.birthday ?? null,
+        input.rewardStyle ?? null,
+        input.sortOrder ?? null,
+        input.showOnKiosk ?? !TEMPORARY_MEMBER_TYPES.has(input.memberType),
+        accessEndsOn,
+      ]
+    )
+    const person = rows[0]
+    if (person.access_expires_at && person.access_expires_at.getTime() <= Date.now()) {
+      throw new AccessEndDateError('access expiration must remain in the future')
+    }
+    await client.query('commit')
+    return person
+  } catch (error) {
+    await client.query('rollback').catch(() => {})
+    throw error
+  } finally {
+    client.release()
+  }
 }
 
 export async function getPerson(householdId: string, id: string): Promise<PersonRow | null> {
@@ -83,6 +125,14 @@ export async function getPerson(householdId: string, id: string): Promise<Person
   return rows[0] ?? null
 }
 
+async function ownerPersonId(householdId: string): Promise<string | null> {
+  const { rows } = await query<{ owner_person_id: string | null }>(
+    `select owner_person_id from households where id=$1`,
+    [householdId]
+  )
+  return rows[0]?.owner_person_id ?? null
+}
+
 // Patch is a whitelisted, household-scoped update. Returns null if no such
 // (live) person in this household. Caller validates the patch first.
 export async function updatePerson(
@@ -90,23 +140,71 @@ export async function updatePerson(
   id: string,
   patch: Record<string, unknown>
 ): Promise<PersonRow | null> {
-  const sets: string[] = []
-  const values: unknown[] = []
-  let i = 1
-  for (const [field, column] of Object.entries(UPDATABLE)) {
-    if (field in patch && patch[field] !== undefined) {
-      sets.push(`${column} = $${i++}`)
-      values.push(patch[field])
+  const changesAccessWindow =
+    patch.accessEndsOn !== undefined || patch.accessExpiresAt !== undefined
+
+  if (changesAccessWindow) {
+    const client = await getPool().connect()
+    try {
+      await client.query('begin')
+      const household = await client.query<{ timezone: string }>(
+        `select timezone from households where id = $1 and deleted_at is null for share`,
+        [householdId]
+      )
+      if (!household.rows[0]) {
+        await client.query('rollback')
+        return null
+      }
+
+      const normalized = { ...patch }
+      const accessWindow = canonicalAccessWindow(normalized, household.rows[0].timezone)
+      delete normalized.accessEndsOn
+      delete normalized.accessExpiresAt
+      if (accessWindow) normalized.accessEndsOn = accessWindow.accessEndsOn
+
+      const { sets, values } = personUpdateParts(normalized)
+      values.push(householdId, id)
+      const { rows } = await client.query<PersonRow>(
+        `update persons set ${sets.join(', ')}
+           where household_id = $${values.length - 1} and id = $${values.length} and deleted_at is null
+         returning *`,
+        values
+      )
+      const person = rows[0] ?? null
+      if (person?.access_expires_at && person.access_expires_at.getTime() <= Date.now()) {
+        throw new AccessEndDateError('access expiration must remain in the future')
+      }
+      await client.query('commit')
+      return person
+    } catch (error) {
+      await client.query('rollback').catch(() => {})
+      throw error
+    } finally {
+      client.release()
     }
   }
+
+  const { sets, values } = personUpdateParts(patch)
   values.push(householdId, id)
   const { rows } = await query<PersonRow>(
     `update persons set ${sets.join(', ')}
-       where household_id = $${i++} and id = $${i} and deleted_at is null
-       returning *`,
+       where household_id = $${values.length - 1} and id = $${values.length} and deleted_at is null
+     returning *`,
     values
   )
   return rows[0] ?? null
+}
+
+function personUpdateParts(patch: Record<string, unknown>): { sets: string[]; values: unknown[] } {
+  const sets: string[] = []
+  const values: unknown[] = []
+  for (const [field, column] of Object.entries(UPDATABLE)) {
+    if (field in patch && patch[field] !== undefined) {
+      sets.push(`${column} = $${values.length + 1}`)
+      values.push(patch[field])
+    }
+  }
+  return { sets, values }
 }
 
 // Pin (or clear) the reward a person is "saving toward". Household-scoped, not
@@ -186,7 +284,7 @@ export async function updateHousehold(householdId: string, patch: Record<string,
   for (const [field, column] of Object.entries(HOUSEHOLD_COLUMNS)) {
     if (field in patch && patch[field] !== undefined) {
       sets.push(`${column} = $${i++}`)
-      values.push(patch[field])
+      values.push(field === 'timezone' ? normalizeHouseholdTimezone(patch[field]) : patch[field])
     }
   }
   if (sets.length === 0) {
@@ -325,7 +423,13 @@ export function registerPersonRoutes(api: Api): void {
     if (!Object.keys(HOUSEHOLD_COLUMNS).some((f) => f in patch)) {
       return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
     }
-    const h = await updateHousehold(tenant.householdId, patch)
+    let h: HouseholdRow | null
+    try {
+      h = await updateHousehold(tenant.householdId, patch)
+    } catch (error) {
+      if (!(error instanceof AccessEndDateError)) throw error
+      return res.status(400).json({ error: 'BadRequest', message: error.message })
+    }
     if (!h) return res.status(404).json({ error: 'NotFound', message: 'household not found' })
     return { household: presentHousehold(h) }
   }))
@@ -408,17 +512,39 @@ export function registerPersonRoutes(api: Api): void {
 
   // Add a member (admins only).
   api.post('/api/persons', adminRoute(async (tenant, req: Request, res: Response) => {
-    const body = (req.body ?? {}) as Partial<CreatePersonInput>
+    const body = { ...((req.body ?? {}) as PersonRequestBody) } as PersonRequestBody
     if (!body.name || !body.memberType || !MEMBER_TYPES.has(body.memberType)) {
       return res.status(400).json({
         error: 'BadRequest',
-        message: 'name and memberType (adult|teen|kid) are required',
+        message: 'name and a valid memberType are required',
       })
     }
     if (body.colorHex != null && !HEX_COLOR.test(String(body.colorHex))) {
       return res.status(400).json({ error: 'BadRequest', message: 'colorHex must be a #RRGGBB hex color' })
     }
-    const person = await createPerson(tenant.householdId, body as CreatePersonInput)
+    if (body.isAdmin !== undefined && typeof body.isAdmin !== 'boolean') {
+      return res.status(400).json({ error: 'BadRequest', message: 'isAdmin must be a boolean' })
+    }
+    if (body.showOnKiosk !== undefined && typeof body.showOnKiosk !== 'boolean') {
+      return res.status(400).json({ error: 'BadRequest', message: 'showOnKiosk must be a boolean' })
+    }
+    if (body.isAdmin && body.memberType !== 'adult') {
+      return res.status(400).json({ error: 'BadRequest', message: 'only an adult role can be an admin' })
+    }
+    if (body.accessEndsOn !== undefined && body.accessExpiresAt !== undefined) {
+      return res.status(400).json({ error: 'BadRequest', message: 'send accessEndsOn instead of accessExpiresAt, not both' })
+    }
+    if (!TEMPORARY_MEMBER_TYPES.has(body.memberType) &&
+        (body.accessEndsOn != null || body.accessExpiresAt != null)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'access expiration is only available for caregiver and guest roles' })
+    }
+    let person: PersonRow
+    try {
+      person = await createPerson(tenant.householdId, body as CreatePersonInput)
+    } catch (error) {
+      if (!(error instanceof AccessEndDateError)) throw error
+      return res.status(400).json({ error: 'BadRequest', message: error.message })
+    }
     return res.status(201).json({ person: presentPerson(person) })
   }))
 
@@ -436,7 +562,7 @@ export function registerPersonRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
 
-    const patch = (req.body ?? {}) as Record<string, unknown>
+    const patch = { ...((req.body ?? {}) as Record<string, unknown>) }
     if (patch.memberType !== undefined && !MEMBER_TYPES.has(String(patch.memberType))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid memberType' })
     }
@@ -451,12 +577,45 @@ export function registerPersonRoutes(api: Api): void {
       }
       patch.colorHex = resolved
     }
+    if (patch.isAdmin !== undefined && typeof patch.isAdmin !== 'boolean') {
+      return res.status(400).json({ error: 'BadRequest', message: 'isAdmin must be a boolean' })
+    }
+    if (patch.showOnKiosk !== undefined && typeof patch.showOnKiosk !== 'boolean') {
+      return res.status(400).json({ error: 'BadRequest', message: 'showOnKiosk must be a boolean' })
+    }
     if ('allergens' in patch) patch.allergens = cleanAllergens(patch.allergens)
+    if (patch.accessEndsOn !== undefined && patch.accessExpiresAt !== undefined) {
+      return res.status(400).json({ error: 'BadRequest', message: 'send accessEndsOn instead of accessExpiresAt, not both' })
+    }
     if (!Object.keys(UPDATABLE).some((field) => field in patch)) {
       return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
     }
 
-    const person = await updatePerson(tenant.householdId, id, patch)
+    const current = await getPerson(tenant.householdId, id)
+    if (!current) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    const nextType = String(patch.memberType ?? current.member_type)
+    const nextAdmin = typeof patch.isAdmin === 'boolean' ? patch.isAdmin : current.is_admin
+    if (id === await ownerPersonId(tenant.householdId) && (nextType !== 'adult' || nextAdmin === false)) {
+      return res.status(409).json({ error: 'Conflict', message: 'the household owner must remain an adult admin' })
+    }
+    if (nextAdmin && nextType !== 'adult') {
+      return res.status(400).json({ error: 'BadRequest', message: 'only an adult role can be an admin' })
+    }
+    if ((patch.accessEndsOn != null || patch.accessExpiresAt != null) && !TEMPORARY_MEMBER_TYPES.has(nextType)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'access expiration is only available for caregiver and guest roles' })
+    }
+    if (!TEMPORARY_MEMBER_TYPES.has(nextType)) {
+      patch.accessEndsOn = null
+      delete patch.accessExpiresAt
+    }
+
+    let person: PersonRow | null
+    try {
+      person = await updatePerson(tenant.householdId, id, patch)
+    } catch (error) {
+      if (!(error instanceof AccessEndDateError)) throw error
+      return res.status(400).json({ error: 'BadRequest', message: error.message })
+    }
     if (!person) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
     return { person: presentPerson(person) }
   }))
