@@ -9,8 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/backup"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/ports"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/schedule"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/services"
 )
 
@@ -66,12 +67,54 @@ func (s *Supervisor) Doctor(ctx context.Context) []Check {
 		add("data directory location", CheckWarn, "%s", warning)
 	}
 
-	if datadir.IsExcludedFromBackup(s.plan.Layout.Postgres) {
+	if isExcludedFromBackup(s.plan.Layout.Postgres) {
 		add("Time Machine", CheckOK, "the live database is excluded; %s is what gets backed up", s.plan.Layout.Backups)
 	} else if s.postgresInitialized() {
 		add("Time Machine", CheckWarn,
 			"%s is NOT excluded from Time Machine — restoring a live cluster from a file-level backup corrupts it",
 			s.plan.Layout.Postgres)
+	}
+
+	// Backups: the one check whose answer someone only ever wants once it is too late.
+	b := backup.Describe(s.plan.Layout.Backups, s.scheduleInstalled())
+	switch {
+	case b.LastError != "":
+		add("backups", CheckFail, "the last backup failed (%s): %s", b.LastErrorAt, b.LastError)
+	case b.LastBackupAt == "":
+		add("backups", CheckWarn, "no backup has been taken yet — run `waffled-runtime backup`, "+
+			"or `waffled-runtime backup --install-schedule` for a nightly one")
+	default:
+		age := ""
+		if at, err := time.Parse(time.RFC3339, b.LastBackupAt); err == nil {
+			age = fmt.Sprintf(" (%s ago)", time.Since(at).Round(time.Hour))
+		}
+		// The api's own health check calls a backup stale after 48 hours; matching it
+		// means `doctor` and System Health never disagree about the same fact.
+		if at, err := time.Parse(time.RFC3339, b.LastBackupAt); err == nil && time.Since(at) > 48*time.Hour {
+			add("backups", CheckWarn, "the last backup was %s%s — %d kept in %s",
+				b.LastBackupAt, age, b.Count, s.plan.Layout.Backups)
+		} else {
+			add("backups", CheckOK, "last backup %s%s, %.1f MB — %d kept in %s",
+				b.LastBackupAt, age, float64(b.LastSizeBytes)/(1<<20), b.Count, s.plan.Layout.Backups)
+		}
+	}
+	// The plist on disk is only half the answer, and `status` stops at that half because
+	// it polls. Here — once, when a human asks — launchd is asked whether it actually
+	// holds the job: a bootstrap that failed on an older build, or a label booted out by
+	// hand, leaves a file that every other reporter reads as "installed" while no backup
+	// will ever run.
+	switch {
+	case !b.ScheduleInstalled:
+		add("backup schedule", CheckWarn,
+			"no nightly backup is scheduled — install one with `waffled-runtime backup --install-schedule`")
+	default:
+		if loaded, err := s.scheduleLoaded(); loaded {
+			add("backup schedule", CheckOK, "a nightly backup is installed and loaded (%s)", schedule.Label)
+		} else {
+			add("backup schedule", CheckWarn,
+				"%s is installed but launchd does not have the job loaded, so no backup will run — "+
+					"re-run `waffled-runtime backup --install-schedule`: %v", schedule.Label, err)
+		}
 	}
 
 	if free, err := freeDiskBytes(s.plan.Layout.Root); err != nil {

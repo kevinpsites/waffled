@@ -29,7 +29,7 @@ type Layout struct {
 	ConfigEnv   string
 	Postgres    string // PGDATA
 	Media       string // uploaded blobs; the api writes, Caddy serves
-	Backups     string // pg_dump output (task 5)
+	Backups     string // pg_dump output: routine backups and pre-migration snapshots
 	Logs        string // one file per service
 	Pids        string
 	RuntimeJSON string

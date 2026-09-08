@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kevinpsites/waffled/apps/runtime/internal/backup"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/caddyconf"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/configenv"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
@@ -85,6 +86,14 @@ type Supervisor struct {
 	mu        sync.Mutex
 	children  map[string]*child
 	lastError string
+
+	// waitHealthy gates a service on its health URL. It is a field, always set to
+	// waitHTTP in production, purely so the rollback test can make the api's gate fail
+	// for real without a branch in this path that a user could trip. An env variable or
+	// a "pretend to fail" flag would be a test hook shipped to households; swapping the
+	// prober leaves every line of the production sequence running exactly as it does on
+	// a real machine.
+	waitHealthy func(ctx context.Context, url string, timeout time.Duration, alive func() error) error
 }
 
 // New prepares a Supervisor: it resolves the bundle and data directory, verifies the
@@ -157,11 +166,12 @@ func New(opts Options) (*Supervisor, error) {
 	}
 
 	s := &Supervisor{
-		log:      log,
-		manifest: m,
-		state:    st,
-		children: map[string]*child{},
-		runner:   &runner{logsDir: layout.Logs, pidsDir: layout.Pids, log: log},
+		log:         log,
+		manifest:    m,
+		state:       st,
+		children:    map[string]*child{},
+		runner:      &runner{logsDir: layout.Logs, pidsDir: layout.Pids, log: log},
+		waitHealthy: waitHTTP,
 	}
 	s.plan = services.Plan{
 		Bundle:   bundleDir,
@@ -193,6 +203,7 @@ func New(opts Options) (*Supervisor, error) {
 	s.state.SocketDir = socketDir
 	s.state.BundleSHA = m.GitSha
 	s.state.BundleTime = m.BuiltAt
+	s.excludeDataFromTimeMachine()
 
 	if err := rtstate.Save(layout.RuntimeJSON, s.state); err != nil {
 		return nil, err
@@ -291,6 +302,15 @@ func (s *Supervisor) Start(ctx context.Context) error {
 		return s.fail(err)
 	}
 
+	// Plan §5: "Rollback means restore, not reverse migrations." Migrations only run
+	// forward, so the way back from a schema change that breaks the api is a dump taken
+	// immediately before it. Nothing happens here unless migrations are genuinely
+	// pending, which makes a warm start pay one cheap query and nothing else.
+	snapshot, err := s.snapshotBeforeMigrate(ctx)
+	if err != nil {
+		return s.fail(err)
+	}
+
 	// The one-shot migrate container, reimplemented. Idempotent, so it runs every start;
 	// on a warm start every migration is already applied and it is a fast no-op.
 	s.log.Infof("applying database migrations")
@@ -305,8 +325,24 @@ func (s *Supervisor) Start(ctx context.Context) error {
 			migrateErr, tail(migrateOut, 30), s.plan.Layout.LogPath(services.Migrate)))
 	}
 
+	// The api's health gate is what decides whether the migration that just ran was
+	// survivable. A failure here with a snapshot in hand is the one case that undoes
+	// itself: restore the pre-migration database and refuse to come up, rather than
+	// leaving a household with a schema their build cannot serve.
 	if err := s.startChild(ctx, s.plan.API(), apiHealthTimeout); err != nil {
-		return s.fail(err)
+		if snapshot == "" {
+			return s.fail(err)
+		}
+		if rbErr := s.rollbackTo(ctx, snapshot); rbErr != nil {
+			return s.fail(fmt.Errorf("the api did not start after migrating, AND the database "+
+				"could not be rolled back: %v\nThe pre-migration snapshot is intact at %s — "+
+				"restore it by hand with `waffled-runtime restore %s`.\nThe original failure was: %w",
+				rbErr, snapshot, snapshot, err))
+		}
+		return s.fail(fmt.Errorf("the api did not start after migrating, so the database was "+
+			"rolled back to the snapshot taken beforehand (%s) and the server has not been "+
+			"started.\nRe-install the previous version of Waffled, or report this.\n"+
+			"The failure was: %w", snapshot, err))
 	}
 	if err := s.stagePowerSyncConfig(); err != nil {
 		return s.fail(err)
@@ -369,7 +405,7 @@ func (s *Supervisor) startChild(ctx context.Context, spec services.Spec, timeout
 	s.mu.Unlock()
 
 	if spec.HealthURL != "" {
-		if err := waitHTTP(ctx, spec.HealthURL, timeout, c.liveness()); err != nil {
+		if err := s.waitHealthy(ctx, spec.HealthURL, timeout, c.liveness()); err != nil {
 			return fmt.Errorf("%s did not become healthy: %w\nsee %s",
 				spec.Name, err, s.plan.Layout.LogPath(spec.Name))
 		}
@@ -530,6 +566,8 @@ func (s *Supervisor) Status(ctx context.Context) *status.Report {
 	for _, spec := range s.plan.Children() {
 		r.Services = append(r.Services, s.serviceStatus(ctx, spec))
 	}
+
+	r.Backups = backup.Describe(s.plan.Layout.Backups, s.scheduleInstalled())
 
 	s.mu.Lock()
 	r.LastError = s.lastError

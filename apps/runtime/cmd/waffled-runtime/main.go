@@ -13,6 +13,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kevinpsites/waffled/apps/runtime/internal/schedule"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/services"
 	"github.com/kevinpsites/waffled/apps/runtime/internal/supervisor"
 )
@@ -40,6 +42,8 @@ Usage:
   waffled-runtime stop [flags]      stop the stack, in reverse order
   waffled-runtime status [flags]    what is running, on which ports
   waffled-runtime logs [service]    show a service log (postgres, migrate, api, powersync, caddy, runtime)
+  waffled-runtime backup [flags]    dump the database to the backups folder
+  waffled-runtime restore FILE      replace the database with a dump (destructive)
   waffled-runtime doctor [flags]    diagnose a stack that will not start
   waffled-runtime version
 
@@ -56,6 +60,13 @@ status, doctor:
 logs:
   -f             follow
   -n N           lines to show (default 200)
+backup:
+  --out FILE            write here instead of the backups folder (retention is then skipped)
+  --keep N              how many backups to keep (default 14)
+  --install-schedule    install a nightly 03:00 backup as a launchd agent
+  --uninstall-schedule  remove it
+restore:
+  --yes          skip the typed confirmation (required when there is no terminal)
 `
 
 func main() {
@@ -79,6 +90,10 @@ func run(args []string) error {
 		return cmdStatus(args[1:])
 	case "logs":
 		return cmdLogs(args[1:])
+	case "backup":
+		return cmdBackup(args[1:])
+	case "restore":
+		return cmdRestore(args[1:])
 	case "doctor":
 		return cmdDoctor(args[1:])
 	case "version", "--version", "-v":
@@ -198,6 +213,114 @@ func cmdStatus(args []string) error {
 	}
 	fmt.Print(report.Text())
 	return nil
+}
+
+func cmdBackup(args []string) error {
+	fs := flag.NewFlagSet("backup", flag.ContinueOnError)
+	common := addCommon(fs)
+	out := fs.String("out", "", "write the dump here instead of the backups folder")
+	keep := fs.Int("keep", 0, "how many backups to keep (default 14)")
+	install := fs.Bool("install-schedule", false, "install the nightly backup launchd agent")
+	uninstall := fs.Bool("uninstall-schedule", false, "remove the nightly backup launchd agent")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *install && *uninstall {
+		return errors.New("--install-schedule and --uninstall-schedule are opposites; pick one")
+	}
+
+	// Tolerant, like status and doctor. Backing up needs Postgres and nothing else, so a
+	// port conflict on Caddy's public site — someone else's Docker holding 8080, say —
+	// must not be what stops the 03:00 job from protecting the data.
+	s, err := newInspector(common, supervisor.NewLogger(os.Stderr, false))
+	if err != nil {
+		return err
+	}
+
+	if *install || *uninstall {
+		agent, err := s.BackupAgent()
+		if err != nil {
+			return err
+		}
+		if *uninstall {
+			if err := agent.Uninstall(); err != nil {
+				return err
+			}
+			fmt.Printf("Removed the nightly backup (%s)\n", agent.PlistPath())
+			return nil
+		}
+		if err := agent.Install(); err != nil {
+			return err
+		}
+		fmt.Printf("Waffled will back up nightly at %02d:%02d → %s\n",
+			schedule.Hour, schedule.Minute, s.Plan().Layout.Backups)
+		fmt.Printf("  agent: %s\n", agent.PlistPath())
+		fmt.Printf("  log:   %s\n", s.Plan().Layout.LogPath("backup"))
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
+	defer cancel()
+	path, err := s.Backup(ctx, supervisor.BackupOptions{Out: *out, Keep: *keep})
+	if err != nil {
+		return err
+	}
+	fmt.Println(path)
+	return nil
+}
+
+func cmdRestore(args []string) error {
+	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
+	common := addCommon(fs)
+	yes := fs.Bool("yes", false, "skip the typed confirmation")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	file := fs.Arg(0)
+	if file == "" {
+		return errors.New("usage: waffled-runtime restore FILE [--yes]")
+	}
+
+	s, err := newInspector(common, supervisor.NewLogger(os.Stderr, false))
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Minute)
+	defer cancel()
+
+	if err := s.Restore(ctx, supervisor.RestoreOptions{
+		File: file, Yes: *yes, Confirm: confirmOnTTY,
+	}); err != nil {
+		return err
+	}
+
+	// Restore deliberately leaves the stack down with Postgres up. Starting it again
+	// here — detached, so the supervisor outlives this command — is what re-runs the
+	// migrations that catch an older dump up, rebuilds PowerSync's buckets from the
+	// restored data, and gates on health before saying anything worked.
+	fmt.Println("Restarting the server…")
+	if _, err := s.StartDetached(ctx, nil); err != nil {
+		return fmt.Errorf("the database was restored, but the server did not come back up: %w", err)
+	}
+	fmt.Printf("Restored. Waffled is running → %s\n", s.LocalURL())
+	return nil
+}
+
+// confirmOnTTY asks for a typed confirmation, and only when there is a terminal to ask
+// on. Without one it returns false, so a script that meant to pass --yes is refused
+// rather than silently destroying a database — the repo-root `waffled` script's `[ -t 0 ]`
+// check, with the non-interactive default turned from "proceed" into "stop".
+func confirmOnTTY(prompt string) bool {
+	st, err := os.Stdin.Stat()
+	if err != nil || st.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	fmt.Print(prompt)
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(line) == "restore"
 }
 
 func cmdDoctor(args []string) error {

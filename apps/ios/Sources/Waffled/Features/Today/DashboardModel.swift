@@ -74,30 +74,28 @@ struct TonightMeal: Sendable {
 /// refreshed on appear, pull-down, the in-app mutation buses (`sync.*Rev`), and on
 /// the app returning to the foreground (changes made elsewhere while backgrounded).
 ///
-/// Each domain lives in a shared `RestDomain` (same layer the iPad kiosk uses),
-/// which carries the loading-state contract the cards rely on: `loaded` /
-/// `goalsLoaded` flip true only after their fetch completes, so a card can tell
-/// "still loading" (show a placeholder) apart from "loaded and empty" (show the
-/// empty state). A failed fetch (offline, expired token) keeps the prior values
-/// rather than blanking the cards.
-///
-/// Fetchers are injectable for the unit tests; the defaults hit `WaffledAPI`,
-/// returning nil on failure so `RestDomain.apply` can tell "empty" from "errored".
+/// Each card exposes its REST state independently. A failed fetch preserves confirmed
+/// values and reports the failure; only successful responses authorize empty copy.
+/// Throwing injectable fetchers preserve the error needed for network/session recovery.
 @MainActor
 @Observable
 final class DashboardModel {
-    private let tonightD = RestDomain<TonightMeal?>(nil)
-    private let choresD = RestDomain<[WaffledAPI.PersonChoresDTO]>([])
-    private let groceryD = RestDomain<Int>(0)
-    private let goalsD = RestDomain<[WaffledAPI.Goal]>([])
-    private let recapD = RestDomain<[WaffledAPI.GoalRecapItem]>([])
-    private let suggestionsD = RestDomain<[WaffledAPI.GoalSuggestionItem]>([])
+    private let tonightD = RestDomain<TonightMeal?>(nil, isEmpty: { $0 == nil })
+    private let choresD = RestDomain<[WaffledAPI.PersonChoresDTO]>([], isEmpty: \.isEmpty)
+    private let groceryD = RestDomain<Int>(0, isEmpty: { $0 == 0 })
+    private let goalsD = RestDomain<[WaffledAPI.Goal]>([], isEmpty: \.isEmpty)
+    private let recapD = RestDomain<[WaffledAPI.GoalRecapItem]>([], isEmpty: \.isEmpty)
+    private let suggestionsD = RestDomain<[WaffledAPI.GoalSuggestionItem]>([], isEmpty: \.isEmpty)
 
     var tonight: TonightMeal? { tonightD.value }
     var chores: [WaffledAPI.PersonChoresDTO] { choresD.value }
     var groceryRemaining: Int { groceryD.value }
-    /// Whether the meals/chores/grocery load has completed at least once.
-    var loaded: Bool { tonightD.loaded && choresD.loaded && groceryD.loaded }
+    var mealsState: RestState { tonightD.state }
+    var choresState: RestState { choresD.state }
+    var groceryState: RestState { groceryD.state }
+    var goalsState: RestState { goalsD.state }
+    var reviewState: RestState { .combined([recapD.state, suggestionsD.state]) }
+    var loaded: Bool { mealsState.isAuthoritative && choresState.isAuthoritative && groceryState.isAuthoritative }
 
     /// Household goals (featured-first) for the Today goals card, plus the
     /// goal-calendar review queues for the "review events" entry card.
@@ -107,28 +105,31 @@ final class DashboardModel {
     /// Whether the goals load has completed at least once — the goals card must key
     /// its empty state off THIS flag, not `loaded` (the dash fetch usually finishes
     /// first, which used to flash "Set a family goal →" before goals arrived).
-    var goalsLoaded: Bool { goalsD.loaded && recapD.loaded && suggestionsD.loaded }
+    var goalsLoaded: Bool { goalsState.isAuthoritative }
 
-    private let fetchMeals: @Sendable (String) async -> [WaffledAPI.WeekEntryDTO]?
-    private let fetchChores: @Sendable () async -> [WaffledAPI.PersonChoresDTO]?
-    private let fetchGrocery: @Sendable () async -> [WaffledAPI.GroceryItemDTO]?
-    private let fetchGoals: @Sendable () async -> [WaffledAPI.Goal]?
-    private let fetchRecap: @Sendable () async -> [WaffledAPI.GoalRecapItem]?
-    private let fetchSuggestions: @Sendable () async -> [WaffledAPI.GoalSuggestionItem]?
+    private var loadGeneration = 0
+    private var goalsGeneration = 0
 
-    init(fetchMeals: (@Sendable (String) async -> [WaffledAPI.WeekEntryDTO]?)? = nil,
-         fetchChores: (@Sendable () async -> [WaffledAPI.PersonChoresDTO]?)? = nil,
-         fetchGrocery: (@Sendable () async -> [WaffledAPI.GroceryItemDTO]?)? = nil,
-         fetchGoals: (@Sendable () async -> [WaffledAPI.Goal]?)? = nil,
-         fetchRecap: (@Sendable () async -> [WaffledAPI.GoalRecapItem]?)? = nil,
-         fetchSuggestions: (@Sendable () async -> [WaffledAPI.GoalSuggestionItem]?)? = nil) {
+    private let fetchMeals: @Sendable (String) async throws -> [WaffledAPI.WeekEntryDTO]
+    private let fetchChores: @Sendable () async throws -> [WaffledAPI.PersonChoresDTO]
+    private let fetchGrocery: @Sendable () async throws -> [WaffledAPI.GroceryItemDTO]
+    private let fetchGoals: @Sendable () async throws -> [WaffledAPI.Goal]
+    private let fetchRecap: @Sendable () async throws -> [WaffledAPI.GoalRecapItem]
+    private let fetchSuggestions: @Sendable () async throws -> [WaffledAPI.GoalSuggestionItem]
+
+    init(fetchMeals: (@Sendable (String) async throws -> [WaffledAPI.WeekEntryDTO])? = nil,
+         fetchChores: (@Sendable () async throws -> [WaffledAPI.PersonChoresDTO])? = nil,
+         fetchGrocery: (@Sendable () async throws -> [WaffledAPI.GroceryItemDTO])? = nil,
+         fetchGoals: (@Sendable () async throws -> [WaffledAPI.Goal])? = nil,
+         fetchRecap: (@Sendable () async throws -> [WaffledAPI.GoalRecapItem])? = nil,
+         fetchSuggestions: (@Sendable () async throws -> [WaffledAPI.GoalSuggestionItem])? = nil) {
         let api = WaffledAPI()
-        self.fetchMeals = fetchMeals ?? { try? await api.mealsWeek(start: $0) }
-        self.fetchChores = fetchChores ?? { try? await api.choresToday() }
-        self.fetchGrocery = fetchGrocery ?? { try? await api.groceryItems() }
-        self.fetchGoals = fetchGoals ?? { try? await api.goalsIn(listId: nil) }
-        self.fetchRecap = fetchRecap ?? { try? await api.goalRecap() }
-        self.fetchSuggestions = fetchSuggestions ?? { try? await api.goalSuggestions() }
+        self.fetchMeals = fetchMeals ?? { try await api.mealsWeek(start: $0) }
+        self.fetchChores = fetchChores ?? { try await api.choresToday() }
+        self.fetchGrocery = fetchGrocery ?? { try await api.groceryItems() }
+        self.fetchGoals = fetchGoals ?? { try await api.goalsIn(listId: nil) }
+        self.fetchRecap = fetchRecap ?? { try await api.goalRecap() }
+        self.fetchSuggestions = fetchSuggestions ?? { try await api.goalSuggestions() }
     }
 
     /// Aggregate chore progress across the family (for the compact summary card).
@@ -140,10 +141,14 @@ final class DashboardModel {
     /// domain that fails keeps its prior value; one that succeeds empty clears (e.g.
     /// tonight's dinner was removed elsewhere → back to "No dinner planned").
     func load(todayKey: String) async {
-        async let meals = fetchMeals(todayKey)
-        async let people = fetchChores()
-        async let grocery = fetchGrocery()
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        tonightD.beginLoading(); choresD.beginLoading(); groceryD.beginLoading()
+        async let meals = RestFetch.result { [fetchMeals] in try await fetchMeals(todayKey) }
+        async let people = RestFetch.result(fetchChores)
+        async let grocery = RestFetch.result(fetchGrocery)
         let (m, c, g) = await (meals, people, grocery)
+        guard !Task.isCancelled, generation == loadGeneration else { return }
 
         tonightD.apply(m.map { entries in
             entries.first(where: { $0.mealType == "dinner" && $0.date == todayKey })
@@ -156,10 +161,14 @@ final class DashboardModel {
     /// Load the goals card + the goal-calendar review queues concurrently (keyed to
     /// `sync.goalsRev` by the view). Same failure semantics as `load`.
     func loadGoals() async {
-        async let goalRows = fetchGoals()
-        async let recapRows = fetchRecap()
-        async let suggestionRows = fetchSuggestions()
+        goalsGeneration &+= 1
+        let generation = goalsGeneration
+        goalsD.beginLoading(); recapD.beginLoading(); suggestionsD.beginLoading()
+        async let goalRows = RestFetch.result(fetchGoals)
+        async let recapRows = RestFetch.result(fetchRecap)
+        async let suggestionRows = RestFetch.result(fetchSuggestions)
         let (g, r, s) = await (goalRows, recapRows, suggestionRows)
+        guard !Task.isCancelled, generation == goalsGeneration else { return }
 
         goalsD.apply(g)
         recapD.apply(r)

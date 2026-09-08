@@ -184,13 +184,19 @@ uses bash because it is throwaway and the point is to learn, not to build.
   document "Mac mini: enable auto-login"; daemon mode is a later opt-in.
 - **Lid-close sleep cannot be prevented from user space.** A MacBook is not a server. → Detect
   the model on first run and say so plainly; recommend Mac mini/desktop.
-- **Time Machine restoring a live PGDATA corrupts it.** → Runtime sets the
-  `com.apple.metadata:com_apple_backup_excludeItem` xattr on `postgres/` and relies on
-  `backups/` (which *is* backed up). Same for iCloud Drive: never put the data dir under
-  Desktop/Documents.
-- **Rollback means restore, not reverse migrations.** → Updater takes a `pg_dump` snapshot
-  before migrating; a failed health check restores it and re-launches the previous runtime.
-  Cheap at family scale.
+- **Time Machine restoring a live PGDATA corrupts it.** *(done — PR #186)* → The runtime
+  sets the `com.apple.metadata:com_apple_backup_excludeItem` xattr on `postgres/` (through
+  `tmutil addexclusion`, which needs no admin rights) when the **data directory** is
+  created, so installs predating this are repaired on their next start; `doctor` re-asks
+  tmutil itself rather than trusting the memo. `backups/` *is* backed up. Same for iCloud
+  Drive: `doctor` warns when the data dir sits under Desktop/Documents/iCloud.
+- **Rollback means restore, not reverse migrations.** *(done for migrations — PR #186;
+  the binary swap is still Phase 3 item 6)* → `start` takes a `pg_dump` snapshot before
+  migrating, but only when migrations are genuinely pending, and a failed api health gate
+  restores it automatically and refuses to come up, naming the file. A snapshot that
+  cannot be taken stops the start rather than proceeding without a way back. The updater
+  reuses this sequence with a binary swap inserted; it needs its own retention prefix, so
+  an update snapshot and a migration snapshot cannot evict each other.
 - **Postgres major upgrades** are now ours. → Pin PG 16 for the whole 1.x line; build the
   dump/restore upgrader before ever bumping.
 - **Architectures.** arm64 first (the only Mac we can test on today); x86_64 via a universal
@@ -275,10 +281,20 @@ Throwaway bash under `infra/native/spike/`. Purpose: **learn**, not build.
    checksum manifest. `waffled-runtime` lives in `apps/runtime/` (Go): `start|stop|status
    --json|logs|doctor`, data dir layout from §3, ordered supervision with health gates,
    `runtime.json`, next-free-port selection, manifest verification before start. Cold start
-   under 20 s against the 60 s criterion; warm restart about 2 s. `backup|restore` are the
-   next item.
+   under 20 s against the 60 s criterion; warm restart about 2 s.
 2. Bonjour advertisement.
-3. Backup schedule via a generated launchd plist; `backup_runs` rows.
+3. *(done — PR #186)* `backup|restore`, the nightly schedule and `backup_runs`.
+   `waffled-runtime backup` takes a custom-format `pg_dump` into `backups/` with a JSON
+   sidecar recording the migration level, keeps the last 14, and writes the same
+   `backup_runs` rows the Compose sidecar does so Settings → System Health keeps working
+   (which is why `BACKUP_ENABLED` is now `true` natively — on `false` the api
+   short-circuits that check and would hide them). It works with the server stopped by
+   starting Postgres alone, because a launchd *user agent* is the only schedule available
+   without an admin prompt and the Macs this matters on are the ones nobody is sitting at.
+   `restore` stops the whole stack — restart supervision would otherwise fight it —
+   rebuilds PowerSync's slot and storage, and refuses a dump newer than the bundle before
+   stopping anything. Compose's plain `.sql.gz` dumps restore too, which is the
+   Docker-to-Mac path. `backup --install-schedule` generates and loads the launchd agent.
 4. Integration test: spins the whole stack from an empty data dir on CI (macOS runner) and
    hits the same health endpoints as Phase 1.
 5. **Exit criterion:** `waffled-runtime start` on a fresh Mac user account reaches green in

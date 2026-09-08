@@ -48,13 +48,16 @@ export interface ApiScopeDef {
 
 export const API_SCOPES: ApiScopeDef[] = [
   { resource: 'family', label: 'Family', description: 'Household, members, and overviews', prefixes: ['/api/household', '/api/persons', '/api/family'], readOnly: true },
-  { resource: 'lists', label: 'Lists', description: 'Grocery and to-do lists', prefixes: ['/api/lists'] },
+  // `pantry-staples` reads like pantry but is a lists route: it's registered in
+  // lists.routes.ts behind moduleRoutes('lists'), so a pantry-scoped key would clear
+  // the scope gate only to 403 at the lists module gate.
+  { resource: 'lists', label: 'Lists', description: 'Grocery and to-do lists', prefixes: ['/api/lists', '/api/pantry-staples'] },
   { resource: 'pantry', label: 'Pantry', description: 'On-hand inventory', prefixes: ['/api/pantry'] },
-  { resource: 'chores', label: 'Chores', description: 'Chores and completions', prefixes: ['/api/chores'] },
-  { resource: 'rewards', label: 'Rewards', description: 'Rewards, balances, and currencies', prefixes: ['/api/rewards', '/api/redemptions', '/api/balances', '/api/currencies'] },
+  { resource: 'chores', label: 'Chores', description: 'Chores and completions', prefixes: ['/api/chores', '/api/chore-instances', '/api/chore-proofs'] },
+  { resource: 'rewards', label: 'Rewards', description: 'Rewards, balances, currencies, and conversions', prefixes: ['/api/rewards', '/api/redemptions', '/api/balances', '/api/currencies', '/api/conversions'] },
   { resource: 'meals', label: 'Meals', description: 'Recipes and meal planning', prefixes: ['/api/recipes', '/api/meals'] },
   { resource: 'calendar', label: 'Calendar', description: 'Calendar events', prefixes: ['/api/events'] },
-  { resource: 'goals', label: 'Goals', description: 'Goals and progress', prefixes: ['/api/goals'] },
+  { resource: 'goals', label: 'Goals', description: 'Goals and progress', prefixes: ['/api/goals', '/api/goal-lists'] },
   { resource: 'photos', label: 'Photos', description: 'Photos and memories', prefixes: ['/api/photos'] },
   { resource: 'weather', label: 'Weather', description: 'Local weather', prefixes: ['/api/weather'], readOnly: true },
 ]
@@ -64,6 +67,11 @@ export const ALL_SCOPES: string[] = API_SCOPES.flatMap((s) =>
   s.readOnly ? [`${s.resource}:read`] : [`${s.resource}:read`, `${s.resource}:write`]
 )
 
+// A prefix matches only on a `/` boundary, so a hyphenated sibling of a listed
+// prefix (/api/chore-instances vs /api/chores) does NOT match — it has to be listed
+// explicitly above. Do not "fix" that by dropping the boundary: a bare startsWith
+// would make /api/households/invites match the read-only `family` prefix
+// /api/household, quietly making the invite list readable with `family:read`.
 function pathMatches(prefix: string, path: string): boolean {
   return path === prefix || path.startsWith(prefix + '/')
 }
