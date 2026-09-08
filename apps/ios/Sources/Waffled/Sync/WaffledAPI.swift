@@ -2644,8 +2644,12 @@ struct WaffledAPI: Sendable {
     func createChore(_ body: [String: JSONValue]) async throws { try await send("POST", "/api/chores", body: body) }
     /// Edit a chore definition (admins) — same fields as create.
     func updateChore(id: String, _ body: [String: JSONValue]) async throws { try await send("PATCH", "/api/chores/\(id)", body: body) }
-    /// Delete a chore definition + today's instances (admins).
-    func deleteChore(id: String) async throws { try await delete("/api/chores/\(id)") }
+    /// Delete one occurrence, this-and-following, or the active series. An empty
+    /// body retains the legacy entire-series behavior for older call sites.
+    func deleteChore(id: String, _ body: [String: JSONValue] = [:]) async throws {
+        if body.isEmpty { try await delete("/api/chores/\(id)") }
+        else { try await send("DELETE", "/api/chores/\(id)", body: body) }
+    }
 
     /// Mark an instance done. Pass an uploaded proof blob (`storageKey`/`contentType`)
     /// for a photo-required chore; without it the server returns 422 `ProofRequired`,

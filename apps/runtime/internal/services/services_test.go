@@ -1,0 +1,313 @@
+package services
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/kevinpsites/waffled/apps/runtime/internal/configenv"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/datadir"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/manifest"
+	"github.com/kevinpsites/waffled/apps/runtime/internal/rtstate"
+)
+
+func testPlan(t *testing.T) Plan {
+	t.Helper()
+	env, err := configenv.Load(filepath.Join(t.TempDir(), "config.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.EnsureSecrets(); err != nil {
+		t.Fatal(err)
+	}
+	return Plan{
+		Bundle: "/Applications/Waffled.app/Contents/Resources/runtime",
+		Layout: datadir.At("/Users/kev/Library/Application Support/Waffled"),
+		Env:    env,
+		Ports:  rtstate.Ports{Public: 8082, PowerSyncPublic: 8083, API: 3002, PowerSync: 8084, Postgres: 5434},
+		Manifest: &manifest.Manifest{
+			GitSha: "a506c352", BuiltAt: "2026-09-04T23:48:42.438Z", WaffledVersion: "0.14.3",
+			Components: manifest.Components{
+				Node:      manifest.Component{Version: "24.19.0", Path: "bin/node"},
+				API:       manifest.Component{Serve: "api/dist/server.js", Migrate: "api/dist/migrate.js"},
+				PowerSync: manifest.Component{Entry: "powersync/service/lib/entry.js"},
+			},
+		},
+		SocketDir: "/Users/kev/Library/Application Support/Waffled/postgres",
+	}
+}
+
+func envMap(pairs []string) map[string]string {
+	out := map[string]string{}
+	for _, p := range pairs {
+		k, v, _ := strings.Cut(p, "=")
+		out[k] = v
+	}
+	return out
+}
+
+// A child must never inherit the operator's shell. A stray DATABASE_URL or
+// NODE_ENV=development in someone's ~/.zshrc would silently win over ours.
+func TestChildEnvironmentIsBuiltFromScratch(t *testing.T) {
+	p := testPlan(t)
+	for _, spec := range []Spec{p.API(), p.PowerSync(), p.Caddy(), p.Migrate()} {
+		e := envMap(spec.Env)
+		if e["PATH"] != "/usr/bin:/bin" {
+			t.Errorf("%s: PATH = %q, want a minimal one", spec.Name, e["PATH"])
+		}
+		if len(spec.Env) > 40 {
+			t.Errorf("%s: %d environment variables looks like an inherited environment", spec.Name, len(spec.Env))
+		}
+	}
+}
+
+func TestAPIRunsTheBundledNodeInProductionOnLoopback(t *testing.T) {
+	p := testPlan(t)
+	spec := p.API()
+
+	wantExe := filepath.Join(p.Bundle, "bin", "node")
+	if spec.Path != wantExe {
+		t.Errorf("api must run the bundled node, got %q", spec.Path)
+	}
+	if len(spec.Args) < 1 || spec.Args[len(spec.Args)-1] != filepath.Join(p.Bundle, "api", "dist", "server.js") {
+		t.Errorf("api argv = %v", spec.Args)
+	}
+
+	e := envMap(spec.Env)
+	// NODE_ENV=production is what makes the api enforce real secrets; without it the
+	// bundle happily serves DB-free routes on :3000.
+	if e["NODE_ENV"] != "production" {
+		t.Errorf("NODE_ENV = %q, want production", e["NODE_ENV"])
+	}
+	if e["PORT"] != "3002" {
+		t.Errorf("PORT = %q", e["PORT"])
+	}
+	if e["HOST"] != "127.0.0.1" {
+		t.Errorf("HOST = %q, want 127.0.0.1", e["HOST"])
+	}
+	if e["DATABASE_URL"] != p.Env.DatabaseURL(5434, "waffled") {
+		t.Errorf("DATABASE_URL = %q", e["DATABASE_URL"])
+	}
+	if e["STORAGE_DRIVER"] != "local" || e["MEDIA_DIR"] != p.Layout.Media || e["MEDIA_BASE_URL"] != "/media" {
+		t.Errorf("media wiring wrong: %v %v %v", e["STORAGE_DRIVER"], e["MEDIA_DIR"], e["MEDIA_BASE_URL"])
+	}
+	// The api tells clients where to sync; that is the PUBLIC PowerSync port (Caddy's),
+	// not the loopback one, or every phone gets an address it cannot reach.
+	if e["POWERSYNC_PORT"] != "8083" {
+		t.Errorf("POWERSYNC_PORT = %q, want the public 8083", e["POWERSYNC_PORT"])
+	}
+	for _, key := range []string{"LOCAL_JWT_SECRET", "TOKEN_ENCRYPTION_KEY", "POWERSYNC_JWT_PRIVATE_KEY"} {
+		if e[key] == "" {
+			t.Errorf("%s was not passed to the api", key)
+		}
+	}
+	// No Docker sidecars natively: don't let System Health nag about a backup service
+	// that does not exist here, and don't phone home for updates the app manages.
+	if e["BACKUP_ENABLED"] != "false" || e["UPDATE_CHECK_ENABLED"] != "false" {
+		t.Errorf("BACKUP_ENABLED=%q UPDATE_CHECK_ENABLED=%q", e["BACKUP_ENABLED"], e["UPDATE_CHECK_ENABLED"])
+	}
+	// Provenance from the manifest, so System Health stops reporting sha "dev".
+	if e["GIT_SHA"] != "a506c352" || e["BUILD_TIME"] != "2026-09-04T23:48:42.438Z" {
+		t.Errorf("provenance not passed: GIT_SHA=%q BUILD_TIME=%q", e["GIT_SHA"], e["BUILD_TIME"])
+	}
+}
+
+// otel.js is deliberately not in the bundle; a --require preload for it would make the
+// api fail to boot with "Cannot find module".
+func TestNodeOptionsPreloadIsNeverSet(t *testing.T) {
+	p := testPlan(t)
+	for _, spec := range []Spec{p.API(), p.PowerSync(), p.Migrate()} {
+		if opts := envMap(spec.Env)["NODE_OPTIONS"]; strings.Contains(opts, "--require") {
+			t.Errorf("%s: NODE_OPTIONS must never preload a module, got %q", spec.Name, opts)
+		}
+	}
+}
+
+func TestPowerSyncRunsUnifiedWithTheConfigAndAWritableCwd(t *testing.T) {
+	p := testPlan(t)
+	spec := p.PowerSync()
+
+	args := strings.Join(spec.Args, " ")
+	if !strings.Contains(args, "--max-old-space-size=1000") {
+		t.Errorf("powersync argv missing the heap cap: %v", spec.Args)
+	}
+	if !strings.HasSuffix(args, "start -r unified") {
+		t.Errorf("powersync must run `start -r unified`, got %v", spec.Args)
+	}
+	// It writes .probes/ into its cwd, and the bundle is read-only once signed.
+	if spec.Dir != p.Layout.PowerSync {
+		t.Errorf("powersync cwd = %q, want the data dir's powersync folder", spec.Dir)
+	}
+
+	e := envMap(spec.Env)
+	if e["PS_PORT"] != "8084" {
+		t.Errorf("PS_PORT = %q, want the loopback port", e["PS_PORT"])
+	}
+	if e["PS_DATA_SOURCE_URI"] != p.Env.DatabaseURL(5434, "waffled") {
+		t.Errorf("PS_DATA_SOURCE_URI = %q", e["PS_DATA_SOURCE_URI"])
+	}
+	if e["PS_STORAGE_SOURCE_URI"] != p.Env.DatabaseURL(5434, "powersync_storage") {
+		t.Errorf("PS_STORAGE_SOURCE_URI = %q, want the powersync_storage database", e["PS_STORAGE_SOURCE_URI"])
+	}
+	// The JWKS the api serves, on the api's loopback port.
+	if e["PS_JWKS_URL"] != "http://127.0.0.1:3002/api/auth/keys" {
+		t.Errorf("PS_JWKS_URL = %q", e["PS_JWKS_URL"])
+	}
+	if !strings.HasSuffix(e["POWERSYNC_CONFIG_PATH"], filepath.Join("powersync", "service.yaml")) {
+		t.Errorf("POWERSYNC_CONFIG_PATH = %q", e["POWERSYNC_CONFIG_PATH"])
+	}
+}
+
+func TestCaddyGetsBothSiteAddressesAndItsOwnState(t *testing.T) {
+	p := testPlan(t)
+	spec := p.Caddy()
+
+	if spec.Path != filepath.Join(p.Bundle, "bin", "caddy") {
+		t.Errorf("caddy path = %q", spec.Path)
+	}
+	args := strings.Join(spec.Args, " ")
+	if !strings.Contains(args, "run") || !strings.Contains(args, "--adapter caddyfile") {
+		t.Errorf("caddy argv = %v", spec.Args)
+	}
+	if !strings.Contains(args, p.Layout.CaddyfilePath) {
+		t.Errorf("caddy must use the generated Caddyfile, got %v", spec.Args)
+	}
+
+	e := envMap(spec.Env)
+	if e["CADDY_SITE_ADDRESS"] != ":8082" {
+		t.Errorf("CADDY_SITE_ADDRESS = %q", e["CADDY_SITE_ADDRESS"])
+	}
+	if e["POWERSYNC_CADDY_ADDRESS"] != ":8083" {
+		t.Errorf("POWERSYNC_CADDY_ADDRESS = %q", e["POWERSYNC_CADDY_ADDRESS"])
+	}
+	// Caddy's autosave.json and local CA must land in the data dir, not ~/.local/share.
+	if e["XDG_DATA_HOME"] != p.Layout.Caddy || e["XDG_CONFIG_HOME"] != p.Layout.Caddy {
+		t.Errorf("caddy state not confined: %q / %q", e["XDG_DATA_HOME"], e["XDG_CONFIG_HOME"])
+	}
+}
+
+func TestMigrateIsAOneShotWithTheDatabaseURL(t *testing.T) {
+	p := testPlan(t)
+	spec := p.Migrate()
+	if !spec.OneShot {
+		t.Error("migrate must be a one-shot, not a supervised child")
+	}
+	if spec.Args[len(spec.Args)-1] != filepath.Join(p.Bundle, "api", "dist", "migrate.js") {
+		t.Errorf("migrate argv = %v", spec.Args)
+	}
+	e := envMap(spec.Env)
+	if e["DATABASE_URL"] == "" {
+		t.Error("migrate needs DATABASE_URL")
+	}
+	// migrate.js resolves ../migrations relative to itself, so it must run from the
+	// bundle's own dist directory layout — never a copy that flattens it.
+	if !strings.HasSuffix(spec.Args[len(spec.Args)-1], filepath.Join("api", "dist", "migrate.js")) {
+		t.Errorf("migrate must run the bundled dist/migrate.js so ../migrations resolves: %v", spec.Args)
+	}
+}
+
+func TestHealthURLsMatchTheServicesTheyProbe(t *testing.T) {
+	p := testPlan(t)
+	// The api's own health gate is /healthz: /api/health is admin-only and answers 401.
+	if got := p.API().HealthURL; got != "http://127.0.0.1:3002/healthz" {
+		t.Errorf("api health = %q", got)
+	}
+	if got := p.PowerSync().HealthURL; got != "http://127.0.0.1:8084/probes/liveness" {
+		t.Errorf("powersync health = %q", got)
+	}
+	if got := p.Caddy().HealthURL; got != "http://127.0.0.1:8082/healthz" {
+		t.Errorf("caddy health = %q", got)
+	}
+}
+
+func TestPostgresBringUpIsLoopbackOnlyAndLogical(t *testing.T) {
+	p := testPlan(t)
+	conf := p.PostgresConf()
+	for _, want := range []string{
+		"listen_addresses = '127.0.0.1'",
+		"port = 5434",
+		"wal_level = logical",
+		"max_replication_slots = 10",
+		"max_wal_senders = 10",
+		"password_encryption = scram-sha-256",
+	} {
+		if !strings.Contains(conf, want) {
+			t.Errorf("postgresql.conf missing %q:\n%s", want, conf)
+		}
+	}
+	if !strings.Contains(conf, "unix_socket_directories = '"+p.SocketDir+"'") {
+		t.Errorf("socket directory must be set and quoted:\n%s", conf)
+	}
+
+	hba := p.PostgresHBA()
+	if strings.Contains(hba, "trust") {
+		t.Errorf("pg_hba.conf must never use trust:\n%s", hba)
+	}
+	if !strings.Contains(hba, "host    all          all   127.0.0.1/32   scram-sha-256") {
+		t.Errorf("loopback scram rule missing:\n%s", hba)
+	}
+	// PowerSync opens a logical replication slot; without this line liveness still goes
+	// green and only replication is dead.
+	if !strings.Contains(hba, "replication") {
+		t.Errorf("pg_hba.conf needs a replication rule for PowerSync:\n%s", hba)
+	}
+	if strings.Contains(hba, "0.0.0.0/0") || strings.Contains(hba, "all   all   all") {
+		t.Errorf("pg_hba.conf must not open beyond loopback:\n%s", hba)
+	}
+}
+
+// The cluster must be created with the same collation the postgres:16 image uses, or a
+// family restoring a Docker backup onto the Mac app gets different sort order and
+// collation-mismatch warnings on every index.
+func TestInitdbUsesTheDockerImageCollation(t *testing.T) {
+	p := testPlan(t)
+	args := strings.Join(p.InitdbArgs("/tmp/pw"), " ")
+	if !strings.Contains(args, "--encoding=UTF8") {
+		t.Errorf("initdb args = %s", args)
+	}
+	if !strings.Contains(args, "--locale=en_US.UTF-8") {
+		t.Errorf("initdb must match the postgres:16 image's en_US.utf8 collation, got %s", args)
+	}
+	if strings.Contains(args, "--locale=C") {
+		t.Errorf("--locale=C would change sort order relative to Docker: %s", args)
+	}
+	if !strings.Contains(args, "--auth=scram-sha-256") {
+		t.Errorf("initdb must use scram from the first byte: %s", args)
+	}
+	if !strings.Contains(args, "-U waffled") {
+		t.Errorf("the superuser should be POSTGRES_USER, as the image does: %s", args)
+	}
+}
+
+// The password must reach psql through the environment, never argv — argv is visible in
+// `ps` to every process on the Mac, which would undo the 0600 on config.env.
+func TestPsqlTakesThePasswordFromTheEnvironment(t *testing.T) {
+	p := testPlan(t)
+	spec := p.Psql("waffled", "/bundle/config/00-init.sql")
+	for _, arg := range spec.Args {
+		if strings.Contains(arg, p.Env.Get(configenv.KeyPostgresPassword)) {
+			t.Fatalf("the password appears in argv: %v", spec.Args)
+		}
+	}
+	if envMap(spec.Env)["PGPASSWORD"] != p.Env.Get(configenv.KeyPostgresPassword) {
+		t.Error("PGPASSWORD should carry the password")
+	}
+	if !strings.Contains(strings.Join(spec.Args, " "), "ON_ERROR_STOP=1") {
+		t.Errorf("psql must stop on the first error: %v", spec.Args)
+	}
+}
+
+func TestBinaryPathsComeFromTheBundle(t *testing.T) {
+	p := testPlan(t)
+	for name, got := range map[string]string{
+		"initdb":     p.PostgresBin("initdb"),
+		"pg_ctl":     p.PostgresBin("pg_ctl"),
+		"pg_isready": p.PostgresBin("pg_isready"),
+		"psql":       p.PostgresBin("psql"),
+	} {
+		want := filepath.Join(p.Bundle, "bin", "postgres", "bin", name)
+		if got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+}
