@@ -203,3 +203,23 @@ describe('reward redemption cannot reach another household', () => {
     expect(res.body).not.toContain(VICTIM_NAME)
   })
 })
+
+// ---- Finding 6 — redeeming on behalf of another member ----------------------
+// Same rule its sibling POST /api/conversions/:id/apply already enforces: your own
+// balance is yours to spend, someone else's needs the reward.manage capability.
+describe('redeeming for another member needs the capability', () => {
+  it('lets a kid redeem for themselves but not for a sibling', async () => {
+    const reward = await call('POST', '/api/rewards', attacker, { title: 'Movie night', cost: 3, requiresApproval: true })
+    const rewardId = JSON.parse(reward.body).reward.id as string
+
+    const own = await call('POST', `/api/rewards/${rewardId}/redeem`, attackerKid, { personId: aKidId })
+    expect(own.statusCode).toBe(201)
+
+    const onBehalf = await call('POST', `/api/rewards/${rewardId}/redeem`, attackerKid, { personId: aSiblingId })
+    expect(onBehalf.statusCode).toBe(403)
+
+    // An admin (who holds reward.manage) still can.
+    const byAdmin = await call('POST', `/api/rewards/${rewardId}/redeem`, attacker, { personId: aSiblingId })
+    expect(byAdmin.statusCode).toBe(201)
+  })
+})

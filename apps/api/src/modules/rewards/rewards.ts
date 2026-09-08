@@ -10,6 +10,7 @@ import { rewardsRoutes, moduleRoutes } from '../../platform/route-guards'
 import { registerRewardCaptureTarget } from './rewards-capture'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 import { assertPersonInHousehold } from '../../platform/household-refs'
+import { requireCapability } from '../../platform/permissions'
 
 type Api = ReturnType<typeof createAPI>
 // Rewards is the spend half of the chores economy: these routes require the chores
@@ -414,6 +415,9 @@ export function registerRewardRoutes(api: Api): void {
     const personId = body.personId?.trim() || tenant.personId
     if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
     await assertPersonInHousehold(tenant.householdId, personId)
+    // Spending your own balance is yours to decide; spending someone else's is a
+    // parent action — the same rule POST /api/conversions/:id/apply enforces.
+    if (personId !== tenant.personId) await requireCapability(tenant, 'reward.manage')
     const red = await requestRedemption(tenant, id, personId)
     if (red === null) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     if ('error' in red) return res.status(409).json({ error: 'Conflict', message: red.error })
