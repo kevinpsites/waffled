@@ -53,6 +53,15 @@ struct KioskDashboard: View {
     /// (featured → whole-family → first). A picker on the card lets the family switch it.
     @AppStorage("waffled.kioskGoalId") private var kioskGoalId = ""
 
+    init(navigate: @escaping (KioskNav) -> Void = { _ in },
+         openGoal: @escaping (WaffledAPI.Goal) -> Void = { _ in },
+         model: KioskTodayModel? = nil, approvals: ApprovalsModel? = nil) {
+        self.navigate = navigate
+        self.openGoal = openGoal
+        _model = State(initialValue: model ?? KioskTodayModel())
+        _approvals = State(initialValue: approvals ?? ApprovalsModel())
+    }
+
     /// The card's pick order as a pure function (tested in KioskGoalPickTests): pinned
     /// if it still exists → Spotlight → Pinned tier (isFeatured) → a whole-family goal
     /// (multi-member households) → the first goal.
@@ -158,7 +167,13 @@ struct KioskDashboard: View {
         }
         // Pinned-banner queues: approvals refresh on chore/reward actions; the review
         // queue refreshes whenever a review/goal action bumps the goals bus.
-        .task(id: "\(sync.choresRev)|\(sync.rewardsRev)") { await approvals.load() }
+        .task(id: "\(sync.choresRev)|\(sync.rewardsRev)|\(sync.modulesRev)") {
+            await approvals.load(
+                scope: sync.restDataScopeKey,
+                choresEnabled: sync.module(.chores),
+                rewardsEnabled: sync.rewardsOn
+            )
+        }
         .task(id: sync.goalsRev) {
             let api = WaffledAPI()
             async let r = try? await api.goalRecap()
@@ -220,12 +235,16 @@ struct KioskDashboard: View {
     @ViewBuilder private var banners: some View {
         // Gate each bar by its module: approvals with chores, the goal-recap review
         // bar with goals (calendar itself is never gated).
-        let showApprovalsBar = sync.module(.chores) && sync.canApprove && !approvals.isEmpty
+        let showApprovalsBar = sync.module(.chores) && sync.canApprove && approvals.showsEntryPoint
         let showReviewBar = sync.module(.goals) && (!reviewRecap.isEmpty || !reviewSuggestions.isEmpty)
         if showApprovalsBar || showReviewBar {
             VStack(spacing: 12) {
                 if showApprovalsBar {
                     Button { showApprovals = true } label: { approvalsBanner }.buttonStyle(.plain)
+                    RestStateNotice(state: approvals.state, retry: {
+                        Task { await approvals.load(scope: sync.restDataScopeKey,
+                                                    choresEnabled: sync.module(.chores), rewardsEnabled: sync.rewardsOn) }
+                    })
                 }
                 if showReviewBar {
                     Button { showReview = true } label: { reviewBanner }.buttonStyle(.plain)
@@ -243,7 +262,7 @@ struct KioskDashboard: View {
                 .frame(width: 44, height: 44).background(WF.gold)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(approvals.total == 1 ? "1 thing waiting for your OK" : "\(approvals.total) things waiting for your OK")
+                Text(approvals.entryTitle)
                     .font(.system(size: 18, weight: .heavy)).foregroundStyle(WF.ink)
                 Text(preview.isEmpty ? "Your OK awards the stars." : "\(preview) — your OK awards the stars.")
                     .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
@@ -378,7 +397,7 @@ struct KioskDashboard: View {
                 goalCard
                 // Use the column's headroom for tonight's dinner — or the week's dinners
                 // when nothing's planned for tonight.
-                if model.tonight != nil { tonightCard } else { weekDinnersCard }
+                if model.tonight != nil || !model.mealsState.isAuthoritative { tonightCard } else { weekDinnersCard }
             }
             .padding(.bottom, 8)
         }
@@ -387,11 +406,16 @@ struct KioskDashboard: View {
     /// The featured-goal hero (shared with the iPhone Today card). Picking a goal in its
     /// switcher pins it to the wall; logging refreshes the goals + bus.
     @ViewBuilder private var goalCard: some View {
-        GoalHeroCard(kiosk: true, goal: kioskGoal, goals: model.goals, goalsLoaded: model.goalsLoaded,
-                     myPersonId: sync.currentPersonId, householdMemberIds: Set(sync.members.map(\.id)),
-                     selectedId: kioskGoalId,
-                     onOpen: { openGoal($0) }, onSeeAll: { navigate(.goals) }, onPin: { pinGoal($0) },
-                     onLogged: { Task { await model.loadGoals(); sync.touchGoals() } })
+        VStack(spacing: 8) {
+            RestStateNotice(state: model.goalsState, retry: { Task { await model.loadGoals() } })
+            if !model.goals.isEmpty || model.goalsState.isAuthoritative || model.goalsState == .loading {
+                GoalHeroCard(kiosk: true, goal: kioskGoal, goals: model.goals, goalsLoaded: model.goalsLoaded,
+                             myPersonId: sync.currentPersonId, householdMemberIds: Set(sync.members.map(\.id)),
+                             selectedId: kioskGoalId,
+                             onOpen: { openGoal($0) }, onSeeAll: { navigate(.goals) }, onPin: { pinGoal($0) },
+                             onLogged: { Task { await model.loadGoals(); sync.touchGoals() } })
+            }
+        }
     }
 
     /// Pin a goal to the wall (empty = auto) and re-assert the goal layout, so picking a
@@ -535,6 +559,7 @@ struct KioskDashboard: View {
         KioskCard {
             VStack(alignment: .leading, spacing: 14) {
                 cardHeader("Tonight's dinner", chevron: false)
+                RestStateNotice(state: model.mealsState, retry: { Task { await model.loadMeals(todayKey: todayKey) } })
                 if let meal = model.tonight {
                     HStack(spacing: 16) {
                         RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
@@ -574,8 +599,8 @@ struct KioskDashboard: View {
                             }
                         }
                     }
-                } else {
-                    Text(model.mealsLoaded ? "No dinner planned" : "Loading…")
+                } else if model.mealsState.isAuthoritative || model.mealsState == .loading {
+                    Text(model.mealsState.isAuthoritative ? "No dinner planned" : "Loading…")
                         .font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink3).padding(.vertical, 14)
                 }
             }
@@ -632,9 +657,12 @@ struct KioskDashboard: View {
         KioskCard {
             VStack(alignment: .leading, spacing: 14) {
                 cardHeader("Family Chores", trailing: "Today", chevron: true) { navigate(.tasks) }
+                RestStateNotice(state: model.choresState, retry: { Task { await model.loadChores() } })
                 if model.chores.isEmpty {
-                    Text(model.choresLoaded ? "No chores today" : "Loading…")
-                        .font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 8)
+                    if model.choresState.isAuthoritative || model.choresState == .loading {
+                        Text(model.choresState.isAuthoritative ? "No chores today" : "Loading…")
+                            .font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 8)
+                    }
                 } else {
                     VStack(spacing: 16) {
                         // Each person row opens the Chores page too, not just the header —
@@ -675,10 +703,13 @@ struct KioskDashboard: View {
     private var groceryCard: some View {
         KioskCard {
             VStack(alignment: .leading, spacing: 12) {
-                cardHeader("Grocery", trailing: "\(model.groceryActive.count) to buy", chevron: true) { navigate(.lists) }
+                cardHeader("Grocery", trailing: model.groceryState.isAuthoritative || model.groceryState.updatedAt != nil ? "\(model.groceryActive.count) to buy" : nil, chevron: true) { navigate(.lists) }
+                RestStateNotice(state: model.groceryState, retry: { Task { await model.loadGrocery() } })
                 if model.groceryActive.isEmpty {
-                    Text(model.groceryLoaded ? "All bought ✓" : "Loading…")
-                        .font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 8)
+                    if model.groceryState.isAuthoritative || model.groceryState == .loading {
+                        Text(model.groceryState.isAuthoritative ? "All bought ✓" : "Loading…")
+                            .font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 8)
+                    }
                     Spacer(minLength: 0)
                 } else {
                     ScrollView(showsIndicators: false) {
@@ -825,10 +856,10 @@ final class KioskTodayModel {
     // slower cards' empty states — and keep-prior-values-on-failure, so a network
     // blip on the always-on display never blanks it to "All bought ✓" /
     // "No dinner planned" / "No goals yet" while data exists.
-    private let choresD = RestDomain<[WaffledAPI.PersonChoresDTO]>([])
-    private let mealsD = RestDomain<Meals>(Meals())
-    private let groceryD = RestDomain<[WaffledAPI.ListItemDTO]>([])
-    private let goalsD = RestDomain<[WaffledAPI.Goal]>([])
+    private let choresD = RestDomain<[WaffledAPI.PersonChoresDTO]>([], isEmpty: \.isEmpty)
+    private let mealsD = RestDomain<Meals>(Meals(), isEmpty: { $0.tonight == nil && $0.week.isEmpty })
+    private let groceryD = RestDomain<[WaffledAPI.ListItemDTO]>([], isEmpty: \.isEmpty)
+    private let goalsD = RestDomain<[WaffledAPI.Goal]>([], isEmpty: \.isEmpty)
 
     var chores: [WaffledAPI.PersonChoresDTO] { choresD.value }
     var tonight: TonightMeal? { mealsD.value.tonight }
@@ -840,30 +871,34 @@ final class KioskTodayModel {
     var goals: [WaffledAPI.Goal] { goalsD.value }
     var weather: WaffledAPI.Weather?
 
-    var choresLoaded: Bool { choresD.loaded }
-    var mealsLoaded: Bool { mealsD.loaded }
-    var groceryLoaded: Bool { groceryD.loaded }
-    var goalsLoaded: Bool { goalsD.loaded }
+    var choresState: RestState { choresD.state }
+    var choresLoaded: Bool { choresState.isAuthoritative }
+    var mealsState: RestState { mealsD.state }
+    var mealsLoaded: Bool { mealsState.isAuthoritative }
+    var groceryState: RestState { groceryD.state }
+    var groceryLoaded: Bool { groceryState.isAuthoritative }
+    var goalsState: RestState { goalsD.state }
+    var goalsLoaded: Bool { goalsState.isAuthoritative }
 
-    /// Injectable for the unit tests (nil on failure, like DashboardModel);
-    /// defaults hit `WaffledAPI`. `api` remains for the grocery mutations.
-    private let fetchChores: @Sendable () async -> [WaffledAPI.PersonChoresDTO]?
-    private let fetchMeals: @Sendable (String) async -> [WaffledAPI.WeekEntryDTO]?
-    private let fetchGrocery: @Sendable () async -> [WaffledAPI.ListItemDTO]?
-    private let fetchGoals: @Sendable () async -> [WaffledAPI.Goal]?
-    private let fetchWeather: @Sendable () async -> WaffledAPI.Weather?
+    /// Throwing fetchers preserve network/session failures for state classification.
+    /// Defaults hit `WaffledAPI`; `api` remains for the grocery mutations.
+    private let fetchChores: @Sendable () async throws -> [WaffledAPI.PersonChoresDTO]
+    private let fetchMeals: @Sendable (String) async throws -> [WaffledAPI.WeekEntryDTO]
+    private let fetchGrocery: @Sendable () async throws -> [WaffledAPI.ListItemDTO]
+    private let fetchGoals: @Sendable () async throws -> [WaffledAPI.Goal]
+    private let fetchWeather: @Sendable () async throws -> WaffledAPI.Weather?
 
-    init(fetchChores: (@Sendable () async -> [WaffledAPI.PersonChoresDTO]?)? = nil,
-         fetchMeals: (@Sendable (String) async -> [WaffledAPI.WeekEntryDTO]?)? = nil,
-         fetchGrocery: (@Sendable () async -> [WaffledAPI.ListItemDTO]?)? = nil,
-         fetchGoals: (@Sendable () async -> [WaffledAPI.Goal]?)? = nil,
-         fetchWeather: (@Sendable () async -> WaffledAPI.Weather?)? = nil) {
+    init(fetchChores: (@Sendable () async throws -> [WaffledAPI.PersonChoresDTO])? = nil,
+         fetchMeals: (@Sendable (String) async throws -> [WaffledAPI.WeekEntryDTO])? = nil,
+         fetchGrocery: (@Sendable () async throws -> [WaffledAPI.ListItemDTO])? = nil,
+         fetchGoals: (@Sendable () async throws -> [WaffledAPI.Goal])? = nil,
+         fetchWeather: (@Sendable () async throws -> WaffledAPI.Weather?)? = nil) {
         let api = WaffledAPI()
-        self.fetchChores = fetchChores ?? { try? await api.choresToday() }
-        self.fetchMeals = fetchMeals ?? { try? await api.mealsWeek(start: $0) }
-        self.fetchGrocery = fetchGrocery ?? { (try? await api.groceryBoard())?.items }
-        self.fetchGoals = fetchGoals ?? { try? await api.goalsIn(listId: nil) }
-        self.fetchWeather = fetchWeather ?? { try? await api.weather() }
+        self.fetchChores = fetchChores ?? { try await api.choresToday() }
+        self.fetchMeals = fetchMeals ?? { try await api.mealsWeek(start: $0) }
+        self.fetchGrocery = fetchGrocery ?? { try await api.groceryBoard().items }
+        self.fetchGoals = fetchGoals ?? { try await api.goalsIn(listId: nil) }
+        self.fetchWeather = fetchWeather ?? { try await api.weather() }
     }
 
     private let api = WaffledAPI()
@@ -889,15 +924,20 @@ final class KioskTodayModel {
     }
 
     func loadGoals() async {
-        goalsD.apply(await fetchGoals())
+        goalsD.beginLoading()
+        goalsD.apply(await RestFetch.result(fetchGoals))
     }
 
     func loadChores() async {
-        choresD.apply(await fetchChores().map { $0.filter { $0.total > 0 } })
+        choresD.beginLoading()
+        let result = await RestFetch.result(fetchChores)
+        choresD.apply(result.map { $0.filter { $0.total > 0 } })
     }
 
     func loadMeals(todayKey: String) async {
-        mealsD.apply(await fetchMeals(todayKey).map { entries in
+        mealsD.beginLoading()
+        let result = await RestFetch.result { [fetchMeals] in try await fetchMeals(todayKey) }
+        mealsD.apply(result.map { entries in
             let dinners = entries.filter { $0.mealType == "dinner" }
             return Meals(tonight: dinners.first(where: { $0.date == todayKey }).map(TonightMeal.init),
                          week: dinners.sorted { $0.date < $1.date })
@@ -905,11 +945,12 @@ final class KioskTodayModel {
     }
 
     func loadGrocery() async {
-        groceryD.apply(await fetchGrocery())
+        groceryD.beginLoading()
+        groceryD.apply(await RestFetch.result(fetchGrocery))
     }
 
     func loadWeather() async {
-        if let w = await fetchWeather() { weather = w }
+        if let w = try? await fetchWeather() { weather = w }
     }
 
     /// Quick-add a grocery item from the Today card, then refresh the list. Uses the

@@ -6,6 +6,7 @@ import SwiftUI
 /// local/dev fallback (the same one `mint-token` prints).
 struct AboutSettingsView: View {
     @Environment(\.openURL) private var openURL
+    @Environment(SyncManager.self) private var sync
     @State private var serverAddress = AppConfig.apiBaseURL
     @State private var devToken = AppConfig.storedDevToken
     @State private var savedNote: String?
@@ -13,6 +14,7 @@ struct AboutSettingsView: View {
     @State private var test: TestState = .idle
     @State private var showToken = false
     @State private var tokenSaved = false
+    @State private var tokenError: String?
     /// Which server build we're talking to + whether a newer one is available (from
     /// `/api/updates`, admin-only), and whether a newer public app build is on the App
     /// Store. Both best-effort — nil just hides the line.
@@ -191,6 +193,11 @@ struct AboutSettingsView: View {
                     }.buttonStyle(.plain)
                     Spacer(minLength: 0)
                 }
+                if let tokenError {
+                    Text(tokenError).font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(WF.primaryD)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -198,18 +205,32 @@ struct AboutSettingsView: View {
     // MARK: actions
 
     private func saveServer() {
-        guard AppConfig.setApiBaseURL(serverAddress) else {
-            serverError = "Enter a full server address beginning with http:// or https://."
-            savedNote = nil
-            return
-        }
         serverError = nil
-        // Reflect the cleaned/normalized value (trailing slash stripped, blank → default).
-        serverAddress = AppConfig.apiBaseURL
         test = .idle
-        savedNote = "Saved. New requests use this address — pull to refresh, or relaunch the app to reload everything."
+        savedNote = "Checking and reconnecting…"
         update = nil
-        Task { await loadMeta() }
+        Task {
+            switch await sync.updateConnection(apiBaseURL: serverAddress) {
+            case .updated:
+                // Reflect the cleaned/normalized value (trailing slash stripped,
+                // blank → default) only after the atomic handoff succeeds.
+                serverAddress = AppConfig.apiBaseURL
+                savedNote = "Saved. The app is now using this server."
+                await loadMeta()
+            case .invalidURL:
+                serverError = "Enter a full server address beginning with http:// or https://."
+                savedNote = nil
+            case let .pendingUploads(n):
+                serverError = "Wait for \(n) pending change\(n == 1 ? "" : "s") to sync before changing servers."
+                savedNote = nil
+            case .transitionInProgress:
+                serverError = "A connection change is already in progress."
+                savedNote = nil
+            case .teardownFailed:
+                serverError = "Couldn’t safely clear the previous connection. Try again before changing servers."
+                savedNote = nil
+            }
+        }
     }
 
     /// Best-effort: the server build + whether one's newer (`/api/updates`, admin-only),
@@ -261,8 +282,23 @@ struct AboutSettingsView: View {
     }
 
     private func saveToken() {
-        AppConfig.setDevToken(devToken)
-        tokenSaved = true
+        tokenError = nil
+        tokenSaved = false
+        Task {
+            switch await sync.updateConnection(devToken: devToken) {
+            case .updated:
+                tokenSaved = true
+            case .invalidURL:
+                // No URL is supplied on this path.
+                tokenError = "Couldn’t save this token."
+            case let .pendingUploads(n):
+                tokenError = "Wait for \(n) pending change\(n == 1 ? "" : "s") to sync before changing tokens."
+            case .transitionInProgress:
+                tokenError = "A connection change is already in progress."
+            case .teardownFailed:
+                tokenError = "Couldn’t safely clear the previous connection. Try again before changing tokens."
+            }
+        }
     }
 
     private func testConnection() {

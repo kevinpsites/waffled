@@ -23,12 +23,12 @@ private final class StubFeed: @unchecked Sendable {
 @MainActor
 private func model(_ feed: StubFeed) -> DashboardModel {
     DashboardModel(
-        fetchMeals: { _ in feed.meals },
-        fetchChores: { feed.chores },
-        fetchGrocery: { feed.grocery },
-        fetchGoals: { feed.goals },
-        fetchRecap: { feed.recap },
-        fetchSuggestions: { feed.suggestions })
+        fetchMeals: { _ in guard let rows = feed.meals else { throw URLError(.notConnectedToInternet) }; return rows },
+        fetchChores: { guard let rows = feed.chores else { throw URLError(.notConnectedToInternet) }; return rows },
+        fetchGrocery: { guard let rows = feed.grocery else { throw URLError(.notConnectedToInternet) }; return rows },
+        fetchGoals: { guard let rows = feed.goals else { throw URLError(.notConnectedToInternet) }; return rows },
+        fetchRecap: { guard let rows = feed.recap else { throw URLError(.notConnectedToInternet) }; return rows },
+        fetchSuggestions: { guard let rows = feed.suggestions else { throw URLError(.notConnectedToInternet) }; return rows })
 }
 
 private func dinner(_ date: String, title: String? = "Tacos") -> WaffledAPI.WeekEntryDTO {
@@ -74,6 +74,18 @@ private let today = "2026-07-16"
 @Suite struct DashboardModelLoadingStateTests {
     /// The bug: cards must be able to tell "still loading" apart from "loaded and
     /// empty". A fresh model reports neither domain loaded.
+    @Test func firstOfflineLoadIsUnavailableAndNeverAuthoritative() async {
+        let feed = StubFeed()
+        feed.meals = nil; feed.chores = nil; feed.grocery = nil; feed.goals = nil
+        let m = model(feed)
+        await m.load(todayKey: today)
+        await m.loadGoals()
+        #expect(m.mealsState == .offline(updatedAt: nil))
+        #expect(m.choresState == .offline(updatedAt: nil))
+        #expect(m.groceryState == .offline(updatedAt: nil))
+        #expect(m.goalsState == .offline(updatedAt: nil))
+    }
+
     @Test func startsUnloaded() {
         let m = model(StubFeed())
         #expect(!m.loaded)

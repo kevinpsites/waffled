@@ -51,6 +51,15 @@ type State struct {
 	// the bundle is re-verified.
 	BundleSHA  string `json:"bundleGitSha,omitempty"`
 	BundleTime string `json:"bundleBuiltAt,omitempty"`
+	// BackupExcluded records that PGDATA has been marked so Time Machine skips it.
+	//
+	// It is remembered rather than re-asked because `status` builds a supervisor on
+	// every menu-bar poll, and running tmutil twice a second to re-answer a settled
+	// question would be a process per poll. Absent (an install from before this field)
+	// reads as false, so the next start asserts it. `doctor` still asks tmutil directly,
+	// so a data directory that lost the xattr — restored onto another Mac, say — is
+	// reported rather than trusted.
+	BackupExcluded bool `json:"backupExcluded,omitempty"`
 }
 
 // New mints the state a first run starts from.
