@@ -223,3 +223,31 @@ describe('redeeming for another member needs the capability', () => {
     expect(byAdmin.statusCode).toBe(201)
   })
 })
+
+// ---- Finding 3 — photo uploadedBy -------------------------------------------
+describe('photo attribution cannot reach another household', () => {
+  it('refuses a photo attributed to a person outside the household', async () => {
+    const res = await call('POST', '/api/photos', attacker, { emoji: '📷', caption: 'Nope', uploadedBy: bPersonId })
+    expect(res.statusCode).toBe(404)
+    const { rows } = await withClient((c) =>
+      c.query(`select 1 from photos where uploaded_by = $1`, [bPersonId])
+    )
+    expect(rows.length).toBe(0)
+  })
+
+  it('never discloses a foreign uploader when listing photos', async () => {
+    await withClient((c) =>
+      c.query(
+        `insert into photos (household_id, emoji, caption, uploaded_by) values ($1,'🖼️','Poisoned',$2)`,
+        [householdA, bPersonId]
+      )
+    )
+    const res = await call('GET', '/api/photos', attacker)
+    expect(res.statusCode).toBe(200)
+    const photos = JSON.parse(res.body).photos as { caption: string; uploadedBy: { personId: string; name: string | null } | null }[]
+    const poisoned = photos.find((p) => p.caption === 'Poisoned')
+    expect(poisoned?.uploadedBy?.personId).toBe(bPersonId)
+    expect(poisoned?.uploadedBy?.name ?? null).toBe(null)
+    expect(res.body).not.toContain(VICTIM_NAME)
+  })
+})
