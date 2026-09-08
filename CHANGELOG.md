@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reward corrections stay within the original award.** Replacements only reduce its magnitude, spent awards require a refund before a correction could make the balance negative, and archived members’ history remains correctable.
+
 - Permission saves from older clients now preserve newer capability choices they
   do not know how to send, preventing unrelated settings changes from silently
   resetting who can correct reward history.

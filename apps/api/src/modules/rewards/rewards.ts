@@ -22,7 +22,7 @@ const { tenantRoute, capRoute } = rewardsRoutes()
 // rewards-shop gate above.
 const { capRoute: choresCapRoute } = moduleRoutes('chores')
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const CORRECTABLE_LEDGER_REASONS = new Set(['spot_award', 'ledger_correction'])
+export const CORRECTABLE_LEDGER_REASONS = new Set(['spot_award', 'ledger_correction'])
 const PG_INT_MIN = -2_147_483_648
 const PG_INT_MAX = 2_147_483_647
 
@@ -116,6 +116,9 @@ function validateCorrection(originalAmount: number, replacementAmount: number | 
   if (replacementAmount === undefined) return
   if (!isPostgresInteger(replacementAmount)) {
     throw new LedgerCorrectionError('replacementAmount must fit a 32-bit signed integer')
+  }
+  if (Math.abs(replacementAmount) > Math.abs(originalAmount)) {
+    throw new LedgerCorrectionError('replacementAmount cannot increase the original magnitude')
   }
   if (replacementAmount === originalAmount) {
     throw new LedgerCorrectionError('replacementAmount must differ from the original amount')
@@ -251,7 +254,17 @@ async function correctLockedLedgerEntry(
   )
   if (already.rowCount) throw new LedgerCorrectionError('this ledger entry has already been corrected', 409)
 
-  await lockLedgerSubject(client, tenant.householdId, original.person_id)
+  // Historical corrections remain possible after a person is archived. Ordinary
+  // earning/spending paths retain the active-person requirement on the same lock.
+  await lockLedgerSubject(client, tenant.householdId, original.person_id, { includeArchived: true })
+  const current = await client.query<{ balance: string }>(
+    `select coalesce(sum(amount),0) as balance from ledger_entries
+      where household_id=$1 and person_id=$2 and currency=$3 and deleted_at is null`,
+    [tenant.householdId, original.person_id, original.currency]
+  )
+  if (Number(current.rows[0].balance) + reversalAmount + (replacementAmount ?? 0) < 0) {
+    throw new LedgerCorrectionError('This correction would make the balance negative. Refund a spent reward first, then retry.', 409)
+  }
   const group = await client.query<{ id: string }>(`select gen_random_uuid() as id`)
   const groupId = group.rows[0].id
   const reversal = await client.query<{ id: string }>(

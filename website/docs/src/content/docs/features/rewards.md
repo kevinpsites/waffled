@@ -42,3 +42,20 @@ Rewards is a **sub-toggle of chores** (`settings.chores.rewards`, default **on**
 - 🔒 **Capability-gated where it has stakes** — `reward.manage` (catalog, currencies, conversions), `reward.approve` (redemptions), `reward.grant` (spot-awards), and `reward.correct` (settled ledger corrections/refunds). Anyone may **redeem for themselves**, convert their own balance, and cancel a pending request they made. See [Permissions](/concepts/permissions/).
 - 📒 **Corrections remain append-only** — the original amount is never edited or hidden. A linked reversal restores it, an optional replacement records the corrected amount, and retries use an idempotency key so they cannot apply twice.
 - 🚧 **Milestone reward payouts** are deferred — the design is done, but auto-paying a [Goals](/features/goals/) milestone into the ledger hasn't shipped yet.
+
+### Correcting a mistaken award
+
+Open the person's reward history and choose **Correct**. Reverse the award entirely,
+or replace it with a smaller amount in the same direction. Increasing an award
+requires a separate spot award and `reward.grant`; `reward.correct` cannot increase
+the original magnitude. Archived people's existing awards remain correctable through
+the API.
+
+A correction cannot make the balance negative. If the award was already spent,
+refund the approved redemption first and retry the correction. No partial ledger
+entries are written when a correction is rejected. Both the original activity and
+the linked correction remain visible with the actor and reason.
+
+Pending redemptions may be cancelled by the person who **requested** them, or someone
+with `reward.approve`. A request made by a parent on a child's behalf remains the
+parent's request; the child cannot cancel it just because they are its subject.

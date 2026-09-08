@@ -736,6 +736,86 @@ describe('reward redemption concurrency', () => {
 })
 
 describe('append-only reward corrections and reversals', () => {
+  it('prevents a correction-only teen from inflating a +1 award to int32 max', async () => {
+    const personId = await addMember('Correction only', 'teen', false, 'dev|correction-only')
+    const token = mint('dev|correction-only')
+    await withClient(c => c.query(`update households set settings = jsonb_set(settings, '{permissions}', $2::jsonb) where id=$1`,
+      [householdId, JSON.stringify({ teen: { 'reward.correct': true, 'reward.grant': false } })]))
+    try {
+      const award = JSON.parse((await call('POST', `/api/persons/${personId}/award`, kevin, { amount: 1 })).body)
+      expect((await call('POST', `/api/persons/${personId}/award`, token, { amount: 1 })).statusCode).toBe(403)
+      const response = await call('POST', `/api/ledger-entries/${award.id}/correct`, token, {
+        reason: 'Inflate the award', replacementAmount: 2147483647, idempotencyKey: randomUUID(),
+      })
+      expect(response.statusCode).toBe(400)
+      expect(response.body).toContain('magnitude')
+      expect(await starsOf(personId)).toBe(1)
+      expect((await call('POST', `/api/ledger-entries/${award.id}/correct`, token, {
+        reason: 'Remove the mistaken award', idempotencyKey: randomUUID(),
+      })).statusCode).toBe(201)
+      expect(await starsOf(personId)).toBe(0)
+    } finally {
+      await withClient(c => c.query(`update households set settings = settings - 'permissions' where id=$1`, [householdId]))
+    }
+  })
+
+  it('rejects a reversal of a spent award atomically, then allows it after a refund', async () => {
+    const personId = await addMember('Spent award', 'kid', false, 'dev|spent-award')
+    const award = JSON.parse((await call('POST', `/api/persons/${personId}/award`, kevin, { amount: 50 })).body)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Spent award reward', cost: 50, requiresApproval: false })).body).reward
+    const redemption = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).body).redemption
+    const body = { reason: 'Mistaken award already spent', idempotencyKey: randomUUID() }
+    const response = await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, body)
+    expect(response.statusCode).toBe(409)
+    expect(response.body).toContain('negative')
+    expect(await starsOf(personId)).toBe(0)
+    const rows = await withClient(c => c.query('select id from ledger_entries where reverses_entry_id=$1', [award.id]))
+    expect(rows.rowCount).toBe(0)
+    expect((await call('POST', `/api/redemptions/${redemption.id}/refund`, kevin, { reason: 'Return the spent reward', idempotencyKey: randomUUID() })).statusCode).toBe(200)
+    expect((await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, body)).statusCode).toBe(201)
+    expect(await starsOf(personId)).toBe(0)
+  })
+
+  it('corrects an archived subject and then corrects the replacement', async () => {
+    const personId = await addMember('Archived award', 'kid', false, 'dev|archived-award')
+    const award = JSON.parse((await call('POST', `/api/persons/${personId}/award`, kevin, { amount: 10 })).body)
+    await withClient(c => c.query('update persons set deleted_at=now() where id=$1', [personId]))
+    const response = await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+      reason: 'Correct archived award', replacementAmount: 6, idempotencyKey: randomUUID(),
+    })
+    expect(response.statusCode).toBe(201)
+    const replacementId = JSON.parse(response.body).correction.replacementId
+    const next = await call('POST', `/api/ledger-entries/${replacementId}/correct`, kevin, {
+      reason: 'Correct replacement again', replacementAmount: 3, idempotencyKey: randomUUID(),
+    })
+    expect(next.statusCode).toBe(201)
+    expect(JSON.parse(next.body).correction.balance).toBe(3)
+  })
+
+  it.each(['chore_completed', 'reward_redeemed'])('routes %s corrections back to their owning workflow', async reason => {
+    const id = await withClient(async c => (await c.query(`insert into ledger_entries
+      (household_id, person_id, currency, amount, reason) values ($1,$2,'stars',1,$3) returning id`, [householdId, kevinId, reason])).rows[0].id)
+    const response = await call('POST', `/api/ledger-entries/${id}/correct`, kevin, { reason: 'Use correct workflow', idempotencyKey: randomUUID() })
+    expect(response.statusCode).toBe(409)
+    expect(response.body).toContain(reason === 'reward_redeemed' ? 'refund action' : 'original feature')
+  })
+
+  it('enforces correction links and replay uniqueness even when bypassing the application', async () => {
+    const award = JSON.parse((await call('POST', `/api/persons/${kevinId}/award`, kevin, { amount: 10 })).body)
+    const key = randomUUID()
+    const insert = (id: string, reverses: string | null, requestKey: string | null) => withClient(c => c.query(`insert into ledger_entries
+      (id, household_id, person_id, currency, amount, reason, reverses_entry_id, idempotency_key)
+      values ($1,$2,$3,'stars',-10,'ledger_reversal',$4,$5)`, [id, householdId, kevinId, reverses, requestKey]))
+    const self = randomUUID()
+    await expect(insert(self, self, null)).rejects.toMatchObject({ code: '23514' })
+    const foreign = await withClient(async c => (await c.query(`insert into ledger_entries
+      (household_id, person_id, currency, amount, reason) select household_id,id,$2,10,'spot_award' from persons where id=$1 returning id`, [foreignPersonId, foreignCurrencyKey])).rows[0].id)
+    await expect(insert(randomUUID(), foreign, null)).rejects.toMatchObject({ code: '23503' })
+    await insert(randomUUID(), award.id, key)
+    await expect(insert(randomUUID(), award.id, randomUUID())).rejects.toMatchObject({ code: '23505' })
+    await expect(insert(randomUUID(), null, key)).rejects.toMatchObject({ code: '23505' })
+  })
+
   it('reverses an award and writes a corrected replacement without editing the original', async () => {
     const before = await starsOf(kevinId)
     const award = await call('POST', `/api/persons/${kevinId}/award`, kevin, {
@@ -1300,12 +1380,13 @@ describe('append-only reward corrections and reversals', () => {
          values ($1,$2,$3,current_date) returning id`,
         [foreignHouseholdId, chore.rows[0].id, foreignPersonId]
       )
-      await c.query(
+      // This malformed cross-household link is now rejected at the DB boundary.
+      await expect(c.query(
         `insert into ledger_entries
            (household_id, person_id, currency, amount, reason, reverses_entry_id, created_by)
          values ($1,$2,'stars',-7,'ledger_reversal',$3,$2)`,
         [foreignHouseholdId, foreignPersonId, localTarget]
-      )
+      )).rejects.toMatchObject({ code: '23503' })
       const deletedReversal = await c.query<{ id: string }>(
         `insert into ledger_entries
            (household_id, person_id, currency, amount, reason, reverses_entry_id, created_by, deleted_at)

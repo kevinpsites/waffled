@@ -56,7 +56,6 @@ enum RewardCorrectionTarget: Identifiable {
 /// linked compensating entries; this sheet makes that behavior explicit before a
 /// balance-changing action is submitted.
 struct RewardCorrectionSheet: View {
-    private static let maxLedgerAmount = 2_147_483_647
     @Environment(\.dismiss) private var dismiss
     let target: RewardCorrectionTarget
     let onApply: (_ reason: String, _ replacementAmount: Int?, _ idempotencyKey: String) async throws -> Void
@@ -79,7 +78,7 @@ struct RewardCorrectionSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("The original activity stays in the audit trail. Waffled adds a linked compensating entry so the balance and history remain explainable.")
+                    Text("The original activity stays in the history. Corrections can only reduce an amount and cannot make a balance negative. Refund a spent reward first if needed.")
                         .font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink3)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -128,6 +127,7 @@ struct RewardCorrectionSheet: View {
                     }
                 }
                 .padding(18)
+                .disabled(saving)
             }
             .background(WF.canvas)
             .navigationTitle(target.isRefund ? "Refund redemption" : "Correct reward history")
@@ -141,6 +141,9 @@ struct RewardCorrectionSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .onChange(of: reason) { _, _ in idempotencyKey = UUID().uuidString }
+        .onChange(of: magnitude) { _, _ in idempotencyKey = UUID().uuidString }
+        .onChange(of: replaceAmount) { _, _ in idempotencyKey = UUID().uuidString }
     }
 
     private func apply() {
@@ -152,9 +155,8 @@ struct RewardCorrectionSheet: View {
         var replacement: Int?
         if !target.isRefund, replaceAmount {
             guard let amount = Int(magnitude), amount > 0,
-                  amount <= Self.maxLedgerAmount,
-                  amount != abs(target.originalAmount) else {
-                error = "Enter a different positive whole-number amount up to 2,147,483,647."
+                  amount < abs(target.originalAmount) else {
+                error = "Enter a smaller positive whole-number amount; use Reverse entirely to remove it."
                 return
             }
             replacement = target.originalAmount < 0 ? -amount : amount

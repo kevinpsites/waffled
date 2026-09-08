@@ -1,3 +1,4 @@
+import { CORRECTABLE_LEDGER_REASONS } from '../rewards/rewards'
 // Per-person + whole-family overview — the "how is everyone doing" rollups behind
 // the person profile (the "Person / Wally" mock) and the family dashboard. Pure
 // aggregation over goals + the stars ledger + reward redemptions; no new tables.
@@ -254,7 +255,7 @@ export async function personOverview(householdId: string, personId: string) {
       correctionReason: r.correction_reason ?? null,
       correctionOfId: r.correction_of_id ?? null,
       reversedById: r.reversed_by_id ?? null,
-      reversible: ['spot_award', 'ledger_correction'].includes(r.reason) && !r.reverses_entry_id && !r.reversed_by_id,
+      reversible: CORRECTABLE_LEDGER_REASONS.has(r.reason) && !r.reverses_entry_id && !r.reversed_by_id,
       redemptionId: r.redemption_id ?? null,
       createdAt: r.created_at,
     })),
