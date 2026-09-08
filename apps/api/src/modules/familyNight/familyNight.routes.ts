@@ -1,6 +1,7 @@
 // Family Night — HTTP routes (/api/family-night). Logic in familyNight.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { moduleRoutes } from '../../platform/route-guards'
+import { assertPersonsInHousehold } from '../../platform/household-refs'
 import {
   getView,
   getConfig,
@@ -58,6 +59,13 @@ export function registerFamilyNightRoutes(api: Api): void {
           .filter((a) => a && typeof a.partId === 'string')
           .map((a) => ({ partId: a.partId, personId: a.personId ?? null }))
       : undefined
+    // A foreign id currently just renders as an empty slot (names resolve against
+    // the household's own members), but the row would still be written — assert
+    // membership so this stays a non-event if that read path ever changes.
+    await assertPersonsInHousehold(
+      tenant.householdId,
+      (assignments ?? []).map((a) => a.personId).filter((id): id is string => typeof id === 'string')
+    )
     const result = await upsertOccurrence(tenant, {
       date: body.date,
       theme: body.theme,

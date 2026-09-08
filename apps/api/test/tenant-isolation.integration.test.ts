@@ -299,3 +299,35 @@ describe('calendar feed owners cannot reach another household', () => {
     expect(res.body).not.toContain(VICTIM_NAME)
   })
 })
+
+// ---- Finding 5 — Family Night assignments -----------------------------------
+// Inert today (the agenda resolves names against the household's own members, so a
+// foreign id shows as an empty slot), but it is the same unguarded write; guard it
+// so the next change to that read path cannot turn it into a disclosure.
+describe('family night assignments cannot reach another household', () => {
+  it('refuses an agenda slot assigned to a person outside the household', async () => {
+    const view = await call('GET', '/api/family-night', attacker)
+    expect(view.statusCode).toBe(200)
+    const partId = JSON.parse(view.body).config.parts[0].id as string
+
+    const res = await call('POST', '/api/family-night/occurrence', attacker, {
+      date: '2026-01-02',
+      assignments: [{ partId, personId: bPersonId }],
+    })
+    expect(res.statusCode).toBe(404)
+    const { rows } = await withClient((c) =>
+      c.query(`select 1 from family_night_assignments where person_id = $1`, [bPersonId])
+    )
+    expect(rows.length).toBe(0)
+  })
+
+  it('still accepts an assignment to a member of the household', async () => {
+    const view = await call('GET', '/api/family-night', attacker)
+    const partId = JSON.parse(view.body).config.parts[0].id as string
+    const res = await call('POST', '/api/family-night/occurrence', attacker, {
+      date: '2026-01-09',
+      assignments: [{ partId, personId: aKidId }],
+    })
+    expect(res.statusCode).toBe(200)
+  })
+})
