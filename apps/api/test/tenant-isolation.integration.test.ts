@@ -331,3 +331,25 @@ describe('family night assignments cannot reach another household', () => {
     expect(res.statusCode).toBe(200)
   })
 })
+
+// ---- Finding 7 — /api/health aggregates -------------------------------------
+describe('the health report counts only the caller household', () => {
+  it("does not report another household's calendar backlog", async () => {
+    await withClient((c) =>
+      c.query(
+        `insert into events (household_id, title, starts_at, timezone, sync_state)
+         values ($1,'Stuck', now(), 'UTC', 'push_failed')`,
+        [householdA]
+      )
+    )
+    const mine = await call('GET', '/api/health', attacker)
+    expect(mine.statusCode).toBe(200)
+    expect(JSON.parse(mine.body).checks.calendar.failedPush).toBe(1)
+
+    // Household B has no stuck events of its own — and must not learn A does.
+    const theirs = await call('GET', '/api/health', victim)
+    expect(theirs.statusCode).toBe(200)
+    expect(JSON.parse(theirs.body).checks.calendar.failedPush).toBe(0)
+    expect(JSON.parse(theirs.body).checks.calendar.status).toBe('ok')
+  })
+})
