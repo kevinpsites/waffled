@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Spending someone else's stars needs permission.** Redeeming a reward on behalf of
   another family member now requires the same "manage rewards" permission that trading
   currencies already asked for — a kid can still redeem their own stars, but not a
-  sibling's.
+  sibling's, and the reward shop only offers **Get it** on a wallet you may spend.
 
 ## [0.14.3] - 2026-09-02
 
