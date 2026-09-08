@@ -92,7 +92,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   stars ledger.
 - **Rewards & economy** — catalog → redeem → independent approval → debit, multi-currency, conversions
   (acting on another balance requires reward-approval rights)
-  ("Trade"), saving-toward jar/bar.
+  ("Trade"), saving-toward jar/bar. Spending, conversions and chore undo share a
+  balance lock; an undo cannot remove already-spent rewards.
 - **Goals** — types (count/total/habit/checklist), shared vs each-tracks, create/edit/
   detail read-model, person + family overview, **calendar → goal** auto-count (single
   and recurring events) with learned suggestions, **swappable data views** on the goal-detail

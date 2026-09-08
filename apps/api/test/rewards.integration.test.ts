@@ -137,16 +137,21 @@ async function starsOf(personId: string): Promise<number> {
 // visibly waiting for it. This makes the concurrency assertions deterministic:
 // without the production lock, the barrier times out instead of occasionally
 // passing because one request happened to finish before the other started.
-async function waitForLockWaiters(observer: Client, expected: number, patterns: string[]): Promise<void> {
+async function waitForLockWaiters(observer: Client, blockerPid: number, expected: number, patterns: string[]): Promise<void> {
   const deadline = Date.now() + 5_000
   while (true) {
     const { rows } = await observer.query<{ count: string }>(
-      `select count(*)::text as count from pg_stat_activity
-        where datname=current_database()
+      `with recursive blocked(pid) as (
+           select pid from pg_stat_activity where $2 = any(pg_blocking_pids(pid))
+           union
+           select a.pid from pg_stat_activity a join blocked b on b.pid = any(pg_blocking_pids(a.pid))
+         )
+         select count(*)::text as count from pg_stat_activity
+        where pid in (select pid from blocked) and datname=current_database()
           and pid <> pg_backend_pid()
           and wait_event_type='Lock'
           and query ilike all($1::text[])`,
-      [patterns]
+      [patterns, blockerPid]
     )
     if (Number(rows[0]?.count ?? 0) >= expected) return
     if (Date.now() >= deadline) throw new Error('concurrent ledger operations did not reach the expected database lock')
@@ -163,7 +168,8 @@ async function runBehindLedgerLock<T>(personId: string, start: () => Promise<T>[
   const pending = start()
   let barrierError: unknown
   try {
-    await waitForLockWaiters(observer, pending.length, ['%select id from persons%', '%for%update%'])
+    const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+    await waitForLockWaiters(observer, rows[0].pid, pending.length, ['%select id from persons%', '%for%update%'])
   } catch (err) {
     barrierError = err
   } finally {
@@ -184,7 +190,8 @@ async function runAfterConcurrentCurrencyDisable<T>(currencyId: string, start: (
   const pending = start()
   let barrierError: unknown
   try {
-    await waitForLockWaiters(observer, 1, ['%from currencies%', '%for share%'])
+    const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+    await waitForLockWaiters(observer, rows[0].pid, 1, ['%from currencies%', '%for share%'])
   } catch (err) {
     barrierError = err
   } finally {
@@ -944,5 +951,84 @@ describe('review: ledger authority and independent approval', () => {
     await withTeenPermissions({ 'reward.manage': false, 'reward.approve': true }, async () => {
       expect((await call('POST', `/api/conversions/${conversion.id}/apply`, token, { personId: sibling })).statusCode).toBe(200)
     })
+  })
+})
+
+describe('review: chore clawbacks and currency locks', () => {
+  async function earnedChore(suffix: string) {
+    const personId = await addMember(`Clawback ${suffix}`, 'kid', false, `dev|clawback-${suffix}`)
+    const instanceId = await withClient(async (c) => {
+      const chore = await c.query(`insert into chores (household_id,title,person_id,reward_amount,reward_currency) values ($1,'Earn ten',$2,10,'stars') returning id`, [householdId, personId])
+      const inst = await c.query(`insert into chore_instances (household_id,chore_id,person_id,due_on,status,awarded,completed_at,reward_amount,reward_currency) values ($1,$2,$3,current_date,'done',true,now(),10,'stars') returning id`, [householdId, chore.rows[0].id, personId])
+      return inst.rows[0].id as string
+    })
+    await grantStars(personId, 10)
+    return { personId, instanceId }
+  }
+
+  it('serializes chore undo against redeem so only one debit can consume the balance', async () => {
+    const { personId, instanceId } = await earnedChore('race')
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Clawback race', cost: 10, requiresApproval: false })).body).reward
+    const results = await runBehindLedgerLock(personId, () => [
+      call('POST', `/api/chore-instances/${instanceId}/uncomplete`, kevin),
+      call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId }),
+    ])
+    expect(results.filter((r) => r.statusCode < 300)).toHaveLength(1)
+    expect(results.filter((r) => r.statusCode === 409)).toHaveLength(1)
+    expect(await starsOf(personId)).toBe(0)
+    const debits = await withClient((c) => c.query('select id from ledger_entries where person_id=$1 and amount<0', [personId]))
+    expect(debits.rowCount).toBe(1)
+  })
+
+  it('refuses undo after spending, preserving completion and proof atomically', async () => {
+    const { personId, instanceId } = await earnedChore('spent')
+    await withClient((c) => c.query("update chore_instances set proof_storage_key='review-proof.jpg',proof_content_type='image/jpeg',had_proof=true where id=$1", [instanceId]))
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Spent chore', cost: 10, requiresApproval: false })).body).reward
+    expect((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).statusCode).toBe(201)
+    const result = await call('POST', `/api/chore-instances/${instanceId}/uncomplete`, kevin)
+    expect(result.statusCode).toBe(409)
+    expect(JSON.parse(result.body).message).toMatch(/not enough.*undo/i)
+    const stored = await withClient((c) => c.query('select status,awarded,proof_storage_key,had_proof from chore_instances where id=$1', [instanceId]))
+    expect(stored.rows[0]).toEqual({ status: 'done', awarded: true, proof_storage_key: 'review-proof.jpg', had_proof: true })
+    expect(await starsOf(personId)).toBe(0)
+    const rows = await withClient((c) => c.query("select id from ledger_entries where person_id=$1 and reason='chore_uncompleted'", [personId]))
+    expect(rows.rowCount).toBe(0)
+  })
+
+  it('serializes two decisions on the same redemption row (one 200, one 409)', async () => {
+    const personId = await addMember('Same redemption', 'kid', false, 'dev|same-redemption')
+    await grantStars(personId, 10)
+    const reward = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'One decision', cost: 2, requiresApproval: true })).body).reward
+    const red = JSON.parse((await call('POST', `/api/rewards/${reward.id}/redeem`, kevin, { personId })).body).redemption
+    const blocker = new Client({ connectionString: url })
+    const observer = new Client({ connectionString: url })
+    await Promise.all([blocker.connect(), observer.connect()])
+    await blocker.query('begin')
+    await blocker.query('select id from reward_redemptions where id=$1 for update', [red.id])
+    const pending = [call('POST', `/api/redemptions/${red.id}/approve`, reviewer), call('POST', `/api/redemptions/${red.id}/approve`, reviewer)]
+    let barrierError: unknown
+    try {
+      const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+      await waitForLockWaiters(observer, rows[0].pid, 2, ['%from reward_redemptions%', '%for update%'])
+    } catch (error) { barrierError = error } finally {
+      await blocker.query('commit')
+      await Promise.all([blocker.end(), observer.end()])
+    }
+    const results = await Promise.all(pending)
+    if (barrierError) throw barrierError
+    expect(results.map((r) => r.statusCode).sort()).toEqual([200, 409])
+    expect(await starsOf(personId)).toBe(8)
+  })
+
+  it.each(['from', 'to'])('rechecks a concurrently disabled %s conversion currency under lock', async (side) => {
+    const personId = await addMember(`Conversion disable ${side}`, 'kid', false, `dev|disable-${side}`)
+    const from = JSON.parse((await call('POST', '/api/currencies', kevin, { label: `From ${side}`, spendable: true })).body).currency
+    const to = JSON.parse((await call('POST', '/api/currencies', kevin, { label: `To ${side}`, spendable: true })).body).currency
+    await call('POST', `/api/persons/${personId}/award`, kevin, { currency: from.key, amount: 10 })
+    const conv = JSON.parse((await call('POST', '/api/conversions', kevin, { fromCurrency: from.key, toCurrency: to.key, fromAmount: 1, toAmount: 1 })).body).conversion
+    const result = await runAfterConcurrentCurrencyDisable(side === 'from' ? from.id : to.id, () => call('POST', `/api/conversions/${conv.id}/apply`, kevin, { personId }))
+    expect(result.statusCode).toBe(409)
+    const entries = await withClient((c) => c.query("select id from ledger_entries where person_id=$1 and reason='conversion'", [personId]))
+    expect(entries.rowCount).toBe(0)
   })
 })

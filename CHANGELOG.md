@@ -24,12 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Simultaneous reward spending cannot overdraw a balance.** Reward redemptions and
-  currency conversions now share a household-member balance lock, so overlapping
-  requests are applied one at a time and recheck the latest balance before spending.
+- **Reward spending and chore undo share one balance check.** Redemptions, currency
+  conversions and chore reward reversals lock the family member’s balance and recheck
+  it before debiting. Undo is refused if the reward has already been spent, keeping
+  the completed chore and its proof intact. Conversions also reject disabled currencies.
 
 - **Reward activity stays inside your family.** Redeeming or granting a reward now
-  rejects people and currencies from another household, and a family member can only
+  rejects people and currencies from another household, and a family member can
   redeem or convert another person’s balance only with reward-approval rights.
   Pending rewards require a different person to approve them, including admin requests. Pending redemptions also
   stop safely if their currency is later disabled, while earn-only currencies still work

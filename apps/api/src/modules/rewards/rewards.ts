@@ -9,7 +9,7 @@ import { type Tenant } from '../households/households'
 import { rewardsRoutes, moduleRoutes } from '../../platform/route-guards'
 import { assertPersonInHousehold, HouseholdReferenceError } from '../../platform/household-refs'
 import { requireCapability } from '../../platform/permissions'
-import { lockLedgerSubject } from '../../platform/ledger-lock'
+import { lockLedgerSubject, lockSpendableCurrencies } from '../../platform/ledger-lock'
 import { registerRewardCaptureTarget } from './rewards-capture'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
@@ -100,16 +100,6 @@ async function assertCurrencyInHousehold(householdId: string, currency: string, 
   if (!rows[0] || (requireSpendable && !rows[0].spendable)) {
     throw new HouseholdReferenceError('currency not found')
   }
-}
-
-async function lockSpendableCurrency(client: PoolClient, householdId: string, currency: string): Promise<boolean> {
-  const { rowCount } = await client.query(
-    `select 1 from currencies
-      where household_id=$1 and key=$2 and spendable=true and deleted_at is null
-      for share`,
-    [householdId, currency]
-  )
-  return !!rowCount
 }
 
 export async function balanceFor(householdId: string, personId: string, currency = 'stars'): Promise<number> {
@@ -230,7 +220,7 @@ export async function requestRedemption(tenant: Tenant, rewardId: string, person
   try {
     await client.query('begin')
     await lockLedgerSubject(client, tenant.householdId, personId)
-    if (!(await lockSpendableCurrency(client, tenant.householdId, reward.currency))) {
+    if (!(await lockSpendableCurrencies(client, tenant.householdId, [reward.currency]))) {
       await client.query('rollback')
       return { error: 'reward currency is no longer available' }
     }
@@ -312,7 +302,7 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
     // A pending request can outlive a catalog change. Re-check at decision time
     // and hold the catalog row through commit, so disabling/deleting a currency
     // cannot race a new debit.
-    if (!(await lockSpendableCurrency(client, tenant.householdId, red.currency))) {
+    if (!(await lockSpendableCurrencies(client, tenant.householdId, [red.currency]))) {
       await client.query('rollback')
       return { error: 'reward currency is no longer available' }
     }

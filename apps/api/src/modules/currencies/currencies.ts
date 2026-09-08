@@ -9,7 +9,7 @@ import { requireTenant, requireAdmin, type Tenant } from '../households/househol
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
 import { assertPersonInHousehold } from '../../platform/household-refs'
 import { requireCapability } from '../../platform/permissions'
-import { lockLedgerSubject } from '../../platform/ledger-lock'
+import { lockLedgerSubject, lockSpendableCurrencies } from '../../platform/ledger-lock'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -258,6 +258,10 @@ export async function applyConversion(
     )
     const conv = cur.rows[0]
     if (!conv) { await client.query('rollback'); return { ok: false, error: 'conversion not found' } }
+    if (!(await lockSpendableCurrencies(client, tenant.householdId, [conv.from_currency, conv.to_currency]))) {
+      await client.query('rollback')
+      return { ok: false, error: 'conversion currency is no longer available' }
+    }
     const debit = conv.from_amount * n
     const credit = conv.to_amount * n
     const bal = await client.query<{ balance: string | null }>(
