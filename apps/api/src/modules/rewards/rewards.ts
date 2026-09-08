@@ -197,7 +197,8 @@ export async function requestRedemption(tenant: Tenant, rewardId: string, person
   // directly), so prove the redemption subject belongs to the active household
   // before either the pending or auto-approved path can persist a relationship.
   await assertPersonInHousehold(tenant.householdId, personId)
-  if (personId.toLowerCase() !== tenant.personId.toLowerCase()) await requireCapability(tenant, 'reward.manage')
+  // Catalog editing does not authorize spending another member's balance.
+  if (personId.toLowerCase() !== tenant.personId.toLowerCase()) await requireCapability(tenant, 'reward.approve')
   await assertCurrencyInHousehold(tenant.householdId, reward.currency, true)
 
   // This reward needs a parent → a pending request for the approval queue.
@@ -277,6 +278,13 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
       )
       await client.query('commit')
       return { redemption: upd.rows[0] }
+    }
+
+    // A pending reward requires a second person, even when an admin requested
+    // it on a child's behalf. Denial remains available to the requester.
+    if (red.requested_by?.toLowerCase() === tenant.personId.toLowerCase()) {
+      await client.query('rollback')
+      return { error: 'A different person must approve this request' }
     }
 
     // Keep local history visible and dismissible after a person is archived,
