@@ -353,7 +353,7 @@ export function registerCurrencyRoutes(api: Api): void {
     const personId = body.personId?.trim() || tenant.personId
     if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
     await assertPersonInHousehold(tenant.householdId, personId)
-    if (personId !== tenant.personId) await requireCapability(tenant, 'reward.manage')
+    if (personId.toLowerCase() !== tenant.personId.toLowerCase()) await requireCapability(tenant, 'reward.approve')
     const result = await applyConversion(tenant, id, personId, body.times ?? 1)
     if (!result.ok) {
       return res.status(result.error === 'conversion not found' ? 404 : 409).json({ error: 'Conflict', message: result.error })

@@ -90,7 +90,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   **overdue · since …** badge, per-chore `rollover` toggle), up-for-grabs claim,
   drag-to-reassign, parent approval, **photo-proof on completion**, streaks, append-only
   stars ledger.
-- **Rewards & economy** — catalog → redeem → approve → debit, multi-currency, conversions
+- **Rewards & economy** — catalog → redeem → independent approval → debit, multi-currency, conversions
+  (acting on another balance requires reward-approval rights)
   ("Trade"), saving-toward jar/bar.
 - **Goals** — types (count/total/habit/checklist), shared vs each-tracks, create/edit/
   detail read-model, person + family overview, **calendar → goal** auto-count (single

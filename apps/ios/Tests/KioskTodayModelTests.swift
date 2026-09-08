@@ -20,12 +20,12 @@ import Testing
 
     /// nil = the fetch failed: keep the prior value, but still count as loaded so
     /// the card doesn't sit on "Loading…" forever.
-    @Test func failureKeepsPriorValueButMarksLoaded() {
+    @Test func failureKeepsPriorValueButIsNotAuthoritative() {
         let d = RestDomain<[Int]>([])
         d.apply([1, 2])
         d.apply(nil)
         #expect(d.value == [1, 2])
-        #expect(d.loaded)
+        #expect(!d.state.isAuthoritative)
     }
 
     /// A successful fetch applies even when empty — that's real data ("the dinner
@@ -50,10 +50,10 @@ private final class KioskFeed: @unchecked Sendable {
 @MainActor
 private func model(_ feed: KioskFeed) -> KioskTodayModel {
     KioskTodayModel(
-        fetchChores: { feed.chores },
-        fetchMeals: { _ in feed.meals },
-        fetchGrocery: { feed.grocery },
-        fetchGoals: { feed.goals },
+        fetchChores: { guard let rows = feed.chores else { throw URLError(.notConnectedToInternet) }; return rows },
+        fetchMeals: { _ in guard let rows = feed.meals else { throw URLError(.notConnectedToInternet) }; return rows },
+        fetchGrocery: { guard let rows = feed.grocery else { throw URLError(.notConnectedToInternet) }; return rows },
+        fetchGoals: { guard let rows = feed.goals else { throw URLError(.notConnectedToInternet) }; return rows },
         fetchWeather: { nil })
 }
 
@@ -88,6 +88,18 @@ private let today = "2026-07-16"
 
 @MainActor
 @Suite struct KioskTodayModelTests {
+    @Test func firstOfflineLoadIsUnavailableAndNeverAuthoritative() async {
+        let feed = KioskFeed()
+        feed.meals = nil; feed.chores = nil; feed.grocery = nil; feed.goals = nil
+        let m = model(feed)
+        await m.load(todayKey: today)
+        await m.loadGoals()
+        #expect(m.mealsState == .offline(updatedAt: nil))
+        #expect(m.choresState == .offline(updatedAt: nil))
+        #expect(m.groceryState == .offline(updatedAt: nil))
+        #expect(m.goalsState == .offline(updatedAt: nil))
+    }
+
     @Test func startsUnloaded() {
         let m = model(KioskFeed())
         #expect(!m.choresLoaded)

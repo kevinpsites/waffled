@@ -15,13 +15,6 @@ final class Session {
 
     private let api = WaffledAPI()
 
-    init() {
-        // A dead refresh token (caught mid-request) drops us back to login.
-        NotificationCenter.default.addObserver(forName: .waffledAuthExpired, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.handleExpiry() }
-        }
-    }
-
     /// Decide the initial screen on launch. A real session (or a dev/env token for
     /// headless demos) goes straight in; otherwise we probe `/auth/status` and show
     /// login.
@@ -93,16 +86,27 @@ final class Session {
         }
     }
 
-    /// Return to login immediately, then revoke + re-probe in the background. Clearing
-    /// the Keychain and flipping `phase` first makes sign-out feel instant and tears
-    /// down the authed UI before any network work (no waiting on a slow revoke).
-    func signOut() async {
+    /// Tear down auth and sync as one principal boundary. The loading gate prevents a
+    /// new login from starting while the previous PowerSync connection is still being
+    /// disconnected; `SyncManager.signOut` rotates the REST scope before it suspends.
+    func signOut(sync: SyncManager, clearLocal: Bool = false) async {
+        guard case .authed = phase else { return }
         let refresh = AuthTokens.refreshToken
         AuthTokens.clear()
         AppConfig.markSignedOut()   // else the dev-token fallback re-auths us
+        phase = .loading
+        await sync.signOut(clearLocal: clearLocal)
         phase = .login
-        if let refresh { await api.revoke(refreshToken: refresh) }   // best-effort
-        status = try? await api.authStatus()
+
+        // Revocation/status are best-effort and must not keep the login screen gated.
+        // Ignore the late status if the user has already completed a new login.
+        Task { [weak self] in
+            guard let self else { return }
+            if let refresh { await self.api.revoke(refreshToken: refresh) }
+            let refreshedStatus = try? await self.api.authStatus()
+            guard case .login = self.phase else { return }
+            self.status = refreshedStatus
+        }
     }
 
     /// Adopt a freshly-minted session without a password round-trip — used by the kiosk
@@ -120,10 +124,4 @@ final class Session {
         status = try? await api.authStatus()
     }
 
-    private func handleExpiry() async {
-        // Tokens were already cleared by the refresher; just surface login.
-        guard phase == .authed else { return }
-        status = try? await api.authStatus()
-        phase = .login
-    }
 }
