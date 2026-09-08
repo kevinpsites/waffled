@@ -37,6 +37,8 @@ export interface ChoreInstance {
   streak: number
 }
 
+export type ChoreEditTarget = { scope: 'this' | 'following' | 'all'; instanceId?: string }
+
 export const choresApi = {
   choresToday: () => apiGet<{ date: string; people: PersonChores[]; upForGrabs?: number }>('/api/chores/today'),
   // Optional date (YYYY-MM-DD) to look ahead/back; defaults to today.
@@ -53,9 +55,11 @@ export const choresApi = {
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/uncomplete`).then(tap('chores')).then(tap('rewards')),
   createChore: (input: { title: string; personId?: string | null; emoji?: string | null; rewardAmount?: number; rewardCurrency?: string; rrule?: string | null; requiresApproval?: boolean; requiresPhoto?: boolean; rollover?: boolean; dueOn?: string; dueTime?: string | null }) =>
     apiSend<{ chore: { id: string } }>('POST', '/api/chores', input).then(tap('chores')),
-  updateChore: (id: string, patch: Record<string, unknown>) =>
-    apiSend<{ chore: { id: string } }>('PATCH', `/api/chores/${id}`, patch).then(tap('chores')),
-  deleteChore: (id: string) => apiDelete(`/api/chores/${id}`).then(tap('chores')),
+  updateChore: (id: string, patch: Record<string, unknown>, target?: ChoreEditTarget) =>
+    apiSend<{ chore: { id: string } }>('PATCH', `/api/chores/${id}`, { ...patch, ...target }).then(tap('chores')),
+  deleteChore: (id: string, target?: ChoreEditTarget) => target
+    ? apiSend<void>('DELETE', `/api/chores/${id}`, target).then(tap('chores'))
+    : apiDelete(`/api/chores/${id}`).then(tap('chores')),
   claimInstance: (id: string, personId: string) =>
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/claim`, { personId }).then(tap('chores')),
   // Reassign to a person, or unassign back to up-for-grabs (personId null).

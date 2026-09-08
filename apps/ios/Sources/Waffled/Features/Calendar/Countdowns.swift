@@ -38,6 +38,11 @@ enum CountdownFormat {
 @MainActor
 @Observable
 final class CountdownsModel {
+    enum MutationOutcome: Equatable {
+        case refreshed
+        case savedButRefreshFailed
+    }
+
     typealias FetchCountdowns = () async throws -> (items: [WaffledAPI.Countdown], sleeps: Bool)
     typealias CreateCountdown = (_ title: String, _ date: String, _ emoji: String?) async throws -> Void
     typealias UpdateCountdown = (_ id: String, _ title: String, _ date: String, _ emoji: String?) async throws -> Void
@@ -79,17 +84,37 @@ final class CountdownsModel {
         self.deleteCountdown = deleteCountdown
     }
 
+    private func refresh() async throws {
+        let response = try await fetchCountdowns()
+        items = response.items
+        sleeps = response.sleeps
+    }
+
     func load() async {
-        if let response = try? await fetchCountdowns() {
-            items = response.items
-            sleeps = response.sleeps
+        do {
+            try await refresh()
+        } catch {
+            // Keep the last confirmed snapshot during passive refresh failures.
         }
         loaded = true
     }
 
-    func add(title: String, date: String, emoji: String?) async throws {
+    private func refreshAfterMutation() async -> MutationOutcome {
+        do {
+            try await refresh()
+            loaded = true
+            return .refreshed
+        } catch {
+            // The write is already confirmed. Report the stale snapshot separately
+            // so callers don't imply that retrying the mutation itself is safe.
+            loaded = true
+            return .savedButRefreshFailed
+        }
+    }
+
+    func add(title: String, date: String, emoji: String?) async throws -> MutationOutcome {
         try await createCountdown(title, date, emoji)
-        await load()
+        return await refreshAfterMutation()
     }
 
     /// Only standalone items can be removed (events/birthdays are managed at their source).
@@ -101,10 +126,10 @@ final class CountdownsModel {
     }
 
     /// Rename / move a standalone countdown (events/birthdays are edited at their source).
-    func update(_ c: WaffledAPI.Countdown, title: String, date: String, emoji: String?) async throws {
-        guard c.isStandalone else { return }
+    func update(_ c: WaffledAPI.Countdown, title: String, date: String, emoji: String?) async throws -> MutationOutcome {
+        guard c.isStandalone else { return .refreshed }
         try await updateCountdown(c.id, title, date, emoji)
-        await load()
+        return await refreshAfterMutation()
     }
 }
 
@@ -231,13 +256,15 @@ struct CountdownsCard: View {
 
 struct AddCountdownSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let onAdd: (_ title: String, _ date: String, _ emoji: String?) async throws -> Void
+    let onAdd: (_ title: String, _ date: String, _ emoji: String?) async throws -> CountdownsModel.MutationOutcome
 
     @State private var title = ""
     @State private var date = Date()
     @State private var emoji = ""
     @State private var saving = false
+    @State private var alertTitle = "Countdown not added"
     @State private var errorMessage: String?
+    @State private var dismissAfterAlert = false
 
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
@@ -270,8 +297,13 @@ struct AddCountdownSheet: View {
             }
         }
         .presentationDetents([.height(320), .medium])
-        .alert("Countdown not added", isPresented: errorPresented) {
-            Button("OK") { errorMessage = nil }
+        .alert(alertTitle, isPresented: errorPresented) {
+            Button(dismissAfterAlert ? "Done" : "OK") {
+                let shouldDismiss = dismissAfterAlert
+                errorMessage = nil
+                dismissAfterAlert = false
+                if shouldDismiss { dismiss() }
+            }
         } message: {
             Text(errorMessage ?? "The countdown could not be added.")
         }
@@ -299,10 +331,18 @@ struct AddCountdownSheet: View {
         let e = emoji.trimmingCharacters(in: .whitespaces)
         Task {
             do {
-                try await onAdd(t, CountdownFormat.ymd(date), e.isEmpty ? nil : e)
-                dismiss()
+                switch try await onAdd(t, CountdownFormat.ymd(date), e.isEmpty ? nil : e) {
+                case .refreshed:
+                    dismiss()
+                case .savedButRefreshFailed:
+                    alertTitle = "Countdown added"
+                    errorMessage = "It was saved, but this screen couldn’t refresh. It will appear after the next successful refresh."
+                    dismissAfterAlert = true
+                }
             } catch {
+                alertTitle = "Countdown not added"
                 errorMessage = "Couldn’t add this countdown. Check your connection and try again."
+                dismissAfterAlert = false
                 saving = false
             }
         }
@@ -317,17 +357,19 @@ struct AddCountdownSheet: View {
 struct EditCountdownSheet: View {
     @Environment(\.dismiss) private var dismiss
     let countdown: WaffledAPI.Countdown
-    let onSave: (_ title: String, _ date: String, _ emoji: String?) async throws -> Void
+    let onSave: (_ title: String, _ date: String, _ emoji: String?) async throws -> CountdownsModel.MutationOutcome
     let onRemove: () async throws -> Void
 
     @State private var title: String
     @State private var date: Date
     @State private var emoji: String
     @State private var busy = false
+    @State private var alertTitle = "Countdown unchanged"
     @State private var errorMessage: String?
+    @State private var dismissAfterAlert = false
 
     init(countdown: WaffledAPI.Countdown,
-         onSave: @escaping (_ title: String, _ date: String, _ emoji: String?) async throws -> Void,
+         onSave: @escaping (_ title: String, _ date: String, _ emoji: String?) async throws -> CountdownsModel.MutationOutcome,
          onRemove: @escaping () async throws -> Void) {
         self.countdown = countdown
         self.onSave = onSave
@@ -376,8 +418,13 @@ struct EditCountdownSheet: View {
             }
         }
         .presentationDetents([.height(360), .medium])
-        .alert("Countdown unchanged", isPresented: errorPresented) {
-            Button("OK") { errorMessage = nil }
+        .alert(alertTitle, isPresented: errorPresented) {
+            Button(dismissAfterAlert ? "Done" : "OK") {
+                let shouldDismiss = dismissAfterAlert
+                errorMessage = nil
+                dismissAfterAlert = false
+                if shouldDismiss { dismiss() }
+            }
         } message: {
             Text(errorMessage ?? "The countdown could not be changed.")
         }
@@ -405,10 +452,18 @@ struct EditCountdownSheet: View {
         let e = emoji.trimmingCharacters(in: .whitespaces)
         Task {
             do {
-                try await onSave(t, CountdownFormat.ymd(date), e.isEmpty ? nil : e)
-                dismiss()
+                switch try await onSave(t, CountdownFormat.ymd(date), e.isEmpty ? nil : e) {
+                case .refreshed:
+                    dismiss()
+                case .savedButRefreshFailed:
+                    alertTitle = "Countdown saved"
+                    errorMessage = "The change was saved, but this screen couldn’t refresh. It may show the previous details until the next successful refresh."
+                    dismissAfterAlert = true
+                }
             } catch {
+                alertTitle = "Countdown unchanged"
                 errorMessage = "Couldn’t save this countdown. Check your connection and try again."
+                dismissAfterAlert = false
                 busy = false
             }
         }
@@ -421,7 +476,9 @@ struct EditCountdownSheet: View {
                 try await onRemove()
                 dismiss()
             } catch {
+                alertTitle = "Countdown unchanged"
                 errorMessage = "Couldn’t remove this countdown. Check your connection and try again."
+                dismissAfterAlert = false
                 busy = false
             }
         }
