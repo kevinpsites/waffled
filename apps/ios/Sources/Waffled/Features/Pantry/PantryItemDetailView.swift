@@ -63,7 +63,7 @@ struct PantryItemDetailView: View {
     private func photoPanel(_ item: WaffledAPI.PantryItem) -> some View {
         ZStack {
             WF.panel.ignoresSafeArea()
-            CachedImage(item.imageUrl, contentMode: .fit) { Text(PantryFood.emoji(for: item.name)).font(.system(size: 72)) }
+            CachedImage(item.imageUrl, contentMode: .fit, refreshURL: { try await MediaURL.pantry(item.id) }) { Text(PantryFood.emoji(for: item.name)).font(.system(size: 72)) }
                 .padding(28)
             VStack {
                 HStack {

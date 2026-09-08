@@ -81,6 +81,34 @@ enum MediaURL {
         return URL(string: joined)
     }
 
+    static func isSigned(_ url: URL) -> Bool {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        return url.path.hasPrefix("/media/") && items.contains { $0.name == "sig" }
+            && items.contains { $0.name == "expires" }
+    }
+
+    // Reload the owning resource using its normal authenticated API. Deleted media
+    // yields nil, and no route re-signs arbitrary caller-provided storage keys.
+    static func recipe(_ id: String) async throws -> URL? {
+        resolve(try await WaffledAPI().recipeDetail(id: id).recipe.imageUrl)
+    }
+
+    static func proof(_ id: String, date: String?) async throws -> URL? {
+        if let date {
+            return resolve(try await WaffledAPI().choreInstances(date: date).first { $0.id == id }?.proofUrl)
+        }
+        // Legacy approval payloads can omit dueOn. The approval resource spans dates.
+        return resolve(try await WaffledAPI().awaitingChores().first { $0.id == id }?.proofUrl)
+    }
+
+    static func storedProof(_ id: String) async throws -> URL? {
+        resolve(try await WaffledAPI().storedProofs().first { $0.id == id }?.proofUrl)
+    }
+
+    static func pantry(_ id: String) async throws -> URL? {
+        resolve(try await WaffledAPI().pantryList().items.first { $0.id == id }?.imageUrl)
+    }
+
     /// A signed media URL is a short-lived bearer credential, but its decoded bytes are
     /// still the same image. Keep signature rotation out of the in-memory cache key so
     /// refreshing credentials does not force another download and decode.

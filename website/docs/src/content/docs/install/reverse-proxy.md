@@ -125,3 +125,12 @@ directly and `./waffled up`:
 | `POWERSYNC_CADDY_ADDRESS` | `:8090` locally, or the HTTPS hostname listener used for sync. |
 
 See the full list in [Environment variables](/install/environment-variables/).
+
+### Expired images on open screens
+
+Web and iOS reload the owning recipe, chore occurrence, stored-proof list, or photo
+when a signed image fails to load, then retry with its fresh URL. Recovery is bounded
+to one automatic retry per image request; deleted media stays unavailable. Ordinary
+external image failures do not trigger a household API refresh. Decoded iOS images
+continue to use stable storage keys, so scrolling and signature rotation reuse them.
+The kiosk also refreshes its photo URLs during night dimming.

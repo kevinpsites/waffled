@@ -74,6 +74,7 @@ function ScreensaverPhoto({ url, className, loadedUrls, onMediaExpired }: {
   const rejectedRef = useRef(new Set<string>())
 
   useEffect(() => {
+    if (latestRef.current !== url) rejectedRef.current.clear()
     latestRef.current = url
     if (keyRef.current !== cacheKey) {
       keyRef.current = cacheKey

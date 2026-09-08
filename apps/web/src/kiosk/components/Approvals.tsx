@@ -1,3 +1,5 @@
+import { MediaImage } from './MediaImage'
+import { refreshProofImage } from '../../lib/api/media-recovery'
 // Parent review/approval surfaces. Two kinds of thing wait on a parent's OK:
 // chore completions (status 'awaiting') and reward redemptions (status
 // 'pending'). Three surfaces share this file:
@@ -102,7 +104,7 @@ export function ChoreProofModal({
         </div>
         <div className="cpm-stage">
           {c.proofUrl
-            ? <img src={c.proofUrl} alt={`Photo proof for ${c.choreTitle}`} />
+            ? <MediaImage showRetry src={c.proofUrl} refresh={() => refreshProofImage(c.id, c.dueOn)} alt={`Photo proof for ${c.choreTitle}`} />
             : <div className="cpm-noimg">{c.hadProof ? '📷 A photo was attached but is no longer saved.' : 'No photo was attached.'}</div>}
         </div>
         <div className="cpm-actions">
@@ -151,7 +153,7 @@ export function ChoreApprovalsCard({
           </div>
           {c.proofUrl && (
             <button type="button" className="chore-proof-thumb" title="Review photo proof" onClick={() => setReview(c)}>
-              <img src={c.proofUrl} alt={`Proof for ${c.choreTitle}`} />
+              <MediaImage src={c.proofUrl} refresh={() => refreshProofImage(c.id, c.dueOn)} alt={`Proof for ${c.choreTitle}`} />
             </button>
           )}
           <div className="rw-appr-actions">

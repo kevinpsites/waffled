@@ -1,3 +1,5 @@
+import { MediaImage } from './components/MediaImage'
+import { refreshPhotoImage } from '../lib/api/media-recovery'
 import { useEffect, useMemo, useState } from 'react'
 import { api, kioskApi, usePhotos, useWeather, useHousehold, type DisplayConfig, type Photo } from '../lib/api'
 import { Icon } from './icons'
@@ -41,7 +43,7 @@ function PhotoTile({
       style={{ background: tileBg(photo) }}
       onClick={selectMode ? onToggle : onOpen}
     >
-      {photo.imageUrl ? <img src={photo.imageUrl} alt={photo.caption} /> : photo.emoji ?? '🖼️'}
+      {photo.imageUrl ? <MediaImage src={photo.imageUrl} refresh={() => refreshPhotoImage(photo.id)} alt={photo.caption} /> : photo.emoji ?? '🖼️'}
       {selectMode ? (
         <div className="ph-check" aria-hidden>{selected ? '✓' : ''}</div>
       ) : (
@@ -203,7 +205,7 @@ export function Photos() {
       {newest && (
         <div className="ph-banner">
           <div className="ph-banner-tile" style={{ background: tileBg(newest) }}>
-            {newest.imageUrl ? <img src={newest.imageUrl} alt="" /> : newest.emoji ?? '🏖️'}
+            {newest.imageUrl ? <MediaImage src={newest.imageUrl} refresh={() => refreshPhotoImage(newest.id)} alt="" /> : newest.emoji ?? '🏖️'}
           </div>
           <div style={{ flex: 1 }}>
             <div className="ph-banner-tag" style={{ marginBottom: 4 }}>Recently added</div>

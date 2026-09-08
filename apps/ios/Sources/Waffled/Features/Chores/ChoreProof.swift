@@ -112,15 +112,9 @@ struct ChoreProofReview: View {
 
     @ViewBuilder private var proofStage: some View {
         if let url = MediaURL.resolve(chore.proofUrl) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case let .success(image):
-                    image.resizable().scaledToFit()
-                case .failure:
-                    proofPlaceholder("📷 Couldn’t load the photo.")
-                default:
-                    ZStack { Color.clear; ProgressView() }.frame(height: 240)
-                }
+            CachedImage(url.absoluteString, contentMode: .fit,
+                        refreshURL: { try await MediaURL.proof(chore.id, date: chore.dueOn) }) {
+                proofPlaceholder("📷 Photo preview. If unavailable, reopen to retry.")
             }
             .frame(maxWidth: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
@@ -220,10 +214,8 @@ struct ChoreProofThumb: View {
     var body: some View {
         if let url = MediaURL.resolve(chore.proofUrl) {
             Button(action: onTap) {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image { image.resizable().scaledToFill() }
-                    else { WF.panel }
-                }
+                CachedImage(url.absoluteString,
+                            refreshURL: { try await MediaURL.proof(chore.id, date: chore.dueOn) }) { WF.panel }
                 .frame(width: 44, height: 44)
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))

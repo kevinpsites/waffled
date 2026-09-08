@@ -352,7 +352,7 @@ struct PlateDishRow: View {
     var body: some View {
         HStack(spacing: 11) {
             // CachedImage, never AsyncImage: these rows are recycled on every scroll.
-            CachedImage(dish.imageUrl, contentMode: .fill) {
+            CachedImage(dish.imageUrl, contentMode: .fill, refreshURL: { try await MediaURL.recipe(dish.recipeId) }) {
                 RecipeGradient.forCategory(dish.category)
                     .overlay(Text(dish.emoji ?? RecipeGradient.emoji(dish.category)).font(.system(size: 20)))
             }

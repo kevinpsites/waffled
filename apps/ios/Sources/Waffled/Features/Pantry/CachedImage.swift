@@ -8,15 +8,28 @@ import UIKit
 final class ImageMemoryCache: @unchecked Sendable {
     static let shared = ImageMemoryCache()
     private let cache = NSCache<NSURL, UIImage>()
-    private init() { cache.countLimit = 300 }
+    private let loadData: @Sendable (URL) async throws -> (Data, URLResponse)
+    init(loadData: @escaping @Sendable (URL) async throws -> (Data, URLResponse) = { try await URLSession.shared.data(from: $0) }) {
+        self.loadData = loadData
+        cache.countLimit = 300
+    }
 
     func image(for url: URL) -> UIImage? { cache.object(forKey: MediaURL.cacheKey(for: url)) }
 
-    func load(_ url: URL) async -> UIImage? {
+    func load(_ url: URL, refreshingWith refresh: (@Sendable () async throws -> URL?)? = nil) async -> UIImage? {
         if let img = image(for: url) { return img }
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              let img = UIImage(data: data) else { return nil }
-        cache.setObject(img, forKey: MediaURL.cacheKey(for: url))
+        guard var response = try? await loadData(url) else { return nil }
+        var loadedURL = url
+        if (response.1 as? HTTPURLResponse)?.statusCode == 403, MediaURL.isSigned(url),
+           let refresh, let fresh = try? await refresh(), !Task.isCancelled {
+            loadedURL = fresh
+            guard let retried = try? await loadData(fresh) else { return nil }
+            response = retried
+        }
+        guard !Task.isCancelled,
+              let http = response.1 as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let img = UIImage(data: response.0) else { return nil }
+        cache.setObject(img, forKey: MediaURL.cacheKey(for: loadedURL))
         return img
     }
 }
@@ -46,13 +59,17 @@ struct CachedImage<Placeholder: View>: View {
     private let url: URL?
     private let contentMode: ContentMode
     private let placeholder: Placeholder
+    private let refreshURL: (@Sendable () async throws -> URL?)?
     @State private var image: UIImage?
 
-    init(_ raw: String?, contentMode: ContentMode = .fill, @ViewBuilder placeholder: () -> Placeholder) {
+    init(_ raw: String?, contentMode: ContentMode = .fill,
+         refreshURL: (@Sendable () async throws -> URL?)? = nil,
+         @ViewBuilder placeholder: () -> Placeholder) {
         let resolved = MediaURL.resolve(raw)
         self.url = resolved
         self.contentMode = contentMode
         self.placeholder = placeholder()
+        self.refreshURL = refreshURL
         _image = State(initialValue: resolved.flatMap { ImageMemoryCache.shared.image(for: $0) })
     }
 
@@ -76,7 +93,9 @@ struct CachedImage<Placeholder: View>: View {
             case .fetch:
                 guard let url else { return }
                 image = nil
-                image = await ImageMemoryCache.shared.load(url)
+                let fetched = await ImageMemoryCache.shared.load(url, refreshingWith: refreshURL)
+                guard !Task.isCancelled else { return }
+                image = fetched
             }
         }
     }

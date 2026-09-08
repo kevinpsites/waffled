@@ -121,11 +121,11 @@ struct KioskScreensaverHost: ViewModifier {
             .task {
                 await model.load()
                 while !Task.isCancelled {
-                    let delay = model.dimmed ? 900 : MediaURL.refreshDelaySeconds(
+                    let delay = MediaURL.refreshDelaySeconds(
                         for: model.photos.compactMap(\.imageUrl), fallback: 900)
                     try? await Task.sleep(for: .seconds(delay))
                     if Task.isCancelled { break }
-                    if !model.dimmed { await model.load() }
+                    await model.load()
                 }
             }
             .onReceive(tick) { model.tick($0, tz: sync.householdTz) }

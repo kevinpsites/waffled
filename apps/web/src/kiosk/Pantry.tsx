@@ -1,3 +1,5 @@
+import { MediaImage } from './components/MediaImage'
+import { refreshPantryImage } from '../lib/api/media-recovery'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import {
@@ -213,7 +215,7 @@ export function Pantry() {
                 return (
                   <div key={it.id} className={`pl-item${busy === it.id ? ' busy' : ''}`}>
                     <button type="button" className="pl-item-face" onClick={() => setDetail(it)}>
-                      <span className="pl-emoji">{it.imageUrl ? <img src={it.imageUrl} alt="" /> : foodEmoji(it.name)}</span>
+                      <span className="pl-emoji">{it.imageUrl ? <MediaImage src={it.imageUrl} refresh={() => refreshPantryImage(it.id)} alt="" /> : foodEmoji(it.name)}</span>
                       <span className="pl-item-text">
                         <span className="pl-name">{it.name}</span>
                         {/* Second line: Location · allergies · use-by */}
@@ -367,7 +369,7 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
         <button type="button" className="modal-close pl-d2-close" aria-label="Close" onClick={onClose}>×</button>
         <div className="pl-d2-img">
           {sourceLabel && <span className="pl-off-tag">● {sourceLabel}</span>}
-          {img ? <img src={img} alt="" /> : <span className="pl-d2-emoji">{foodEmoji(item.name)}</span>}
+          {img ? <MediaImage src={img} refresh={() => refreshPantryImage(item.id)} alt="" /> : <span className="pl-d2-emoji">{foodEmoji(item.name)}</span>}
           <button type="button" className="pl-d2-replace" disabled={photoBusy} onClick={() => fileRef.current?.click()}>
             {photoBusy ? 'Uploading…' : '📷 Replace photo'}
           </button>

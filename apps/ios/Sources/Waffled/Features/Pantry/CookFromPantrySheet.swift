@@ -178,7 +178,7 @@ struct CookFromPantrySheet: View {
         let heat = m.location.lowercased().contains("freez")
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                CachedImage(m.imageUrl) { Text("🍱").font(.system(size: 22)) }
+                CachedImage(m.imageUrl, refreshURL: { try await MediaURL.pantry(m.id) }) { Text("🍱").font(.system(size: 22)) }
                     .frame(width: 40, height: 40).background(WF.panel)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {

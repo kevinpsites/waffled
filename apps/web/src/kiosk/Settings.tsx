@@ -1,3 +1,5 @@
+import { MediaImage } from './components/MediaImage'
+import { refreshProofImage } from '../lib/api/media-recovery'
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { useSyncHealth, type SyncHealthStatus } from '../lib/powersync/sync-health'
@@ -2186,7 +2188,7 @@ function ChoreProofsDrawer({
                   {list.map((p) => (
                     <div className="proof-cell" key={p.instanceId}>
                       <button type="button" className="proof-thumb" onClick={() => setEnlarge(p)} title="View larger">
-                        {p.proofUrl && <img src={p.proofUrl} alt={`Proof for ${p.choreTitle}`} />}
+                        {p.proofUrl && <MediaImage src={p.proofUrl} refresh={() => refreshProofImage(p.instanceId)} alt={`Proof for ${p.choreTitle}`} />}
                       </button>
                       <div className="proof-meta">
                         <div className="proof-title">{p.emoji ? `${p.emoji} ` : ''}{p.choreTitle}</div>
@@ -2212,7 +2214,7 @@ function ChoreProofsDrawer({
               <div className="cpm-title">{enlarge.emoji ? `${enlarge.emoji} ` : ''}{enlarge.choreTitle}</div>
               <div className="cpm-sub">{enlarge.personName ?? '—'}{fmtProofDate(enlarge.completedAt) ? ` · ${fmtProofDate(enlarge.completedAt)}` : ''}</div>
             </div></div>
-            <div className="cpm-stage">{enlarge.proofUrl && <img src={enlarge.proofUrl} alt={`Proof for ${enlarge.choreTitle}`} />}</div>
+            <div className="cpm-stage">{enlarge.proofUrl && <MediaImage showRetry src={enlarge.proofUrl} refresh={() => refreshProofImage(enlarge.instanceId)} alt={`Proof for ${enlarge.choreTitle}`} />}</div>
             <div className="cpm-actions">
               <button type="button" className="pill" disabled={busy === enlarge.instanceId} onClick={() => { del(enlarge.instanceId); setEnlarge(null) }}>🗑 Delete</button>
             </div>

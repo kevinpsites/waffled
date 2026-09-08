@@ -428,7 +428,10 @@ struct RecipeEditorView: View {
                     Image(uiImage: photoPreview).resizable().scaledToFill()
                         .frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 } else if let url = MediaURL.resolve(imageUrl.isEmpty ? nil : imageUrl) {
-                    AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { WF.panel }
+                    CachedImage(url.absoluteString, refreshURL: {
+                        guard case let .edit(detail) = mode else { return nil }
+                        return try await MediaURL.recipe(detail.recipe.id)
+                    }) { WF.panel }
                         .frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 TextField("Paste an image URL…", text: $imageUrl)
