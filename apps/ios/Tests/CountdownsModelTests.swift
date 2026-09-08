@@ -26,6 +26,7 @@ private actor CountdownDeleteGate {
 private final class CountdownFeed {
     var items: [WaffledAPI.Countdown]
     var fetchCount = 0
+    var fetchFails = false
     var createFails = false
     var updateFails = false
     var deleteFails = false
@@ -54,6 +55,7 @@ private func model(_ feed: CountdownFeed) -> CountdownsModel {
     CountdownsModel(
         fetchCountdowns: {
             feed.fetchCount += 1
+            if feed.fetchFails { throw CountdownMutationFailure.rejected }
             return (feed.items, false)
         },
         createCountdown: { _, _, _ in
@@ -143,7 +145,7 @@ private func expectMutationFailure(_ operation: () async throws -> Void) async {
         await model.load()
 
         await expectMutationFailure {
-            try await model.add(title: "Vacation", date: "2026-09-01", emoji: nil)
+            _ = try await model.add(title: "Vacation", date: "2026-09-01", emoji: nil)
         }
 
         #expect(feed.fetchCount == 1)
@@ -158,10 +160,37 @@ private func expectMutationFailure(_ operation: () async throws -> Void) async {
         await model.load()
 
         await expectMutationFailure {
-            try await model.update(item, title: "Mountain trip", date: "2026-09-01", emoji: nil)
+            _ = try await model.update(item, title: "Mountain trip", date: "2026-09-01", emoji: nil)
         }
 
         #expect(model.items.first?.title == "Beach trip")
         #expect(feed.fetchCount == 1)
+    }
+
+    @Test func successfulCreateReportsWhenTheFollowUpRefreshFails() async throws {
+        let feed = CountdownFeed(items: [])
+        let model = model(feed)
+        await model.load()
+        feed.fetchFails = true
+
+        let outcome = try await model.add(title: "Vacation", date: "2026-09-01", emoji: nil)
+
+        #expect(outcome == .savedButRefreshFailed)
+        #expect(feed.fetchCount == 2)
+        #expect(model.items.isEmpty)
+    }
+
+    @Test func successfulUpdateReportsWhenTheFollowUpRefreshFails() async throws {
+        let item = countdown("countdown-1", title: "Beach trip")
+        let feed = CountdownFeed(items: [item])
+        let model = model(feed)
+        await model.load()
+        feed.fetchFails = true
+
+        let outcome = try await model.update(item, title: "Mountain trip", date: "2026-09-01", emoji: nil)
+
+        #expect(outcome == .savedButRefreshFailed)
+        #expect(feed.fetchCount == 2)
+        #expect(model.items.first?.title == "Beach trip")
     }
 }

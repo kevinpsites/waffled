@@ -289,6 +289,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
+- **Waffled for Mac — a downloadable app that runs the family server natively, no Docker.**
+  Plex-style: the web app stays the UI, the Mac app is a menu-bar icon (running / starting /
+  error) whose menu opens the web UI, copies the server address, toggles start-at-login, and
+  backs up. A non-technical person should go from download to a working household in under
+  five minutes, and relaunching re-opens the existing server. Same API, migrations,
+  PowerSync, Caddy and web build as Compose — only packaging and supervision differ, via a
+  small Go runtime supervisor that is a CLI first (`waffled-runtime start|status|backup`).
+  Mac only for now; Windows follows from the same runtime later. Plan, risks and phases in
+  [`native-mac-plan.md`](./native-mac-plan.md); Phase 1 is a throwaway native spike to prove
+  bundled Postgres and PowerSync-outside-Docker before any Swift is written.
 - **Chore due-dates on the calendar.** The last piece of "the calendar as the all-in-one
   dated view": overlay `chore_instances.due_on` onto the calendar as read-only all-day chips,
   tapping through to the chore rather than the event editor. Deliberately chips, not
@@ -394,26 +404,18 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   (not the phone) is the one that needs the SSID/password, and it has no camera to scan
   a code itself, so that stays the on-device network picker it is today.
 
-- **Recurring-edit scope — give chores the calendar's model, and close two calendar gaps.**
-  Calendar events already ship the full **this event / this-and-following / all events** picker
-  (per-occurrence `event_overrides`, a new master via a series split for "following", `exdate`
-  cancel tombstones for deletes). **Repeating chores have no scope choice at all** — editing a
-  chore always rewrites the whole template, and it's inconsistent about the past: title / emoji /
-  due-time / rrule are read live from the template so they **rewrite past occurrences too**, while
-  reward / assignee / approval / photo only touch *future* unfinished instances, and delete removes
-  the entire series **including completed history**. Same dialog, three different rules. The work:
-  1. **Port the calendar's this / this-and-following / whole-series model to chores** — a
-     per-instance override, a "this and following" split, and a scope dialog in `ChoreEditSheet`
-     (today `ChoreEditorTarget` only has `.new`/`.edit`, and the PATCH always hits the template).
-     Decide whether chore title/time should be snapshotted like reward already is, so past
-     occurrences stop silently changing.
-  2. **Fix a calendar edit bug:** under "this" / "this-and-following", the iOS sheet still lets you
+- **Recurring-edit scope — chore scopes shipped; two calendar gaps remain.**
+  Repeating chores now offer **this chore / this-and-following / whole series** on web,
+  iPhone, and iPad. Occurrence snapshots keep completed and awaiting-approval history
+  immutable; a settled occurrence can anchor a following edit or delete without itself
+  changing. Remaining calendar work:
+  1. **Fix a calendar edit bug:** under "this" / "this-and-following", the iOS sheet still lets you
      change **assignee, goal link, and the countdown flag**, but the server silently drops them
      (they're master-only / absent from `OVERRIDE_FIELDS`) — a save the UI implies but never
      persists. Either store them as per-occurrence overrides or disable those fields for non-"all"
      scope. (Also clean up the stale `CalendarView.swift` comment claiming iOS has no scope dialog —
      it does.)
-  3. **Decide** whether "all" should keep retroactively rewriting the recent past (it re-materializes
+  2. **Decide** whether calendar "all" should keep retroactively rewriting the recent past (it re-materializes
      the past ~3 months today) or leave already-passed occurrences untouched, the way delete already
      is deliberately guarded against wiping history.
 

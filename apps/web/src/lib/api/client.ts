@@ -312,6 +312,7 @@ export async function apiSend<T>(method: string, path: string, body?: unknown, s
     const errBody = (await res.json().catch(() => ({}))) as Record<string, unknown>
     throw new ApiSendError(method, path, res.status, errBody)
   }
+  if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
 

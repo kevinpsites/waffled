@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **API bind address is configurable.** Set `HOST` to pin the API to one interface (the
+  native Mac runtime uses `127.0.0.1`, since without Docker's private network nothing else
+  keeps the API off the LAN); unset keeps today's bind-all-interfaces behaviour, so Compose
+  and the demo box are unaffected. The startup log line now includes the bound address.
+
 ### Fixed
 
 - **Reward corrections stay within the original award.** Replacements only reduce its magnitude, spent awards require a refund before a correction could make the balance negative, and archived members’ history remains correctable.
@@ -43,6 +48,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   redeem for someone else when their role can manage rewards. Pending redemptions also
   stop safely if their currency is later disabled, while earn-only currencies still work
   for spot awards.
+
+- **A failed refresh no longer makes a saved change look lost.** The web event editor
+  now offers Retry when recurring-event details cannot load, and iPhone/iPad Countdowns
+  and Family Night say when the server accepted a change but the screen could not
+  refresh, avoiding a duplicate retry against a write that already succeeded.
+
+- **Failed calendar and settings changes no longer look successful on iPhone or iPad.**
+  Waffled keeps an event, countdown, Family Night assignment, or calendar preference in
+  its last confirmed state when the server rejects a change, preserves work that can be
+  retried, and explains what happened. Fast Family Night schedule changes are saved in
+  order, and retrying Calendar settings clears an old connection error once it succeeds.
 
 ## [0.14.3] - 2026-09-02
 
@@ -864,6 +880,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the center, with a consistent gap between them.
 
 ### Fixed
+
+- **Recurring chore edits can now start after a finished chore without rewriting it.**
+  On web, iPhone, and iPad, a completed or awaiting-approval occurrence can be used as
+  the boundary for "This and future chores." The selected historical row stays exactly
+  as completed, only future pending chores change or disappear, and failed web edits
+  keep the scope chooser open so they can be retried.
 
 - **The Waffled-Bite control panel keeps itself up to date.** The panel read the device
   once when you opened it and then never again, so anything your child did on the device
