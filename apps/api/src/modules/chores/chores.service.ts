@@ -3,6 +3,7 @@
 // materialized on demand; completion awards stars via the ledger.
 import type { QueryResultRow, PoolClient } from 'pg'
 import { getPool, query } from '../../platform/db'
+import { lockLedgerSubject } from '../../platform/ledger-lock'
 import { type Tenant } from '../households/households'
 import { getDefaultCurrencyKey } from '../currencies/currencies'
 import { getBlobStore, mediaUrl } from '../../platform/storage'
@@ -854,13 +855,23 @@ export async function uncompleteInstance(tenant: Tenant, id: string): Promise<Ch
       await client.query('rollback')
       return null
     }
+    if (inst.awarded && inst.reward_amount && inst.person_id) {
+      await lockLedgerSubject(client, tenant.householdId, inst.person_id)
+      const balance = await client.query<{ balance: string }>(
+        `select coalesce(sum(amount),0) as balance from ledger_entries
+          where household_id=$1 and person_id=$2 and currency=$3 and deleted_at is null`,
+        [tenant.householdId, inst.person_id, inst.reward_currency ?? 'stars']
+      )
+      if (Number(balance.rows[0].balance) < inst.reward_amount) {
+        throw new ChoreScopeError('Not enough balance to undo this chore reward. Restore the spent balance before trying again.', 409)
+      }
+    }
     const upd = await client.query<ChoreInstanceRow>(
       `update chore_instances set status='pending', completed_by=null, completed_at=null,
            proof_storage_key=null, proof_content_type=null, had_proof=false where id=$1 returning *`,
       [id]
     )
     const updated = upd.rows[0]
-    if (inst.proof_storage_key) deleteBlob(inst.proof_storage_key)
     if (inst.awarded && inst.reward_amount && inst.person_id) {
       await client.query(
         `insert into ledger_entries (household_id, person_id, currency, amount, reason, ref_type, ref_id, created_by)
@@ -878,6 +889,7 @@ export async function uncompleteInstance(tenant: Tenant, id: string): Promise<Ch
       updated.awarded = false
     }
     await client.query('commit')
+    if (inst.proof_storage_key) deleteBlob(inst.proof_storage_key)
     return updated
   } catch (err) {
     await client.query('rollback')
