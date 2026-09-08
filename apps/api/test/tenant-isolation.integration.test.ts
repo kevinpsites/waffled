@@ -251,3 +251,51 @@ describe('photo attribution cannot reach another household', () => {
     expect(res.body).not.toContain(VICTIM_NAME)
   })
 })
+
+// ---- Finding 4 — ICS feed owner ---------------------------------------------
+describe('calendar feed owners cannot reach another household', () => {
+  it('refuses a feed owned by a person outside the household', async () => {
+    const res = await call('POST', '/api/calendar/feeds', attacker, {
+      url: 'https://example.com/foreign.ics',
+      name: 'Foreign',
+      personId: bPersonId,
+    })
+    expect(res.statusCode).toBe(404)
+    const { rows } = await withClient((c) =>
+      c.query(`select 1 from ics_feeds where person_id = $1`, [bPersonId])
+    )
+    expect(rows.length).toBe(0)
+  })
+
+  it('refuses moving an existing feed onto a person outside the household', async () => {
+    const created = await call('POST', '/api/calendar/feeds', attacker, {
+      url: 'https://example.com/ours.ics',
+      name: 'Ours',
+      personId: aKidId,
+    })
+    expect(created.statusCode).toBe(201)
+    const feedId = JSON.parse(created.body).feed.id as string
+
+    const res = await call('PATCH', `/api/calendar/feeds/${feedId}`, attacker, { personId: bPersonId })
+    expect(res.statusCode).toBe(404)
+    const { rows } = await withClient((c) =>
+      c.query<{ person_id: string }>(`select person_id from ics_feeds where id = $1`, [feedId])
+    )
+    expect(rows[0].person_id).toBe(aKidId)
+  })
+
+  it('never discloses a foreign feed owner when listing feeds', async () => {
+    await withClient((c) =>
+      c.query(
+        `insert into ics_feeds (household_id, url, name, person_id, visibility)
+         values ($1,'https://example.com/poisoned.ics','Poisoned',$2,'family')`,
+        [householdA, bPersonId]
+      )
+    )
+    const res = await call('GET', '/api/calendar/feeds', attacker)
+    expect(res.statusCode).toBe(200)
+    const feeds = JSON.parse(res.body).feeds as { name: string; personName: string | null }[]
+    expect(feeds.find((f) => f.name === 'Poisoned')?.personName).toBe(null)
+    expect(res.body).not.toContain(VICTIM_NAME)
+  })
+})
