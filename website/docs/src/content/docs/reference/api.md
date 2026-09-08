@@ -123,7 +123,7 @@ capability X · **module(X)** = requires module X enabled · **device** = kiosk 
 | GET · DELETE | `/api/chore-proofs[/:id]` | Manage proof photos | admin |
 | GET · POST · PATCH · DELETE | `/api/rewards[/:id]` · `/archived` · `/:id/restore` | Rewards catalog | tenant / cap:reward.manage |
 | GET | `/api/balances` · `/api/redemptions` | Balances / redemptions | tenant |
-| POST | `/api/rewards/:id/redeem` | Redeem a reward | tenant |
+| POST | `/api/rewards/:id/redeem` | Redeem a reward | tenant (self) / cap:reward.manage (someone else) |
 | POST | `/api/persons/:id/award` | Spot-award currency | cap:reward.grant |
 | POST | `/api/redemptions/:id/approve` · `/deny` | Approve / deny a redemption | cap:reward.approve |
 | GET · PUT | `/api/rewards/settings` | Reward settings | tenant / cap:reward.manage |

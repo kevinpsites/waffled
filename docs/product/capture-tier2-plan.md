@@ -28,7 +28,10 @@ of `1e0ae91f`.
   only reassign the whole series. The resolver must surface this (reassign a recurring event →
   series-scope only, stated in the confirm card).
 - **There is no `reward.redeem` capability** — redeem is plain `tenantRoute` (any member, incl. a
-  kid); the parent gate is the reward's `requires_approval` data flag, not a cap. Don't invent one.
+  kid) *for their own balance*; the parent gate is the reward's `requires_approval` data flag, not a
+  cap. Don't invent one. (Since the 2026-09 tenant-isolation pass the route does require
+  `reward.manage` to redeem **on behalf of another member**, matching `/api/conversions/:id/apply`;
+  the capture path resolves the person by name inside the household and applies via the service.)
 - **Chores mutate the per-date `chore_instances` row, never the template.** See §4.1.
 
 ---
@@ -232,7 +235,9 @@ service fn, enforcing the route's caps).
   resolve `args.personName`→id via the shared `findPersonByName` (default speaker; unknown name →
   friendly 400). `requires_approval` → pending redemption + "waiting for approval" message; else
   balance-guarded debit ("Redeemed … (−N stars)"; `{error}` → 409 with the route's own "not enough
-  stars" message). **No redeem capability** — any member. `reward.grant`/spot-award stays out of scope.
+  stars" message). **No redeem capability** — any member (the route's `reward.manage` check for
+  redeeming on behalf of *another* member is not mirrored here; capture resolves the person by name
+  within the household). `reward.grant`/spot-award stays out of scope.
 - **Gate:** `rewardsEnabled` (chores module on AND `settings.chores.rewards`) → disabledReason
   "Rewards is turned off." (the sub-toggle nuance is not distinguished, same as the routes' gate).
 

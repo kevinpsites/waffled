@@ -41,7 +41,7 @@ owner can flip any cell per household in **Settings → Family & People**. The m
 | --- | --- |
 | `chore.manage` | Create chores for *others*, edit/delete chores |
 | `chore.approve` | Approve/reject completed chores |
-| `reward.manage` | Manage the rewards catalog, currencies, conversions |
+| `reward.manage` | Manage the rewards catalog, currencies, conversions; redeem or convert *for others* |
 | `reward.approve` | Approve/deny redemptions |
 | `goal.manage` | Log progress *for others*, edit/delete shared or others' goals, manage goal lists |
 
