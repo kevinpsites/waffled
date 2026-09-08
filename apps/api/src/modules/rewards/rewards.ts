@@ -9,6 +9,7 @@ import { type Tenant } from '../households/households'
 import { rewardsRoutes, moduleRoutes } from '../../platform/route-guards'
 import { registerRewardCaptureTarget } from './rewards-capture'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
+import { assertPersonInHousehold } from '../../platform/household-refs'
 
 type Api = ReturnType<typeof createAPI>
 // Rewards is the spend half of the chores economy: these routes require the chores
@@ -375,6 +376,10 @@ export function registerRewardRoutes(api: Api): void {
   api.post('/api/persons/:id/award', choresCapRoute('reward.grant', async (tenant, req: Request, res: Response) => {
     const personId = req.params.id ?? ''
     if (!UUID_RE.test(personId)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    // The ledger row is stamped with the CALLER's household but the id from the URL —
+    // without this, an admin could credit (and so alter the Today board of) a person
+    // in someone else's household.
+    await assertPersonInHousehold(tenant.householdId, personId)
     const body = (req.body ?? {}) as { amount?: number; currency?: string; note?: string }
     const amount = Math.round(Number(body.amount))
     if (!Number.isFinite(amount) || amount <= 0) {

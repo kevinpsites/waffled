@@ -220,7 +220,7 @@ export async function todaySummary(householdId: string, dueOn: string, tz = 'UTC
             coalesce(b.balance, 0) as stars
        from persons p
        left join chore_instances ci
-         on ci.person_id = p.id and ci.deleted_at is null
+         on ci.person_id = p.id and ci.household_id = $1 and ci.deleted_at is null
        left join chores c
          on c.id = ci.chore_id
          and (c.deleted_at is null or ci.status in ('done', 'awaiting'))
@@ -228,8 +228,10 @@ export async function todaySummary(householdId: string, dueOn: string, tz = 'UTC
               or (ci.due_on < $2::date and ci.status = 'pending' and c.rrule is null and c.rollover)
               or (ci.due_on > $2::date and ci.status = 'pending' and c.rrule is null
                   and (ci.created_at at time zone $4)::date <= $2::date))
+       -- v_person_balances groups by household too: joining on person_id alone would
+       -- pick up (and duplicate) a balance another household wrote for this person.
        left join v_person_balances b
-         on b.person_id = p.id and b.currency = $3
+         on b.person_id = p.id and b.household_id = $1 and b.currency = $3
       where p.household_id = $1 and p.deleted_at is null
       group by p.id, b.balance
       order by p.sort_order, p.created_at`,
