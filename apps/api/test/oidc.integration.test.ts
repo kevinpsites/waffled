@@ -269,9 +269,16 @@ describe('OIDC login', () => {
     })).statusCode).toBe(400)
   })
 
-  it('escapes identity-provider errors rendered in the browser result page', async () => {
+  it('consumes state and escapes identity-provider errors in a locked-down browser result page', async () => {
+    const start = await call('GET', '/api/auth/oidc/start', {
+      query: { redirect: 'http://localhost:8080/' },
+    })
+    expect(start.statusCode).toBe(302)
+    const state = new URL(loc(start)).searchParams.get('state')!
+
     const result = await call('GET', '/api/auth/oidc/callback', {
       query: {
+        state,
         error: 'access_denied',
         error_description: '<img src=x onerror=alert(1)>',
       },
@@ -279,6 +286,16 @@ describe('OIDC login', () => {
     expect(result.statusCode).toBe(400)
     expect(result.body).not.toContain('<img src=x')
     expect(result.body).toContain('&lt;img src=x onerror=alert(1)&gt;')
+    expect(
+      result.headers['Content-Security-Policy'] ?? result.headers['content-security-policy']
+    ).toContain("default-src 'none'")
+    expect(result.headers['Cache-Control'] ?? result.headers['cache-control']).toBe('no-store')
+
+    const replay = await call('GET', '/api/auth/oidc/callback', {
+      query: { state, error: 'access_denied' },
+    })
+    expect(replay.statusCode).toBe(400)
+    expect(replay.body).toContain('This sign-in link expired')
   })
 
   it('revalidates redirect destinations persisted before an upgrade', async () => {
