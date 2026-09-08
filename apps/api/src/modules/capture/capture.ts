@@ -28,6 +28,7 @@ import {
   defaultModel,
   PROVIDERS,
   type Provider,
+  type ThinkingLevel,
 } from '../../platform/llm'
 
 type Api = ReturnType<typeof createAPI>
@@ -771,10 +772,11 @@ export function registerCaptureRoutes(api: Api): void {
   // Current selection + which providers the environment makes available + the
   // default model for each. Never returns secrets.
   api.get('/api/capture/config', adminRoute(async (tenant) => {
-    const { provider, model } = await getAiConfig(tenant.householdId)
+    const { provider, model, thinkingLevel } = await getAiConfig(tenant.householdId)
     return {
       provider,
       model,
+      thinkingLevel,
       available: availability(),
       defaultModels: {
         anthropic: config.ai.anthropic.defaultModel,
@@ -786,7 +788,7 @@ export function registerCaptureRoutes(api: Api): void {
 
   // Flip the active provider/model (admins only).
   api.put('/api/capture/config', adminRoute(async (tenant, req: Request, res: Response) => {
-    const body = (req.body ?? {}) as { provider?: string; model?: string | null }
+    const body = (req.body ?? {}) as { provider?: string; model?: string | null; thinkingLevel?: unknown }
     const provider = body.provider as Provider
     if (!(PROVIDERS as string[]).includes(provider)) {
       return res.status(400).json({ error: 'BadRequest', message: `provider must be one of ${PROVIDERS.join(', ')}` })
@@ -795,7 +797,12 @@ export function registerCaptureRoutes(api: Api): void {
       return res.status(400).json({ error: 'BadRequest', message: `provider ${provider} has no credentials configured on the server` })
     }
     const model = body.model != null ? String(body.model).trim() || null : defaultModel(provider)
-    await setAiConfig(tenant.householdId, provider, model)
-    return { provider, model }
+    const rawThinkingLevel = body.thinkingLevel
+    if (rawThinkingLevel != null && rawThinkingLevel !== false && rawThinkingLevel !== true && rawThinkingLevel !== 'low' && rawThinkingLevel !== 'medium' && rawThinkingLevel !== 'high') {
+      return res.status(400).json({ error: 'BadRequest', message: 'thinkingLevel must be true, false, low, medium, or high' })
+    }
+    const thinkingLevel: ThinkingLevel = rawThinkingLevel == null ? true : rawThinkingLevel
+    await setAiConfig(tenant.householdId, provider, model, thinkingLevel)
+    return { provider, model, thinkingLevel }
   }))
 }

@@ -9,6 +9,7 @@ import { query } from './db'
 import { log } from './logger'
 
 export type Provider = 'anthropic' | 'openai' | 'ollama' | 'heuristic'
+export type ThinkingLevel = boolean | 'low' | 'medium' | 'high'
 export const PROVIDERS: Provider[] = ['anthropic', 'openai', 'ollama', 'heuristic']
 
 // Generous timeout — a local model may cold-load on the first call.
@@ -32,8 +33,8 @@ export function defaultModel(p: Provider): string | null {
 }
 
 // ── Per-household selection (households.settings.ai) ─────────────────────────
-export async function getAiConfig(householdId: string): Promise<{ provider: Provider; model: string | null }> {
-  const { rows } = await query<{ settings: { ai?: { provider?: string; model?: string | null } } | null }>(
+export async function getAiConfig(householdId: string): Promise<{ provider: Provider; model: string | null; thinkingLevel: ThinkingLevel }> {
+  const { rows } = await query<{ settings: { ai?: { provider?: string; model?: string | null; thinkingLevel?: unknown } } | null }>(
     `select settings from households where id = $1`,
     [householdId]
   )
@@ -43,16 +44,19 @@ export async function getAiConfig(householdId: string): Promise<{ provider: Prov
   // default to "") must fall back to the provider default, not stay "".
   const stored = ai?.model?.trim()
   const model = stored ? stored : defaultModel(provider)
-  return { provider, model }
+  const thinkingLevel = ai?.thinkingLevel === false || ai?.thinkingLevel === 'low' || ai?.thinkingLevel === 'medium' || ai?.thinkingLevel === 'high'
+    ? ai.thinkingLevel
+    : true
+  return { provider, model, thinkingLevel }
 }
 
-export async function setAiConfig(householdId: string, provider: Provider, model: string | null): Promise<void> {
+export async function setAiConfig(householdId: string, provider: Provider, model: string | null, thinkingLevel: ThinkingLevel = true): Promise<void> {
   // Merge into the existing settings jsonb so other keys are preserved.
   await query(
     `update households
-        set settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('ai', jsonb_build_object('provider', $2::text, 'model', $3::text))
+        set settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('ai', jsonb_build_object('provider', $2::text, 'model', $3::text, 'thinkingLevel', $4::jsonb))
       where id = $1`,
-    [householdId, provider, model]
+    [householdId, provider, model, JSON.stringify(thinkingLevel)]
   )
 }
 
@@ -207,7 +211,7 @@ async function openaiJson(req: LlmJsonRequest, model: string): Promise<unknown> 
   return JSON.parse(text)
 }
 
-async function ollamaJson(req: LlmJsonRequest, model: string): Promise<unknown> {
+async function ollamaJson(req: LlmJsonRequest, model: string, thinkingLevel: ThinkingLevel): Promise<unknown> {
   const host = (config.ai.ollama.host ?? '').replace(/\/$/, '')
   const data = (await fetchJson(`${host}/api/chat`, {
     method: 'POST',
@@ -215,6 +219,9 @@ async function ollamaJson(req: LlmJsonRequest, model: string): Promise<unknown> 
     body: JSON.stringify({
       model,
       stream: false,
+      // Enable/configure the model's reasoning trace. Models without thinking
+      // support safely ignore this field.
+      think: thinkingLevel,
       format: req.schema,
       keep_alive: '30m',
       options: { temperature: 0 },
@@ -287,12 +294,12 @@ export async function visionAvailable(householdId: string): Promise<boolean> {
 // no provider is selected (heuristic) or its credentials are missing — callers
 // surface that as "pick a provider in Settings".
 export async function completeJson(householdId: string, req: LlmJsonRequest): Promise<{ data: unknown; via: Provider }> {
-  const { provider, model } = await getAiConfig(householdId)
+  const { provider, model, thinkingLevel } = await getAiConfig(householdId)
   if (provider === 'heuristic') throw new Error('No AI provider selected — choose one in Settings → AI & capture')
   if (!availability()[provider]) throw new Error(`provider ${provider} is not configured on the server`)
   const m = model ?? defaultModel(provider) ?? ''
   const call = () =>
-    provider === 'anthropic' ? anthropicJson(req, m) : provider === 'openai' ? openaiJson(req, m) : ollamaJson(req, m)
+    provider === 'anthropic' ? anthropicJson(req, m) : provider === 'openai' ? openaiJson(req, m) : ollamaJson(req, m, thinkingLevel)
 
   // One place that logs every AI call outcome, and retries transient provider blips
   // (a lone 5xx/timeout shouldn't fail the user's action). Failures below are almost

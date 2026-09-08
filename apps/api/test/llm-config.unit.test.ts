@@ -130,6 +130,14 @@ describe('getAiConfig — a persisted empty model falls back to the provider def
     expect(cfg.model).toBe('gpt-4o')
   })
 
+  it('defaults thinking to on and preserves a configured level', async () => {
+    const defaultLlm = await withHouseholdAi({ provider: 'ollama', model: 'qwen3' })
+    expect((await defaultLlm.getAiConfig('h1')).thinkingLevel).toBe(true)
+
+    const configuredLlm = await withHouseholdAi({ provider: 'ollama', model: 'gpt-oss', thinkingLevel: 'high' })
+    expect((await configuredLlm.getAiConfig('h1')).thinkingLevel).toBe('high')
+  })
+
   it('no ai settings → heuristic provider, null model', async () => {
     const llm = await withHouseholdAi(undefined)
     const cfg = await llm.getAiConfig('h1')
@@ -189,5 +197,36 @@ describe('completeJson — retries transient provider failures', () => {
     vi.stubGlobal('fetch', fetchMock)
     await expect(llm.completeJson('h1', req)).rejects.toThrow()
     expect(fetchMock.mock.calls.length).toBe(3)
+  })
+})
+
+describe('completeJson — Ollama thinking', () => {
+  const OLD_HOST = process.env.OLLAMA_HOST
+  afterEach(() => {
+    vi.resetModules()
+    vi.unstubAllGlobals()
+    if (OLD_HOST === undefined) delete process.env.OLLAMA_HOST
+    else process.env.OLLAMA_HOST = OLD_HOST
+  })
+
+  it('enables thinking for Ollama JSON calls', async () => {
+    process.env.OLLAMA_HOST = 'http://ollama'
+    vi.resetModules()
+    vi.doMock('../src/platform/db', () => ({
+      query: vi.fn(async () => ({ rows: [{ settings: { ai: { provider: 'ollama', model: 'qwen3', thinkingLevel: 'low' } } }] })),
+    }))
+    const llm = await import('../src/platform/llm')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ message: { content: '{"markdown":"ok"}' } }),
+      text: async () => '',
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await llm.completeJson('h1', { system: 's', user: 'u', schema: {} })
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.think).toBe('low')
   })
 })

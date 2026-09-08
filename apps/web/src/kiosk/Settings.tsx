@@ -13,6 +13,7 @@ import { SettingCard } from './components/SettingCard'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
 import '../styles/settings.css'
+import type { ThinkingLevel } from '../lib/api/capture'
 
 // `admin` tabs are only shown to admins — non-admins can't change those settings,
 // so we don't show options they can't use (they still get About + Sign out).
@@ -1129,6 +1130,7 @@ function AiPanel() {
   const [cfg, setCfg] = useState<CaptureConfig | null>(null)
   const [provider, setProvider] = useState<Provider>('heuristic')
   const [model, setModel] = useState('')
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState(false)
@@ -1142,6 +1144,7 @@ function AiPanel() {
         setCfg(c)
         setProvider(c.provider)
         setModel(c.model ?? '')
+        setThinkingLevel(c.thinkingLevel)
       })
       .catch(() => alive && setError(true))
     return () => {
@@ -1165,15 +1168,16 @@ function AiPanel() {
     setSaved(false)
     try {
       const m = provider === 'heuristic' ? null : model.trim() || null
-      const r = await captureApi.setConfig(provider, m)
+      const r = await captureApi.setConfig(provider, m, thinkingLevel)
       setCfg({ ...cfg!, provider: r.provider, model: r.model })
+      setThinkingLevel(r.thinkingLevel)
       setSaved(true)
     } finally {
       setSaving(false)
     }
   }
 
-  const dirty = provider !== cfg.provider || (provider !== 'heuristic' && (model.trim() || null) !== (cfg.model ?? null))
+  const dirty = provider !== cfg.provider || (provider !== 'heuristic' && (model.trim() || null) !== (cfg.model ?? null)) || thinkingLevel !== cfg.thinkingLevel
 
   return (
     <div className="set-panel">
@@ -1222,6 +1226,25 @@ function AiPanel() {
               style={{ minWidth: 200 }}
             />
           </SettingRow>
+          {provider === 'ollama' && (
+            <SettingRow icon="🧠" title="Thinking" sub="Reasoning mode for models that support it">
+              <select
+                className="sel"
+                value={String(thinkingLevel)}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setThinkingLevel(value === 'true' ? true : value === 'false' ? false : value as ThinkingLevel)
+                  setSaved(false)
+                }}
+              >
+                <option value="true">On</option>
+                <option value="false">Off</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </SettingRow>
+          )}
         </SettingCard>
       )}
 

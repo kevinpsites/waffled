@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Thinking-capable Ollama models now reason during JSON imports.** AI recipe and other
+  structured JSON calls enable Ollama thinking, with the mode configurable in AI & Capture settings.
+
 ## [0.14.3] - 2026-09-02
 
 ### Added

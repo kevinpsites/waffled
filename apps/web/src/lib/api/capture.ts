@@ -5,6 +5,7 @@ import { apiSend, apiGet, ApiSendError } from './client'
 import { parseCapture, type ParsedIntent, type MutateVerb, type MutateTargetKind } from '../capture/parse'
 
 export type Provider = 'anthropic' | 'openai' | 'ollama' | 'heuristic'
+export type ThinkingLevel = boolean | 'low' | 'medium' | 'high'
 
 // TIER 2 — a resolved candidate row for a mutate intent (from POST /api/capture/resolve).
 // `id` is the row to act on; `meta` carries verb/kind extras the commit needs (e.g.
@@ -37,6 +38,7 @@ export interface MutateCommand {
 export interface CaptureConfig {
   provider: Provider
   model: string | null
+  thinkingLevel: ThinkingLevel
   available: Record<Provider, boolean>
   defaultModels: { anthropic: string; openai: string; ollama: string }
 }
@@ -93,8 +95,8 @@ export const captureApi = {
     }
   },
   getConfig: () => apiGet<CaptureConfig>('/api/capture/config'),
-  setConfig: (provider: Provider, model: string | null) =>
-    apiSend<{ provider: Provider; model: string | null }>('PUT', '/api/capture/config', { provider, model }),
+  setConfig: (provider: Provider, model: string | null, thinkingLevel: ThinkingLevel) =>
+    apiSend<{ provider: Provider; model: string | null; thinkingLevel: ThinkingLevel }>('PUT', '/api/capture/config', { provider, model, thinkingLevel }),
   // Preload the model (fire-and-forget) so the first parse isn't a cold start.
   warm: () => apiSend('POST', '/api/capture/warm', {}).catch(() => undefined),
 }
