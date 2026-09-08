@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reward activity stays inside your family.** Redeeming or granting a reward now
+  rejects people and currencies from another household, and a family member can only
+  redeem or convert another person’s balance only with reward-approval rights.
+  Pending rewards require a different person to approve them, including admin requests. Pending redemptions also
+  stop safely if their currency is later disabled, while earn-only currencies still work
+  for spot awards.
+
 - **API keys can now reach chore instances, chore proofs, goal lists, pantry staples and
   currency conversions.** Those endpoint families were refused for every key — "This endpoint
   is not available to API keys" — no matter which scopes the key held. They now answer to the

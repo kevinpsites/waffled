@@ -38,5 +38,9 @@ Rewards is a **sub-toggle of chores** (`settings.chores.rewards`, default **on**
 ## Notes
 
 - 🏺 **"Rewards jar"** is the saving-toward jar/bar progress UI, **not** a separate object — it's just how a pinned reward renders.
-- 🔒 **Capability-gated where it has stakes** — `reward.manage` (catalog, currencies, conversions), `reward.approve` (redemptions), `reward.grant` (spot-awards). Anyone may **redeem for themselves** and convert their own balance. See [Permissions](/concepts/permissions/).
+- 🔒 **Capability-gated where it has stakes** — `reward.manage` (catalog, currencies, conversions), `reward.approve` (decisions and redeeming/converting for another person), `reward.grant` (spot-awards). Anyone may **redeem for themselves** and convert their own balance. Pending rewards require a different person to approve them, including requests made by an admin or on a child’s behalf. See [Permissions](/concepts/permissions/).
 - 🚧 **Milestone reward payouts** are deferred — the design is done, but auto-paying a [Goals](/features/goals/) milestone into the ledger hasn't shipped yet.
+
+Archived people’s pending redemptions remain visible and can be denied. This uses
+soft archive; a hard-deleted person’s orphaned redemption is deliberately excluded
+by the household/person join and requires operator repair.
