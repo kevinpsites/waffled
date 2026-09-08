@@ -680,10 +680,15 @@ final class SyncManager {
     /// The caller gates this on affordability, so approval shouldn't fail; if it does
     /// (e.g. balance changed underfoot) the error surfaces via `lastError`.
     @discardableResult
+    /// Redeem only — never approve. The server already writes the debit when the household
+    /// has approval turned off, and deliberately leaves the redemption `pending` for a parent
+    /// when it's on; the web shop calls redeem alone for exactly that reason. Chaining an
+    /// approve here did two wrong things: an instant redemption came straight back as
+    /// "already decided" so a redemption that HAD succeeded reported failure, and an
+    /// approval-required reward was walked straight past the parent queue.
     func giveReward(rewardId: String, personId: String) async -> Bool {
         do {
-            let redemption = try await api.redeemReward(rewardId: rewardId, personId: personId)
-            _ = try await api.approveRedemption(id: redemption.id)
+            _ = try await api.redeemReward(rewardId: rewardId, personId: personId)
             rewardsRev += 1
             return true
         } catch {
