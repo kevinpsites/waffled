@@ -187,7 +187,9 @@ final class ServerModel {
 
     func end() {
         // Before the cancellations: a cancelled operation still runs `finishOperation`,
-        // and a restart the flow owes there would start a server on the way out of the app.
+        // and a restart the flow owes there would start a server on the way out of the
+        // app. An update stop that had already succeeded loses its hand-off with it, which
+        // is right — quitting mid-update is exactly when Sparkle must not be let go.
         flow = UpdateFlow()
         pollTask?.cancel()
         animationTask?.cancel()
@@ -458,12 +460,18 @@ final class ServerModel {
     /// The update's stop. Its outcome is an event, not a decision made here.
     private func stopForUpdate() {
         stop(noting: "Stopping for the update…") { [weak self] outcome in
-            // Before the event, not after: a restart the flow may queue next is decided on
-            // the server's state, and the stop just made the last status wrong.
-            await self?.refresh()
+            guard let self else { return }
             switch outcome {
-            case .proceed: self?.send(.stopSucceeded)
-            case let .refused(message): self?.send(.stopFailed(message))
+            case .proceed:
+                // Before the event, because a restart the flow queues next is decided on
+                // the server's state and the stop just made the last status wrong. Not
+                // before a hand-off, which owes no restart and whose `status` would spawn
+                // the binary Sparkle is about to replace.
+                if case .stoppingForInstall(nil) = flow.phase { await refresh() }
+                send(.stopSucceeded)
+            case let .refused(message):
+                send(.stopFailed(message))
+                await refresh()
             }
         }
     }
