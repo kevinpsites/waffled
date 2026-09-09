@@ -23,6 +23,12 @@ const AppName = "Waffled"
 // logs nothing alarming, and is simply unreachable over the socket.
 const maxSocketDirLen = 85
 
+// SocketDirPrefix names the fallback socket directory made when the data path is too
+// long. `uninstall` matches on it: that directory is the one thing outside the data root
+// this runtime deletes, and the path comes out of runtime.json, so the prefix is what
+// keeps a hand-edited file from turning an uninstall into an rm -rf of somewhere else.
+const SocketDirPrefix = "wfl"
+
 // Layout is every path the runtime uses, derived from one root.
 type Layout struct {
 	Root        string
@@ -105,7 +111,7 @@ func (l Layout) SocketDir(recorded string) (dir string, fellBack bool, err error
 	if len(l.Postgres) <= maxSocketDirLen {
 		return l.Postgres, false, nil
 	}
-	tmp, err := os.MkdirTemp("", "wfl")
+	tmp, err := os.MkdirTemp("", SocketDirPrefix)
 	if err != nil {
 		return "", false, fmt.Errorf("create a short postgres socket directory: %w", err)
 	}
