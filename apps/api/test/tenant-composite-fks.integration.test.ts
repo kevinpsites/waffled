@@ -297,6 +297,84 @@ describe('composite persons foreign keys — the database refuses cross-househol
     expect(single.map((f) => f.table).sort()).toEqual([...EXEMPT].sort())
   })
 
+  // The composite form of ON DELETE SET NULL is the one place where the obvious DDL
+  // silently changes behaviour: `on delete set null` on a (household_id, person_id) key
+  // nulls BOTH columns, and every referencing household_id is NOT NULL — so a person
+  // delete that used to unassign the row would instead fail with 23502. The column-list
+  // form `on delete set null (person_id)` is what keeps it correct, and only actually
+  // deleting a person proves it.
+  it('deleting a person still unassigns SET NULL rows instead of failing', async () => {
+    const { a, pa } = await seedTwoHouseholds(client)
+    const rhythm = (
+      await client.query<{ id: string }>(
+        `insert into rhythms (household_id, title, person_id, satisfied_by, every, next_due_at)
+         values ($1,'Water the plants',$2,'completion','7 days', now()) returning id`,
+        [a, pa]
+      )
+    ).rows[0].id
+    const completion = (
+      await client.query<{ id: string }>(
+        `insert into rhythm_completions (household_id, rhythm_id, person_id)
+         values ($1,$2,$3) returning id`,
+        [a, rhythm, pa]
+      )
+    ).rows[0].id
+    const skip = (
+      await client.query<{ id: string }>(
+        `insert into rhythm_skips (household_id, rhythm_id, period_start, skipped_by)
+         values ($1,$2,current_date,$3) returning id`,
+        [a, rhythm, pa]
+      )
+    ).rows[0].id
+    const occurrence = (
+      await client.query<{ id: string }>(
+        `insert into family_night_occurrences (household_id, date) values ($1,current_date) returning id`,
+        [a]
+      )
+    ).rows[0].id
+    const assignment = (
+      await client.query<{ id: string }>(
+        `insert into family_night_assignments (household_id, occurrence_id, part_id, person_id)
+         values ($1,$2,'snack',$3) returning id`,
+        [a, occurrence, pa]
+      )
+    ).rows[0].id
+    // CASCADE control: this row should disappear entirely, not be nulled.
+    const recipe = (
+      await client.query<{ id: string }>(
+        `insert into recipes (household_id, title) values ($1,'Pancakes') returning id`,
+        [a]
+      )
+    ).rows[0].id
+    const view = (
+      await client.query<{ id: string }>(
+        `insert into recipe_views (household_id, person_id, recipe_id) values ($1,$2,$3) returning id`,
+        [a, pa, recipe]
+      )
+    ).rows[0].id
+
+    // A hard delete of the person must succeed — not raise 23502 on household_id.
+    await expect(client.query(`delete from persons where id = $1`, [pa])).resolves.toBeTruthy()
+
+    for (const [table, col, id] of [
+      ['rhythms', 'person_id', rhythm],
+      ['rhythm_completions', 'person_id', completion],
+      ['rhythm_skips', 'skipped_by', skip],
+      ['family_night_assignments', 'person_id', assignment],
+    ] as const) {
+      const { rows } = await client.query<{ person: string | null; household_id: string }>(
+        `select ${col} as person, household_id from ${table} where id = $1`,
+        [id]
+      )
+      expect(rows, `${table} row must survive the person delete`).toHaveLength(1)
+      expect(rows[0].person, `${table}.${col} must be nulled`).toBeNull()
+      expect(rows[0].household_id, `${table}.household_id must be untouched`).toBe(a)
+    }
+
+    const cascaded = await client.query(`select 1 from recipe_views where id = $1`, [view])
+    expect(cascaded.rowCount, 'ON DELETE CASCADE still removes the row').toBe(0)
+  })
+
   it('every composite FK composes with a NOT NULL household column (no toothless keys)', async () => {
     const fks = await personFks(client)
     const composite = fks.filter((f) => f.cols.length === 2)
