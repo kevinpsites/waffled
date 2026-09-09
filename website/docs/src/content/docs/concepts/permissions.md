@@ -43,6 +43,8 @@ owner can flip any cell per household in **Settings → Family & People**. The m
 | `chore.approve` | Approve/reject completed chores |
 | `reward.manage` | Manage the rewards catalog, currencies, conversions |
 | `reward.approve` | Approve/deny redemptions; redeem or convert balances for another person |
+| `reward.grant` | Give a person an ad-hoc spot award |
+| `reward.correct` | Reverse/replace settled reward activity or refund a redemption |
 | `goal.manage` | Log progress *for others*, edit/delete shared or others' goals, manage goal lists |
 
 Clients never "show, then 403". `/api/household` returns the caller's resolved
@@ -57,7 +59,7 @@ These actions are allowed for yourself regardless of role:
 - **Rewards** — request a reward for yourself; convert your own balance. A pending
   redemption still needs a different person with `reward.approve` to approve it.
   This second-person rule also applies to administrators and requests made on a
-  child’s behalf. The requester can still deny the request if they have approval rights.
+  child’s behalf. The requester can still deny the request if they have approval rights. A requester may cancel their own pending request.
 - **Goals** — log progress *for yourself* (or a family/shared log); create a *personal* goal
   (one with no other participants); tick a checklist step (it's self-attributed); create a
   goal list. Logging attributed to **another person**, or editing/deleting a goal that isn't

@@ -242,7 +242,7 @@ describe('hyphenated sibling routes are reachable with the right scope', () => {
 // the same file as /api/currencies, but only /api/currencies was ever given to the
 // `rewards` resource — so a key could manage the denominations and not the rates
 // between them. A headless client needs both.
-describe('currency conversions answer to the rewards scope', () => {
+describe('currency conversions and ledger corrections answer to the rewards scope', () => {
   const BOGUS = '00000000-0000-4000-8000-000000000000'
   let rewardsRead = ''
   let rewardsWrite = ''
@@ -258,6 +258,19 @@ describe('currency conversions answer to the rewards scope', () => {
     otherKey = await mintKey('photos-r', ['photos:read'])
     // A conversion needs two currencies; the household seeds only the default Stars.
     await call('POST', '/api/currencies', kevin, { label: 'Bucks', symbol: '💵' })
+  })
+
+  it('requires rewards:write for ledger corrections and still enforces the handler boundary', async () => {
+    const path = `/api/ledger-entries/${BOGUS}/correct`
+    const body = { reason: 'Scope coverage', idempotencyKey: '11111111-1111-4111-8111-111111111111' }
+    for (const key of [rewardsRead, otherKey]) {
+      const denied = await keyCall('POST', path, key, body)
+      expect(denied.statusCode).toBe(403)
+      expect(msg(denied)).toMatch(/missing the required scope: rewards:write/)
+    }
+    const missing = await keyCall('POST', path, rewardsWrite, body)
+    expect(missing.statusCode).toBe(404)
+    expect(msg(missing)).toMatch(/ledger entry not found/i)
   })
 
   it('reads with rewards:read and writes only with rewards:write', async () => {

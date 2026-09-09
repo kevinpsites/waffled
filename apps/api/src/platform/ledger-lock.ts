@@ -14,13 +14,14 @@ import { HouseholdReferenceError } from './household-refs'
 export async function lockLedgerSubject(
   client: PoolClient,
   householdId: string,
-  personId: string
+  personId: string,
+  options: { includeArchived?: boolean } = {}
 ): Promise<void> {
   const locked = await client.query(
     `select id from persons
-      where household_id=$1 and id=$2 and deleted_at is null
+      where household_id=$1 and id=$2 and ($3::boolean or deleted_at is null)
       for no key update`,
-    [householdId, personId]
+    [householdId, personId, options.includeArchived ?? false]
   )
   if (!locked.rowCount) throw new HouseholdReferenceError('person not found')
 }

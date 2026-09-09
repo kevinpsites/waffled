@@ -147,7 +147,8 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Conversions / "Trade"** (e.g. 10 ⭐ → 1 💵) | ✅ | ✅ | ✅ | ✅ Done |
 | **Saving-toward** a reward — bar/jar progress + inline redeem | ✅ | ✅ | ✅ | ✅ Done |
 | **Spot-award stars** — parent hands out ad-hoc stars (untied to a chore) + optional reason | ✅ | ✅ | ✅ | ✅ Done — gated on `reward.grant`; mobile: **Award** on the person profile **and** a person-picker Award sheet on the Rewards page → `POST /api/persons/:id/award`; the ledger row reads "spot award — {reason}" (person-overview surfaces `ledger_entries.note`) |
-| **Capability gating** — `reward.manage` / `reward.approve` / `reward.grant`; anyone may request for self; acting for others needs `reward.approve`, and pending approval requires a second person | ✅ | ✅ | ✅ | ✅ Done |
+| Append-only **corrections and refunds** — linked reversal, optional replacement, required reason | ✅ | ✅ | ✅ | ✅ Done — `reward.correct`; originals remain visible and concurrent retries are idempotent |
+| **Capability gating** — `reward.manage` / `reward.approve` / `reward.grant` / `reward.correct`; anyone may request for self or cancel their own pending request; acting for others needs `reward.approve`, and pending approval requires a second person | ✅ | ✅ | ✅ | ✅ Done |
 | Milestone reward **payouts** | 🚧 | 🚧 | 🚧 | 🚧 Deferred (design done) |
 
 ## Goals

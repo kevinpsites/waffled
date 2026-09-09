@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Reward mistakes can now be corrected without rewriting history.** Adults with the
+  new `reward.correct` capability can reverse a mistaken spot award, replace it with
+  the right amount, or refund an approved redemption from a person profile on web,
+  iPhone, and iPad. Every correction records who made it and why as linked,
+  append-only ledger entries; pending requests can instead be canceled by their
+  requester or a reward approver before any balance is spent.
+  Refunds preserve the original approval attribution and reject mismatched or
+  corrupted redemption-to-ledger links, including during idempotent replay.
+  Scoped API clients can correct ledger entries with `rewards:write` when their
+  owner also has `reward.correct`.
+
 ### Changed
 
 - **API bind address is configurable.** Set `HOST` to pin the API to one interface (the
@@ -23,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the demo box are unaffected. The startup log line now includes the bound address.
 
 ### Fixed
+
+- **Reward corrections stay within the original award.** Replacements only reduce its magnitude, corrections require enough available balance to cover the change, and archived members’ history remains correctable.
+
+- Permission saves from older clients now preserve newer capability choices they
+  do not know how to send, preventing unrelated settings changes from silently
+  resetting who can correct reward history.
 
 - **Reward spending and chore undo share one balance check.** Redemptions, currency
   conversions and chore reward reversals lock the family member’s balance and recheck

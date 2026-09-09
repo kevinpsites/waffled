@@ -54,7 +54,7 @@ export const API_SCOPES: ApiScopeDef[] = [
   { resource: 'lists', label: 'Lists', description: 'Grocery and to-do lists', prefixes: ['/api/lists', '/api/pantry-staples'] },
   { resource: 'pantry', label: 'Pantry', description: 'On-hand inventory', prefixes: ['/api/pantry'] },
   { resource: 'chores', label: 'Chores', description: 'Chores and completions', prefixes: ['/api/chores', '/api/chore-instances', '/api/chore-proofs'] },
-  { resource: 'rewards', label: 'Rewards', description: 'Rewards, balances, currencies, and conversions', prefixes: ['/api/rewards', '/api/redemptions', '/api/balances', '/api/currencies', '/api/conversions'] },
+  { resource: 'rewards', label: 'Rewards', description: 'Rewards, balances, currencies, conversions, and corrections', prefixes: ['/api/rewards', '/api/redemptions', '/api/balances', '/api/currencies', '/api/conversions', '/api/ledger-entries'] },
   { resource: 'meals', label: 'Meals', description: 'Recipes and meal planning', prefixes: ['/api/recipes', '/api/meals'] },
   { resource: 'calendar', label: 'Calendar', description: 'Calendar events', prefixes: ['/api/events'] },
   { resource: 'goals', label: 'Goals', description: 'Goals and progress', prefixes: ['/api/goals', '/api/goal-lists'] },
