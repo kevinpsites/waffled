@@ -51,8 +51,9 @@ requires a separate spot award and `reward.grant`; `reward.correct` cannot incre
 the original magnitude. Archived people's existing awards remain correctable through
 the API.
 
-A correction cannot make the balance negative. If the award was already spent,
-refund the approved redemption first and retry the correction. No partial ledger
+A correction requires enough available balance to cover the change. If rewards,
+conversions or chore undo used that balance, restore it before retrying (refund an
+approved redemption when applicable). No partial ledger
 entries are written when a correction is rejected. Both the original activity and
 the linked correction remain visible with the actor and reason.
 

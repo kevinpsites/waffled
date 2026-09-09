@@ -64,7 +64,7 @@ export function LedgerCorrectionModal({ target, onClose, onSaved }: {
           {isRefund ? 'Refund redemption' : 'Correct reward history'}
         </div>
         <p className="tiny muted" style={{ margin: '0 0 14px', lineHeight: 1.5 }}>
-          The original activity stays in the history. Corrections can only reduce an amount and cannot make a balance negative. Refund a spent reward first if needed.
+          The original activity stays in the history. Corrections can only reduce an amount when the available balance covers the change. Restore any balance already used before retrying; refund a redemption when applicable.
         </p>
 
         <div className="wf-field" style={{ padding: 12, marginBottom: 12 }}>

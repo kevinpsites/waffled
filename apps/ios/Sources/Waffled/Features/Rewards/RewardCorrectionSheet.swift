@@ -78,7 +78,7 @@ struct RewardCorrectionSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("The original activity stays in the history. Corrections can only reduce an amount and cannot make a balance negative. Refund a spent reward first if needed.")
+                    Text("The original activity stays in the history. Corrections can only reduce an amount when the available balance covers the change. Restore any balance already used before retrying; refund a redemption when applicable.")
                         .font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink3)
                         .fixedSize(horizontal: false, vertical: true)
 

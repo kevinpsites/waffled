@@ -208,7 +208,8 @@ async function runBehindCorrectionKeyLock<T>(idempotencyKey: string, start: () =
   const pending = start()
   let barrierError: unknown
   try {
-    await waitForLockWaiters(observer, pending.length, ['%pg_advisory_xact_lock%'])
+    const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+    await waitForLockWaiters(observer, rows[0].pid, pending.length, ['%pg_advisory_xact_lock%'])
   } catch (err) {
     barrierError = err
   } finally {
@@ -232,7 +233,8 @@ async function runBehindLedgerEntryLock<T>(entryId: string, start: () => Promise
   const pending = start()
   let barrierError: unknown
   try {
-    await waitForLockWaiters(observer, pending.length, ['%from ledger_entries%', '%for update%'])
+    const { rows } = await blocker.query<{ pid: number }>('select pg_backend_pid() as pid')
+    await waitForLockWaiters(observer, rows[0].pid, pending.length, ['%from ledger_entries%', '%for update%'])
   } catch (err) {
     barrierError = err
   } finally {
@@ -776,6 +778,23 @@ describe('append-only reward corrections and reversals', () => {
     }
   })
 
+  it.each([
+    { replacement: 11, message: 'magnitude' },
+    { replacement: 10, message: 'differ' },
+    { replacement: -10, message: 'direction' },
+  ])('rejects a nearby invalid replacement $replacement without any writes', async ({ replacement, message }) => {
+    const personId = await addMember(`Correction boundary ${replacement}`, 'kid', false, `dev|boundary-${replacement}`)
+    const award = JSON.parse((await call('POST', `/api/persons/${personId}/award`, kevin, { amount: 10 })).body)
+    const result = await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, {
+      reason: 'Check correction boundary', replacementAmount: replacement, idempotencyKey: randomUUID(),
+    })
+    expect(result.statusCode).toBe(400)
+    expect(result.body).toContain(message)
+    expect(await starsOf(personId)).toBe(10)
+    const entries = await withClient(c => c.query('select id from ledger_entries where reverses_entry_id=$1 or correction_of_id=$1', [award.id]))
+    expect(entries.rowCount).toBe(0)
+  })
+
   it('rejects a reversal of a spent award atomically, then allows it after a refund', async () => {
     const personId = await addMember('Spent award', 'kid', false, 'dev|spent-award')
     const award = JSON.parse((await call('POST', `/api/persons/${personId}/award`, kevin, { amount: 50 })).body)
@@ -784,7 +803,7 @@ describe('append-only reward corrections and reversals', () => {
     const body = { reason: 'Mistaken award already spent', idempotencyKey: randomUUID() }
     const response = await call('POST', `/api/ledger-entries/${award.id}/correct`, kevin, body)
     expect(response.statusCode).toBe(409)
-    expect(response.body).toContain('negative')
+    expect(JSON.parse(response.body).message).toMatch(/not enough balance.*correction/i)
     expect(await starsOf(personId)).toBe(0)
     const rows = await withClient(c => c.query('select id from ledger_entries where reverses_entry_id=$1', [award.id]))
     expect(rows.rowCount).toBe(0)

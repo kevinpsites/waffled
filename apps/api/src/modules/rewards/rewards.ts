@@ -263,7 +263,7 @@ async function correctLockedLedgerEntry(
     [tenant.householdId, original.person_id, original.currency]
   )
   if (Number(current.rows[0].balance) + reversalAmount + (replacementAmount ?? 0) < 0) {
-    throw new LedgerCorrectionError('This correction would make the balance negative. Refund a spent reward first, then retry.', 409)
+    throw new LedgerCorrectionError('Not enough balance for this correction. Restore the balance used by rewards, conversions or chore undo, then retry.', 409)
   }
   const group = await client.query<{ id: string }>(`select gen_random_uuid() as id`)
   const groupId = group.rows[0].id
@@ -382,6 +382,8 @@ export async function cancelRedemption(tenant: Tenant, id: string): Promise<Rede
     if (redemption.status !== 'pending') {
       throw new LedgerCorrectionError('only a pending redemption can be canceled', 409)
     }
+    // Deliberately requester-owned: a parent’s request for a child can be canceled
+    // by that parent or an approver, not by the subject merely named on it.
     if (redemption.requested_by !== tenant.personId) await requireCapability(tenant, 'reward.approve', client)
     const updated = await client.query<RedemptionRow>(
       `update reward_redemptions
