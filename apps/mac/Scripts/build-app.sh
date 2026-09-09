@@ -83,19 +83,22 @@ ok "Waffled.app built ($(hsize "$APP"))"
 
 # ── 3. embed the runtime bundle ──────────────────────────────────────────────
 # cp -c asks APFS to clone: the 670 MB lands as shared blocks, so this costs a fraction of
-# a second and no disk until something diverges. It only works within one APFS volume, so
-# fall back to a real copy when the bundle lives somewhere else (an external disk, a
-# different container) rather than failing the build over an optimisation.
+# a second and no disk until something diverges. One copy, no fallback — and deliberately
+# so. `man cp`: "if clonefile(2) is not supported for the target filesystem, then cp will
+# fallback to using copyfile(2) instead to ensure the copy still succeeds", so a bundle on
+# another volume is already handled inside cp and the only way this command fails is a real
+# per-file error (an unreadable source, a full disk). Retrying `cp -Rp` after one of those
+# was worse than not retrying: the first attempt has already created $DEST, so the retry
+# copied the bundle INTO it and left Contents/Resources/runtime/<bundle name>/ — an app
+# that looks assembled and carries no runtime where the app looks for one.
 DEST="$APP/Contents/Resources/runtime"
 mkdir -p "$APP/Contents/Resources"
 rm -rf "$DEST"
 say "→ embedding $BUNDLE → Contents/Resources/runtime"
-if cp -Rpc "$BUNDLE" "$DEST" 2>/dev/null; then
-  ok "cloned into the app (APFS clonefile)"
-else
-  cp -Rp "$BUNDLE" "$DEST" || die "could not copy the bundle into the app"
-  ok "copied into the app (no clonefile — different volume?)"
-fi
+cp_err="$(cp -Rpc "$BUNDLE" "$DEST" 2>&1)" || die "could not copy the bundle into the app:
+  ${cp_err:-cp failed without saying why}
+  Contents/Resources/runtime now holds a partial copy; the next run replaces it."
+ok "embedded into the app ($(hsize "$DEST"))"
 
 # ── 4. verify the EMBEDDED copy, with the EMBEDDED binary ────────────────────
 # `version` proves the supervisor runs from inside the app and is the build this tree
