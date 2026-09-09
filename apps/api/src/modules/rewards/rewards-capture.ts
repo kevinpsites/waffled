@@ -17,7 +17,7 @@ import {
   type MutateCommand,
 } from '../capture/capture-resolvers'
 import { rankCandidates, type Candidate, type RankRow } from '../capture/candidate-match'
-import { requireCapability } from '../../platform/permissions'
+import { assertSelfOrCapability } from '../../platform/permissions'
 import { listRewards, requestRedemption } from './rewards'
 
 const rewardCaptureTarget: CaptureTarget = {
@@ -59,7 +59,7 @@ const rewardCaptureTarget: CaptureTarget = {
     // action — the same check POST /api/rewards/:id/redeem makes. requestRedemption
     // deliberately does NOT enforce it (the caller owns authorization), so naming a
     // sibling here would otherwise walk straight around the route's gate.
-    if (personId !== ctx.personId) await requireCapability(ctx.tenant, 'reward.manage')
+    await assertSelfOrCapability(ctx.tenant, ctx.personId, personId, 'reward.manage')
 
     const red = await requestRedemption(ctx.tenant, cmd.targetId, personId)
     if (red === null) throw httpError(404, 'That reward is gone.')
