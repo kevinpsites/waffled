@@ -187,7 +187,6 @@ final class ServerModel {
         do {
             let fresh = try await client.status()
             status = fresh
-            decideFirstRun(initialized: fresh.initialized)
             // A server that came up is the only thing that clears a start failure —
             // clearing it on any successful poll would erase the message a moment after
             // it appeared, since `status` keeps answering fine when `start` refuses.
@@ -200,6 +199,10 @@ final class ServerModel {
             status = nil
             failure = Self.describe(error)
         }
+        // After the catch, so a poll that threw arrives here as nil and decides nothing:
+        // `status` failing is the ordinary cold start, since the runtime verifies its
+        // bundle before it can reply.
+        decideFirstRun(initialized: status?.initialized)
         syncFirstRunWindow()
     }
 
@@ -215,9 +218,9 @@ final class ServerModel {
         }
     }
 
-    /// Latched by the first poll that answered — and only inside the `do` branch above,
-    /// because a `status` that threw is the ordinary cold start (the runtime verifies its
-    /// bundle before it can reply) and says nothing about the data directory.
+    /// Latched by the first poll that answered, and never revisited: `initialized` flips
+    /// to true halfway through the first start, and the rest of the launch has to keep
+    /// behaving like the first run it is.
     private func decideFirstRun(initialized: Bool?) {
         guard !firstRunDecided else { return }
         switch Lifecycle.firstRunDecision(initialized: initialized) {
