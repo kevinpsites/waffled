@@ -347,7 +347,7 @@ struct PhotoTile: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay {
-                    CachedImage(photo.imageUrl) { emojiTile }
+                    CachedImage(photo.imageUrl, refreshURL: { try await MediaURL.photo(photo.id) }) { emojiTile }
                 }
                 .clipped()
         } else {

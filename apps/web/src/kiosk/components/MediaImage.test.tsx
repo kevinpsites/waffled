@@ -5,6 +5,16 @@ const oldURL = '/media/family/proof.jpg?expires=100&sig=old'
 const freshURL = '/media/family/proof.jpg?expires=200&sig=fresh'
 
 describe('signed media recovery', () => {
+  it('retains a failed tile’s layout and leaves its detail-opening button usable', async () => {
+    const refresh = vi.fn().mockResolvedValue(oldURL)
+    render(<button><MediaImage src={oldURL} alt="Pantry photo" className="pantry-image" style={{ width: 120, height: 90 }} refresh={refresh} /></button>)
+    fireEvent.error(screen.getByAltText('Pantry photo'))
+    const status = await screen.findByRole('status')
+    expect(status).toHaveClass('pantry-image')
+    expect(status).toHaveStyle({ width: '120px', height: '90px' })
+    expect(status.closest('button')).toBeEnabled()
+    expect(status.querySelector('button')).toBeNull()
+  })
   it.each(['Recipe', 'Chore proof'])('refreshes the parent and retries an expired %s image once', async label => {
     const refresh = vi.fn().mockResolvedValue(freshURL)
     render(<MediaImage showRetry src={oldURL} alt={label} refresh={refresh} />)

@@ -245,6 +245,12 @@ only way to unlink.
 | GET · PUT | `/api/family-night` · `/config` | Current night / config | tenant / admin |
 | POST · DELETE | `/api/family-night/occurrence` · `/schedule` | Occurrence / schedule | tenant / admin |
 
+Pantry uploads follow the same storage-key contract as recipes and photos: upload
+with `POST /api/media`, then save its `key` as `storageKey` on the pantry item.
+`imageUrl` is reserved for external images. Reads return a fresh signed `imageUrl`;
+`storageKey: null` removes an uploaded image. Older clients that save the returned
+local upload URL are normalized to the key. Keys must belong to the active household.
+
 ### Photos, media, capture, weather
 
 | Method | Path | Purpose | Auth |

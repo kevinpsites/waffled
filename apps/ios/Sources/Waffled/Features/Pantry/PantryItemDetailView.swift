@@ -278,7 +278,7 @@ struct PantryItemDetailView: View {
                   let img = UIImage(data: data),
                   let up = try? await WaffledAPI().uploadImage(img),
                   let item,
-                  let updated = try? await WaffledAPI().pantryUpdate(id: item.id, ["imageUrl": .string(up.url)])
+                  let updated = try? await WaffledAPI().pantryUpdate(id: item.id, ["storageKey": .string(up.key)])
             else { return }
             model.replace(updated)
         }

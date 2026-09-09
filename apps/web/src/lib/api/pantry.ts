@@ -73,6 +73,7 @@ export type PantryItemInput = {
   // OFF snapshot — set when adding/editing via a barcode lookup.
   barcode?: string | null
   brand?: string | null
+  storageKey?: string | null
   imageUrl?: string | null
   quantityText?: string | null
   servingBasis?: string | null

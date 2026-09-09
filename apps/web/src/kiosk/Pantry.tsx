@@ -340,7 +340,7 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
     try {
       const up = await uploadImage(file)
       setImg(up.url)
-      await pantryApi.update(item.id, { imageUrl: up.url })
+      await pantryApi.update(item.id, { storageKey: up.key })
       onChanged()
     } catch { /* ignore — keep old image */ } finally { setPhotoBusy(false) }
   }

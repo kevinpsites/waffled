@@ -38,7 +38,8 @@ export function MediaImage({ src, refresh, showRetry = false, ...props }: ImgHTM
     }
   }
 
-  if (failed) return <span role="status" className="tiny muted">
+  if (failed) return <span role="status" className={[props.className, "tiny muted"].filter(Boolean).join(" ")}
+    style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: props.width, height: props.height, ...props.style }}>
     Image unavailable. {showRetry && <button type="button" className="btn btn-ghost" onClick={e => {
       e.stopPropagation(); void recover(true)
     }}>Retry image</button>}

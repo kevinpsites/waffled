@@ -24,7 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Images recover after their links expire.** Recipes, chore proofs, photo details, and stored-proof screens refresh their owning resource and retry, while the iPad display keeps its photo links fresh during night dimming.
+- **Images recover after their links expire.** Pantry uploads keep their storage key,
+  so reads issue fresh links even for older uploads. Recipes, chore proofs, Photos
+  grids/details, and stored-proof screens refresh their owning resource and retry;
+  failed web tiles keep their layout. The iPad display keeps links fresh during night dimming.
 
 - **Media trouble no longer hides a usable database backup.** Uploaded media is included when
   `BACKUP_INCLUDE_MEDIA` is omitted, matching the documented default. A missing media mount,

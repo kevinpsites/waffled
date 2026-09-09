@@ -89,6 +89,10 @@ enum MediaURL {
 
     // Reload the owning resource using its normal authenticated API. Deleted media
     // yields nil, and no route re-signs arbitrary caller-provided storage keys.
+    static func photo(_ id: String) async throws -> URL? {
+        resolve(try await WaffledAPI().photo(id: id).imageUrl)
+    }
+
     static func recipe(_ id: String) async throws -> URL? {
         resolve(try await WaffledAPI().recipeDetail(id: id).recipe.imageUrl)
     }
