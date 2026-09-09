@@ -353,10 +353,13 @@ func (o Options) inspect() Report {
 		Detail:    "the Bonjour advertisement of this server on the local network",
 	}
 	if pid, err := readPidfile(bonjourPid); err == nil && o.alive(pid) {
-		bonjour.Detail = fmt.Sprintf("a live Bonjour advertisement (dns-sd pid %d) to withdraw", pid)
+		bonjour.Detail = fmt.Sprintf("found advertising on the local network (dns-sd pid %d)", pid)
 	}
 	r.Items = append(r.Items, bonjour)
 
+	// The details below are written in the past tense on purpose: the inventory is taken
+	// before anything is stopped, and by the time the report is printed the server this
+	// found running has usually been stopped by the run itself.
 	pids := Item{
 		Kind:      KindPidfiles,
 		Path:      o.Layout.Pids,
@@ -366,7 +369,7 @@ func (o Options) inspect() Report {
 		Detail:    "pidfiles left by the supervisor and its services",
 	}
 	if pid, running := o.supervisorPid(); running {
-		pids.Detail = fmt.Sprintf("the server is running (supervisor pid %d)", pid)
+		pids.Detail = fmt.Sprintf("the server was running (supervisor pid %d)", pid)
 	}
 	r.Items = append(r.Items, pids)
 

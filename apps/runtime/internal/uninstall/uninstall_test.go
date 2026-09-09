@@ -864,3 +864,23 @@ func TestARelativeSocketDirectoryIsNeverTouched(t *testing.T) {
 		}
 	}
 }
+
+// The inventory is taken before the stop, so a detail written in the present tense is
+// stale by the time the report is printed: a completed uninstall claimed "the server is
+// running", which the Mac app would have to special-case.
+func TestDetailsDoNotClaimTheServerIsStillRunningAfterwards(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.Yes = true
+	stopped := false
+	opts.grace = 20 * time.Millisecond
+	opts.alive = func(pid int) bool { return pid == 4242 && !stopped }
+	opts.signal = func(int, syscall.Signal) error { stopped = true; return nil }
+
+	report, err := Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if detail := item(t, report, KindPidfiles).Detail; strings.Contains(detail, "is running") {
+		t.Errorf("a completed uninstall still reports %q", detail)
+	}
+}
