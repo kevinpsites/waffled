@@ -53,16 +53,34 @@ type child struct {
 	// never held while waiting for a process to exit.
 	lifecycle sync.Mutex
 
-	mu        sync.Mutex
-	cmd       *exec.Cmd
-	pid       int
-	stopping  bool
-	exited    bool
-	restartN  int
-	lastErr   string
-	waitDone  chan struct{}
-	exitError error
+	// maxQuickFailures caps how many times in a row this child may die inside
+	// quickExitWindow before supervision gives up on it. Zero — every child but the
+	// Bonjour advertiser — means compose's `unless-stopped`: retry forever, because a
+	// server service that keeps dying should keep trying to come back.
+	maxQuickFailures int
+	// report, if set, is told what supervision now knows: why the child died, and
+	// whether it has been given up on. An empty reason means it is running again and the
+	// last failure no longer applies. It exists for the advertiser, whose state is read
+	// out of bonjour.json by another process and so cannot be inferred from memory.
+	report func(reason string, gaveUp bool)
+
+	mu         sync.Mutex
+	cmd        *exec.Cmd
+	pid        int
+	stopping   bool
+	exited     bool
+	restartN   int
+	quickFails int
+	spawnedAt  time.Time
+	lastErr    string
+	waitDone   chan struct{}
+	exitError  error
 }
+
+// quickExitWindow is how long a freshly spawned process has to prove it means to stay. A
+// child still alive after it has started; one gone before it has not — which is the only
+// health signal available for a service with nothing to poll.
+const quickExitWindow = 500 * time.Millisecond
 
 func (r *runner) logPath(name string) string { return filepath.Join(r.logsDir, name+".log") }
 func (r *runner) pidPath(name string) string { return filepath.Join(r.pidsDir, name+".pid") }
@@ -113,6 +131,7 @@ func (c *child) spawn() error {
 	c.cmd = cmd
 	c.pid = cmd.Process.Pid
 	c.exited = false
+	c.spawnedAt = time.Now()
 	c.waitDone = done
 	c.exitError = nil
 	c.mu.Unlock()
@@ -153,13 +172,40 @@ func (c *child) superviseRestarts() {
 
 			c.mu.Lock()
 			if c.stopping {
+				// Stopped on purpose. Nothing has failed and nothing is reported: a
+				// re-advertisement asks for exactly this stop, and calling it a failure
+				// would record one a moment before the replacement comes up.
 				c.mu.Unlock()
 				return
 			}
 			c.restartN++
 			attempt := c.restartN
 			reason := c.lastErr
+			// A child that ran for a while and then died is a different animal from one
+			// that cannot start at all; only the second kind is ever given up on.
+			if time.Since(c.spawnedAt) < quickExitWindow {
+				c.quickFails++
+			} else {
+				c.quickFails = 0
+			}
+			quick, limit := c.quickFails, c.maxQuickFailures
 			c.mu.Unlock()
+
+			// >=, not >: the limit is a budget of DEATHS, which is what its name and its
+			// doc promise ("how many immediate deaths in a row … before supervision stops
+			// restarting it"). Comparing with > spent the budget and then allowed one more
+			// spawn on top, so a cap of five produced six starts and a log line that said
+			// "died on each of its last 6 starts" beside a constant that said five.
+			exhausted := limit > 0 && quick >= limit
+			c.note(reason, exhausted)
+			if exhausted {
+				c.runner.log.Errorf("%s has died on each of its last %d starts (%s); giving up",
+					c.spec.Name, quick, reason)
+				c.mu.Lock()
+				c.lastErr = fmt.Sprintf("%s — giving up after %d failed starts", reason, quick)
+				c.mu.Unlock()
+				return
+			}
 
 			delay := c.runner.restartDelay(attempt)
 			c.runner.log.Warnf("%s exited unexpectedly (%s); restarting in %s (attempt %d)",
@@ -186,8 +232,49 @@ func (c *child) superviseRestarts() {
 				return
 			}
 			c.runner.log.Infof("%s restarted (pid %d)", c.spec.Name, c.currentPid())
+			// Once it has proved it means to stay, the failure that brought us here no
+			// longer stands. Leaving it recorded would have `status` report nothing on
+			// the network while dns-sd was publishing perfectly well — and clearing it
+			// the instant exec returned would do the same in reverse, calling a child
+			// that is about to die again recovered.
+			if _, gone := c.exitedWithin(quickExitWindow); !gone {
+				c.note("", false)
+			}
 		}
 	}()
+}
+
+// note tells the owner what supervision knows, if anyone asked to be told.
+func (c *child) note(reason string, gaveUp bool) {
+	if c.report != nil {
+		c.report(reason, gaveUp)
+	}
+}
+
+// exitedWithin waits up to d for the child to exit, and says why if it did. It is how a
+// service with no health URL is gated: there is nothing to poll, but a process that is
+// gone half a second after exec has plainly not started.
+func (c *child) exitedWithin(d time.Duration) (string, bool) {
+	c.mu.Lock()
+	done := c.waitDone
+	c.mu.Unlock()
+	if done == nil {
+		return "", false
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-done:
+		reason := c.lastError()
+		if reason == "" {
+			// Exit status 0 — which, for a service that was supposed to keep running, is
+			// no better news than a crash.
+			reason = c.spec.Name + " exited immediately"
+		}
+		return reason, true
+	case <-timer.C:
+		return "", false
+	}
 }
 
 // stop asks politely, then insists. A service that ignores SIGTERM must not hold up

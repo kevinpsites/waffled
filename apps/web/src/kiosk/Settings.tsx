@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { avTint } from './components/Avatar'
 import { useSearchParams } from 'react-router'
 import { useSyncHealth, type SyncHealthStatus } from '../lib/powersync/sync-health'
 import { restartPowerSyncHard } from '../lib/powersync/db'
-import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, useWeeklyPlanning, weeklyPlanningApi, planningDayName, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type IcsFeed, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef, type PlanningListCandidate } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { useThemePref } from '../lib/theme'
 import { eventStyle } from '../lib/display'
@@ -14,11 +15,8 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
 import '../styles/settings.css'
 
-// `admin` tabs are only shown to admins — non-admins can't change those settings,
-// so we don't show options they can't use (they still get About + Sign out).
-// Grouped into three tiers: Account (you) · Family (shared config an admin sets) ·
-// System (the self-host/deployment). Order = who you are → the features you use →
-// account/operator. Account is thin today; it grows with per-member self-service later.
+// `admin` tabs are only shown to admins, so nobody is offered options they can't use.
+// Three tiers: Account (you) · Family (shared config an admin sets) · System (self-host).
 const NAV = [
   // Account — you
   { key: 'appearance', icon: '🌗', label: 'Appearance', group: 'account' },
@@ -86,7 +84,7 @@ function MemberRow({ m, onClick }: { m: SettingsMember; onClick: () => void }) {
   const bday = fmtBirthday(m.birthday)
   return (
     <div className="set-member" onClick={onClick}>
-      <div className="av md" style={{ background: `${m.colorHex ?? '#A6A29B'}22` }}>{m.avatarEmoji ?? '🙂'}</div>
+      <div className="av md" style={{ background: avTint(m.colorHex) }}>{m.avatarEmoji ?? '🙂'}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="set-member-n">{m.name}</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>{roleLine(m)}</div>
@@ -111,10 +109,8 @@ function SettingRow({ icon, title, sub, children }: { icon: string; title: strin
   )
 }
 
-// A title (+ optional sub) heading a settings card, or a labelled section within
-// one (`mid` when it follows rows). Uses the shared `.set-card-head` spacing so
-// header-led cards keep the same top/left/right/bottom padding as row-led cards
-// instead of hugging the top edge. Prefer this over ad-hoc inline margins.
+// A title (+ optional sub) heading a settings card, or a labelled section within one (`mid`
+// when it follows rows). Uses the shared `.set-card-head` spacing, not ad-hoc margins.
 function CardHeader({ title, sub, mid }: { title: React.ReactNode; sub?: React.ReactNode; mid?: boolean }) {
   return (
     <div className={`set-card-head${mid ? ' set-card-head--mid' : ''}`}>
@@ -124,10 +120,8 @@ function CardHeader({ title, sub, mid }: { title: React.ReactNode; sub?: React.R
   )
 }
 
-// Role-based permissions grid (admin-only). Rows = roles (Adult/Teen/Kid),
-// columns = the capabilities. Saves the whole matrix on each toggle (optimistic,
-// reverts on failure) — matches the auto-save feel of the other settings cards.
-// Admins always have everything, so they're not a row here.
+// Role-based permissions grid (admin-only). Saves the whole matrix on each toggle
+// (optimistic, reverts on failure); admins have everything, so they are not a row.
 const PERM_ROLES: Role[] = ['adult', 'teen', 'kid']
 function PermissionsCard() {
   const [matrix, setMatrix] = useState<PermissionMatrix | null>(null)
@@ -199,8 +193,7 @@ const HEALTH_TITLE: Record<string, string> = {
   backup: 'Backups',
 }
 
-// One health check rendered as a card: status badge + its non-status fields as
-// key=value chips (jobs get a friendlier per-job line).
+// One health check as a card: status badge + its non-status fields as key=value chips.
 type JobSnapshot = { name: string; lastRunAt: string | null; lastError: string | null; runCount: number }
 
 // Raw bytes → "1.0 MB" so a backup size is legible at a glance.
@@ -216,9 +209,7 @@ function formatBytes(n: number): string {
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
 
-// Turn a raw health-check key/value into a friendlier chip: camelCase keys become
-// spaced words, `*Bytes` numbers become "1.0 MB", and ISO timestamps become a local
-// date/time. Everything else falls through to its String() form unchanged.
+// A friendlier chip: camelCase keys become words, `*Bytes` "1.0 MB", ISO stamps local time.
 function formatHealthField(key: string, value: unknown): { label: string; text: string } {
   const label = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase()
   if (typeof value === 'number' && /bytes?$/i.test(key)) {
@@ -266,12 +257,10 @@ function HealthCheckCard({ name, check }: { name: string; check: { status: Healt
   )
 }
 
-// Admin-only system health. Polls /api/health every 10s; a non-admin gets a 403 →
-// we render nothing (the tab is admin-gated anyway, matching PermissionsCard).
+// Admin-only system health, polling /api/health every 10s; a non-admin 403 renders nothing.
 // ── API Keys ────────────────────────────────────────────────────────────────────
-// Per-user keys for external tools (Home Assistant, scripts, …). The secret is shown
-// exactly once on creation. A key inherits the owner's role/capabilities; its scopes
-// bound which resource families it can touch.
+// Per-user keys for external tools; the secret is shown exactly once. A key inherits the
+// owner's role and its scopes bound which resources it can touch.
 type ScopeLevel = 'none' | 'read' | 'write'
 
 function scopeLabeler(scopes: ApiScopeDef[]): (scope: string) => string {
@@ -469,11 +458,9 @@ function NewApiKeyModal({ catalog, onClose, onCreated }: {
   )
 }
 
-// Per-browser PowerSync health inside System Health. Unlike every other card
-// here, this one is about THIS device rather than the server. It distinguishes an
-// empty-but-stalled local replica from "genuinely no data", names a boot failure
-// instead of letting it read as "off", and offers the manual rungs of the
-// watchdog's restart ladder.
+// Per-browser PowerSync health — the one card here about THIS device. It distinguishes an
+// empty-but-stalled local replica from "genuinely no data", names a boot failure instead of
+// letting it read as "off", and offers the watchdog's manual rungs.
 const SYNC_STATE_LABEL: Record<SyncHealthStatus, string> = {
   off: 'off — reading over the network',
   starting: 'starting…',
@@ -597,8 +584,7 @@ function SystemHealthPanel() {
   )
 }
 
-// Update notifier row inside System Health: "update available / up to date / off",
-// with an admin toggle. Hidden entirely when the operator disabled it via env.
+// Update notifier row, hidden entirely when the operator disabled it via env.
 function UpdateBanner({ upd, onToggle, toggling }: { upd: UpdateInfo; onToggle: (v: boolean) => void; toggling: boolean }) {
   const envOff = !upd.enabled && upd.reason === 'env'
   return (
@@ -645,20 +631,17 @@ function UpdateBanner({ upd, onToggle, toggling }: { upd: UpdateInfo; onToggle: 
   )
 }
 
-// Same swatch palette the Family & People person editor uses, so a member's
-// self-service color picker matches what an admin sees.
+// The same swatch palette the Family & People person editor uses, so self-service matches.
 const ACCOUNT_SWATCHES = COLOR_SWATCHES
 
-// Pull the server's `{ error, message }` message off a caught apiSend error
-// (ApiSendError carries `.body`), falling back to a friendly default.
+// Pull the server's `{ error, message }` off a caught apiSend error (`.body`).
 function accountErrMsg(e: unknown, fallback: string): string {
   const body = (e as { body?: { message?: string } })?.body
   return body?.message || fallback
 }
 
 // ── My Profile ────────────────────────────────────────────────────────────────
-// A signed-in member edits their OWN name, avatar, color, and birthday. Everything
-// else about the person (role, login, kiosk visibility) stays admin-managed.
+// A member edits their OWN name, avatar, colour and birthday; the rest stays admin-managed.
 function MyProfilePanel() {
   const [info, setInfo] = useState<AccountInfo | null>(null)
   const [error, setError] = useState(false)
@@ -704,7 +687,6 @@ function MyProfilePanel() {
         colorHex,
         birthday: birthday || null,
       })
-      // Reflect the saved values back so `dirty` resets.
       setInfo((i) => (i ? { ...i, name: name.trim(), avatarEmoji: avatarEmoji.trim() || null, colorHex, birthday: birthday || null } : i))
       emitHouseholdChanged() // refresh topbar avatar/name immediately
       setSaved(true)
@@ -759,8 +741,7 @@ function MyProfilePanel() {
 }
 
 // ── My Account ────────────────────────────────────────────────────────────────
-// Login & security for the signed-in member: change email and password. OIDC
-// members can't change either here — those live with their SSO provider.
+// Login & security for the signed-in member. OIDC members change neither here.
 function MyAccountPanel() {
   const [info, setInfo] = useState<AccountInfo | null>(null)
   const [error, setError] = useState(false)
@@ -892,9 +873,8 @@ function MyAccountPanel() {
   )
 }
 
-// The kiosk PIN opens your profile on the shared tablet's picker — separate from your
-// email/password sign-in, and available even to SSO members. Self-service (the API
-// route is self-or-admin). 4–8 digits.
+// The kiosk PIN opens your profile on the shared tablet's picker — separate from
+// email/password sign-in, available even to SSO members, self-service, 4–8 digits.
 function KioskPinCard({ personId, hasPin }: { personId: string; hasPin: boolean }) {
   const [pinSet, setPinSet] = useState(hasPin)
   const [pin, setPin] = useState('')
@@ -959,9 +939,7 @@ function FamilyPanel() {
     refetch()
   }
 
-  // Display preferences: how event chips are painted, and the color used for
-  // events that involve the whole family. emitHouseholdChanged() re-reads the
-  // household everywhere, so the calendar restyles without a reload.
+    // emitHouseholdChanged() re-reads the household, so the calendar restyles without a reload.
   async function saveDisplay(patch: { eventStyle?: string; familyColorHex?: string }) {
     await personsApi.setDisplay(patch)
     emitHouseholdChanged()
@@ -1066,9 +1044,8 @@ const PROVIDER_META: Record<Provider, { label: string; sub: string; envHint: str
 }
 const PROVIDER_ORDER: Provider[] = ['heuristic', 'ollama', 'anthropic', 'openai']
 
-// Smart matching: the per-household learned word→goal cache that powers calendar
-// suggestions + auto-link. View what's been learned and forget any of it (a single
-// word, or all of it) — so a wrong pattern can be corrected.
+// Smart matching: the learned word→goal cache behind calendar suggestions, and a way to
+// forget any of it so a wrong pattern is fixable.
 function LearnedMatches() {
   const [groups, setGroups] = useState<MemoryGroup[] | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
@@ -1122,9 +1099,8 @@ function LearnedMatches() {
   )
 }
 
-// AI & capture: pick which engine parses the "Add anything" bar. Credentials live
-// in the server environment (docker-compose / .env) — this only flips the active
-// provider + model. Providers without a key/host configured are disabled here.
+// AI & capture: which engine parses the "Add anything" bar. Credentials live in the server
+// environment; this only flips the active provider + model.
 function AiPanel() {
   const [cfg, setCfg] = useState<CaptureConfig | null>(null)
   const [provider, setProvider] = useState<Provider>('heuristic')
@@ -1247,9 +1223,7 @@ const MEAL_TIME_ROWS: Array<{ key: string; label: string; icon: string }> = [
   { key: 'snack', label: 'Snack', icon: '🍎' },
 ]
 
-// Pantry staples — assumed-in-house items the grocery auto-build leaves off the
-// list. Same list shown on the Lists grocery board's "Edit staples"; managed here
-// too so it lives with the other meal settings.
+// Pantry staples — items the grocery auto-build leaves off. The grocery board's same list.
 function StaplesEditor() {
   const [staples, setStaples] = useState<PantryStaple[] | null>(null)
   const [draft, setDraft] = useState('')
@@ -1286,17 +1260,15 @@ function StaplesEditor() {
   )
 }
 
-// Meals: how planned meals show up on the calendar — whether at all, whether they
-// push to Google, whose calendar they belong to, who's invited, and the time each
-// meal type lands at. Changes re-sync meals already on the plan.
+// Meals: how planned meals show up on the calendar, and each meal type's time. Changes
+// re-sync the plan.
 function MealsPanel() {
   const { persons } = usePersons()
   const [cfg, setCfg] = useState<MealCalendarSettings | null>(null)
   const [error, setError] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
-  // Auto-save (like pantry staples) — no Save button, so meal settings and
-  // staples behave the same. dirtyRef gates the debounced save so echoing the
-  // server's normalized cfg back into state doesn't trigger another save.
+    // Auto-save (like pantry staples), so meal settings and staples behave the same. dirtyRef
+    // gates the debounced save, or echoing the server's normalized cfg back would re-save.
   const dirtyRef = useRef(false)
 
   useEffect(() => {
@@ -1448,20 +1420,15 @@ function fmtWhen(iso: string | null): string {
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-// Subscriptions you can't edit (holidays, other people's calendars) come back as
-// reader / freeBusyReader; owner/writer are your own read-write calendars.
+// Subscriptions you can't edit come back as reader / freeBusyReader; owner/writer are yours.
 function isReadOnly(accessRole: string | null): boolean {
   return accessRole === 'reader' || accessRole === 'freeBusyReader'
 }
 
-// Calendars: connect Google accounts, map each calendar to a person (color/owner),
-// toggle which ones Waffled syncs, and pull events on demand. Connect navigates to
-// Google's consent screen; the api callback redirects back here when it's done.
+// Calendars: connect Google accounts, map each to a person, toggle syncing, pull on demand.
 // ── Calendar feeds: read-only ICS URL subscriptions ─────────────────────────
-// The no-OAuth calendar source: paste any published .ics / webcal link (school
-// schedule, sports team, an Outlook "publish calendar" URL) and Waffled polls it.
-// Renders whether or not an OAuth provider is configured — that independence is
-// the whole point.
+// The no-OAuth calendar source: any published .ics / webcal link, polled. Renders whether or
+// not an OAuth provider is configured — that independence is the point.
 function feedHost(url: string): string {
   try { return new URL(url.replace(/^webcal:\/\//i, 'https://')).host } catch { return url }
 }
@@ -1483,8 +1450,7 @@ export function CalendarFeedsCard({ feeds, onChanged }: { feeds: IcsFeed[]; onCh
       setUrl('')
       setName('')
       onChanged()
-      // Kick the first poll right away so events appear without waiting for the
-      // 15-minute cycle; refresh again when it lands (success or error badge).
+      // Kick the first poll right away so events appear without waiting for the 15-minute cycle.
       calendarsApi.syncFeed(feed.id).then(onChanged, onChanged)
     } catch {
       setErr('Could not add that feed — check the URL and try again.')
@@ -1493,10 +1459,8 @@ export function CalendarFeedsCard({ feeds, onChanged }: { feeds: IcsFeed[]; onCh
     }
   }
 
-  // "Private" means "only the person it belongs to sees it", so unassigning a private
-  // feed would leave it visible to nobody at all — its events import with a null owner
-  // and the personal filter never matches them. The API refuses that state; sharing it
-  // back with the family is the only sensible reading of "belongs to nobody".
+  // "Private" means only its owner sees it, so unassigning a private feed would leave it
+  // visible to nobody — its events import with a null owner. The API refuses that state.
   async function setPerson(f: IcsFeed, personId: string) {
     const next = personId || null
     await calendarsApi.updateFeed(f.id, {
@@ -1686,15 +1650,13 @@ function CalendarsPanel() {
     const { calendar } = await calendarsApi.updateCalendar(cal.id, { selected: !cal.selected })
     replaceCal(calendar)
   }
-  // Family (on the shared kiosk) vs personal (only its owner sees it, on their own
-  // profile/app). Flipping this re-stamps the calendar's events server-side.
+    // Family (on the shared kiosk) vs personal. Flipping this re-stamps the events server-side.
   async function toggleVisibility(cal: CalendarLink) {
     const next = cal.visibility === 'personal' ? 'family' : 'personal'
     const { calendar } = await calendarsApi.updateCalendar(cal.id, { visibility: next })
     replaceCal(calendar)
   }
-  // Setting a write target clears the flag on the person's other calendars, so
-  // refetch the whole list rather than patching a single row.
+    // Setting a write target clears the flag on the person's other calendars, so refetch all.
   async function toggleWriteTarget(cal: CalendarLink) {
     await calendarsApi.updateCalendar(cal.id, { isWriteTarget: !cal.isWriteTarget })
     load()
@@ -1704,7 +1666,6 @@ function CalendarsPanel() {
     await calendarsApi.disconnectAccount(accountId)
     load()
   }
-  // Flip every (currently visible) calendar in an account on or off at once.
   async function setAll(cals: CalendarLink[], selected: boolean) {
     const toChange = cals.filter((c) => c.selected !== selected)
     const updated = await Promise.all(toChange.map((c) => calendarsApi.updateCalendar(c.id, { selected })))
@@ -1720,7 +1681,7 @@ function CalendarsPanel() {
     const canTarget = !!cal.personId && !isReadOnly(cal.accessRole)
     return (
       <div className="set-row2">
-        <div className="set-ic2" style={{ background: `${cal.colorHex ?? '#A6A29B'}22` }}>📅</div>
+        <div className="set-ic2" style={{ background: avTint(cal.colorHex) }}>📅</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="set-row2-t" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {cal.summary ?? cal.googleCalendarId}
@@ -1939,8 +1900,7 @@ function CalendarsPanel() {
   )
 }
 
-// Countdowns display preferences (a core Calendar feature). Lives under Calendars.
-// Birthday-horizon options: a birthday only surfaces once it's within this many days.
+// Countdowns display preferences: the birthday horizon is how many days ahead one surfaces.
 const BIRTHDAY_HORIZON_OPTIONS: { days: number; label: string }[] = [
   { days: 61, label: '2 months' },
   { days: 92, label: '3 months' },
@@ -2003,8 +1963,7 @@ function CountdownsSettings() {
   )
 }
 
-// Currency catalog management (the "spend"/economy config). Admin-only writes;
-// inline edits save on blur, default/spendable toggle immediately.
+// Currency catalog management. Admin-only writes; inline edits save on blur.
 function CurrencyRow({ c, canDelete }: { c: Currency; canDelete: boolean }) {
   const [label, setLabel] = useState(c.label)
   const [symbol, setSymbol] = useState(c.symbol ?? '')
@@ -2030,9 +1989,8 @@ function CurrencyRow({ c, canDelete }: { c: Currency; canDelete: boolean }) {
   )
 }
 
-// Household reward-approval gate. On (default) → every redemption waits for a parent;
-// off → kids redeem instantly with currency they've already earned (a balance guard
-// still applies server-side). Optimistic toggle, reverts on failure.
+// Household reward-approval gate. On (default) every redemption waits for a parent; off,
+// kids redeem instantly against earned currency (a server-side balance guard still applies).
 function RewardApprovalCard() {
   const [requireApproval, setRequireApproval] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
@@ -2064,9 +2022,8 @@ function RewardApprovalCard() {
   )
 }
 
-// Photo-proof retention. Chores can require a photo on completion; those photos are
-// throwaway verification, so a daily sweep deletes them N days after the chore is
-// settled (the record that a photo existed is kept). 0 = keep until deleted by hand.
+// Photo-proof retention: proof photos are throwaway verification, so a daily sweep deletes
+// them N days after the chore is settled. 0 = keep until deleted by hand.
 const PROOF_TTL_OPTIONS = [
   { v: 1, label: '1 day' },
   { v: 3, label: '3 days' },
@@ -2077,8 +2034,7 @@ const PROOF_TTL_OPTIONS = [
 function ChoreProofCard() {
   const [ttl, setTtl] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
-  // Loaded for the count on the "View stored photos" button + handed to the drawer
-  // so it doesn't refetch; the drawer updates it back through setProofs on delete.
+    // Loaded for the button's count and handed to the drawer so it doesn't refetch.
   const [proofs, setProofs] = useState<StoredProof[] | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   useEffect(() => {
@@ -2131,10 +2087,7 @@ function fmtProofDate(iso: string | null): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-// Stored proof photos — a slide-over review/delete surface opened from the Photo
-// proof card (so it stays off the main settings page). The home for the "keep
-// until I delete them" option + early cleanup. Tap a thumbnail to enlarge; delete
-// one or clear all. `proofs`/`onChanged` are owned by the parent card.
+// Stored proof photos — a slide-over opened from the Photo proof card, which owns `proofs`.
 function ChoreProofsDrawer({
   proofs,
   onChanged,
@@ -2322,9 +2275,8 @@ function ConversionsSection({ currencies }: { currencies: Currency[] }) {
   )
 }
 
-// Sign out — clears the local session (and revokes the refresh token server-side),
-// which fires waffled:auth-changed and drops the kiosk back to the Login screen.
-// Tap-to-confirm so a stray touch on the wall-mounted kiosk doesn't sign everyone out.
+// Sign out — clears the local session and revokes the refresh token, firing
+// waffled:auth-changed. Tap-to-confirm, so a stray kiosk touch can't sign everyone out.
 function SignOutButton({ className }: { className?: string }) {
   const [confirm, setConfirm] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -2344,8 +2296,7 @@ function SignOutButton({ className }: { className?: string }) {
   )
 }
 
-// About / account — what this Waffled is, plus the sign-out control. Replaces the old
-// placeholder now that real auth exists.
+// About / account — what this Waffled is, plus the sign-out control.
 // A pill toggle switch (replaces the bare checkbox for on/off settings).
 function Switch({ checked, disabled, onChange, ariaLabel }: { checked: boolean; disabled?: boolean; onChange: (v: boolean) => void; ariaLabel: string }) {
   return (
@@ -2363,8 +2314,7 @@ function Switch({ checked, disabled, onChange, ariaLabel }: { checked: boolean; 
   )
 }
 
-// Enable/disable optional modules for this household. Available modules use a live
-// toggle and, when on, reveal their own settings; planned ones show "Coming soon".
+// Enable/disable optional modules; an available one reveals its own settings when on.
 function ModulesPanel() {
   const { household } = useHousehold()
   const [saving, setSaving] = useState<string | null>(null)
@@ -2408,6 +2358,7 @@ function ModulesPanel() {
               {on && m.hasSettings && m.key === 'pantry' && <PantrySettings />}
               {on && m.hasSettings && m.key === 'chores' && <ChoresModuleSettings />}
               {on && m.hasSettings && m.key === 'familyNight' && <FamilyNightSettings />}
+              {on && m.hasSettings && m.key === 'weeklyPlanning' && <WeeklyPlanningSettings />}
             </div>
           )
         })}
@@ -2416,8 +2367,7 @@ function ModulesPanel() {
   )
 }
 
-// Pantry's own settings (shown when the module is on): the Today-card toggle and
-// the editable location list. Saves immediately; refreshes household so Today reacts.
+// Pantry's own settings: the Today-card toggle and the location list. Saves immediately.
 function PantrySettings() {
   const { locations, showOnToday, avoidAllergens, lowThreshold, locationIcons, staleMonths, loading } = usePantry()
   const [list, setList] = useState<string[]>([])
@@ -2536,10 +2486,8 @@ function PantrySettings() {
   )
 }
 
-// Chores module sub-settings (shown when the module is on): the rewards sub-toggle.
-// Rewards is the spend half of the chores economy, so it lives here rather than as
-// its own module — it can't be on without chores. Saves immediately; refreshes the
-// household so the Tasks "Rewards" tab and the profile jar/redemption cards react.
+// Chores sub-settings: the rewards sub-toggle. Rewards is the spend half of the chores
+// economy, so it lives here — it can't be on without chores.
 function ChoresModuleSettings() {
   const [rewards, setRewards] = useState<boolean | null>(null)
   useEffect(() => { choresApi.getSettings().then((s) => setRewards(s.rewards)).catch(() => setRewards(true)) }, [])
@@ -2561,8 +2509,7 @@ function ChoresModuleSettings() {
   )
 }
 
-// Family Night's own settings (shown when the module is on): when it happens, the
-// agenda parts (rotating roles), and whether it's on the calendar. Admin-only panel.
+// Family Night's own settings: when it happens, the agenda parts, the calendar. Admin-only.
 const FN_DAYS = [0, 1, 2, 3, 4, 5, 6]
 const slug = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'part'
 
@@ -2642,6 +2589,122 @@ function FamilyNightSettings() {
   )
 }
 
+// Weekly Planning's own settings. A step whose module is off is NOT shown as a choice — it
+// isn't one. The catalog comes from the server, so nothing here hardcodes the list.
+function WeeklyPlanningSettings() {
+  const { view, loading } = useWeeklyPlanning()
+  const [saving, setSaving] = useState(false)
+    // The lists step 1 could ask about, from /config rather than the session view: which are
+    // even candidates is step 1's rule, and the server resolving it stops this panel offering a
+    // switch for the grocery list. Only the NAMES come from here.
+  const [candidates, setCandidates] = useState<PlanningListCandidate[]>([])
+  useEffect(() => {
+    let alive = true
+    weeklyPlanningApi.getConfig()
+      .then((r) => { if (alive) setCandidates(r.lists ?? []) })
+      .catch(() => { /* the rest of the panel is unaffected */ })
+    return () => { alive = false }
+  }, [])
+  if (loading || !view) return null
+  const config = view.config
+
+  async function save(patch: Parameters<typeof weeklyPlanningApi.setConfig>[0]) {
+    setSaving(true)
+    try { await weeklyPlanningApi.setConfig(patch) } finally { setSaving(false) }
+  }
+
+  const offForModule = view.steps.filter((s) => s.requiresModule && config.steps[s.key] !== false && !s.available)
+  const choosable = view.steps.filter((s) => !s.requiresModule || s.available || config.steps[s.key] === false)
+
+  return (
+    <div className="set-module-settings">
+      <div className="set-module-setrow">
+        <span>Session happens on</span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select className="sel" value={config.dayOfWeek} disabled={saving} onChange={(e) => save({ dayOfWeek: Number(e.target.value) })}>
+            {FN_DAYS.map((d) => <option key={d} value={d}>{planningDayName(d)}</option>)}
+          </select>
+          {/* 140, not the 120 the Family Night row uses — a 12-hour locale renders
+              "05:00 PM" plus the clock affordance and clips at 120. */}
+          <input className="set-inline-input" type="time" value={config.time} disabled={saving} onChange={(e) => save({ time: e.target.value })} style={{ width: 140 }} />
+        </div>
+      </div>
+      <div className="set-module-desc" style={{ marginTop: -4, marginBottom: 8 }}>
+        When to nudge the family to sit down. The session always plans the week ahead — which
+        seven days that is follows your household's first day of the week.
+      </div>
+
+      {/* WHERE THIS APPLIES, said out loud. The only consumer is the iPad display's
+          planning card: `weeklyPlanning` is in neither TODAY_CARDS nor MOBILE_TODAY_CARDS,
+          and this browser's Today page has no planning branch — so an admin toggling it
+          here sees nothing change on the screen they are looking at. That reads as a dead
+          control (the category this repo audited and removed four of), when in fact it is
+          a household setting whose effect is on another surface. */}
+      <div className="set-module-setrow">
+        <span>Show on the family display’s Today</span>
+        <Switch checked={config.showOnToday !== false} disabled={saving} onChange={(v) => save({ showOnToday: v })} ariaLabel="Show the planning session on the family display’s Today page" />
+      </div>
+      <div className="set-module-desc" style={{ marginTop: -4, marginBottom: 8 }}>
+        A card on the session day, on the <b>family display</b>. The web Today page and the
+        phone don’t show a planning card — reach the session from the Planning page here, or
+        the Family tab on the phone.
+      </div>
+
+      <div className="set-row2-t" style={{ marginTop: 6, marginBottom: 4 }}>Steps</div>
+      <div className="set-module-desc" style={{ marginBottom: 8 }}>
+        Turn off anything your family doesn't do — the session skips it and never counts it.
+      </div>
+      {choosable.map((s) => (
+        <div key={s.key} className="set-module-setrow">
+          <span>{s.title}</span>
+          <Switch
+            checked={config.steps[s.key] !== false}
+            disabled={saving}
+            onChange={(v) => save({ steps: { [s.key]: v } })}
+            ariaLabel={`Include ${s.title} in the session`}
+          />
+        </div>
+      ))}
+      {offForModule.length > 0 && (
+        <div className="set-module-desc" style={{ marginTop: 8 }}>
+          Not in the session because the module it reads is off: {offForModule.map((s) => s.title).join(', ')}.
+        </div>
+      )}
+
+      {/* WHICH LISTS THE FIRST STEP IS ABOUT.
+          Only lists get this choice. An overdue chore and a late rhythm are late by
+          definition, and a habit is short or it isn't — but an unchecked row on a
+          long-lived list is that list working as intended, and it came back every week:
+          "I have lists on there that are more longer-lived and I don't want the same
+          items to keep coming up every time."
+          Absent from the map ⇒ relevant, hence `!== false`: a household that never opens
+          this sees exactly what it saw before. */}
+      {candidates.length > 0 && (
+        <>
+          <div className="set-row2-t" style={{ marginTop: 6, marginBottom: 4 }}>Lists it asks about</div>
+          <div className="set-module-desc" style={{ marginBottom: 8 }}>
+            The first step asks about anything still unchecked from before this week. Turn off a
+            list that is meant to stay open — a someday list, a wishlist — and it stops coming up
+            every session. Your grocery list is never asked about: it rebuilds itself from the
+            meal plan.
+          </div>
+          {candidates.map((l) => (
+            <div key={l.id} className="set-module-setrow">
+              <span>{[l.emoji, l.name].filter(Boolean).join(' ')}</span>
+              <Switch
+                checked={config.lists?.[l.id] !== false}
+                disabled={saving}
+                onChange={(v) => save({ lists: { [l.id]: v } })}
+                ariaLabel={`Ask about ${l.name} in the weekly planning session`}
+              />
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
 function AboutPanel() {
   const { household } = useHousehold()
   return (
@@ -2664,10 +2727,8 @@ function AboutPanel() {
   )
 }
 
-// Households — switch between the households this account belongs to, and accept
-// pending invitations. Not admin-gated: any account can switch / accept. Switching
-// mints a fresh session for the other membership and does a full reload so the app
-// (and PowerSync) re-establish cleanly against the new household.
+// Households — switch between this account's households, and accept invitations. Not
+// admin-gated. Switching mints a fresh session and reloads so PowerSync re-establishes.
 function HouseholdsPanel() {
   const { household, memberships, pendingInvites } = useHousehold()
   const [switching, setSwitching] = useState<string | null>(null)
@@ -2740,9 +2801,8 @@ function HouseholdsPanel() {
   )
 }
 
-// Login & security — the installation owner can attach an OIDC/SSO provider and
-// decide whether password login stays on. Household admins still manage their own
-// kiosk devices below. The client secret is write-only.
+// Login & security — the installation owner attaches an OIDC provider and decides whether
+// password login stays on. The client secret is write-only.
 function SecurityPanel() {
   const [cfg, setCfg] = useState<OidcConfig | null>(null)
   const [forbidden, setForbidden] = useState(false)
@@ -2892,10 +2952,8 @@ function SecurityPanel() {
   )
 }
 
-// Kiosk devices — lives inside Sign-in & Security (all auth/session config in one
-// place). Pair tablets as shared kiosks, rename/revoke them, and nudge admins to set
-// a PIN (an admin without one can be claimed by anyone tapping their tile). Uses the
-// in-app ConfirmDialog, never native popups.
+// Kiosk devices — inside Sign-in & Security, so all auth config is in one place. Nudges
+// admins to set a PIN: an admin without one can be claimed by anyone tapping their tile.
 function KioskDevicesSection() {
   const { members } = useHouseholdSettings()
   const [devices, setDevices] = useState<KioskDevice[] | null>(null)
@@ -2923,8 +2981,7 @@ function KioskDevicesSection() {
     try { await navigator.clipboard.writeText(code.code); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { /* clipboard blocked */ }
   }
 
-  // While a code is shown, poll for the device pairing so the admin sees it land
-  // without a manual refresh. The new device appearing = the code was used.
+    // While a code is shown, poll for the pairing: the new device appearing means it was used.
   useEffect(() => {
     if (!code) return
     const baseline = devices?.length ?? 0
@@ -3049,8 +3106,7 @@ function KioskDevicesSection() {
   )
 }
 
-// Display & Kiosk: a per-device "this is the family display" toggle (enables the
-// screensaver + keep-awake locally) plus household-wide screensaver settings.
+// Display & Kiosk: a per-device "family display" toggle plus household screensaver settings.
 const CONTENT_OPTS: Array<{ key: DisplayConfig['content']; label: string }> = [
   { key: 'photos', label: 'Photos + clock' },
   { key: 'clock', label: 'Clock & weather' },
@@ -3070,7 +3126,6 @@ function DisplayKioskPanel() {
   const [savedFlash, setSavedFlash] = useState(false)
   const [preview, setPreview] = useState(false)
   const dirtyRef = useRef(false)
-  // Live data for the instant preview (and what the real screensaver uses).
   const wx = useWeather()
   const { events } = useEventsToday()
   const { photos } = usePhotos()
@@ -3095,8 +3150,7 @@ function DisplayKioskPanel() {
     dirtyRef.current = true
   }
 
-  // Debounced auto-save (like MealsPanel) — echoing the server's normalized cfg back
-  // into state must not retrigger a save, hence dirtyRef.
+    // Debounced auto-save; dirtyRef stops the server's normalized cfg retriggering a save.
   useEffect(() => {
     if (!cfg || !dirtyRef.current) return
     const t = setTimeout(async () => {
@@ -3264,10 +3318,8 @@ function DisplayKioskPanel() {
   )
 }
 
-// Appearance — theme preference (Light / Dark / Match system). Stored per-device
-// in localStorage via the theme store; applies instantly, no server round-trip.
-// The two preview cards intentionally use fixed literal hexes — they DEPICT each
-// theme, so they must stay light/dark regardless of the active theme.
+// Appearance — theme preference, stored per-device in localStorage. The two preview cards
+// intentionally use fixed literal hexes: they DEPICT each theme, whatever the active one is.
 function ThemePreview({ label, active, pinned, colors, onSelect }: {
   label: string
   active: boolean
@@ -3342,10 +3394,7 @@ export function Settings() {
   const tab = params.get('tab') ?? 'family'
   const setTab = (key: string) => setParams({ tab: key }, { replace: true })
 
-  // Your own account, for the self-service Account panels. Only a real personal
-  // login has one (hasAccount) — the shared kiosk and login-less members don't, so
-  // the My Profile / My Account items stay hidden for them. Fetched once, like
-  // memberships; while it loads the items are simply absent (then appear).
+    // Only a real personal login has an account, so these items stay hidden on the kiosk.
   const [account, setAccount] = useState<AccountInfo | null>(null)
   useEffect(() => {
     let alive = true
@@ -3356,18 +3405,14 @@ export function Settings() {
   // Wait until we know who's signed in, so admins don't flash the trimmed nav.
   if (!household) return <div className="settings-screen"><div className="set-content"><div className="muted" style={{ padding: 20 }}>Loading…</div></div></div>
 
-  // Non-admins only see what they can actually use (About + Sign out). Admin-only
-  // tabs are hidden rather than shown-then-blocked, so there's nothing to fumble.
+    // Admin-only tabs are hidden rather than shown-then-blocked.
   const isAdmin = person?.isAdmin ?? false
-  // The households tab only appears when there's something to act on (another
-  // membership to switch to, or a pending invite). Not admin-gated.
+    // The households tab only appears when there's something to act on. Not admin-gated.
   const showHouseholds = memberships.length > 1 || pendingInvites.length > 0
-  // The self-service Account items appear only for a real personal login — never on
-  // the shared kiosk, never for a login-less member.
+    // The self-service Account items appear only for a real personal login.
   const showAccount = !isKioskMode() && !!account?.hasAccount
   const nav = NAV.filter((n) => (!n.admin || isAdmin) && (n.key !== 'households' || showHouseholds) && ((n.key !== 'profile' && n.key !== 'account') || showAccount))
-  // Fall back to About (holds sign-out & account info) rather than whatever
-  // happens to sort first, so a limited/kiosk user lands somewhere sensible.
+    // Fall back to About (which holds sign-out) rather than whatever sorts first.
   const activeTab = nav.some((n) => n.key === tab) ? tab : (nav.some((n) => n.key === 'about') ? 'about' : nav[0]?.key ?? 'about')
 
   return (

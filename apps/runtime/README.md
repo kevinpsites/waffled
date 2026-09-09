@@ -20,7 +20,7 @@ so support can say "run `waffled-runtime doctor` and paste the output".
 waffled-runtime start [--foreground] [--bundle DIR] [--data DIR]
 waffled-runtime stop [--timeout 2m]
 waffled-runtime status [--json]
-waffled-runtime logs [service] [-f] [-n N]      # postgres migrate api powersync caddy runtime
+waffled-runtime logs [service] [-f] [-n N]      # postgres migrate api powersync caddy bonjour runtime
 waffled-runtime backup [--out FILE] [--keep N]
 waffled-runtime backup --install-schedule | --uninstall-schedule
 waffled-runtime restore FILE [--yes]
@@ -28,9 +28,10 @@ waffled-runtime doctor [--json]
 waffled-runtime version
 ```
 
-`--bundle` defaults to the directory **above** the binary — it ships at
-`Waffled.app/Contents/Resources/runtime/bin/waffled-runtime`, so `../` is the bundle
-root. `--data` defaults to `~/Library/Application Support/Waffled`.
+`--bundle` defaults to the directory **above** the binary — it ships *inside* the bundle it
+supervises, at `Waffled.app/Contents/Resources/runtime/bin/waffled-runtime`, so `../` is the
+bundle root and neither the app nor a person has to pass the flag. `--data` defaults to
+`~/Library/Application Support/Waffled`.
 
 ### The daemonize decision
 
@@ -62,6 +63,10 @@ Stop walks it backwards, ending with `pg_ctl stop -m fast`. Every step is idempo
 `start` against a running stack is a no-op, and a start interrupted halfway repairs
 itself on the next one.
 
+Once Caddy answers, the Bonjour advertiser starts — after the sequence, not inside it,
+because an advertisement is a promise that something is there to reach. It is withdrawn
+first on the way down, and it cannot fail a start (see [Bonjour](#bonjour)).
+
 Two details worth knowing:
 
 - **Postgres is not a supervised child.** `pg_ctl` exits as soon as the postmaster is
@@ -78,6 +83,22 @@ Crashed services come back with an exponential backoff capped at 30s — Compose
 healthy once, so a service that has never worked fails the start instead of looping over
 the same misconfiguration.
 
+"Healthy once" needs a definition for the one child with nothing to poll (the Bonjour
+advertiser): it is given half a second to prove it means to stay, and a process gone
+inside that window is a **start failure** returned to the caller, not a started service.
+For the advertiser that failure is never fatal and never silent: the reason is recorded in
+`bonjour.json`, and because the attempt put nothing on the network the setup poll simply
+tries again on its next tick, a minute later. That retry is deliberately uncapped — one
+attempt a minute is a pace, not a loop, and the usual cause (the Local Network prompt not
+answered yet) is a condition that becomes true later on its own.
+
+The cap is the *other* path. The advertiser is the only child whose restarts are capped, and
+that budget belongs to a dns-sd that got **past** the start window and then flapped: five
+immediate deaths in a row and supervision gives up, records why in `bonjour.json` and logs
+it once, because a dns-sd mDNSResponder has refused will not start working on the fiftieth
+attempt. Giving up is safe precisely because that child is advisory. Every other service
+still retries forever: a database that keeps dying should keep trying to come back.
+
 ## Data directory
 
 Default `~/Library/Application Support/Waffled` — note the space in that path, which is
@@ -87,7 +108,7 @@ directory.
 ```text
 ~/Library/Application Support/Waffled/
   config.env             0600 — the same variables as infra/compose/.env
-  runtime.json           ports, install id, socket dir, the bundle build last used
+  runtime.json           ports, install id, socket dir, the bundle build and version last used
   postgres/              PGDATA — excluded from Time Machine
   media/                 uploaded blobs (the api writes, Caddy serves)
   backups/               pg_dump output: routine backups and pre-migration snapshots
@@ -197,11 +218,103 @@ Plan §5 replaces Compose's private network with loopback binding. Where that st
 The integration test records the last two as named gaps that turn into passes — and tell
 you to delete the exemption — the day either is fixed.
 
+## Bonjour
+
+The server advertises itself on the local network as **`_waffled._tcp`**, on the public
+Caddy port — the only port another device should ever reach. This is how the iOS "Find
+your Waffled server" screen (plan §7 Phase 4) finds a Mac nobody has typed an address for.
+
+It runs `/usr/bin/dns-sd -R` as **one more supervised child**, started once Caddy is
+answering and stopped first on the way down. That is a deliberate choice over a Go mDNS
+library: registering through the system mDNSResponder means nothing new binds 5353 (a
+second responder beside it is the classic macOS flake), `go.mod` stays stdlib-only, and
+the registration is withdrawn automatically when that process is killed.
+
+What it does **not** do is die with the supervisor. Children are spawned into their own
+process group, so a supervisor that is SIGKILLed leaves dns-sd running and mDNSResponder
+still publishing. That is why the next start adopts the orphan (stopping it before
+registering again) and why `status` trusts the advertiser's pidfile, not the pid recorded
+in `bonjour.json`, for whether anything is on the network.
+
+It is **advisory**. It is not in `Children()`, not in `Order`, not in `PortChecks`, and not
+in the `services` array `status` emits, so a Bonjour failure can never make a working
+server look broken or turn the menu-bar icon red. A household that cannot be discovered
+still has a server every browser and every device typing the address in can reach.
+
+### The TXT contract
+
+This is what a client parses. Keys are added, never renamed or repurposed — a shipped iOS
+build will be reading them long after this runtime has moved on.
+
+| Key | Value |
+|---|---|
+| `txtvers` | `1`. A client that finds a version it does not know should ignore the record rather than guess. |
+| `name` | The instance name, repeated in the TXT so a client need not un-escape the DNS-SD instance label. |
+| `url` | The address to open: the LAN URL (`http://192.168.1.5:8080`), or `http://<host>.local:<port>` when this Mac has no routable address. |
+| `port` | The public Caddy port, as decimal text. Also the SRV port. |
+| `version` | The bundle's Waffled version, so a client can refuse a server too old to talk to. |
+| `setup` | `1` on an install with **no household yet** — a phone that finds it should say "finish setup on your Mac" rather than offer to sign in. `0` otherwise. |
+
+Byte limits are enforced where the wire imposes them: the instance name is truncated to 63
+bytes and each `key=value` to 255, both on a rune boundary, because household names are
+typed by people. Values are passed as argv straight to `execve` and are **not** escaped: a
+household called `Kevin's Home` travels as one argument with real spaces in it.
+
+### The instance name, and `setup`
+
+- Exactly one household → **the household's name** (`The Seinfelds`).
+- Zero households → **`Waffled on <computer name>`** (`scutil --get ComputerName`, falling
+  back to the hostname) and `setup=1`.
+- More than one household, or a household whose name is blank → the same machine fallback,
+  with `setup=0`: no single name is *the* household's name.
+- **The database could not be asked** → the machine fallback and `setup=0`. This is the
+  case worth being careful about: `setup=1` sends someone to a wizard, and a busy psql is
+  not a reason to send them back to one they already finished. `setup=1` is only ever
+  advertised on a positive read of an empty install.
+
+The name is computed at start and then re-checked once a minute until a household is
+genuinely **on the network** under the name it will keep — the one transition a person
+watches happen, since creating a household changes the name and the flag together. That
+includes the awkward first-boot cases: a census psql was too busy to answer, and a
+registration that failed to exec, are both states that can still change, so both keep
+polling. Polling stops for good once one household has been advertised, so a settled
+install pays nothing at all.
+
+**The limitation that leaves:** renaming a household later does not change what is
+advertised until the next restart. That is deliberate — a rename is rare, a restart fixes
+it, and the alternative is a psql fork every minute forever on every install.
+
+There is still no `waffled.local`: devices resolve this Mac by **its own** hostname
+(`kevins-mac-mini.local`), which is exactly why discovery exists.
+
+### Where to look when it does not work
+
+`status` reports what this Mac *asked for*. Whether the rest of the house can see it is a
+different question, so `doctor` browses for our own registration and, when it does not
+answer, names the two things that are almost always responsible: the firewall, and (on
+Sonoma and later) the Local Network privacy permission.
+
+`doctor` browses with `dns-sd -t <seconds>` rather than killing the command on a deadline.
+That is load-bearing, not tidiness: dns-sd block-buffers its stdout down a pipe, so a
+browse that ends by being killed comes back empty and would report an empty network on a
+Mac that is advertising perfectly well. If dns-sd ignores its own deadline and the context
+does have to kill it, that is reported as a browse that **did not finish** — an empty
+result nobody heard is not evidence about the firewall.
+
+A registration that mDNSResponder renamed on a collision (`The Seinfelds (2)`, because a
+neighbour advertised first) still counts as ours. Nothing else does: the match is the name
+exactly, or the name followed by `" ("`, so a neighbour's `Smith Family` is not read as the
+household `Smith` — a stranger's advertisement counted as ours would turn a registration
+the firewall is blocking into a clean bill of health.
+
 ## The bundle contract
 
 The runtime refuses to execute anything until the bundle matches its `manifest.json`:
 set equality on files **and symlinks**, sha256 per file, the owner-exec bit, and
-`arch`/`platform` against this machine. It is a port of `manifest.mjs verify` from
+`arch`/`platform` against this machine. **This binary is one of the files it checks** —
+`infra/native/bundle/build.sh` compiles it into `bin/waffled-runtime` before writing the
+manifest, so the supervisor verifies itself along with everything it is about to run, and a
+hand-built binary dropped into `bin/` afterwards is refused as a changed or extra file. It is a port of `manifest.mjs verify` from
 `infra/native/bundle/` (branch `native-bundle`), whose README is the interface this
 implements.
 
@@ -209,7 +322,7 @@ Symlinks are recorded and **never followed** — `bin/postgres/lib` has 17 relat
 without which `postgres` dies at dyld time, and PowerSync's `node_modules` is a 1,321-link
 pnpm farm.
 
-Verifying the real bundle (36,456 files, 1,338 symlinks, 580 MB) takes ~1.5s, so the
+Verifying the real bundle (36,478 files, 1,338 symlinks, 587 MB) takes ~1.5s, so the
 result is memoized in `bundle-verified.json`, keyed on three things: the bundle path, the
 sha256 of `manifest.json`, and a stat fingerprint (size + mtime) of every path that
 manifest lists. The manifest hash alone would not be enough — it changes with the build,
@@ -288,6 +401,32 @@ mirrored for the api, which can only be asked when the api is up anyway. For the
 reason `scheduleInstalled` is a `stat` of the plist rather than a `launchctl print` — the
 menu-bar app polls this, and a process spawn per poll is not free.
 
+So is the `bonjour` block:
+
+```jsonc
+"bonjour": {
+  "advertised": true,
+  "name": "The Seinfelds",         // "" while nothing is on the network
+  "service": "_waffled._tcp",      // constant, reported even when stopped
+  "port": 8080,                    // the public Caddy port
+  "host": "kevins-mac-mini.local",
+  "error": ""                      // why nothing is advertised, when something went wrong
+}
+```
+
+`schema` stays at **1** for this one too. Nothing here feeds `state`: `advertised: false`
+is never on its own a reason to draw a red icon.
+
+`status` usually runs in a **different process** from the supervisor, so the advertisement
+is recorded in `bonjour.json` beside `runtime.json`, written atomically. The file records
+what was **asked for**; whether it is on the network is the advertiser's **pidfile's**
+answer, and the two are combined here. (No supervisor pid is recorded: the process that
+decides the second question is dns-sd's, and it outlives the supervisor.) They can
+disagree: dns-sd runs in its own process group and outlives a SIGKILLed supervisor, so the
+name and port are reported for an orphan that is still publishing, and a file left behind
+with no advertiser running names nothing (but still carries the recorded reason, which is
+why the unclean stop left it there).
+
 ## Backup and restore
 
 ```sh
@@ -360,7 +499,20 @@ Plan §5: *rollback means restore, not reverse migrations.* Before `start` runs 
 it checks whether any are actually pending — comparing the bundle's migration **names**
 against `pgmigrations`, because the api runs node-pg-migrate with `checkOrder:false` and
 a database can legitimately hold a later migration while an earlier one is still pending.
-If any are, it dumps to `backups/pre-migrate-<version>-<stamp>.dump` first.
+If any are, it dumps to `backups/pre-migrate-<from>-to-<to>-<stamp>.dump` first — both
+versions, because a snapshot marks a *crossing* and the question anyone asks of one is
+which way it was going. `to` is the running build; `from` is the version `runtime.json`
+recorded on the last successful start, or `unknown` on data written before that was kept.
+The sidecar carries the same pair as `fromVersion`/`toVersion`, so a program never has to
+split a filename on dashes that also appear inside version numbers. Names written by
+earlier builds still parse: the timestamp is the last two dash-separated fields and
+everything before it is prose.
+
+One rough edge, recorded rather than papered over: a **retried** update names its snapshot
+`<new>-to-<new>`. The first attempt migrated and failed, so it never recorded a version,
+while the successful start before it did — so the second attempt's "from" is already the
+new build. Two failed updates in a row therefore leave several same-looking names, and it
+is their timestamps and sidecars, not their names, that put the story back in order.
 
 If the api then fails its health gate, that snapshot is **restored automatically** and
 the start fails, naming the file. The rollback stops **PowerSync as well as the api**
@@ -385,6 +537,18 @@ costs a household nothing: retention removes only files *beyond* the limit, so a
 run in a directory holding `keep` or fewer removes none at all. Snapshots are ordered by
 their parsed timestamp, not their name — sorting `pre-migrate-0.9.0-…` as a string puts
 it after `0.14.3` and would delete the newest.
+
+**A refused start prunes nothing.** Retention lives inside `snapshotBeforeMigrate` and
+`Backup`, both of which are downstream of the downgrade guard, so a start that refuses
+leaves `backups/` exactly as it found it. That is not incidental: the file the refusal
+recommends is in that directory, and a guard that pruned on its way out could delete the
+one thing it just told someone to restore.
+
+There is **one** snapshot per schema change, not two. An earlier draft of the plan
+reserved a second retention prefix for the updater, on the assumption that swapping
+binaries and changing the schema were separate events that should not evict each other's
+rollback points. With the one-unit decision below they are the same event — a `start` from
+a newer bundle — so `pre-migrate-` is the only snapshot pool there is.
 
 ### Schedule
 
@@ -415,6 +579,101 @@ Recorded because each looks like a bug to anyone who reads only one side:
 | `backup_runs` on restore | n/a | **not written** | the table has a `kind` column but the api reads `where status in ('success','failed') order by finished_at desc limit 1` with no filter on it, so a restore row would be reported as "the last backup" and a household that restored last week would be told its backups were current |
 | `BACKUP_ENABLED` | `true` | `true` (was `false`) | the api short-circuits its backup health check to "turned off" on `false`, which would hide the rows the runtime writes — a nightly backup failing for a week would look exactly like one succeeding for a week |
 
+## Updates
+
+**The Mac app is one unit, Plex-style.** Sparkle swaps the whole `Waffled.app` — with this
+runtime bundle inside it — relaunches, and the menu-bar app runs `waffled-runtime start`
+from the *new* bundle against the *existing* data directory. **A `start` from a newer
+bundle IS the update.** There is no binary-swap step for the runtime to perform, no
+`update` subcommand, and no second copy of the old bundle on disk to fall back to.
+
+So "rollback" has two halves, and only one of them is ours:
+
+| | who does it | how |
+|---|---|---|
+| the **data** | the runtime | snapshot → migrate → api health gate → restore the snapshot and refuse to come up |
+| the **availability** | a person | re-install the previous DMG, which must then start cleanly on the restored data |
+
+**What a failed update looks like.** The new build starts, sees migrations pending, dumps
+`pre-migrate-<old>-to-<new>-<stamp>.dump`, migrates, and the api fails its health gate.
+The database is restored from that snapshot and `start` exits with an error naming the
+file. Nothing is left running. The household is exactly where they were, on a schema their
+*previous* build can serve — which is what makes the second half work at all.
+
+**Going back.** Re-installing the previous version and starting is supported and tested:
+the older bundle finds nothing pending, takes no snapshot, and comes up on the restored
+data with PowerSync's storage and replication slot rebuilt. What it must never do is open
+a database a *newer* build already migrated, which is the state after an update that
+succeeded, or one that failed somewhere the automatic restore could not reach.
+
+### The downgrade guard
+
+`start` compares `pgmigrations` against the migrations the bundle ships and **refuses**
+when the database holds any this build does not — after Postgres is up, before migrate and
+the api. Migrations only run forward: there is no way to bring a schema back down, and an
+api serving tables and columns its code does not know about fails silently rather than
+loudly. `doctor` reports the same condition as a **FAIL**, starting Postgres for itself the
+way `backup` does — a refused start leaves nothing running, so a check that needed a live
+server would be dead code in the one case it exists for.
+
+That postmaster is started **once**, above all of `doctor`'s database checks, and serves
+the schema comparison, `pg_isready`, `wal_level` and the collation check together. The
+alternative it replaces was worse than untidy: the schema check booted Postgres for itself
+and shut it down, and the "postgres is running" gate below it then stopped the rest — so
+the command someone runs *because* their server will not start answered fewer questions
+than the one they run when it is fine, having paid for the boot either way. `doctor` still
+leaves the machine as it found it: the temporary postmaster is stopped on the way out, and
+the report says plainly when it was one.
+
+The refusal names both versions, the migrations this build lacks, and the newest snapshot
+in `backups/` that **this** build could actually restore (checked with the same
+`CheckRestorable` `restore` uses, so it can never recommend a file that would then be
+refused), and then the two ways out: re-install the newer version, or
+`waffled-runtime restore <that file> --yes`.
+
+It **does not auto-restore**. Everything the newer version wrote is still on disk, and
+restoring is the one action here that discards it — that is a person's decision, not a
+guard's, running at startup on a Mac nobody is sitting at.
+
+Two cases it keeps apart. Migrations *above* this build's newest are evidence of a newer
+Waffled. Migrations *below* it are not — this repo has renumbered before (0084→0086) — so
+that case refuses with its own wording rather than sending someone after a download that
+does not exist. And a version is never described as newer than itself: the newer build can
+migrate and then fail before it goes green, so it never records itself in `runtime.json`.
+
+### What `runtime.json` and `status` remember
+
+`bundleVersion` is the version the data was last **started** with, written only once a
+start has gone green. The timing is the whole point: recording the new version on the way
+in would overwrite the only record of what wrote the data with the thing about to change
+it, and a start that fails must leave that record intact. It is the `from` half of a
+snapshot's name and of the guard's message.
+
+A start that finds a different version than the file remembered also writes
+`previousBundleVersion` and `bundleVersionChangedAt`, which surface additively in
+`status --json` as `bundle.version`, `bundle.previousVersion` and
+`bundle.versionChangedAt`. They come from the file rather than from the process that did
+the changing, because `status` is a separate command run seconds later.
+
+Every one of those names is **direction-neutral**, and that is the point. A crossing is
+two endpoints and a moment; it has no direction of its own. Re-installing an **older**
+build is the documented recovery from the downgrade guard, so a rollback is exactly as
+ordinary as an update here, and a field called `updatedAt` invites a reader to assume
+otherwise — which is how `status` came to greet that recovery with "updated from 0.15.0".
+
+Which way it went is **derived** from the two versions, by comparing the `MAJOR.MINOR.PATCH`
+prefix numerically (`+build` metadata is ignored: it says which build, never which is
+newer). `status` prints one of three lines, and anything rendering these fields should make
+the same comparison rather than assume:
+
+| what happened | the line |
+|---|---|
+| the new version sorts **after** the old | `updated from 0.14.3 on 2026-09-08T03:00:00Z` |
+| the new version sorts **before** the old | `rolled back from 0.15.0 on 2026-09-08T03:00:00Z` |
+| the two cannot be ordered — a dev build, a pre-release, or the same version rebuilt | `changed from main-abc1234 on 2026-09-08T03:00:00Z` |
+
+Data that has only ever known one version has no crossing and gets no line at all.
+
 ## Tests
 
 ```sh
@@ -430,7 +689,9 @@ round-trip), port selection against genuinely occupied ports, `runtime.json`
 round-tripping, the Caddyfile rewrite (both `api:3000` occurrences, paths with spaces,
 and a drift alarm that rewrites the repo's *real* `infra/compose/caddy/Caddyfile`),
 manifest verification against tampered/extra/missing/retargeted fixtures, process
-supervision, log rotation, and the status contract.
+supervision, log rotation, the status contract, and the Bonjour advertisement (which name
+wins, what `setup` means, the TXT keys and their byte limits, and the argv handed to
+dns-sd).
 
 The integration tests (build tag `integration`, skipped without `WAFFLED_BUNDLE`) run the
 real bundle into a temp data directory **whose path contains a space**:
@@ -445,6 +706,13 @@ real bundle into a temp data directory **whose path contains a space**:
 - `TestDetachedStartStop` — builds the real binary and drives `start` → `status --json`
   → `doctor` → `stop`, which is the only test that exercises the daemonize path.
 - `TestATamperedBundleIsRefused` — a bundle that does not match its manifest never runs.
+- `TestTheStackAdvertisesItselfOnBonjour` — reads the advertisement back off the network
+  with `dns-sd -Z`: the six TXT keys, `setup=1` on an install with no household, the url
+  and port pointing at the public port, and the instance gone again after `stop`. It
+  matches the instance by **port**, never by name: the Mac running the test may already be
+  running a real Waffled, and mDNSResponder renames a colliding instance rather than
+  refusing it. The network assertions skip with a clear message where multicast or
+  mDNSResponder is unavailable (CI runners); the child lifecycle is asserted regardless.
 - `TestBackupAndRestoreRoundTrip` — write a row, back up, destroy it, restore, and find
   it again with every service green. It reads `backup_runs` back with the api's **own
   query**, so a drifted column shows up here rather than as a blank panel in System
@@ -467,6 +735,26 @@ real bundle into a temp data directory **whose path contains a space**:
   objects still exist, so the migration fails and nothing ever reaches the gate. It then
   asserts the restored state is the **pre-migration** one specifically, since a snapshot
   taken a moment too late would still restore something and still look like it worked.
+- `TestUpdateAcrossTwoBundleVersions` (also `internal/supervisor`) is the only test that
+  runs **two** bundles against one data directory, which is the only way to reach the
+  things that exist between versions: A → a canary row → B (the update) → B with a forced
+  api-gate failure (the rollback) → **A again**, the re-install path, on the restored data
+  → B → A refused by the downgrade guard. It asserts one snapshot per schema change, named
+  and sidecar'd for the crossing and taken *before* the migration; `status` reporting the
+  new version and the old one as previous, read through a **fresh** supervisor because the
+  menu-bar app is a separate process; and a refusal that names a file which exists and
+  which `CheckRestorable` agrees the older build could serve. Bundle B is the real bundle
+  APFS-cloned (`cp -c`, ~7s) with its version bumped, one leaf-table migration added and
+  its manifest re-scanned. The whole loop takes **about 55s**.
+- `TestStartRefusesADatabaseMigratedByANewerBuild` (there too, for the unexported helpers)
+  is the guard on its own, at the cost of one start: a single `pgmigrations` row is all a
+  newer build would leave behind, and it is what the guard reads. It also asserts `doctor`
+  reports the same thing with the stack **down**, answers its other Postgres checks
+  (`pg_isready`, `wal_level`, collation) in the same breath rather than skipping them, and
+  puts Postgres back afterwards.
+- `TestTheAdvertisementFollowsSetupBeingFinished` lives there for the same kind of reason:
+  watching `setup=1` flip to the household's own name in seconds rather than a minute means
+  shortening `bonjourSetupPoll`, which is unexported and never written in production.
 
 Run the integration suite with `-p 1`: without it Go runs packages concurrently and two
 stacks race for the same ports.
@@ -483,20 +771,46 @@ default fell forward (public 8082, sync 8083, api 3001, powersync 8084, postgres
 
 The plan's Phase 2 exit criterion is under 60s; the test fails if a cold start exceeds it.
 
+## CI
+
+`.github/workflows/native-runtime.yml` runs on every PR/push touching `apps/runtime/**`,
+`apps/mac/**`, `infra/native/bundle/**` or `infra/compose/**`:
+
+- `runtime-go` (ubuntu-latest): `gofmt -l`, `go vet ./...`, `go test ./...` — the unit suite
+  above, no bundle. Fast, fails fast.
+- `runtime-macos` (macos-15, Apple silicon): `infra/native/bundle/build.sh fetch|build|verify`
+  assembles the real bundle (`WAFFLED_BUNDLE_CACHE` cached across runs, keyed on the pins in
+  `build.sh`), then `go build ./cmd/waffled-runtime` and
+  `WAFFLED_BUNDLE=<outdir> go test -tags integration -p 1 ./...` — the same integration suite
+  above, boot-testing the stack from an empty data dir on free ports. This is the Phase 2 exit
+  criterion's automated check (`docs/product/native-mac-plan.md` §7). The same job then builds
+  `Waffled.app` around that bundle (`apps/mac/Scripts/build-app.sh`) and boots the assembled
+  app with **no dev-mode environment variables**, which is where this binary gets exercised the
+  way a household will actually run it: found by path inside the app, resolving its own
+  `--bundle`, verifying it, and bringing the stack up from an empty data directory.
+
 ## Not this task
 
-Bonjour advertisement and the updater are deliberately absent, with seams left for them.
-The updater's flow — snapshot → stop → swap the runtime → migrate → health → restore on
-failure — is the sequence `start` already runs, so it should reuse `ensurePostgres`,
-`snapshotBeforeMigrate`, `rollbackTo`, `replaceDatabase` and `backup.CheckRestorable`
-rather than growing a second copy. It will want its **own** retention prefix beside
-`pre-migrate-`: a snapshot taken before swapping binaries answers a different question
-from one taken before a schema change, and sharing a pool would let either evict the
-other.
+The updater's **data** half is done — see [Updates](#updates): the snapshot, the migration,
+the health gate, the automatic restore and the downgrade guard, proven across two real
+bundle versions. There is no `update` subcommand and there should not be one: a `start`
+from a newer bundle already is the update, and a subcommand would have to know about DMGs
+and app bundles, which is the other half's job.
+
+What remains is that other half, in Phase 3: **Sparkle** — the appcast, the signed DMG,
+swapping `Waffled.app` and relaunching. None of it is the runtime's; the runtime's part is
+to be started afterwards and do the right thing, which is what it now does.
 
 ## Portability
 
 Standard library only — no third-party dependencies, no cgo. macOS-specific behaviour
-(the default data directory, the Time Machine exclusion) sits behind `//go:build darwin`
-with a no-op sibling, so the core still cross-compiles for the Windows work parked in
-plan §9.
+(the default data directory, the Time Machine exclusion, the dns-sd client) sits behind
+`//go:build darwin` with a no-op sibling. `GOOS=linux go build ./...` is clean; the Windows
+work parked in plan §9 additionally needs equivalents for three POSIX calls the supervisor
+uses today (`Flock` for the backup lock, `Setsid`/`Setpgid` for process groups, and
+`Statfs` for free space), so the build tags here are a start on that and not the whole of
+it. `internal/bonjour`'s non-darwin `Tool()` returns `""` and the
+supervisor then skips advertising and says so in `status` — never an error, because a
+server no phone can discover still serves everything that has its address. Windows has
+`dns-sd.exe` only where Bonjour for Windows is installed and Linux would register through
+Avahi; both are later decisions, and that file is the seam.

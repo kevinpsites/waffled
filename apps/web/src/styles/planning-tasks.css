@@ -1,0 +1,129 @@
+/* Weekly Planning · step 8 — Tasks (TasksStep.tsx).
+
+   The board deliberately reuses the kiosk Chores vocabulary — .chore-col, .chore-head,
+   .chore-ava, .chore, .chore-list, .chore-add (waffled.css) — so the step looks like the
+   screen the family already reads. What lives here is only what that vocabulary doesn't have:
+   the up-for-grabs strip, the face row under each open chore, the provenance line and day
+   chip on a card, and the footer naming what a person carries.
+
+   Drag-and-drop likewise borrows .chore-grip, .chore-drag-ghost and .chore-col.drop-target
+   from kiosk.css; only the STRIP needs a rule here, because it isn't a .chore-col.
+
+   Every colour is a token, so dark mode comes for free. Never hardcode a hex here. */
+
+.wpt {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 28px 26px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+/* ── The strip ──────────────────────────────────────────────────────────────── */
+/* Same shared tint the kiosk board gives its Up-for-grabs column, laid on its side. */
+.wpt-strip {
+  background: linear-gradient(160deg, var(--ai-t), var(--info-t));
+  border-radius: var(--r-lg);
+  padding: 15px 16px;
+  box-shadow: var(--sh-2);
+}
+/* Dropping onto the strip is the undo for a hand-out, so it lights up the way a person's
+   column does (kiosk.css .chore-col.drop-target). */
+.wpt-strip.is-drop {
+  outline: 2px dashed var(--primary);
+  outline-offset: -2px;
+}
+.wpt-strip-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wpt-strip-t { font-size: 17px; font-weight: 700; color: var(--ink); }
+.wpt-strip-s { font-size: 12.5px; font-weight: 600; color: var(--ink-2); flex: 1; min-width: 220px; }
+
+.wpt-strip-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+  gap: 11px;
+  margin-top: 12px;
+  align-items: start;
+}
+.wpt-strip-list .wpt-card { background: var(--card); }
+
+.wpt-faces { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.wpt-face {
+  width: 34px; height: 34px; flex: none;
+  border: 1px solid var(--hair-2); border-radius: 999px;
+  display: inline-grid; place-items: center;
+  font-size: 17px; line-height: 1; cursor: pointer;
+  transition: transform .12s ease, border-color .12s ease;
+}
+.wpt-face:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--person-3); }
+.wpt-face:disabled { cursor: default; opacity: 0.5; }
+
+.wpt-add-tile {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 62px;
+  font: inherit; font-size: 13.5px; font-weight: 700; font-family: var(--sans);
+  color: var(--ink-3); background: transparent;
+  border: 2px dashed var(--hair); border-radius: var(--r-md);
+  padding: 12px 13px; cursor: pointer;
+  transition: border-color .14s, color .14s, background .14s;
+}
+.wpt-add-tile:hover:not(:disabled) { border-color: var(--person-3); color: var(--person-3); background: var(--person-3-t); }
+.wpt-add-tile:disabled { cursor: default; opacity: 0.6; }
+.wpt-add-tile svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; }
+
+/* ── A chore card ───────────────────────────────────────────────────────────── */
+.wpt-card { align-items: stretch; }
+
+/* The title block opens the chore editor, so it's a real button — but it must still read as
+   the card's title: full width, text left, affordance on hover/focus only. */
+.wpt-open {
+  display: block; width: 100%; text-align: left;
+  font: inherit; font-family: var(--sans); color: inherit;
+  background: none; border: 0; padding: 0; margin: 0;
+  cursor: pointer; border-radius: var(--r-xs);
+}
+.wpt-open .t, .wpt-open .wpt-sub { display: block; }
+.wpt-open:hover:not(:disabled) .t { text-decoration: underline; text-underline-offset: 2px; }
+.wpt-open:focus-visible { outline: 2px solid var(--person-3); outline-offset: 2px; }
+.wpt-open:disabled { cursor: default; }
+.wpt-sub { font-size: 12px; font-weight: 600; color: var(--ink-3); margin-top: 2px; }
+.wpt-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.wpt-chip {
+  font-size: 11.5px; font-weight: 800; white-space: nowrap;
+  color: var(--ink-2); background: var(--panel);
+  border-radius: 999px; padding: 3px 9px;
+}
+/* No day on file. Calm, not an alarm — plenty of chores genuinely have no day. */
+.wpt-chip.is-unset { color: var(--ink-3); background: transparent; border: 1px dashed var(--hair); }
+
+/* A one-off's day can be changed, so its chip is a button. It stays a chip: the day is still
+   the fact being stated. */
+.wpt-chip-set { font: inherit; font-size: 11.5px; font-weight: 800; font-family: var(--sans); border: 0; cursor: pointer; }
+.wpt-chip-set.is-unset { border: 1px dashed var(--hair); }
+.wpt-chip-set:hover:not(:disabled) { color: var(--person-3); border-color: var(--person-3); }
+.wpt-chip-set:disabled { cursor: default; opacity: 0.6; }
+
+/* ── The columns ────────────────────────────────────────────────────────────── */
+.wpt-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+.wpt-col { min-width: 0; }
+.wpt-count {
+  margin-left: auto; flex: none;
+  font-size: 12.5px; font-weight: 700; color: var(--ink-3);
+}
+
+/* The fairness read. Stated in words rather than scored — nothing here implies a target. */
+.wpt-carries {
+  font-size: 12.5px; font-weight: 700; color: var(--ink-3);
+  border-top: 1px solid var(--hair-2);
+  padding-top: 10px;
+}
+
+@media (max-width: 720px) {
+  .wpt { padding: 4px 16px 22px; }
+  .wpt-strip-list, .wpt-cols { grid-template-columns: 1fr; }
+}

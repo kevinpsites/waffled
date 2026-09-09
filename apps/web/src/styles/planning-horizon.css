@@ -1,0 +1,157 @@
+/* Weekly Planning · step 3 — Horizon scan (kiosk/planning/steps/HorizonStep.tsx).
+
+   THIS FILE IS DELIBERATELY SHORT, and that is the whole design of the step. The month is the
+   SHIPPED month view (`MonthView` + `MonthDayPanel`), already styled in waffled.css /
+   calendar.css, and none of its `.cal-*` classes are redefined here. If a `.cal-*` rule ever
+   appears in this file, a second month grid has grown in the step: delete it. Adding an event
+   is the app's own `EventModal`, so this file styles no form fields either.
+
+   Every colour is a token, as in planning.css — never a hex, or dark mode breaks. */
+
+/* `.wp-body` is a flex column with `min-height: 0` and its own scroll. */
+.wph { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* ── The month being scanned ────────────────────────────────────────────────── */
+/* Arrows either side of the month: the step asks "anything FURTHER OUT?", and the answer often
+   isn't in the month the planned week falls in. Back is floored at that month. */
+.wph-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex: none; }
+.wph-month { font-size: 23px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+.wph-nav {
+  flex: none; width: 30px; height: 30px; border-radius: 999px;
+  border: 1px solid var(--hair); background: var(--card); color: var(--ink-2);
+  font: inherit; font-size: 17px; line-height: 1; cursor: pointer;
+}
+.wph-nav:hover:not(:disabled) { border-color: var(--ink-3); color: var(--ink); }
+.wph-nav:disabled { opacity: 0.35; cursor: default; }
+
+/* THE MONTH TAKES WHAT IS LEFT, AND SCROLLS ITSELF.
+   A fixed floor cannot work, and the measurement is why: `.wp-body` is ~500px on a 720px-tall
+   screen, and six rows holding two chips each without squeezing need ~582px on their own —
+   before the bar, the note and the parked board. So `flex: 1` with a small floor lets the
+   month absorb the remainder while everything below stays `flex: none`, and when the six rows
+   don't fit the GRID scrolls inside itself rather than the rows compressing. */
+.wph-cal { flex: 1; display: flex; min-height: 260px; }
+/* `.cal-cell` is a flex COLUMN, so every child shrinks by default and at ~70px a row the day
+   number and all three chips compressed below their natural height at once. `flex: none` IS
+   the minimum — a chip is its content's height or it is not drawn — and the cell's existing
+   `overflow: hidden` then clips one whole chip cleanly instead of shaving every chip.
+   A row costs ≈91px unsqueezed at two chips (padding + day number + chips + gaps), which is
+   the 582px below. Shorter means a chip FEWER (`maxChips={2}`), never a chip smaller. */
+.wph-cal .cal-cell > * { flex: none; }
+.wph-cal .cal-grid {
+  grid-auto-rows: minmax(92px, 1fr);
+  /* The scroll that makes the floor affordable: `.cal` is `grid-template-rows: auto 1fr`, so
+     this row takes the leftover height. Contained, so the end doesn't scroll the step. */
+  overflow-y: auto; overscroll-behavior: contain;
+}
+.wph-cal > .cal-month { flex: 1; min-width: 0; }
+/* `.cal` is a GRID ITEM of `.cal-month`, and a grid item's default `min-height: auto` refuses
+   to shrink below its content — so the month laid out at its natural 790px inside a 580px box
+   and painted over the park bar. The calendar page never shows this because its own ancestors
+   already zero the min-size out; scoped here rather than fixed on the shared `.cal`. */
+.wph-cal .cal,
+.wph-cal .cal-grid { min-height: 0; }
+@media (max-width: 900px) {
+  /* The day panel's 340px column doesn't fit beside the grid on a phone. */
+  .wph-cal { flex: none; height: auto; min-height: 0; }
+  .wph-cal > .cal-month { grid-template-columns: 1fr; }
+  .wph-cal .cal { min-height: 340px; }
+  /* No ceiling and one column: `.wph-cal` is `flex: none` at this width, so the whole step
+     scrolls as a page and a cap would only nest a scroll area under a thumb. */
+  .wph-board { grid-template-columns: minmax(0, 1fr); max-height: none; overflow-y: visible; }
+}
+
+/* ── The park bar ───────────────────────────────────────────────────────────── */
+/* THE ONE THING THE SESSION ADDS. Shaped as step 1's capture bar (`.wp-le-capture`) on
+   purpose — the two write the same kind of row to the same table. */
+.wph-park {
+  flex: none; display: flex; align-items: center; gap: 8px; margin-top: 14px;
+  background: var(--card); border: 1px solid var(--hair); border-radius: 999px;
+  padding: 4px 4px 4px 14px;
+}
+.wph-park-pin { flex: none; font-size: 15px; }
+.wph-park-in {
+  flex: 1; min-width: 0; border: 0; background: none; outline: none;
+  font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); padding: 9px 0;
+}
+.wph-park-in::placeholder { color: var(--ink-3); font-weight: 600; }
+/* Until something is typed the bar says what it is, in place of controls with nothing to act on. */
+.wph-park-hint { flex: none; font-size: 12.5px; font-weight: 650; color: var(--ink-2); padding-right: 12px; }
+.wph-park-go { flex: none; padding: 9px 18px; font-size: 13.5px; }
+.wph-park-go:disabled { opacity: 0.5; cursor: default; }
+
+/* The chips and their sentence, on their own row UNDER the pill: the list is every step still
+   ahead of the bar, and five-to-seven chips plus a submit button don't fit on one line. */
+.wph-park-tagrow {
+  flex: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 8px 4px 0; padding: 0 10px;
+}
+.wph-park-says { margin: 0; font-size: 12.5px; font-weight: 650; color: var(--ink-2); }
+.wph-park-says b { color: var(--ink); font-weight: 800; }
+
+/* The tag names the step that will LOOK at the note, so these read as destinations rather
+   than categories. Rendered from the server's list of steps this household runs. */
+.wph-tags { flex: none; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.wph-tag {
+  font: inherit; font-size: 12px; font-weight: 800; letter-spacing: 0.01em;
+  padding: 6px 11px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2);
+}
+.wph-tag:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-3); }
+.wph-tag.on { background: var(--ink); border-color: var(--ink); color: var(--on-accent); }
+/* A CHOSEN CHIP KEEPS ITS COLOURS UNDER THE CURSOR. `:hover:not(:disabled)` scores (0,3,0)
+   and `.on` only (0,2,0), so hover wins on specificity whichever is written first — without
+   this rule the chosen tag paints `--ink` text on an `--ink` fill. */
+.wph-tag.on:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); color: var(--on-accent); }
+.wph-tag:disabled { cursor: default; opacity: 0.6; }
+
+/* A refused park keeps the sentence — `parkItem` caps a note at 500 characters, so this is
+   reachable, and losing what was typed would be the worse half of the failure. */
+.wph-err {
+  flex: none; margin: 8px 0 0; font-size: 13px; font-weight: 650; color: var(--danger, var(--ink));
+}
+
+/* ── What the two actions are ───────────────────────────────────────────────── */
+/* Spelled out under the bar rather than trusted to the layout: "＋ adds an event" vs "the
+   bar parks a note" is the one thing about this step a person can get wrong. */
+.wph-note { flex: none; margin: 10px 0 0; font-size: 12.5px; font-weight: 600; color: var(--ink-2); line-height: 1.5; }
+.wph-note b { color: var(--ink); font-weight: 800; }
+
+/* ── The board ──────────────────────────────────────────────────────────────── */
+/* Read back from the table, not the session crumb, so it survives a second visit. */
+.wph-board-h { flex: none; margin: 14px 0 6px; font-size: 12px; font-weight: 800;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.wph-board {
+  flex: none; list-style: none; margin: 0; padding: 0;
+  /* Notes are one short line each: `auto-fill` with a floor keeps them full-width on a
+     phone and gives two or three columns on the kiosk. */
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px;
+  /* THE CEILING. Without it the board's height comes straight off `.wph-cal` — the only
+     child that flexes — and the month compresses toward its floor as notes are added. */
+  max-height: 168px; overflow-y: auto; overscroll-behavior: contain;
+}
+.wph-parked {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 12px; border-radius: var(--r-md);
+  background: var(--card-2); border: 1px solid var(--hair-2);
+}
+/* Wraps rather than clips: a column is ~240px and a note can be a full sentence.
+   `align-items: flex-start` on the row above keeps the tag on the first line. */
+.wph-parked-note { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.35; }
+.wph-parked-tag {
+  flex: none; margin-top: 1px;
+  font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px;
+  background: var(--primary-t); color: var(--primary);
+}
+/* No tag is a whole answer, so it is stated rather than left blank — but quietly. */
+.wph-parked-tag.is-unset { background: transparent; border: 1px dashed var(--hair); color: var(--ink-3); }
+/* Quiet: the row is a receipt, and the repair is the exception, not the offer. It swaps the
+   row for `.wp-pne` (the shared editor, in planning.css) rather than opening a dialog. */
+.wph-parked-edit {
+  flex: none; margin-top: 1px; padding: 3px 8px;
+  font-size: 11px; font-weight: 800; color: var(--ink-3);
+  background: transparent; border: 1px solid var(--hair); border-radius: 999px;
+  cursor: pointer;
+}
+.wph-parked-edit:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-3); }
+.wph-parked-edit:disabled { cursor: default; opacity: 0.6; }

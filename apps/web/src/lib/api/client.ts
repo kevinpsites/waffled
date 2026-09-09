@@ -192,6 +192,21 @@ function endLostSession(): void {
   else clearSession()
 }
 
+// A 403 that no session can ever satisfy: the household the token names is gone (a
+// restored database, a deleted household, a rebuilt stack), so refreshing only mints
+// another token for the same hole. Keyed on the server's `NoHousehold` code — never on
+// the bare status and never on the message, because an ordinary permission denial is a
+// 403 too and signing somebody out for lacking a capability would be worse than the
+// stuck session this ends.
+async function householdIsGone(res: Response): Promise<boolean> {
+  try {
+    const body = (await res.clone().json()) as { error?: unknown } | null
+    return body?.error === 'NoHousehold'
+  } catch {
+    return false // an unreadable body is not evidence of anything
+  }
+}
+
 // fetch with the bearer token + one transparent refresh-and-retry on 401.
 async function authFetch(path: string, init: RequestInit): Promise<Response> {
   const withAuth = (tok?: string): RequestInit => ({
@@ -205,6 +220,8 @@ async function authFetch(path: string, init: RequestInit): Promise<Response> {
     } else {
       endLostSession() // refresh failed → picker (kiosk) or login
     }
+  } else if (res.status === 403 && (await householdIsGone(res))) {
+    endLostSession() // the household is gone → picker (kiosk) or login
   }
   return res
 }

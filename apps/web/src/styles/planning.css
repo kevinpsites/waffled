@@ -1,0 +1,291 @@
+/* Weekly Planning — the session shell (WeeklyPlanning.tsx). Built from the shared
+   vocabulary (.btn, .modal-overlay/.modal-card, .wf-serif) plus this module's own chrome.
+   Every colour is a var, so dark mode comes for free — never hardcode a hex here.
+
+   THE POINT OF THE LAYOUT: the step body is the content, and the chrome around it is four
+   things — a step counter, a title, the one question, a progress hair. */
+
+.wp-screen { padding: 24px 30px 40px; }
+.wp-empty { color: var(--ink-3); font-weight: 600; padding: 24px 2px; max-width: 62ch; line-height: 1.5; }
+
+/* ── In session ───────────────────────────────────────────────────────────────
+   The session fills the frame and never scrolls the page, so the primary button is in the
+   same place on every step. It sizes to `.kiosk-main` (a flex column of definite height)
+   — NOT to 100dvh: the kiosk shell owns the viewport and puts a topbar above this, so a
+   viewport-height child overflows by exactly the topbar and pushes the footer off screen.
+   `min-height: 0` is what lets the middle row scroll instead of stretching the grid. */
+.wp-in {
+  padding: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wp-head {
+  display: flex; align-items: center; gap: 18px;
+  padding: 18px 28px 0;
+  position: relative; flex-wrap: wrap;
+}
+.wp-stepchip {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  font: inherit; font-size: 12.5px; font-weight: 750; letter-spacing: -0.01em;
+  color: var(--ink-2); background: var(--panel);
+  border: 0; border-radius: 999px; padding: 6px 13px; cursor: pointer;
+}
+.wp-stepchip:hover { color: var(--ink); }
+.wp-stepchip svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+
+.wp-title { font-size: 31px; font-weight: 600; letter-spacing: -0.028em; line-height: 1.1; }
+.wp-ask { font-size: 15px; font-weight: 550; color: var(--ink-2); min-width: 0; }
+.wp-week { margin-left: auto; flex: none; font-size: 12.5px; font-weight: 650; color: var(--ink-2); }
+/* THE DOOR. Quiet on purpose, but visible without opening anything. */
+.wp-exit {
+  flex: none; font: inherit; font-size: 12.5px; font-weight: 700;
+  color: var(--ink-3); background: none; border: 0; padding: 6px 2px; cursor: pointer;
+}
+.wp-exit:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+.wp-prog {
+  position: absolute; left: 0; right: 0; bottom: -10px;
+  height: 2px; background: var(--hair);
+}
+.wp-prog > div { height: 100%; background: var(--primary); transition: width 0.25s ease; }
+
+/* A column so a step body can stretch; the placeholder centres itself via `margin: auto`. */
+.wp-body { padding: 26px 28px 8px; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+
+/* ── The parked-note handoff ──────────────────────────────────────────────────── */
+/* Rendered by the SHELL above whichever step body is up (the banner is identical on all ten
+   steps). `flex: none` — every sibling in `.wp-body` that is not the step body has to be,
+   or it competes with the body for height. */
+.wp-handoff {
+  flex: none;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  background: var(--primary-t);
+  border: 1px solid color-mix(in srgb, var(--primary) 26%, transparent);
+  border-radius: var(--r-lg);
+}
+.wp-handoff-h {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--primary);
+}
+.wp-handoff-list { list-style: none; margin: 9px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.wp-handoff-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 9px 11px;
+  background: var(--card); border: 1px solid var(--hair-2); border-radius: var(--r-md);
+}
+.wp-handoff-note { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 650; color: var(--ink); line-height: 1.4; }
+.wp-handoff-note em { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 600; font-style: normal; color: var(--ink-3); }
+.wp-handoff-acts { flex: none; display: flex; gap: 7px; }
+.wp-handoff-act { padding: 7px 13px; font-size: 12.5px; }
+.wp-handoff-act.is-drop { color: var(--ink-3); }
+
+@media (max-width: 700px) {
+  .wp-handoff-acts { width: 100%; }
+  .wp-handoff-act { flex: 1; }
+}
+
+/* ── Editing a parked note (ParkedNoteEditor) ────────────────────────────────────
+   One editor, used by the shell's gold box and by the Horizon board. It replaces the row
+   rather than opening a modal: a dialog for one line loses the list you were reading it in.
+   Lives here, not planning-horizon.css, because the SHELL loads this file on every step. */
+.wp-pne { display: flex; flex-direction: column; gap: 8px; width: 100%; min-width: 0; }
+.wp-pne-in {
+  width: 100%; padding: 9px 11px;
+  font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink);
+  background: var(--card); border: 1px solid var(--hair-2); border-radius: var(--r-md);
+}
+.wp-pne-in:focus { outline: none; border-color: var(--primary); }
+.wp-pne-in:disabled { opacity: 0.6; }
+.wp-pne-tags { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.wp-pne-tag {
+  padding: 5px 10px;
+  font-size: 12px; font-weight: 700; color: var(--ink-2);
+  background: transparent; border: 1px solid var(--hair); border-radius: 999px;
+  cursor: pointer;
+}
+.wp-pne-tag:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-3); }
+.wp-pne-tag.on { background: var(--ink); border-color: var(--ink); color: var(--on-accent); }
+.wp-pne-tag:disabled { cursor: default; opacity: 0.6; }
+.wp-pne-err { margin: 0; font-size: 12px; font-weight: 600; color: var(--danger); }
+.wp-pne-acts { display: flex; gap: 7px; }
+.wp-pne-act { padding: 7px 13px; font-size: 12.5px; }
+
+.wp-foot {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 28px; background: var(--card); border-top: 1px solid var(--hair);
+}
+.wp-foot-sp { flex: 1; }
+.wp-skip {
+  background: none; border: 0; padding: 13px 4px; cursor: pointer;
+  font: inherit; font-size: 15px; font-weight: 700; color: var(--ink-2); white-space: nowrap;
+}
+.wp-skip:hover { color: var(--ink); }
+.wp-skip:disabled, .wp-primary:disabled { opacity: 0.5; cursor: default; }
+.wp-primary { font-size: 16px; padding: 14px 28px; }
+.wp-next { opacity: 0.72; font-weight: 600; margin-left: 6px; }
+
+.wp-placeholder {
+  max-width: 620px; margin: auto; text-align: center; flex: none;
+  border: 1.5px dashed var(--hair); border-radius: var(--r-lg);
+  padding: 44px 32px; background: var(--card-2);
+}
+.wp-placeholder-t { font-size: 18px; font-weight: 750; color: var(--ink-2); }
+.wp-placeholder-s { margin-top: 8px; font-size: 13.5px; font-weight: 600; color: var(--ink-3); line-height: 1.55; }
+
+/* ── Lobby ──────────────────────────────────────────────────────────────────── */
+.wp-lobby {
+  max-width: 560px; margin: 8px auto 0;
+  background: var(--card); border-radius: var(--r-xl); box-shadow: var(--sh-2);
+  padding: 30px 32px 28px;
+}
+.wp-lobby-t { font-size: 27px; font-weight: 600; letter-spacing: -0.022em; }
+.wp-lobby-s { margin-top: 5px; font-size: 13.5px; font-weight: 600; color: var(--ink-2); line-height: 1.5; }
+.wp-lobby-acts { margin: 20px 0 24px; display: flex; flex-direction: column; gap: 12px; }
+.wp-lobby-act-h {
+  font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--gold-d);
+}
+.wp-lobby-act-steps { margin-top: 3px; font-size: 14.5px; font-weight: 650; color: var(--ink); line-height: 1.35; }
+.wp-lobby-go { width: 100%; justify-content: center; }
+
+/* ── Agenda sheet ───────────────────────────────────────────────────────────── */
+/* `width: min(520px, …)` against the VIEWPORT, not `max-width: 100%`.
+   `.modal-overlay` is `display: grid; place-items: center` with no explicit columns, so
+   its implicit column sizes to the item's max-content: a bare `width: 520px` makes the
+   column 520px wide, `100%` then resolves to 520px too, and the card sails past a 390px
+   phone with its text clipped. Other modals dodge this by never setting `width`.
+   The 48px is the overlay's own 24px padding, both sides. */
+.wp-sheet { width: min(520px, calc(100vw - 48px)); max-width: none; padding: 24px 26px 20px; }
+.wp-sheet-t { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 4px; }
+.wp-sheet-s { font-size: 13.5px; font-weight: 600; color: var(--ink-2); margin-bottom: 14px; }
+.wp-sheet-act {
+  font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--gold-d); padding: 12px 0 4px;
+}
+.wp-sheet-step {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 9px 0; border: 0; border-bottom: 1px solid var(--hair-2);
+  background: none; font: inherit; font-size: 15px; font-weight: 600;
+  color: var(--ink-2); text-align: left; cursor: pointer;
+}
+.wp-sheet-step:hover { color: var(--ink); }
+/* The name takes the slack so a long title ellipsises instead of shoving the "you're here"
+   marker off the card's edge. */
+.wp-sheet-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-sheet-n {
+  width: 22px; height: 22px; border-radius: 999px; background: var(--panel);
+  font-size: 11px; font-weight: 800; display: grid; place-items: center;
+  color: var(--ink-2); flex: none;
+}
+.wp-sheet-step.done { color: var(--ink-3); }
+.wp-sheet-step.done .wp-sheet-n { background: var(--success); color: var(--on-accent); }
+.wp-sheet-step.on { color: var(--ink); font-weight: 750; }
+.wp-sheet-step.on .wp-sheet-n { background: var(--primary); color: var(--on-accent); }
+.wp-sheet-m { margin-left: auto; font-size: 12px; font-weight: 650; color: var(--ink-2); }
+.wp-sheet-f { display: flex; gap: 10px; margin-top: 16px; }
+.wp-sheet-f .btn { flex: 1; justify-content: center; }
+
+.wp-sheet-danger { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hair-2); text-align: center; }
+.wp-sheet-danger-open,
+.wp-sheet-danger-no {
+  background: none; border: 0; padding: 6px 8px; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink-3);
+}
+.wp-sheet-danger-open:hover, .wp-sheet-danger-no:hover { color: var(--ink); }
+.wp-sheet-danger-q { font-size: 12.5px; font-weight: 600; color: var(--ink-2); line-height: 1.5; text-align: left; }
+.wp-sheet-danger-acts { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.wp-sheet-danger-yes {
+  border: 0; border-radius: 999px; padding: 8px 16px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 750;
+  background: var(--danger); color: var(--on-accent);
+}
+.wp-sheet-danger-yes:disabled { opacity: 0.5; cursor: default; }
+
+/* ── The week stepper ──────────────────────────────────────────────────────────
+   Deliberately NOT in the session header: once a session is running the week it plans is
+   settled, so switching lives on the entry surfaces where changing your mind is free. */
+.wp-weeknav { display: inline-flex; align-items: center; gap: 4px; }
+.wp-weeknav-l { font-size: 13px; font-weight: 750; color: var(--ink); min-width: 96px; text-align: center; }
+.wp-weekarrow {
+  width: 28px; height: 28px; flex: none; border: 0; border-radius: 999px;
+  background: var(--panel); color: var(--ink-2);
+  font: inherit; font-size: 16px; font-weight: 700; line-height: 1; cursor: pointer;
+}
+.wp-weekarrow:hover:not(:disabled) { background: var(--hair); color: var(--ink); }
+.wp-weekarrow:disabled { opacity: 0.35; cursor: default; }
+.wp-weeknav-lobby { margin-top: 14px; }
+.wp-weeknav-sheet { margin-top: 10px; }
+
+/* ── The saved record ───────────────────────────────────────────────────────── */
+.wp-record {
+  max-width: 640px; margin: 8px auto 0;
+  background: var(--card); border-radius: var(--r-xl); box-shadow: var(--sh-2);
+  padding: 28px 32px 24px;
+}
+/* A record with no panel (the recap step off) keeps the 640px receipt it has always been. */
+.wp-record.is-read { max-width: 1180px; }
+
+.wp-record-read { margin-top: 20px; }
+
+.wp-record-steps {
+  margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--hair-2);
+  font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.wp-record.is-read .wp-record-list { margin-top: 6px; }
+
+.wp-err {
+  max-width: 620px; width: 100%; margin: 0 auto 4px;
+  border-radius: var(--r-lg); padding: 10px 14px;
+  background: var(--card-2); border: 1px solid var(--danger);
+  font-size: 13px; font-weight: 650; color: var(--ink);
+}
+
+.wp-record-t { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+.wp-record-s { margin-top: 4px; font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+.wp-record-list { margin: 20px 0 4px; }
+.wp-record-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--hair-2); }
+.wp-record-row:last-child { border-bottom: 0; }
+.wp-record-n {
+  width: 22px; height: 22px; border-radius: 999px; flex: none;
+  background: var(--success); color: var(--on-accent);
+  font-size: 12px; font-weight: 800; display: grid; place-items: center;
+}
+.wp-record-row.skipped .wp-record-n { background: var(--panel); color: var(--ink-2); }
+.wp-record-main { min-width: 0; }
+.wp-record-main b { display: block; font-size: 15.5px; font-weight: 650; }
+.wp-record-main s { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-2); text-decoration: none; margin-top: 1px; }
+.wp-record-f { display: flex; margin-top: 18px; }
+.wp-record-f .btn { flex: 1; justify-content: center; }
+.wp-record-week {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hair-2);
+  font-size: 13px; font-weight: 650; color: var(--ink-2);
+}
+
+/* ── Narrow (phone) ────────────────────────────────────────────────────────────
+   The design's phone frame is the same screen, not a lesser one: only the type scale and
+   the padding come down, and the week label drops out of the header. */
+@media (max-width: 720px) {
+  .wp-screen { padding: 16px 16px 28px; }
+  .wp-head { padding: 12px 18px 0; gap: 10px; }
+  .wp-head > .wp-title { flex-basis: 100%; font-size: 25px; }
+  .wp-ask { flex-basis: 100%; font-size: 13.5px; }
+  .wp-week { display: none; }
+  .wp-body { padding: 18px 18px 6px; }
+  .wp-foot { padding: 12px 18px; gap: 8px; }
+  /* nowrap: the affirmative is short but not one word ("Save the week"), and letting it
+     wrap turns the primary into a two-line block that dwarfs the footer. */
+  .wp-primary { flex: 1; justify-content: center; font-size: 15px; padding: 13px 18px; white-space: nowrap; }
+  .wp-next { display: none; }
+  .wp-skip { font-size: 14px; padding: 12px 2px; }
+  .wp-placeholder { padding: 32px 20px; }
+  .wp-lobby, .wp-record { padding: 22px 20px 20px; border-radius: var(--r-lg); }
+}

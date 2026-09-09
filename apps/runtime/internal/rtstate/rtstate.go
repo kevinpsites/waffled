@@ -51,6 +51,27 @@ type State struct {
 	// the bundle is re-verified.
 	BundleSHA  string `json:"bundleGitSha,omitempty"`
 	BundleTime string `json:"bundleBuiltAt,omitempty"`
+	// BundleVersion is the Waffled version this data was last STARTED with — written
+	// only once a start has gone green, never at construction.
+	//
+	// The timing is the whole point. It is the "from" half of a pre-migrate snapshot's
+	// name and of the downgrade guard's message, and both are asked while the new
+	// bundle is running: recording the new version on the way in would overwrite the
+	// only record of what wrote the data with the thing about to change it. Absent on
+	// data from before this field, which reads as "unknown" rather than as an error.
+	BundleVersion string `json:"bundleVersion,omitempty"`
+	// PreviousBundleVersion and BundleVersionChangedAt record the last version CROSSING:
+	// set when a successful start finds a different version than the file remembered, and
+	// left alone by every start that does not change version. They are what `status`
+	// reports as bundle.previousVersion / bundle.versionChangedAt, which it could not do
+	// from a value living only in the process that did the changing.
+	//
+	// "changed", not "updated": the crossing is recorded the same way in both directions,
+	// because re-installing an OLDER build is the documented recovery from the downgrade
+	// guard and is just as much a fact about this data as an update is. Which way it went
+	// is read back out of the two versions by whoever renders them.
+	PreviousBundleVersion  string `json:"previousBundleVersion,omitempty"`
+	BundleVersionChangedAt string `json:"bundleVersionChangedAt,omitempty"`
 	// BackupExcluded records that PGDATA has been marked so Time Machine skips it.
 	//
 	// It is remembered rather than re-asked because `status` builds a supervisor on
@@ -102,13 +123,7 @@ func Save(path string, s *State) error {
 	if s.Schema == 0 {
 		s.Schema = Schema
 	}
-	raw, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	raw = append(raw, '\n')
-
-	return atomicfile.WriteFile(path, raw, 0o644)
+	return atomicfile.WriteJSON(path, s, 0o644)
 }
 
 func randomID() (string, error) {

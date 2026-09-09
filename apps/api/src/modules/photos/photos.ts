@@ -12,6 +12,7 @@ import { query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { tenantRoute } from '../../platform/route-guards'
 import { getBlobStore, mediaKeyBelongsToHousehold, mediaUrl } from '../../platform/storage'
+import { assertPersonInHousehold } from '../../platform/household-refs'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -65,7 +66,8 @@ const SELECT_PHOTO = `
          ph.taken_at, ph.is_favorite, ph.reactions, ph.uploaded_by, ph.created_at,
          p.name as uploaded_by_name, p.avatar_emoji as uploaded_by_emoji, p.color_hex as uploaded_by_color
     from photos ph
-    left join persons p on p.id = ph.uploaded_by and p.deleted_at is null`
+    left join persons p on p.id = ph.uploaded_by and p.household_id = ph.household_id
+      and p.deleted_at is null`
 
 // Newest first (taken_at, then created_at). Optional memory filter.
 export async function listPhotos(householdId: string, memory?: string | null) {
@@ -206,6 +208,9 @@ export function registerPhotoRoutes(api: Api): void {
     if (!body.imageUrl && !body.storageKey && !body.emoji) {
       return res.status(400).json({ error: 'BadRequest', message: 'an image url, an uploaded image, or an emoji is required' })
     }
+    // storageKey is namespaced by household above; uploadedBy is a raw client id, so
+    // it needs the same proof of membership before it lands on the row.
+    if (body.uploadedBy != null) await assertPersonInHousehold(tenant.householdId, String(body.uploadedBy))
     const photo = await createPhoto(tenant, body as CreatePhotoInput)
     return res.status(201).json({ photo })
   }))

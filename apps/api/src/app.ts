@@ -31,6 +31,7 @@ import { registerMealRoutes } from './modules/meals/meals.routes'
 import { registerEventRoutes } from './modules/events/events'
 import { registerCountdownRoutes } from './modules/countdowns/countdowns'
 import { registerFamilyNightRoutes } from './modules/familyNight/familyNight.routes'
+import { registerWeeklyPlanningRoutes } from './modules/weeklyPlanning/weeklyPlanning.routes'
 import { registerRhythmRoutes } from './modules/rhythms/rhythms.routes'
 import { registerCalendarAiRoutes } from './modules/calendar/calendar-ai'
 import { registerCalendarRoutes } from './modules/calendar/calendars'
@@ -59,10 +60,9 @@ import { registerPowerSyncCrudRoutes } from './modules/powersync/powersync-crud'
 
 const api = createAPI()
 
-// Request context: tag every request with an id + start time, before the auth gate
-// so even rejected (401/403) requests are logged. The matching `request` log line
-// is emitted in api.finally() after the response is sent (lambda-api's next() isn't
-// awaitable, so timing/status are captured there).
+// Request context: tag every request with an id + start time, before the auth gate so even
+// rejected (401/403) requests are logged. The matching `request` log line is emitted in
+// api.finally() — lambda-api's next() isn't awaitable, so timing/status are captured there.
 api.use((req: Request, _res: Response, next: NextFunction) => {
   const requestId = (req.headers['x-request-id'] as string) || randomUUID()
   ;(req as Request & { requestId?: string; startTime?: number }).requestId = requestId
@@ -70,14 +70,13 @@ api.use((req: Request, _res: Response, next: NextFunction) => {
   next()
 })
 
-// Bound credential guessing and expensive public flows before authentication so
-// failed attempts consume quota too. The limiter is intentionally process-local:
-// the bundled self-hosted stack runs one API process.
+// Bound credential guessing and expensive public flows BEFORE authentication so failed
+// attempts consume quota too. Process-local on purpose: the bundled stack runs one API process.
 api.use(sensitiveRouteRateLimit)
 
-// Routes that skip auth. /api/auth/keys is the JWKS PowerSync fetches; the Google
-// calendar callback is hit by Google's browser redirect (no Authorization header)
-// and authenticates via its one-time OAuth state instead.
+// Routes that skip auth. /api/auth/keys is the JWKS PowerSync fetches; the Google calendar
+// callback arrives as a browser redirect (no Authorization header) and authenticates via its
+// one-time OAuth state instead.
 const PUBLIC_PATHS = new Set([
   '/healthz',
   '/api/auth/keys',
@@ -103,11 +102,11 @@ const PUBLIC_PATHS = new Set([
   '/api/waffled-bites/device/token',
 ])
 
-// Auth gate — authenticates every non-public route. An `x-api-key` header takes the
-// API-key path: it resolves to the owning person (set as req.principal + tenant) and
-// is scope-checked centrally here, since lambda-api has no per-route middleware.
-// Otherwise we verify the Bearer JWT as usual. Either failure throws AuthError → the
-// error handler below.
+// Auth gate — authenticates every non-public route. An `x-api-key` header takes the API-key
+// path: it resolves to the owning person and is scope-checked centrally here against a
+// path-prefix catalog. Central because that is fail-closed by construction — a route absent
+// from the catalog is 403, so a new route family cannot accidentally be key-reachable (see
+// api-keys.ts). Otherwise the Bearer JWT is verified. Either failure throws AuthError.
 api.use(async (req: Request, res: Response, next: NextFunction) => {
   if (req.method === 'OPTIONS' || PUBLIC_PATHS.has(req.path)) return next()
   const apiKeyHeader = req.headers['x-api-key']
@@ -122,10 +121,9 @@ api.use(async (req: Request, res: Response, next: NextFunction) => {
 
 // --- routes ---
 
-// Liveness + a fast DB readiness ping + build info. Stays shallow (it backs the
-// compose healthcheck, which only checks for HTTP 200 — so a DB blip surfaces in
-// the body's `db` field without flapping the container). The deep per-component
-// report is GET /api/health (admin).
+// Liveness + a fast DB readiness ping + build info. Stays shallow: it backs the compose
+// healthcheck, which only checks for HTTP 200, so a DB blip surfaces in the body's `db`
+// field without flapping the container. The deep report is GET /api/health (admin).
 api.get('/healthz', async () => {
   let db: 'up' | 'down' = 'up'
   try {
@@ -146,9 +144,8 @@ api.get('/api/household', async (req: Request) => {
   const { household, person } = await getContext(tenant)
   // Capabilities the client can gate UI on (admin ⇒ all; else per-role matrix).
   const capabilities = resolveCapabilities(person.member_type, person.is_admin, household.settings)
-  // The account's other memberships + pending invites drive the web household
-  // switcher / invite prompt on any page load (not just right after login).
-  // account-less callers (kiosk/device person) get empty arrays — no switcher.
+// The account's other memberships + pending invites drive the web household switcher /
+// invite prompt on any page load. Account-less callers (kiosk/device person) get empty arrays.
   const acct = await query<{ account_id: string | null; email: string | null }>(
     `select p.account_id, a.email from persons p left join accounts a on a.id = p.account_id and a.deleted_at is null where p.id = $1`,
     [tenant.personId]
@@ -166,10 +163,9 @@ api.get('/api/household', async (req: Request) => {
   }
 })
 
-// Admin-gated additional-household creation (design §5.8, decision 4). The first
-// household is created by the first-run wizard (/api/auth/setup); here an existing
-// ADMIN spins up an *additional* household (becoming its owner), linked to their
-// existing account. Open self-serve onboarding for unprovisioned tokens is deferred.
+// Admin-gated additional-household creation. The FIRST household comes from the first-run
+// wizard (/api/auth/setup); here an existing ADMIN spins up an additional one (becoming its
+// owner), linked to their existing account. Self-serve onboarding is deferred.
 api.post('/api/households', async (req: Request, res: Response) => {
   const tenant = await requireTenant(req) // 401 (no token) / 403 (unprovisioned) from upstream/AuthError
   requireAdmin(tenant) // 403 if not admin
@@ -184,12 +180,10 @@ api.post('/api/households', async (req: Request, res: Response) => {
       .status(400)
       .json({ error: 'BadRequest', message: 'name, timezone, and person.name are required' })
   }
-  // The owner's color reaches the calendar's CSS like any other member color.
   if (body.person.colorHex != null && !HEX_COLOR.test(String(body.person.colorHex))) {
     return res.status(400).json({ error: 'BadRequest', message: 'person.colorHex must be a #RRGGBB hex color' })
   }
 
-  // The additional household links to the caller's existing account.
   const ar = await query<{ account_id: string | null }>(
     `select account_id from persons where id = $1`,
     [tenant.personId]
@@ -213,28 +207,21 @@ api.post('/api/households', async (req: Request, res: Response) => {
     .json({ household: presentHousehold(household), person: presentPerson(person) })
 })
 
-// Members CRUD (/api/persons…)
 registerPersonRoutes(api)
 
-// Lists (/api/lists…)
 registerListRoutes(api)
 
 // Pantry (/api/pantry…) — optional module, gated per household
 registerPantryRoutes(api)
 
-// Chores (/api/chores…)
 registerChoreRoutes(api)
 
-// Rewards + redemptions (/api/rewards, /api/redemptions, /api/balances…)
 registerRewardRoutes(api)
 
-// Currency catalog (/api/currencies…)
 registerCurrencyRoutes(api)
 
-// Meals & recipes (/api/recipes, /api/meals…)
 registerMealRoutes(api)
 
-// Calendar events (/api/events…)
 registerEventRoutes(api)
 
 // Countdowns (/api/countdowns…) — core Calendar feature, not a gated module
@@ -242,44 +229,33 @@ registerCountdownRoutes(api)
 
 // Family Night (/api/family-night…) — optional module
 registerFamilyNightRoutes(api)
+registerWeeklyPlanningRoutes(api)
 
 // Rhythms (/api/rhythms…) — optional module
 registerRhythmRoutes(api)
 
-// Calendar AI cards (/api/calendar/heads-up, /api/events/:id/insight)
 registerCalendarAiRoutes(api)
 
-// Calendar connect — Google + Outlook (/api/calendar/{google,microsoft}…,
-// /auth/{google,microsoft}/calendar/callback)
 registerCalendarRoutes(api)
 
-// Calendar inbound sync (/api/calendar/sync)
 registerCalendarSyncRoutes(api)
 
 // ICS feed subscriptions (/api/calendar/feeds…) — read-only URL calendars
 registerIcsFeedRoutes(api)
 
-// Goals (/api/goals…)
 registerGoalRoutes(api)
 
-// Calendar → goal auto-counting recap (/api/goal-calendar/recap…)
 registerGoalCalendarRoutes(api)
 
-// Built-in auth: setup / login / refresh / logout (/api/auth/*)
 registerAuthRoutes(api)
-// Self-service account: my profile / email / password (/api/account…)
 registerAccountRoutes(api)
-// Invite-and-accept across households (/api/households/invites, /api/auth/invites)
 registerInviteRoutes(api)
 registerOidcRoutes(api)
 
-// Kiosk device pairing + profile tokens (/api/kiosk/*)
 registerKioskRoutes(api)
 
-// Waffled-Bites device pairing + parent control panel (/api/waffled-bites/*)
 registerWaffledBiteRoutes(api)
 
-// Person + family overviews (/api/persons/:id/overview, /api/family/overview)
 registerOverviewRoutes(api)
 
 // Role capability matrix (/api/permissions) — admin reads/edits chore+reward gates
@@ -290,36 +266,28 @@ registerTodayLayoutRoutes(api)
 // Mobile Today card layout (/api/today-layout/mobile) — phone-specific config
 registerMobileTodayLayoutRoutes(api)
 
-// Photos / memories (/api/photos…)
 registerPhotoRoutes(api)
 
-// Blob upload sink (/api/media) — base64 JSON → blob store, returns key + url
 registerMediaRoutes(api)
 
-// Capture-bar LLM parsing + provider config (/api/capture…)
 registerCaptureRoutes(api)
 
-// Live weather for the kiosk topbar (/api/weather)
 registerWeatherRoutes(api)
 
-// PowerSync auth (JWKS + token endpoint)
 registerPowerSyncRoutes(api)
 
-// PowerSync offline-write upload sink (/api/powersync/crud)
 registerPowerSyncCrudRoutes(api)
 
 // Per-user API keys (/api/api-keys…) — mint/list/revoke; the keys themselves auth
 // via the x-api-key header in the gate above.
 registerApiKeyRoutes(api)
 
-// Deep health report (/api/health, admin) + the System Health panel's data source.
 registerHealthRoutes(api)
 
-// In-app update notifier (/api/updates, admin) — checks the latest GitHub release.
 registerUpdateRoutes(api)
 
-// One structured access-log line per request, after the response is sent. status &
-// duration are read here because lambda-api's next() doesn't return a promise.
+// One structured access-log line per request, after the response is sent. status & duration
+// are read here because lambda-api's next() doesn't return a promise.
 api.finally((req: Request, res: Response) => {
   const r = req as Request & { requestId?: string; startTime?: number; tenantHouseholdId?: string }
   const status = (res as Response & { _statusCode?: number })._statusCode

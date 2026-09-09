@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Count's signature view — a collection grid. Progress reads as "the shelf
-/// fills up," not a percentage bar: `target` slots, the first `done` filled.
+/// Count's signature view — a collection grid. Progress reads as "the shelf fills up",
+/// not a percentage bar: `target` slots, the first `done` filled.
 struct CollectionGridView: View {
     let ctx: GoalDataContext
     var headerRight: AnyView?
@@ -9,7 +9,10 @@ struct CollectionGridView: View {
     private static let columns = [GridItem(.adaptive(minimum: 30), spacing: 4)]
 
     private var target: Int { Int(ctx.goal.target ?? 0) }
-    private var done: Int { Int(ctx.goal.totalProgress.rounded()) }
+    // Through `GoalDisplay` like every other progress read. A collection goal resolves
+    // to the same lifetime number, but going via the helper is what stops the next
+    // goal type reading the wrong axis here.
+    private var done: Int { Int(GoalDisplay.progress(ctx.goal).rounded()) }
     private var currentMonth: Int { GoalDateKey.calendar.component(.month, from: GoalDateKey.parse(ctx.stats.today)) - 1 }
     private var monthMax: Double { max(1, ctx.stats.byMonth[0...currentMonth].max() ?? 1) }
 

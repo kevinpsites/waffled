@@ -1,10 +1,8 @@
-// Barrel for the api client. Each domain lives in its own module so screens (and
-// the agents that build them) own one file outright; this file just re-exports
-// the slices and composes the flat `api` object consumers call.
+// Barrel for the api client. Each domain lives in its own module so screens own one file
+// outright; this file re-exports the slices and composes the flat `api` object.
 //
-// Adding a domain: create ./<domain>.ts exporting `<domain>Api` + types/hooks,
-// then add one `export * from` line and one spread below. That's the only shared
-// touch — keep it append-only.
+// Adding a domain: create ./<domain>.ts, then add one `export * from` line and one spread
+// below — keep it append-only.
 export { localToday, invalidateGetCache, getAccessToken, setSession, clearSession, isKioskMode, isDisplayMode, setDisplayMode, clearKioskDevice, clearProfileSession, enterKioskMode, getDeviceId } from './client'
 export * from './kiosk'
 export * from './bus'
@@ -27,12 +25,14 @@ export * from './events'
 export * from './countdowns'
 export * from './familyNight'
 export * from './rhythms'
+export * from './weeklyPlanning'
+// Each planning step's own client, pre-exported so building a step never edits this file.
+export * from './planning'
 export * from './calendars'
 export * from './weather'
 export * from './meals'
-// Meal Builder is exported as a namespaced slice (`mealBuilderApi`) and deliberately
-// NOT spread into the flat `api` object below — its methods are generically named
-// (create/list/get/update/remove) and would collide with other domains.
+// Meal Builder is a namespaced slice (`mealBuilderApi`) and deliberately NOT spread into
+// the flat `api` object: its generic method names would collide with other domains.
 export * from './mealBuilder'
 export * from './photos'
 export * from './media'

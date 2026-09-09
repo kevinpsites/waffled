@@ -1,0 +1,131 @@
+/* Weekly Planning · step 10 — Recap (kiosk/planning/steps/RecapStep.tsx).
+
+   THE ONE RULE THIS FILE EXISTS FOR: it all has to fit at once. So every track is
+   `minmax(0, 1fr)` and every cell carries `min-width: 0` / `min-height: 0` — a grid item
+   defaults to `min-*: auto`, which REFUSES to shrink below its content, and that is
+   exactly how the Horizon month grid overflowed its box and painted over the park bar. */
+
+.wpr { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+
+.wpr-note { color: var(--ink-3); font-weight: 600; padding: 18px 2px; max-width: 62ch; line-height: 1.55; }
+
+/* ── The week, one last time ─────────────────────────────────────────────────── */
+/* Seven equal tracks that are allowed to be narrower than their content. `1fr` alone
+   would not be: it floors at max-content and the strip would push the cards off. */
+.wpr-week {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.wpr-day {
+  min-width: 0; min-height: 0; overflow: hidden;
+  background: var(--card); border: 1px solid var(--hair-2); border-radius: var(--r-md);
+  padding: 8px 9px 9px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.wpr-d {
+  display: flex; align-items: baseline; gap: 5px;
+  font-size: 11px; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.wpr-d span { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); text-transform: none; }
+/* One line per thing, clipped rather than wrapped: seven columns of wrapping text is
+   seven columns of different heights, and the tallest one sets the strip. */
+.wpr-line {
+  font-size: 12px; font-weight: 650; color: var(--ink); line-height: 1.35;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* An event takes the calendar's OWN chip (`.ev` + `.ev-tint`, painted through `evVars()`),
+   so the week reads back in the colours the family knows. Only the geometry is retuned:
+   a colour rule of our own here would drift from the calendar it describes. */
+.wpr-line.ev { padding: 3px 7px; font-size: 11.5px; font-weight: 650; border-radius: 6px; }
+.wpr-line.mut { font-weight: 600; color: var(--ink-2); }
+.wpr-more { font-size: 11px; font-weight: 700; color: var(--ink-3); }
+
+/* ── The two cards ───────────────────────────────────────────────────────────── */
+.wpr-cols {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 14px;
+  align-items: start;
+}
+.wpr-side { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+
+.wpr-card {
+  min-width: 0;
+  background: var(--card); border: 1px solid var(--hair-2); border-radius: var(--r-lg);
+  /* 4px, not 16px: the header and the rows carry the remaining 12px themselves so a
+     hovered row can paint a fill wider than its own text. */
+  padding: 4px 4px 8px;
+}
+.wpr-h {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 12px 12px 8px; border-bottom: 1px solid var(--hair-2);
+  font-size: 13px; font-weight: 750; letter-spacing: -0.01em; color: var(--ink);
+}
+.wpr-h span { font-size: 12px; font-weight: 650; color: var(--ink-3); }
+
+/* ── A row: source · sentence · count ────────────────────────────────────────── */
+/* A grid rather than a flex of mixed elements, because a link and a div have to sit on the
+   same rails: [source] [sentence] [count]. Each cell names its own track, so a row with
+   no source leaves column 1 empty rather than sliding its badge in beside the text. */
+.wpr-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline; gap: 10px;
+  padding: 11px 12px; border-bottom: 1px solid var(--hair-2);
+  color: inherit; text-decoration: none;
+}
+.wpr-row:last-child { border-bottom: 0; }
+a.wpr-row { cursor: pointer; }
+a.wpr-row:hover { background: var(--panel); border-radius: var(--r-md); }
+
+.wpr-src {
+  grid-column: 1; min-width: 92px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.wpr-t { grid-column: 2; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.35; }
+.wpr-t.mut { font-weight: 600; color: var(--ink-3); }
+.wpr-t s {
+  display: block; margin-top: 3px;
+  font-size: 12px; font-weight: 600; color: var(--ink-2); line-height: 1.45;
+  text-decoration: none;
+}
+.wpr-n {
+  grid-column: 3;
+  font-size: 14px; font-weight: 750; color: var(--ink-2); font-variant-numeric: tabular-nums;
+}
+.wpr-n.is-none, .wpr-n.is-skipped, .wpr-n.is-parked {
+  font-size: 10.5px; font-weight: 750; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--ink-3); border: 1px solid var(--hair); border-radius: 999px; padding: 2px 8px;
+}
+
+.wpr-acts { grid-column: 3; display: flex; gap: 6px; align-items: center; }
+.wpr-act { padding: 5px 10px; font-size: 12px; white-space: nowrap; }
+.wpr-act.is-drop { color: var(--ink-3); }
+
+/* ── The closing sentence ────────────────────────────────────────────────────── */
+.wpr-foot {
+  flex: none;
+  font-size: 12.5px; font-weight: 600; color: var(--ink-3); line-height: 1.55;
+  max-width: 82ch;
+}
+.wpr-foot b { font-weight: 800; color: var(--ink-2); }
+
+/* ── Narrow: the seven days become seven rows ────────────────────────────────── */
+@media (max-width: 900px) {
+  .wpr-week { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .wpr-day {
+    display: grid; grid-template-columns: 66px minmax(0, 1fr); align-items: baseline;
+    column-gap: 10px; row-gap: 2px; padding: 7px 10px;
+  }
+  .wpr-d { grid-column: 1; grid-row: 1 / span 99; }
+  .wpr-day > *:not(.wpr-d) { grid-column: 2; }
+  .wpr-cols { grid-template-columns: minmax(0, 1fr); }
+  /* No room for a label column: the source becomes its own line above the sentence. */
+  .wpr-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .wpr-src { grid-column: 1 / -1; min-width: 0; }
+  .wpr-t { grid-column: 1; }
+  .wpr-n { grid-column: 2; }
+  .wpr-acts { grid-column: 1 / -1; }
+}

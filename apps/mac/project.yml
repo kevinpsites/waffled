@@ -1,0 +1,78 @@
+# XcodeGen project definition — the source of truth for the Mac menu-bar app.
+# Edit this file (not the generated .xcodeproj), then run `xcodegen generate`.
+# See README.md. The generated Waffled.xcodeproj + Waffled-Info.plist are gitignored.
+
+name: Waffled
+
+options:
+  bundleIdPrefix: app.waffled
+  deploymentTarget:
+    macOS: "14.0"          # MenuBarExtra needs 13; @Observable needs 14
+  developmentLanguage: en
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    MARKETING_VERSION: "0.14.3"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # Ad-hoc signing while the app is a dev skeleton. Developer ID signing and
+    # notarization — of the app AND every binary in the embedded runtime bundle —
+    # are Phase 3 item 5, deliberately deferred.
+    #
+    # CODE_SIGNING_ALLOWED must stay YES (the default). Setting it to NO skips the
+    # CodeSign phase outright, which silently overrides the "-" identity: the binary
+    # still gets a linker-applied signature, but the BUNDLE gets no CodeResources seal
+    # and its identifier is the product name rather than the bundle id. SMAppService
+    # validates the bundle, so "Start at login" behaves differently on the two — which
+    # is exactly the kind of difference a dev build must not hide.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: NO
+
+targets:
+  Waffled:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    info:
+      path: Waffled-Info.plist
+      properties:
+        CFBundleDisplayName: Waffled
+        # Version keys MUST point at the build settings — XcodeGen otherwise writes a
+        # hardcoded "1.0"/"1" into the generated plist, so bumping MARKETING_VERSION
+        # (what `./waffled release` does) would silently do nothing. Same reason as iOS.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # Menu-bar only: no Dock icon, no app menu, no window on launch.
+        LSUIElement: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.waffled.mac
+        ENABLE_TESTABILITY: YES              # @testable import Waffled from the tests
+        # Deliberately NO App Sandbox and no entitlements file: the app spawns
+        # waffled-runtime, which runs Postgres against a real filesystem outside any
+        # container. Sandboxing it would break the one thing it does.
+    scheme:
+      testTargets:
+        - WaffledTests
+      gatherCoverageData: true
+
+  WaffledTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Waffled
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.waffled.mac.tests
+        GENERATE_INFOPLIST_FILE: YES
+        # macOS bundles nest the executable under Contents/MacOS — the iOS form
+        # (Waffled.app/Waffled) builds fine and then fails to launch the host.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Waffled.app/Contents/MacOS/Waffled"
+        BUNDLE_LOADER: "$(TEST_HOST)"

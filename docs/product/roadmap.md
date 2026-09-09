@@ -254,6 +254,49 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Partial / in progress 🟡
 
+- **Weekly Planning** — a guided session that walks the family through deciding the week
+  ahead in ten steps (loose ends · calendar · horizon scan · family night · connection ·
+  goals · meals · tasks · kids · recap). New optional `weeklyPlanning` module (default
+  **off**), `planning_sessions` / `planning_session_steps` tables, and a server-owned step
+  catalog so web and iOS can't drift on the shape of the session. **Shipped so far:** the
+  module shell — Settings → Modules panel (session day/time, per-step opt-out), the
+  `/planning` screen with its lobby, the step chrome (counter → agenda sheet, the one
+  question, progress hair, skip/affirm footer), the saved record, plus a step-in-the-URL
+  scheme, planning any later week, and both exits (leave for now / start the week over) —
+  **and all ten steps** — Loose ends, Calendar, Horizon scan, Family night, Connection,
+  Goals, Meals, Tasks, Kids, Recap — built in parallel behind a per-step file seam (see the
+  plan doc's "Building the steps in parallel"), five at a time in two waves that merged with
+  no conflicts, then a validation pass that fixed ten reported defects across five of them.
+  **iOS parity shipped too** — the session shell (lobby, chrome, agenda sheet, the
+  parked-note handoff with each step's lent verb, "leave for now" as a per-device pause,
+  the saved record, the settings panel) and all ten step bodies, reachable from a Today
+  card, the Family hub, Settings, and the iPad kiosk's own rail page. Built the same way
+  the web steps were — a registry naming all ten keys and ten stub files on day one, so
+  each step could be written against its own files and nothing shared; six agents in two
+  waves, integrating with two compile errors between them, both in the wiring rather than
+  the steps. The port also turned up three defects in shipped code: `step.number` is a
+  CATALOG index and neither client's counter may use it (the server's own comment said the
+  opposite), the progress hair was positional on web and settled-based on iOS, and iOS had
+  never decoded `periodDone`/`stepDone`/`stepTotal` at all — so every iOS surface had been
+  showing habit goals their LIFETIME count instead of this period's. The architectural
+  point held: the session stores almost nothing — two tables
+  (`planning_sessions`, `planning_session_steps`) plus `planning_parked_items` — and every
+  decision lands in the module that owns it. Step 1 is the one exception and it stores nothing
+  either: it *routes* items to later steps, recorded in the session's own jsonb — and the
+  step it routes to now opens with the note, a shell-level handoff every step (and the iOS
+  pass) inherits rather than implements. A later validation round added two things worth
+  naming: the **finished week now reads the week back** on both clients — the saved record
+  opens with step 10's own read-back (the seven days, what the session changed grouped by
+  module, the last call, what was left alone) instead of a tick-list of step names, which
+  survives underneath as the record of what was skipped on purpose — and **which of your
+  lists step 1 asks about is now a household choice**, made IN the step by whoever is
+  running the session (an opt-out map where absent means relevant, so a long-lived
+  "someday" list stops coming up every session while overdue chores, late rhythms and
+  short habits still always count). It is gated by a new `planning.manage` capability that
+  every adult holds by default rather than by admin — running a session is not an admin
+  act — with the same switches still in Settings → Modules → Weekly Planning. Design:
+  `Weekly Planning v4` canvas; plan: `docs/product/weekly-planning-plan.md`.
+
 - **Waffled-Bites (kid companion device)** — the pairing system and the parent-facing
   control panel (Family → tap a kid → Waffled-Bite: quiet time, night light, wake-up
   light schedule, alarm, sound machine, screen brightness) are done on **web and iOS**
@@ -295,8 +338,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   PowerSync, Caddy and web build as Compose — only packaging and supervision differ, via a
   small Go runtime supervisor that is a CLI first (`waffled-runtime start|status|backup`).
   Mac only for now; Windows follows from the same runtime later. Plan, risks and phases in
-  [`native-mac-plan.md`](./native-mac-plan.md); Phase 1 is a throwaway native spike to prove
-  bundled Postgres and PowerSync-outside-Docker before any Swift is written.
+  [`native-mac-plan.md`](./native-mac-plan.md); the runtime supervisor (Phase 1 spike,
+  Phase 2 build) is done and the menu-bar app now drives it (Phase 3 items 1, 2 and 4), but
+  nothing is signed, notarized or packaged yet — so there is still nothing to download.
 - **Chore due-dates on the calendar.** The last piece of "the calendar as the all-in-one
   dated view": overlay `chore_instances.due_on` onto the calendar as read-only all-day chips,
   tapping through to the chore rather than the event editor. Deliberately chips, not
@@ -463,6 +507,23 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   ignores it entirely; re-planning should preserve it. Un-gated (collaborative/attribution,
   like list authorship — no capability needed to volunteer or reassign a cook).
 
+- **Scheduled plates should reference the library plate, not snapshot it (copy-on-write).**
+  Scheduling a saved plate today **copies** it (`POST /api/meals/:id/schedule` →
+  `copyMeal`), so the night points at a private duplicate. Recipe edits still flow through —
+  the copy holds `meal_recipes.recipe_id` references and the grocery rebuild reads
+  ingredients live — but **editing the saved plate itself never reaches nights already
+  scheduled from it**: add a fourth side to "BBQ Sunday" and last Sunday, and next Sunday,
+  keep the three they had. That leaves two mental models for one slot, which is the real
+  problem: a scheduled *recipe* is a reference, a scheduled *plate* is a snapshot. The fix is
+  to schedule by reference and copy only when someone edits **that night** (swap a side,
+  change the cook, adjust servings) — the behavior people expect by default, while still
+  protecting the template from a one-Tuesday tweak. Two costs to accept up front: editing a
+  plate then also changes **past** nights still using it verbatim (and a grocery rebuild on an
+  old week would follow), and the weekly-planning undo receipt's `mealId` check gets weaker,
+  because re-picking the same library plate would no longer write a fresh `meal_id` — it
+  stays correct, just no longer belt-and-braces. Bounding it to future weeks needs a
+  "has this night been touched" flag; one rule is better than two.
+
 - **Apple Health → goals — remaining follow-ons (iPhone).** Tiers 0–2 shipped (see **Done** —
   the full metric set incl. rings/mindful/mood, the **four distance metrics** (walk + run,
   cycling, swimming, wheelchair — fractional, mi/km per device region), **workout-type metrics**
@@ -552,6 +613,33 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Apple-Speech dictation against the same `/api/recipes/ingest/*` endpoints, with the two
   import buttons gated on the household's provider. Still planned: **instruction-driven edits**
   ("make it vegetarian", "double it").
+- **API-key scopes declared per route, not by path prefix.** Findings, measurements and
+  the plan in [`api-key-scopes-plan.md`](./api-key-scopes-plan.md). Today `API_SCOPES` maps a
+  path *prefix* to a resource and one global gate enforces it (`scopeForRequest` +
+  `enforceApiKeyScope`), which has two costs. It is **fragile**: the scope lives far from
+  the route, and a hyphenated sibling silently belongs to nobody — `/api/chore-instances`
+  is not under `/api/chores`, `/api/pantry-staples` reads like pantry but is a lists route,
+  and a bare `startsWith` would have made `/api/households/invites` readable with
+  `family:read`. And it is **coarse**: a whole prefix gets one resource, so a surface that
+  writes across modules (Weekly Planning hands out chores, features goals, adds events,
+  fills the meal plan) has *no* correct scope — one `weeklyPlanning` scope would be a
+  skeleton key past `chores:write` and the rest, which is why the prefix sits in
+  `UNSCOPED_YET` instead. Declared per route, each route asks for the downstream scope it
+  actually needs and both problems go. lambda-api supports this directly — method-based
+  middleware (`api.post(path, requireScope('chores:write'), handler)`) and path-scoped
+  `api.use`; earlier comments in `route-guards.ts` and `api-keys.ts` claimed otherwise and
+  were simply wrong.
+  **The trap to design around:** today's model is fail-*closed* by construction — a route
+  absent from the catalog is 403, which is why the 29 planning routes were never an
+  exposure. Naive per-route middleware inverts that: forget the guard and the route is
+  wide open to any key. Global middleware runs *before* route middleware and `finally()`
+  can't alter an already-generated response, so a global default-deny cannot be cleared by
+  a later route guard. The fix is therefore a **typed registrar** wrapping
+  `api.get/post/...` where a scope — or an explicit `sessionOnly` marker — is a *required*
+  argument, so omission is a compile error and fail-closed survives the move. Retires the
+  `scope catalog covers the route table` guard and both `NOT_KEY_REACHABLE` buckets in
+  `api-keys.integration.test.ts`, which exist only because the declaration is remote from
+  the route. ~135 routes, mechanical but wide.
 - **Shared album import** for Photos (Google Photos / iCloud).
 - **Server-side fuzzy person resolution** for capture (nicknames/aliases).
 - **Milestone reward payouts** — deferred by design (needs idempotency + attribution rules).

@@ -125,7 +125,7 @@ func (s *Supervisor) Backup(ctx context.Context, opts BackupOptions) (path strin
 
 	size := fileSize(out)
 	if generated {
-		s.writeSidecar(ctx, out, db, size, takenAt)
+		s.writeSidecar(ctx, out, db, size, takenAt, crossing{})
 	}
 	s.closeBackupRun(ctx, db, runID, filepath.Base(out), size, started, nil)
 
@@ -205,13 +205,20 @@ func (s *Supervisor) dumpTo(ctx context.Context, db, out string) error {
 	return nil
 }
 
+// crossing is the version change a pre-migrate snapshot is taken for: the build that
+// wrote the data, and the build about to change its schema. A routine backup marks no
+// crossing and passes the zero value.
+type crossing struct{ from, to string }
+
 // writeSidecar records what the dump is, beside it. Best-effort: a dump with no sidecar
 // still restores, it just has to be unpacked to learn its level.
-func (s *Supervisor) writeSidecar(ctx context.Context, out, db string, size int64, at time.Time) {
+func (s *Supervisor) writeSidecar(ctx context.Context, out, db string, size int64, at time.Time, cross crossing) {
 	side := backup.Sidecar{
-		Database:  db,
-		SizeBytes: size,
-		TakenAt:   at.UTC().Format(time.RFC3339),
+		Database:    db,
+		SizeBytes:   size,
+		TakenAt:     at.UTC().Format(time.RFC3339),
+		FromVersion: cross.from,
+		ToVersion:   cross.to,
 	}
 	if m := s.manifest; m != nil {
 		side.WaffledVersion, side.GitSha = m.WaffledVersion, m.GitSha
@@ -364,11 +371,7 @@ func (s *Supervisor) appliedMigrations(ctx context.Context, db string) ([]string
 
 // bundleMigrations lists what this build ships.
 func (s *Supervisor) bundleMigrations() ([]string, error) {
-	from := ""
-	if s.manifest != nil {
-		from = s.manifest.Components.API.Migrations
-	}
-	return backup.MigrationNamesInDir(backup.MigrationsDir(s.plan.Bundle, from))
+	return backup.MigrationNamesInDir(backup.MigrationsDir(s.plan.Bundle, s.migrationsFromManifest()))
 }
 
 // dumpMigrationLevel reads a dump's schema level: from the sidecar when there is one,
@@ -417,6 +420,71 @@ func (s *Supervisor) dumpMigrationLevel(ctx context.Context, file string) (strin
 	}
 }
 
+// ── the downgrade guard ─────────────────────────────────────────────────────────────
+
+// checkNotDowngraded refuses to serve data that a NEWER build has already migrated.
+//
+// It is the other half of the rollback story. `start` protects the data going forward —
+// snapshot, migrate, health gate, restore on failure — but the person recovering
+// availability re-installs the previous DMG, and that older bundle then meets a database
+// it cannot serve: either because the update succeeded and they changed their mind, or
+// because it failed somewhere the automatic restore could not reach. Migrations only run
+// forward, so there is no way down; the api would come up against tables and columns its
+// code does not know about, and the damage from that is silent.
+//
+// It deliberately does NOT restore anything. The newest snapshot is named in the message
+// and left alone: everything the newer version wrote since then is still on disk, and
+// restoring is the one action here that would throw it away. That choice belongs to the
+// person, not to a guard running at startup on a Mac nobody is sitting at.
+//
+// Called after Postgres is up and before migrate, which is the only window where the
+// question can be asked and the answer still costs nothing.
+func (s *Supervisor) checkNotDowngraded(ctx context.Context) error {
+	db := s.plan.Env.PostgresDB()
+	applied, err := s.appliedMigrations(ctx, db)
+	if err != nil {
+		return fmt.Errorf("check which migrations this database has applied: %w", err)
+	}
+	if len(applied) == 0 {
+		return nil // a database with no migrations cannot be ahead of anything
+	}
+	bundled, err := s.bundleMigrations()
+	if err != nil {
+		return err
+	}
+	if len(bundled) == 0 {
+		// Not a downgrade — a broken bundle. Reporting it as "the data is newer" would
+		// send someone chasing a version that was never installed.
+		return fmt.Errorf("this build ships no migrations in %s, so it cannot be checked against "+
+			"the database — the bundle is incomplete",
+			backup.MigrationsDir(s.plan.Bundle, s.migrationsFromManifest()))
+	}
+	unshipped := backup.Unshipped(bundled, applied)
+	if len(unshipped) == 0 {
+		return nil
+	}
+
+	d := &backup.Downgrade{
+		LastVersion: s.startedVersion,
+		ThisVersion: s.bundleVersion(),
+		Unshipped:   unshipped,
+		BundleLevel: backup.Level(bundled),
+		BackupsDir:  s.plan.Layout.Backups,
+	}
+	if path, side, ok := backup.NewestRestorable(s.plan.Layout.Backups, d.BundleLevel); ok {
+		d.Snapshot, d.SnapshotAt = path, side.TakenAt
+	}
+	return d
+}
+
+// migrationsFromManifest is the manifest's migrations path, or "" for the default.
+func (s *Supervisor) migrationsFromManifest() string {
+	if s.manifest == nil {
+		return ""
+	}
+	return s.manifest.Components.API.Migrations
+}
+
 // ── pre-migration snapshot and rollback ─────────────────────────────────────────────
 
 // snapshotBeforeMigrate takes a rollback point when, and only when, migrations are
@@ -442,14 +510,16 @@ func (s *Supervisor) snapshotBeforeMigrate(ctx context.Context) (string, error) 
 		return "", nil
 	}
 
-	version := "unknown"
-	if s.manifest != nil && s.manifest.WaffledVersion != "" {
-		version = s.manifest.WaffledVersion
-	}
+	// The crossing this snapshot marks. `to` is the running build; `from` is whatever
+	// runtime.json remembered when this Supervisor was constructed, which is "" — named
+	// "unknown" — on data written before that was recorded. They are equal when a start
+	// re-runs a migration under the same build, and that is a fact worth showing rather
+	// than hiding: the snapshot still marks a schema change.
+	cross := crossing{from: s.startedVersion, to: s.bundleVersion()}
 	if err := os.MkdirAll(s.plan.Layout.Backups, 0o700); err != nil {
 		return "", fmt.Errorf("create %s: %w", s.plan.Layout.Backups, err)
 	}
-	out := filepath.Join(s.plan.Layout.Backups, backup.SnapshotName(version, time.Now()))
+	out := filepath.Join(s.plan.Layout.Backups, backup.SnapshotName(cross.from, cross.to, time.Now()))
 
 	s.log.Infof("%d migration(s) pending (%s…); taking a rollback snapshot first",
 		len(pending), pending[0])
@@ -461,7 +531,7 @@ func (s *Supervisor) snapshotBeforeMigrate(ctx context.Context) (string, error) 
 		return "", fmt.Errorf("could not take a pre-migration snapshot, so the schema change "+
 			"has been stopped rather than run without a way back: %w", err)
 	}
-	s.writeSidecar(ctx, out, db, fileSize(out), time.Now())
+	s.writeSidecar(ctx, out, db, fileSize(out), time.Now(), cross)
 
 	removed, perr := backup.Prune(s.plan.Layout.Backups, backup.KindSnapshot, backup.DefaultKeepSnapshots)
 	if perr != nil {

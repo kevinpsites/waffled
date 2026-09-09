@@ -1,0 +1,196 @@
+/* Weekly Planning · step 7 — Meals (steps/MealsStep.tsx). The same seven columns as the Calendar
+   step. Never hardcode a hex — the one literal colour on screen is a PERSON's, which arrives as
+   data. Prefixed `wpm-` so nothing can collide with the shell's `wp-`. */
+
+.wpm { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+
+.wpm-msg { color: var(--ink-3); font-weight: 600; padding: 14px 2px; }
+
+/* ── The week ───────────────────────────────────────────────────────────────── */
+/* Seven equal columns, wrapping below ~1100px. `minmax(0, 1fr)` stops a long dish name from
+   widening its column past its share. */
+.wpm-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+@media (max-width: 1100px) { .wpm-week { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .wpm-week { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.wpm-night {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+  background: var(--card); border: 1px solid var(--hair);
+  border-radius: var(--r-lg); padding: 11px 11px 11px;
+}
+
+.wpm-night-h {
+  display: flex; align-items: baseline; gap: 6px; min-width: 0;
+  padding-bottom: 7px; border-bottom: 1px solid var(--hair);
+}
+.wpm-night-h b { font-size: 13.5px; font-weight: 750; letter-spacing: -0.01em; }
+.wpm-night-h span { font-size: 11.5px; font-weight: 600; color: var(--ink-3); margin-left: auto; white-space: nowrap; }
+
+/* ── The night's events, above the dish ─────────────────────────────────────── */
+/* A FIXED min-height, not an organic one: the seven dish tiles must land on the same line
+   even when three nights have nothing on — hence "Nothing on" instead of collapsing. */
+.wpm-events {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 5px;
+  min-height: 54px;
+}
+.wpm-ev { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 11.5px; font-weight: 600; }
+.wpm-ev-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--ink-3); flex: none; align-self: center; }
+.wpm-ev-t { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.wpm-ev-c { color: var(--ink-3); margin-left: auto; white-space: nowrap; font-weight: 550; }
+.wpm-ev-none { color: var(--ink-3); font-weight: 550; font-style: italic; opacity: 0.75; }
+.wpm-ev-none::before { content: ''; }
+
+/* ── The dish ───────────────────────────────────────────────────────────────── */
+/* A control, because tapping it overwrites a night — but it reads as a card, so the week still
+   looks like a plan. FOUR STATES, each changing the tile itself, not just a badge: planned (card
+   tint + hairline), empty (dashed --line, big centred +), auto-filled (--success-t, no border),
+   eating out (--panel, no border). All four are the same height. */
+.wpm-dish {
+  margin-top: auto;
+  min-height: 186px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  width: 100%; min-width: 0; text-align: left; cursor: pointer;
+  font: inherit; border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: var(--card-2); color: var(--ink); padding: 13px 12px;
+  position: relative; /* the ✨ pill is pinned to the corner */
+}
+.wpm-dish:hover { border-color: var(--hair-2); }
+.wpm-dish:disabled { opacity: 0.55; cursor: default; }
+.wpm-dish-e { font-size: 26px; line-height: 1.15; }
+.wpm-dish-t { font-size: 14px; font-weight: 700; letter-spacing: -0.012em; line-height: 1.25; overflow-wrap: anywhere; }
+.wpm-dish-c {
+  margin-top: auto; padding-top: 6px;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11.5px; font-weight: 650; color: var(--ink-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+
+.wpm-dish.empty {
+  background: transparent; border-style: dashed; border-color: var(--line);
+  color: var(--ink-3); align-items: center; justify-content: center; gap: 2px;
+}
+.wpm-dish-plus { font-size: 34px; font-weight: 300; line-height: 1; color: var(--ink-3); }
+.wpm-dish.empty .wpm-dish-t { font-weight: 600; color: var(--ink-3); text-align: center; }
+
+.wpm-dish.auto { background: var(--success-t); border-color: transparent; }
+.wpm-dish.auto .wpm-dish-c { color: var(--success); }
+.wpm-auto {
+  position: absolute; top: 10px; right: 10px;
+  font-size: 10px; font-weight: 750; letter-spacing: 0.01em;
+  color: var(--success); background: var(--card); border-radius: 999px; padding: 2px 7px;
+}
+
+.wpm-dish.out { background: var(--panel); border-color: transparent; }
+
+/* ── Groceries: one line ────────────────────────────────────────────────────── */
+.wpm-gro {
+  display: flex; align-items: center; gap: 11px; flex: none;
+  background: var(--panel); border-radius: var(--r-md); padding: 11px 14px;
+}
+.wpm-gro-i { font-size: 17px; line-height: 1; flex: none; }
+.wpm-gro-m { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.wpm-gro-m b { font-size: 13.5px; font-weight: 750; color: var(--ink); letter-spacing: -0.01em; }
+.wpm-gro-s { font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+.wpm-gro-pill {
+  flex: none; white-space: nowrap;
+  font-size: 11.5px; font-weight: 700; color: var(--ink-2);
+  background: var(--card); border-radius: 999px; padding: 6px 12px;
+}
+
+/* The shopper pill is a control: the trip it names is a real chore somebody has to be given. */
+.wpm-shop { font: inherit; font-size: 11.5px; font-weight: 700; border: 0; cursor: pointer; }
+.wpm-shop:hover { color: var(--ink); }
+.wpm-shop:disabled { opacity: 0.55; cursor: default; }
+.wpm-shop.open { background: transparent; border: 1px dashed var(--line); color: var(--ink-3); }
+
+.wpm-picks { display: flex; flex-wrap: wrap; gap: 7px; }
+.wpm-pick {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 650;
+  background: var(--panel); color: var(--ink); border: 1px solid transparent;
+  border-radius: 999px; padding: 8px 14px;
+}
+.wpm-pick:hover { border-color: var(--hair-2); }
+.wpm-pick.on { background: var(--primary-t); border-color: var(--primary); color: var(--ink); }
+
+.wpm-note { font-size: 12.5px; font-weight: 600; color: var(--ink-3); padding: 0 2px; }
+.wpm-note-bad { color: var(--danger); }
+
+/* ── The footer control ─────────────────────────────────────────────────────── */
+.wpm-act { flex: none; white-space: nowrap; }
+.wpm-act:disabled { opacity: 0.5; cursor: default; }
+
+/* ── One night, by hand ─────────────────────────────────────────────────────── */
+.wpm-modal { width: min(520px, 92vw); display: flex; flex-direction: column; gap: 12px; }
+.wpm-modal .field { margin-bottom: 0; }
+.wpm-modal-t { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+.wpm-modal-s { font-size: 13px; font-weight: 600; color: var(--ink-3); margin-top: -8px; }
+.wpm-modal-h { font-size: 11.5px; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); }
+.wpm-modal-f { display: flex; align-items: center; gap: 9px; }
+.wpm-modal-sp { flex: 1; }
+
+/* ── "Plan the rest for me": the shared week planner, over the step ─────────── */
+/* The step owns no planner — it opens the Meals screen's whole, over the entire session, because
+   `.plan-screen` is a full-screen two-column layout. */
+.wpm-planner {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 0 0;
+}
+.wpm-planner-head {
+  display: flex; align-items: center; gap: 14px; flex: none;
+  padding: 0 30px 12px;
+}
+.wpm-planner-back { cursor: pointer; }
+/* The planner only ever offers the empty nights, which is what the day chips say. */
+.wpm-planner-n { font-size: 12.5px; font-weight: 650; color: var(--ink-3); }
+.wpm-planner .plan-screen { flex: 1; min-height: 0; }
+@media (max-width: 720px) {
+  .wpm-planner-head { padding: 0 16px 10px; }
+  .wpm-planner-n { display: none; }
+}
+
+/* ── One night, by hand: the app's own recipe browser ───────────────────────── */
+/* The step draws no picker: tapping a night opens `RecipeBrowser`, the same component behind the
+   Meals screen. Full-screen because it is a card GRID with its own search and filter rows; same
+   overlay vocabulary as `.wpm-planner`, one layer below it. */
+.wpm-picker {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 0 0;
+}
+.wpm-picker-head {
+  display: flex; align-items: center; gap: 14px; flex: none;
+  padding: 0 30px 12px;
+}
+.wpm-picker-t { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+/* Overwriting is the common case, so you should see what you are replacing. */
+.wpm-picker-n { font-size: 12.5px; font-weight: 650; color: var(--ink-3); }
+.wpm-picker-clear { margin-left: auto; flex: none; white-space: nowrap; }
+.wpm-picker .meals-picker { flex: 1; min-height: 0; }
+
+/* The browser's grid is a fixed 4-up: right on a kiosk, unreadable on a phone. Scoped here. */
+@media (max-width: 1100px) { .wpm-picker .picker-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 860px) { .wpm-picker .picker-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 720px) {
+  .wpm-picker-head { padding: 0 16px 10px; gap: 10px; }
+  .wpm-picker-n { display: none; }
+  .wpm-picker .picker-search,
+  .wpm-picker .picker-filters { padding-left: 16px; padding-right: 16px; }
+  .wpm-picker .picker-grid { padding-left: 16px; padding-right: 16px; }
+}
+@media (max-width: 520px) { .wpm-picker .picker-grid { grid-template-columns: 1fr; } }

@@ -1,9 +1,7 @@
 import SwiftUI
 
-/// The goal-detail data-view switcher: fetches the goal's day-bucketed activity,
-/// derives stats once (memoized in `stats`), offers only the views that fit this
-/// goal's type + timeframe, and persists the last-selected view per goal. Sits in
-/// the goal-detail body in place of the old flat "by person" card.
+/// The goal-detail data-view switcher: fetches day-bucketed activity, derives stats once,
+/// offers only the views that fit this goal's type + timeframe, and remembers the last one.
 struct GoalDataViewSwitcher: View {
     let goal: WaffledAPI.GoalDetail
     /// The week/month/consistency/year views bucket by calendar week, so they follow
@@ -35,12 +33,10 @@ struct GoalDataViewSwitcher: View {
         Dictionary(uniqueKeysWithValues: goal.participants.map { ($0.personId, $0) })
     }
 
-    // `loading` is checked before `offered.isEmpty` so the very first render (before
-    // `activity` has loaded) never resolves to `EmptyView()` — SwiftUI's `.task`/
-    // `.onAppear` don't fire on a modifier host whose content IS `EmptyView`, which
-    // would otherwise deadlock the load that's supposed to populate `offered`.
-    // Attaching `.task` to a concrete `VStack` (not a bare `Group`) is the second
-    // half of the same guarantee: the host always exists regardless of branch.
+    // `loading` is checked before `offered.isEmpty` so the very first render never resolves
+    // to `EmptyView()` — SwiftUI's `.task`/`.onAppear` don't fire on a modifier host whose
+    // content IS `EmptyView`, which would deadlock the load that populates `offered`.
+    // Attaching `.task` to a concrete `VStack` (not a bare `Group`) is the other half.
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if loading {
@@ -53,9 +49,9 @@ struct GoalDataViewSwitcher: View {
                 content
             }
         }
-        // Keyed on more than just goal.id: logging progress changes totalProgress/
-        // recent/streakDays without changing the id, and activity must refetch then
-        // or the charts go stale until the goal is closed and reopened.
+        // Keyed on more than goal.id: logging progress changes totalProgress/recent/streakDays
+        // without changing the id, and activity must refetch then or the charts go stale.
+        // `totalProgress` is a CHANGE KEY, not something shown.
         .task(id: "\(goal.id)|\(goal.totalProgress)|\(goal.recent.count)|\(goal.streakDays)") { await load() }
     }
 
@@ -89,12 +85,9 @@ struct GoalDataViewSwitcher: View {
         }
     }
 
-    // A segmented control tops out around 4-5 short labels (HIG); this goal type
-    // can offer up to 6 (incl. "Year ring" / "By person"), which doesn't fit an
-    // iPhone width. A horizontal-scroll wrapper was tried first, but hiding the
-    // scrollbar left no visual cue that more options existed off-screen — it read
-    // as broken, not scrollable. A menu scales to any option count with no
-    // overflow and no hidden gesture.
+    // A segmented control tops out around 4-5 short labels (HIG); this goal type can offer
+    // six. A horizontal-scroll wrapper read as broken rather than scrollable, so a menu:
+    // it scales to any option count with no overflow and no hidden gesture.
     private var segControl: some View {
         Menu {
             ForEach(offered, id: \.self) { v in
@@ -142,9 +135,8 @@ struct GoalDataViewSwitcher: View {
 
 // MARK: - Day / month drill-down
 
-/// Tapping a day cell opens this — the day's log entries, reusing the recent-
-/// activity row look. `recent` only keeps the last 12 grouped entries, so an
-/// older tapped day falls back to the per-member total breakdown.
+/// The day's log entries. `recent` only keeps the last 12 grouped entries, so an older
+/// tapped day falls back to the per-member total breakdown.
 struct GoalDayDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     let goal: WaffledAPI.GoalDetail
@@ -153,9 +145,8 @@ struct GoalDayDetailSheet: View {
     let personMap: [String: WaffledAPI.Goal.Participant]
 
     private var label: String { DateFmt.string(GoalDateKey.parse(dateKey), "EEEE, MMMM d", .current) }
-    // Matched on `entry.dateKey` (household-timezone, server-computed) — not a
-    // re-parse of `entry.loggedAt` in this device's own timezone, which could
-    // disagree with the day bucketing `dayEntry.total` above already reflects.
+    // Matched on `entry.dateKey` (household-timezone, server-computed) — not a re-parse of
+    // `entry.loggedAt` in this device's zone, which could disagree with the bucketing.
     private var matches: [WaffledAPI.GoalDetail.LogEntry] {
         goal.recent.filter { $0.dateKey == dateKey }
     }
@@ -210,9 +201,8 @@ struct GoalDayDetailSheet: View {
     }
 }
 
-/// Tapping a By-person column or Year-ring wedge opens this — those views are
-/// MONTH-scoped (a segment is a whole month), so this pulls that month's total +
-/// per-member breakdown, not a single synthesized day.
+/// By-person columns and Year-ring wedges are MONTH-scoped, so this pulls that month's
+/// total + per-member breakdown rather than a single synthesized day.
 struct GoalMonthDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     let goal: WaffledAPI.GoalDetail
@@ -223,11 +213,8 @@ struct GoalMonthDetailSheet: View {
 
     private var total: Double { stats.byMonth[month] }
     private var perMember: [String: Double] { stats.byMonthPerMember[month] }
-    // Parsed directly out of the household-tz `dateKey` string (format
-    // YYYY-MM-DD) — not `HealthKitBridge.parseTimestamp(entry.loggedAt)` +
-    // `Calendar.current`, which reads the year/month in this device's own
-    // timezone and could disagree with which month the entry is actually
-    // bucketed under.
+    // Parsed out of the household-tz `dateKey` string, not `parseTimestamp` +
+    // `Calendar.current`, which reads the month in this device's zone.
     private var matches: [WaffledAPI.GoalDetail.LogEntry] {
         goal.recent.filter { entry in
             let parts = entry.dateKey.split(separator: "-")

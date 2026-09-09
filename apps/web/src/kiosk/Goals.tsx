@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react'
+import { AvatarStack } from './components/Avatar'
 import { useNavigate, useSearchParams } from 'react-router'
 import { Icon } from './icons'
 import { LogModal } from './components/LogModal'
 import { ListModal } from './components/ListModal'
-import { api, useGoalLists, useGoals, useHousehold, can, goalDisplayProgress as dispProgress, goalDisplayTarget as dispTarget, fmtGoalNum, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
+import { api, useGoalLists, useGoals, useHousehold, can, goalDisplayProgress as dispProgress, goalDisplayTarget as dispTarget, fmtGoalNum, type Goal, type GoalList, type GoalParticipant } from '../lib/api'
 import { parseGoalDate } from '../lib/goalStats'
 import { CATEGORIES } from './categories'
 import '../styles/goals.css'
@@ -53,18 +54,6 @@ function listSub(list: GoalList): string {
   if (list.members.length === 1) return 'Personal'
   if (list.members.length === 2) return list.members.map((m) => firstName(m.name)).join(' & ')
   return `Everyone · ${list.members.length} people`
-}
-
-function AvStack({ members }: { members: GoalListMember[] }) {
-  return (
-    <div className="avstack">
-      {members.slice(0, 4).map((m) => (
-        <div key={m.personId} className="av sm" style={{ background: `${m.colorHex ?? '#A6A29B'}22` }}>
-          {m.avatarEmoji ?? '🙂'}
-        </div>
-      ))}
-    </div>
-  )
 }
 
 function Ring({ value, px, stroke, track, children }: { value: number; px: number; stroke: string; track: string; children: ReactNode }) {
@@ -244,7 +233,7 @@ function PinnedCard({ goal, onClick, onPin, canPin }: { goal: Goal; onClick: () 
 function GlistItem({ list, on, onClick }: { list: GoalList; on: boolean; onClick: () => void }) {
   return (
     <div className={`glist ${on ? 'on' : ''}`} onClick={onClick}>
-      <AvStack members={list.members} />
+      <AvatarStack members={list.members} max={4} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="gl-t">{list.name}</div>
         <div className="gl-s">{listSub(list)}</div>
@@ -332,7 +321,7 @@ export function Goals() {
 
       <div className="goal-main">
         <div className="goal-listhead">
-          {selected && <AvStack members={selected.members} />}
+          {selected && <AvatarStack members={selected.members} max={4} />}
           <div>
             {isIndividual && selected ? (
               // An individual list IS a person — make the name open their profile.

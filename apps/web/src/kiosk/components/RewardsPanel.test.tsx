@@ -73,7 +73,8 @@ beforeEach(() => {
 
 describe('Reward Shop', () => {
   it('locks a reward the active kid can’t afford (progress, no Get) and offers Get on affordable ones', async () => {
-    mockApi(me([]))
+    // reward.manage: the caller (Kevin) is spending Wally's wallet, not his own.
+    mockApi(me(['reward.manage']))
     renderShop()
     await settled()
 
@@ -112,7 +113,7 @@ describe('Reward Shop', () => {
   })
 
   it('redeeming an affordable reward opens the celebration for the active kid', async () => {
-    mockApi(me([]))
+    mockApi(me(['reward.manage']))
     renderShop()
     await settled()
     const ice = within(shopGrid()).getByText('Ice cream')
@@ -127,6 +128,21 @@ describe('Reward Shop', () => {
     await waitFor(() => expect(redeemBody).toEqual({ personId: 'p1' }))
     expect(await screen.findByText(/unlocked!/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /back to shop/i })).toBeInTheDocument()
+  })
+
+  it('offers no "Get it" on someone else’s wallet without reward.manage', async () => {
+    // Spending another member's balance is a parent action (the server 403s), so the
+    // shop must not offer it. reward.grant is given for the same load-order reason as
+    // the test below: the "Award stars" button proves /api/household landed and was
+    // applied, which is what makes the absence of "Get it" evidence about the gate.
+    mockApi(me(['reward.grant']))
+    renderShop()
+    await settled()
+    expect(screen.getByRole('button', { name: /award stars/i })).toBeInTheDocument()
+    const ice = within(shopGrid()).getByText('Ice cream')
+    const iceTile = ice.closest('.shop-tile') as HTMLElement
+    expect(within(iceTile).queryByRole('button', { name: /get it/i })).not.toBeInTheDocument()
+    expect(within(iceTile).getByText(/ask a parent to redeem for wally/i)).toBeInTheDocument()
   })
 
   it('shows the parent "Award stars" button (reward.grant) and it opens SpotAwardModal', async () => {

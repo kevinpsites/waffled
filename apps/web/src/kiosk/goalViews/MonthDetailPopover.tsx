@@ -2,6 +2,7 @@
 // MONTH-scoped (a segment is a whole month), so this pulls that month's total +
 // per-member breakdown from `stats`, not a single synthesized day.
 import type { GoalDetail, GoalParticipant } from '../../lib/api'
+import { AvatarStack, PersonAv } from '../components/Avatar'
 import { fmtGoalNum } from '../../lib/api'
 import type { GoalStats } from '../../lib/goalStats'
 
@@ -51,13 +52,9 @@ export function MonthDetailPopover({
           matches.map((r) => (
             <div key={r.id} className="logrow">
               {r.participants.length > 0 ? (
-                <div className="avstack">
-                  {r.participants.map((p) => (
-                    <div key={p.personId ?? p.name} className="av sm" style={{ background: `${p.colorHex ?? '#A6A29B'}22` }}>{p.avatarEmoji ?? '🙂'}</div>
-                  ))}
-                </div>
+                <AvatarStack members={r.participants} />
               ) : (
-                <div className="av sm" style={{ background: '#A6A29B22' }}>🙂</div>
+                <PersonAv person={{}} />
               )}
               <div className="lwhat">{r.note || 'Logged progress'}</div>
               <div className="lamt">+{fmtGoalNum(r.amount)}{goal.unit ? ` ${goal.unit}` : ''}</div>
@@ -70,7 +67,7 @@ export function MonthDetailPopover({
               const p = personMap.get(pid)
               return (
                 <div key={pid} className="detail-hours-row">
-                  <div className="av sm" style={{ background: `${p?.colorHex ?? '#A6A29B'}22` }}>{p?.avatarEmoji ?? '🙂'}</div>
+                  <PersonAv person={p ?? {}} />
                   <div className="detail-hours-name">{p?.name ?? 'Someone'}</div>
                   <div className="tiny muted detail-hours-val">{fmtGoalNum(perMember[pid])}{goal.unit ? ` ${goal.unit}` : ''}</div>
                 </div>

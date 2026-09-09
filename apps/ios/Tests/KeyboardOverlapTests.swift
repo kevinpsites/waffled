@@ -4,10 +4,10 @@ import Testing
 @testable import Waffled
 
 // The kiosk lists page lifts its add bar by the REAL keyboard overlap, measured from
-// `keyboardWillChangeFrame` end-frames converted into the app window's coordinate
-// space — because iPadOS's keyboard safe-area inset under-reports the docked
-// landscape keyboard (accessory + predictive rows uncounted), which buried the bar
-// under the keys. See `KeyboardState` and `ListDetailView.kioskBody`.
+// `keyboardWillChangeFrame` end-frames converted into the app window's coordinate space
+// — iPadOS's keyboard safe-area inset under-reports the docked landscape keyboard
+// (accessory + predictive rows uncounted), which buried the bar under the keys. See
+// `KeyboardState`.
 @Suite struct KeyboardOverlapTests {
     let window = CGRect(x: 0, y: 0, width: 1376, height: 1032)   // 13" iPad, landscape, fullscreen
 
@@ -18,7 +18,7 @@ import Testing
     }
 
     @Test func hiddenKeyboardHasNoOverlap() {
-        // Hide is reported as an end-frame at/below the container's bottom edge.
+        // Hide arrives as an end-frame at/below the container's bottom edge.
         let kb = CGRect(x: 0, y: 1032, width: 1376, height: 552)
         #expect(KeyboardState.overlap(container: window, keyboard: kb) == 0)
     }
@@ -43,7 +43,7 @@ import Testing
     @Test func narrowWindowStillCountsAScreenWideKeyboard() {
         // Split View / Stage Manager: the app window is narrower than the screen, so
         // the screen-wide docked keyboard converts to a frame WIDER than the window
-        // (negative x). It still docks — the overlap must count.
+        // (negative x). It still docks.
         let pane = CGRect(x: 0, y: 0, width: 678, height: 1032)
         let kb = CGRect(x: -300, y: 600, width: 1376, height: 432)
         #expect(KeyboardState.overlap(container: pane, keyboard: kb) == 432)
@@ -66,5 +66,30 @@ import Testing
 
     @Test func unmeasuredColumnDoesNotShift() {
         #expect(KeyboardState.barShift(columnBottom: 0, keyboardTop: 481) == 0)
+    }
+
+    // MARK: whether the phone's tab bar is on screen at all
+    //
+    // While a keyboard is docked the tab bar is 64pt of unreachable chrome between the
+    // content and the keys. ONE rule with TWO readers: `AppRoot` uses it to drop the
+    // bar, and any screen with a pinned bottom bar uses it to stop reserving clearance
+    // for a bar that isn't there. Split across two call sites they would eventually
+    // disagree.
+
+    @Test func aDockedKeyboardTakesTheBarAway() {
+        #expect(KeyboardState.hidesBottomBar(overlap: 336) == true)
+    }
+
+    @Test func noKeyboardKeepsTheBar() {
+        #expect(KeyboardState.hidesBottomBar(overlap: 0) == false)
+    }
+
+    @Test func theFloatingIpadKeyboardKeepsTheBar() {
+        // `overlap` is already 0 for the floating mini keyboard — it hovers instead of
+        // docking, so there is nothing to get out of the way of. Deliberately the same
+        // input as "no keyboard".
+        #expect(KeyboardState.hidesBottomBar(overlap: KeyboardState.overlap(
+            container: CGRect(x: 0, y: 0, width: 834, height: 1194),
+            keyboard: CGRect(x: 40, y: 700, width: 320, height: 300))) == false)
     }
 }

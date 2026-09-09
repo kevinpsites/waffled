@@ -28,8 +28,7 @@
   margin: 2px 2px 10px;
 }
 
-/* The grid: a slim label gutter + 7 day columns. The header row carries the
-   day-of-week + date; the four meal rows fill the rest. */
+/* The grid: a slim label gutter + 7 day columns. */
 .meals-grid {
   flex: 1;
   display: grid;
@@ -40,8 +39,8 @@
 }
 
 /* ===== Drag-to-swap on the meal grids (month + week) ===== */
-/* Planned cells are drag sources; touch-action:none lets a touch-drag start
-   without the grid scrolling out from under it. */
+/* Planned cells are drag sources; touch-action:none lets a touch-drag start without the grid
+   scrolling out from under it. */
 .meals-cell[data-planned],
 .mm-cell[data-planned] {
   touch-action: none;
@@ -198,8 +197,7 @@
   font-weight: 600;
   line-height: 1.25;
   color: var(--ink);
-  /* Long recipe titles ("Zucchini Linguine with Parmesan…") clamp inside the
-     cell instead of bleeding into neighboring days. */
+  /* Long recipe titles clamp inside the cell instead of bleeding into neighboring days. */
   max-width: 100%;
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -285,9 +283,8 @@
   stroke-linejoin: round;
 }
 
-/* ---- Recipe picker (meals-picker.png) ----
-   Takes over the main column (topbar replaced via useTopbarFull): meal-type
-   filters + a 4-up grid of saved recipes. */
+/* ---- Recipe picker ----
+   Takes over the main column (topbar replaced via useTopbarFull). */
 .meals-picker {
   flex: 1;
   display: flex;
@@ -316,14 +313,71 @@
   flex: none;
   white-space: nowrap;
 }
-/* The full recipe editor, hosted over the picker. It's a tall screen, so the card
-   takes most of the viewport and scrolls inside itself rather than growing past it. */
+/* The full recipe editor, hosted over the picker. A tall screen, so the card takes most of
+   the viewport and scrolls inside itself. */
 .picker-new-card {
   width: min(920px, 94vw);
   max-width: none;
   max-height: 90vh;
   overflow-y: auto;
 }
+/* The Meal Builder's own body, hosted over the picker. The builder is a full SCREEN: it sizes
+   itself to its container, scrolls its two columns, and pins its stat bar to the bottom edge.
+   Dropped into a card whose height is its content, that collapses — so the card hands it a
+   real height and lets the body do the scrolling. Its own 30px gutters are pulled back to the
+   card's padding, and the bar is bled to the card's edges.
+
+   `.modal-overlay` is `display: grid; place-items: center` with no explicit columns, so its
+   implicit column sizes to the item's MAX-CONTENT and the wide builder centres inside a
+   column wider than the screen. Pin the column to the viewport. */
+.picker-plate-overlay {
+  grid-template-columns: minmax(0, 1fr);
+}
+.picker-plate-card {
+  padding-bottom: 0;
+  overflow: hidden;
+  justify-self: center;
+}
+.picker-plate-card .mb-shell {
+  height: auto;
+  max-height: min(72vh, 700px);
+}
+.picker-plate-card .mb-head {
+  padding: 0 0 10px;
+}
+.picker-plate-card .mb-body {
+  padding: 0 0 14px;
+  overflow-y: auto;
+}
+.picker-plate-card .mb-bar {
+  margin: 0 -30px;
+  border-radius: 0 0 22px 22px;
+}
+/* On a phone the bar wraps to four rows and eats the plate it is describing. Give the card a
+   sheet's height, tighten the bar, and drop the two stats that are a READ rather than a
+   control — they are still on the builder screen, where there's room. */
+@media (max-width: 700px) {
+  .picker-plate-card {
+    width: min(96vw, 560px);
+  }
+  .picker-plate-card .mb-shell {
+    height: 84vh;
+    max-height: 84vh;
+  }
+  .picker-plate-card .mb-bar {
+    gap: 8px 16px;
+    padding: 11px 30px 13px;
+  }
+  .picker-plate-card .mb-bar-time,
+  .picker-plate-card .mb-bar-grocery {
+    display: none;
+  }
+  .picker-plate-card .mb-bar-actions {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+  }
+}
+
 .picker-new-h {
   font-size: 20px;
   font-weight: 600;
@@ -482,8 +536,8 @@
 .plan-card .tiny {
   font-weight: 700;
 }
-/* Inside a plan card it's a single row — drop waffled.css's divider/padding so there's
-   no orphan line under "Cooking for". */
+/* Inside a plan card it's a single row — drop waffled.css's divider/padding so there's no
+   orphan line under "Cooking for". */
 .plan-card .constraint {
   display: flex;
   align-items: center;

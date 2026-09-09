@@ -1,24 +1,16 @@
 import SwiftUI
 
-/// **Meal Builder** — compose a plate: a named, multi-recipe meal ("BBQ Sunday" =
-/// BBQ Chicken (main) + Potato Salad + Coleslaw (sides) + Peach Cobbler (dessert)).
+/// **Meal Builder** — compose a plate: a named, multi-recipe meal. Dishes are grouped by role
+/// in a native `List`, and the plate is created **lazily** (`MealBuilderModel`): opening this
+/// screen posts nothing, and every mutation answers with the whole plate.
 ///
-/// Dishes are grouped by role in a native `List` (so removing one is a plain
-/// swipe), the name is edited inline, and a pinned ink bar carries the plate stats,
-/// the "Keep in library" toggle and the two actions.
-///
-/// **Tap to add on BOTH iPhone and iPad** (decision 8) — each group ends in a
-/// "＋ Add a side" that opens the recipe/meal picker. A dish already on the plate can
-/// also be **dragged** between roles (press and hold); see `PlateReorder`.
-///
-/// The plate is created **lazily** (`MealBuilderModel`): opening this screen posts
-/// nothing, and every mutation answers with the whole plate, so the screen repaints
-/// from the response rather than refetching.
+/// `onUse` is a RENDER CONTRACT as much as a callback: supplying it (the builder was opened
+/// from inside a picker) takes Schedule and Add-to-list off the bar, so the plate cannot be
+/// scheduled here and again by the slot.
 struct MealBuilderView: View {
     let start: MealBuilderStart
-    /// The library the picker browses (owned by the Meals tab, or made here when the
-    /// builder is presented modally from a recipe).
     let recipes: RecipesModel
+    let onUse: ((WaffledAPI.MealDTO) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(SyncManager.self) private var sync
     @State private var model: MealBuilderModel
@@ -27,9 +19,11 @@ struct MealBuilderView: View {
     @State private var seeded = false
     @FocusState private var nameFocused: Bool
 
-    init(start: MealBuilderStart, recipes: RecipesModel) {
+    init(start: MealBuilderStart, recipes: RecipesModel,
+         onUse: ((WaffledAPI.MealDTO) -> Void)? = nil) {
         self.start = start
         self.recipes = recipes
+        self.onUse = onUse
         _model = State(initialValue: MealBuilderModel(existing: start.existingPlate))
     }
 
@@ -37,10 +31,9 @@ struct MealBuilderView: View {
         List {
             nameSection
             // ONE flat run — a header row per role, then that role's dishes, then its ＋ —
-            // rather than a Section per role. That's what lets a drag cross a header and
-            // re-file a dish: SwiftUI's `.onMove` only reorders *within* a Section, and a
-            // `List` silently refuses `.dropDestination` outright (the row lifts and
-            // nothing lands). Built once per render and reused by the drop handler.
+            // rather than a Section per role. That is what lets a drag cross a header and
+            // re-file a dish: `.onMove` only reorders *within* a Section, and a `List` silently
+            // refuses `.dropDestination` outright.
             Section {
                 let byId = Dictionary(uniqueKeysWithValues: model.groups.flatMap { $0.dishes }.map { ($0.recipeId, $0) })
                 ForEach(PlateReorder.slots(model.groups)) { slot in
@@ -63,8 +56,6 @@ struct MealBuilderView: View {
         .background(WF.canvas)
         .navigationTitle("Build a meal")
         .navigationBarTitleDisplayMode(.inline)
-        // Always presented (never pushed): this screen is opened from the library,
-        // from a recipe and from a plate's detail — three different navigation stacks.
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
         .safeAreaInset(edge: .bottom) { plateBar }
         .overlay(alignment: .top) { toast }
@@ -75,8 +66,6 @@ struct MealBuilderView: View {
                 Task {
                     switch picked {
                     case .recipe(let r): await model.addRecipe(r.id, role: role)
-                    // A saved plate FLATTENS into this one — its dishes arrive as
-                    // individual rows keeping their own roles (decision 12).
                     case .meal(let m): await model.addSavedMeal(m.id)
                     }
                 }
@@ -101,12 +90,12 @@ struct MealBuilderView: View {
     private var nameSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 4) {
-                // Committed on submit / focus loss, never per keystroke: a debounce
-                // here would race the lazy create.
                 TextField(MealBuilderModel.newName, text: $model.name)
                     .font(WF.serif(22, .bold)).foregroundStyle(WF.ink)
                     .focused($nameFocused)
                     .submitLabel(.done)
+                    // Committed on submit / focus loss, never per keystroke: a debounce would
+                    // race the lazy create.
                     .onSubmit { Task { await model.commitRename() } }
                     .onChange(of: nameFocused) { _, focused in
                         if !focused { Task { await model.commitRename() } }
@@ -120,8 +109,6 @@ struct MealBuilderView: View {
 
     // MARK: one role group
 
-    /// Re-file the dragged dish under whichever role header it landed beneath. The rule
-    /// (and the flat run's exact ordering) lives in `PlateReorder`, where it is tested.
     private func handleMove(from: IndexSet, to: Int) {
         guard let move = PlateReorder.move(model.groups, from: from, to: to) else { return }
         Task { await model.apply(move) }
@@ -155,8 +142,7 @@ struct MealBuilderView: View {
             }
     }
 
-    /// An empty role's drop slot — deliberately movable so SwiftUI treats this position
-    /// as a valid destination. Dragging it re-files nothing.
+    /// Deliberately movable, so SwiftUI treats an empty role as a valid drop destination.
     private func emptyDropRow() -> some View {
         HStack(spacing: 8) {
             Image(systemName: "tray").font(.system(size: 14))
@@ -186,9 +172,8 @@ struct MealBuilderView: View {
 
     // MARK: the pinned plate bar
 
-    /// The stats + actions bar. `WF.ink` is the repo's inverted-fill idiom and flips
-    /// in both themes — which is exactly why every label on it is `WF.onInk` and never
-    /// a literal `.white` (ink becomes a warm off-white in dark mode).
+    /// The stats + actions bar. `WF.ink` is the repo's inverted-fill idiom and flips in both
+    /// themes — which is why every label on it is `WF.onInk` and never a literal `.white`.
     private var plateBar: some View {
         VStack(spacing: 12) {
             HStack(spacing: 16) {
@@ -198,9 +183,8 @@ struct MealBuilderView: View {
                 stat("Groceries", "\(model.toBuy) to buy")
             }
             HStack(spacing: 10) {
-                // Disabled on a blank plate, like both bar buttons: flipping it there
-                // triggers the lazy create and leaves a dishless "New meal" card in the
-                // library forever, which is nobody's intent.
+                // Disabled on a blank plate: flipping it there triggers the lazy create and
+                // leaves a dishless "New meal" card in the library forever.
                 Toggle("", isOn: Binding(get: { model.isSaved },
                                          set: { _ in Task { await model.toggleSaved() } }))
                     .labelsHidden().tint(WF.primary)
@@ -209,16 +193,24 @@ struct MealBuilderView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Keep in library")
                         .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.onInk)
-                    // It applies the moment it's flipped — a state, not a pending
-                    // action waiting on Schedule or Add-to-list.
                     Text(model.isSaved ? "Saved — it’s in your library" : "One-off — not saved")
                         .font(.system(size: 11)).foregroundStyle(WF.onInk.opacity(0.6))
                 }
                 Spacer(minLength: 0)
             }
             HStack(spacing: 10) {
-                barButton("Add plate to list", filled: false) { Task { await model.addToGrocery() } }
-                barButton("Schedule", filled: true) { scheduling = true }
+                if let onUse {
+                    barButton("Use this meal", filled: true) {
+                        Task {
+                            guard await model.saveForUse(), let plate = model.meal else { return }
+                            onUse(plate)
+                            dismiss()
+                        }
+                    }
+                } else {
+                    barButton("Add plate to list", filled: false) { Task { await model.addToGrocery() } }
+                    barButton("Schedule", filled: true) { scheduling = true }
+                }
             }
         }
         .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 10)
@@ -234,8 +226,6 @@ struct MealBuilderView: View {
         }
     }
 
-    /// Hand-rolled rather than a `Stepper`: the native control renders its own gray
-    /// chrome, which reads as a disabled system widget dropped onto the ink bar.
     private var servesStepper: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text("SERVES")
@@ -264,8 +254,6 @@ struct MealBuilderView: View {
     private func barButton(_ label: String, filled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label).font(.system(size: 15, weight: .bold))
-                // Coral stays saturated in both themes, so .white is correct on it;
-                // the ghost button sits on ink and must use WF.onInk.
                 .foregroundStyle(filled ? .white : WF.onInk)
                 .frame(maxWidth: .infinity).padding(.vertical, 12)
                 .background(filled ? WF.primary : WF.onInk.opacity(0.14))
@@ -293,9 +281,6 @@ struct MealBuilderView: View {
 
     // MARK: seeding
 
-    /// "Build a meal around this" opens here with the recipe already chosen as the
-    /// main. Adding it is what triggers the lazy create, so there is still exactly one
-    /// path that creates a plate.
     private func seedIfNeeded() async {
         guard !seeded else { return }
         seeded = true
@@ -303,22 +288,15 @@ struct MealBuilderView: View {
         case .fresh, .editing: break
         case .around(let recipe): await model.addRecipe(recipe.id, role: PlateRoles.main)
         }
-        // A brand-new plate opens with the keyboard up on its name: naming it is the
-        // first thing you do, and the placeholder is only an invitation. An existing
-        // plate already has a name, so stealing focus there would just be in the way.
         if start.existingPlate == nil { nameFocused = true }
     }
 }
 
 enum MealScheduleError: Error { case failed }
 
-/// How the builder opened.
 enum MealBuilderStart: Hashable, Identifiable {
-    /// A blank plate (the library's "New meal").
     case fresh
-    /// Seeded with one recipe as the main ("Build a meal around this").
     case around(WaffledAPI.RecipeSummary)
-    /// Editing a plate that already exists.
     case editing(WaffledAPI.MealDTO)
 
     var id: String {
@@ -337,16 +315,11 @@ enum MealBuilderStart: Hashable, Identifiable {
 
 // MARK: - one dish on the plate
 
-/// A plate row: the dish, its time + shopping claim, and its own cook.
-///
-/// A four-dish plate has up to four cooks, which is why the picker hangs off the row
-/// and not off the plate.
 struct PlateDishRow: View {
     let dish: WaffledAPI.MealDishDTO
     let members: [SyncedMember]
     var onAssignCook: ((String?) -> Void)? = nil
     var onMove: ((PlateRole) -> Void)? = nil
-    /// Cook this one dish (the meal detail wires it; the builder doesn't).
     var onCook: (() -> Void)? = nil
 
     var body: some View {
@@ -445,19 +418,14 @@ struct PlateDishRow: View {
 
 // MARK: - the add-a-dish picker
 
-/// What the picker handed back.
 enum PickedDish {
     case recipe(WaffledAPI.RecipeSummary)
     case meal(WaffledAPI.MealDTO)
 }
 
-/// "＋ Add a side" → the existing recipe/meal library in pick mode. Reuses
-/// `RecipesLibraryView` wholesale so search, filters and the type filter behave
-/// exactly as they do when browsing.
 struct AddDishSheet: View {
     let role: PlateRole
     let recipes: RecipesModel
-    /// The plate being built — kept out of its own picker.
     var excludeMealId: String?
     let onPick: (PickedDish) -> Void
 

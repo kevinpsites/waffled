@@ -1,0 +1,289 @@
+/* Weekly Planning · step 4 — Family night (FamilyNightStep.tsx).
+
+   The step's whole job is to be READ and left alone, so this stylesheet stays small on
+   purpose. Anything the app already has — .field for the theme input, .btn .btn-ghost for
+   the buttons — is used as-is. Every colour is a token, so dark mode comes for free; the
+   one inline colour in the TSX is a person's own colorHex, tinted. */
+
+.wpfn {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 28px 26px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+/* ── The gathering ───────────────────────────────────────────────────────────── */
+
+.wpfn-card {
+  background: var(--card);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
+  padding: 18px 20px 8px;
+  transition: opacity .16s ease;
+}
+/* Called off, not deleted: the week stays legible so Undo has something to undo. */
+.wpfn-card.skipped {
+  opacity: 0.5;
+}
+
+.wpfn-h {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.wpfn-t {
+  font-family: var(--serif);
+  font-size: 23px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.wpfn-rec {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-2);
+  background: var(--panel);
+  border-radius: 999px;
+  padding: 3px 11px;
+}
+.wpfn-when {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+/* ── The theme line ──────────────────────────────────────────────────────────── */
+/* The app's .field (kiosk.css) turned on its side: label beside the input rather than
+   above it, because this is one optional sentence and not a form. */
+
+.wpfn-theme.field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+/* Same shape as the theme line, because it is the same kind of thing: a sentence somebody
+   types, saved on blur. Starts in the label's column so the emoji column stays the rail. */
+.wpfn-detail.field {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--card-2);
+}
+.wpfn-detail.field > span {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.wpfn-detail.field input { flex: 1; min-width: 0; font-size: 14px; }
+
+/* ── This week on the calendar ────────────────────────────────────────────────── */
+/* Distinct from the STANDING recurring series: that is a household setting, this is one
+   dated gathering. Confusing the two is the only way to read the row wrong. */
+.wpfn-cal {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 12px 2px 2px;
+  border-top: 1px solid var(--hair);
+}
+.wpfn-cal-emoji { flex: none; font-size: 20px; line-height: 1.2; }
+.wpfn-cal-main { flex: 1; min-width: 0; }
+.wpfn-cal-t { font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
+.wpfn-cal-s { margin-top: 2px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); line-height: 1.45; }
+.wpfn-cal-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.wpfn-cal-act { flex: none; padding: 8px 14px; font-size: 13px; }
+
+.wpfn-cal-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 168px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.wpfn-cal-pick {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--ink);
+  background: var(--card-2);
+  border: 1px solid var(--hair-2);
+  border-radius: var(--r-md);
+  padding: 9px 12px;
+  cursor: pointer;
+}
+.wpfn-cal-pick:hover:not(:disabled) { border-color: var(--line); }
+.wpfn-cal-pick:disabled { opacity: 0.55; cursor: default; }
+.wpfn-cal-empty { font-size: 12.5px; font-weight: 600; color: var(--ink-3); padding: 4px 2px; }
+.wpfn-theme.field > span {
+  margin-bottom: 0;
+  flex: none;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-size: 11.5px;
+}
+.wpfn-theme.field input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── A part ──────────────────────────────────────────────────────────────────── */
+
+.wpfn-row {
+  /* A grid rather than a flex row: the part has TWO lines — who has it and what it IS —
+     and the second has to sit under the label rather than beside the faces. */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 13px;
+  row-gap: 9px;
+  padding: 11px 2px;
+  border-top: 1px solid var(--hair);
+}
+.wpfn-emoji {
+  font-size: 24px;
+  line-height: 1;
+  flex: none;
+  width: 30px;
+  text-align: center;
+}
+.wpfn-main {
+  flex: 1;
+  min-width: 0;
+}
+.wpfn-label {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.wpfn-sug {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+.wpfn-sug.pinned {
+  color: var(--person-3);
+}
+
+.wpfn-faces {
+  display: flex;
+  gap: 7px;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+/* Deliberately the Tasks step's face — tapping a face means the same thing on both. */
+.wpfn-face {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 1px solid var(--hair-2);
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+.wpfn-face:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--person-3);
+}
+.wpfn-face.on {
+  border-color: var(--person-3);
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.wpfn-face:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* ── The sentence under it ───────────────────────────────────────────────────── */
+
+.wpfn-note {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink-2);
+  padding: 0 4px;
+}
+.wpfn-note b {
+  color: var(--ink);
+}
+
+/* ── The week is off ─────────────────────────────────────────────────────────── */
+
+.wpfn-skipbar {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  background: var(--panel);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+}
+.wpfn-skip-emoji {
+  font-size: 22px;
+  line-height: 1;
+  flex: none;
+}
+.wpfn-skip-main {
+  flex: 1;
+  min-width: 0;
+}
+.wpfn-skip-t {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.wpfn-skip-s {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  line-height: 1.45;
+  margin-top: 2px;
+}
+
+.wpfn-err {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--danger);
+  padding: 0 4px;
+}
+
+/* ── Phone ───────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 620px) {
+  .wpfn {
+    padding: 4px 16px 22px;
+  }
+  .wpfn-row {
+    flex-wrap: wrap;
+  }
+  .wpfn-faces {
+    width: 100%;
+    justify-content: flex-start;
+    padding-left: 43px; /* under the label, clear of the emoji gutter */
+  }
+  .wpfn-when {
+    margin-left: 0;
+    width: 100%;
+  }
+}

@@ -40,6 +40,21 @@ func TestJSONShapeIsStable(t *testing.T) {
 			t.Errorf("status --json lost the %q field — that is a breaking change for the menu-bar app", key)
 		}
 	}
+	// The version-crossing trail. Additive — Schema stays at 1 — and whatever renders it
+	// builds its wording from these, so the names are as much of the contract as the rest.
+	bundle := generic["bundle"].(map[string]any)
+	for _, key := range []string{"version", "previousVersion", "versionChangedAt"} {
+		if _, ok := bundle[key]; !ok {
+			t.Errorf("status --json's bundle block lost the %q field", key)
+		}
+	}
+	// Direction-neutral, deliberately: a key called "updatedAt" invites a reader to
+	// assume the crossing was an update, which is exactly the assumption the text
+	// rendering used to make and got wrong on the documented rollback path.
+	if _, ok := bundle["updatedAt"]; ok {
+		t.Error(`the bundle block calls its timestamp "updatedAt" again — a crossing has no direction of its own`)
+	}
+
 	svc := generic["services"].([]any)[0].(map[string]any)
 	for _, key := range []string{"name", "state", "pid", "port", "health", "restarts", "lastError", "log"} {
 		if _, ok := svc[key]; !ok {

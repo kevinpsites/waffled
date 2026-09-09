@@ -15,6 +15,159 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Weekly Planning is on iPhone and iPad.** The whole guided session — the lobby, all ten
+  steps, the agenda sheet, the parked-note handoff, the recap and the saved record — now
+  runs in the app, not just in the browser. On the phone it opens from a **Weekly
+  Planning** tile in the Family tab or from a Today card; on the family display it has its
+  own **Planning** page in the rail. (Settings → Weekly Planning configures the session —
+  its day, time and which steps run — rather than starting one.) Leaving a session part-way
+  keeps it exactly where it was on that device, and another device can still pick it up.
+
+- **Habit goals on iPhone now show this period's count, not their lifetime total.** A habit
+  resets each period, so a goal with 340 reps against a target of 5 had been reading as
+  long-since-done everywhere on iOS — the goals list, the hero card, the Today card and a
+  goal's own screen — when the week's honest answer was "2 of 5". Checklist goals likewise
+  now read as steps done out of steps total.
+
+- **The planning session no longer spends half the phone on its own chrome.** The header
+  and the bottom action bar together had taken over 45% of even a 17 Pro's screen, so the
+  week you were planning got less room than the furniture around it. The navigation bar is
+  gone (it was rendering a second, redundant title above the step's own name), the header
+  reads as one block — step name and week, then the counter, the way out and the progress
+  bar — and the footer sits flush above the tab bar instead of floating ~46pt above it. The
+  affirmative button no longer wraps onto two lines on a phone.
+
+- **The bottom tab bar now gets out of the way while you're typing.** The bar and the
+  capture button sat between the content and the keyboard, unreachable, on every screen
+  with a text field; they now hide with the keyboard and come back with it. The iPad's
+  floating keyboard is left alone, since it hovers rather than docking.
+
+- **Weekly Planning has a visible way out, and it takes you somewhere useful.** Every step
+  shows **Leave for now** in the header, so you can stop part-way without hunting through
+  the agenda sheet. It puts you back on the Planning lobby — what is part-planned, a button
+  to resume, and the week stepper for planning a different week — instead of dropping you
+  on Today and pulling you straight back into the session the next time you open Planning.
+  Leaving keeps the session and everything it decided; it is not the same as starting the
+  week over, which still asks first.
+
+- **An event you add for a pairing is that pairing's answer.** Making time for two people
+  from Connection's own ＋ now counts it for them straight away, named by its title, rather
+  than leaving you to tell the step that the thing you just did counts.
+
+- **Connection can point at time you already share.** A pairing used to count only an
+  event that was *exactly* those two people; an evening where you're both there alongside
+  everyone else could only be described ("you're both there, and it still isn't that").
+  Now **Link a time** lists every event on the week with both of you on it and lets you
+  say that one *is* your time together. Nothing is written to the calendar — nobody's
+  event is edited — and the choice is remembered rather than forgotten when you move on.
+
+- **A parked note can be edited after you park it.** Fix the wording or change which step
+  should look at it — **Edit** on the "Parked in this session" board and in the gold box
+  that hands the note back at its step, on both the browser and the app. Until now a note
+  was written once and then only answered, so a typo or the wrong tag could be cleared only
+  by dropping the note and typing it again. Re-tagging moves the note's whole trail with
+  it, so the badge on the note and the receipt under Loose ends never disagree.
+
+- **A parked note can be turned into the thing it was asking for.** The banner that hands
+  a note back to the step it was tagged for now offers that step's own verb — **Make a
+  task** on Tasks, **Make an event** on Calendar — which opens the same composer the step
+  already uses, with the note's words filled in. Cancel and the note stays put; only a
+  real save ticks it off.
+
+- **A kid's "one thing" from planning night now shows on their profile.** Whatever they
+  picked at Weekly Planning's Kids step — a goal they're behind on, an overdue chore, or
+  something in their own words — appears on their Family profile as **This week's one
+  thing**, alongside their goals and streak, so they see it during the week rather than
+  only on the night they said it. It's read from the planning session rather than copied,
+  so changing the answer changes both screens at once, and the card is simply absent when
+  there's nothing to show.
+
+- **Family Night can say what each part actually is, and put this week on the calendar.**
+  Activity, Treat and Check-in each get their own line to write what it's going to be —
+  "charades, kids vs parents", "the good ice cream" — beside the person whose turn it is.
+  Naming a part doesn't claim it: whoever the rotation suggested still stands until you tap
+  a face. And a planning session can now get *this week's* gathering onto the calendar,
+  either as a new event on the night (named after your theme) or by pointing at something
+  already on the week — "this week it's the movie night that's already on Friday". That's
+  separate from the standing weekly event in Settings, so you can have one, the other, or
+  both.
+
+- **The recipe picker can build a whole meal, not just write a new recipe.** Wherever you
+  pick a dish for a night and that night can hold a whole meal — the meal planner on the
+  web, Weekly Planning's Meals step on web and in the app — there's now a **＋ New meal**
+  button beside ＋ New recipe. It opens the real Meal Builder over the picker, so you can
+  name a plate, add a main and its sides, set servings and assign a cook per dish, then put
+  the finished plate straight on the night you were filling. The plate is saved to your
+  library on the way past, so it's there to pick again next month. Previously a plate could
+  only be built on the Meal Builder screen, which meant abandoning the night you were
+  planning to go and make one.
+
+- **A new Weekly Planning module (opt-in) that walks the family through deciding the week
+  ahead.** Turn it on in Settings → Modules and a **Planning** page appears: pick a day and
+  time for the session, choose which of its ten steps your family actually runs, and start
+  it. The session shows one step at a time — the step's name, the single question it asks,
+  and one button to answer it — with the full ten-step agenda tucked behind the step counter
+  so you can jump anywhere or leave whenever the week is decided. Skipping a step is a real
+  answer, and finishing writes a record of what the week decided that you can reopen. The
+  session defaults to the week ahead, but you can step forward and plan any later week — each
+  week keeps its own session and its own record — and every step has its own web address, so
+  leaving mid-session and coming back (or refreshing, or using the back button) puts you exactly
+  where you were. You can also leave a session for now and pick it up later, or start a week over
+  from scratch — starting over throws away the session only; anything it already decided (an
+  event you added, a chore you handed out) stays where it is.
+
+  **All ten steps are in, and none of them ask you to type anything twice:**
+
+  - **Loose ends** gathers what's still open — overdue chores, unchecked list items, rhythms past
+    due, goals short for the week — alongside anything somebody parked during the week, and hands
+    each one to the step that will deal with it. Every row says where it came from and who already
+    has it, so an unowned one reads as up for grabs. Sending a chore to Tasks changes nothing yet;
+    it just decides who's asked about it later. Dropping a parked note, or marking something
+    already done, are the two answers that act immediately. **Which of your lists it asks about is
+    yours to choose:** **Which lists?** in the step itself gives you a switch per list, so a list
+    meant to stay open — a someday list, a wishlist — stops surfacing every single week, while
+    overdue chores, late rhythms and short habits always count. A list you say nothing about keeps
+    counting, and the grocery list is never asked about because it rebuilds itself from the meal
+    plan. Any adult can set this while running a session; the same switches live in
+    Settings → Modules → Weekly Planning for setting it up beforehand.
+  - **Calendar** shows the week as it really is and lets you add what's missing on the day you
+    tapped — a line, a time, and everyone it's for. It's a real calendar event, and the later
+    steps plan around it.
+  - **Goals** gives each group — the family's list, a private one, one per person — a tab, and
+    asks which goal that group's week is about. Picking one features it, so it turns up on Today
+    and the Goals page; picking nothing is a real answer, and a goal you'd pinned yourself is
+    never quietly un-pinned.
+  - **Meals** puts the week's dinners in the same seven columns, with each night's events above
+    the dish so you can see why Thursday is a bad night to cook. It fills only the empty nights
+    when you ask it to, marks what it filled so you can undo it, and lets you hand the shopping
+    trip to somebody — which becomes a real chore on the Tasks board.
+  - **Tasks** lays the week out per person, with everything nobody has taken in a strip across the
+    top; tap a face to hand it over, drag it to a column, or leave it up for grabs, which is also
+    a real answer. Tap a task's name — or the day beside it — to open the chore editor and fix a
+    typo, change the stars or move it to another day, without leaving the session. Each column
+    says what that person already carries, so fairness is visible without anyone keeping score.
+  - **Horizon scan** is the month you already have — the real calendar, not a copy of it — so you
+    can see what's coming before it arrives. Two different things sit on it: ＋ on a day adds a
+    genuine event, and the bar underneath *parks a note* that isn't an event yet ("we're going
+    camping, we need to pack"), optionally tagged for the step that should deal with it.
+  - **Family night** shows the week's gathering and who the rotation says has each part. Most weeks
+    you read it and move on. Tap a face to pin that part for this week only, set an optional theme,
+    or call the week off — which leaves the recurring calendar event alone.
+  - **Connection** asks who gets time with whom. It shows the pairings the app can already see,
+    with the honest answer included: if Saturday's yard work is already two hours of the two of you,
+    that counts, and it says so instead of inventing a new commitment. Any pairing you like can be
+    made from scratch, and the times offered are the gaps your week actually left.
+  - **Kids** is the one step the children can read — a card each with their own week, their stars,
+    and two questions: one thing to focus on, and one thing to look forward to. Both are answered
+    from what already exists (a goal they're behind on, an overdue chore, something already on their
+    calendar), and the last screen reads their answers back to them.
+  - **Recap** reads the week back one last time and lists what the session changed, grouped by
+    where each decision actually lives — Calendar, Meals, Chores, Goals, Family Night, Kids — with
+    a link through to the step that owns it. Two things it is careful to show: a last call on notes
+    nobody has picked up yet (including how long they have been waiting), and a column for what you
+    left alone **on purpose**, because deciding something needs nothing is still a decision. Every
+    line points at live data rather than copying it, so the record can never quietly disagree with
+    your calendar.
 ### Changed
 
 - **API bind address is configurable.** Set `HOST` to pin the API to one interface (the
@@ -23,6 +176,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the demo box are unaffected. The startup log line now includes the bound address.
 
 ### Fixed
+
+- **Redeeming a reward on iPhone or iPad no longer celebrates a reward you didn't get.**
+  The shop played its confetti as soon as you confirmed, whether or not the server
+  actually granted the reward — so a redemption refused for any reason still looked like
+  a win until the balance failed to move. The "Saving toward" jar had the opposite
+  problem — a refused redeem there did nothing at all, with no message. Both now only
+  celebrate a redemption that went through, and say so when one doesn't. Rewards you
+  can't spend toward show who to ask instead of a button that would be turned down.
+
+- **Rewards that need a parent's OK are no longer auto-approved on iPhone or iPad.**
+  Redeeming on iOS immediately approved its own request, so a reward the household had
+  set to require approval skipped the approvals queue entirely. It now waits for a
+  parent, the same way the web shop always has.
+
+- **An impossible chore date is refused instead of erroring.** Saving a chore dated to a day
+  that doesn't exist (a 31st of February, say) reached the database and came back as a bare
+  server error. It is now turned away with a clear message, and a real date still saves.
+- **A session whose household is gone now signs you out instead of getting stuck.** If the
+  household your device is signed in to disappears — a restored backup, a deleted
+  household, a rebuilt server — the app used to sit there looking signed in while every
+  screen failed, and the only way out was clearing your browser's site data by hand. Web
+  and iPhone/iPad now end that session and return you to the login screen (a paired
+  family display drops to its profile picker and stays paired). An ordinary "you don't
+  have permission for that" is untouched and still keeps you signed in.
 
 - **API keys can now reach chore instances, chore proofs, goal lists, pantry staples and
   currency conversions.** Those endpoint families were refused for every key — "This endpoint
@@ -42,6 +219,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   retried, and explains what happened. Fast Family Night schedule changes are saved in
   order, and retrying Calendar settings clears an old connection error once it succeeds.
 
+### Security
+
+- **One household can no longer touch or see another household's people.** On a server
+  shared by more than one family, a handful of write paths — spot-awarding stars,
+  redeeming a reward, attributing a photo, assigning a calendar feed or a Family Night
+  slot — accepted a person from a different household, and the screens that read those
+  rows back showed that person's name, emoji and colour. Worst of all, a stray star award
+  landed on the other family's own Today board and kiosk. Every one of those paths now
+  refuses a person who isn't a member, and the reads are scoped too, so a stray row can
+  never resolve a stranger. System Health also stops reporting instance-wide calendar
+  counts to a single household's admin.
+
+- **Spending someone else's stars needs permission.** Redeeming a reward on behalf of
+  another family member now requires the same "manage rewards" permission that trading
+  currencies already asked for — a kid can still redeem their own stars, but not a
+  sibling's. The rule holds wherever you redeem: the reward shop only offers **Get it**
+  on a wallet you may spend, and typing "Sam spent 3 stars on ice cream" into the capture
+  bar is refused the same way rather than quietly emptying Sam's jar.
 - **Today, Family, approvals, and Photos no longer mistake a connection failure for
   “nothing here.”** The iPhone and iPad Today and Family dashboards, plus shared Approvals
   and Photos screens, keep their last confirmed information and show an in-place loading, offline,
@@ -120,6 +315,124 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A one-off chore can be moved to another day from the chore editor.** Opening a one-off on
+  the Chores screen (or in Weekly Planning's Tasks step) now shows the day it lands on, and
+  changing it moves the task — previously the day could only be chosen when the chore was
+  created, so a task that needed to slip a day had to be deleted and re-added. Recurring chores
+  are unchanged: their days come from the repeat schedule, which is the only thing that can
+  honestly set them.
+
+### Fixed
+
+- **A note you park for a later step now turns up in that step.** Tagging a parked note for
+  Meals, Tasks, Calendar, Goals, Family Night or Connection recorded the tag but never
+  showed it again — the note only reappeared in the Recap, after the step that could have
+  acted on it had gone by. Every step now opens with what you parked for it, with
+  **Handled** and **Drop it** beside each one; walking past a note leaves it parked, same
+  as before. Notes nobody tagged still wait for the Recap's last call, and Loose ends is
+  unchanged since it already lists everything.
+
+- **The Connection step no longer hides a pairing you just gave time to.** Only three
+  pairings were ever drawn, ranked by how long it had been since it was just those two —
+  and that ranking only looks at the weeks *before* the one you're planning, so making a
+  pairing didn't move it up. On a household with four or more people the event saved to
+  your calendar and the row stayed invisible, which looked exactly like a failed save. Any
+  pairing with time already on the week is now always shown.
+
+- **The Horizon scan's month stops shrinking as you park more notes.** The parked list took
+  its height straight out of the calendar, squeezing six weeks into a strip. It now lays
+  out in columns and scrolls once it's a few rows deep, so the month keeps its size however
+  much you park. The note explaining the difference between adding an event and parking a
+  note has been rewritten, too.
+
+- **Every loose end now says where it came from and who already has it.** The session's
+  first step listed eleven bare titles: a chore called "Groceries" sat next to an unchecked
+  item on a list with nothing to tell them apart, and anything already assigned to somebody
+  gave no hint who. Each row now carries its source — **CHORE**, **LIST**, **RHYTHM**,
+  **GOAL** — and, where something has an owner, that person's name and face. A row with no
+  owner reads as exactly that: nobody has picked it up, which is usually the one worth
+  handing to somebody. An unchecked list item never shows an owner, because a list doesn't
+  have one.
+
+- **You choose which of your lists the planning session asks about — in the session.** The
+  first step gathers what's still open — overdue chores, late rhythms, short habits and
+  anything left unchecked on your lists — but a list that is *meant* to stay open, a someday
+  list or a wishlist, isn't a loose end, and the same items came back every single week.
+  **Which lists?** in that step opens a switch per list: turn one off and it stops coming up,
+  and the deck re-reads on the spot so its cards go with it. **Any adult can do it** — you
+  don't have to be an admin, because whoever sat down to run the session is who needs it
+  (an admin can grant the same to a teen under Settings → Family & People → Permissions).
+  Lists you say nothing about keep counting exactly as before, chores and rhythms are never
+  affected (they are late by definition), and your grocery list was never asked about
+  anyway — it rebuilds itself from the meal plan. The same switches are in Settings →
+  Modules → Weekly Planning for setting it up outside a session.
+
+- **A finished week reads the week back, instead of ticking off the steps.** Saving a
+  planning session used to leave you looking at ten green ticks against ten step names —
+  which told you the session had finished and nothing at all about the week it decided. It
+  now opens with the week itself: each day with its meal and events, what the session
+  changed grouped by where that change lives, the notes nobody tagged, and what was left
+  alone on purpose. The per-step list is still there underneath, because it's the only
+  place that records which steps you skipped on purpose. Following a line in the read-back
+  takes you back into the step that owns it — on a finished week, straight to the module
+  the decision lives in. **This now reads the same in the browser as it does on the
+  phone**, where the browser had still been showing the tick-list; and a week you open on
+  Thursday no longer describes itself as though it were still Sunday evening waiting to be
+  saved.
+
+- **Two planning steps were narrower than the other eight.** Family night and Tasks each
+  inset their content twice, so their cards sat 32pt narrower than the calendar's on every
+  device. They now match.
+
+- **The planning session's buttons no longer float above the keyboard.** Typing on a step
+  left a band of empty space between the step's own action bar and the keys — roughly 80pt
+  of it on an iPhone 17 Pro, taken up by a keyboard toolbar holding a single "Done" button
+  that the session never needed (its fields all have a return key, and dragging the page
+  now dismisses the keyboard). The action bar sits directly on the keyboard.
+
+- **Everything sent to a planning step now turns up in the same box at the top of it.**
+  Notes you parked for a step appeared in a box at the top; things you routed to it from
+  **Loose ends** were drawn in a separate list at the bottom, below the week — so where to
+  look for something you'd sent ahead depended on which of two mechanisms had carried it.
+  They now arrive together at the top, still labelled apart, because what you can do with
+  them differs: a note you typed can be marked handled or dropped, while a routed chore is
+  still genuinely open and only offers the step's own action. A note that was BOTH parked
+  and routed used to appear twice; it now appears once.
+
+- **"Plan the rest with AI" in the planning Meals step actually opens the planner.** The
+  button did nothing visible: on iPhone and iPad it asked the server to fill the empty
+  nights straight away, with no screen and nothing to approve, so a week you hadn't seen
+  could be rewritten — and once every night was planned the button did nothing at all. It
+  now opens the same "Plan my week" review the meal planner uses, narrowed to the nights
+  still open, and only writes the nights you approve.
+
+- **You can hand a planning task over by dragging it.** The Tasks step's cards can be
+  dragged by their grip onto a person, or back onto the up-for-grabs strip; tapping a face
+  still does exactly the same thing. Dropping a card back where it already was does
+  nothing, rather than counting as a hand-over in the recap.
+
+- **Goals on iPhone and iPad: you can make a new goal from inside the planning session.**
+  The step asks each goal group what its focus for the week is, but only offered the goals
+  that already existed — so a group with nothing worth the week was a dead end, and the
+  only way out was to leave the session for the Goals screen, which lost your place.
+  **＋ New goal for this week** now opens the app's real goal editor over the session,
+  fixed to the group whose tab you're on and starting on the Pinned tier, so the goal you
+  make comes straight back as that group's suggested focus — waiting for you to confirm
+  it, since making a goal isn't the same as deciding it. (The web has worked this way all
+  along.) Adding to a group that isn't just you still needs permission to manage goals,
+  and the button says so instead of failing when you press it.
+
+- **Kids: your own answer now looks like an answer.** Typing something under "＋ Something
+  else" saved it, but the chip kept the dashed grey styling of the empty prompt, so it read
+  as though nothing had happened — and tapping it again opened an empty box, throwing away
+  what you'd written. It now shows as chosen like any other option, and reopening it lets
+  you edit what's there. The text box also uses the app's own field styling instead of a
+  bare browser input.
+
+- **The Recap reads back in the calendar's colours.** Events in the week strip were plain
+  grey text; they're now tinted per person exactly as the month and week views do, with
+  whole-family events in your family colour. Hovering a decision row also has room around
+  it now instead of hugging the text.
 - **"Skip a period" is now "Mark handled".** The button always settled the period without
   putting anything on the calendar — but it was named for only one reason you'd press it
   ("this one isn't happening") and hid the commoner one ("it's sorted, just not as a
@@ -179,6 +492,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   database indefinitely — a working credential for an account you had explicitly disconnected.
   It's now wiped as part of the disconnect. Events already imported still stay on your family
   calendar, as before.
+
+### Fixed
+
+- **Weekly Planning's Horizon scan fits the month and the parked notes on one screen.**
+  Giving every event chip its full height had pushed the parked-notes board off the bottom
+  of the page. The month now takes whatever room is left rather than claiming a size — it
+  shows two events a day and scrolls inside itself when six weeks don't fit — so the board
+  keeps its place and the chips are still never compressed.
+
+- **A connection row names the event instead of reciting a time.** It said "Tue 8:00 PM
+  counts", which identifies nothing on a row that can carry three evenings, and it could
+  show a different event from the sentence beside it. It names the event, and exactly one
+  chip on the row reads as the answer.
+
+- **A chosen chip stays readable when you hover it.** Selecting a tag on the Horizon scan
+  and moving the pointer over it turned the label black on a black fill. Fixed there and
+  on the Connection, Kids and Goals chips, which lost their selected colour the same way.
+
+- **Weekly Planning's month grid no longer squashes the day's events.** On a busy week the
+  event chips were being compressed until their labels sat on the chip edges; each chip now
+  keeps its own height and a week row has the room for it.
+
+- **Connection now shows an event the moment you add one.** Adding a time saved it to the
+  calendar but the pairing underneath went on saying there was nothing there, which looked
+  exactly like a failed save. The step now waits for the event to reach the server before
+  it believes the answer.
+
+- **A note parked during the Horizon scan can only be tagged for a step still ahead of
+  you.** It used to offer Calendar — a step you'd already walked past — so the note
+  couldn't come back until a later session. The tags are now the steps still to come, and
+  the bar says in words where an untagged note ends up.
+
+- **The Loose ends receipt says what it did.** Sending an item onward showed a title, an
+  arrow and a step name; it now says that the item will come up at that step later in the
+  same sitting.
+
+- **Small things in Weekly Planning:** the park bar puts the cursor back after each note so
+  you can empty your head in one go; a kid's typed-out "something else" survives changing
+  their mind and picking an existing option; and a free day's Connection chip reads "free
+  all day" rather than "open".
 
 ## [0.14.1] - 2026-09-01
 

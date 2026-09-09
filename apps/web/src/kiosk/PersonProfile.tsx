@@ -1,16 +1,15 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { usePersonOverview, useConversions, usePersons, useHousehold, useGoalLists, can, personsApi, rewardsApi, fmtGoalNum, useWaffledBiteDevice, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
+import { usePersonOverview, useConversions, usePersons, useHousehold, useGoalLists, can, personsApi, rewardsApi, fmtGoalNum, useWaffledBiteDevice, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary, type PlanningFocus } from '../lib/api'
 import { TradeModal } from './components/TradeModal'
 import { SpotAwardModal } from './components/SpotAwardModal'
 import { WaffledBitePairModal } from './components/WaffledBitePairModal'
 import { rewardsEnabled, moduleEnabled } from '../lib/modules'
 import './../styles/overview.css'
 
-// A single chip in the hero row (next to the name), not a whole card — pair CTA
-// when this kid has no device yet, or a link into the full control panel (its own
-// page: quiet time, night light, wake schedule, alarm, sound, display) once paired.
+// A chip in the hero row, not a card: a pair CTA when this kid has no device, or a link
+// into the full control panel once paired.
 function WaffledBiteChip({ personId, personName }: { personId: string; personName: string }) {
   const navigate = useNavigate()
   const { device, loading, refetch } = useWaffledBiteDevice(personId)
@@ -95,7 +94,6 @@ function BalanceTile({ c }: { c: CategoryBalance }) {
   )
 }
 
-// A jar that fills from the bottom to `pct` — the Goal-jar take on "saving toward".
 function Jar({ pct, color }: { pct: number; color: string }) {
   const f = Math.max(0, Math.min(100, pct))
   const fillTop = 14 + 78 * (1 - f / 100)
@@ -112,7 +110,30 @@ function Jar({ pct, color }: { pct: number; color: string }) {
   )
 }
 
-// Weekly fire row + consecutive-day count — chores and goals both keep it alive.
+/**
+ * "This week's one thing", from Weekly Planning's Kids step — read here because this is
+ * where "what they're working on" already lives.
+ *
+ * Presence-gated: absent when the module is off, when no session covers this week, or when
+ * nobody answered for this person. All three mean "nothing to say".
+ */
+function FocusCard({ focus }: { focus: PlanningFocus }) {
+  return (
+    <div className="card pp-card pp-focus">
+      <div className="pp-focus-lab">This week&rsquo;s one thing</div>
+      <div className="pp-focus-main">
+        <span className="pp-focus-emo" aria-hidden>{focus.emoji}</span>
+        <div className="pp-focus-body">
+          <div className="pp-focus-title">{focus.label}</div>
+          {focus.detail && <div className="pp-focus-sub">{focus.detail}</div>}
+        </div>
+      </div>
+      {/* Where it came from, because a line nobody can trace is a line nobody trusts. */}
+      <div className="pp-focus-from">said at this week&rsquo;s planning session</div>
+    </div>
+  )
+}
+
 function StreakCard({ streak }: { streak: StreakSummary }) {
   return (
     <div className="card pp-card pp-streak">
@@ -133,9 +154,6 @@ function StreakCard({ streak }: { streak: StreakSummary }) {
   )
 }
 
-// The single "Saving toward" hub: progress for the pinned reward (bar or jar),
-// or — when nothing is pinned, or on Change — a compact selector over the whole
-// shop (scales better than a grid when there are many rewards).
 function SavingTowardCard({ saving, shop, cur, onPick, onRedeem }: {
   saving: SavingToward | null
   shop: ShopReward[]
@@ -212,30 +230,25 @@ export function PersonProfile() {
   const { conversions } = useConversions()
   const { persons } = usePersons()
   const { person: me, household } = useHousehold()
-  // The spend side of the economy (jar + redemptions) hides when rewards is off;
-  // the earn side (wallet/ledger, fed by chores) stays.
+  // The spend side (jar + redemptions) hides when rewards is off; the earn side
+  // (wallet/ledger, fed by chores) stays.
   const rewardsOn = rewardsEnabled(household)
   const waffledBitesOn = moduleEnabled(household, 'waffledBites')
   const { lists: goalLists } = useGoalLists()
   const [trading, setTrading] = useState(false)
   const [awarding, setAwarding] = useState(false)
-  // A parent can hand out ad-hoc "spot" stars (not tied to a chore) when they hold
-  // reward.grant. This is an *earn* action, so it stays visible even if the rewards
-  // shop is off — the wallet/ledger is always shown.
+  // Ad-hoc "spot" stars need `reward.grant`. An EARN action, so it stays visible even
+  // with the rewards shop off.
   const canAward = can(me, 'reward.grant')
 
-  // "New goal for {name}" must keep its promise: it pre-selects this person by
-  // targeting their individual goal list. You can only create a goal for someone
-  // else with goal.manage — so for a kid on a sibling's page (where it would
-  // resolve to nobody they can target) we hide the button entirely rather than
-  // show one that can't deliver what it says.
+  // "New goal for {name}" targets this person's individual goal list, which needs
+  // `goal.manage` for anyone but yourself — so hide it rather than offer a button that
+  // resolves to nobody the viewer can target.
   const isSelf = !!me && me.id === id
   const canCreateForThisPerson = isSelf || can(me, 'goal.manage')
   const targetList = goalLists.find((l) => l.members.length === 1 && l.members[0]?.personId === id) ?? null
   const newGoalHref = `/goals/new${targetList ? `?list=${targetList.id}` : ''}`
 
-  // Segment switcher: jump straight between family members (and back to the
-  // Family grid via "Everyone") without bouncing through a Back button.
   useTopbarFull(
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 12, minWidth: 0 }}>
@@ -269,8 +282,8 @@ export function PersonProfile() {
   const { person, insight } = data
   const defaultCur = data.currencies.find((c) => c.isDefault) ?? data.currencies[0]
   const symOf = (key: string) => data.currencies.find((c) => c.key === key)
-  // Streak and balances each have their own card now — keep the hero to identity
-  // + goal count so the numbers aren't duplicated (and contradicting each other).
+  // Streak and balances have their own cards; the hero stays identity + goal count so
+  // the numbers can't contradict each other.
   const subBits = [
     person.age != null ? `Age ${person.age}` : null,
     `${data.activeGoals} active goal${data.activeGoals === 1 ? '' : 's'}`,
@@ -327,6 +340,7 @@ export function PersonProfile() {
       </div>
 
       <div className="pp-right">
+        {data.planningFocus && <FocusCard focus={data.planningFocus} />}
         <StreakCard streak={data.streak} />
 
         {rewardsOn && (

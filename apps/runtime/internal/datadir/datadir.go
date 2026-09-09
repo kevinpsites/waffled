@@ -41,6 +41,9 @@ type Layout struct {
 	CaddyfilePath string
 	// BundleCache memoizes a successful manifest verification (see internal/manifest).
 	BundleCache string
+	// BonjourState records what the running supervisor is advertising, so `status` —
+	// which runs in a different process — can report it without asking the database.
+	BonjourState string
 }
 
 // At derives the layout from a root directory.
@@ -58,6 +61,7 @@ func At(root string) Layout {
 		Caddy:         filepath.Join(root, "caddy"),
 		CaddyfilePath: filepath.Join(root, "Caddyfile"),
 		BundleCache:   filepath.Join(root, "bundle-verified.json"),
+		BonjourState:  filepath.Join(root, "bonjour.json"),
 	}
 }
 

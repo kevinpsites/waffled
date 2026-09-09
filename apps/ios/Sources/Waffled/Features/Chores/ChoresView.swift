@@ -3,18 +3,17 @@ import Observation
 import PhotosUI
 import UIKit
 
-/// Chores — today's chores grouped by person (plus an "Up for grabs" group for
-/// unassigned ones), with a date stepper. Tick to complete/uncomplete; tap an
-/// up-for-grabs chore to claim it ("who did it?"); a parent approves/rejects the
-/// ones awaiting an OK. Streaks + star rewards shown per row. Online-only.
+/// Chores — today's chores grouped by person (plus an "Up for grabs" group), with a date
+/// stepper. Tick to complete/uncomplete; tap an up-for-grabs chore to claim it; a parent
+/// approves/rejects the ones awaiting an OK. Online-only.
 @MainActor
 @Observable
 final class ChoresModel {
     private(set) var instances: [WaffledAPI.ChoreInstanceDTO] = []
     private(set) var loading = true
     private(set) var error = false
-    /// A dismissible banner shown when a proof upload/complete failed (incl. the 422
-    /// "a photo is required" guard) — mirrors web's `proofErr`.
+    /// A dismissible banner for a failed proof upload/complete (incl. the 422 "a photo is
+    /// required" guard).
     var proofError: String?
     var date: String
 
@@ -31,34 +30,28 @@ final class ChoresModel {
         loading = false
     }
 
-    /// Order a day's chores for display. Pending (incomplete) chores lead; done/awaiting
-    /// ones sink to the bottom. Within a group, earlier due times come first (a set time
-    /// beats no time), then titles run A–Z. Pure + static so it can be unit-tested.
+    /// Order a day's chores: pending first, then earlier due times (a set time beats none),
+    /// then titles A–Z. Pure + static so it can be unit-tested.
     nonisolated static func sortChores(_ instances: [WaffledAPI.ChoreInstanceDTO]) -> [WaffledAPI.ChoreInstanceDTO] {
         instances.sorted(by: choreSortsBefore)
     }
 
-    /// Strict-weak-ordering comparator used by `sortChores`. Extracted so the ordering
-    /// rules are testable in isolation.
+    /// Extracted so the ordering rules are testable in isolation.
     nonisolated static func choreSortsBefore(_ a: WaffledAPI.ChoreInstanceDTO, _ b: WaffledAPI.ChoreInstanceDTO) -> Bool {
-        // 1. Incomplete (pending) before everything else — done/awaiting sink.
         if (a.status == "pending") != (b.status == "pending") { return a.status == "pending" }
-        // 2. Due time ascending; a set "HH:mm" (string-comparable) beats an unset (nil) one.
-        //    Reached only when the times differ, so exactly one of these branches applies.
+        // Due time ascending; a set "HH:mm" (string-comparable) beats an unset (nil) one.
         if a.dueTime != b.dueTime {
             guard let at = a.dueTime else { return false }  // a untimed, b timed → a after b
             guard let bt = b.dueTime else { return true }   // a timed, b untimed → a before b
             return at < bt
         }
-        // 3. Title A–Z (case-insensitive, locale-aware).
         return a.choreTitle.localizedCaseInsensitiveCompare(b.choreTitle) == .orderedAscending
     }
 
     func shift(_ days: Int) async { date = ChoreDates.shift(date, days); await load() }
     func goToday() async { date = ChoreDates.today(); await load() }
 
-    /// Optimistic complete/uncomplete (a chore needing approval lands in "awaiting"),
-    /// then reload to pick up the true stars/streak/status.
+    /// Optimistic, then reload to pick up the true stars/streak/status.
     func toggle(_ inst: WaffledAPI.ChoreInstanceDTO) async {
         guard let idx = instances.firstIndex(where: { $0.id == inst.id }) else { return }
         let prev = instances[idx].status
@@ -74,23 +67,19 @@ final class ChoresModel {
         }
     }
 
-    /// Assign (or reassign) a chore to a person *without* completing it — the drag-
-    /// and-drop gesture (drop into their column). No-op if it's already theirs.
+    /// Assign (or reassign) *without* completing — the drag-and-drop gesture.
     func assign(id: String, to personId: String) async {
         guard let inst = instances.first(where: { $0.id == id }), inst.personId != personId else { return }
         do { try await api.assignChore(id: id, personId: personId); await load() }
         catch { self.error = true }
     }
 
-    /// Send a chore back to up-for-grabs — dropping it on the "Up for grabs" column.
-    /// No-op if it's already unassigned.
     func unassign(id: String) async {
         guard instances.first(where: { $0.id == id })?.personId != nil else { return }
         do { try await api.assignChore(id: id, personId: nil); await load() }
         catch { self.error = true }
     }
 
-    /// Claim an up-for-grabs chore for a person and mark it done in one motion.
     func claimComplete(id: String, personId: String) async {
         do {
             try await api.claimChore(id: id, personId: personId)
@@ -99,9 +88,8 @@ final class ChoresModel {
         } catch { self.error = true }
     }
 
-    /// Finish a photo-required chore with a captured/picked image: upload the blob, then
-    /// complete with it (optionally claiming `personId` first for the up-for-grabs path).
-    /// Surfaces upload + 422 errors in `proofError` instead of failing silently.
+    /// Upload the blob, then complete with it (optionally claiming `personId` first for the
+    /// up-for-grabs path). Surfaces upload + 422 errors rather than failing silently.
     func completeWithProof(id: String, image: UIImage, claimFor personId: String? = nil) async {
         proofError = nil
         do {
@@ -121,9 +109,8 @@ final class ChoresModel {
     func approve(_ id: String) async { do { try await api.approveChore(id: id); await load() } catch { self.error = true } }
     func reject(_ id: String) async { do { try await api.rejectChore(id: id); await load() } catch { self.error = true } }
 
-    /// Create (choreId nil) or edit a chore definition, then reload the day. Returns nil
-    /// on success, else a user-facing error message (so the editor can show it instead of
-    /// dismissing on a silent failure — e.g. a non-admin hitting the admin-only endpoint).
+    /// Returns nil on success, else a user-facing error message — so the editor can show it
+    /// instead of dismissing on a silent failure (e.g. a non-admin hitting an admin route).
     func save(choreId: String?, body: [String: JSONValue]) async -> String? {
         do {
             if let choreId { try await api.updateChore(id: choreId, body) }
@@ -158,7 +145,6 @@ enum ChoreDates {
               let shifted = Cal.current.date(byAdding: .day, value: days, to: date) else { return d }
         return DateFmt.string(shifted, "yyyy-MM-dd", .current)
     }
-    /// (relative label, full label, isToday) for the header.
     static func meta(_ d: String) -> (rel: String, full: String, isToday: Bool) {
         guard let date = DateFmt.date(d, "yyyy-MM-dd", .current) else { return ("", d, true) }
         let cal = Cal.current
@@ -173,8 +159,7 @@ enum ChoreDates {
         return (rel, DateFmt.string(date, "EEEE, MMM d", .current), diff == 0)
     }
 
-    /// Client-side "since …" suffix for an overdue one-off (web parity: Tasks.tsx
-    /// `overdueLabel`) — its `dueOn` is before the day being viewed. nil when not overdue.
+    /// "since …" suffix for a one-off whose `dueOn` is before the day being viewed.
     static func overdueLabel(dueOn: String?, viewing: String) -> String? {
         guard let dueOn,
               let due = DateFmt.date(dueOn, "yyyy-MM-dd", .current),
@@ -187,9 +172,8 @@ enum ChoreDates {
         return "since \(DateFmt.string(due, "MMM d", .current))"
     }
 
-    /// Client-side "due …" suffix for a future-dated one-off that's already on the list
-    /// (web parity: Tasks.tsx `upcomingLabel`) — its `dueOn` is after the day being
-    /// viewed. nil when the due date is today or already past (that's the overdue case).
+    /// "due …" suffix for a future-dated one-off already on the list. nil when the due date
+    /// is today or past (that's the overdue case).
     static func upcomingLabel(dueOn: String?, viewing: String) -> String? {
         guard let dueOn,
               let due = DateFmt.date(dueOn, "yyyy-MM-dd", .current),
@@ -202,8 +186,6 @@ enum ChoreDates {
         return "due \(DateFmt.string(due, "MMM d", .current))"
     }
 
-    /// Format a stored "HH:mm" due time as a friendly "4:30 PM" (web parity). nil for
-    /// empty/absent input.
     static func timeLabel(_ hhmm: String?) -> String? {
         guard let hhmm, !hhmm.isEmpty,
               let d = DateFmt.date(hhmm, "HH:mm", .current) else { return nil }
@@ -231,8 +213,6 @@ struct ChoresView: View {
     @State private var collapsed: Set<String> = []   // column ids the user has folded
     @State private var dropTarget: String?           // person column id currently under a drag
 
-    // Photo-proof capture: the instance (and optional person to claim first) we're
-    // capturing for, which picker is presented, and a parent's open proof review.
     @State private var proofTarget: ProofTarget?     // which chore we're capturing proof for
     @State private var showProofChoice = false       // the Take Photo / Library dialog is up
     @State private var showCamera = false            // camera sheet presented
@@ -247,14 +227,12 @@ struct ChoresView: View {
         var id: String { inst.id }
     }
 
-    /// A freshly-captured proof photo held for the confirm step (before it uploads).
     struct ProofPreview: Identifiable {
         let image: UIImage
         let target: ProofTarget
         var id: String { target.id }
     }
 
-    /// What the chore editor sheet is editing/creating.
     enum ChoreEditorTarget: Identifiable {
         case new(personId: String?)
         case edit(WaffledAPI.ChoreInstanceDTO)
@@ -290,28 +268,23 @@ struct ChoresView: View {
         }
         .task { await sync.loadCurrencies() }
         .sheet(item: $editor) { target in
-            // Snapshot the sync-derived inputs HERE (read `sync` once) instead of letting
-            // the sheet observe SyncManager — see ChoreEditSheet for why that hung the UI.
-            // Managers can assign to anyone; everyone else only to themselves (web parity).
+            // Snapshot the sync-derived inputs HERE (read `sync` once) instead of letting the
+            // sheet observe SyncManager — see ChoreEditSheet for why that hung the UI.
             let assignable = sync.can("chore.manage")
                 ? sync.members
                 : sync.members.filter { $0.id == sync.currentPersonId }
             ChoreEditSheet(assignableMembers: assignable, currencies: sync.currencies, target: target,
-                // A brand-new chore defaults its "On" date to the day being viewed.
                 initialDate: DateFmt.date(model.date, "yyyy-MM-dd", .current) ?? Date(),
                 onSave: { choreId, body in await model.save(choreId: choreId, body: body) },
                 onDelete: { choreId, body in await model.delete(choreId: choreId, body: body) })
         }
         // ── Photo-proof capture ──────────────────────────────────────────────
-        // Tapping the tick of a photo-required chore opens this Take Photo / Library
-        // choice; Take Photo is hidden when there's no camera (simulator/iPad).
+        // Take Photo is hidden when there's no camera (simulator/iPad).
         .confirmationDialog("Add a photo to finish this chore",
                             isPresented: $showProofChoice, titleVisibility: .visible,
                             presenting: proofTarget) { _ in
-            // Picking an option closes the dialog explicitly and hands off to a picker;
-            // proofTarget stays set so the picker callback knows which chore it's for.
-            // (Driving this off an explicit flag — not "is a picker open?" — avoids the
-            // dialog re-triggering when the photo picker dismisses itself.)
+            // Driving this off an explicit flag — not "is a picker open?" — stops the dialog
+            // re-triggering when the photo picker dismisses itself.
             if ProofCapture.cameraAvailable {
                 Button("Take Photo") { showProofChoice = false; showCamera = true }
             }
@@ -333,8 +306,8 @@ struct ChoresView: View {
                 onApprove: { decide(c) { await sync.approveChore(id: c.id) } },
                 onReject: { decide(c) { await sync.rejectChore(id: c.id) } })
         }
-        // Confirm a freshly-captured photo before it uploads — so an accidental library
-        // tap (or a blurry shot) doesn't silently finish the chore.
+        // Confirm a freshly-captured photo before it uploads, so an accidental library tap
+        // doesn't silently finish the chore.
         .sheet(item: $proofPreview) { preview in
             let inst = preview.target.inst
             ChoreProofConfirm(
@@ -352,7 +325,6 @@ struct ChoresView: View {
         Binding(get: { photosPickerOpen }, set: { photosPickerOpen = $0 })
     }
 
-    /// Begin capture for a chore (called from the tick) — opens the choice dialog.
     private func startProof(_ inst: WaffledAPI.ChoreInstanceDTO, claimFor personId: String? = nil) {
         model.proofError = nil
         proofTarget = ProofTarget(inst: inst, claimFor: personId)
@@ -360,7 +332,6 @@ struct ChoresView: View {
     }
     private func presentLibrary() { photosPickerOpen = true }
 
-    /// A camera image was captured: preview it for confirmation (don't submit yet).
     private func onProofImage(_ image: UIImage) {
         showCamera = false
         guard let target = proofTarget else { return }
@@ -368,7 +339,6 @@ struct ChoresView: View {
         proofPreview = ProofPreview(image: image, target: target)
     }
 
-    /// A library item was picked: load it to a UIImage, then preview for confirmation.
     private func loadLibraryPick(_ item: PhotosPickerItem?) async {
         photosPickerOpen = false
         defer { libraryPick = nil }
@@ -386,7 +356,6 @@ struct ChoresView: View {
         }
     }
 
-    /// Confirmed: upload the previewed photo and finish the chore.
     private func submitProof(_ preview: ProofPreview) {
         proofPreview = nil
         Task {
@@ -395,7 +364,6 @@ struct ChoresView: View {
         }
     }
 
-    /// "Retake": drop the previewed photo and reopen the Take Photo / Library choice.
     private func retakeProof(_ target: ProofTarget) {
         proofPreview = nil
         proofTarget = target
@@ -435,14 +403,12 @@ struct ChoresView: View {
             await model.load()
             await loadApprovals()
         }
-        // Horizontal flick steps a day (matching Calendar's day view). simultaneousGesture
-        // (not gesture) so vertical scroll + drag-to-reassign still work.
+        // simultaneousGesture (not gesture) so vertical scroll + drag-to-reassign still work.
         .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleDaySwipe))
     }
 
-    /// Horizontal flick on the phone list → step a day. Uses the shared `HorizontalSwipe`
-    /// so its thresholds stay in sync with the calendar; a nil result (too small / too
-    /// vertical) leaves the ScrollView's own scroll untouched.
+    /// Uses the shared `HorizontalSwipe` so its thresholds stay in sync with the calendar;
+    /// a nil result leaves the ScrollView's own scroll untouched.
     private func handleDaySwipe(_ value: DragGesture.Value) {
         guard let dir = HorizontalSwipe.step(value) else { return }
         Task { await model.shift(dir) }
@@ -461,7 +427,6 @@ struct ChoresView: View {
             if model.loading && model.instances.isEmpty {
                 WaffledLoading(top: 32); Spacer()
             } else {
-                // Columns keep a minimum width and wrap onto new rows; the board scrolls.
                 ScrollView(showsIndicators: false) {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 240, maximum: 380), spacing: 14, alignment: .top)],
                               alignment: .leading, spacing: 14) {
@@ -475,8 +440,6 @@ struct ChoresView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    /// One always-open column (content-sized; the board wraps + scrolls). Reuses the
-    /// shared row/drag/claim logic + drop target.
     private func kioskColumn(_ col: ChoreColumn) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 9) {
@@ -497,12 +460,11 @@ struct ChoresView: View {
             }
             .padding(.bottom, 10)
             Rectangle().fill(WF.hair).frame(height: 1)
-            // Capped height + internal scroll, so a long list stays put instead of
-            // pushing the columns below it down the page.
+            // Capped height + internal scroll, so a long list doesn't push the columns below
+            // it down the page.
             ScrollView(showsIndicators: false) {
-                // Lazy: only on-screen rows build their (heavy) drag previews + drop
-                // wiring; an eager VStack rebuilt the whole board's draggable rows on
-                // every ChoresView.body pass (e.g. when a sheet was presented over it).
+                // Lazy: only on-screen rows build their heavy drag previews + drop wiring; an
+                // eager VStack rebuilt the whole board on every ChoresView.body pass.
                 LazyVStack(spacing: 0) {
                     if col.isGrabs && !col.items.isEmpty {
                         Text("Tap to claim it, or drag it into someone’s column.")
@@ -518,8 +480,8 @@ struct ChoresView: View {
                             .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10)
                     }
-                    // Assigning a chore to someone else is manage-only; anyone can still
-                    // add one to "Up for grabs" (the self-serve carve-out, like the web).
+                    // Assigning to someone else is manage-only; anyone can still add one to
+                    // "Up for grabs" (the self-serve carve-out).
                     if col.isGrabs || sync.can("chore.manage") {
                         Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
                             HStack(spacing: 5) {
@@ -556,8 +518,7 @@ struct ChoresView: View {
         }
     }
 
-    /// A dismissible inline error for a failed photo upload / the 422 "needs a photo"
-    /// guard — mirrors web's `proofErr` banner (shared `DismissibleErrorBanner` chrome).
+    /// A dismissible inline error for a failed photo upload / the 422 "needs a photo" guard.
     @ViewBuilder
     private var proofErrorBanner: some View {
         if let msg = model.proofError {
@@ -567,9 +528,7 @@ struct ChoresView: View {
 
     // MARK: inline approvals ("Needs your OK")
 
-    /// Chore check-offs waiting on a parent, surfaced inline at the top so you can
-    /// Approve/Reject in place — no extra screen. Mirrors the Rewards tab's card, but
-    /// scoped to chores (reward purchases live on Today/Rewards). Pulls all awaiting
+    /// Chore check-offs waiting on a parent, surfaced inline at the top. Pulls all awaiting
     /// instances across dates, so it's independent of the day you're viewing.
     @ViewBuilder
     private var approvalsCard: some View {
@@ -641,8 +600,7 @@ struct ChoresView: View {
         }
     }
 
-    /// Optimistically drop the row, run the decision, then refresh both the queue and
-    /// the columns (approve moves the chore to done, reject sends it back to pending).
+    /// Optimistically drop the row, run the decision, then refresh the queue AND the columns.
     private func decide(_ c: WaffledAPI.ChoreInstanceDTO, _ op: @escaping () async -> Bool) {
         approvals.drop(chore: c.id)
         Task {
@@ -667,8 +625,8 @@ struct ChoresView: View {
         for i in model.instances {
             if let pid = i.personId { byPerson[pid, default: []].append(i) } else { grabs.append(i) }
         }
-        // Up for grabs always leads (even when empty), so anyone-can-claim chores
-        // have a home to add to — matching the web board.
+        // Up for grabs always leads (even when empty), so anyone-can-claim chores have a
+        // home to add to.
         var cols: [ChoreColumn] = [
             ChoreColumn(id: "__grabs__", name: "Up for grabs", emoji: "🙌", colorHex: nil, isGrabs: true, items: grabs),
         ]
@@ -777,8 +735,6 @@ struct ChoresView: View {
             .strokeBorder(dropTarget == col.id ? WF.primary
                           : (col.isGrabs ? WF.gold.opacity(0.4) : WF.hair),
                           lineWidth: dropTarget == col.id ? 2 : 1))
-        // Drop a chore here to (re)assign it to this person, or onto "Up for grabs"
-        // to unassign it.
         .dropDestination(for: String.self) { ids, _ in
             guard let id = ids.first else { return false }
             dropTarget = nil
@@ -792,15 +748,11 @@ struct ChoresView: View {
         }
     }
 
-    /// Wrap a chore row so it can be dragged between columns — reassign to a person,
-    /// or back to up-for-grabs. Only still-pending chores are draggable (a done or
-    /// awaiting one keeps its awarded stars where they are).
+    /// Only still-pending chores are draggable — a done or awaiting one keeps its awarded
+    /// stars where they are.
     @ViewBuilder private func draggableRow(_ row: some View, inst: WaffledAPI.ChoreInstanceDTO) -> some View {
-        // Dragging reassigns a chore to another column — a manage-only action, so only
-        // make rows draggable when the signed-in person can manage chores.
         if inst.status == "pending" && sync.can("chore.manage") {
-            // contentShape makes the *whole* row (incl. the trailing empty space)
-            // the drag handle, not just the title text.
+            // contentShape makes the *whole* row the drag handle, not just the title text.
             row.contentShape(Rectangle()).draggable(inst.id) {
                 HStack(spacing: 6) {
                     Text(inst.emoji ?? "🧹").font(.system(size: 14))
@@ -826,9 +778,9 @@ struct ChoresView: View {
                     // A photo-required chore that isn't yet complete must capture a photo
                     // before it can finish — open the picker instead of toggling.
                     else if inst.requiresPhoto && !isDone && !isAwaiting { startProof(inst) }
-                    // Completing an approval-required chore creates an awaiting item.
-                    // Bump choresRev so this tab's "Needs your OK" card (a separate model)
-                    // and the Today tab / badge all reload — not just the day's columns.
+                    // Completing an approval-required chore creates an awaiting item. Bump
+                    // choresRev so this tab's "Needs your OK" card, the Today tab and the
+                    // badge all reload — not just the day's columns.
                     else { Task { await model.toggle(inst); sync.bumpChores() } }
                 } label: { tick(isDone: isDone, isAwaiting: isAwaiting, isGrabs: isGrabs,
                                  needsPhoto: inst.requiresPhoto && !isDone && !isAwaiting) }
@@ -843,7 +795,6 @@ struct ChoresView: View {
                         if inst.streak >= 2 {
                             Text("🔥 \(inst.streak)").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink2)
                         }
-                        // Carried-forward one-off: red "overdue · since …" pill (web parity).
                         if !isDone, !isAwaiting,
                            let since = ChoreDates.overdueLabel(dueOn: inst.dueOn, viewing: model.date) {
                             Text("overdue · \(since)")
@@ -854,7 +805,6 @@ struct ChoresView: View {
                                 .lineLimit(1)
                         } else if !isDone, !isAwaiting,
                                   let due = ChoreDates.upcomingLabel(dueOn: inst.dueOn, viewing: model.date) {
-                            // Future-dated one-off already on the list: calm "not yet due" hint.
                             Text(due)
                                 .font(.system(size: 10.5, weight: .heavy))
                                 .foregroundStyle(WF.ink3)
@@ -864,8 +814,7 @@ struct ChoresView: View {
                         }
                     }
                     HStack(spacing: 5) {
-                        // Only show the reward chip when there's actually a reward — a
-                        // zero-reward chore shouldn't read as "★ 0".
+                        // Only when there IS a reward — a zero-reward chore must not read "★ 0".
                         if inst.rewardAmount > 0 {
                             Text(sync.currencySymbol(inst.rewardCurrency)).font(.system(size: 11))
                             Text("\(inst.rewardAmount)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
@@ -882,24 +831,21 @@ struct ChoresView: View {
                     }
                 }
                 Spacer(minLength: 6)
-                // The submitted photo (if any), on awaiting AND done chores — so the kid
-                // sees their proof is attached and anyone (esp. a parent) can tap to view
-                // it big, even when the chore didn't need a separate approval step.
+                // On awaiting AND done chores, so the kid sees their proof is attached even
+                // when the chore needed no separate approval step.
                 if isAwaiting || isDone {
                     ChoreProofThumb(chore: inst) { reviewing = inst }
                 }
             }
             .padding(.top, 9)
             .padding(.bottom, isAwaiting && sync.can("chore.approve") ? 4 : 9)
-            // Tap anywhere on the row to edit — the tick and approve/reject Buttons
-            // intercept their own taps, so they're unaffected. Editing a chore's
+            // The tick and approve/reject Buttons intercept their own taps. Editing a chore's
             // definition is manage-only; without it, tapping is a no-op (no dead-end).
             .contentShape(Rectangle())
             .onTapGesture { if sync.can("chore.manage") { editor = .edit(inst) } }
 
-            // Approve/Reject go on their own line beneath the row (both phone and iPad),
-            // so the top row stays icon · title · photo instead of cramming everything in
-            // until the button labels wrap.
+            // On its own line beneath the row, so the top row stays icon · title · photo
+            // instead of cramming everything in until the button labels wrap.
             if isAwaiting && sync.can("chore.approve") {
                 approvalButtons(inst)
                     .padding(.bottom, 9)
@@ -909,11 +855,8 @@ struct ChoresView: View {
         }
     }
 
-    /// The Reject / Approve pair for an awaiting chore, shown on its own line beneath the
-    /// row (both phone and iPad). Bumps choresRev so the Today tab + badge reflect it too.
+    /// Bumps choresRev so the Today tab + badge reflect it too.
     private func approvalButtons(_ inst: WaffledAPI.ChoreInstanceDTO) -> some View {
-        // Each button fills half the row — bigger, easier tap targets that read as the
-        // row's primary action rather than two small trailing pills.
         HStack(spacing: 10) {
             Button { Task { await model.reject(inst.id); sync.bumpChores() } } label: {
                 Text("Reject").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
@@ -935,8 +878,7 @@ struct ChoresView: View {
             } else if isDone {
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(FamilyColor.person3.solid)
             } else if needsPhoto && !isGrabs {
-                // 📷 affordance, matching web: a photo-required chore shows the camera
-                // on its incomplete tick so it's clear a snapshot is needed to finish.
+                // 📷 on the incomplete tick, so it's clear a snapshot is needed to finish.
                 Image(systemName: "camera.circle").font(.system(size: 22)).foregroundStyle(WF.primary)
             } else {
                 Image(systemName: isGrabs ? "hand.raised.circle" : "circle").font(.system(size: 22))
@@ -953,7 +895,7 @@ struct ChoresView: View {
                 Button {
                     claiming = nil
                     // Photo-required up-for-grabs: capture the proof first, then claim +
-                    // complete with it; otherwise claim + complete straight away.
+                    // complete with it.
                     if inst.requiresPhoto { startProof(inst, claimFor: m.id) }
                     else { Task { await model.claimComplete(id: inst.id, personId: m.id); sync.bumpChores() } }
                 } label: {
@@ -970,9 +912,8 @@ struct ChoresView: View {
     }
 }
 
-/// Create or edit a chore definition — title, emoji, repeat schedule (every day /
-/// certain weekdays), who (or up-for-grabs), star reward, and a parent-approval
-/// toggle. Delete when editing. Mirrors the web ChoreModal. WF-styled.
+/// Create or edit a chore definition — title, emoji, repeat schedule, who (or up-for-grabs),
+/// star reward, and a parent-approval toggle. Delete when editing.
 private enum ChoreScopeAction {
     case save(body: [String: JSONValue], repeatChanged: Bool)
     case delete
@@ -993,16 +934,18 @@ enum ChoreScopePolicy {
 
 struct ChoreEditSheet: View {
     @Environment(\.dismiss) private var dismiss
-    /// Snapshotted by the presenter from SyncManager so the sheet does NOT observe the
-    /// whole @Observable sync object — observing it re-evaluated/re-laid-out the sheet's
-    /// body (segmented Picker + chip flows) on every unrelated sync mutation, which on a
-    /// real iPad stacked into a multi-second hang when presented over the chores board.
+    /// Snapshotted by the presenter so the sheet does NOT observe the whole @Observable sync
+    /// object: observing it re-laid-out the sheet's body on every unrelated sync mutation,
+    /// which on a real iPad stacked into a multi-second hang over the chores board.
     let assignableMembers: [SyncedMember]
-    /// The household's reward currencies, likewise snapshotted (was `sync.currencies`).
     let currencies: [WaffledAPI.Currency]
     let target: ChoresView.ChoreEditorTarget
-    /// Persist the chore. Returns nil on success, else a user-facing error message
-    /// (so the sheet stays open and shows why, instead of dismissing on a silent fail).
+    /// Whether editing may also DELETE the chore. True for the Chores screen, which is where
+    /// a chore's existence is managed; Weekly Planning's Tasks step passes false, because
+    /// deleting reaches far outside the week being planned and the Meals step's shopping
+    /// trip is itself a chore on that board which other steps resolve by id.
+    var canDelete: Bool = true
+    /// Returns nil on success, else a user-facing error message, so the sheet stays open.
     let onSave: (String?, [String: JSONValue]) async -> String?
     let onDelete: (String, [String: JSONValue]) async -> String?
 
@@ -1018,7 +961,6 @@ struct ChoreEditSheet: View {
     @State private var emoji: String
     @State private var personId: String?
     @State private var stars: Int
-    /// Chosen reward currency key; nil = the household default.
     @State private var currencyKey: String?
     @State private var freq: String        // "once" | "daily" | "weekly"
     @State private var days: Set<String>
@@ -1033,19 +975,24 @@ struct ChoreEditSheet: View {
     @State private var scopeAction: ChoreScopeAction?
     @FocusState private var titleFocused: Bool
 
+    /// `prefillTitle` is for a caller that already knows what the task is — Weekly Planning's
+    /// parked-note handoff, where making somebody retype their own words is what makes the
+    /// button not worth pressing. Ignored when editing.
     init(assignableMembers: [SyncedMember], currencies: [WaffledAPI.Currency],
          target: ChoresView.ChoreEditorTarget, initialDate: Date = Date(),
+         prefillTitle: String? = nil, canDelete: Bool = true,
          onSave: @escaping (String?, [String: JSONValue]) async -> String?,
          onDelete: @escaping (String, [String: JSONValue]) async -> String?) {
         self.assignableMembers = assignableMembers; self.currencies = currencies
-        self.target = target; self.onSave = onSave; self.onDelete = onDelete
+        self.target = target; self.canDelete = canDelete
+        self.onSave = onSave; self.onDelete = onDelete
         switch target {
         case let .new(pid):
             editChoreId = nil
             editInstanceId = nil
             editStatus = nil
             originalRrule = nil
-            _title = State(initialValue: ""); _emoji = State(initialValue: "")
+            _title = State(initialValue: prefillTitle ?? ""); _emoji = State(initialValue: "")
             _personId = State(initialValue: pid); _stars = State(initialValue: 1)
             _currencyKey = State(initialValue: nil)
             // Default a new chore to a one-off due on the day you're currently viewing —
@@ -1115,17 +1062,16 @@ struct ChoreEditSheet: View {
                         SectionLabel(text: "Repeats")
                         // Plain binding (NOT `$freq.animation()`): an animated binding installs
                         // an animation transaction on the segmented control's every layout,
-                        // which collides with the keyboard-driven ScrollView resize when the
-                        // title auto-focuses. The animation is scoped to the rows below instead.
+                        // which collides with the keyboard-driven ScrollView resize when
+                        // the title auto-focuses. The animation is scoped to the rows below.
                         Picker("Repeats", selection: $freq) {
                             Text("Just once").tag("once")
                             Text("Every day").tag("daily")
                             Text("Certain days").tag("weekly")
                         }
                         .pickerStyle(.segmented)
-                        // One-off: pick the day it's due (shown for both new and edit — an
-                        // edit moves the chore's single pending instance). No min, so an
-                        // overdue one-off can be re-dated forward or back.
+                        // Shown for both new and edit — an edit moves the chore's single
+                        // pending instance. No min, so an overdue one-off can be re-dated.
                         if freq == "once" {
                             DatePicker("On", selection: $dueOn, displayedComponents: .date)
                                 .font(.system(size: 15, weight: .semibold))
@@ -1220,7 +1166,6 @@ struct ChoreEditSheet: View {
                         }
                     }
 
-                    // A parent doesn't need another parent's OK — hidden for adult assignees.
                     if !assigneeIsAdult {
                         Toggle(isOn: $requiresApproval) {
                             VStack(alignment: .leading, spacing: 1) {
@@ -1243,9 +1188,8 @@ struct ChoreEditSheet: View {
                     .tint(FamilyColor.person3.solid)
                     .padding(13).cardField()
 
-                    // A photo on its own attaches to the finished chore but doesn't pause
-                    // for review. Nudge toward pairing it with approval so the photo lands
-                    // in your "Needs your OK" queue before the reward counts.
+                    // A photo alone attaches to the finished chore but doesn't pause for
+                    // review, so nudge toward pairing it with approval.
                     if requiresPhoto && !requiresApproval && !assigneeIsAdult {
                         Label("Turn on “Needs a parent’s OK” too if you want to see the photo in your approvals before it counts.",
                               systemImage: "info.circle.fill")
@@ -1254,7 +1198,7 @@ struct ChoreEditSheet: View {
                             .padding(.horizontal, 4)
                     }
 
-                    if editing {
+                    if editing && canDelete {
                         Button {
                             if confirmDelete {
                                 if originalRrule != nil { scopeAction = .delete }
@@ -1279,7 +1223,6 @@ struct ChoreEditSheet: View {
                     Button(editing ? "Save" : "Add") { submit() }.fontWeight(.semibold).disabled(!canSave || saving)
                 }
             }
-            // New chore: land in the title field.
             .task { if !editing { try? await Task.sleep(for: .milliseconds(300)); titleFocused = true } }
         }
         .confirmationDialog(
@@ -1332,14 +1275,12 @@ struct ChoreEditSheet: View {
         .buttonStyle(.plain)
     }
 
-    /// The selected key, falling back to the household default.
     private var effectiveCurrencyKey: String? {
         currencyKey ?? currencies.first(where: { $0.isDefault })?.key
     }
     private var selectedCurrency: WaffledAPI.Currency? {
         currencies.first { $0.key == effectiveCurrencyKey }
     }
-    /// The amount stepper's icon — the chosen currency's symbol, else the gold star.
     @ViewBuilder private var rewardSymbol: some View {
         if let c = selectedCurrency {
             Text(c.symbol).font(.system(size: 14))
@@ -1356,20 +1297,17 @@ struct ChoreEditSheet: View {
             "rewardAmount": .int(stars),
             // One-off ("Just once") sends no rrule (null); recurring sends FREQ=…
             "rrule": buildRrule().map(JSONValue.string) ?? .null,
-            // Optional time-of-day ("HH:mm"); null clears it.
             "dueTime": hasDueTime ? .string(DateFmt.string(dueTime, "HH:mm", .current)) : .null,
             // Approval is meaningless for an adult assignee — never persist it there.
             "requiresApproval": .bool(assigneeIsAdult ? false : requiresApproval),
             "requiresPhoto": .bool(requiresPhoto),
         ]
-        // Pass the chosen currency when the household has more than one (else the
-        // backend uses its default).
+        // Only when the household has more than one (else the backend uses its default).
         if currencies.count > 1, let key = effectiveCurrencyKey {
             body["rewardCurrency"] = .string(key)
         }
-        // The "On" day applies to a one-off (create sets the instance's day; edit moves
-        // it). The server defaults it to household-local today if omitted and ignores it
-        // for recurring chores.
+        // One-offs only: create sets the instance's day, edit moves it. The server defaults
+        // to household-local today if omitted and ignores it for recurring chores.
         if freq == "once" {
             body["dueOn"] = .string(DateFmt.string(dueOn, "yyyy-MM-dd", .current))
         }
@@ -1440,7 +1378,6 @@ struct ChoreEditSheet: View {
 }
 
 private extension View {
-    /// The shared WF card-field chrome (white, hairline border, rounded).
     func cardField() -> some View {
         frame(maxWidth: .infinity, alignment: .leading).wfField()
     }

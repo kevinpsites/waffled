@@ -53,6 +53,10 @@ export function RewardsPanel() {
     })
   }, [kids, person])
   const activeKid = kids.find((k) => k.personId === activeKidId) ?? null
+  // Redeeming spends a wallet: your own is always yours to spend, someone else's
+  // needs reward.manage — the same rule the server enforces, so we render the
+  // affordance only when it would succeed.
+  const canRedeemActive = !!activeKid && (canManage || activeKid.personId === person?.id)
 
   const [category, setCategory] = useState<string>('all')
   const [redeemFor, setRedeemFor] = useState<Reward | null>(null)
@@ -261,10 +265,14 @@ export function RewardsPanel() {
                 <div className="shop-tile-body">
                   <div className="shop-tile-name">{r.title}</div>
                   {cat && <div className="shop-tile-tag">{cat.label}</div>}
-                  {affordable ? (
+                  {affordable && canRedeemActive ? (
                     <button type="button" className="btn btn-primary shop-get" disabled={!activeKid || busy === r.id} onClick={() => setRedeemFor(r)}>
                       ★ Get it
                     </button>
+                  ) : affordable ? (
+                    <div className="shop-locked-foot">
+                      <div className="shop-need">Ask a parent to redeem for {(activeKid?.name ?? '').split(' ')[0]}</div>
+                    </div>
                   ) : (
                     <div className="shop-locked-foot">
                       <div className="shop-progress sm"><div className="shop-progress-fill coral" style={{ width: `${pct}%` }} /></div>

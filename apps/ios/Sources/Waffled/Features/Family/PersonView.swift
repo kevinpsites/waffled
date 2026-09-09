@@ -57,6 +57,7 @@ struct PersonView: View {
     @State private var showCapture = false
     @State private var editingEvent: SyncedEvent?
     @State private var showSavingPicker = false
+    @State private var redeemError: String?             // a refused/failed jar redeem
     @State private var showTrade = false
     @State private var showAward = false
     @State private var waffledBiteDevice: WaffledAPI.WaffledBiteDevice?
@@ -116,6 +117,7 @@ struct PersonView: View {
                         let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
                         SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
                                          canPick: !ov.rewardShop.isEmpty,
+                                         canRedeem: maySpend,
                                          onChange: { showSavingPicker = true },
                                          onRedeem: redeemSaving)
                     }
@@ -137,6 +139,14 @@ struct PersonView: View {
         .task { await model.load() }
         .task { await sync.loadCurrencies() }
         .refreshable { await model.load() }
+        .alert("Couldn't redeem", isPresented: Binding(
+            get: { redeemError != nil },
+            set: { if !$0 { redeemError = nil } }
+        )) {
+            Button("OK", role: .cancel) { redeemError = nil }
+        } message: {
+            Text(redeemError ?? "")
+        }
         .sheet(isPresented: $showCapture) { CaptureSheet().presentationDragIndicator(.visible) }
         .sheet(item: $editingEvent) { ev in EventEditSheet(event: ev, initialDate: ev.startsAt ?? Date()) }
         .sheet(isPresented: $showSavingPicker) {
@@ -209,6 +219,7 @@ struct PersonView: View {
                 let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
                 SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
                                  canPick: !ov.rewardShop.isEmpty,
+                                 canRedeem: maySpend,
                                  onChange: { showSavingPicker = true },
                                  onRedeem: redeemSaving)
                 if !ov.redemptions.isEmpty { redemptionsCard(ov) }
@@ -220,9 +231,19 @@ struct PersonView: View {
     }
 
     /// Redeem the pinned saving-toward reward directly (only shown when affordable).
+    /// Spending your own balance is yours to decide; spending someone else's needs
+    /// reward.manage — the same rule the server enforces and the reward shop shows.
+    private var maySpend: Bool { sync.can("reward.manage") || personId == sync.currentPersonId }
+
     private func redeemSaving() {
         guard let s = model.overview?.savingToward else { return }
-        Task { _ = await sync.giveReward(rewardId: s.id, personId: personId); await model.load() }
+        Task {
+            // Discarding this used to swallow a refusal whole: no redemption, no message,
+            // just a button that re-enabled as if nothing had been asked.
+            let ok = await sync.giveReward(rewardId: s.id, personId: personId)
+            if !ok { redeemError = "That didn't go through. Check your connection and try again." }
+            await model.load()
+        }
     }
 
     // MARK: header

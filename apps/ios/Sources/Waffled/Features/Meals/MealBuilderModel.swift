@@ -1,22 +1,20 @@
 import Foundation
 import Observation
 
-// The Meal Builder's derivation + write logic, kept out of the view so it can be
-// driven by tests. See docs/product/meal-builder-plan.md for the decision list.
+// The Meal Builder's derivation + write logic, kept out of the view so it can be driven
+// by tests. See docs/product/meal-builder-plan.md for the decision list.
 //
-// A "plate" is a named, multi-recipe meal ("BBQ Sunday" = BBQ Chicken (main) +
-// Potato Salad + Coleslaw (sides) + Peach Cobbler (dessert)). It has meal-level
-// servings, a per-dish cook, a "keep in library" flag, and can be scheduled to a
-// day + slot OR sent to the grocery list without ever being scheduled.
+// A "plate" is a named, multi-recipe meal with meal-level servings, a per-dish cook and
+// a "keep in library" flag; it can be scheduled to a day + slot OR sent to the grocery
+// list.
 
-/// One role group on the plate. `role` is free text server-side (decision 3) — these
-/// are the three the builder scaffolds, in plate order.
+/// One role group on the plate. `role` is free text server-side (decision 3) — these are
+/// the three the builder scaffolds, in plate order.
 struct PlateRole: Hashable, Identifiable, Sendable {
     let key: String
     let label: String
-    /// The label on the group's trailing "＋" — iPhone and iPad both tap to *add* a dish
-    /// (decision 8). A dish already on the plate can also be **dragged** between roles;
-    /// see `PlateReorder`.
+    /// The label on the group's trailing "＋". A dish already on the plate can also be
+    /// **dragged** between roles; see `PlateReorder`.
     let addLabel: String
     var id: String { key }
 }
@@ -34,12 +32,9 @@ enum PlateRoles {
     static let dessert = PlateRole(key: "dessert", label: "Dessert", addLabel: "Add a dessert")
     static let ordered: [PlateRole] = [main, side, dessert]
 
-    /// The dishes filed under one role, in plate order.
-    ///
-    /// Sides is the **catch-all**: roles are free text, so a plate could carry a
-    /// 'bread' or 'appetizer' dish the builder doesn't scaffold. Matching Sides
-    /// strictly would leave that dish on the plate but rendered nowhere (the web
-    /// groups it the same way).
+    /// The dishes filed under one role, in plate order. Sides is the **catch-all**:
+    /// roles are free text, so matching it strictly would leave a 'bread' or 'appetizer'
+    /// dish rendered nowhere.
     static func dishes(_ all: [WaffledAPI.MealDishDTO], in role: PlateRole) -> [WaffledAPI.MealDishDTO] {
         all
             .filter { d in
@@ -61,17 +56,14 @@ enum PlateRoles {
 
 /// Dragging a dish from one role to another in the builder.
 ///
-/// The builder renders its roles as ONE flat run — header, that role's dishes, then its
-/// ＋ — because SwiftUI's `.onMove` only reorders within a Section, and a `List` silently
-/// refuses `.dropDestination` (the row lifts and nothing lands). Dropping a dish under a
-/// different header is therefore how it gets re-filed, and the rule that reads the
-/// landing role lives here so it can be tested without a running app.
+/// The builder renders its roles as ONE flat run because SwiftUI's `.onMove` only
+/// reorders within a Section, and a `List` silently refuses `.dropDestination` (the row
+/// lifts and nothing lands). The rule that reads the landing role lives here so it can
+/// be tested without a running app.
 enum PlateReorder {
-    /// One row of the flat run, in render order. **This is the single definition of
-    /// that order** — the view renders from it and the drop is resolved against it, so
-    /// the two cannot drift. They used to be built independently, and every index below
-    /// a disagreement would have been off by one, landing the wrong dish in the wrong
-    /// role with nothing on screen to say so.
+    /// One row of the flat run, in render order. **This is the single definition of that
+    /// order** — the view renders from it and the drop is resolved against it, so the
+    /// two cannot drift.
     enum Slot: Equatable, Identifiable {
         case header(PlateRole)
         case dish(String, role: PlateRole)
@@ -107,8 +99,8 @@ enum PlateReorder {
         return out
     }
 
-    /// The same run as `ListReorder` sees it. Every row occupies an index, including the
-    /// ones that can't be dragged.
+    /// The same run as `ListReorder` sees it. Every row occupies an index, including
+    /// undraggable ones.
     static func rows(_ groups: [PlateGroup]) -> [ListReorder.Row] {
         slots(groups).map { slot in
             switch slot {
@@ -120,23 +112,18 @@ enum PlateReorder {
         }
     }
 
-    /// Whether empty roles should show their "drag a dish here" slot at all.
-    ///
-    /// Only once the plate holds a dish somewhere. On a brand-new plate every role is
-    /// empty, so the slots would invite a drag with nothing anywhere to drag — three
-    /// rows telling you to do something impossible.
+    /// Whether empty roles should show their "drag a dish here" slot at all. Only once
+    /// the plate holds a dish somewhere — on a brand-new plate the slots would invite a
+    /// drag with nothing anywhere to drag.
     static func showsEmptySlots(_ groups: [PlateGroup]) -> Bool {
         groups.contains { !$0.dishes.isEmpty }
     }
 
     /// What a drop should write: the dish that moved, the role it lands in, and the
-    /// plate's whole new dish order.
-    ///
-    /// The order matters as much as the role. `sort_order` is plate-wide and the roles
-    /// are rendered by sorting on it, so a dish that changes role while keeping its old
-    /// number lands wherever that number happens to fall — drop it at the TOP of Sides
-    /// and it appears at the bottom. Writing the full order is also what makes a
-    /// reorder *within* a role mean anything.
+    /// plate's whole new dish order. The order matters as much as the role: `sort_order`
+    /// is plate-wide and the roles are rendered by sorting on it, so a dish that changes
+    /// role keeping its old number lands wherever that number falls. Writing the full
+    /// order is also what makes a reorder *within* a role mean anything.
     struct Move: Equatable {
         let id: String
         let role: PlateRole
@@ -174,7 +161,6 @@ enum PlateReorder {
             }
         }
         guard let key = landedIn, let role = ordered.first(where: { $0.key == key }) else { return nil }
-        // Same role, same place — nothing to say.
         if key == oldSection && order == groups.flatMap({ $0.dishes.map(\.recipeId) }) { return nil }
         return Move(id: movedId, role: role, order: order)
     }
@@ -187,12 +173,11 @@ enum PlateReorder {
     private static var ordered: [PlateRole] { PlateRoles.ordered }
 }
 
-/// What a dish (or a whole plate) may honestly say about the pantry.
-///
-/// `onHand` is nil whenever the pantry module is off, and that means "we can't say" —
-/// not "you have none of these". Three outcomes, and the middle one is the trap: with
-/// the pantry off and nothing left to buy there is simply nothing to render. A
-/// "0 of N" badge or a "✓ all on hand" tick would both be claims the server never made.
+/// What a dish (or a whole plate) may honestly say about the pantry. `onHand` is nil
+/// whenever the pantry module is off, and that means "we can't say" — not "you have
+/// none". With the pantry off and nothing left to buy there is simply nothing to render:
+/// a "0 of N" badge or a "✓ all on hand" tick would both be claims the server never
+/// made.
 enum OnHandClaim: Equatable, Sendable {
     case nothingToSay
     case allOnHand
@@ -204,9 +189,8 @@ enum OnHandClaim: Equatable, Sendable {
     }
 }
 
-/// The plate writes the builder needs, as closures so the model can be tested without
-/// a server. `.live` wires them to `WaffledAPI` (which owns every endpoint and DTO —
-/// nothing here does its own networking).
+/// The plate writes the builder needs, as closures so the model can be tested without a
+/// server. `.live` wires them to `WaffledAPI`, which owns every endpoint and DTO.
 struct MealBuilderAPI: Sendable {
     var fetch: @Sendable (_ id: String) async throws -> WaffledAPI.MealDTO
     var create: @Sendable (_ name: String, _ servings: Int) async throws -> WaffledAPI.MealDTO
@@ -266,8 +250,8 @@ final class MealBuilderModel {
     /// The in-flight create, shared so a fast rename-then-add fires ONE POST.
     private var createTask: Task<WaffledAPI.MealDTO, Error>?
     /// Which write is newest. Every mutation answers with the whole plate, true as of
-    /// its own commit — repainting from an older reply resurrects a removed dish, and
-    /// it does not self-heal (nothing refetches).
+    /// its own commit — repainting from an older reply resurrects a removed dish and
+    /// does not self-heal.
     private var seq = 0
     /// The name the server last confirmed, so a blur with no edit doesn't PATCH.
     private var committedName: String?
@@ -321,14 +305,14 @@ final class MealBuilderModel {
     // MARK: writes
 
     func addRecipe(_ recipeId: String, role: PlateRole) async {
-        // The role is always explicit: it is the group whose ＋ was tapped. Sending
-        // none files everything under the server default (the web's "＋ always filed
-        // under Sides" bug) and a bare re-add can wipe an existing dish's role/cook.
+        // The role is always explicit: it is the group whose ＋ was tapped. Sending none
+        // files everything under the server default, and a bare re-add can wipe an
+        // existing dish's role/cook.
         await run { api, id in try await api.addDish(id, recipeId, role.key) }
     }
 
-    /// A saved plate added here FLATTENS — its dishes arrive as individual, editable
-    /// rows keeping their own roles. Meals never nest (decision 12).
+    /// A saved plate added here FLATTENS — its dishes arrive as individual editable rows
+    /// keeping their own roles. Meals never nest (decision 12).
     func addSavedMeal(_ savedMealId: String) async {
         await run { api, id in try await api.flatten(id, savedMealId) }
     }
@@ -338,14 +322,14 @@ final class MealBuilderModel {
     }
 
     /// Re-file a dish, from the row menu — no position was chosen, so only the role
-    /// changes and it keeps its place in the plate's order.
+    /// changes.
     func moveDish(_ recipeId: String, to role: PlateRole) async {
         await run { api, id in try await api.patchDish(id, recipeId, role.key, .unchanged) }
     }
 
     /// Apply a drop: the role AND the plate's new order. Two writes because the role
     /// lives on the dish and the order is plate-wide; the second answers with the plate,
-    /// so that's the one the screen repaints from.
+    /// so it repaints from that.
     func apply(_ move: PlateReorder.Move) async {
         await run { api, id in
             _ = try await api.patchDish(id, move.id, move.role.key, .unchanged)
@@ -366,13 +350,10 @@ final class MealBuilderModel {
         let previous = servings
         servings = n
         // Nothing exists AND nothing is being created — the number rides along on the
-        // lazy create when one eventually happens, so there's nothing to write yet.
-        //
-        // A create already in flight is a different case and used to fall in here too:
-        // `ensureId` captured `servings` before the tap, so the new number was neither
-        // sent nor folded in, and nothing ever re-synced it — the bar said 5 while the
-        // server held 4, right through Schedule and Add-to-list. `run` waits on the
-        // in-flight create and then PATCHes, so it just has to be allowed through.
+        // lazy create when one eventually happens, so there's nothing to write yet. A
+        // create already in flight is a different case and must be allowed through:
+        // `ensureId` captured `servings` before the tap, so `run` has to wait on the
+        // in-flight create and then PATCH.
         guard mealId != nil || createTask != nil else { return }
         await run(rollback: { [weak self] in self?.servings = previous }) { api, id in
             try await api.update(id, nil, n, nil)
@@ -380,7 +361,7 @@ final class MealBuilderModel {
     }
 
     /// "Keep in library". Applied the moment it is flipped — a state, not a pending
-    /// action waiting on Schedule or Add-to-list.
+    /// action.
     func toggleSaved() async {
         let next = !isSaved
         let previous = isSaved
@@ -390,8 +371,37 @@ final class MealBuilderModel {
         }
     }
 
-    /// Commit the inline name edit (on submit / focus loss). Creates the plate if this
-    /// is the first thing that happened on the screen.
+    /// The plate is about to fill a slot the caller already decided ("＋ New meal"). Get
+    /// it into the library first, and report whether it is really usable.
+    ///
+    /// **BEING SAVED IS LOAD-BEARING, NOT COSMETIC.** `POST /api/meals/:id/schedule`
+    /// COPIES a saved plate and schedules an unsaved one directly, so handing over an
+    /// unsaved plate means editing it later silently rewrites the night it was planned
+    /// on.
+    ///
+    /// **AND IT IS DONE HERE, NOT AT CREATE.** The plate stays one-off — invisible to a
+    /// library that lists `where is_saved` — right up until somebody uses it, so a plate
+    /// abandoned mid-build cannot leak and there is no delete to get wrong.
+    @discardableResult
+    func saveForUse() async -> Bool {
+        // An EMPTY plate is not a meal. This is also why nothing is created here — a
+        // plate with no dishes has never been POSTed and must not be.
+        guard mealId != nil, !isEmpty else {
+            message = "Add a dish first."
+            return false
+        }
+        guard !isSaved else { return true }
+        let previous = isSaved
+        isSaved = true
+        // A FAILED SAVE MUST REPORT FAILURE. Handing the plate over anyway would
+        // schedule an unsaved one, losing the copy-on-schedule guarantee above.
+        return await run(rollback: { [weak self] in self?.isSaved = previous }) { api, id in
+            try await api.update(id, nil, nil, true)
+        }
+    }
+
+    /// Commit the inline name edit. Creates the plate if this is the first thing that
+    /// happened.
     func commitRename() async {
         let next = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !next.isEmpty else {
@@ -406,7 +416,7 @@ final class MealBuilderModel {
             return try await api.update(id, next, nil, nil)
         }
         // Only on success. A rejected name that still counted as "confirmed" would be
-        // painted straight back the next time the (now-empty) field lost focus.
+        // painted back the next time the (now-empty) field lost focus.
         if ok { committedName = meal?.name ?? next }
     }
 
@@ -427,10 +437,9 @@ final class MealBuilderModel {
         busy = false
     }
 
-    /// Put the plate on a day + slot. Returns false if it couldn't.
-    ///
-    /// Deliberately does NOT repaint from the reply: scheduling a **saved** plate
-    /// copies it, so the plate that comes back is next week's copy, not this one.
+    /// Put the plate on a day + slot. Returns false if it couldn't. Deliberately does
+    /// NOT repaint from the reply: scheduling a **saved** plate copies it, so the reply
+    /// is next week's copy.
     @discardableResult
     func schedule(date: String, mealType: String, cookPersonId: String? = nil) async -> Bool {
         guard let id = mealId, !isEmpty else {
@@ -450,8 +459,8 @@ final class MealBuilderModel {
 
     /// Run a write against the plate, creating it first if this is a fresh one, and
     /// repaint from the response. `rollback` restores whatever the caller painted
-    /// optimistically — without it a rejected rename / toggle / servings change stays
-    /// on screen, silently, until a reload.
+    /// optimistically — without it a rejected rename / toggle / servings change stays on
+    /// screen until a reload.
     @discardableResult
     private func run(rollback: (() -> Void)? = nil,
                      _ fn: (MealBuilderAPI, String) async throws -> WaffledAPI.MealDTO) async -> Bool {
@@ -464,9 +473,9 @@ final class MealBuilderModel {
             let updated = try await fn(api, id)
             applyIfCurrent(updated, seq: mine)
         } catch {
-            // Deliberately NOT gated on `mine == seq`: a write that failed still
-            // failed, and staying quiet because something else went out afterwards is
-            // how the web's silent-failure bug happened.
+            // Deliberately NOT gated on `mine == seq`: a write that failed still failed,
+            // and staying quiet because something else went out afterwards is how a
+            // silent failure happens.
             rollback?()
             message = Self.writeFailed
             ok = false
@@ -475,8 +484,8 @@ final class MealBuilderModel {
         return ok
     }
 
-    /// The plate's id, creating it on first use. One create, ever — a rename and an
-    /// add racing each other share the same in-flight task rather than both POSTing.
+    /// The plate's id, creating it on first use. One create, ever — a rename and an add
+    /// racing each other share the same in-flight task rather than both POSTing.
     private func ensureId() async throws -> String {
         if let mealId { return mealId }
         if let createTask { return try await createTask.value.id }
