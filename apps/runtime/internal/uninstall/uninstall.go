@@ -211,7 +211,7 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		// half-failed cleanup is exactly when os.RemoveAll would run out from under a
 		// live Postgres.
 		if it.Kind == KindData && len(problems) > 0 {
-			it.Error = "left in place — something above could not be cleaned up first"
+			it.Error = "something above could not be cleaned up first"
 			problems = append(problems, fmt.Errorf("left %s in place — %s", o.Layout.Root, it.Error))
 			continue
 		}
@@ -568,7 +568,11 @@ func (r Report) Text() string {
 			detail = it.Error
 		}
 		if detail != "" {
-			fmt.Fprintf(&b, "  %-8s %-9s %s\n", "", "", detail)
+			// A joined error carries newlines — one per orphan that would not go — and
+			// every line of it belongs in the same column as the first.
+			for _, line := range strings.Split(detail, "\n") {
+				fmt.Fprintf(&b, "  %-8s %-9s %s\n", "", "", line)
+			}
 		}
 	}
 

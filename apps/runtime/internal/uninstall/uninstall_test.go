@@ -764,3 +764,32 @@ func TestTheDryRunRefusesADirectoryTheRealRunWouldRefuse(t *testing.T) {
 		t.Fatalf("the dry run promised a deletion the real run refuses: %v", err)
 	}
 }
+
+// Two orphans that will not die produce a joined error with a newline in it. The report
+// prints details in a column, so every line after the first has to be indented too — and
+// the message must not stutter its own prefix back at the reader.
+func TestFailureMessagesRenderLegibly(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.DeleteData = true
+	for name, pid := range map[string]string{"api": "5555", "powersync": "5556"} {
+		if err := os.WriteFile(opts.Layout.PidPath(name), []byte(pid+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	opts.grace = 10 * time.Millisecond
+	opts.alive = func(pid int) bool { return pid == 5555 || pid == 5556 }
+	opts.signal = func(int, syscall.Signal) error { return nil }
+
+	report, err := Run(context.Background(), opts)
+	if err == nil {
+		t.Fatal("Run succeeded with two orphans it could not kill")
+	}
+	if strings.Contains(err.Error(), "in place — left in place") {
+		t.Errorf("the error stutters its own prefix: %v", err)
+	}
+	for _, line := range strings.Split(report.Text(), "\n") {
+		if strings.Contains(line, ".pid: process") && !strings.HasPrefix(line, "  ") {
+			t.Errorf("a continuation line breaks out of the column layout: %q", line)
+		}
+	}
+}
