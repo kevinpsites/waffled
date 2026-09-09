@@ -355,13 +355,37 @@ func (o Options) socketDir() string {
 	if err != nil || !existed || st.SocketDir == "" || st.SocketDir == o.Layout.Postgres {
 		return ""
 	}
-	if within(o.Layout.Root, st.SocketDir) {
+	// Three guards, because this is the one path outside the data root that gets
+	// deleted and it comes out of a file a person can edit: it must not be inside the
+	// data root, it must not CONTAIN it (a "wfl"-named parent would otherwise take the
+	// household's data with it), and the name alone is not enough — what is in there has
+	// to be Postgres's sockets and nothing else.
+	if within(o.Layout.Root, st.SocketDir) || within(st.SocketDir, o.Layout.Root) {
 		return ""
 	}
 	if !strings.HasPrefix(filepath.Base(st.SocketDir), datadir.SocketDirPrefix) {
 		return ""
 	}
+	if !holdsOnlySockets(st.SocketDir) {
+		return ""
+	}
 	return st.SocketDir
+}
+
+// holdsOnlySockets reports whether a directory contains nothing but Postgres's socket and
+// its lock file — `.s.PGSQL.<port>` and `.s.PGSQL.<port>.lock`. An empty one qualifies:
+// the postmaster removes the socket on a clean shutdown and leaves the directory.
+func holdsOnlySockets(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), ".s.PGSQL") {
+			return false
+		}
+	}
+	return true
 }
 
 func within(root, path string) bool {

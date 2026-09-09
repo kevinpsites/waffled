@@ -524,3 +524,61 @@ func TestOrphansAreStoppedInReverseDependencyOrder(t *testing.T) {
 		}
 	}
 }
+
+// runtime.json is a file a person can edit, and the socket directory is the one thing
+// outside the data root this command deletes. The name is not enough of a guard: what is
+// in the directory has to look like Postgres's sockets and nothing else.
+func TestASocketDirectoryWithSomebodysFilesInItIsLeftAlone(t *testing.T) {
+	opts, _, _ := fixture(t)
+	work := filepath.Join(t.TempDir(), "wflWork")
+	if err := os.MkdirAll(work, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, "notes.txt"), []byte("mine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := rtstate.Save(opts.Layout.RuntimeJSON, &rtstate.State{SocketDir: work}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, it := range report.Items {
+		if it.Kind == KindSocket {
+			t.Errorf("a directory of somebody's own files was listed for removal: %+v", it)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(work, "notes.txt")); err != nil {
+		t.Errorf("a directory of somebody's own files was deleted: %v", err)
+	}
+}
+
+// The mirror case: a recorded socket directory that CONTAINS the data root. `within`
+// only rejects a path inside the root, so nothing else would stop this one.
+func TestASocketDirectoryThatContainsTheDataRootIsLeftAlone(t *testing.T) {
+	// The parent is named so that the "wfl" prefix guard alone would wave it through.
+	parent := filepath.Join(t.TempDir(), "wflings")
+	root := filepath.Join(parent, "Waffled")
+	if err := os.MkdirAll(filepath.Join(root, "postgres"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	opts := Options{Layout: datadir.At(root), Log: &strings.Builder{}}
+	if err := rtstate.Save(opts.Layout.RuntimeJSON, &rtstate.State{SocketDir: parent}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, it := range report.Items {
+		if it.Kind == KindSocket {
+			t.Errorf("the data root's own parent was listed for removal: %+v", it)
+		}
+	}
+	if _, err := os.Stat(opts.Layout.Root); err != nil {
+		t.Errorf("the data root's parent was deleted: %v", err)
+	}
+}
