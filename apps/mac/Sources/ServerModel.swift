@@ -507,6 +507,9 @@ final class ServerModel {
             } catch {
                 stopError = Self.describe(error)
             }
+            // A stop of ours makes every status read before it wrong, and a restart is
+            // decided on that state: forget it rather than decide on it.
+            self?.status = nil
             await finish(Lifecycle.outcomeAfterStop(error: stopError))
         }
     }

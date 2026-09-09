@@ -204,6 +204,8 @@ actor FakeRuntime: RuntimeProcessRunning {
         if held.contains(command) {
             await withCheckedContinuation { waiting[command] = $0 }
         }
+        // A stop really takes it down, so `status` afterwards answers like the real one.
+        if command == "stop" { statusDocument = Fixtures.minimalStopped }
         return RuntimeProcessResult(
             exitCode: 0,
             standardOutput: command == "status" ? Fixtures.data(statusDocument) : Data(),
