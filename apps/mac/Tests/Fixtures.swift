@@ -11,6 +11,7 @@ enum Fixtures {
       "state": "running",
       "dataDir": "/Users/jerry/Library/Application Support/Waffled",
       "bundleDir": "/Applications/Waffled.app/Contents/Resources/runtime",
+      "initialized": true,
       "urls":     { "local": "http://127.0.0.1:8080", "lan": "http://192.168.1.5:8080",
                     "powersync": "http://192.168.1.5:8081" },
       "ports":    { "public": 8080, "powersyncPublic": 8081, "api": 3000,
@@ -129,6 +130,39 @@ enum Fixtures {
       ],
       "lastError": "api exited with status 1\\nsee logs/api.log",
       "generatedAt": "2026-09-08T16:20:00Z"
+    }
+    """
+
+    /// A data directory nobody has set up yet: every service down, and `initialized`
+    /// false — the one document that puts the first-run window on screen.
+    static let freshDataDirectory = """
+    {
+      "schema": 1, "state": "stopped", "initialized": false,
+      "dataDir": "/tmp/waffled-fresh", "bundleDir": "/tmp/bundle",
+      "urls": { "local": "", "lan": "", "powersync": "" },
+      "services": [
+        { "name": "postgres", "state": "stopped", "pid": 0, "port": 5432, "log": "/tmp/logs/postgres.log" },
+        { "name": "api", "state": "stopped", "pid": 0, "port": 3000, "log": "/tmp/logs/api.log" },
+        { "name": "powersync", "state": "stopped", "pid": 0, "port": 8082, "log": "/tmp/logs/powersync.log" },
+        { "name": "caddy", "state": "stopped", "pid": 0, "port": 8080, "log": "/tmp/logs/caddy.log" }
+      ]
+    }
+    """
+
+    /// Halfway up a first start: the cluster exists now, Postgres is green, the api is
+    /// still coming up and the last two have not been reached.
+    static let firstStartInProgress = """
+    {
+      "schema": 1, "state": "starting", "initialized": true,
+      "dataDir": "/tmp/waffled-fresh", "bundleDir": "/tmp/bundle",
+      "urls": { "local": "http://127.0.0.1:8080", "lan": "", "powersync": "" },
+      "services": [
+        { "name": "postgres", "state": "running", "pid": 101, "port": 5432, "health": "ok",
+          "log": "/tmp/logs/postgres.log" },
+        { "name": "api", "state": "starting", "pid": 102, "port": 3000, "log": "/tmp/logs/api.log" },
+        { "name": "powersync", "state": "stopped", "pid": 0, "port": 8082, "log": "/tmp/logs/powersync.log" },
+        { "name": "caddy", "state": "stopped", "pid": 0, "port": 8080, "log": "/tmp/logs/caddy.log" }
+      ]
     }
     """
 

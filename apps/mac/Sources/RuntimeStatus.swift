@@ -99,6 +99,14 @@ struct RuntimeStatus: Equatable {
 
     var schema = 0
     var state = RuntimeState.stopped
+    /// Whether this data directory has ever been set up; false is a first run, and the
+    /// only launch that shows a window.
+    ///
+    /// It defaults false like everything else here, which means a runtime too old to
+    /// report it reads as a first run. That is safe because the app and the runtime ship
+    /// as one unit (plan §6): the only way to see the older half is dev mode, and the
+    /// worst outcome there is a welcome screen whose button starts the server anyway.
+    var initialized = false
     var dataDir = ""
     var bundleDir = ""
     var urls = URLs()
@@ -132,6 +140,7 @@ struct RuntimeStatus: Equatable {
         var s = RuntimeStatus()
         s.schema = schema
         s.state = RuntimeState(contractValue: object.string("state"))
+        s.initialized = object.bool("initialized")
         s.dataDir = object.string("dataDir")
         s.bundleDir = object.string("bundleDir")
         s.lastError = object.string("lastError")
