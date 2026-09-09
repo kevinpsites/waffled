@@ -157,6 +157,15 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		return report, nil
 	}
 
+	// --delete-data is one flag away from an rm -rf of whatever --data named, so the
+	// directory has to look like ours before it goes. `waffled-runtime uninstall --data ~
+	// --delete-data` is a plausible slip and would otherwise take the home folder with it.
+	if o.DeleteData && report.item(KindData).Present && !o.looksLikeDataDir() {
+		return report, fmt.Errorf(
+			"%s has none of Waffled's own files in it (no config.env, runtime.json or postgres/) — "+
+				"refusing to delete it. Point --data at the right directory", o.Layout.Root)
+	}
+
 	var problems []error
 	for _, it := range report.Items {
 		if !it.Present || it.Action != ActionRemove {
@@ -200,6 +209,14 @@ func (o Options) remove(ctx context.Context, it Item) error {
 		return removeIfPresent(it.Path)
 	}
 	return nil
+}
+
+// looksLikeDataDir asks whether this directory is one the runtime made. Any one of the
+// three marks is enough: a data directory that was only ever laid out and never started
+// has the folders but no config.env, and one restored by hand may have config.env and
+// nothing else yet.
+func (o Options) looksLikeDataDir() bool {
+	return exists(o.Layout.ConfigEnv) || exists(o.Layout.RuntimeJSON) || exists(o.Layout.Postgres)
 }
 
 func removeIfPresent(path string) error {

@@ -402,3 +402,25 @@ func TestProcessAliveCountsAProcessOwnedBySomebodyElse(t *testing.T) {
 		t.Error("processAlive(1) = false; a running process we may not signal is still running")
 	}
 }
+
+// --delete-data is one flag away from an rm -rf of whatever --data named, and a person
+// reaching for it is usually in a hurry. A directory with none of Waffled's own marks in
+// it is not the data directory, whatever the flag said.
+func TestDeleteDataRefusesADirectoryThatIsNotAWaffledDataFolder(t *testing.T) {
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, "taxes.pdf"), []byte("mine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts := Options{
+		Layout:     datadir.At(home),
+		DeleteData: true,
+		Log:        &strings.Builder{},
+	}
+
+	if _, err := Run(context.Background(), opts); err == nil {
+		t.Fatal("Run deleted a directory with nothing of Waffled's in it; want a refusal")
+	}
+	if _, err := os.Stat(filepath.Join(home, "taxes.pdf")); err != nil {
+		t.Errorf("the refusal still deleted the contents: %v", err)
+	}
+}
