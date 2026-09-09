@@ -1,4 +1,5 @@
 import Foundation
+@testable import Waffled
 
 /// Fixture documents for the `status --json` contract (apps/runtime/README.md, section
 /// "`status --json`"). They are string literals rather than bundle resources so a test
@@ -167,4 +168,14 @@ enum Fixtures {
     """
 
     static func data(_ json: String) -> Data { Data(json.utf8) }
+}
+
+/// `UpdateMemory` as a dictionary. Every `ServerModel` a test builds gets one of these:
+/// the real store is the app's own defaults domain, and a suite that wrote it would eat
+/// the update note the household running the tests was owed.
+final class InMemoryDefaults: UpdateMemory {
+    private var values: [String: Any] = [:]
+
+    func string(forKey key: String) -> String? { values[key] as? String }
+    func set(_ value: Any?, forKey key: String) { values[key] = value }
 }

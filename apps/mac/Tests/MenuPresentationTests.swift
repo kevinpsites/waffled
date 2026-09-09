@@ -322,6 +322,16 @@ final class MenuPresentationTests: XCTestCase {
         XCTAssertFalse(checking.checkForUpdatesEnabled)
     }
 
+    /// An update is a stop, so it belongs to the same one-operation-at-a-time rule as
+    /// every other action: a check that lands on top of a running backup cannot stop the
+    /// server, and the app has nowhere honest to put that refusal.
+    func testCheckingForUpdatesIsOffWhileSomethingElseIsRunning() throws {
+        let s = try RuntimeStatus.decode(Fixtures.data(Fixtures.fullRunning))
+        let m = MenuPresentation.make(status: s, busy: true, canCheckForUpdates: true)
+
+        XCTAssertFalse(m.checkForUpdatesEnabled)
+    }
+
     /// What the menu says after an update installed itself and relaunched — in whichever
     /// direction it went, since re-installing an older DMG is a supported way back.
     func testTheUpdateNoteNamesTheVersionItLandedOn() {

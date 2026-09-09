@@ -423,10 +423,12 @@ final class ServerModel {
     /// happen. Nothing here knows about any of that, deliberately.
     func stopBeforeUpdate(then install: @escaping () -> Void) {
         guard operationTask == nil else {
-            // A start or a backup is mid-flight. Two overlapping operations would leave
-            // this one holding a task reference it did not create, so the update waits for
-            // another click rather than racing.
-            recordStopFailure("a start or a backup was still running — check for updates again")
+            // A start or a backup is mid-flight; the menu item is off for exactly that
+            // reason, so arriving here means one began between the menu opening and the
+            // click. Nothing was asked to stop, so nothing refused — and a stop failure
+            // recorded here would turn Quit into "Quit anyway", over a server that is
+            // still running and a backup that is still writing.
+            note("Waffled is busy — try the update again in a moment")
             return
         }
         stopFailure = nil

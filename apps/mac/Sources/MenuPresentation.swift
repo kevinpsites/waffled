@@ -168,7 +168,9 @@ struct MenuPresentation: Equatable {
             // with an alert of its own), so the disabled item names the ordinary reason.
             checkForUpdatesLabel: canCheckForUpdates
                 ? "Check for updates…" : "Checking for updates…",
-            checkForUpdatesEnabled: canCheckForUpdates,
+            // `busy` too: an update begins by stopping the server, which is the one
+            // operation slot a start or a backup is already holding.
+            checkForUpdatesEnabled: canCheckForUpdates && !busy,
             quitTitle: stopFailure == nil
                 ? "Quit Waffled" : "Quit anyway (server keeps running)")
     }
