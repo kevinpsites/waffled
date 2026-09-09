@@ -130,6 +130,8 @@ type Options struct {
 const (
 	supervisorGrace = 2 * time.Minute
 	orphanGrace     = 15 * time.Second
+	// killGrace is how long a SIGKILL'd process gets to actually disappear.
+	killGrace = 500 * time.Millisecond
 )
 
 const pollInterval = 200 * time.Millisecond
@@ -424,25 +426,40 @@ func (o Options) terminate(ctx context.Context, pid int, grace time.Duration) er
 	if err := o.signal(pid, syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		return err
 	}
-	deadline := time.Now().Add(grace)
+	if o.waitGone(ctx, pid, grace) {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	_ = o.signal(pid, syscall.SIGKILL)
+	// SIGKILL is asynchronous: kill() returns before the kernel has torn the process
+	// down and reaped it, so signal 0 keeps succeeding for a beat afterwards. Asking
+	// straight away reports a process that really is going as one that will not go, and
+	// that false failure goes on to block --delete-data. supervisor.stopOrphan pays a
+	// flat 500ms here for the same reason.
+	if o.waitGone(ctx, pid, killGrace) {
+		return nil
+	}
+	return fmt.Errorf("process %d will not exit", pid)
+}
+
+// waitGone polls until the process is gone, the window closes, or ctx is done.
+func (o Options) waitGone(ctx context.Context, pid int, window time.Duration) bool {
+	deadline := time.Now().Add(window)
 	for {
 		if !o.alive(pid) {
-			return nil
+			return true
 		}
 		if !time.Now().Before(deadline) {
-			break
+			return false
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return false
 		case <-time.After(pollInterval):
 		}
 	}
-	_ = o.signal(pid, syscall.SIGKILL)
-	if o.alive(pid) {
-		return fmt.Errorf("process %d will not exit", pid)
-	}
-	return nil
 }
 
 // sweepOrder lists the pidfiles in the order they should be signalled: the reverse of the

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -632,5 +633,48 @@ func TestEveryRefusalIsErrRefused(t *testing.T) {
 	notOurs := Options{Layout: datadir.At(t.TempDir()), DeleteData: true, Log: &strings.Builder{}}
 	if _, err := Run(context.Background(), notOurs); !errors.Is(err, ErrRefused) {
 		t.Errorf("the not-a-data-directory refusal is not ErrRefused: %v", err)
+	}
+}
+
+// SIGKILL is asynchronous: kill() returns before the kernel has torn the process down,
+// so signal 0 keeps succeeding for a beat afterwards. Checking liveness with no delay
+// reports a process that really is going as one that will not go — and that false
+// failure then blocks --delete-data. supervisor.stopOrphan pays 500ms here for exactly
+// this reason.
+func TestAProcessThatDiesOnSIGKILLIsNotReportedAsSurviving(t *testing.T) {
+	opts, _, _ := fixture(t)
+	if err := os.WriteFile(opts.Layout.PidPath("api"), []byte("5555\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	dead := false
+	opts.grace = 20 * time.Millisecond
+	opts.alive = func(pid int) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return pid == 5555 && !dead
+	}
+	opts.signal = func(_ int, sig syscall.Signal) error {
+		if sig == syscall.SIGKILL {
+			// Torn down shortly afterwards, the way a real kill lands.
+			go func() {
+				time.Sleep(30 * time.Millisecond)
+				mu.Lock()
+				dead = true
+				mu.Unlock()
+			}()
+		}
+		return nil
+	}
+
+	report, err := Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("a process that SIGKILL did kill was reported as surviving: %v", err)
+	}
+	if got := item(t, report, KindPidfiles).Error; got != "" {
+		t.Errorf("pidfiles item carries error %q, want none", got)
+	}
+	if _, err := os.Stat(opts.Layout.Pids); !os.IsNotExist(err) {
+		t.Errorf("pids/ survived a successful sweep: %v", err)
 	}
 }
