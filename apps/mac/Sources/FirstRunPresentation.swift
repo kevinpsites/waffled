@@ -58,27 +58,20 @@ struct FirstRunPresentation: Equatable {
     ///     menu, which counts the same.
     ///   - failure: an error the model is holding, exactly as the menu shows it.
     ///   - isPortable: this Mac sleeps when a lid closes.
+    ///   - busy: a start, stop or backup is in flight. Both of this window's buttons are
+    ///     inert while one is (`startServer` refuses a second, and `start` has no timeout),
+    ///     so the error step during one is a screen a person cannot leave.
     static func make(
         status: RuntimeStatus?,
         isFirstRun: Bool,
         setupBegun: Bool,
         failure: String? = nil,
-        isPortable: Bool = false
+        isPortable: Bool = false,
+        busy: Bool = false
     ) -> FirstRunPresentation? {
         guard isFirstRun else { return nil }
 
-        if let failure {
-            return FirstRunPresentation(
-                step: .failed,
-                title: "Waffled could not start",
-                message: failure,
-                portableNote: nil,
-                services: [],
-                primaryButton: "Try again",
-                secondaryButton: "Show logs",
-                closesAfter: nil,
-                closeQuitsApp: false)
-        }
+        if let failure, !busy { return breakdown(message: failure) }
 
         // The welcome step is for a data directory where nothing exists and nothing is
         // happening. A server already on its way up — this app's click, or a
@@ -123,6 +116,20 @@ struct FirstRunPresentation: Equatable {
             services: rows(for: status?.services ?? []),
             primaryButton: nil,
             secondaryButton: nil,
+            closesAfter: nil,
+            closeQuitsApp: false)
+    }
+
+    /// The error step §6 allows, wherever the sentence came from.
+    private static func breakdown(message: String) -> FirstRunPresentation {
+        FirstRunPresentation(
+            step: .failed,
+            title: "Waffled could not start",
+            message: message,
+            portableNote: nil,
+            services: [],
+            primaryButton: "Try again",
+            secondaryButton: "Show logs",
             closesAfter: nil,
             closeQuitsApp: false)
     }

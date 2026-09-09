@@ -145,6 +145,35 @@ final class LifecycleTests: XCTestCase {
                        "a start after a failed stop is a new story")
     }
 
+    /// The app holds two failures that are forgotten on opposite rules. A `start` that
+    /// refused describes a server that is not there, so `stopped` does not disprove it and
+    /// only `running` does. A poll that could not reach the runtime describes that poll
+    /// alone — the next one that answers has disproved it, whatever it answers.
+    func testAPollThatAnswersClearsItsOwnErrorButNotARefusedStart() {
+        let refused = "port 8080 is in use"
+
+        XCTAssertEqual(
+            Lifecycle.failuresAfterPoll(reported: .stopped, startFailure: refused, transportError: nil),
+            .init(start: refused, poll: nil),
+            "a refused start leaves nothing running, so `stopped` is what it predicted")
+        XCTAssertEqual(
+            Lifecycle.failuresAfterPoll(reported: .running, startFailure: refused, transportError: nil),
+            .init(start: nil, poll: nil))
+        XCTAssertEqual(
+            Lifecycle.failuresAfterPoll(reported: nil, startFailure: refused,
+                                        transportError: "the runtime did not answer"),
+            .init(start: refused, poll: "the runtime did not answer"))
+    }
+
+    /// Two slots, one status line: whichever exists, with the refusal a person provoked
+    /// ahead of the transport error underneath it.
+    func testTheHeldSentenceIsWhicheverFailureExists() {
+        XCTAssertEqual(Lifecycle.HeldFailures(start: "port 8080 is in use", poll: "no answer").message,
+                       "port 8080 is in use")
+        XCTAssertEqual(Lifecycle.HeldFailures(start: nil, poll: "no answer").message, "no answer")
+        XCTAssertNil(Lifecycle.HeldFailures().message)
+    }
+
     /// The ready step takes itself away, and the couple of seconds it waits is long enough
     /// for a poll to move the window on to something someone still needs — `.failed` carries
     /// the `Try again` button, and a dismissal latches for the life of the process. So the

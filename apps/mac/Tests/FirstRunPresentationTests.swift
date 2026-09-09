@@ -75,6 +75,23 @@ final class FirstRunPresentationTests: XCTestCase {
         }
     }
 
+    /// `Try again` does nothing while a start is still in flight — `startServer` refuses a
+    /// second one, and `start` has no timeout — so a `status` that failed mid-start must not
+    /// put the window on an error step whose only button is inert.
+    func testAFailureWhileAStartIsInFlightStaysOnTheProgressStep() throws {
+        let starting = try status(Fixtures.firstStartInProgress)
+
+        let inFlight = FirstRunPresentation.make(status: starting, isFirstRun: true, setupBegun: true,
+                                                 failure: "the runtime did not answer", busy: true)
+        XCTAssertEqual(inFlight?.step, .starting)
+        XCTAssertNil(inFlight?.primaryButton)
+
+        XCTAssertEqual(FirstRunPresentation.make(status: starting, isFirstRun: true, setupBegun: true,
+                                                 failure: "the runtime did not answer", busy: false)?.step,
+                       .failed,
+                       "with nothing in flight the button works again, and the error is the window")
+    }
+
     /// The welcome step is the only one with a button that creates anything, and the only
     /// one whose close box means "no thank you" — nothing exists yet to leave behind.
     func testOnlyTheWelcomeStepOffersToStartAndOnlyItsCloseQuits() throws {

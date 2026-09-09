@@ -292,6 +292,32 @@ enum Lifecycle {
         error.map { StopOutcome.report($0) } ?? .terminate
     }
 
+    /// The failures the app is holding on to between polls, kept apart because they are
+    /// forgotten on opposite rules.
+    struct HeldFailures: Equatable {
+        /// A `start` that refused. It outlives the document that followed it: the refusal
+        /// left nothing running, so the next poll says `stopped`, which on its own looks
+        /// like a server nobody had tried to start.
+        var start: String?
+        /// A poll that could not reach the runtime at all. It describes that poll and
+        /// nothing else, so the next one to answer replaces it.
+        var poll: String?
+
+        /// The one sentence the menu and the window show: the refusal a person provoked
+        /// beats the transport error underneath it.
+        var message: String? { start ?? poll }
+    }
+
+    /// What is still held once a poll comes back.
+    ///
+    /// - Parameters:
+    ///   - reported: the state the poll answered with, or nil when the poll itself threw.
+    ///   - transportError: nil when `status` answered, however grim the answer was.
+    static func failuresAfterPoll(reported: RuntimeState?, startFailure: String?,
+                                  transportError: String?) -> HeldFailures {
+        HeldFailures(start: reported == .running ? nil : startFailure, poll: transportError)
+    }
+
     /// Whether the ready step's self-close still means anything when its timer fires. The
     /// window it was armed on can have been replaced in the meantime — a poll during those
     /// two seconds can report a stack that fell over — and closing is permanent, so a timer

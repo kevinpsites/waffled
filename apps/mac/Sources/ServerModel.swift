@@ -15,10 +15,17 @@ final class ServerModel {
     static let shared = ServerModel()
 
     private(set) var status: RuntimeStatus?
-    /// An error the app is holding on to. It outlives the status document that caused it:
-    /// a `start` that refused leaves nothing running, so the next poll says `stopped`,
-    /// which on its own would look like a server nobody had tried to start.
+    /// A `start` that refused. It outlives the status document that caused it: the refusal
+    /// left nothing running, so the next poll says `stopped`, which on its own would look
+    /// like a server nobody had tried to start.
     private(set) var failure: String?
+    /// A poll that could not reach the runtime, held apart from `failure` so that the next
+    /// poll to answer can drop it without erasing a refusal a person is still reading.
+    private(set) var pollFailure: String?
+    /// The one sentence the menu, the icon and the window all show.
+    var heldFailure: String? {
+        Lifecycle.HeldFailures(start: failure, poll: pollFailure).message
+    }
     private(set) var transient: String?
     /// A `stop` that refused. Kept apart from `failure` because the server it describes
     /// is still running, so the next successful poll must not wipe it.
@@ -74,7 +81,7 @@ final class ServerModel {
     // MARK: what the menu bar draws
 
     var iconState: RuntimeState {
-        Lifecycle.iconState(reported: status?.state, failure: failure, stopFailure: stopFailure)
+        Lifecycle.iconState(reported: status?.state, failure: heldFailure, stopFailure: stopFailure)
     }
 
     var icon: IconAppearance { IconAppearance.forState(iconState) }
@@ -88,7 +95,7 @@ final class ServerModel {
     }
 
     var presentation: MenuPresentation {
-        MenuPresentation.make(status: status, failure: failure, transient: transient,
+        MenuPresentation.make(status: status, failure: heldFailure, transient: transient,
                               busy: busy, runtimeAvailable: client != nil,
                               stopFailure: stopFailure, awaitingSetup: awaitingSetup)
     }
@@ -96,8 +103,8 @@ final class ServerModel {
     /// The first-run window's whole content, or nil on every launch that gets no window.
     var firstRunPresentation: FirstRunPresentation? {
         FirstRunPresentation.make(status: status, isFirstRun: isFirstRun,
-                                  setupBegun: setupBegun, failure: failure,
-                                  isPortable: isPortable)
+                                  setupBegun: setupBegun, failure: heldFailure,
+                                  isPortable: isPortable, busy: busy)
     }
 
     /// A first run whose welcome step is still waiting for a person. It holds the
@@ -187,17 +194,16 @@ final class ServerModel {
         do {
             let fresh = try await client.status()
             status = fresh
-            // A server that came up is the only thing that clears a start failure —
-            // clearing it on any successful poll would erase the message a moment after
-            // it appeared, since `status` keeps answering fine when `start` refuses.
-            if fresh.state == .running { failure = nil }
+            hold(Lifecycle.failuresAfterPoll(reported: fresh.state, startFailure: failure,
+                                             transportError: nil))
             // The opposite rule for a failed stop: it describes a server that is still
             // up, and is forgotten the moment a poll says it no longer is.
             if !Lifecycle.stopFailureStillApplies(reported: fresh.state) { stopFailure = nil }
             openBrowserIfAnyoneIsWaiting(fresh)
         } catch {
             status = nil
-            failure = Self.describe(error)
+            hold(Lifecycle.failuresAfterPoll(reported: nil, startFailure: failure,
+                                             transportError: Self.describe(error)))
         }
         // After the catch, so a poll that threw arrives here as nil and decides nothing:
         // `status` failing is the ordinary cold start, since the runtime verifies its
@@ -300,6 +306,7 @@ final class ServerModel {
         autoStartDecided = true
         setupBegun = true
         failure = nil
+        pollFailure = nil
         stopFailure = nil
         syncFirstRunWindow()
         operationTask = Task { [weak self] in
@@ -413,8 +420,11 @@ final class ServerModel {
 
     // MARK: -
 
+    /// The window's step depends on `busy`, so it is re-read here rather than waiting up to
+    /// a poll for the error a start just reported to be offered with a working button.
     private func finishOperation() {
         operationTask = nil
+        syncFirstRunWindow()
     }
 
     /// One line for the menu, whatever went wrong. The runtime's own sentence when it
@@ -426,6 +436,11 @@ final class ServerModel {
 
     private func recordFailure(_ message: String) {
         failure = message
+    }
+
+    private func hold(_ failures: Lifecycle.HeldFailures) {
+        failure = failures.start
+        pollFailure = failures.poll
     }
 
     /// The `Stopping…` note has to go with it: `transient` outranks everything in the
