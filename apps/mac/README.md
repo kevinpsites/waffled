@@ -251,7 +251,10 @@ replaced. So a relaunch over a *running* server leaves the household on the old 
 and the relaunched app — finding it `running` — stands its one auto-start down and never
 notices. The updater therefore **postpones Sparkle's relaunch until `waffled-runtime stop`
 succeeds**, and if the stop *refuses*, the relaunch is held: the icon slashes, the menu says
-`Could not stop Waffled: …`, and the person can try the update again from the menu. It is
+`Could not stop Waffled: …`, and the update item becomes **`Install the update now`**, which
+tries the stop again with the install Sparkle handed over. (It has to be that item rather
+than an ordinary check: Sparkle counts the postponed session as still in progress, so
+`Check for updates…` would do nothing until the app relaunches.) It is
 the same rule as quit, for the same reason. (Quitting Waffled with a downloaded update
 pending is safe for the same reason: quit stops the server first.)
 

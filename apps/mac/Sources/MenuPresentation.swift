@@ -80,9 +80,21 @@ struct MenuPresentation: Equatable {
     /// `.menu`-style `MenuBarExtra` renders no tooltip on an item.
     var checkForUpdatesLabel: String
     var checkForUpdatesEnabled: Bool
+    /// What a click on that item does.
+    var updateAction: UpdateAction
     /// "Quit anyway (server keeps running)" once a stop has refused — the second question
     /// the alert cannot ask, because by then the app is no longer on its way out.
     var quitTitle: String
+
+    /// What the updater's item is for, which is not always a check.
+    enum UpdateAction: Equatable {
+        /// Ask Sparkle to look. Every ordinary day.
+        case check
+        /// Run the install this app is holding. Having postponed the relaunch, Sparkle's
+        /// session is still in progress and its own `checkForUpdates` does nothing at all
+        /// until the handler we kept is invoked — so this item is the only way on.
+        case installNow
+    }
 
     /// - Parameters:
     ///   - status: the last document that decoded, or nil before the first poll returns.
@@ -98,6 +110,8 @@ struct MenuPresentation: Equatable {
     ///     not clear it — and because it is what changes the quit item.
     ///   - awaitingSetup: a first run whose welcome window is still waiting for a click.
     ///   - canCheckForUpdates: Sparkle's own answer, observed on the updater.
+    ///   - updatePending: an update whose relaunch we postponed and whose install handler
+    ///     the model is still holding, because the stop refused.
     static func make(
         status: RuntimeStatus?,
         failure: String? = nil,
@@ -106,7 +120,8 @@ struct MenuPresentation: Equatable {
         runtimeAvailable: Bool = true,
         stopFailure: String? = nil,
         awaitingSetup: Bool = false,
-        canCheckForUpdates: Bool = false
+        canCheckForUpdates: Bool = false,
+        updatePending: Bool = false
     ) -> MenuPresentation {
         let state = status?.state
         let address = status?.serverAddress
@@ -163,14 +178,18 @@ struct MenuPresentation: Equatable {
             showStart: startable,
             startEnabled: startable && !busy,
             showLogs: faulted,
-            // Sparkle takes `canCheckForUpdates` away while a check or an install is in
-            // flight (and before its updater has started at all, which it reports itself
-            // with an alert of its own), so the disabled item names the ordinary reason.
-            checkForUpdatesLabel: canCheckForUpdates
-                ? "Check for updates…" : "Checking for updates…",
-            // `busy` too: an update begins by stopping the server, which is the one
+            // A held update comes first: Sparkle reports `canCheckForUpdates` false for
+            // the whole of the session it is still holding open, so the ordinary label
+            // would sit there disabled and the update would never happen. Otherwise the
+            // item follows Sparkle's answer, and says why when it is off — a `.menu`-style
+            // `MenuBarExtra` renders no tooltip to say it anywhere else.
+            checkForUpdatesLabel: updatePending
+                ? "Install the update now"
+                : (canCheckForUpdates ? "Check for updates…" : "Checking for updates…"),
+            // `busy` gates both: an update begins by stopping the server, which is the one
             // operation slot a start or a backup is already holding.
-            checkForUpdatesEnabled: canCheckForUpdates && !busy,
+            checkForUpdatesEnabled: (updatePending || canCheckForUpdates) && !busy,
+            updateAction: updatePending ? .installNow : .check,
             quitTitle: stopFailure == nil
                 ? "Quit Waffled" : "Quit anyway (server keeps running)")
     }

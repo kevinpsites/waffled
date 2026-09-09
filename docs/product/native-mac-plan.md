@@ -430,7 +430,9 @@ nothing to serve until that lands.
      it `running`, stands its one auto-start down and never migrates anything. The delegate
      postpones Sparkle's relaunch until `stop` succeeds; a `stop` that refuses holds the
      relaunch, slashes the icon and says why, exactly as a refused stop during quit does.
-     Everything after that is the ordinary auto-start, which is the update.
+     Everything after that is the ordinary auto-start, which is the update. A held update
+     keeps Sparkle's install handler and turns the menu item into `Install the update now`,
+     because a postponed session leaves `checkForUpdates` a no-op until the app relaunches.
    - **Known edge, still open:** dragging a newer DMG over a running install has the same
      stale-server problem with nobody to stop the server first — the swapped app keeps
      talking to the runtime already in memory until the next stop/start. Item 5 will either

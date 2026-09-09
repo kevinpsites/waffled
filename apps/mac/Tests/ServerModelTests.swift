@@ -33,5 +33,39 @@ final class ServerModelTests: XCTestCase {
                        "Quit must still ask, rather than offering to leave the server running")
         XCTAssertFalse(installed, "the swap waits for a stop that has not happened")
         XCTAssertNotNil(model.transient, "the click still gets an answer")
+        XCTAssertFalse(model.hasPendingUpdate, "we never took Sparkle's handler")
+    }
+
+    /// A stop that refuses holds the relaunch — and Sparkle's install handler with it. That
+    /// handler is the only way the update ever happens: having postponed the relaunch, its
+    /// session stays in progress and a fresh `checkForUpdates` is a silent no-op. So the
+    /// model keeps it, and the menu item runs it again.
+    func testAHeldUpdateKeepsTheInstallHandlerForTheRetry() async {
+        let model = makeModel()   // the binary does not exist, so `stop` cannot succeed
+        defer { model.end() }
+
+        var installs = 0
+        model.stopBeforeUpdate { installs += 1 }
+        XCTAssertTrue(model.hasPendingUpdate, "taken the moment Sparkle hands it over")
+
+        await settle(model)
+        XCTAssertNotNil(model.stopFailure, "precondition: this stop refused")
+        XCTAssertEqual(installs, 0, "the swap must not land on a server that is still up")
+        XCTAssertTrue(model.hasPendingUpdate, "nothing else can install it now")
+
+        // The retry is the same stop, with the handler we kept.
+        model.installPendingUpdate()
+        XCTAssertTrue(model.busy)
+    }
+
+    /// Waits out the one operation the model has in flight. It is stopping a runtime that
+    /// is not there, so every call fails immediately — this is bounded by the failure, not
+    /// by the sleep.
+    private func settle(_ model: ServerModel) async {
+        let deadline = Date().addingTimeInterval(5)
+        while model.busy, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertFalse(model.busy, "the operation never came back")
     }
 }

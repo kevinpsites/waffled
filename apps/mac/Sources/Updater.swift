@@ -64,7 +64,9 @@ final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
     /// old binaries out of memory and the relaunched app — finding it `running` — stands
     /// its auto-start down and never migrates anything. Returning true holds the relaunch
     /// until `installHandler` runs, and a `stop` that refuses never runs it: the icon
-    /// slashes, the menu says why, and the person can check for updates again.
+    /// slashes, the menu says why, and the item becomes `Install the update now` — the
+    /// handler is kept because Sparkle's session stays open around it, so its own
+    /// `checkForUpdates` would do nothing.
     ///
     /// Hopped onto the main actor rather than asserted onto it: Sparkle's header documents
     /// no thread for this callback, the stop is asynchronous either way, and a wrong guess

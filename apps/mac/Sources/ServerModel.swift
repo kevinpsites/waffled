@@ -31,6 +31,12 @@ final class ServerModel {
     /// is still running, so the next successful poll must not wipe it.
     private(set) var stopFailure: String?
 
+    /// Sparkle's install handler, kept while a stop refuses. Invoking it is the only way
+    /// the postponed relaunch ever happens: `SPUUpdater` counts the session as in progress
+    /// until then, and a fresh `checkForUpdates` returns without doing anything.
+    private var pendingInstall: (() -> Void)?
+    var hasPendingUpdate: Bool { pendingInstall != nil }
+
     /// A start, stop or backup is in flight. Derived rather than stored: the two were
     /// set in lockstep at four call sites, which is four chances for a menu stuck at
     /// "busy" forever, or never busy at all.
@@ -104,7 +110,8 @@ final class ServerModel {
         MenuPresentation.make(status: status, failure: heldFailure, transient: transient,
                               busy: busy, runtimeAvailable: client != nil,
                               stopFailure: stopFailure, awaitingSetup: awaitingSetup,
-                              canCheckForUpdates: canCheckForUpdates)
+                              canCheckForUpdates: canCheckForUpdates,
+                              updatePending: hasPendingUpdate)
     }
 
     /// The first-run window's whole content, or nil on every launch that gets no window.
@@ -421,6 +428,13 @@ final class ServerModel {
     /// The relaunched app's ordinary auto-start is what runs the new runtime against the
     /// existing data, which is where the snapshot, the migrations and the health gate
     /// happen. Nothing here knows about any of that, deliberately.
+    /// The menu's `Install the update now`: the same stop again, with the handler Sparkle
+    /// gave us the first time.
+    func installPendingUpdate() {
+        guard let install = pendingInstall else { return }
+        stopBeforeUpdate(then: install)
+    }
+
     func stopBeforeUpdate(then install: @escaping () -> Void) {
         guard operationTask == nil else {
             // A start or a backup is mid-flight; the menu item is off for exactly that
@@ -432,6 +446,7 @@ final class ServerModel {
             return
         }
         stopFailure = nil
+        pendingInstall = install
         note("Stopping for the update…", clearAfter: nil)
         operationTask = Task { [weak self] in
             defer { self?.finishOperation() }
@@ -444,8 +459,10 @@ final class ServerModel {
 
             switch Lifecycle.relaunchDecision(afterStop: stopError) {
             case .relaunch:
+                self?.pendingInstall = nil
                 install()
             case let .hold(message):
+                // The handler stays with us; the menu item becomes the retry that runs it.
                 self?.recordStopFailure(message)
                 await self?.refresh()
             }

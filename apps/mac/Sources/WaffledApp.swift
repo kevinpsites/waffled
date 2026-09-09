@@ -85,8 +85,13 @@ private struct MenuContent: View {
         Button("Back up now") { model.backUpNow() }
             .disabled(!menu.backupEnabled)
 
-        Button(menu.checkForUpdatesLabel) { updater.checkForUpdates() }
-            .disabled(!menu.checkForUpdatesEnabled)
+        Button(menu.checkForUpdatesLabel) {
+            switch menu.updateAction {
+            case .check: updater.checkForUpdates()
+            case .installNow: model.installPendingUpdate()
+            }
+        }
+        .disabled(!menu.checkForUpdatesEnabled)
 
         if menu.showLogs {
             Button("Show logs") { model.revealLogs() }

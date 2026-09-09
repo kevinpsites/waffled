@@ -332,6 +332,29 @@ final class MenuPresentationTests: XCTestCase {
         XCTAssertFalse(m.checkForUpdatesEnabled)
     }
 
+    /// A held update strands Sparkle's session: it handed over its install handler, we
+    /// postponed the relaunch and never ran it, so `sessionInProgress` stays set and
+    /// `canCheckForUpdates` is false — a "check for updates again" that does nothing at
+    /// all. The item becomes the way to run the install we are still holding.
+    func testAHeldUpdateTurnsTheItemIntoTheInstallRatherThanACheck() throws {
+        let s = try RuntimeStatus.decode(Fixtures.data(Fixtures.fullRunning))
+        let m = MenuPresentation.make(status: s, stopFailure: "postgres would not shut down",
+                                      canCheckForUpdates: false, updatePending: true)
+
+        XCTAssertEqual(m.checkForUpdatesLabel, "Install the update now")
+        XCTAssertEqual(m.updateAction, .installNow)
+        XCTAssertTrue(m.checkForUpdatesEnabled,
+                      "Sparkle cannot check while it is holding a session — this is the way on")
+
+        let busy = MenuPresentation.make(status: s, busy: true, canCheckForUpdates: false,
+                                         updatePending: true)
+        XCTAssertFalse(busy.checkForUpdatesEnabled, "the retry is a stop, like the first try")
+
+        let ordinary = MenuPresentation.make(status: s, canCheckForUpdates: true)
+        XCTAssertEqual(ordinary.updateAction, .check)
+        XCTAssertEqual(ordinary.checkForUpdatesLabel, "Check for updates…")
+    }
+
     /// What the menu says after an update installed itself and relaunched — in whichever
     /// direction it went, since re-installing an older DMG is a supported way back.
     func testTheUpdateNoteNamesTheVersionItLandedOn() {
