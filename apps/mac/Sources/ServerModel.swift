@@ -62,16 +62,18 @@ final class ServerModel {
     /// or the one auto-start. Derived from the trigger the start recorded, because the two
     /// were only ever written together.
     var setupBegun: Bool { startTrigger != .notUs }
-    /// Whether the version note has been shown; see `noteAnyVersionCrossing`.
-    private var updateNoted = false
     private var firstRunDismissed = false
     private var firstRunCloseTask: Task<Void, Never>?
     private let firstRunWindow = FirstRunWindow()
     let isPortable: Bool
 
+    private let memory: UpdateMemory
+
     init(environment: [String: String] = ProcessInfo.processInfo.environment,
          resourceURL: URL? = Bundle.main.resourceURL,
-         hardware: HardwareProbe = SystemHardware()) {
+         hardware: HardwareProbe = SystemHardware(),
+         memory: UpdateMemory = UserDefaults.standard) {
+        self.memory = memory
         location = RuntimeLocator.locate(environment: environment, resourceURL: resourceURL)
         client = location.map { RuntimeClient(location: $0, runner: SubprocessRunner()) }
         // Read once: neither the model of this Mac nor its battery changes while the app
@@ -246,20 +248,19 @@ final class ServerModel {
         }
     }
 
-    /// "Updated to 0.15.0" / "Rolled back to 0.14.3", once per process — see
-    /// `Lifecycle.updateNote` for why the latch is spent on the note and not on the poll.
+    /// "Updated to 0.15.0" / "Rolled back to 0.14.3", once per crossing.
     ///
     /// `bundle.previousVersion` records the last crossing this data went through and stays
-    /// there for good — it is a fact about the directory, not an event — so the latch is
-    /// what keeps a poll every two seconds from repeating it. The price is that the note
-    /// also appears for its few seconds on the *next* launch after an update: this app
-    /// keeps no memory of its own between launches, and the alternative (guessing from
-    /// `versionChangedAt` how fresh is fresh) would be a rule nobody could predict.
+    /// there for good — it is a fact about the directory, not an event — so what stops a
+    /// poll every two seconds, and every launch after this one, from repeating the note is
+    /// the moment of the crossing, written down here once it has been said.
     private func noteAnyVersionCrossing(_ fresh: RuntimeStatus) {
-        guard let line = Lifecycle.updateNote(alreadyNoted: updateNoted,
-                                              previous: fresh.bundle.previousVersion,
-                                              current: fresh.bundle.version) else { return }
-        updateNoted = true
+        let changedAt = fresh.bundle.versionChangedAt
+        guard let line = Lifecycle.updateNote(
+            previous: fresh.bundle.previousVersion, current: fresh.bundle.version,
+            changedAt: changedAt,
+            lastNoted: memory.string(forKey: Updates.lastNotedCrossingKey)) else { return }
+        memory.set(changedAt, forKey: Updates.lastNotedCrossingKey)
         note(line)
     }
 

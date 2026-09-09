@@ -47,8 +47,25 @@ enum VersionChange: Equatable {
     }
 }
 
+/// The one thing this app remembers between launches: which version crossing it has
+/// already announced.
+///
+/// A protocol rather than `UserDefaults` directly so the tests hand over a dictionary. A
+/// suite that wrote the real `app.waffled.mac` domain would swallow the note the household
+/// running it was owed after its next update.
+protocol UpdateMemory: AnyObject {
+    func string(forKey key: String) -> String?
+    func set(_ value: Any?, forKey key: String)
+}
+
+extension UserDefaults: UpdateMemory {}
+
 /// The updater's one environment seam.
 enum Updates {
+    /// Under the app's own bundle identifier, so it goes with the app rather than with the
+    /// data directory — the note is about this Mac having seen the news.
+    static let lastNotedCrossingKey = "lastNotedVersionChangedAt"
+
     /// Points the updater at a feed you are serving yourself — the only way to exercise an
     /// update without publishing one. It is honoured in every build rather than only in a
     /// debug one, because it is not a security boundary: the EdDSA public key in

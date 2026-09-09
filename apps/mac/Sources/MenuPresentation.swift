@@ -324,15 +324,23 @@ enum Lifecycle {
         case hold(String)
     }
 
-    /// The version note, or nil when there is nothing to say — which is also the signal to
-    /// keep the one note this process gets.
+    /// The version note, or nil when there is nothing to say.
     ///
-    /// The latch belongs on the note rather than on the poll, because the two halves of a
-    /// crossing arrive on different polls: `bundle.version` comes from the manifest and is
-    /// there before anything starts, while `previousVersion` is written when the runtime
+    /// - Parameters:
+    ///   - changedAt: the moment the runtime recorded this crossing. It names the crossing,
+    ///     which is why it is what gets remembered: `previousVersion` stays where it is
+    ///     until the *next* update, so a latch that only lived as long as the process would
+    ///     announce one update on every launch for the life of the data directory.
+    ///   - lastNoted: the `changedAt` this app has already announced, or nil for a Mac that
+    ///     has never announced one.
+    ///
+    /// The remembering happens on the note rather than on the poll, because the two halves
+    /// of a crossing arrive on different polls: `bundle.version` comes from the manifest and
+    /// is there before anything starts, while `previousVersion` is written when the runtime
     /// starts against the existing data — the auto-start, several polls later.
-    static func updateNote(alreadyNoted: Bool, previous: String, current: String) -> String? {
-        guard !alreadyNoted else { return nil }
+    static func updateNote(previous: String, current: String,
+                           changedAt: String, lastNoted: String?) -> String? {
+        guard changedAt != lastNoted else { return nil }
         return MenuPresentation.updateNote(previous: previous, current: current)
     }
 

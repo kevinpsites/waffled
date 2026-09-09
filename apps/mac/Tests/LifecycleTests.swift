@@ -141,20 +141,40 @@ final class LifecycleTests: XCTestCase {
     /// on the first status that carried a version would therefore be spent on the one poll
     /// that could not possibly know about the crossing.
     func testThePollBeforeTheAutoStartDoesNotSpendTheUpdateNote() {
-        var noted = false
+        var noted: String?
 
         // Poll 1: the new bundle, but nothing has started against the data yet.
-        var line = Lifecycle.updateNote(alreadyNoted: noted, previous: "", current: "0.15.0")
+        var line = Lifecycle.updateNote(previous: "", current: "0.15.0",
+                                        changedAt: "", lastNoted: noted)
         XCTAssertNil(line)
-        noted = noted || line != nil
+        XCTAssertNil(noted, "nothing was said, so nothing is remembered")
 
         // The auto-start records the crossing; the next poll carries it.
-        line = Lifecycle.updateNote(alreadyNoted: noted, previous: "0.14.3", current: "0.15.0")
+        line = Lifecycle.updateNote(previous: "0.14.3", current: "0.15.0",
+                                    changedAt: "2026-09-08T03:00:00Z", lastNoted: noted)
         XCTAssertEqual(line, "Updated to 0.15.0")
-        noted = noted || line != nil
+        noted = "2026-09-08T03:00:00Z"
 
-        XCTAssertNil(Lifecycle.updateNote(alreadyNoted: noted, previous: "0.14.3", current: "0.15.0"),
+        XCTAssertNil(Lifecycle.updateNote(previous: "0.14.3", current: "0.15.0",
+                                          changedAt: "2026-09-08T03:00:00Z", lastNoted: noted),
                      "said once, not on every poll for the rest of the process")
+    }
+
+    /// And once for the life of the data directory, not once per launch. The crossing it
+    /// describes is a permanent fact about that directory — `previousVersion` stays where
+    /// it is until the next update — so the app remembers the moment it announced, and
+    /// every later launch reads the same one and says nothing.
+    func testACrossingIsAnnouncedOnceEvenAcrossLaunches() {
+        XCTAssertNil(Lifecycle.updateNote(previous: "0.14.3", current: "0.15.0",
+                                          changedAt: "2026-09-08T03:00:00Z",
+                                          lastNoted: "2026-09-08T03:00:00Z"),
+                     "this launch was not the one that updated")
+
+        XCTAssertEqual(Lifecycle.updateNote(previous: "0.15.0", current: "0.15.1",
+                                            changedAt: "2026-09-09T03:00:00Z",
+                                            lastNoted: "2026-09-08T03:00:00Z"),
+                       "Updated to 0.15.1",
+                       "a different moment is a different crossing, and news again")
     }
 
     /// The icon is the only thing a person sees without opening the menu, so a failed
