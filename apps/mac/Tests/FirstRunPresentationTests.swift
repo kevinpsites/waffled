@@ -75,6 +75,36 @@ final class FirstRunPresentationTests: XCTestCase {
         }
     }
 
+    /// A first start that came up and then fell over is not "still starting": the checklist
+    /// would sit there for the rest of the launch while the menu already said what was
+    /// wrong. Both surfaces show the runtime's sentence, from one helper.
+    func testAStackThatFellOverDuringAFirstRunOffersTheWayOut() throws {
+        var unhealthy = try status(Fixtures.firstStartInProgress)
+        unhealthy.state = .unhealthy
+        unhealthy.lastError = "powersync exited: replication slot is gone\nsee the logs"
+
+        let p = try XCTUnwrap(FirstRunPresentation.make(status: unhealthy, isFirstRun: true,
+                                                        setupBegun: true))
+        XCTAssertEqual(p.step, .failed)
+        XCTAssertEqual(p.message, "powersync exited: replication slot is gone")
+        XCTAssertEqual(p.primaryButton, "Try again")
+        XCTAssertEqual(p.secondaryButton, "Show logs")
+        XCTAssertEqual(MenuPresentation.make(status: unhealthy).statusLine, p.message,
+                       "one sentence, derived once, wherever it is shown")
+
+        var silent = unhealthy
+        silent.lastError = ""
+        XCTAssertEqual(FirstRunPresentation.make(status: silent, isFirstRun: true, setupBegun: true)?.message,
+                       "Waffled needs attention",
+                       "and one fallback when the runtime gave us no words of its own")
+        XCTAssertEqual(MenuPresentation.make(status: silent).statusLine, "Waffled needs attention")
+
+        XCTAssertEqual(FirstRunPresentation.make(status: unhealthy, isFirstRun: true, setupBegun: true,
+                                                 busy: true)?.step,
+                       .starting,
+                       "a service still coming up under a start in flight is not the end of it")
+    }
+
     /// `Try again` does nothing while a start is still in flight — `startServer` refuses a
     /// second one, and `start` has no timeout — so a `status` that failed mid-start must not
     /// put the window on an error step whose only button is inert.

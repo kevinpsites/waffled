@@ -125,6 +125,13 @@ struct RuntimeStatus: Equatable {
     /// The schema this build understands. Anything else is refused rather than guessed at.
     static let supportedSchema = 1
 
+    /// The one sentence for a stack that needs a person: the runtime's own words whenever
+    /// it gave us any. The menu and the first-run window both show it, and the fallback
+    /// wording is the same in both — so it is derived here rather than at each of them.
+    static func attentionLine(_ status: RuntimeStatus?) -> String {
+        status?.lastError.firstLine ?? "Waffled needs attention"
+    }
+
     static func decode(_ data: Data) throws -> RuntimeStatus {
         let root = try JSONSerialization.jsonObject(with: data)
         guard let object = root as? [String: Any] else {

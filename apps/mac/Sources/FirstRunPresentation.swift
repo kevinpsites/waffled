@@ -71,7 +71,16 @@ struct FirstRunPresentation: Equatable {
     ) -> FirstRunPresentation? {
         guard isFirstRun else { return nil }
 
-        if let failure, !busy { return breakdown(message: failure) }
+        // Neither error step is offered while an operation is in flight: both its buttons
+        // would be inert, and the progress list is the honest screen until it finishes.
+        if !busy {
+            if let failure { return breakdown(message: failure) }
+            // A stack that came up and fell over is not still coming up — without this the
+            // checklist stays on screen for the rest of the launch while the menu says why.
+            if status?.state == .unhealthy {
+                return breakdown(message: RuntimeStatus.attentionLine(status))
+            }
+        }
 
         // The welcome step is for a data directory where nothing exists and nothing is
         // happening. A server already on its way up — this app's click, or a

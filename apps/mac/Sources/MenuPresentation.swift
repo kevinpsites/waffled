@@ -140,8 +140,7 @@ struct MenuPresentation: Equatable {
             baseLine = awaitingSetup ? "Waffled is not set up yet" : "Waffled is stopped"
             tint = .idle
         case (_, .unhealthy):
-            // The runtime's own sentence beats any wording invented here.
-            baseLine = status?.lastError.firstLine ?? "Waffled needs attention"
+            baseLine = RuntimeStatus.attentionLine(status)
             tint = .fault
         case (_, nil):
             baseLine = "Checking…"
