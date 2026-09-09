@@ -120,11 +120,8 @@ final class LifecycleTests: XCTestCase {
                        "the changed menu item is the second confirmation")
     }
 
-    /// An update is a stop, a swap and a start. macOS keeps a running process's mapped
-    /// binaries alive after the file under them is replaced, so a relaunch over a running
-    /// server leaves the household on the OLD runtime — and the new app, finding it
-    /// `running`, stands its auto-start down and never notices. So the relaunch waits for
-    /// `stop`, and a `stop` that refuses holds it back rather than pressing on.
+    /// The relaunch waits for the stop, and a stop that refuses holds it back rather than
+    /// pressing on — why, in `docs/product/native-mac-plan.md` Phase 3 item 6.
     func testTheUpdateRelaunchWaitsForTheServerToStop() {
         XCTAssertEqual(Lifecycle.outcomeAfterStop(error: nil), .proceed)
         XCTAssertEqual(Lifecycle.outcomeAfterStop(error: "postgres would not shut down"),
@@ -132,11 +129,9 @@ final class LifecycleTests: XCTestCase {
                        "the swap would land on a server still running the old bundle")
     }
 
-    /// The other end of the same rule. Once the stop has succeeded the server is down and
-    /// the app is only waiting to be replaced — so an install that then aborts (a bad
-    /// signature, a person cancelling the authorisation) leaves the household with no
-    /// server, no update, and an app whose one auto-start is long spent. The app that
-    /// stopped it is the one that has to start it again.
+    /// The other end of the same rule: after the stop the server is down and the app is
+    /// only waiting to be replaced, so an install that then aborts leaves the household
+    /// with neither a server nor an update. Whoever stopped it starts it again.
     func testAnAbandonedInstallStartsBackTheServerWeStopped() {
         XCTAssertEqual(
             Lifecycle.recoveryAfterAbort(weStoppedTheServer: true,

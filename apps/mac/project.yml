@@ -61,8 +61,6 @@ targets:
         # CURRENT_PROJECT_VERSION, which is a constant "1". Sparkle compares **this** key to
         # decide whether an update is newer, so a constant here means no release is ever
         # newer than any other and `Check for updates…` always says you are up to date.
-        # Measured: an appcast generated from two builds that differed only in
-        # MARKETING_VERSION carried `sparkle:version` 1 for both.
         CFBundleVersion: "$(MARKETING_VERSION)"
         # Menu-bar only: no Dock icon, no app menu, no window on launch.
         LSUIElement: true

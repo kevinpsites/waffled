@@ -424,13 +424,6 @@ final class ServerModel {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
-    /// Sparkle has downloaded an update and is ready to swap this app — runtime bundle and
-    /// all — and relaunch it. The server has to be down first, and if it will not go down
-    /// the relaunch is held: see `Lifecycle.relaunchDecision`.
-    ///
-    /// The relaunched app's ordinary auto-start is what runs the new runtime against the
-    /// existing data, which is where the snapshot, the migrations and the health gate
-    /// happen. Nothing here knows about any of that, deliberately.
     /// The menu's `Install the update now`: the same stop again, with the handler Sparkle
     /// gave us the first time.
     func installPendingUpdate() {
@@ -438,6 +431,13 @@ final class ServerModel {
         stopBeforeUpdate(then: install)
     }
 
+    /// Sparkle has downloaded an update and is ready to swap this app — runtime bundle and
+    /// all — and relaunch it. The server has to be down first, and if it will not go down
+    /// the relaunch is held (why: `docs/product/native-mac-plan.md`, Phase 3 item 6).
+    ///
+    /// The relaunched app's ordinary auto-start is what runs the new runtime against the
+    /// existing data, which is where the snapshot, the migrations and the health gate
+    /// happen. Nothing here knows about any of that, deliberately.
     func stopBeforeUpdate(then install: @escaping () -> Void) {
         guard operationTask == nil else {
             // A start or a backup is mid-flight; the menu item is off for exactly that

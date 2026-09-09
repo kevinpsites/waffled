@@ -246,11 +246,10 @@ What has to be true for that to work is the one rule this app adds:
 check → download → ask → STOP THE SERVER → swap the .app → relaunch → auto-start migrates
 ```
 
-macOS keeps a running process's mapped binaries alive after the files under them are
-replaced. So a relaunch over a *running* server leaves the household on the old runtime,
-and the relaunched app — finding it `running` — stands its one auto-start down and never
-notices. The updater therefore **postpones Sparkle's relaunch until `waffled-runtime stop`
-succeeds**, and if the stop *refuses*, the relaunch is held: the icon slashes, the menu says
+A relaunch over a *running* server would leave the household on the old runtime, and the
+relaunched app would never notice (why, at length: `docs/product/native-mac-plan.md`,
+Phase 3 item 6). The updater therefore **postpones Sparkle's relaunch until
+`waffled-runtime stop` succeeds**, and if the stop *refuses*, the relaunch is held: the icon slashes, the menu says
 `Could not stop Waffled: …`, and the update item becomes **`Install the update now`**, which
 tries the stop again with the install Sparkle handed over. (It has to be that item rather
 than an ordinary check: Sparkle counts the postponed session as still in progress, so

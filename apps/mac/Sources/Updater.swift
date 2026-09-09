@@ -59,14 +59,10 @@ final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
     /// Nil hands the question back to Sparkle, which uses the `SUFeedURL` in the plist.
     func feedURLString(for updater: SPUUpdater) -> String? { feedOverride }
 
-    /// **The rule that makes an update an update** (plan §6, `apps/mac/CLAUDE.md`): the
-    /// server has to be down before the app is swapped, or the household keeps running the
-    /// old binaries out of memory and the relaunched app — finding it `running` — stands
-    /// its auto-start down and never migrates anything. Returning true holds the relaunch
-    /// until `installHandler` runs, and a `stop` that refuses never runs it: the icon
-    /// slashes, the menu says why, and the item becomes `Install the update now` — the
-    /// handler is kept because Sparkle's session stays open around it, so its own
-    /// `checkForUpdates` would do nothing.
+    /// The stop before the relaunch — why, in `docs/product/native-mac-plan.md` Phase 3
+    /// item 6. Returning true holds the relaunch until `installHandler` runs, and a `stop`
+    /// that refuses never runs it; the model keeps the handler, because Sparkle's session
+    /// stays open around it and its own `checkForUpdates` would then do nothing.
     ///
     /// Hopped onto the main actor rather than asserted onto it: Sparkle's header documents
     /// no thread for this callback, the stop is asynchronous either way, and a wrong guess
