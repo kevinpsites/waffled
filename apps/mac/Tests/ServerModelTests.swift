@@ -193,6 +193,27 @@ final class ServerModelTests: XCTestCase {
         XCTAssertEqual(installs, 0, "the driver that would have installed it is gone")
     }
 
+    /// What the menu says while a stop that lost its cycle runs on. The abort's own line
+    /// clears itself after a few seconds, so saying it here would wipe the persistent
+    /// "Stopping for the update…" and leave the menu disabled and unexplained for up to two
+    /// and a half minutes.
+    func testAnAbortDuringOurStopKeepsTheStoppingLineUntilTheStopComesBack() async {
+        let runtime = FakeRuntime()
+        await runtime.hold("stop")
+        let model = makeModel(runtime)
+        defer { model.end() }
+
+        model.stopBeforeUpdate {}
+        await waitUntil("the stop reaches the runtime") { await runtime.isWaiting(for: "stop") }
+
+        model.updateCycleEnded(error: "You cancelled the update.")
+        XCTAssertEqual(model.transient, "Stopping for the update…",
+                       "the stop is still running, and the menu is disabled for all of it")
+
+        await runtime.finish("stop")
+        await waitUntil("the stop explains itself") { model.transient == "Update not installed" }
+    }
+
     /// Quitting while an installer is armed is refused wherever the click came from — the
     /// item is disabled, so this is the update that landed between drawing and clicking.
     func testQuitIsRefusedRatherThanSilentWhileAnInstallerIsArmed() async {

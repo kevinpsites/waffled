@@ -103,7 +103,10 @@ struct UpdateFlow {
             case let .stoppingForInstall(handler?):
                 return (.handedOff, [.invoke(handler)])
             case .stoppingForInstall(nil):
-                return (.restartQueued(handler: nil), [])
+                // The cycle ended while this stop was running, so there is nothing to hand
+                // off to: the server goes back, and the abort is explained now that the
+                // "Stopping for the update…" line has done its job.
+                return (.restartQueued(handler: nil), [.note(abortNote(nil))])
             default:
                 return (phase, [])
             }
@@ -172,11 +175,12 @@ struct UpdateFlow {
             // which works again, because the session that was blocking it ended too. What
             // does *not* go away is `armed`.
             return (.armed(handler: nil), [])
-        case let .stoppingForInstall(handler):
-            // The stop is still running; only its completion can put the server back.
-            // Sparkle reports one abort twice, and the second has nothing to add.
-            return (.stoppingForInstall(handler: nil),
-                    handler == nil ? [] : [.note(abortNote(error))])
+        case .stoppingForInstall:
+            // Only the stop's completion can put the server back, and it is where this is
+            // said: a note here would clear itself over the persistent "Stopping for the
+            // update…" line and leave the menu disabled and unexplained until the stop
+            // returns, which can be two and a half minutes.
+            return (.stoppingForInstall(handler: nil), [])
         case .handedOff:
             return (.restartQueued(handler: nil), [.note(abortNote(error))])
         case .restartQueued:

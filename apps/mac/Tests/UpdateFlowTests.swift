@@ -118,7 +118,7 @@ final class UpdateFlowTests: XCTestCase {
                 .handedOff, [.invoke(h1)],
                 "the server is down, so the swap is Sparkle's now"),
             Row(.stoppingForInstall(handler: nil), .stopSucceeded,
-                .restartQueued(handler: nil), [],
+                .restartQueued(handler: nil), [.note("Update not installed")],
                 "the cycle that asked for this stop is gone — the server is down for nothing"),
             Row(.armed(handler: h1), .stopSucceeded, .armed(handler: h1), [],
                 "no stop of ours was running"),
@@ -149,9 +149,8 @@ final class UpdateFlowTests: XCTestCase {
                 "the block's driver is gone, but Sparkle's installer is not"),
             Row(.stoppingForInstall(handler: h1),
                 .cycleEnded(error: "The update is improperly signed.\nDetail"),
-                .stoppingForInstall(handler: nil),
-                [.note("Update not installed: The update is improperly signed.")],
-                "the stop is still running; its completion now has nothing to invoke"),
+                .stoppingForInstall(handler: nil), [],
+                "the stop is still running: its line stays up, and its completion explains"),
             Row(.stoppingForInstall(handler: nil), .cycleEnded(error: nil),
                 .stoppingForInstall(handler: nil), [],
                 "Sparkle reports one abort twice — the second says nothing new"),
@@ -300,7 +299,7 @@ final class UpdateFlowTests: XCTestCase {
         XCTAssertEqual(flow.phase, .stoppingForInstall(handler: h1))
 
         _ = flow.send(.cycleEnded(error: "You cancelled the update."))
-        XCTAssertEqual(flow.send(.stopSucceeded), [],
+        XCTAssertEqual(flow.send(.stopSucceeded), [.note("Update not installed")],
                        "nothing to invoke — the driver that would have installed it is gone")
         XCTAssertEqual(flow.phase, .restartQueued(handler: nil))
         XCTAssertEqual(flow.send(.operationSlotFreed(serverState: .stopped)), [.restartServer])
