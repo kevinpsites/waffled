@@ -906,3 +906,69 @@ func TestAFailedUnlinkDoesNotBlockDeletingTheData(t *testing.T) {
 		t.Errorf("a failed unlink was reported as a live process: %q", got)
 	}
 }
+
+// The document has to say whether it is a plan or a receipt. Without it a --dry-run
+// document is shape-identical to a successful run, and the Mac app — which lands in a
+// later PR and is written against whatever ships here — cannot tell them apart.
+func TestTheDocumentSaysWhetherItWasADryRun(t *testing.T) {
+	dry, _, _ := fixture(t)
+	dry.DryRun = true
+	planned, err := Run(context.Background(), dry)
+	if err != nil {
+		t.Fatalf("dry Run: %v", err)
+	}
+	if !planned.DryRun {
+		t.Error("a dry run's document does not say so")
+	}
+
+	real, _, _ := fixture(t)
+	done, err := Run(context.Background(), real)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if done.DryRun {
+		t.Error("a real run's document claims to be a dry run")
+	}
+	doc, err := planned.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(doc), `"dryRun": true`) {
+		t.Errorf("dryRun is not in the document:\n%s", doc)
+	}
+}
+
+// Inspect is the "build the inventory and touch nothing" entry point, so its report must
+// never read as a receipt.
+func TestInspectNeverReadsAsAReceipt(t *testing.T) {
+	opts, _, _ := fixture(t)
+	report := Inspect(opts)
+	if !report.DryRun {
+		t.Error("Inspect's report does not say nothing was done")
+	}
+	if strings.Contains(report.Text(), "removed") {
+		t.Errorf("Inspect's report claims things were removed:\n%s", report.Text())
+	}
+}
+
+// A dry run does not refuse over a running server — it is how you check whether it is
+// safe to uninstall yet — but it must not promise a deletion the real run would refuse.
+func TestADryRunDoesNotPromiseADeletionTheServerBlocks(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.DryRun = true
+	opts.DeleteData = true
+	opts.alive = func(pid int) bool { return pid == 4242 }
+
+	report, err := Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	text := report.Text()
+	if !strings.Contains(text, "--yes") && !strings.Contains(text, "stop") {
+		t.Errorf("the summary promises a deletion the real run would refuse:\n%s", text)
+	}
+	// A dry run is still a plan, so the present tense is right here.
+	if detail := item(t, report, KindPidfiles).Detail; !strings.Contains(detail, "is running") {
+		t.Errorf("a dry run reports the running server in the past tense: %q", detail)
+	}
+}

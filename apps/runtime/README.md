@@ -741,7 +741,8 @@ safe if you might ever come back.
 ### `uninstall --json`
 
 Schema 1. `action` is what this run does, `present` is what it found — so a first run is
-all `present: true` and a second all `present: false`. An item that could not be removed
+all `present: true` and a second all `present: false`. `dryRun` says whether the document
+is a plan or a receipt: without it the two are shape-identical. An item that could not be removed
 carries an `error`, and the text output prints it as `failed` rather than `removed`: the
 document is emitted even when the command exits non-zero, because "refused, nothing
 changed" and "half removed" are exactly what a caller has to tell apart. The one
@@ -751,6 +752,7 @@ outcome to report and it is a stderr message and exit 1 with no document.
 ```jsonc
 {
   "schema": 1,
+  "dryRun": false,               // true when nothing was done — a plan, not a receipt
   "dataDir": "/Users/…/Application Support/Waffled",
   "dataSizeBytes": 3900080,
   "items": [

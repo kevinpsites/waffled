@@ -72,10 +72,14 @@ type Report struct {
 	DataDir       string `json:"dataDir"`
 	DataSizeBytes int64  `json:"dataSizeBytes"`
 	Items         []Item `json:"items"`
+	// DryRun says whether this document is a plan or a receipt. Without it the two are
+	// shape-identical, and the Mac app parsing this could not tell them apart.
+	DryRun bool `json:"dryRun"`
 
-	// dryRun changes only how Text() reads. It is unexported so the JSON document stays
-	// exactly the four documented fields.
-	dryRun bool
+	// foundRunning records that the inventory was taken while a supervisor was up. Only
+	// the wording depends on it, so it stays out of the document — the pidfiles item
+	// already carries the fact.
+	foundRunning bool
 }
 
 // ScheduleAgent is the part of *schedule.Agent this command uses.
@@ -158,10 +162,14 @@ func (o *Options) applyDefaults() {
 	}
 }
 
-// Inspect builds the inventory without touching anything.
+// Inspect builds the inventory without touching anything. Its report is always a plan:
+// nothing here has been done, and a report that read as a receipt would be a lie in
+// whatever the caller prints.
 func Inspect(o Options) Report {
 	o.applyDefaults()
-	return o.inspect()
+	r := o.inspect()
+	r.DryRun = true
+	return r
 }
 
 // Run carries the plan out, and returns the inventory as it stood before it did.
@@ -341,7 +349,7 @@ func (o Options) inspect() Report {
 	r := Report{
 		Schema:  Schema,
 		DataDir: o.Layout.Root,
-		dryRun:  o.DryRun,
+		DryRun:  o.DryRun,
 	}
 
 	if o.Agent != nil {
@@ -392,7 +400,14 @@ func (o Options) inspect() Report {
 		Detail:    "pidfiles left by the supervisor and its services",
 	}
 	if pid, running := o.supervisorPid(); running {
-		pids.Detail = fmt.Sprintf("the server was running (supervisor pid %d)", pid)
+		r.foundRunning = true
+		// Tense by mode: a dry run changes nothing, so the server it found is still up;
+		// a real run has usually just stopped it.
+		if o.DryRun {
+			pids.Detail = fmt.Sprintf("the server is running (supervisor pid %d)", pid)
+		} else {
+			pids.Detail = fmt.Sprintf("the server was running (supervisor pid %d)", pid)
+		}
 	}
 	r.Items = append(r.Items, pids)
 
@@ -613,7 +628,7 @@ func (o Options) terminatePidfile(ctx context.Context, path string) error {
 // that says in words where the data is and how to delete it.
 func (r Report) Text() string {
 	var b strings.Builder
-	if r.dryRun {
+	if r.DryRun {
 		b.WriteString("Uninstall plan (dry run — nothing was changed)\n\n")
 	} else {
 		b.WriteString("Uninstall\n\n")
@@ -628,7 +643,7 @@ func (r Report) Text() string {
 		case it.Action == ActionKeep:
 			state = "kept"
 		}
-		if r.dryRun && it.Present {
+		if r.DryRun && it.Present {
 			state = map[string]string{ActionRemove: "remove", ActionKeep: "keep"}[it.Action]
 		}
 		size := ""
@@ -659,7 +674,7 @@ func (r Report) Text() string {
 			r.DataDir, humanBytes(r.DataSizeBytes), data.Error)
 	case data.Action == ActionKeep:
 		verb := "is kept"
-		if r.dryRun {
+		if r.DryRun {
 			verb = "would be kept"
 		}
 		fmt.Fprintf(&b, "Your Waffled data %s at %s (%s) — the database, media, backups and config.env.\n",
@@ -667,11 +682,16 @@ func (r Report) Text() string {
 		b.WriteString("Delete it too with: waffled-runtime uninstall --delete-data\n")
 	default:
 		verb := "was deleted"
-		if r.dryRun {
+		if r.DryRun {
 			verb = "would be deleted"
 		}
 		fmt.Fprintf(&b, "Your Waffled data at %s (%s) %s. The secrets in config.env cannot be recovered.\n",
 			r.DataDir, humanBytes(r.DataSizeBytes), verb)
+		if r.DryRun && r.foundRunning {
+			// The real run refuses over a running server, so the plan must not read as a
+			// promise the command would not keep.
+			b.WriteString("The server is running, so the real run will refuse: stop it first, or pass --yes.\n")
+		}
 	}
 	return b.String()
 }
