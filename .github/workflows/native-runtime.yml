@@ -289,6 +289,7 @@ jobs:
           # Bounded at ~3 minutes: locally this is 18s, but the runner has a third of the
           # cores and pays initdb plus every migration on a cold filesystem.
           state=""
+          doc=""
           for i in $(seq 1 90); do
             sleep 2
             if ! kill -0 "$app_pid" 2>/dev/null; then
@@ -296,12 +297,17 @@ jobs:
               cat "$RUNNER_TEMP/mac-app.log"
               exit 1
             fi
+            # One read of the document per attempt, parsed twice: `state` now and
+            # `urls.local` after the loop, so the URL is the one belonging to the status
+            # that ended the loop rather than a second, later stack state.
+            #
             # Parsed, not grepped: every service has a "state" of its own, and the first
-            # one a regex finds need not be the stack's. `|| state=""`: GitHub runs each
-            # step with `bash -e`, and a status that cannot answer yet (no data dir, no
+            # one a regex finds need not be the stack's. `|| doc=""`: GitHub runs each step
+            # with `bash -e`, and a status that cannot answer yet (no data dir, no
             # supervisor) would otherwise end the step on its exit code instead of going
             # round the loop again.
-            state="$("$RT" status --json --data "$DATA" 2>/dev/null \
+            doc="$("$RT" status --json --data "$DATA" 2>/dev/null)" || doc=""
+            state="$(printf '%s' "$doc" \
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["state"])')" || state=""
             echo "  $((i * 2))s ${state:-(no status yet)}"
             if [ "$state" = running ]; then break; fi
@@ -315,10 +321,11 @@ jobs:
           fi
           "$RT" status --data "$DATA" || rc=1
 
-          # The health URL the app itself would open. /healthz is Caddy's unauthenticated
-          # one, so a 200 here means Caddy, the api behind it and everything the api needed
-          # to start are all up (/api/health is admin-only and answers 401 by design).
-          url="$("$RT" status --json --data "$DATA" 2>/dev/null \
+          # The health URL the app itself would open, out of the same document the loop
+          # ended on. /healthz is Caddy's unauthenticated one, so a 200 here means Caddy,
+          # the api behind it and everything the api needed to start are all up
+          # (/api/health is admin-only and answers 401 by design).
+          url="$(printf '%s' "$doc" \
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["urls"]["local"])')" || url=""
           if [ -n "$url" ]; then
             # `|| code=000`: curl exits 7 on a refused connection, and under the step's
