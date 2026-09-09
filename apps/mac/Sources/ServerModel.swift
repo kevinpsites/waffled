@@ -461,17 +461,12 @@ final class ServerModel {
     private func stopForUpdate() {
         stop(noting: "Stopping for the update…") { [weak self] outcome in
             guard let self else { return }
+            // Before the event, because a restart the flow queues next is decided on the
+            // server's state and the stop just made the last status wrong.
+            await refresh()
             switch outcome {
-            case .proceed:
-                // Before the event, because a restart the flow queues next is decided on
-                // the server's state and the stop just made the last status wrong. Not
-                // before a hand-off, which owes no restart and whose `status` would spawn
-                // the binary Sparkle is about to replace.
-                if case .stoppingForInstall(nil) = flow.phase { await refresh() }
-                send(.stopSucceeded)
-            case let .refused(message):
-                send(.stopFailed(message))
-                await refresh()
+            case .proceed: send(.stopSucceeded)
+            case let .refused(message): send(.stopFailed(message))
             }
         }
     }

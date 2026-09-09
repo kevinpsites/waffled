@@ -76,6 +76,7 @@ final class ServerModelTests: XCTestCase {
 
         XCTAssertEqual(installs, 1)
         XCTAssertEqual(model.updatePhase, .handedOff)
+        XCTAssertEqual(model.status?.state, .stopped, "every stop ends in a fresh read")
         let starts = await runtime.count(of: "start")
         XCTAssertEqual(starts, 0, "the server stays down for the swap")
     }
