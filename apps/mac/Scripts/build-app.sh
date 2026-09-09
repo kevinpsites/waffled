@@ -118,14 +118,37 @@ trap 'rm -rf "$probe"' EXIT
 # No --bundle: the default is the directory above the binary, so this also proves the app's
 # layout resolves on its own. The exit code is deliberately ignored — doctor reports on
 # backups, ports and disk too, and a busy port on the build machine is not this script's
-# business. The manifest line is.
-doctor_out="$("$RUNTIME_BIN" doctor --data "$probe" 2>&1 || true)"
-manifest_line="$(printf '%s\n' "$doctor_out" | grep '^✓ bundle manifest' || true)"
-if [ -z "$manifest_line" ]; then
-  printf '%s\n' "$doctor_out" | sed 's/^/    /' >&2
-  die "the embedded runtime did not verify its own bundle — see doctor's output above"
-fi
-ok "${manifest_line#✓ bundle manifest}"
+# business. One check is.
+#
+# --json, and the check picked out by name: doctor's text is for people, and a gate that
+# greps it turns any change in wording, width or ordering into either a false pass or a
+# false failure. The name below is supervisor.CheckBundleManifest in
+# apps/runtime/internal/supervisor/doctor.go — a constant precisely because this script
+# depends on it. stderr is folded in and the parser refuses empty or unparseable input:
+# when the manifest does NOT verify, doctor fails while constructing and prints no JSON at
+# all, which is exactly the case this gate exists for. A check that is absent is a
+# failure, never a pass — Doctor only emits it when the bundle verified.
+doctor_out="$("$RUNTIME_BIN" doctor --json --data "$probe" 2>&1 || true)"
+manifest_detail="$(printf '%s' "$doctor_out" | "$DEST/bin/node" -e '
+  const NAME = "bundle manifest";  // supervisor.CheckBundleManifest
+  let raw = "";
+  process.stdin.on("data", (c) => (raw += c)).on("end", () => {
+    let checks;
+    try { checks = JSON.parse(raw); } catch {
+      console.error("doctor --json printed no parseable JSON:");
+      console.error(raw.trim() || "  (nothing at all)");
+      process.exit(1);
+    }
+    const check = (Array.isArray(checks) ? checks : []).find((c) => c && c.name === NAME);
+    if (!check) { console.error(`doctor reported no "${NAME}" check`); process.exit(1); }
+    if (check.status !== "ok") {
+      console.error(`"${NAME}" is ${check.status}: ${check.detail}`);
+      process.exit(1);
+    }
+    console.log(check.detail);
+  });
+')" || die "the embedded runtime did not verify its own bundle — see above"
+ok "$manifest_detail"
 
 say ""
 ok "$APP ($(hsize "$APP"))"
