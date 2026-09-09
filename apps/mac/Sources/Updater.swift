@@ -46,7 +46,7 @@ final class Updater {
     }
 }
 
-/// The three things Sparkle has to ask this app.
+/// The things Sparkle has to tell this app, and the two it has to ask.
 final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
     private let model: ServerModel
     private let feedOverride: String?
@@ -58,6 +58,16 @@ final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
 
     /// Nil hands the question back to Sparkle, which uses the `SUFeedURL` in the plist.
     func feedURLString(for updater: SPUUpdater) -> String? { feedOverride }
+
+    /// The earliest news that a swap is now inevitable: `Autoupdate` has performed stage 1
+    /// by this point and finishes the installation on any termination, whether or not
+    /// anyone ever clicks install (`UpdateFlow`'s invariant). It is also the only signal
+    /// behind the alert's `Install on Quit` button, which ends the cycle without ever
+    /// asking this app to postpone anything.
+    func updater(_ updater: SPUUpdater, didExtractUpdate item: SUAppcastItem) {
+        let model = model
+        Task { @MainActor in model.updateInstallerPrepared() }
+    }
 
     /// The stop before the relaunch — why, in `docs/product/native-mac-plan.md` Phase 3
     /// item 6. Returning true holds the relaunch until `installHandler` runs, and a `stop`
@@ -71,6 +81,17 @@ final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
                  untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
         let model = model
         Task { @MainActor in model.stopBeforeUpdate(then: installHandler) }
+        return true
+    }
+
+    /// The same rule for the background driver's silent install-on-quit: taking
+    /// responsibility (`true`) is what lets the server be stopped before the swap, exactly
+    /// as postponing the relaunch does. Reached only when Sparkle downloads updates
+    /// automatically, which `SUAutomaticallyUpdate: false` turns off today.
+    func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem,
+                 immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
+        let model = model
+        Task { @MainActor in model.stopBeforeUpdate(then: immediateInstallHandler) }
         return true
     }
 

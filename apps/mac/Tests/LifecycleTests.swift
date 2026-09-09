@@ -115,9 +115,8 @@ final class LifecycleTests: XCTestCase {
         XCTAssertEqual(Lifecycle.outcomeAfterStop(error: "postgres would not shut down"),
                        .refused("postgres would not shut down"))
 
-        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: false, updatePending: false),
-                       .confirmThenStop)
-        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true, updatePending: false),
+        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: false), .confirmThenStop)
+        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true),
                        .quitWithoutStopping,
                        "the changed menu item is the second confirmation")
     }
@@ -128,18 +127,30 @@ final class LifecycleTests: XCTestCase {
     /// so quitting over a server that would not stop replaces Waffled.app, runtime bundle
     /// and all, under the old binaries still running it. The item says what has to happen
     /// first, and `Install the update now` stays the retry.
+    ///
+    /// It turns on the flow's phase rather than on an install block the app happens to be
+    /// holding: `Install on Quit` and an abort after stage 1 both leave the app holding
+    /// nothing while Sparkle is still armed.
     func testQuitWillNotHandAPreparedUpdateAServerThatIsStillRunning() {
-        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true, updatePending: true),
-                       .stopTheServerFirst)
-        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: false, updatePending: true),
-                       .confirmThenStop,
-                       "nothing refused: quit stops the server first, and that is what makes the swap safe")
+        for phase in [UpdateFlow.Phase.armed(handler: nil),
+                      .stoppingForInstall(handler: nil),
+                      .restartQueued(handler: nil)] {
+            XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true, phase: phase),
+                           .stopTheServerFirst, "\(phase) is an armed installer")
+            XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: false, phase: phase),
+                           .confirmThenStop,
+                           "nothing refused: quit stops the server first, and that is what makes the swap safe")
+        }
+
+        XCTAssertEqual(Lifecycle.quitAction(stopHasFailed: true, phase: .handedOff),
+                       .quitWithoutStopping,
+                       "the swap is already Sparkle's, and the server is already down")
 
         XCTAssertEqual(Lifecycle.QuitAction.confirmThenStop.title, "Quit Waffled")
         XCTAssertEqual(Lifecycle.QuitAction.quitWithoutStopping.title,
                        "Quit anyway (server keeps running)")
         XCTAssertEqual(Lifecycle.QuitAction.stopTheServerFirst.title,
-                       "Quit — stop the server first (an update is waiting)")
+                       "Quit — stop the server first (an update will install on quit)")
     }
 
     /// The relaunch waits for the stop, and a stop that refuses holds it back rather than
@@ -149,27 +160,6 @@ final class LifecycleTests: XCTestCase {
         XCTAssertEqual(Lifecycle.outcomeAfterStop(error: "postgres would not shut down"),
                        .refused("postgres would not shut down"),
                        "the swap would land on a server still running the old bundle")
-    }
-
-    /// The other end of the same rule: after the stop the server is down and the app is
-    /// only waiting to be replaced, so an install that then aborts leaves the household
-    /// with neither a server nor an update. Whoever stopped it starts it again.
-    func testAnAbandonedInstallStartsBackTheServerWeStopped() {
-        XCTAssertEqual(
-            Lifecycle.recoveryAfterAbort(weStoppedTheServer: true,
-                                         error: "The update is improperly signed.\nDetail"),
-            .restart("Update not installed: The update is improperly signed."),
-            "one line, because the menu has one line")
-
-        XCTAssertEqual(Lifecycle.recoveryAfterAbort(weStoppedTheServer: true, error: nil),
-                       .restart("Update not installed"))
-
-        XCTAssertEqual(Lifecycle.recoveryAfterAbort(weStoppedTheServer: false, error: "no update"),
-                       .leaveItAlone,
-                       "an ordinary daily check that found nothing stopped nothing")
-        XCTAssertEqual(Lifecycle.recoveryAfterAbort(weStoppedTheServer: false, error: nil),
-                       .leaveItAlone,
-                       "and a held update never got as far as stopping the server")
     }
 
     /// The note is said once — but "once" has to mean *once there is something to say*.

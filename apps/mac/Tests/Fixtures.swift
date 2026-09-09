@@ -185,6 +185,10 @@ actor FakeRuntime: RuntimeProcessRunning {
     private var held: Set<String> = []
     private var waiting: [String: CheckedContinuation<Void, Never>] = [:]
 
+    /// What the next `status` answers with — a stack that came up while a test was holding
+    /// something open, say.
+    func answer(status document: String) { statusDocument = document }
+
     /// Make `command` wait inside `run` until `finish(_:)` is called.
     func hold(_ command: String) { held.insert(command) }
 

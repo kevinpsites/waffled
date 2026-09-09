@@ -31,21 +31,10 @@ final class ServerModel {
     /// is still running, so the next successful poll must not wipe it.
     private(set) var stopFailure: String?
 
-    /// Sparkle's install handler, kept while a stop refuses. Invoking it is the only way
-    /// the postponed relaunch ever happens: `SPUUpdater` counts the session as in progress
-    /// until then, and a fresh `checkForUpdates` returns without doing anything.
-    private var pendingInstall: (() -> Void)?
-    var hasPendingUpdate: Bool { pendingInstall != nil }
-    /// Our stop succeeded and Sparkle has the app: what makes an update that then ends
-    /// without installing anything ours to recover from.
-    private var stoppedForUpdate = false
-    /// A restart that arrived while the one operation slot was taken. It is the household's
-    /// server coming back, so it waits for the slot rather than being dropped.
-    private var restartAfterOperation = false
-    /// Which update cycle the stop in flight belongs to. `stop` can take two and a half
-    /// minutes and Sparkle can end a cycle at any point in them, so the closure that
-    /// completes it has to be able to tell that its cycle is gone.
-    private var updateCycle = 0
+    /// Everything the app does about an update, in one state machine (`UpdateFlow`). The
+    /// model holds the phase, runs the effects, and decides none of it.
+    private var flow = UpdateFlow()
+    var updatePhase: UpdateFlow.Phase { flow.phase }
 
     /// A start, stop or backup is in flight. Derived rather than stored: the two were
     /// set in lockstep at four call sites, which is four chances for a menu stuck at
@@ -124,7 +113,7 @@ final class ServerModel {
                               busy: busy, runtimeAvailable: client != nil,
                               stopFailure: stopFailure, awaitingSetup: awaitingSetup,
                               canCheckForUpdates: canCheckForUpdates,
-                              updatePending: hasPendingUpdate)
+                              updatePhase: flow.phase)
     }
 
     /// The first-run window's whole content, or nil on every launch that gets no window.
@@ -198,8 +187,8 @@ final class ServerModel {
 
     func end() {
         // Before the cancellations: a cancelled operation still runs `finishOperation`,
-        // and a queued restart there would start a server on the way out of the app.
-        restartAfterOperation = false
+        // and a restart the flow owes there would start a server on the way out of the app.
+        flow = UpdateFlow()
         pollTask?.cancel()
         animationTask?.cancel()
         operationTask?.cancel()
@@ -349,6 +338,8 @@ final class ServerModel {
     ///   the click also spends the one auto-start attempt.
     func startServer(trigger: Lifecycle.StartTrigger = .person) {
         guard let client, operationTask == nil else { return }
+        // A person putting the server back is the flow's restart, already done.
+        if trigger == .person { send(.startClicked) }
         startTrigger = trigger
         autoStartDecided = true
         failure = nil
@@ -410,22 +401,14 @@ final class ServerModel {
     /// run modally after activating; a `.confirmationDialog` inside a `.menu`-style
     /// `MenuBarExtra` has nothing to present from and never appears.
     func confirmAndQuit() {
-        switch Lifecycle.quitAction(stopHasFailed: stopFailure != nil,
-                                    updatePending: hasPendingUpdate) {
-        case .stopTheServerFirst:
-            // The item is disabled, so this is only reachable if the update landed between
-            // the menu being drawn and the click. Quitting is what must not happen.
-            return
-        case .quitWithoutStopping:
-            // The menu item is already the second question — "Quit anyway (server keeps
-            // running)" — and this click is its answer. Nothing is asked twice.
-            NSApp.terminate(nil)
-        case .confirmThenStop:
-            // Order matters: an operation already in flight means no alert at all, rather
-            // than an alert whose "Quit and Stop the Server" quietly does nothing.
-            guard operationTask == nil, askToQuit() else { return }
-            stopThenQuit()
-        }
+        // The flow answers the two update-shaped cases — refusing while an installer is
+        // armed, leaving without stopping when the menu item has already asked the second
+        // question. No effects means the ordinary quit.
+        guard send(.quitRequested(stopHasFailed: stopFailure != nil)).isEmpty else { return }
+        // Order matters: an operation already in flight means no alert at all, rather than
+        // an alert whose "Quit and Stop the Server" quietly does nothing.
+        guard operationTask == nil, askToQuit() else { return }
+        stopThenQuit()
     }
 
     private func askToQuit() -> Bool {
@@ -442,109 +425,69 @@ final class ServerModel {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
-    /// The menu's `Install the update now`: the same stop again, with the handler Sparkle
+    /// The menu's `Install the update now`: the same stop again, with the block Sparkle
     /// gave us the first time.
     func installPendingUpdate() {
-        guard let install = pendingInstall else { return }
-        stopBeforeUpdate(then: install)
+        send(.installerArmed(handler: flow.phase.installHandler, canStopNow: operationTask == nil))
     }
 
-    /// Sparkle has downloaded an update and is ready to swap this app — runtime bundle and
-    /// all — and relaunch it. The server has to be down first, and if it will not go down
+    /// Sparkle has extracted and validated an update. It says nothing about when — or
+    /// whether — anyone will click install: from this moment `Autoupdate` completes the
+    /// swap on any termination, which is what the flow latches (`UpdateFlow`).
+    func updateInstallerPrepared() {
+        send(.installerArmed(handler: nil, canStopNow: operationTask == nil))
+    }
+
+    /// Sparkle is ready to swap this app — runtime bundle and all — and hands over the
+    /// block that finishes it. The server has to be down first, and if it will not go down
     /// the relaunch is held (why: `docs/product/native-mac-plan.md`, Phase 3 item 6).
     ///
     /// The relaunched app's ordinary auto-start is what runs the new runtime against the
     /// existing data, which is where the snapshot, the migrations and the health gate
     /// happen. Nothing here knows about any of that, deliberately.
     func stopBeforeUpdate(then install: @escaping () -> Void) {
-        guard operationTask == nil else {
-            // A start or a backup is mid-flight; the menu item is off for exactly that
-            // reason, so arriving here means one began between the menu opening and the
-            // click. Nothing was asked to stop, so nothing refused — and a stop failure
-            // recorded here would turn Quit into "Quit anyway", over a server that is
-            // still running and a backup that is still writing. The handler is kept all
-            // the same: it is the only way this update can ever be installed, and the item
-            // becomes `Install the update now`, disabled until the slot comes free.
-            pendingInstall = install
-            note("Waffled is busy — try the update again in a moment")
-            return
-        }
-        // Kept until the swap actually happens: a stop that refuses holds the relaunch,
-        // and this handler is then the only way the update can still go ahead.
-        pendingInstall = install
-        // Bumped here rather than at the top of the function: the busy branch above never
-        // asked anything to stop, and moving the token there would strand a stop that is
-        // running and about to succeed.
-        updateCycle &+= 1
-        let cycle = updateCycle
-        stop(noting: "Stopping for the update…") { [weak self] in
-            guard let self else { return }
-            guard cycle == updateCycle else {
-                // Sparkle ended this cycle while the stop was running, so the handler has
-                // no driver left to install anything and the server is down for nothing.
-                // `pendingInstall` is left alone: a later cycle may already have put its
-                // own handler there.
-                recoverFromAbandonedUpdate(
-                    Lifecycle.recoveryAfterAbort(weStoppedTheServer: true, error: nil))
-                return
-            }
-            pendingInstall = nil
-            stoppedForUpdate = true
-            install()
-        }
+        send(.installerArmed(handler: InstallHandler(install), canStopNow: operationTask == nil))
     }
 
-    /// Sparkle's update cycle ended without replacing anything — including the ordinary
-    /// case of finding no update at all, which is why the decision turns on whether we had
-    /// stopped the server for it.
+    /// Sparkle's update cycle ended without replacing anything — an abort, `Install on
+    /// Quit`, or the ordinary check that found nothing.
     func updateCycleEnded(error: String?) {
-        // Whatever else this ends, it ends the handler: the driver that would have run it
-        // is gone, so the menu goes back to an ordinary check — which works again, because
-        // the session that was blocking it has ended with the cycle.
-        pendingInstall = nil
-        // Any stop still running was asked for by a cycle that no longer exists; its
-        // completion compares this token rather than installing into nothing.
-        updateCycle &+= 1
-        recoverFromAbandonedUpdate(
-            Lifecycle.recoveryAfterAbort(weStoppedTheServer: stoppedForUpdate, error: error))
+        send(.cycleEnded(error: error))
     }
 
-    /// The server is down for a swap that is not coming. The two ways that happens — the
-    /// cycle ending after our stop succeeded, and a stop finishing after its cycle has
-    /// gone — end in the same place.
-    private func recoverFromAbandonedUpdate(_ recovery: Lifecycle.AbortRecovery) {
-        guard case let .restart(message) = recovery else { return }
-        stoppedForUpdate = false
-        // Replaces `Stopping for the update…`, which was left up deliberately until
-        // something else said otherwise. Restarting is not a second supervisor: this
-        // is the server this app stopped a moment ago.
-        note(message)
-        restartTheServerWeStopped()
-    }
-
-    /// The put-it-back start. `startServer` returns at its guard while another operation is
-    /// running — a backup, which stays offered while the server is down — and a note saying
-    /// the update was handled over a server that never came back is the worst of both.
-    private func restartTheServerWeStopped() {
-        guard operationTask == nil else {
-            restartAfterOperation = true
-            return
+    /// The update's stop. Its outcome is an event, not a decision made here.
+    private func stopForUpdate() {
+        stop(noting: "Stopping for the update…") { [weak self] outcome in
+            // Before the event, not after: a restart the flow may queue next is decided on
+            // the server's state, and the stop just made the last status wrong.
+            await self?.refresh()
+            switch outcome {
+            case .proceed: self?.send(.stopSucceeded)
+            case let .refused(message): self?.send(.stopFailed(message))
+            }
         }
-        startServer(trigger: .app)
     }
 
     private func stopThenQuit() {
-        stop(noting: "Stopping…") { NSApp.terminate(nil) }
+        stop(noting: "Stopping…") { [weak self] outcome in
+            switch outcome {
+            case .proceed:
+                NSApp.terminate(nil)
+            case let .refused(message):
+                self?.recordStopFailure(message)
+                await self?.refresh()
+            }
+        }
     }
 
-    /// The one stop this app knows how to do, and what to do once the server is really
-    /// down. Quitting and updating differ in that closure and in the line the menu shows
-    /// while it runs; a refusal is the same story for both, and is held the same way (see
-    /// `Lifecycle.outcomeAfterStop`).
+    /// The one stop this app knows how to do. Quitting and updating differ in the line the
+    /// menu shows while it runs and in what they make of the outcome; the stop itself, and
+    /// the rule for reading a refusal (`Lifecycle.outcomeAfterStop`), are the same.
     ///
     /// `stop` can take up to two and a half minutes (a graceful shutdown, then SIGKILL),
     /// so the note stays up and the actions stay disabled throughout.
-    private func stop(noting line: String, thenOnceDown proceed: @escaping () -> Void) {
+    private func stop(noting line: String,
+                      thenOnceDown finish: @escaping (Lifecycle.StopOutcome) async -> Void) {
         stopFailure = nil
         note(line, clearAfter: nil)
         operationTask = Task { [weak self] in
@@ -556,13 +499,45 @@ final class ServerModel {
             } catch {
                 stopError = Self.describe(error)
             }
+            await finish(Lifecycle.outcomeAfterStop(error: stopError))
+        }
+    }
 
-            switch Lifecycle.outcomeAfterStop(error: stopError) {
-            case .proceed:
-                proceed()
-            case let .refused(message):
-                self?.recordStopFailure(message)
-                await self?.refresh()
+    // MARK: the update flow
+
+    /// One event, then the effects it asks for — plus the one question nothing else asks:
+    /// a restart the flow owes waits for the operation slot, and a slot that was free all
+    /// along would otherwise never announce itself.
+    @discardableResult
+    private func send(_ event: UpdateFlow.Event) -> [UpdateFlow.Effect] {
+        let effects = flow.send(event)
+        apply(effects)
+        if flow.phase.owesRestart, operationTask == nil {
+            apply(flow.send(.operationSlotFreed(serverState: status?.state)))
+        }
+        return effects
+    }
+
+    private func apply(_ effects: [UpdateFlow.Effect]) {
+        for effect in effects {
+            switch effect {
+            case .stopServer:
+                stopForUpdate()
+            case let .invoke(handler):
+                handler()
+            case .restartServer:
+                // Not a second supervisor: this is the server this app stopped a moment ago.
+                startServer(trigger: .app)
+            case let .note(message):
+                note(message)
+            case let .recordStopFailure(message):
+                recordStopFailure(message)
+            case let .refuseQuit(message):
+                // The item is disabled, so this is only reachable if the installer landed
+                // between the menu being drawn and the click.
+                note(message)
+            case .terminate:
+                NSApp.terminate(nil)
             }
         }
     }
@@ -574,9 +549,7 @@ final class ServerModel {
     private func finishOperation() {
         operationTask = nil
         syncFirstRunWindow()
-        guard restartAfterOperation else { return }
-        restartAfterOperation = false
-        startServer(trigger: .app)
+        send(.operationSlotFreed(serverState: status?.state))
     }
 
     /// One line for the menu, whatever went wrong. The runtime's own sentence when it

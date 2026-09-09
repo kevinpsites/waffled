@@ -1,11 +1,11 @@
 import XCTest
 @testable import Waffled
 
-/// The model is mostly wiring — the decisions live in `Lifecycle` — but which *channel* a
-/// refusal goes down is its own, and getting it wrong changes what the Quit item does.
+/// `UpdateFlow` decides what an update does; this is the other half — that the model runs
+/// the effects it is handed, against a runtime that answers.
 ///
-/// Nothing here spawns. The operation's task body is isolated to this same actor, and
-/// these tests never await, so it cannot interleave with them; `end()` cancels it.
+/// Nothing here spawns. The operation's task body is isolated to this same actor, so it
+/// cannot interleave with a test that never awaits; `end()` cancels it.
 @MainActor
 final class ServerModelTests: XCTestCase {
 
@@ -18,14 +18,9 @@ final class ServerModelTests: XCTestCase {
                     runner: runtime ?? SubprocessRunner())
     }
 
-    /// An update that arrives while a backup is running is a "not now", not a server that
-    /// refused to stop — nothing asked it to. Recorded as a stop failure it turned the Quit
+    /// The busy branch: `.note`, and no stop. Recorded as a stop failure it turned the Quit
     /// item into "Quit anyway (server keeps running)", whose very next click terminates over
     /// a running server and a backup still writing.
-    ///
-    /// "Not now" still has to keep the handler: Sparkle's session stays open around it, so
-    /// dropping it leaves the item a dead `Checking for updates…` for the rest of the
-    /// process and the downloaded update with no way to be installed at all.
     func testAnUpdateThatLandsMidOperationIsANoteRatherThanAFailedStop() {
         let model = makeModel()
         defer { model.end() }
@@ -37,73 +32,65 @@ final class ServerModelTests: XCTestCase {
         model.stopBeforeUpdate { installed = true }
 
         XCTAssertNil(model.stopFailure, "nothing tried to stop the server, so nothing refused")
-        XCTAssertEqual(model.presentation(canCheckForUpdates: false).quitTitle, "Quit Waffled",
-                       "Quit must still ask, rather than offering to leave the server running")
         XCTAssertFalse(installed, "the swap waits for a stop that has not happened")
-        XCTAssertNotNil(model.transient, "the click still gets an answer")
-        XCTAssertTrue(model.hasPendingUpdate, "the handler is the only way this update lands")
+        XCTAssertEqual(model.transient, UpdateFlow.busyNote, "the click still gets an answer")
 
         let menu = model.presentation(canCheckForUpdates: false)
+        XCTAssertEqual(menu.quitTitle, "Quit Waffled",
+                       "Quit must still ask, rather than offering to leave the server running")
         XCTAssertEqual(menu.checkForUpdatesLabel, "Install the update now")
         XCTAssertFalse(menu.checkForUpdatesEnabled, "until the backup gives the slot back")
     }
 
-    /// A stop that refuses holds the relaunch — and Sparkle's install handler with it. That
-    /// handler is the only way the update ever happens: having postponed the relaunch, its
-    /// session stays in progress and a fresh `checkForUpdates` is a silent no-op. So the
-    /// model keeps it, and the menu item runs it again.
-    func testAHeldUpdateKeepsTheInstallHandlerForTheRetry() async {
+    /// `.stopServer` and `.recordStopFailure` both reach the model: the stop really runs,
+    /// and a refusal lands in the channel that changes the Quit item rather than in the
+    /// one a poll would wipe.
+    func testAStopThatRefusesIsHeldAndLeavesTheRetryOffered() async {
         let model = makeModel()   // the binary does not exist, so `stop` cannot succeed
         defer { model.end() }
 
         var installs = 0
         model.stopBeforeUpdate { installs += 1 }
-        XCTAssertTrue(model.hasPendingUpdate, "taken the moment Sparkle hands it over")
+        XCTAssertTrue(model.busy, "the stop is the effect the flow asked for")
 
-        await settle(model)
-        XCTAssertNotNil(model.stopFailure, "precondition: this stop refused")
+        await waitUntil("the stop comes back") { !model.busy }
+        XCTAssertNotNil(model.stopFailure, "the channel the Quit item reads")
         XCTAssertEqual(installs, 0, "the swap must not land on a server that is still up")
-        XCTAssertTrue(model.hasPendingUpdate, "nothing else can install it now")
+        XCTAssertEqual(model.presentation(canCheckForUpdates: false).checkForUpdatesLabel,
+                       "Install the update now", "the block we kept is the way on")
 
-        // The retry is the same stop, with the handler we kept.
+        // The retry is the same stop, with that block.
         model.installPendingUpdate()
         XCTAssertTrue(model.busy)
     }
 
-    /// The other way a held update ends: not a retry that works, but the cycle it belonged
-    /// to finishing without us. The handler cannot install anything once its driver is
-    /// gone, and the item has to go back to an ordinary check — which works again, because
-    /// the session that was blocking it has ended too.
-    func testTheHeldHandlerGoesWithTheCycleThatOwnedIt() async {
-        let model = makeModel()
+    /// `.invoke`: a stop that succeeds hands the app over, and nothing puts the server back.
+    func testAStopThatSucceedsRunsSparklesBlock() async {
+        let runtime = FakeRuntime()
+        let model = makeModel(runtime)
         defer { model.end() }
 
-        model.stopBeforeUpdate {}
-        await settle(model)
-        XCTAssertTrue(model.hasPendingUpdate, "precondition: the stop refused and we kept it")
+        var installs = 0
+        model.stopBeforeUpdate { installs += 1 }
+        await waitUntil("the stop comes back") { !model.busy }
 
-        model.updateCycleEnded(error: "You cancelled the update.")
-
-        XCTAssertFalse(model.hasPendingUpdate)
-        XCTAssertEqual(model.presentation(canCheckForUpdates: true).checkForUpdatesLabel,
-                       "Check for updates…")
+        XCTAssertEqual(installs, 1)
+        XCTAssertEqual(model.updatePhase, .handedOff)
+        let starts = await runtime.count(of: "start")
+        XCTAssertEqual(starts, 0, "the server stays down for the swap")
     }
 
-    /// An update that aborts after our stop is a restart — and a restart is an operation,
-    /// so it lost to whatever already held the one slot: `startServer` returned at its
-    /// guard, under a note saying the update had been dealt with, and the household's
-    /// server stayed down for the rest of the process.
+    /// `.restartServer`, and the slot it waits for. A restart is an operation, so it lost
+    /// to whatever already held the one slot: `startServer` returned at its guard, under a
+    /// note saying the update had been dealt with, and the household's server stayed down.
     func testTheRestartAfterAnAbortWaitsForTheOperationSlot() async {
         let runtime = FakeRuntime()
-        await runtime.hold("stop")
         await runtime.hold("backup")
         let model = makeModel(runtime)
         defer { model.end() }
 
         model.stopBeforeUpdate {}
-        await waitUntil("the stop reaches the runtime") { await runtime.isWaiting(for: "stop") }
-        await runtime.finish("stop")
-        await settle(model)
+        await waitUntil("the stop comes back") { !model.busy }
         var starts = await runtime.count(of: "start")
         XCTAssertEqual(starts, 0, "precondition: nothing has started")
 
@@ -120,10 +107,54 @@ final class ServerModelTests: XCTestCase {
         await waitUntil("the queued restart fires") { await runtime.count(of: "start") == 1 }
     }
 
+    /// The same restart when the slot was free all along: nothing else announces a slot
+    /// that never had to be given back, so the model asks.
+    func testAnAbortWithTheSlotFreeRestartsStraightAway() async {
+        let runtime = FakeRuntime()
+        let model = makeModel(runtime)
+        defer { model.end() }
+
+        model.stopBeforeUpdate {}
+        await waitUntil("the stop comes back") { !model.busy }
+
+        model.updateCycleEnded(error: "The update is improperly signed.")
+        XCTAssertEqual(model.transient, "Update not installed: The update is improperly signed.")
+        await waitUntil("the server we stopped comes back") { await runtime.count(of: "start") == 1 }
+
+        // Sparkle reports one abort twice; the second has nothing left to put back.
+        model.updateCycleEnded(error: nil)
+        await waitUntil("the start comes back") { !model.busy }
+        let starts = await runtime.count(of: "start")
+        XCTAssertEqual(starts, 1)
+    }
+
+    /// The abort landing while a person's own `Start Waffled` is the operation in the way.
+    /// The queued restart used to fire from the freed slot regardless, and that second
+    /// `start` hit the runtime's pidfile guard and slashed the icon until the next poll.
+    func testTheQueuedRestartDoesNotStartAServerSomebodyElseBroughtBack() async {
+        let runtime = FakeRuntime()
+        await runtime.hold("start")
+        let model = makeModel(runtime)
+        defer { model.end() }
+
+        model.stopBeforeUpdate {}
+        await waitUntil("the stop comes back") { !model.busy }
+
+        model.startServer()   // a person puts the server back before Sparkle says anything
+        await waitUntil("the start reaches the runtime") { await runtime.isWaiting(for: "start") }
+        await runtime.answer(status: Fixtures.fullRunning)
+
+        model.updateCycleEnded(error: "You cancelled the update.")
+        await runtime.finish("start")
+        await waitUntil("the start comes back") { !model.busy }
+
+        let starts = await runtime.count(of: "start")
+        XCTAssertEqual(starts, 1, "the household's server is already up")
+    }
+
     /// A cycle that ends while our stop is still running. `stop` can take two and a half
-    /// minutes and Sparkle can abort at any point in them, so the handler the closure
-    /// captured had lost its driver by the time it ran: the server was down, "Stopping for
-    /// the update…" stayed on screen, and nothing was left to put either of them right.
+    /// minutes and Sparkle can abort at any point in them, so the block the stop was going
+    /// to invoke has lost its driver by the time it comes back.
     func testAStopThatOutlivesItsUpdateCycleRestartsInsteadOfInstalling() async {
         let runtime = FakeRuntime()
         await runtime.hold("stop")
@@ -139,14 +170,21 @@ final class ServerModelTests: XCTestCase {
 
         await waitUntil("the server is started again") { await runtime.count(of: "start") == 1 }
         XCTAssertEqual(installs, 0, "the driver that would have installed it is gone")
-        XCTAssertFalse(model.hasPendingUpdate)
-        await settle(model)
+    }
 
-        // We never handed the app over, so there is nothing for a second end of cycle —
-        // Sparkle reports one abort twice — to recover.
-        model.updateCycleEnded(error: nil)
-        let starts = await runtime.count(of: "start")
-        XCTAssertEqual(starts, 1)
+    /// Quitting while an installer is armed is refused wherever the click came from — the
+    /// item is disabled, so this is the update that landed between drawing and clicking.
+    func testQuitIsRefusedRatherThanSilentWhileAnInstallerIsArmed() async {
+        let model = makeModel()
+        defer { model.end() }
+
+        model.stopBeforeUpdate {}
+        await waitUntil("the stop refuses") { !model.busy }
+        XCTAssertNotNil(model.stopFailure, "precondition")
+
+        model.confirmAndQuit()
+        XCTAssertEqual(model.transient, UpdateFlow.refusedQuitNote,
+                       "a Quit that did nothing at all would read as a broken menu")
     }
 
     /// Polls a condition until it holds, bounded rather than blocking: everything these
@@ -158,16 +196,5 @@ final class ServerModelTests: XCTestCase {
             try? await Task.sleep(for: .milliseconds(5))
         }
         XCTFail("timed out waiting for \(what)")
-    }
-
-    /// Waits out the one operation the model has in flight. It is stopping a runtime that
-    /// is not there, so every call fails immediately — this is bounded by the failure, not
-    /// by the sleep.
-    private func settle(_ model: ServerModel) async {
-        let deadline = Date().addingTimeInterval(5)
-        while model.busy, Date() < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        XCTAssertFalse(model.busy, "the operation never came back")
     }
 }

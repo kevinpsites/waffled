@@ -113,8 +113,9 @@ struct MenuPresentation: Equatable {
     ///     not clear it — and because it is what changes the quit item.
     ///   - awaitingSetup: a first run whose welcome window is still waiting for a click.
     ///   - canCheckForUpdates: Sparkle's own answer, observed on the updater.
-    ///   - updatePending: an update whose relaunch we postponed and whose install handler
-    ///     the model is still holding, because the stop refused.
+    ///   - updatePhase: where the update flow has got to. It decides two separate things:
+    ///     whether the app holds an install block it can run (the item becomes the install),
+    ///     and whether an installer is armed at all (the quit rule).
     static func make(
         status: RuntimeStatus?,
         failure: String? = nil,
@@ -124,13 +125,13 @@ struct MenuPresentation: Equatable {
         stopFailure: String? = nil,
         awaitingSetup: Bool = false,
         canCheckForUpdates: Bool = false,
-        updatePending: Bool = false
+        updatePhase: UpdateFlow.Phase = .idle
     ) -> MenuPresentation {
         let state = status?.state
         let address = status?.serverAddress
         let running = state == .running
-        let quit = Lifecycle.quitAction(stopHasFailed: stopFailure != nil,
-                                        updatePending: updatePending)
+        let quit = Lifecycle.quitAction(stopHasFailed: stopFailure != nil, phase: updatePhase)
+        let canInstallNow = updatePhase.installHandler != nil
 
         // A fault is a fault whether the runtime reported it or we caught it ourselves,
         // and either way `logs/` is the next place to look.
@@ -188,13 +189,13 @@ struct MenuPresentation: Equatable {
             // would sit there disabled and the update would never happen. Otherwise the
             // item follows Sparkle's answer, and says why when it is off — a `.menu`-style
             // `MenuBarExtra` renders no tooltip to say it anywhere else.
-            checkForUpdatesLabel: updatePending
+            checkForUpdatesLabel: canInstallNow
                 ? "Install the update now"
                 : (canCheckForUpdates ? "Check for updates…" : "Checking for updates…"),
             // `busy` gates both: an update begins by stopping the server, which is the one
             // operation slot a start or a backup is already holding.
-            checkForUpdatesEnabled: (updatePending || canCheckForUpdates) && !busy,
-            updateAction: updatePending ? .installNow : .check,
+            checkForUpdatesEnabled: (canInstallNow || canCheckForUpdates) && !busy,
+            updateAction: canInstallNow ? .installNow : .check,
             quitTitle: quit.title,
             quitEnabled: quit != .stopTheServerFirst)
     }
@@ -319,19 +320,20 @@ enum Lifecycle {
             switch self {
             case .confirmThenStop: return "Quit Waffled"
             case .quitWithoutStopping: return "Quit anyway (server keeps running)"
-            case .stopTheServerFirst: return "Quit — stop the server first (an update is waiting)"
+            case .stopTheServerFirst:
+                return "Quit — stop the server first (an update will install on quit)"
             }
         }
     }
 
-    /// - Parameter updatePending: Sparkle has extracted and validated the new app and is
-    ///   listening for this process to exit; once it does, `Autoupdate` finishes the swap
-    ///   whatever the reason for the exit (`Autoupdate/AppInstaller.m`). Quitting over a
-    ///   server that refused to stop would therefore replace the app — runtime bundle
-    ///   included — under the old binaries still running it.
-    static func quitAction(stopHasFailed: Bool, updatePending: Bool) -> QuitAction {
+    /// - Parameter phase: the update flow. Anything but `idle` and `handedOff` means
+    ///   Sparkle holds a prepared installer and is listening for this process to exit —
+    ///   see `UpdateFlow`'s invariant — so quitting over a server that refused to stop
+    ///   would replace the app, runtime bundle included, under the old binaries still
+    ///   running it.
+    static func quitAction(stopHasFailed: Bool, phase: UpdateFlow.Phase = .idle) -> QuitAction {
         guard stopHasFailed else { return .confirmThenStop }
-        return updatePending ? .stopTheServerFirst : .quitWithoutStopping
+        return phase.installerArmed ? .stopTheServerFirst : .quitWithoutStopping
     }
 
     /// What the icon draws. A held failure outranks the document — a start that refused
@@ -364,28 +366,6 @@ enum Lifecycle {
 
     static func outcomeAfterStop(error: String?) -> StopOutcome {
         error.map { StopOutcome.refused($0) } ?? .proceed
-    }
-
-    /// What to do when Sparkle's update cycle ends without installing anything.
-    enum AbortRecovery: Equatable {
-        /// Nothing of ours is down, so nothing of ours needs putting back — every check
-        /// that finds no update ends here.
-        case leaveItAlone
-        /// We stopped the server for a swap that is not coming. Start it again, saying so.
-        case restart(String)
-    }
-
-    /// A stop, a swap and a start — with the swap cancelled. Sparkle can abort after the
-    /// relaunch was postponed and the server is already down (a signature that does not
-    /// check out, an authorisation someone declined), and the app is then sitting there
-    /// alive, with the household's server stopped, its one auto-start long spent and
-    /// `Stopping for the update…` still on screen. Whoever stopped it starts it again.
-    ///
-    /// - Parameter weStoppedTheServer: our stop succeeded and Sparkle was handed the app.
-    static func recoveryAfterAbort(weStoppedTheServer: Bool, error: String?) -> AbortRecovery {
-        guard weStoppedTheServer else { return .leaveItAlone }
-        guard let why = error?.firstLine else { return .restart("Update not installed") }
-        return .restart("Update not installed: \(why)")
     }
 
     /// The version note, or nil when there is nothing to say.
