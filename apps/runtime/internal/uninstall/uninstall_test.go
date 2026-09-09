@@ -1014,3 +1014,30 @@ func TestTheRefusalNamesThePidfileWhenItCannotSignal(t *testing.T) {
 		t.Errorf("the refusal does not name the pidfile, the only way out: %v", err)
 	}
 }
+
+// The same EPERM dead end as the supervisor refusal, one path over: a stale service
+// pidfile whose pid has been recycled to somebody else's process blocks --delete-data
+// forever. The pidfiles are deliberately left in place, which IS the remedy — the
+// message just has to say so.
+func TestASweepThatCannotSignalNamesThePidfile(t *testing.T) {
+	opts, _, _ := fixture(t)
+	opts.DeleteData = true
+	if err := os.WriteFile(opts.Layout.PidPath("api"), []byte("5555\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts.grace = 20 * time.Millisecond
+	opts.alive = func(pid int) bool { return pid == 5555 }
+	opts.signal = func(int, syscall.Signal) error { return syscall.EPERM }
+
+	report, err := Run(context.Background(), opts)
+	if err == nil {
+		t.Fatal("Run succeeded with an orphan it cannot signal")
+	}
+	if !strings.Contains(err.Error(), opts.Layout.PidPath("api")) {
+		t.Errorf("the failure does not name the pidfile, the only way out: %v", err)
+	}
+	if _, statErr := os.Stat(opts.Layout.PidPath("api")); statErr != nil {
+		t.Errorf("the pidfile that is the remedy was deleted: %v", statErr)
+	}
+	_ = report
+}

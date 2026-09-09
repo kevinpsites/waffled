@@ -646,6 +646,13 @@ func (o Options) terminatePidfile(ctx context.Context, path string) error {
 		return nil
 	}
 	if err := o.terminate(ctx, pid, o.grace); err != nil {
+		if errors.Is(err, syscall.EPERM) {
+			// The same dead end refusal() explains for the supervisor: the pid belongs
+			// to somebody else, so nothing this command can do will stop it. The pidfile
+			// is left in place either way, which is exactly the way out.
+			return fmt.Errorf("%s: pid %d belongs to another user — if it is not Waffled, "+
+				"delete %s and run this again", filepath.Base(path), pid, path)
+		}
 		return fmt.Errorf("%s: %w", filepath.Base(path), err)
 	}
 	return nil
