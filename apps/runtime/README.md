@@ -706,8 +706,10 @@ says never auto-delete; this is that, made explicit.
 `uninstall` refuses while a server is running and names the pid, unless `--yes`, which
 runs the ordinary stop first and says that it did. `--dry-run` is the exception: it
 reports a running server rather than refusing over it, because "is it safe to uninstall
-yet" is exactly what a dry run is for. It is idempotent — a second run reports every item
-`present: false` and exits 0 — and it exits non-zero only on a real failure.
+yet" is exactly what a dry run is for. It is idempotent — a second run reports every item it *removed* as
+`present: false` and exits 0 — and it exits non-zero only on a real failure. The data
+root is the exception, and deliberately so: without `--delete-data` it is kept, so it
+stays `present: true` with `action: "keep"` on every run.
 
 It does **not** build a Supervisor, and that is load-bearing: constructing one writes to
 the directory being inventoried (creates the layout, writes `config.env` with fresh
@@ -740,9 +742,10 @@ safe if you might ever come back.
 
 ### `uninstall --json`
 
-Schema 1. `action` is what this run does, `present` is what it found — so a first run is
-all `present: true` and a second all `present: false`. `dryRun` says whether the document
-is a plan or a receipt: without it the two are shape-identical. An item that could not be removed
+Schema 1. `action` is what this run does, `present` is what it found — so an item with
+`action: "remove"` is `present: true` on the first run and `present: false` on the second,
+while a kept one stays `present: true` for as long as it is there. `dryRun` says whether
+the document is a plan or a receipt: without it the two are shape-identical. An item that could not be removed
 carries an `error`, and the text output prints it as `failed` rather than `removed`: the
 document is emitted even when the command exits non-zero, because "refused, nothing
 changed" and "half removed" are exactly what a caller has to tell apart. The one
