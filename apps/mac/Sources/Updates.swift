@@ -50,4 +50,14 @@ enum Updates {
         guard let url = environment[appcastVariable], !url.isEmpty else { return nil }
         return url
     }
+
+    /// Whether this launch should start the updater at all.
+    ///
+    /// A unit-test bundle is injected into the app, so the whole of `WaffledApp` runs
+    /// during `xcodebuild test`. An updater started there would check the real feed over
+    /// the network on every test run — and record having done so in the app's defaults —
+    /// which is a suite that talks to GitHub to test a pure function.
+    static func startsUpdater(environment: [String: String]) -> Bool {
+        environment["XCTestConfigurationFilePath"] == nil
+    }
 }

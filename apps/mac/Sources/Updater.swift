@@ -25,9 +25,10 @@ final class Updater {
          environment: [String: String] = ProcessInfo.processInfo.environment) {
         delegate = UpdaterDelegate(model: model,
                                    feedOverride: Updates.feedURL(environment: environment))
-        controller = SPUStandardUpdaterController(startingUpdater: true,
-                                                  updaterDelegate: delegate,
-                                                  userDriverDelegate: nil)
+        controller = SPUStandardUpdaterController(
+            startingUpdater: Updates.startsUpdater(environment: environment),
+            updaterDelegate: delegate,
+            userDriverDelegate: nil)
         canCheckForUpdates = controller.updater.canCheckForUpdates
         availability = controller.updater.observe(\.canCheckForUpdates) { [weak self] updater, _ in
             // Read on whatever thread KVO used; only the Bool crosses to the main actor.

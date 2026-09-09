@@ -55,4 +55,15 @@ final class VersionChangeTests: XCTestCase {
         XCTAssertNil(Updates.feedURL(environment: ["WAFFLED_APPCAST_URL": ""]),
                      "an empty value is not an override")
     }
+
+    /// A unit-test bundle is injected into this very app, so `WaffledApp` — and everything
+    /// it builds — runs during `xcodebuild test`. An updater started there checks the real
+    /// feed over the network on every test run and writes Sparkle's bookkeeping into the
+    /// app's defaults; the suite must not do either.
+    func testTheUpdaterDoesNotStartInsideATestRun() {
+        XCTAssertFalse(Updates.startsUpdater(environment: ProcessInfo.processInfo.environment),
+                       "this assertion is running inside the host app — the real check")
+        XCTAssertTrue(Updates.startsUpdater(environment: [:]),
+                      "an ordinary launch starts it")
+    }
 }
