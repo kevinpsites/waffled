@@ -121,7 +121,7 @@ jobs:
         run: go test ./...
 
   runtime-macos:
-    name: macOS bundle build + boot from empty data dir
+    name: macOS bundle build + boot the assembled app
     # Gate on the cheap job: a gofmt/vet/unit failure should never burn macOS minutes.
     needs: runtime-go
     # macos-15 is the current Apple-silicon (arm64) GitHub-hosted runner — confirmed against
@@ -252,10 +252,21 @@ jobs:
 
       # The one check that cannot be faked: the assembled app, with NO dev-mode environment
       # variables — no WAFFLED_RUNTIME_BIN, no WAFFLED_RUNTIME_BUNDLE — so it has to find the
-      # runtime it carries, verify it, and bring a real server up from an empty data
-      # directory. Only WAFFLED_DATA_DIR is set, and only to keep this run out of
-      # ~/Library/Application Support/Waffled. The executable is run directly because `open`
-      # cannot pass environment to an app.
+      # runtime it carries, verify it, and bring a real server up. Only WAFFLED_DATA_DIR is
+      # set, and only to keep this run out of ~/Library/Application Support/Waffled. The
+      # executable is run directly because `open` cannot pass environment to an app.
+      #
+      # Two launches, because an empty data directory and a set-up one are now different
+      # launches (apps/mac/README.md, "First run"):
+      #   1. empty — a first run, where the app deliberately starts NOTHING: its welcome
+      #      window is asking, and a runner has nobody to click it. What is asserted is
+      #      exactly that nothing came up. (A first poll that has not answered yet also
+      #      reads as stopped, so this is a regression guard against starting anyway,
+      #      not proof of the decision.)
+      #   2. set up — the ordinary launch, and the one that exercises everything: the app
+      #      auto-starts the server it finds down, reaches green, and answers on /healthz.
+      #      The cluster is created by the CLI in between, which is the half a person does
+      #      by clicking.
       - name: Smoke boot the assembled .app (no dev-mode envs)
         env:
           APP: ${{ runner.temp }}/app/Waffled.app
@@ -282,12 +293,44 @@ jobs:
             return 0
           }
           trap teardown EXIT
-          WAFFLED_DATA_DIR="$DATA" "$APP/Contents/MacOS/Waffled" >"$RUNNER_TEMP/mac-app.log" 2>&1 &
-          app_pid=$!
-          echo "app pid $app_pid"
 
-          # Bounded at ~3 minutes: locally this is 18s, but the runner has a third of the
-          # cores and pays initdb plus every migration on a cold filesystem.
+          rc=0
+
+          # 1. The first run: the app must leave an empty data directory alone.
+          WAFFLED_DATA_DIR="$DATA" "$APP/Contents/MacOS/Waffled" >>"$RUNNER_TEMP/mac-app.log" 2>&1 &
+          app_pid=$!
+          echo "app pid $app_pid (first run — nothing should start)"
+          sleep 45
+          if ! kill -0 "$app_pid" 2>/dev/null; then
+            echo "::error::the menu-bar app exited on a first run"
+            cat "$RUNNER_TEMP/mac-app.log"
+            exit 1
+          fi
+          held="$("$RT" status --json --data "$DATA" 2>/dev/null \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["state"], d["initialized"])')" || held=""
+          echo "after 45s on an empty data directory: ${held:-(no status yet)}"
+          # `initialized` is the flag the app reads to know this is a first run, so it is
+          # worth pinning through the assembled binary and not only in the Go unit tests.
+          if [ "$held" != "stopped False" ]; then
+            echo "::error::a first run waits for the welcome window's button, but status said: $held"
+            rc=1
+          fi
+          kill "$app_pid" 2>/dev/null || true
+          wait "$app_pid" 2>/dev/null || true
+          app_pid=""
+
+          # 2. Set the data directory up the way the button does, then hand it back. This
+          # is the expensive part — initdb plus every migration — and it is the runtime's
+          # own work, not the app's.
+          "$RT" start --data "$DATA" || { echo "::error::the CLI could not set the data directory up"; exit 1; }
+          "$RT" stop --data "$DATA" || { echo "::error::the CLI could not stop what it started"; exit 1; }
+
+          WAFFLED_DATA_DIR="$DATA" "$APP/Contents/MacOS/Waffled" >>"$RUNNER_TEMP/mac-app.log" 2>&1 &
+          app_pid=$!
+          echo "app pid $app_pid (relaunch — the app auto-starts a server it finds down)"
+
+          # Bounded at ~3 minutes: locally this is seconds on a warm cluster, but the
+          # runner has a third of the cores and a cold filesystem.
           state=""
           doc=""
           for i in $(seq 1 90); do
@@ -313,7 +356,6 @@ jobs:
             if [ "$state" = running ]; then break; fi
           done
 
-          rc=0
           if [ "$state" != running ]; then
             echo "::error::the assembled app never reached state=running"
             cat "$RUNNER_TEMP/mac-app.log"
