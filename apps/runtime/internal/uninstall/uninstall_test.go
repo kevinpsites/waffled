@@ -27,6 +27,7 @@ var _ ScheduleAgent = (*schedule.Agent)(nil)
 type fakeAgent struct {
 	path      string
 	uninstall int
+	fail      bool
 }
 
 func (f *fakeAgent) PlistPath() string { return f.path }
@@ -38,6 +39,9 @@ func (f *fakeAgent) Installed() bool {
 
 func (f *fakeAgent) Uninstall() error {
 	f.uninstall++
+	if f.fail {
+		return errors.New("launchctl bootout: something went wrong")
+	}
 	if err := os.Remove(f.path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -791,5 +795,25 @@ func TestFailureMessagesRenderLegibly(t *testing.T) {
 		if strings.Contains(line, ".pid: process") && !strings.HasPrefix(line, "  ") {
 			t.Errorf("a continuation line breaks out of the column layout: %q", line)
 		}
+	}
+}
+
+// Only a failure that could still be holding the data open may block --delete-data. A
+// launchd plist that would not unload cannot be, and refusing to delete over it leaves
+// the user re-running a command that will never get further.
+func TestAFailedScheduleRemovalDoesNotBlockDeletingTheData(t *testing.T) {
+	opts, agent, _ := fixture(t)
+	opts.DeleteData = true
+	agent.fail = true
+
+	report, err := Run(context.Background(), opts)
+	if err == nil {
+		t.Fatal("Run hid a launchd job it could not unload")
+	}
+	if _, statErr := os.Stat(opts.Layout.Root); !os.IsNotExist(statErr) {
+		t.Errorf("--delete-data was blocked by an unrelated failure: %v", statErr)
+	}
+	if got := item(t, report, KindData).Error; got != "" {
+		t.Errorf("the data item carries error %q, but it was deleted", got)
 	}
 }

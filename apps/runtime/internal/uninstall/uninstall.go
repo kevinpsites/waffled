@@ -202,6 +202,10 @@ func Run(ctx context.Context, o Options) (Report, error) {
 	}
 
 	var problems []error
+	// Only a failure that could still be holding the data root open blocks deleting it —
+	// a launchd plist that would not unload cannot be, and refusing over it would leave
+	// someone re-running a command that never gets any further.
+	stillLive := false
 	for i := range report.Items {
 		it := &report.Items[i]
 		if !it.Present || it.Action != ActionRemove {
@@ -210,14 +214,17 @@ func Run(ctx context.Context, o Options) (Report, error) {
 		// Nothing that is still alive may be left holding the data root open: a
 		// half-failed cleanup is exactly when os.RemoveAll would run out from under a
 		// live Postgres.
-		if it.Kind == KindData && len(problems) > 0 {
-			it.Error = "something above could not be cleaned up first"
+		if it.Kind == KindData && stillLive {
+			it.Error = "something that may still be running could not be stopped"
 			problems = append(problems, fmt.Errorf("left %s in place — %s", o.Layout.Root, it.Error))
 			continue
 		}
 		if err := o.remove(ctx, *it); err != nil {
 			it.Error = err.Error()
 			problems = append(problems, err)
+			if it.Kind == KindPidfiles || it.Kind == KindBonjour {
+				stillLive = true
+			}
 		}
 	}
 	return report, errors.Join(problems...)
