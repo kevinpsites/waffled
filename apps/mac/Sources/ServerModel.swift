@@ -88,13 +88,11 @@ final class ServerModel {
 
     var icon: IconAppearance { IconAppearance.forState(iconState) }
 
-    /// The frame to draw right now — the same drawing every time unless this state
-    /// animates, in which case the frames cycle on the animation timer. The images are
-    /// cached per state and frame, so this is a dictionary lookup on every poll.
-    var currentImage: NSImage {
-        WaffleIronIcon.image(state: iconState,
-                             fillCount: icon.fillCount(frame: animationFrame))
-    }
+    /// The frame to draw right now, at the menu bar's own 18 pt — the same drawing every
+    /// time unless this state animates, in which case the frames cycle on the animation
+    /// timer. The images are cached per state, frame and size, so this is a dictionary
+    /// lookup on every poll.
+    var currentImage: NSImage { image(pointSize: 18) }
 
     var presentation: MenuPresentation {
         MenuPresentation.make(status: status, failure: heldFailure, transient: transient,
