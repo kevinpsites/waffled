@@ -58,8 +58,10 @@ final class ServerModel {
     /// through the first start.
     private(set) var isFirstRun = false
     private var firstRunDecided = false
-    /// A person has clicked — on the window or on `Start Waffled`, which count the same.
-    private(set) var setupBegun = false
+    /// Something has started this run: a click on the window, a click on `Start Waffled`,
+    /// or the one auto-start. Derived from the trigger the start recorded, because the two
+    /// were only ever written together.
+    var setupBegun: Bool { startTrigger != .notUs }
     private var firstRunDismissed = false
     private var firstRunCloseTask: Task<Void, Never>?
     private let firstRunWindow = FirstRunWindow()
@@ -304,7 +306,6 @@ final class ServerModel {
         guard let client, operationTask == nil else { return }
         startTrigger = trigger
         autoStartDecided = true
-        setupBegun = true
         failure = nil
         pollFailure = nil
         stopFailure = nil
